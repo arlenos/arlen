@@ -183,12 +183,24 @@ SKIP = (
 # stands behind. Empty is the goal: the reason has to survive being read next to
 # the sentence the user ends up seeing.
 #
-# The keys are `file:line`, which DRIFTS: editing anything above an entry moves
-# it and the check reports it as new. That happened on 9 August, when making the
-# meeting edits honest pushed one acknowledgement down twenty lines. Annoying,
-# and the alternative is worse - keying on the file alone would hide a genuinely
-# new fixture in a file that already has an acknowledged one, which is exactly
-# how the sentinel store hid three switches behind one fixed function.
+# The keys are `file:FIXTURE-NAME`, and the name is what the check already prints
+# in its own finding - `FIXTURES`, `audioMock`.
+#
+# It used to be `file:line`, which DRIFTS: editing anything above an entry moves
+# it and the check reports it as new. That cost a re-key on 9 August and again on
+# 14 August, when threading a flag through `provenance.ts` pushed its entry down
+# fifty lines and refused a commit that had nothing to do with fixtures. A gate
+# that goes red because a file moved is the kind people learn to wave through.
+#
+# Keying on the FILE alone was rejected for a good reason and still is: it would
+# hide a genuinely new fixture in a file that already has an acknowledged one,
+# which is how the sentinel store hid three switches behind one fixed function.
+# The name keeps that apart - the viewers app's three entries below are three
+# different names in one file, and each still stands on its own.
+#
+# The one thing a name key collapses is the SAME fixture rendered twice in one
+# file. That is one decision wearing two hats, so one acknowledgement is the
+# honest granularity for it.
 ACKNOWLEDGED: dict[str, str] = {
     # The three below are one decision. Before 9 August the viewers app fell onto
     # this branch in a real shell too: `initial_file` returning null hit a bare
@@ -199,19 +211,19 @@ ACKNOWLEDGED: dict[str, str] = {
     # is no host to ask, and the `?demo=` path the screenshot harness drives. Both
     # are contexts where a sample IS the answer. If the `noFile` branch above it
     # ever goes, these three go back to being the defect they were.
-    "apps/viewers/src/routes/+page.svelte:98": (
+    "apps/viewers/src/routes/+page.svelte:audioMock": (
         "The demo face, reachable only with no Tauri host or an explicit `?demo=`; the real shell with no file is answered above it."
     ),
-    "apps/viewers/src/routes/+page.svelte:100": (
+    "apps/viewers/src/routes/+page.svelte:imageMock": (
         "The demo face, reachable only with no Tauri host or an explicit `?demo=`; the real shell with no file is answered above it."
     ),
-    "apps/viewers/src/routes/+page.svelte:102": (
+    "apps/viewers/src/routes/+page.svelte:videoMock": (
         "The demo face, reachable only with no Tauri host or an explicit `?demo=`; the real shell with no file is answered above it."
     ),
-    'apps/text-editor/src/lib/stores/lens.ts:82': (
+    'apps/text-editor/src/lib/stores/lens.ts:FIXTURE': (
         "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The lens shows provenance, backlinks and project context for the open file, labelled 'Example context - not this file's real graph neighbourhood'. `openRelated` navigates rather than mutates."
     ),
-    "apps/files/src/lib/stores/provenance.ts:149": (
+    "apps/files/src/lib/stores/provenance.ts:FIXTURES": (
         "The caveat is rendered at the claim, not on a banner elsewhere: the halo "
         "popover puts 'Sample history - not this file's real origin' directly above "
         "the chain, and the store sets `mocked` on the chain object so it travels "
@@ -282,8 +294,8 @@ def main() -> int:
         if path.suffix == ".svelte":
             for line, name in markup_fixtures(text):
                 rendered += 1
-                if f"{rel_path}:{line}" in ACKNOWLEDGED:
-                    used.add(f"{rel_path}:{line}")
+                if f"{rel_path}:{name}" in ACKNOWLEDGED:
+                    used.add(f"{rel_path}:{name}")
                     continue
                 findings.append(
                     f"{rel_path}:{line}: renders `{name}` straight into markup, so this "
@@ -305,11 +317,12 @@ def main() -> int:
             if not hit:
                 continue
             rel = path.relative_to(ROOT)
-            if f"{rel}:{line}" in ACKNOWLEDGED:
-                used.add(f"{rel}:{line}")
+            name = hit.group(0).strip()
+            if f"{rel}:{name}" in ACKNOWLEDGED:
+                used.add(f"{rel}:{name}")
                 continue
             findings.append(
-                f"{rel}:{line}: a failed read falls back to `{hit.group(0).strip()}`, so "
+                f"{rel}:{line}: a failed read falls back to `{name}`, so "
                 f"invented content renders as fact. Guard it with "
                 f"`import.meta.env.DEV` and give the real session an error the "
                 f"surface can show."
@@ -336,9 +349,10 @@ def main() -> int:
         f"in a catch can be the honest answer for some stores and a false claim "
         f"for others, which needs the store read rather than this."
     )
-    # An acknowledgement that matched nothing. Either the fixture it excused is
-    # gone, in which case the excuse must go with it, or the line drifted and the
-    # real one is being reported above as new - and both halves want saying. Added
+    # An acknowledgement that matched nothing: the fixture it excused is gone, or
+    # it was renamed, and either way the excuse must not outlive its subject. With
+    # a name key this no longer fires for a file that merely moved, which is what
+    # it kept doing and what taught people to re-key rather than look. Added
     # 9 August: making the meetings fixtures honest left four of these behind, and
     # nothing here noticed. The same rule was applied to `check-invoke-exists` a
     # few hours earlier; an exception must not outlive its subject.
@@ -351,9 +365,9 @@ def main() -> int:
         if not (ROOT / key.rsplit(":", 1)[0]).exists():
             continue
         findings.append(
-            f"{key}: acknowledged, but nothing at that line is a fixture fallback "
-            f"any more. Delete the entry, or if the line moved, re-key it to where "
-            f"the fixture went."
+            f"{key}: acknowledged, but no fixture by that name is a fallback there "
+            f"any more. Delete the entry, or if it was renamed, re-key it to the "
+            f"name the fixture goes by now."
         )
 
     if findings:
