@@ -410,6 +410,77 @@ def identity_faults(journal_text):
     return out
 
 
+# What the journal calls a daemon, where that differs from the binary the socket
+# table names. These are the `systemd-cat --identifier=` tags the session chooses
+# for the children it spawns, so they are ours and short by design.
+JOURNAL_ALIASES = {
+    "arlen-shell": "arlen-desktop-shell",
+    "arlen-supervisor": "arlen-session-supervisor",
+    "arlen-compositor": "arlen-compositor",
+}
+
+
+def observed_servers(text):
+    """(socket name, serving binary) pairs a run actually showed binding."""
+    seen = set()
+    for line in text.splitlines():
+        who = re.search(r"(arlen-[a-z0-9-]+|event-bus)\[\d+\]", line)
+        socks = re.findall(r"(/run[^\s\"]*\.sock)", line)
+        if not who or not socks:
+            continue
+        if not re.search(r"listen|bound|serving", line, re.I):
+            continue
+        name = JOURNAL_ALIASES.get(who.group(1), who.group(1))
+        for sock in socks:
+            seen.add((sock.rsplit("/", 1)[-1], name))
+    return seen
+
+
+def socket_table_faults(text):
+    """Where the hand-kept socket table disagrees with what the boot did.
+
+    The table is drift-checked in CI against the source; this is the other half -
+    the run itself says which binary bound which socket, so a wrong VALUE is caught
+    by reality rather than by review. Only what the boot SHOWED is judged: a table
+    entry for a daemon this image does not start is not evidence of anything.
+    """
+    servers = _socket_table()
+    if servers is None:
+        return ["could not read the socket table, so the boot verified nothing about it"]
+    out = []
+    for sock, who in sorted(observed_servers(text)):
+        expected = servers.get(sock)
+        if expected is None:
+            out.append(f"{sock}: bound by {who} on this boot and named by no table entry")
+        elif expected != who:
+            out.append(f"{sock}: the table says {expected} serves it, the boot showed {who}")
+    return out
+
+
+def _socket_table():
+    """The SERVERS dict from the CI gate, or None when it cannot be read.
+
+    Loaded by path rather than imported: the file's name has a hyphen, so it is not
+    a module name, and copying the table here would be the drift both checks exist
+    to prevent.
+    """
+    import importlib.util
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "..", "scripts", "check-socket-servers.py")
+    if not os.path.exists(path):
+        return None
+    spec = importlib.util.spec_from_file_location("socket_servers_table", path)
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except SystemExit:
+        pass
+    except Exception:
+        return None
+    return getattr(module, "SERVERS", None)
+
+
 def probe_shipped_so_far(serial_path):
     """Whether the knowledge probe has started, judged from the serial so far.
 
@@ -1440,6 +1511,23 @@ def main():
                   "legitimate. Neither is cosmetic.")
             return 1
         print("identity: no divergence and no refused stamp on the console")
+
+        # The socket table's other half. CI checks it against the SOURCE - every
+        # dialled socket has an entry, no entry is stale - and cannot check the
+        # VALUES, because the server never mentions the socket's name. The run can:
+        # each daemon says what it bound. Only what this boot showed is judged, so a
+        # daemon the image does not start is not evidence either way.
+        table_faults = socket_table_faults(identity_text)
+        if table_faults:
+            print("VERIFY FAIL: the socket table disagrees with what the boot did")
+            for line in table_faults:
+                print(f"  {line}")
+            print("  The table is a fact about which binary binds which socket. A "
+                  "wrong value sends the next reader to the wrong daemon, which is "
+                  "the whole cost this table exists to avoid.")
+            return 1
+        observed = len(observed_servers(identity_text))
+        print(f"sockets: {observed} bind(s) on this boot, all matching the table")
 
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
                            if bar_present else "the compositor rendered a frame"))

@@ -70,5 +70,44 @@ console.log("socket servers:");
   check("a carried violation whose server now ships is caught", r.code === 1);
 }
 
+// The table's other half lives in the boot harness: CI cannot check the VALUES,
+// because the server never names its socket, so the run does it - each daemon says
+// what it bound. These two cases are that check's controls.
+function bootFaults(mutate) {
+  const py = `
+import sys, json
+sys.path.insert(0, ${JSON.stringify(join(ROOT, "dev/vm"))})
+import verify
+real = verify._socket_table()
+table = ${mutate}
+verify._socket_table = lambda: table
+print(json.dumps(verify.socket_table_faults(sys.stdin.read())))
+`;
+  const serial =
+    "arlen-graph-daemon[537]: INFO graph daemon listening socket=\"/run/arlen/knowledge.sock\"\n" +
+    "arlen-powerd[656]: INFO power-daemon listening socket=\"/run/user/1000/arlen/power.sock\"\n";
+  const r = spawnSync("python3", ["-c", py], { input: serial, encoding: "utf8", cwd: ROOT });
+  if (r.status !== 0) {
+    console.log(r.stderr);
+    return null;
+  }
+  return JSON.parse(r.stdout);
+}
+
+{
+  const f = bootFaults("real");
+  check("a boot matching the table is clean", Array.isArray(f) && f.length === 0);
+}
+{
+  const f = bootFaults('{**real, "knowledge.sock": "arlen-notifyd"}');
+  check("a wrong server in the table is caught by the boot",
+        f?.some((l) => l.includes("knowledge.sock") && l.includes("arlen-graph-daemon")));
+}
+{
+  const f = bootFaults('{k: v for k, v in real.items() if k != "power.sock"}');
+  check("a socket bound on the boot and absent from the table is caught",
+        f?.some((l) => l.includes("power.sock")));
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nthe socket table holds");
 process.exit(failures ? 1 : 0);
