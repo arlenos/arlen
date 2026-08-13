@@ -309,6 +309,14 @@ struct ProvenanceChain {
     /// Always false here: this is real, graph-backed lineage. The frontend's
     /// fixture path sets it true; the live backend must never claim a sample.
     mocked: bool,
+    /// A read this chain is built from did not answer, so there may be steps
+    /// missing that nobody can see are missing.
+    ///
+    /// The chain is where the empty-on-error defect gets WORSE by being one hop
+    /// further on: a shorter chain does not look like an error, it looks like a
+    /// shorter history. So the surface says the history is partial rather than
+    /// implying that this is all there was.
+    incomplete: bool,
 }
 
 /// A coarse, human "when" from an epoch-micros timestamp, never finer than the
@@ -357,6 +365,7 @@ fn stitch_file_provenance(
     view: Option<&os_sdk::graph::ProvenanceView>,
     last_accessed_micros: i64,
     now_micros: i64,
+    memberships_complete: bool,
 ) -> ProvenanceChain {
     let mut steps = Vec::new();
     for p in projects {
@@ -396,6 +405,9 @@ fn stitch_file_provenance(
         }
     }
     ProvenanceChain {
+        // A chain built from a read that did not answer may be missing steps, and
+        // a short chain is indistinguishable from a short history unless it says so.
+        incomplete: !memberships_complete,
         subject: subject.to_string(),
         steps,
         // Never `Complete`: the origin/external branches are gated, so deeper
@@ -413,29 +425,31 @@ fn stitch_file_provenance(
 async fn read_project_memberships(
     client: &os_sdk::graph::UnixGraphClient,
     path: &str,
-) -> Vec<ProjectMembership> {
+) -> ReadOutcome<ProjectMembership> {
     let cypher = format!(
         "MATCH (f:File {{id: '{}'}})-[r:FILE_PART_OF]->(p:Project) \
          WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
          RETURN p.name AS name, r.created_at AS since LIMIT 16",
         escape_cypher_literal(&abs(path))
     );
-    match client.query_rows(&cypher).await {
-        Ok(rows) => rows
-            .iter()
-            .filter_map(|r| {
-                let name = r.get("name").and_then(|v| v.as_str())?.to_string();
-                // A membership with no recorded time reads "recently" via
-                // `coarse_when(0, ...)`, never an invented past.
-                let since = r.get("since").and_then(|v| v.as_i64()).unwrap_or(0);
-                Some(ProjectMembership {
-                    name,
-                    since_micros: since,
+    ReadOutcome::from_result(
+        "read_project_memberships",
+        client.query_rows(&cypher).await,
+        |rows| {
+            rows.iter()
+                .filter_map(|r| {
+                    let name = r.get("name").and_then(|v| v.as_str())?.to_string();
+                    // A membership with no recorded time reads "recently" via
+                    // `coarse_when(0, ...)`, never an invented past.
+                    let since = r.get("since").and_then(|v| v.as_i64()).unwrap_or(0);
+                    Some(ProjectMembership {
+                        name,
+                        since_micros: since,
+                    })
                 })
-            })
-            .collect(),
-        Err(_) => Vec::new(),
-    }
+                .collect()
+        },
+    )
 }
 
 /// Read a file's `last_accessed` (epoch micros) from the File node. `0` when the
@@ -465,7 +479,14 @@ async fn read_last_accessed(client: &os_sdk::graph::UnixGraphClient, path: &str)
 async fn provenance_of(r#ref: String) -> ProvenanceChain {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
-    let projects = read_project_memberships(&client, &r#ref).await;
+    // Collapsed here rather than carried into the chain: the chain does not need
+    // three states, it needs to know whether it can claim to be whole.
+    let memberships = read_project_memberships(&client, &r#ref).await;
+    let memberships_complete = matches!(memberships, ReadOutcome::Rows { .. });
+    let projects = match &memberships {
+        ReadOutcome::Rows { rows } => rows.as_slice(),
+        _ => &[],
+    };
     let view = client.read_provenance(&abs(&r#ref)).await.ok().flatten();
     let last_accessed = read_last_accessed(&client, &r#ref).await;
     let now_micros = std::time::SystemTime::now()
@@ -477,7 +498,14 @@ async fn provenance_of(r#ref: String) -> ProvenanceChain {
         .and_then(|n| n.to_str())
         .unwrap_or(&r#ref)
         .to_string();
-    stitch_file_provenance(&subject, &projects, view.as_ref(), last_accessed, now_micros)
+    stitch_file_provenance(
+        &subject,
+        projects,
+        view.as_ref(),
+        last_accessed,
+        now_micros,
+        memberships_complete,
+    )
 }
 
 /// Read a file's provenance from the knowledge graph (the caller-scoped 0x04
@@ -519,10 +547,6 @@ fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
         })
         .collect()
 }
-
-/// Read a file's KG relationships (its `FILE_PART_OF` project membership) via
-/// the structured read op. Best-effort: an out-of-scope object, an absent
-/// daemon or any error yields no lines, so the info panel still shows the
 
 /// What a file is related to in the graph - its project memberships and the like -
 /// for the info panel's `Related` section, which sits beside the conventional
@@ -1981,7 +2005,7 @@ async fn files_list_location(location: String) -> Result<ReadOutcome<FileEntry>,
     // An earlier version of this comment said both were filesystem reads, which
     // made an unreachable graph render as "0 items" in the status bar.
     let out = match location.as_str() {
-        "recent" => Ok(files_recent().await.map(|r| recent_to_entry(&r))),
+        "recent" => Ok(files_recent().await.map(recent_to_entry)),
         "trash" => files_trash_list().map(|items| ReadOutcome::Rows {
             rows: items.iter().map(trash_to_entry).collect(),
         }),
@@ -2020,7 +2044,7 @@ async fn files_list_location_as_of(
         return Ok(project_members_as_of(id, as_of_micros).await);
     }
     match location.as_str() {
-        "recent" => Ok(files_recent().await.map(|r| recent_to_entry(&r))),
+        "recent" => Ok(files_recent().await.map(recent_to_entry)),
         "trash" => files_trash_list().map(|items| ReadOutcome::Rows {
             rows: items.iter().map(trash_to_entry).collect(),
         }),
@@ -2530,7 +2554,8 @@ mod tests {
             name: "Atlas".to_string(),
             since_micros: now - 3 * 86_400 * 1_000_000,
         }];
-        let chain = stitch_file_provenance("budget.xlsx", &projects, Some(&view), now - 7200 * 1_000_000, now);
+        let chain =
+            stitch_file_provenance("budget.xlsx", &projects, Some(&view), now - 7200 * 1_000_000, now, true);
         let part_of = chain.steps.iter().find(|s| s.relation.as_deref() == Some("Part of")).unwrap();
         assert_eq!(part_of.when, "3 days ago", "the membership step is dated by when the file joined the project");
 
@@ -2552,10 +2577,22 @@ mod tests {
         // A file the graph has nothing on returns an empty-step REAL chain, so the
         // halo shows "no recorded lineage" - it must not read as a sample (which is
         // reserved for a missing backend, the frontend's concern).
-        let chain = stitch_file_provenance("new.txt", &[], None, 0, 1_000_000_000_000_000);
+        let chain = stitch_file_provenance("new.txt", &[], None, 0, 1_000_000_000_000_000, true);
         assert!(chain.steps.is_empty());
         assert!(!chain.mocked);
+        assert!(!chain.incomplete, "a read that answered with nothing is complete");
         assert_eq!(chain.horizon, Horizon::DeeperGated);
+    }
+
+    #[test]
+    fn a_chain_built_on_a_read_that_failed_knows_it_is_short() {
+        // The distinction the flag exists for, and it is invisible without it: both
+        // of these render as a file with no project history. One of them IS one.
+        let complete = stitch_file_provenance("x.md", &[], None, 0, 1_000, true);
+        let partial = stitch_file_provenance("x.md", &[], None, 0, 1_000, false);
+        assert_eq!(complete.steps.len(), partial.steps.len());
+        assert!(!complete.incomplete);
+        assert!(partial.incomplete);
     }
 
     #[test]

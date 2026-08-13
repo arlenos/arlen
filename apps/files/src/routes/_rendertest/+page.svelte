@@ -96,6 +96,9 @@
             ],
             horizon: "deeper_gated",
             mocked: false,
+            // A membership read that did not answer: the chain below is shorter
+            // than the truth and nothing about its LENGTH shows that.
+            incomplete: true,
           };
         if (cmd === "files_verwandt_as_of")
           return a.path === FILE
@@ -150,7 +153,10 @@
            is absent. The halo must declare it as sample data. -->
       <ProvenanceHalo fileRef={FILE} />
     </div>
-    <div class="host">
+    <!-- A stable hook for the screenshot harness. There are six `.ph-trigger`s on
+         this page and `--open` takes the first, which is an info panel's fixture -
+         a positional selector would silently photograph the wrong chain. -->
+    <div class="host" data-shot="live-halo">
       <h2>Provenance halo (live shape, PH-R2)</h2>
       <!-- `provenance_of` IS mocked for REALFILE with the exact shape the Rust
            backend emits: a real graph-backed chain, no sample banner. -->

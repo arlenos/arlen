@@ -57,6 +57,14 @@ export interface ProvenanceChain {
   /// must say so: the fixtures include an `attested` C2PA step, and rendering
   /// invented lineage unlabelled is exactly the overclaim this module forbids.
   mocked?: boolean;
+  /// True when a read this chain was built from did not answer, so steps may be
+  /// missing. Distinct from `horizon`: that says deeper history exists and is
+  /// gated, this says we do not know what we did not get. Both can be true.
+  ///
+  /// Without it a chain shortened by a failed read is indistinguishable from a
+  /// file with a short history - the empty-on-error defect one hop on, where it
+  /// is worse, because a short chain does not look like an error at all.
+  incomplete?: boolean;
 }
 
 const FIXTURES: Record<string, ProvenanceChain> = {
@@ -64,29 +72,71 @@ const FIXTURES: Record<string, ProvenanceChain> = {
     subject: "budget-2026.xlsx",
     steps: [
       { origin: "user", actor: "you", when: "last week", fidelity: "resolved" },
-      { relation: "partOf", origin: "graph", actor: "project Atlas", when: "3 days ago", fidelity: "resolved" },
-      { relation: "lastOpenedBy", origin: "graph", actor: "", when: "2 hours ago", fidelity: "pid" },
+      {
+        relation: "partOf",
+        origin: "graph",
+        actor: "project Atlas",
+        when: "3 days ago",
+        fidelity: "resolved",
+      },
+      {
+        relation: "lastOpenedBy",
+        origin: "graph",
+        actor: "",
+        when: "2 hours ago",
+        fidelity: "pid",
+      },
     ],
     horizon: "deeper_gated",
   },
   external: {
     subject: "report.pdf",
-    steps: [{ relation: "downloadedFrom", origin: "external", actor: "example.com", when: "yesterday", fidelity: "resolved" }],
+    steps: [
+      {
+        relation: "downloadedFrom",
+        origin: "external",
+        actor: "example.com",
+        when: "yesterday",
+        fidelity: "resolved",
+      },
+    ],
     horizon: "deeper_gated",
   },
   attested: {
     subject: "photo.jpg",
-    steps: [{ origin: "external", actor: "an Acme camera", when: "in 2024", fidelity: "resolved", attested: true }],
+    steps: [
+      {
+        origin: "external",
+        actor: "an Acme camera",
+        when: "in 2024",
+        fidelity: "resolved",
+        attested: true,
+      },
+    ],
     horizon: "complete",
   },
   model: {
     subject: "This summary",
-    steps: [{ origin: "model", actor: "the assistant", when: "10 minutes ago", fidelity: "resolved" }],
+    steps: [
+      {
+        origin: "model",
+        actor: "the assistant",
+        when: "10 minutes ago",
+        fidelity: "resolved",
+      },
+    ],
     horizon: "complete",
   },
   agent: {
     subject: "This tag",
-    steps: [{ origin: "agent", actor: "the idle curator", when: "overnight", fidelity: "resolved" }],
+    steps: [
+      {
+        origin: "agent",
+        actor: "the idle curator",
+        when: "overnight",
+        fidelity: "resolved",
+      },
+    ],
     horizon: "complete",
   },
 };
@@ -141,6 +191,22 @@ export function stepLine(t: Translate, s: ProvenanceStep): string {
 }
 
 /// The horizon line, or null when the trail is complete. Never a faked full trail.
-export function horizonLine(t: Translate, chain: ProvenanceChain): string | null {
+export function horizonLine(
+  t: Translate,
+  chain: ProvenanceChain,
+): string | null {
   return chain.horizon === "deeper_gated" ? t("f.prov.horizon") : null;
+}
+
+/// The caveat for a chain built on a read that did not answer, or null.
+///
+/// Separate from [`horizonLine`] on purpose: "deeper history is gated" tells a
+/// person the trail continues and they may not follow it, which is a different
+/// thing from "part of this trail could not be read at all". Showing the gated
+/// line for a failed read would say we know where the history stops.
+export function incompleteLine(
+  t: Translate,
+  chain: ProvenanceChain,
+): string | null {
+  return chain.incomplete ? t("f.prov.incomplete") : null;
 }

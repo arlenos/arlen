@@ -90,6 +90,30 @@ it covers**. Four of that day's fixes were wrong on the first attempt in exactly
 that way: the banner was at the top of the page and the false sentence was in the
 middle of it. Somebody has to look at the picture.
 
+## Photographing something that only exists once opened
+
+A dropdown's items, a popover's body and a dialog's contents are not in the DOM
+until they are opened, so a plain render of the page cannot show what they say -
+which is exactly where an empty menu tells a person they have no projects.
+`render-wide.py --open <css-selector>` clicks one element, waits `--settle`, then
+shoots.
+
+It REFUSES when the selector matches nothing rather than shooting the unopened
+page. That is not politeness: a screenshot of the thing not happening is the most
+expensive kind of green, because it looks like evidence.
+
+Two things that cost a shot each:
+
+  * **`--open` takes the FIRST match.** The file manager's render harness has six
+    `.ph-trigger`s and the first is a fixture, so the first attempt photographed
+    sample data while claiming to show the live chain. Give the harness a stable
+    hook (`data-shot="..."`) rather than counting positions.
+  * **A blank frame is a failure to launch, not a result.** A solid-black shot of
+    the terminal harness turned out to be vite discovering `@tauri-apps/api/mocks`
+    at runtime and force-reloading the page mid-snapshot. Load the route once to
+    warm the dependency, then shoot. Anything that adds a mock to a harness route
+    has this on its first run.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the
