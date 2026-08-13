@@ -410,11 +410,14 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         // (`stamped-identity-plan.md`). arlen-run holds the authenticated
         // --app-id it resolved from the root IdentityRegistry before the child
         // ran, and registers the child's pidfd against it; every other same-uid
-        // caller may look up but never register. Without this canonical entry the
-        // launcher would resolve to UnknownBinary and the broker would refuse its
-        // registrations, leaving every confined app unstamped. In a dev build the
-        // debug rule resolves the cargo-run binary to `dev.arlen-run` first, which
-        // the registrar allowlist also admits.
+        // caller may look up but never register.
+        //
+        // The entry is load-bearing TWICE now, and the second way is easy to miss:
+        // the shell resolves this same path to decide what id to stamp the launcher
+        // with, so without it the launcher is stamped as nothing, is refused as a
+        // registrar, and every confined app goes unstamped. In a dev build the debug
+        // rule resolves the cargo-run binary to `dev.arlen-run` first, which the
+        // broker still admits by name because no session ran to grant anything.
         "/usr/lib/arlen/libexec/arlen-run" => {
             return Ok("arlen-run".to_string());
         }
