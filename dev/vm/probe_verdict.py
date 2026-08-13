@@ -44,6 +44,29 @@ ROUND_GAP_SECONDS = 75
 INGESTION_QUESTION = "ingestion: this run's file"
 
 
+# systemd's own console line for the probe unit. It lands around 4.5s, before the
+# serial stops carrying userspace output, so it is readable for free and does not
+# depend on the probe having said anything afterwards.
+PROBE_UNIT = "arlen-kg-probe.service"
+
+
+def probe_is_shipped(serial_text: str) -> bool:
+    """Whether this image ships the knowledge probe, so its verdict applies.
+
+    The verdict below was reachable only behind `--require-probe`, which nothing
+    passed - not CI, not the boot recipe, only the README. So it had a control, it
+    could fail, and it was armed on no run. Deciding from the artefact instead of
+    from a flag closes that: a release image has no such unit and is not held to a
+    probe it does not ship, while a verify image whose probe started and then went
+    quiet is refused rather than passed over.
+
+    Keyed on the unit STARTING, not on probe output, so a probe that produced
+    nothing still arms the refusal - which is the whole case the flag would have
+    let through.
+    """
+    return PROBE_UNIT in serial_text
+
+
 def probe_verdict(journal_text: str) -> tuple[bool, str]:
     """`(ok, message)` for the knowledge probe's lines in `journal_text`."""
     lines = [l for l in journal_text.splitlines() if "kg-probe:" in l]
