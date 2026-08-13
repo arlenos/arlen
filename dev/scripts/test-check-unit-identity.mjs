@@ -144,14 +144,17 @@ function withTree(mutate) {
   check("and the message says its peers would be refused", r.out.includes("peers would"));
 }
 
-// The signer's gap is NAMED, so closing it half-way - a table entry left beside
-// the unnameable listing - is caught rather than silently preferred.
+// A gap that is NAMED must be closed properly: an entry left beside the
+// unnameable listing is caught rather than silently preferred. (The undo signer
+// used to be this case and now resolves, which is why the check's own
+// excuse-outlived-its-reason rule matters - the reason went false before the
+// listing did.)
 {
   const r = withTree((dir) => {
     const p = join(dir, RESOLVER);
     writeFileSync(
       p,
-      readFileSync(p, "utf8").replace('("arlen-undod.service", "undod")', '("arlen-undod.service", "undod"),\n    ("arlen-ai-undo-signer.service", "undo-signer")'),
+      readFileSync(p, "utf8").replace('("arlen-undod.service", "undod")', '("arlen-undod.service", "undod"),\n    ("arlen-store-backend.service", "store-backend")'),
     );
   });
   check("naming a unit listed as unnameable is refused", r.code === 1);

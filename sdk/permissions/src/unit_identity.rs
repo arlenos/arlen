@@ -140,6 +140,7 @@ const UNIT_APP_IDS: &[(&str, &str)] = &[
 const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-ai-engine-daemon.service", "ai-agent"),
     ("arlen-ai-proxy.service", "ai-proxy"),
+    ("arlen-ai-undo-signer.service", "ai-undo-signer"),
     ("arlen-anomalyd.service", "anomalyd"),
     ("arlen-auditd.service", "auditd"),
     ("arlen-capsuled.service", "capsuled"),
