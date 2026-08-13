@@ -6,6 +6,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
+use arlen_desktop_shell_core::retry::Backoff;
 use tauri::{AppHandle, Emitter};
 
 const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
@@ -49,17 +50,36 @@ pub struct ConfigChangedPayload {
 ///
 /// Connects to the consumer socket, registers subscriptions, and
 /// forwards received events to the Tauri frontend.
-/// Reconnects automatically if the connection is lost.
+///
+/// Reconnects automatically, and says so once per outage rather than once per
+/// attempt. With no bus on the machine the old loop wrote two lines every two
+/// seconds forever - the failure was real and invisible inside its own noise.
 pub fn start(app: AppHandle, shortcuts_state: crate::app_state::ShortcutsState) {
     let socket_path = std::env::var("ARLEN_CONSUMER_SOCKET")
         .unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string());
 
     std::thread::spawn(move || {
+        let mut backoff = Backoff::new();
         loop {
-            if let Err(e) = run_consumer(&app, &socket_path, &shortcuts_state) {
-                log::warn!("Event Bus consumer disconnected: {e}, reconnecting in 2s");
+            match run_consumer(&app, &socket_path, &shortcuts_state, &mut backoff) {
+                // A clean return means the bus closed the connection; it was
+                // reachable, so the next attempt starts at the short interval.
+                Ok(()) => {
+                    backoff.succeeded();
+                    log::info!("Event Bus consumer disconnected, reconnecting");
+                    std::thread::sleep(Duration::from_secs(2));
+                }
+                Err(e) => {
+                    let next = backoff.failed();
+                    if next.speak {
+                        log::warn!(
+                            "Event Bus consumer cannot reach {socket_path} ({e}); \
+                             retrying and staying quiet until it answers"
+                        );
+                    }
+                    std::thread::sleep(next.wait);
+                }
             }
-            std::thread::sleep(Duration::from_secs(2));
         }
     });
 }
@@ -68,10 +88,19 @@ fn run_consumer(
     app: &AppHandle,
     socket_path: &str,
     shortcuts_state: &crate::app_state::ShortcutsState,
+    backoff: &mut Backoff,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    log::info!("connecting to Event Bus at {socket_path}");
+    // Only announce the attempt when we are not already in a known outage: this
+    // line is useful once, and it was the second half of the every-two-seconds
+    // pair. The connection itself reports its own failure through the caller.
+    if !backoff.failing() {
+        log::info!("connecting to Event Bus at {socket_path}");
+    }
 
     let stream = UnixStream::connect(socket_path)?;
+    if backoff.succeeded() {
+        log::info!("Event Bus at {socket_path} is reachable again");
+    }
     let mut writer = stream.try_clone()?;
 
     // Phase 3.1: 3-line registration (ID, patterns, UID).
