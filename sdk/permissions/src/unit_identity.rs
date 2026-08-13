@@ -162,6 +162,18 @@ pub fn app_id_for_user_unit(unit: &str) -> Option<&'static str> {
     USER_UNIT_APP_IDS.iter().find(|(u, _)| *u == unit).map(|(_, a)| *a)
 }
 
+/// Whether `app_id` is one this resolver's own tables name for a shipped daemon.
+///
+/// The set a supervisor may legitimately stamp, and therefore the set a broker may
+/// legitimately return for one - which is what lets a reader accept a RESERVED id
+/// (`ai-agent`, `settings`) from the broker without accepting every reserved id.
+/// A compromised broker is still capped: it can name one of these, never `system`
+/// or an `org.arlen.*` principal that appears in no table.
+pub fn is_enrolled_daemon_id(app_id: &str) -> bool {
+    USER_UNIT_APP_IDS.iter().any(|(_, a)| *a == app_id)
+        || UNIT_APP_IDS.iter().any(|(_, a)| *a == app_id)
+}
+
 /// Every per-user unit this resolver knows.
 pub fn enrolled_user_units() -> impl Iterator<Item = &'static str> {
     USER_UNIT_APP_IDS.iter().map(|(u, _)| *u)
@@ -298,5 +310,19 @@ mod tests {
         // as a test so the next person who has that idea is stopped by a red
         // suite rather than by a boot where a daemon quietly has no grants.
         assert_eq!(app_id_for_user_unit("arlen-ai-engine-daemon.service"), Some("ai-agent"));
+    }
+
+    #[test]
+    fn the_enrolled_set_names_shipped_daemons_and_nothing_else() {
+        // What a reader may accept as a RESERVED stamp. `ai-agent` is the case that
+        // matters: it is reserved, it is a real shipped daemon, and refusing it made
+        // the supervised path inert on 13 Aug.
+        assert!(is_enrolled_daemon_id("ai-agent"));
+        assert!(is_enrolled_daemon_id("knowledge"));
+        // And the principals nobody ships a unit for stay out, which is the cap: a
+        // compromised broker can name a daemon, never one of these.
+        assert!(!is_enrolled_daemon_id("system"));
+        assert!(!is_enrolled_daemon_id("org.arlen.anything"));
+        assert!(!is_enrolled_daemon_id("com.example.app"));
     }
 }

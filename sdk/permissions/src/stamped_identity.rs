@@ -277,17 +277,29 @@ fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path, caller_uid: 
     match crate::identity_wire::lookup_identity_authenticated(broker_socket, peer.pidfd(), expected) {
         Ok(Some(app_id)) => {
             // Defense-in-depth: a `Stamped` result must be provably no weaker than
-            // the /proc rule-4 path it replaces. The honest broker REFUSES to
-            // register a reserved id (config-broker `identity_op`), and no
-            // launcher-stamped app is ever a reserved/privileged principal (system
-            // daemons resolve via /proc, never the broker), so a `Resolved` reply
-            // naming a reserved OR malformed id is illegitimate - a buggy,
-            // compromised, or impersonated broker. Refuse it as a stamp and fall
-            // through to /proc. This mirrors the register-side guard exactly and
-            // caps an unauthenticated/fake broker: it can never mint a privileged
-            // principal (`system`, `system.*`, `org.arlen.*`, `ai-agent`,
-            // `settings`, ...), only a normal-looking user app id.
-            if crate::identity::is_reserved_app_id(&app_id) || !crate::is_valid_app_id(&app_id) {
+            // the /proc rule-4 path it replaces, so a malformed id is refused
+            // outright and a RESERVED one is accepted only where it can legitimately
+            // come from.
+            //
+            // The premise this guard was written on has changed, and pretending it
+            // had not would have made the whole supervised path inert. It said "no
+            // launcher-stamped app is ever a reserved principal, because system
+            // daemons resolve via /proc" - which stopped being true when the
+            // supervisor started stamping the daemons whose /proc read a hardened
+            // unit refuses. `arlen-ai-engine-daemon.service` IS `ai-agent`, and on
+            // the boot of 13 Aug this guard threw that stamp away four times and
+            // fell back to the read that does not work there.
+            //
+            // Narrowed rather than dropped: a reserved id is accepted only when the
+            // resolver's own tables name a shipped daemon by it. So a broker that is
+            // authenticated but compromised can name one of about twenty known
+            // daemons, and still never `system`, `system.*` or an `org.arlen.*`
+            // principal that appears in no table. That is a smaller cap than before
+            // and a real one; the register side is where the "who may stamp this"
+            // question is actually answered, and the client cannot re-derive it.
+            let reserved_but_unknown = crate::identity::is_reserved_app_id(&app_id)
+                && !crate::unit_identity::is_enrolled_daemon_id(&app_id);
+            if reserved_but_unknown || !crate::is_valid_app_id(&app_id) {
                 tracing::warn!(
                     target: "audit",
                     event = "identity.broker_returned_reserved_or_invalid",
