@@ -198,11 +198,25 @@ struct PublishDecision<'a> {
 /// the stamped origin. Here the tier can only touch `hold_to_scope`, and
 /// `origin` is derived from the peer alone - so the entanglement cannot be
 /// reintroduced by editing this, only by deleting it.
-fn publish_decision<'a>(scope: &'a PeerScope, is_system: bool) -> PublishDecision<'a> {
+fn publish_decision(scope: &PeerScope, is_system: bool) -> PublishDecision<'_> {
     PublishDecision {
         origin: scope.authenticated_origin(),
         hold_to_scope: !is_system,
     }
+}
+
+/// Whether a failed profile load is a RESULT (this app simply has none) rather
+/// than an ERROR that happens to look like one.
+///
+/// The distinction the unit-table measurement forced into the open: a lookup under
+/// a WRONG id answers "no grants", and no grants is indistinguishable from
+/// correctly-locked-down. So every naming mistake in this system presents as
+/// security working. Absent is the one expected cause and stays quiet; a malformed
+/// profile, an unreadable one, or an id that fails validation is a fault someone
+/// has to see. Both still yield no scopes - this decides what gets said, not what
+/// gets allowed.
+fn profile_absence_is_a_result(e: &arlen_permissions::PermissionError) -> bool {
+    matches!(e, arlen_permissions::PermissionError::NotFound { .. })
 }
 
 /// Resolve the connected peer from its kernel-attested pid.
@@ -225,7 +239,29 @@ fn peer_app_profile(stream: &UnixStream) -> PeerScope {
     };
     match arlen_permissions::load_profile_for_user(peer_uid, &app_id) {
         Ok(profile) => PeerScope::Profiled(app_id, Box::new(profile)),
-        Err(_) => PeerScope::NoProfile(app_id),
+        // An app with no profile yet is a RESULT: it gets no scopes, which is the
+        // right answer and needs no line. Every other cause is an ERROR wearing
+        // that result's clothes - a malformed TOML, an unreadable file, an id we
+        // resolved to something nobody filed a profile under - and all three used
+        // to arrive here as the same silent `NoProfile`.
+        //
+        // That is the failure the unit-table measurement exposed in the general
+        // case: a lookup under a WRONG id answers "no grants", which reads as
+        // correctly-locked-down rather than misconfigured, so a daemon renamed by
+        // accident presents as security working. The peer is still refused either
+        // way - this changes nothing about the decision, only whether anyone can
+        // tell which of the two happened.
+        Err(e) if profile_absence_is_a_result(&e) => PeerScope::NoProfile(app_id),
+        Err(e) => {
+            warn!(
+                app_id = %app_id,
+                uid = peer_uid,
+                "peer resolved but its profile could not be read, so it gets no \
+                 scopes: {e}. This is NOT the same as an app with no profile - \
+                 check the id is the one a profile is filed under"
+            );
+            PeerScope::NoProfile(app_id)
+        }
     }
 }
 
@@ -594,6 +630,30 @@ async fn read_line(stream: &mut UnixStream) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use arlen_permissions::PermissionError;
+
+    #[test]
+    fn an_absent_profile_is_a_result_and_every_other_cause_is_an_error() {
+        // The rule the unit-table measurement forced out: a lookup under a wrong
+        // id answers "no grants", which reads as correctly-locked-down. Absent is
+        // the one cause that is genuinely a result; the rest are faults that must
+        // not hide inside it.
+        assert!(profile_absence_is_a_result(&PermissionError::NotFound {
+            app_id: "com.example.app".into()
+        }));
+        for fault in [
+            PermissionError::Parse("expected a table".into()),
+            PermissionError::InvalidAppId { app_id: "../etc".into() },
+            PermissionError::NoHomeDir,
+            PermissionError::Io(std::io::Error::other("permission denied")),
+        ] {
+            assert!(
+                !profile_absence_is_a_result(&fault),
+                "{fault} must be reported, not silently read as an app with no grants"
+            );
+        }
+    }
+
     use super::*;
 
     #[tokio::test]
