@@ -217,7 +217,7 @@ struct Zugriff {
 struct Info {
     conventional: arlen_file_browser_core::Properties,
     woher: Vec<ProvenanceEntry>,
-    verwandt: Vec<Relation>,
+    verwandt: ReadOutcome<Relation>,
     zugriff: Zugriff,
 }
 
@@ -522,7 +522,12 @@ fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 /// Read a file's KG relationships (its `FILE_PART_OF` project membership) via
 /// the structured read op. Best-effort: an out-of-scope object, an absent
 /// daemon or any error yields no lines, so the info panel still shows the
-/// What a graph read produced, with the three outcomes kept apart.
+/// What a read produced, with the three outcomes kept apart.
+///
+/// Named for the SHAPE and not for the graph, because it is meant to be the one
+/// pattern: the same three words on every surface that can fail to reach a
+/// subsystem. A directory listing is a `Rows` too - the point is that no caller has
+/// to invent its own way of saying "nothing, but for which reason".
 ///
 /// The sidebar's `NetworkPlaces` is the template and this is the same pattern with
 /// the case that surface does not have: a graph read can be REFUSED. Collapsing all
@@ -536,7 +541,7 @@ fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 /// refused" is the capability system doing its job out loud.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", rename_all = "kebab-case")]
-pub enum GraphRead<T> {
+pub enum ReadOutcome<T> {
     /// No graph daemon answered: the subsystem is absent, not the data.
     Unavailable {
         /// For the log and a tooltip; not a user-facing sentence.
@@ -554,7 +559,7 @@ pub enum GraphRead<T> {
     },
 }
 
-impl<T> GraphRead<T> {
+impl<T> ReadOutcome<T> {
     /// Classify a query result, mapping the rows with `map`.
     fn from_result<R>(
         what: &str,
@@ -562,17 +567,17 @@ impl<T> GraphRead<T> {
         map: impl FnOnce(R) -> Vec<T>,
     ) -> Self {
         match result {
-            Ok(rows) => GraphRead::Rows { rows: map(rows) },
+            Ok(rows) => ReadOutcome::Rows { rows: map(rows) },
             Err(os_sdk::graph::QueryError::ConnectionFailed(msg)) => {
                 log::warn!(
                     "{what}: no graph daemon ({msg}); showing nothing, which is not \
                      the same as there being nothing"
                 );
-                GraphRead::Unavailable { reason: msg }
+                ReadOutcome::Unavailable { reason: msg }
             }
             Err(other) => {
                 log::debug!("{what}: {other}");
-                GraphRead::Denied {
+                ReadOutcome::Denied {
                     reason: other.to_string(),
                 }
             }
@@ -606,7 +611,7 @@ fn empty_because<T>(what: &str, e: &os_sdk::graph::QueryError) -> Vec<T> {
 }
 
 /// conventional metadata and the provenance section.
-async fn read_verwandt(path: &str) -> Vec<Relation> {
+async fn read_verwandt(path: &str) -> ReadOutcome<Relation> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     // The File node id in the graph is the file's absolute path. The id is
@@ -617,10 +622,9 @@ async fn read_verwandt(path: &str) -> Vec<Relation> {
         "MATCH (f:File {{id: '{}'}})-[:FILE_PART_OF]->(p:Project) RETURN p.id AS id, p.name AS name LIMIT 16",
         escape_cypher_literal(&abs(path))
     );
-    match client.query_rows(&cypher).await {
-        Ok(rows) => verwandt_from_rows(&rows),
-        Err(e) => empty_because("read_verwandt", &e),
-    }
+    ReadOutcome::from_result("read_verwandt", client.query_rows(&cypher).await, |rows| {
+        verwandt_from_rows(&rows)
+    })
 }
 
 /// The `FILE_PART_OF` liveness predicate for a bitemporal as-of read, over the
@@ -646,7 +650,7 @@ fn file_part_of_as_of(as_of_micros: Option<i64>) -> String {
 /// `Some(t)` is what the file was part of at `t`. Best-effort like `read_verwandt`:
 /// any error yields no lines. Unlike the plain read it names the rel (`r`) so the
 /// bitemporal stamps can be filtered.
-async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> Vec<Relation> {
+async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> ReadOutcome<Relation> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = format!(
@@ -655,10 +659,9 @@ async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> Vec<Relat
         escape_cypher_literal(&abs(path)),
         file_part_of_as_of(as_of_micros)
     );
-    match client.query_rows(&cypher).await {
-        Ok(rows) => verwandt_from_rows(&rows),
-        Err(e) => empty_because("read_verwandt_as_of", &e),
-    }
+    ReadOutcome::from_result("read_verwandt_as_of", client.query_rows(&cypher).await, |rows| {
+        verwandt_from_rows(&rows)
+    })
 }
 
 /// A project's `FILE_PART_OF` members as of `as_of_micros` (the temporal facet of
@@ -2079,7 +2082,7 @@ async fn files_list_location_as_of(
 /// membership now; `Some(t)` is what the file was part of at `t` epoch-micros.
 /// Best-effort: an out-of-scope object or an absent daemon yields no relations.
 #[tauri::command]
-async fn files_verwandt_as_of(path: String, as_of_micros: Option<i64>) -> Vec<Relation> {
+async fn files_verwandt_as_of(path: String, as_of_micros: Option<i64>) -> ReadOutcome<Relation> {
     read_verwandt_as_of(&path, as_of_micros).await
 }
 
@@ -2626,12 +2629,12 @@ mod tests {
 }
 
 #[cfg(test)]
-mod graph_read_tests {
+mod read_outcome_tests {
     use super::*;
     use os_sdk::graph::QueryError;
 
-    fn rows(r: Result<Vec<u8>, QueryError>) -> GraphRead<u8> {
-        GraphRead::from_result("t", r, |v| v)
+    fn rows(r: Result<Vec<u8>, QueryError>) -> ReadOutcome<u8> {
+        ReadOutcome::from_result("t", r, |v| v)
     }
 
     #[test]
@@ -2641,9 +2644,9 @@ mod graph_read_tests {
         let absent = rows(Err(QueryError::ConnectionFailed("no socket".into())));
         let denied = rows(Err(QueryError::PermissionDenied));
         let empty = rows(Ok(Vec::new()));
-        assert!(matches!(absent, GraphRead::Unavailable { .. }));
-        assert!(matches!(denied, GraphRead::Denied { .. }));
-        assert_eq!(empty, GraphRead::Rows { rows: Vec::new() });
+        assert!(matches!(absent, ReadOutcome::Unavailable { .. }));
+        assert!(matches!(denied, ReadOutcome::Denied { .. }));
+        assert_eq!(empty, ReadOutcome::Rows { rows: Vec::new() });
         assert_ne!(absent, denied);
         assert_ne!(denied, empty);
         assert_ne!(absent, empty);
@@ -2654,7 +2657,7 @@ mod graph_read_tests {
         // InvalidQuery comes from the daemon, so the subsystem is plainly there -
         // reporting it as unavailable would send a reader after the wrong thing.
         let bad = rows(Err(QueryError::InvalidQuery("write mode not permitted".into())));
-        assert!(matches!(bad, GraphRead::Denied { .. }), "{bad:?}");
+        assert!(matches!(bad, ReadOutcome::Denied { .. }), "{bad:?}");
     }
 
     #[test]

@@ -190,6 +190,12 @@ const messages: Catalogs = {
     "f.info.created": "Created",
     "f.info.whereFrom": "Where from",
     "f.info.related": "Related",
+    // The three ways a read can come back with nothing. Same words on every
+    // surface: an absent subsystem, a refusal, and a genuinely empty result are
+    // different facts and a person can only act on the difference if we say it.
+    "f.read.unavailable": "Not available on this system",
+    "f.read.denied": "This app may not read that",
+    "f.read.empty": "None",
     "f.info.asOf": "As of",
     "f.info.asOfAria": "View related projects as of a past time",
     "f.info.pastView": "Past view, as of {$label}",
@@ -463,6 +469,9 @@ const messages: Catalogs = {
     "f.info.created": "Erstellt",
     "f.info.whereFrom": "Woher",
     "f.info.related": "Verwandt",
+    "f.read.unavailable": "Auf diesem System nicht verfügbar",
+    "f.read.denied": "Diese App darf das nicht lesen",
+    "f.read.empty": "Keine",
     "f.info.asOf": "Stand",
     "f.info.asOfAria": "Verwandte Projekte zu einem früheren Zeitpunkt ansehen",
     "f.info.pastView": "Vergangene Ansicht, Stand {$label}",
