@@ -30,15 +30,21 @@
     queueHistorySearch,
   } from "$lib/stores/history";
 
-  /// Project scopes come from the graph-backed contract command; with
-  /// none recorded yet the chip row simply ends after Agent.
+  /// Project scopes come from the graph-backed contract command. With none
+  /// recorded the chip row ends after Agent, which is correct - but a row that
+  /// ends for the OTHER two reasons said the same thing, and "there is nothing to
+  /// scope to" is a claim a machine with no graph may not make.
   const projects = writable<Project[]>([]);
+  const scopeReason = writable<"unavailable" | "denied" | null>(null);
 
   onMount(async () => {
     try {
-      projects.set(await terminalProjects());
+      const outcome = await terminalProjects();
+      projects.set(outcome.state === "rows" ? outcome.rows : []);
+      scopeReason.set(outcome.state === "rows" ? null : outcome.state);
     } catch {
-      // Unreachable backend: the palette just has no project chips.
+      // Unreachable backend: same fact as an unreachable graph, from one step out.
+      scopeReason.set("unavailable");
     }
   });
 
@@ -122,6 +128,13 @@
                  word: "Failures Agent in Arlen" reads as a sentence. -->
             <span class="hp-in" aria-hidden="true">{$t("term.hist.in")}</span>
           {/if}
+          {#if $scopeReason}
+            <span class="hp-scope-note"
+              >{$scopeReason === "denied"
+                ? $t("term.hist.scopesDenied")
+                : $t("term.hist.scopesUnavailable")}</span
+            >
+          {/if}
           {#each $projects as p (p.id)}
             <Toggle
               id={`terminal-history-project-${p.id}`}
@@ -199,6 +212,13 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .hp-scope-note {
+    /* Amber like every other absent-or-refused subsystem in Arlen: it is a fact
+       about the machine, not about this palette. */
+    align-self: center;
+    font-size: var(--text-xs);
+    color: var(--color-warning, #d4b483);
   }
   .hp-in {
     align-self: center;
