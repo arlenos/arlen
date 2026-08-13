@@ -992,6 +992,33 @@ mod user_surface_rule {
 }
 
 /// configured allowlist or the rule-4 squat reopens for the added ids.
+/// Where a system-installed first-party app lives. Root-owned, so a directory
+/// here is a fact about what was installed and not a claim anyone can make.
+pub const SYSTEM_APPS_DIR: &str = "/usr/lib/arlen/apps";
+
+/// Whether `app_id` names a first-party app the system has installed.
+///
+/// The companion to the unit tables for a reader deciding whether a RESERVED id
+/// coming back from the identity broker is legitimate. `dev.arlen.` is a reserved
+/// PREFIX - every first-party app is in it, so that a user directory cannot mint
+/// one - which means the shell's own `dev.arlen.desktop-shell` is reserved too, and
+/// a reader that refuses every reserved id throws away the stamp for every
+/// first-party app. Measured on the boot of 13 Aug, where that was the last
+/// remaining refusal.
+///
+/// The evidence is the same one rule (3) of [`path_to_app_id`] uses: a directory
+/// under a root-owned path. The id is validated first, so nothing here can walk out
+/// of that directory.
+pub fn is_system_installed_app_id(app_id: &str) -> bool {
+    is_system_installed_app_id_in(std::path::Path::new(SYSTEM_APPS_DIR), app_id)
+}
+
+/// [`is_system_installed_app_id`] against an explicit root, so the rule is testable
+/// without a system install.
+pub fn is_system_installed_app_id_in(root: &std::path::Path, app_id: &str) -> bool {
+    crate::is_valid_app_id(app_id) && root.join(app_id).is_dir()
+}
+
 pub fn is_reserved_app_id(app_id: &str) -> bool {
     app_id == "system"
         || app_id.starts_with("system.")
@@ -2058,5 +2085,20 @@ mod exe_diagnosis_tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("odd"), "x").unwrap();
         assert_eq!(app_id_for_program("odd", &tmp.path().display().to_string()), None);
+    }
+
+    #[test]
+    fn an_installed_app_directory_is_what_makes_a_reserved_id_legitimate() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("dev.arlen.desktop-shell")).unwrap();
+        assert!(is_system_installed_app_id_in(tmp.path(), "dev.arlen.desktop-shell"));
+        // Nothing installed under it, so nothing vouches for it.
+        assert!(!is_system_installed_app_id_in(tmp.path(), "dev.arlen.not-installed"));
+
+        // A file is not an install, and neither is a path that walks out of the
+        // root - the id is charset-validated before it is ever joined.
+        std::fs::write(tmp.path().join("dev.arlen.afile"), "x").unwrap();
+        assert!(!is_system_installed_app_id_in(tmp.path(), "dev.arlen.afile"));
+        assert!(!is_system_installed_app_id_in(tmp.path(), "../etc"));
     }
 }
