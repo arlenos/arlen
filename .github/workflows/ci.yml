@@ -285,6 +285,7 @@ jobs:
           node dev/scripts/test-check-dbus-activation.mjs
           node dev/scripts/test-probe-verdict.mjs
           node dev/scripts/test-identity-verdict.mjs
+          node dev/scripts/test-check-socket-servers.mjs
           node dev/scripts/test-pi-completion-shape.mjs
           node dev/scripts/test-check-shared-signature.mjs
           node dev/scripts/test-check-webview-sandbox.mjs
@@ -303,6 +304,7 @@ jobs:
           node dev/scripts/test-check-read-grants-cover-queries.mjs
           python3 dev/scripts/check-bus-names-covered.py
           python3 dev/scripts/check-inert-switches.py
+          python3 dev/scripts/check-socket-servers.py
           node dev/scripts/test-check-inert-switches.mjs
           node dev/scripts/test-check-wired.mjs
           python3 dev/scripts/check-wired.py
