@@ -20,7 +20,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::OwnedWriteHalf;
 use tokio::net::UnixStream;
 use tokio::sync::{broadcast, oneshot, Mutex};
-use log::{debug, warn};
+use log::{debug, info, warn};
 
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 
@@ -41,12 +41,26 @@ pub enum ClientError {
 /// One pending request awaiting a reply.
 type PendingMap = Arc<Mutex<HashMap<String, oneshot::Sender<Response>>>>;
 
+/// How long to stay quiet after a failed connect before trying again.
+///
+/// The daemon may legitimately be absent - no third-party modules, or an image
+/// that does not ship it - and in that state every call used to attempt a fresh
+/// connect and log a warning. On the boot of 13 Aug that is what the log showed:
+/// a component dialling a socket nothing serves, forever, which is noise standing
+/// exactly where a real failure would need to be visible.
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub struct ModulesdClient {
     socket_path: PathBuf,
     next_id: AtomicU64,
     pending: PendingMap,
     writer: Mutex<Option<OwnedWriteHalf>>,
     events_tx: broadcast::Sender<Event>,
+    /// When the last connect attempt failed, so the next ones can be skipped
+    /// rather than retried per call. `None` means nothing has failed since the
+    /// last success - which is also the state a successful connect restores, so
+    /// a daemon that appears later is reported as arriving.
+    last_failure: Mutex<Option<std::time::Instant>>,
 }
 
 impl ModulesdClient {
@@ -58,6 +72,7 @@ impl ModulesdClient {
             pending: Arc::new(Mutex::new(HashMap::new())),
             writer: Mutex::new(None),
             events_tx,
+            last_failure: Mutex::new(None),
         })
     }
 
@@ -76,8 +91,44 @@ impl ModulesdClient {
     }
 
     /// Connect (or reconnect). Spawns the read pump on success.
+    ///
+    /// Says an unreachable daemon ONCE and then goes quiet for [`RETRY_AFTER`],
+    /// rather than logging per call. A caller still gets the error every time -
+    /// the backoff hides the noise, never the failure.
     pub async fn connect(self: &Arc<Self>) -> Result<(), ClientError> {
-        let stream = UnixStream::connect(&self.socket_path).await?;
+        if let Some(since) = *self.last_failure.lock().await {
+            if since.elapsed() < RETRY_AFTER {
+                return Err(ClientError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotConnected,
+                    format!(
+                        "modulesd is not reachable at {} (quiet until {}s after the \
+                         first failure)",
+                        self.socket_path.display(),
+                        RETRY_AFTER.as_secs()
+                    ),
+                )));
+            }
+        }
+        let stream = match UnixStream::connect(&self.socket_path).await {
+            Ok(s) => s,
+            Err(e) => {
+                let mut failed = self.last_failure.lock().await;
+                if failed.is_none() {
+                    warn!(
+                        "modulesd_client: {} is not reachable ({e}); modules stay \
+                         unavailable and this will be retried every {}s without \
+                         logging again",
+                        self.socket_path.display(),
+                        RETRY_AFTER.as_secs()
+                    );
+                }
+                *failed = Some(std::time::Instant::now());
+                return Err(e.into());
+            }
+        };
+        if self.last_failure.lock().await.take().is_some() {
+            info!("modulesd_client: {} is reachable again", self.socket_path.display());
+        }
         let (mut read, write) = stream.into_split();
         *self.writer.lock().await = Some(write);
 
@@ -129,8 +180,9 @@ impl ModulesdClient {
         self.pending.lock().await.insert(id.clone(), tx);
 
         if let Err(err) = self.write(&req).await {
-            // Reconnect once.
-            warn!("modulesd_client: write failed ({err}), reconnecting once");
+            // Reconnect once. At debug: with the daemon absent this fires on every
+            // call, and the reason is already stated once by `connect`.
+            debug!("modulesd_client: write failed ({err}), reconnecting once");
             self.connect().await?;
             self.write(&req).await?;
         }
@@ -215,5 +267,34 @@ mod tests {
             message: "x".into(),
         };
         assert_eq!(response_id(&r), Some("Y"));
+    }
+
+    #[tokio::test]
+    async fn an_absent_daemon_is_refused_without_a_second_connect_attempt() {
+        // The property the log needs: a caller still gets an error every time, and
+        // the socket is only DIALLED once per backoff window. Checked by pointing
+        // at a path nothing serves and asserting the second failure comes back as
+        // the backoff refusal rather than a fresh connect error - same outcome for
+        // the caller, no second syscall and no second log line.
+        let dir = tempfile::tempdir().unwrap();
+        let client = ModulesdClient::new(dir.path().join("absent.sock"));
+
+        let first = client.connect().await.unwrap_err();
+        assert!(
+            matches!(&first, ClientError::Io(e) if e.kind() == std::io::ErrorKind::NotFound),
+            "the first attempt really dials and really fails: {first:?}"
+        );
+
+        let second = client.connect().await.unwrap_err();
+        match &second {
+            ClientError::Io(e) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::NotConnected);
+                assert!(
+                    e.to_string().contains("not reachable"),
+                    "the refusal says why rather than repeating the dial: {e}"
+                );
+            }
+            other => panic!("expected the backoff refusal, got {other:?}"),
+        }
     }
 }
