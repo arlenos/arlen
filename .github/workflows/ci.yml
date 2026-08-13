@@ -305,6 +305,8 @@ jobs:
           python3 dev/scripts/check-bus-names-covered.py
           python3 dev/scripts/check-inert-switches.py
           python3 dev/scripts/check-socket-servers.py
+          python3 dev/scripts/check-runtime-dir-closed.py
+          node dev/scripts/test-check-runtime-dir-closed.mjs
           node dev/scripts/test-check-inert-switches.mjs
           node dev/scripts/test-check-wired.mjs
           python3 dev/scripts/check-wired.py
