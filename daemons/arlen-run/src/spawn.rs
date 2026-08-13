@@ -646,6 +646,79 @@ mod tests {
         assert_eq!(code, 0);
     }
 
+    /// A confined app must not be able to plant a systemd user unit.
+    ///
+    /// `~/.config/systemd/user` ranks ABOVE `/usr/lib/systemd/user` in the user
+    /// unit search path, so a file dropped there overrides one we ship: an app
+    /// that can write it defines `arlen-knowledge.service` to run its own binary,
+    /// has systemd start it, and IS that daemon to everything resolving identity
+    /// in the user session. Every user-session resolver rests on this write being
+    /// impossible, which is worth performing rather than arguing about.
+    ///
+    /// Under the BROADEST grant the profile format offers - the whole home
+    /// writable - because a mask that only holds for narrow grants is no mask.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs bwrap and unprivileged userns on the host kernel"]
+    fn a_confined_app_cannot_plant_a_systemd_user_unit() {
+        // NOT under `/tmp`: the profile tmpfs-es `/tmp`, and an app dir that is
+        // not itself under a mask is bound BEFORE that tmpfs, so a test home in
+        // `/tmp` is covered and both writes vanish - which would have passed the
+        // mask assertion for entirely the wrong reason. The negative control
+        // below is what caught that.
+        let tmp = tempfile::Builder::new()
+            .prefix("arlen-mask-")
+            .tempdir_in(std::env::var("HOME").expect("HOME"))
+            .unwrap();
+        let home = tmp.path();
+        let unit_dir = home.join(".config/systemd/user");
+        std::fs::create_dir_all(&unit_dir).unwrap();
+        let planted = unit_dir.join("arlen-knowledge.service");
+        let ordinary = home.join("notes.txt");
+
+        let conf = build_confinement(
+            Path::new("/usr"),
+            // The whole home writable: the grant the mask has to survive.
+            &[home.to_path_buf()],
+            &[home.join(".config/arlen"), unit_dir.clone()],
+            &[],
+            BTreeMap::from([
+                ("PATH".to_string(), "/usr/bin:/bin".to_string()),
+                ("HOME".to_string(), home.display().to_string()),
+            ]),
+            NetworkPolicy::None,
+            Vec::new(),
+        )
+        .unwrap();
+        // Two writes in one run: the unit it wants to become, and an ordinary file
+        // in the same granted home. The second is the negative control - without
+        // it, a bwrap that never started would pass the first assertion.
+        let argv = bwrap_argv(
+            &conf,
+            &[
+                "/bin/sh".into(),
+                "-c".into(),
+                format!(
+                    "echo x > {} ; echo y > {}",
+                    planted.display(),
+                    ordinary.display()
+                ),
+            ],
+        );
+        let code = spawn_and_wait(&argv, &[], None, None, "").expect("bwrap spawns");
+        assert_eq!(code, 0, "the confined writes themselves should have run");
+        assert!(
+            ordinary.exists(),
+            "the home grant must still write the home, else this proves nothing"
+        );
+        assert!(
+            !planted.exists(),
+            "a confined app planted {}; the mask did not hold, and with it every \
+             user-session identity resolver",
+            planted.display()
+        );
+    }
+
     /// A real confined launch WITH the seccomp filter installed: the key check
     /// that the allowlist is not too tight to run an ordinary program. A denied
     /// syscall returns EPERM (not a kill), so a too-narrow allowlist surfaces as

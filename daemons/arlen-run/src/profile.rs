@@ -41,30 +41,6 @@ pub struct ConfinementInputs {
     pub network: NetworkPolicy,
 }
 
-/// The host filesystem roots a `custom` grant may never bind. Binding any of
-/// these (or `/`, or an ancestor of the home) is the `--filesystem=host` escape
-/// that defeats the portal-mediated FS model (same-uid-isolation-plan.md
-/// Tier-A #3): it hands a confined app the OS + every user's data. Arlen's
-/// profile format simply does not offer it - a `custom` entry resolving to one
-/// of these is dropped, not bound. A specific subdirectory (under the home, a
-/// project dir, a data mount) is unaffected; only the whole-tree roots are.
-const FORBIDDEN_FS_ROOTS: &[&str] = &[
-    "/", "/etc", "/usr", "/var", "/boot", "/bin", "/sbin", "/lib", "/lib64",
-    "/proc", "/sys", "/dev", "/run", "/root",
-];
-
-/// Whether `path` is a host-filesystem escape a `custom` grant must not bind:
-/// one of the [`FORBIDDEN_FS_ROOTS`], or an ancestor of `home` (e.g. `/home`,
-/// which would expose every user's home, or `/`). A specific subdirectory of
-
-/// Whether a READ-ONLY subtree grant is acceptable.
-///
-/// The same whole-tree rule - `/sys` and `/etc` are refused here too, because a
-/// read-only bind of the whole tree is still the shape the rule exists to stop -
-/// but a NAMED SUBTREE under one of them is exactly what this grant is for, and
-/// it is not an escape: the app can read the part it asked for and write nothing.
-/// A relative path is refused rather than resolved, since what it would resolve
-
 /// Map an app's filesystem + network permissions to the confiner inputs. The app's
 /// own state dirs (`~/.local/share|.config|.cache/arlen/apps/{app_id}`) are always
 /// writable so the app can function; the `home`/`documents`/... flags add the
@@ -106,7 +82,17 @@ pub fn confinement_inputs(
         // hand a confined app the AI master switches' file siblings, the shell /
         // compositor config, or other apps' configs. Harmless when no grant
         // would have exposed it (a tmpfs over an otherwise-absent path).
-        masked_dirs: vec![home.join(".config/arlen")],
+        //
+        // And the user's systemd unit directory, which is a WRITE that becomes an
+        // identity. `systemd-analyze --user unit-paths` ranks it above
+        // `/usr/lib/systemd/user`, so a file dropped there overrides a unit we
+        // ship: an app that can write it can define `arlen-knowledge.service` to
+        // run its own binary, have systemd start it, and be that daemon to
+        // everything resolving identity in the user session. Measured 13 Aug -
+        // a hand-written unit runs any binary under any name, no privilege
+        // needed. Without this mask every user-session resolver above it is
+        // decoration.
+        masked_dirs: vec![home.join(".config/arlen"), home.join(".config/systemd/user")],
         network: network_policy(net),
     }
 }
@@ -154,6 +140,33 @@ mod tests {
         assert!(c
             .app_dirs
             .contains(&PathBuf::from("/home/u/.config/arlen/apps/com.example.app")));
+    }
+
+    #[test]
+    fn the_masks_hold_under_the_broadest_grant_that_would_expose_them() {
+        // Both masks are unconditional, but the case they exist for is a `home`
+        // grant, which otherwise binds the whole home writable - so assert them
+        // there rather than on a default profile that grants nothing.
+        let fs = FilesystemPermissions {
+            home: true,
+            ..FilesystemPermissions::default()
+        };
+        let c = inputs(fs, NetworkPermissions::default());
+        assert!(
+            c.masked_dirs.contains(&PathBuf::from("/home/u/.config/arlen")),
+            "the system config dir must stay masked: {:?}",
+            c.masked_dirs
+        );
+        // A write here is an identity, not a setting: the directory outranks
+        // `/usr/lib/systemd/user`, so a unit dropped in it overrides one we ship
+        // and the app becomes that daemon to every user-session resolver.
+        assert!(
+            c.masked_dirs.contains(&PathBuf::from("/home/u/.config/systemd/user")),
+            "the user unit dir must stay masked: {:?}",
+            c.masked_dirs
+        );
+        // And the home grant really is what would otherwise expose them.
+        assert!(c.app_dirs.contains(&PathBuf::from("/home/u")), "{:?}", c.app_dirs);
     }
 
     #[test]
