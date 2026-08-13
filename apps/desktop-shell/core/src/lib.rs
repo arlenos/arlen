@@ -9,4 +9,5 @@ pub mod launch;
 pub mod module_results;
 pub mod modulesd_client;
 pub mod notifications;
+pub mod retry;
 pub mod theme;

@@ -28,6 +28,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use arlen_desktop_shell_core::retry::Backoff;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -489,11 +490,28 @@ pub fn start(app: AppHandle, history: ClipboardHistoryState, window_list: Window
     std::thread::Builder::new()
         .name("clipboard-watcher".into())
         .spawn(move || {
+            // Says a failing watcher once and widens the retry, rather than a warn
+            // per second. `wl-paste` absent, or no compositor to talk to, used to
+            // put sixty lines a minute in the log forever - and the reader who
+            // needs to notice it is looking for one line, not for the sixtieth.
+            let mut backoff = Backoff::new();
             loop {
-                if let Err(e) = run_watcher(&app, &history, &window_list) {
-                    log::warn!("clipboard_history: watcher exited: {e}, retrying in 1s");
+                match run_watcher(&app, &history, &window_list) {
+                    Ok(()) => {
+                        backoff.succeeded();
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
+                    Err(e) => {
+                        let next = backoff.failed();
+                        if next.speak {
+                            log::warn!(
+                                "clipboard_history: watcher exited ({e}); clipboard \
+                                 history stays empty and this is retried quietly"
+                            );
+                        }
+                        std::thread::sleep(next.wait);
+                    }
                 }
-                std::thread::sleep(Duration::from_secs(1));
             }
         })
         .expect("spawn clipboard-watcher thread");

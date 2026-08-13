@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use arlen_desktop_shell_core::retry::Backoff;
 use notification_proto::proto;
 use tauri::{AppHandle, Emitter};
 use tokio::io::WriteHalf;
@@ -97,17 +98,36 @@ pub fn default_socket_path() -> PathBuf {
 /// Connect to the notification daemon and start the read loop.
 ///
 /// Returns the shared writer for sending commands.
+///
+/// An absent daemon is reported once and then retried quietly, on the widening
+/// interval every shell subscriber uses. It used to warn every two seconds, which
+/// buries the one line that matters under the thousand that do not.
 pub fn start(app: AppHandle) -> SocketWriter {
     let writer: SocketWriter = Arc::new(Mutex::new(None));
     let writer_clone = writer.clone();
 
     tauri::async_runtime::spawn(async move {
+        let mut backoff = Backoff::new();
         loop {
-            match try_connect(&app, &writer_clone).await {
-                Ok(()) => log::info!("notification client: disconnected, reconnecting"),
-                Err(e) => log::warn!("notification client: {e}, retrying in 2s"),
+            match try_connect(&app, &writer_clone, &mut backoff).await {
+                // Connected once and then dropped: the daemon is there, so retry
+                // promptly rather than on an interval meant for absence.
+                Ok(()) => {
+                    backoff.succeeded();
+                    log::info!("notification client: disconnected, reconnecting");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                }
+                Err(e) => {
+                    let next = backoff.failed();
+                    if next.speak {
+                        log::warn!(
+                            "notification client: {e}; notifications stay unavailable \
+                             and this is retried without logging again"
+                        );
+                    }
+                    tokio::time::sleep(next.wait).await;
+                }
             }
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         }
     });
 
@@ -115,11 +135,18 @@ pub fn start(app: AppHandle) -> SocketWriter {
 }
 
 /// Try to connect once and run until disconnect.
-async fn try_connect(app: &AppHandle, writer: &SocketWriter) -> Result<(), String> {
+async fn try_connect(
+    app: &AppHandle,
+    writer: &SocketWriter,
+    backoff: &mut Backoff,
+) -> Result<(), String> {
     let path = default_socket_path();
     let stream = UnixStream::connect(&path)
         .await
         .map_err(|e| format!("connect {}: {e}", path.display()))?;
+    if backoff.succeeded() {
+        log::info!("notification client: {} is reachable again", path.display());
+    }
 
     let (mut reader, write_half) = tokio::io::split(stream);
 
