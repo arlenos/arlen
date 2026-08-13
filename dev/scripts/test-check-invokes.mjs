@@ -249,5 +249,22 @@ check(
   (code, out) => code !== 0 && out.includes("open_missing") && !out.includes("decoy"),
 );
 
+// A NESTED generic. `invoke<ReadOutcome<FileEntry>>("x")` is a real shape here,
+// and the pattern used to stop at the first `>` and match nothing - so the day one
+// was written the call went invisible in BOTH directions: it stopped counting as a
+// caller AND a typo inside it stopped being caught. Found because the file
+// manager's own `files_list_location`, which it plainly calls, turned up on the
+// nobody-invokes-this list.
+check(
+  "a nested generic on invoke is still a call site",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      'await invoke<Outcome<Row>>("open_missing");\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code !== 0 && out.includes("open_missing"),
+);
+
 console.log(failures.length ? "\nsome cases regressed" : "\nboth directions hold");
 process.exit(failures.length ? 1 : 0);

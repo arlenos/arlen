@@ -55,7 +55,14 @@ from pathlib import Path
 # trust, and this one decides whether a control is honest.
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
-INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*["\'`]([A-Za-z_][A-Za-z0-9_]*)["\'`]')
+# The generic is optional and may itself be generic: `invoke<ReadOutcome<Row>>(...)`
+# is a real shape in this tree, and `<[^>]*>` stops at the first `>` and matches
+# nothing - so those calls went invisible in BOTH directions the day one was
+# written. One level of nesting is enough for anything here; deeper would want a
+# parser, and a parser for this is not worth it.
+INVOKE = re.compile(
+    r'invoke(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\(\s*["\'`]([A-Za-z_][A-Za-z0-9_]*)["\'`]'
+)
 
 # `invoke(command, {...})` - the name arrives as a variable, so the literal is
 # wherever that variable was assigned. Settings' module store does exactly this:
@@ -70,7 +77,9 @@ INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*["\'`]([A-Za-z_][A-Za-z0-9_]*)["\'`
 # is reported as called by nothing, and the obvious next move on such a report is
 # to delete it. I made the same mistake by hand on `modules_set_enabled` the day
 # before writing this, reading a route instead of the store it imports.
-INVOKE_VAR = re.compile(r"invoke(?:<[^>]*>)?\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,)]")
+INVOKE_VAR = re.compile(
+    r"invoke(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,)]"
+)
 STRINGS = re.compile(r"""["'`]([A-Za-z_][A-Za-z0-9_]*)["'`]""")
 
 
