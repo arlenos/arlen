@@ -583,34 +583,28 @@ impl<T> ReadOutcome<T> {
             }
         }
     }
-}
 
-/// Say which kind of nothing a graph read produced, and return the empty set.
-///
-/// The four reads below all answered `Err(_) => Vec::new()`, which collapses two
-/// different facts into one screen: "this file belongs to no project" and "there is
-/// no graph daemon on this machine". The second is a missing subsystem wearing the
-/// costume of an answer - the same defect as the remote-places sidebar, one layer
-/// down and without a user-visible surface to fix yet.
-///
-/// Distinguishing them in the RESULT needs a state-carrying return type and a
-/// consumer that matches on it, which is a UI change. Distinguishing them in the LOG
-/// costs nothing and is the half that pays immediately: a `ConnectionFailed` is an
-/// absent daemon and says so at warn, while a denial or a rejected query is an
-/// ANSWER - deliberately indistinguishable from empty, because the read-scope design
-/// makes out-of-scope look like absent on purpose - and stays at debug.
-fn empty_because<T>(what: &str, e: &os_sdk::graph::QueryError) -> Vec<T> {
-    match e {
-        os_sdk::graph::QueryError::ConnectionFailed(msg) => log::warn!(
-            "{what}: no graph daemon ({msg}); showing nothing, which is not the same \
-             as there being nothing"
-        ),
-        other => log::debug!("{what}: {other}"),
+    /// One line for the log, saying WHICH nothing when there is nothing.
+    ///
+    /// The navigation diagnostic used to print `0 entries`, which is the sentence
+    /// this whole type exists to stop: it reads as an empty folder whether the
+    /// daemon was absent, refusing, or genuinely empty.
+    fn describe(&self) -> String {
+        match self {
+            ReadOutcome::Unavailable { reason } => format!("unavailable ({reason})"),
+            ReadOutcome::Denied { reason } => format!("denied ({reason})"),
+            ReadOutcome::Rows { rows } => format!("{} entries", rows.len()),
+        }
     }
-    Vec::new()
 }
 
-/// conventional metadata and the provenance section.
+/// What a file is related to in the graph - its project memberships and the like -
+/// for the info panel's `Related` section, which sits beside the conventional
+/// metadata and the provenance section.
+///
+/// Returns the outcome, not a list: a file that belongs to nothing and a machine
+/// with no graph daemon are different facts, and a bare `Vec` tells them apart for
+/// nobody.
 async fn read_verwandt(path: &str) -> ReadOutcome<Relation> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
@@ -647,8 +641,8 @@ fn file_part_of_as_of(as_of_micros: Option<i64>) -> String {
 
 /// A file's project membership as of `as_of_micros` (the temporal `verwandt`
 /// read, for the FM time-travel toggle). `None` is the live membership now;
-/// `Some(t)` is what the file was part of at `t`. Best-effort like `read_verwandt`:
-/// any error yields no lines. Unlike the plain read it names the rel (`r`) so the
+/// `Some(t)` is what the file was part of at `t`. Carries the same three-state
+/// outcome as `read_verwandt`. Unlike the plain read it names the rel (`r`) so the
 /// bitemporal stamps can be filtered.
 async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> ReadOutcome<Relation> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
@@ -668,9 +662,11 @@ async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> ReadOutco
 /// the project navigation location). `None` is the live set now; `Some(t)` the
 /// set at `t`. Best-effort like `project_members`; names the rel (`r`) so the
 /// bitemporal stamps can be filtered.
-async fn project_members_as_of(id: &str, as_of_micros: Option<i64>) -> Vec<FileEntry> {
+async fn project_members_as_of(id: &str, as_of_micros: Option<i64>) -> ReadOutcome<FileEntry> {
     if id.is_empty() {
-        return Vec::new();
+        return ReadOutcome::Unavailable {
+            reason: "no project id".into(),
+        };
     }
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
@@ -680,32 +676,35 @@ async fn project_members_as_of(id: &str, as_of_micros: Option<i64>) -> Vec<FileE
         escape_cypher_literal(id),
         file_part_of_as_of(as_of_micros)
     );
-    match client.query_rows(&cypher).await {
-        Ok(rows) => members_from_rows(&rows),
-        Err(e) => empty_because("project_members_as_of", &e),
-    }
+    ReadOutcome::from_result(
+        "project_members_as_of",
+        client.query_rows(&cypher).await,
+        |rows| members_from_rows(&rows),
+    )
 }
 
 /// List the File nodes matching a `facet:` location (the FM filter bar's read,
 /// the query-as-folder result). Parses the selection and builds the scoped,
 /// escaped, closed-set Cypher (see [`facet_query`]) as of now, then maps the
-/// rows like `project_members`. Best-effort: an empty selection or a daemon
-/// error lists nothing rather than erroring the navigation.
-async fn facet_members(location: &str) -> Vec<FileEntry> {
+/// rows like `project_members`. A selection that parses to no query is a filter
+/// nobody set, so it answers with an empty result rather than an absence: there is
+/// genuinely nothing to show, and no subsystem failed to show it.
+async fn facet_members(location: &str) -> ReadOutcome<FileEntry> {
     let sel = arlen_file_browser_core::facet_query::parse_facet_location(location);
     let now_micros = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_micros() as i64)
         .unwrap_or(0);
     let Some(cypher) = arlen_file_browser_core::facet_query::facet_cypher(&sel, now_micros) else {
-        return Vec::new();
+        return ReadOutcome::Rows { rows: Vec::new() };
     };
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
-    match client.query_rows(&cypher).await {
-        Ok(rows) => members_from_rows(&rows),
-        Err(e) => empty_because("facet_members", &e),
-    }
+    ReadOutcome::from_result(
+        "facet_members",
+        client.query_rows(&cypher).await,
+        |rows| members_from_rows(&rows),
+    )
 }
 
 /// Get-Info for one path: conventional metadata plus the KG provenance and
@@ -1966,14 +1965,20 @@ fn members_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value
 
 /// The File members of a project (its `FILE_PART_OF` set) for the project navigation
 /// LOCATION (item 12: the project facet + the provenance "Related" navigation both
-/// resolve to this same listing). Best-effort: an absent daemon, an out-of-scope
-/// read, or a caller without `system.File` read scope yields no entries. The project
-/// id is escaped before interpolation (a project id is caller-supplied); the read
-/// path denies writes + authority labels, so the bounded reach is the caller's own
-/// read scope.
-async fn project_members(id: &str) -> Vec<FileEntry> {
+/// resolve to this same listing). The project id is escaped before interpolation (a
+/// project id is caller-supplied); the read path denies writes + authority labels, so
+/// the bounded reach is the caller's own read scope.
+///
+/// Returns the outcome rather than a list, so "the graph is not running" and "this
+/// project has no files" reach the view as different facts. An empty id is a
+/// programming error upstream, and answering it with `Rows { rows: [] }` says the
+/// project is empty, which is a claim about a project nobody named - so it takes the
+/// unavailable arm.
+async fn project_members(id: &str) -> ReadOutcome<FileEntry> {
     if id.is_empty() {
-        return Vec::new();
+        return ReadOutcome::Unavailable {
+            reason: "no project id".into(),
+        };
     }
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
@@ -1982,19 +1987,21 @@ async fn project_members(id: &str) -> Vec<FileEntry> {
          RETURN f.path AS path, f.last_accessed AS accessed ORDER BY f.path LIMIT 512",
         escape_cypher_literal(id)
     );
-    match client.query_rows(&cypher).await {
-        Ok(rows) => members_from_rows(&rows),
-        Err(e) => empty_because("project_members", &e),
-    }
+    ReadOutcome::from_result(
+        "project_members",
+        client.query_rows(&cypher).await,
+        |rows| members_from_rows(&rows),
+    )
 }
 
 /// The Files whose path contains `query` for a search navigation LOCATION - the
 /// generalised "a location whose listing is a KG query" (a saved search supplies the
-/// query string; today an ad-hoc `search:<query>` rides the same seam). Best-effort
-/// + escaped, same scope bound as the other reads; an empty query lists nothing.
-async fn search_location(query: &str) -> Vec<FileEntry> {
+/// query string; today an ad-hoc `search:<query>` rides the same seam). Escaped, same
+/// scope bound as the other reads. An empty query matched nothing because it asked
+/// nothing, which is an empty result and not a failure.
+async fn search_location(query: &str) -> ReadOutcome<FileEntry> {
     if query.is_empty() {
-        return Vec::new();
+        return ReadOutcome::Rows { rows: Vec::new() };
     }
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
@@ -2004,10 +2011,11 @@ async fn search_location(query: &str) -> Vec<FileEntry> {
          ORDER BY f.last_accessed DESC LIMIT 256",
         escape_cypher_literal(query)
     );
-    match client.query_rows(&cypher).await {
-        Ok(rows) => members_from_rows(&rows),
-        Err(e) => empty_because("search_location", &e),
-    }
+    ReadOutcome::from_result(
+        "search_location",
+        client.query_rows(&cypher).await,
+        |rows| members_from_rows(&rows),
+    )
 }
 
 /// Resolve a virtual navigation location to a file listing (item 12, the keystone:
@@ -2017,19 +2025,30 @@ async fn search_location(query: &str) -> Vec<FileEntry> {
 /// `"project:<id>"` the project's `FILE_PART_OF` members; `"search:<query>"` the
 /// Files whose path contains the query. Each entry carries `full_path` (the bridge
 /// back to the item's real home, since a virtual location's items live elsewhere) so
-/// the browser controller can navigate to any of them like a folder. An unknown
-/// location is refused. The per-location column/toolbar/action presentation on these
+/// the browser controller can navigate to any of them like a folder.
+///
+/// TWO kinds of failure, and they are not the same kind. `Err` is an address that is
+/// not a location - a caller bug, and the navigation should fail. The `ReadOutcome`
+/// inside `Ok` is what the location ANSWERED: a project with no files, a graph that
+/// is not running, a read this app may not do. Collapsing the second into an empty
+/// list is how a missing daemon starts reading as an empty folder. The per-location column/toolbar/action presentation on these
 /// entries is arlen-ui's (`full_path` + `restore_token` are the seams it reads).
 #[tauri::command]
-async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String> {
+async fn files_list_location(location: String) -> Result<ReadOutcome<FileEntry>, String> {
     // Diagnostic for the virtual-location navigation bug (FM Trash/Recent showed
     // home on metal): logging the received location bisects the chain - if this
     // fires on a Trash click the invoke arrives and the break is downstream
     // (result/view); if it never fires the break is the frontend navigate/adapter.
     log::info!("files_list_location: location={location:?}");
+    // Recent and trash read the filesystem, not the graph, so they always answer:
+    // `Rows` is the honest state for them even when the list is empty.
     let out = match location.as_str() {
-        "recent" => Ok(files_recent().await.iter().map(recent_to_entry).collect()),
-        "trash" => files_trash_list().map(|items| items.iter().map(trash_to_entry).collect()),
+        "recent" => Ok(ReadOutcome::Rows {
+            rows: files_recent().await.iter().map(recent_to_entry).collect(),
+        }),
+        "trash" => files_trash_list().map(|items| ReadOutcome::Rows {
+            rows: items.iter().map(trash_to_entry).collect(),
+        }),
         other => {
             if let Some(id) = other.strip_prefix("project:") {
                 Ok(project_members(id).await)
@@ -2043,7 +2062,7 @@ async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String>
         }
     };
     match &out {
-        Ok(v) => log::info!("files_list_location: {location:?} -> {} entries", v.len()),
+        Ok(o) => log::info!("files_list_location: {location:?} -> {}", o.describe()),
         Err(e) => log::warn!("files_list_location: {location:?} -> error: {e}"),
     }
     out
@@ -2060,13 +2079,17 @@ async fn files_list_location(location: String) -> Result<Vec<FileEntry>, String>
 async fn files_list_location_as_of(
     location: String,
     as_of_micros: Option<i64>,
-) -> Result<Vec<FileEntry>, String> {
+) -> Result<ReadOutcome<FileEntry>, String> {
     if let Some(id) = location.strip_prefix("project:") {
         return Ok(project_members_as_of(id, as_of_micros).await);
     }
     match location.as_str() {
-        "recent" => Ok(files_recent().await.iter().map(recent_to_entry).collect()),
-        "trash" => files_trash_list().map(|items| items.iter().map(trash_to_entry).collect()),
+        "recent" => Ok(ReadOutcome::Rows {
+            rows: files_recent().await.iter().map(recent_to_entry).collect(),
+        }),
+        "trash" => files_trash_list().map(|items| ReadOutcome::Rows {
+            rows: items.iter().map(trash_to_entry).collect(),
+        }),
         other => {
             if let Some(query) = other.strip_prefix("search:") {
                 Ok(search_location(query).await)
@@ -2658,6 +2681,36 @@ mod read_outcome_tests {
         // reporting it as unavailable would send a reader after the wrong thing.
         let bad = rows(Err(QueryError::InvalidQuery("write mode not permitted".into())));
         assert!(matches!(bad, ReadOutcome::Denied { .. }), "{bad:?}");
+    }
+
+    #[tokio::test]
+    async fn a_question_nobody_asked_is_not_an_empty_answer() {
+        // The distinction the early returns get to make, and the one that is easy
+        // to get backwards. An empty PROJECT ID is a caller bug: answering `Rows`
+        // would put "this project is empty" on screen about a project nobody named.
+        // An empty SEARCH matched nothing because it asked nothing, which really is
+        // an empty result. Neither reaches the daemon, so this runs without one.
+        assert!(matches!(
+            project_members("").await,
+            ReadOutcome::Unavailable { .. }
+        ));
+        assert!(matches!(
+            project_members_as_of("", None).await,
+            ReadOutcome::Unavailable { .. }
+        ));
+        assert!(matches!(
+            search_location("").await,
+            ReadOutcome::Rows { rows } if rows.is_empty()
+        ));
+    }
+
+    #[test]
+    fn the_log_line_says_which_nothing() {
+        // The navigation diagnostic printed "0 entries" for all three states, which
+        // is what sent an hour into the wrong half of the chain.
+        let absent: ReadOutcome<u8> = rows(Err(QueryError::ConnectionFailed("no socket".into())));
+        assert!(absent.describe().starts_with("unavailable"), "{}", absent.describe());
+        assert_eq!(rows(Ok(vec![1u8, 2])).describe(), "2 entries");
     }
 
     #[test]

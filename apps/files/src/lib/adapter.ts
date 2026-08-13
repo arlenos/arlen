@@ -11,6 +11,8 @@ import type {
 } from "@arlen/ui-kit/components/browser";
 import { isVirtualLocation } from "@arlen/ui-kit/components/browser";
 import { viewAsOfChoice, choiceToMicros } from "./asof";
+import type { ReadOutcome } from "./read-outcome";
+import { recordListing, clearListingReason } from "./stores/location-read";
 import {
   archiveListing,
   sortEntries,
@@ -52,15 +54,20 @@ export const fmAdapter: BrowserAdapter = {
       // chosen past instant (only project membership is bitemporal; other
       // locations return their live members regardless).
       const asOf = choiceToMicros(get(viewAsOfChoice));
-      const entries =
+      const outcome =
         asOf === null
-          ? await invoke<FileEntry[]>("files_list_location", { location: path })
-          : await invoke<FileEntry[]>("files_list_location_as_of", {
+          ? await invoke<ReadOutcome<FileEntry>>("files_list_location", {
+              location: path,
+            })
+          : await invoke<ReadOutcome<FileEntry>>("files_list_location_as_of", {
               location: path,
               asOfMicros: asOf,
             });
-      return sortEntries(entries, sort);
+      // The rows go to the browser, the reason to the status bar. A location the
+      // graph could not answer for must not arrive as an empty folder.
+      return sortEntries(recordListing(outcome), sort);
     }
+    clearListingReason();
     return invoke<FileEntry[]>("files_list", {
       path,
       sort: sort.key,

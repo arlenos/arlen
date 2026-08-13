@@ -29,6 +29,7 @@
   import { infoOpen } from "$lib/stores/ui";
   import { clipboard, paste, runOp, bulkRename, extractArchive, compressPaths } from "$lib/stores/ops";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
+  import { locationReadReason } from "$lib/stores/location-read";
   import OpsOverlays from "$lib/components/OpsOverlays.svelte";
   import FmBatchRename from "$lib/components/FmBatchRename.svelte";
   import FmSearchBar from "$lib/components/FmSearchBar.svelte";
@@ -744,6 +745,7 @@
       {entries}
       {selected}
       errored={listingError}
+      readReason={$locationReadReason}
       resultsCount={$searchOpen && $searchResults !== null
         ? $searchResults.length
         : null}

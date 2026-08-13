@@ -9,6 +9,7 @@
   import { onMount } from "svelte";
   import { tauriAvailable } from "$lib/tauri";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
+  import FmStatusBar from "$lib/components/FmStatusBar.svelte";
   import ProvenanceHalo from "$lib/components/ProvenanceHalo.svelte";
   import type { FileEntry } from "@arlen/ui-kit/components/browser";
 
@@ -156,6 +157,16 @@
       <ProvenanceHalo fileRef={REALFILE} />
     </div>
   {/if}
+
+  <!-- The status bar for a VIRTUAL location, which is the other place an empty
+       list used to be the only answer. "0 items" under a project the graph could
+       not be asked about is a count nobody measured. -->
+  <section class="bars">
+    <h2>Status bar: an empty location vs one that could not be read</h2>
+    <FmStatusBar entries={[]} selected={[]} />
+    <FmStatusBar entries={[]} selected={[]} readReason="f.read.denied" />
+    <FmStatusBar entries={[]} selected={[]} readReason="f.read.unavailable" />
+  </section>
 </div>
 
 <style>
@@ -169,6 +180,14 @@
   .host {
     display: flex;
     flex-direction: column;
+  }
+  .bars {
+    /* A column of the flex harness, wide enough that the reason is not wrapped
+       into something a screenshot cannot read. */
+    min-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
   h2 {
     margin: 0 0 8px;
