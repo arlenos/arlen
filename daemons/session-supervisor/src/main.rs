@@ -54,7 +54,12 @@ fn main() -> std::process::ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+                // `info`, not the usual `warn`: this daemon's entire output is one
+                // line per registration CHANGE, and the steady state is at debug.
+                // At warn the boot of 13 Aug showed only the one unit that failed
+                // and nothing about the sixteen that worked - which reads as a
+                // component that did almost nothing, when it had done its job.
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
 

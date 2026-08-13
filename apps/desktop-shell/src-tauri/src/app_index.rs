@@ -328,7 +328,14 @@ fn stamp_launcher(pid: u32, program: &str) {
         &arlen_permissions::identity_wire::identity_broker_connect_path(),
         pidfd.as_fd(),
         &app_id,
-        true,
+        // The launcher may register the app it starts, and may pass nothing on -
+        // including the right to stamp a RESERVED id, which it has no use for
+        // (an app id is reverse-DNS) and which is the containment if it is ever
+        // compromised.
+        arlen_permissions::identity_store::Grants {
+            register: true,
+            stamp_reserved: false,
+        },
     ) {
         log::warn!("app_index: launcher not stamped ({e}); the app resolves via /proc");
     }

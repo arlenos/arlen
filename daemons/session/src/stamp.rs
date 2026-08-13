@@ -46,10 +46,18 @@ pub const SUPERVISOR: &str = "arlen-session-supervisor";
 /// root of trust already.
 pub const REGISTRAR_CHILDREN: &[&str] = &[SHELL, SUPERVISOR];
 
-/// Whether `program`, as the session is about to spawn it, gets the right to
-/// register identities of its own.
-pub fn grants_registrar(program: &str) -> bool {
-    REGISTRAR_CHILDREN.contains(&program)
+/// What `program`, as the session is about to spawn it, is granted.
+///
+/// The supervisor also gets the right to stamp RESERVED ids, and the shell does
+/// not: the supervisor attests shipped daemons (`arlen-ai-engine-daemon.service`
+/// IS `ai-agent`), while the shell's chain ends at `arlen-run`, which stamps user
+/// apps whose ids are reverse-DNS. Keeping the second right off the launcher is
+/// what makes a compromised launcher unable to mint `settings`.
+pub fn grants_for(program: &str) -> arlen_permissions::identity_store::Grants {
+    arlen_permissions::identity_store::Grants {
+        register: REGISTRAR_CHILDREN.contains(&program),
+        stamp_reserved: program == SUPERVISOR,
+    }
 }
 
 #[cfg(test)]
@@ -61,9 +69,20 @@ mod tests {
         // The compositor and the verify app start nothing, so neither has any
         // reason to stamp an identity. Keeping the grant to the two that do is
         // what makes the two-level bound worth having at all.
-        assert!(grants_registrar(SHELL));
-        assert!(grants_registrar(SUPERVISOR));
-        assert!(!grants_registrar(COMPOSITOR));
-        assert!(!grants_registrar("arlen-boot-verify"));
+        assert!(grants_for(SHELL).register);
+        assert!(grants_for(SUPERVISOR).register);
+        assert!(!grants_for(COMPOSITOR).register);
+        assert!(!grants_for("arlen-boot-verify").register);
+    }
+
+    #[test]
+    fn only_the_supervisor_may_stamp_a_reserved_id() {
+        // The shell's chain ends at the launcher, which stamps user apps; a
+        // reserved id from there is a bypass attempt and the broker refuses it.
+        // The supervisor's units genuinely carry reserved ids, so it alone is
+        // granted this - by the root, at spawn, rather than by anything it says.
+        assert!(grants_for(SUPERVISOR).stamp_reserved);
+        assert!(!grants_for(SHELL).stamp_reserved);
+        assert!(!grants_for(COMPOSITOR).stamp_reserved);
     }
 }
