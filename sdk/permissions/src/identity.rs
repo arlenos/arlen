@@ -856,6 +856,34 @@ pub fn is_user_surface(app_id: &str) -> bool {
         .any(|s| s == app_id)
 }
 
+/// The absolute path of `program`, resolved the way a shell would.
+///
+/// For a caller that is about to SPAWN `program` and wants to stamp the child's
+/// identity: the id must come from the binary that will run, and it must be known
+/// BEFORE the spawn. Reading the child's own `/proc/<pid>/exe` afterwards looks
+/// more direct and races - a wrapper like `systemd-cat` execs into the program, so
+/// a read that wins the race sees the wrapper and stamps the wrong thing.
+pub fn resolve_program(program: &str, path_var: &str) -> Option<std::path::PathBuf> {
+    if program.contains('/') {
+        let p = std::path::PathBuf::from(program);
+        return p.is_file().then_some(p);
+    }
+    path_var
+        .split(':')
+        .filter(|d| !d.is_empty())
+        .map(|d| std::path::Path::new(d).join(program))
+        .find(|p| p.is_file())
+}
+
+/// The app id to stamp for `program`, or `None` when it resolves to nothing that
+/// can be named - in which case the child is left to the older resolvers rather
+/// than given an id the caller invented. Two resolvers naming one program
+/// differently is how a profile lookup silently misses, and a miss answers "no
+/// grants", which reads as correctly-locked-down rather than misconfigured.
+pub fn app_id_for_program(program: &str, path_var: &str) -> Option<String> {
+    path_to_app_id(&resolve_program(program, path_var)?).ok()
+}
+
 #[cfg(test)]
 mod user_surface_rule {
     use super::is_user_surface;
@@ -1961,5 +1989,42 @@ mod exe_diagnosis_tests {
             msg.contains("another user"),
             "reaches a conclusion rather than leaving the reader to: {msg}"
         );
+    }
+
+    #[test]
+    fn a_bare_program_name_is_resolved_against_the_path_in_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        let first = tmp.path().join("first");
+        let second = tmp.path().join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(second.join("prog"), "x").unwrap();
+
+        let path_var = format!("{}:{}", first.display(), second.display());
+        assert_eq!(
+            resolve_program("prog", &path_var),
+            Some(second.join("prog")),
+            "the first directory that HAS it wins, not the first directory"
+        );
+        std::fs::write(first.join("prog"), "x").unwrap();
+        assert_eq!(resolve_program("prog", &path_var), Some(first.join("prog")));
+    }
+
+    #[test]
+    fn a_program_that_is_not_there_resolves_to_nothing() {
+        assert_eq!(resolve_program("no-such-program", "/nonexistent"), None);
+        // An empty PATH element is skipped rather than turned into a relative
+        // lookup against the current directory.
+        assert_eq!(resolve_program("sh", ""), None);
+    }
+
+    #[test]
+    fn an_unnameable_binary_gets_no_stamp_rather_than_an_invented_one() {
+        // No id is better than one the caller invented: a stamp that disagrees
+        // with the binary route makes a profile lookup miss, and a miss reads as
+        // correctly-locked-down.
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("odd"), "x").unwrap();
+        assert_eq!(app_id_for_program("odd", &tmp.path().display().to_string()), None);
     }
 }

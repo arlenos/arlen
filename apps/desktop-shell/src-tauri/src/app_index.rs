@@ -3,6 +3,7 @@
 /// Scans standard freedesktop application directories on startup, parses
 /// `.desktop` files, resolves icons, and exposes the results via Tauri commands.
 
+use std::os::fd::AsFd;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -297,6 +298,42 @@ pub fn search_apps(index: tauri::State<AppIndex>, query: String) -> Vec<AppEntry
 /// An entry with `&&` in it is spec-violating and now fails to launch. That is
 /// deliberate, and the failure is logged with the reason rather than being a
 /// silent non-start, so a packaging bug reads as a packaging bug.
+/// Tell the identity broker that this child is the LAUNCHER, and may stamp the
+/// app it is about to start.
+///
+/// The last link of the chain, and what lets the broker stop keeping a list of
+/// registrar names. The session registered the shell and granted it the right to
+/// pass that on; the shell registers `arlen-run` per launch with the same right;
+/// `arlen-run` stamps the app WITHOUT it. So the set of processes that may ever
+/// claim an identity for another is derived from what actually started what, two
+/// hops deep, rather than from a constant someone has to keep true.
+///
+/// The id comes from the binary through the shared resolver, never from the string
+/// "arlen-run": a stamp that disagrees with the exe route makes a later profile
+/// lookup miss, and a miss answers "no grants", which reads as correctly-locked-
+/// down rather than misconfigured.
+///
+/// Best-effort. A broker that is down, or a shell started outside a session and so
+/// holding no right to grant, leaves the launch exactly as it is today - the app
+/// resolves via `/proc` - rather than failing to start.
+fn stamp_launcher(pid: u32, program: &str) {
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    let Some(app_id) = arlen_permissions::identity::app_id_for_program(program, &path_var) else {
+        return;
+    };
+    let Some(pidfd) = arlen_permissions::peer_pidfd::pidfd_open(pid) else {
+        return;
+    };
+    if let Err(e) = arlen_permissions::identity_wire::register_identity(
+        &arlen_permissions::identity_wire::identity_broker_connect_path(),
+        pidfd.as_fd(),
+        &app_id,
+        true,
+    ) {
+        log::warn!("app_index: launcher not stamped ({e}); the app resolves via /proc");
+    }
+}
+
 fn launch_argv(exec: &str) -> Result<Vec<String>, ExecError> {
     // No targets: the launcher starts an application, it does not open a
     // document. Any field code the index left behind drops here.
@@ -404,6 +441,11 @@ pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
                 null()
             })
             .spawn();
+        if let Ok(child) = &child {
+            if was_confined {
+                stamp_launcher(child.id(), &argv[0]);
+            }
+        }
         // Wait for it, and say so when it fails. The spawn result alone only
         // reports whether the program could be started; it says nothing about a
         // program that starts and immediately refuses, which is precisely what
