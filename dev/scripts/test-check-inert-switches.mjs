@@ -63,6 +63,14 @@ const BASE = {
   [`${U}/arlen-event-bus.service.d/10-enforce.conf`]: UNIT(
     "Environment=ARLEN_EVENT_BUS_ENFORCE=1",
   ),
+  // Recorded as `set` since 13 Aug, and NOT by an `Environment=` line. sysusers
+  // allocates the broker's uid, so no file can carry the value; it is derived at
+  // boot from the owner of the broker's socket. The fixture carries the generator
+  // that derives it, because what this gate reads has to be the shape the image
+  // really has - a fixture that only ever models `Environment=` would pass a tree
+  // where the switch is set by something else, or fail one where it is.
+  "dev/mkosi/mkosi.extra/usr/lib/systemd/user-environment-generators/50-arlen-identity-broker":
+    'uid=$(stat -c %u "$sock") || exit 0\necho "ARLEN_CONFIG_BROKER_IDENTITY_UID=$uid"\n',
 };
 
 function check(name, files, expect) {

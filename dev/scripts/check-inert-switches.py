@@ -14,9 +14,10 @@ because the code reads correct and the fallback succeeds quietly:
     AL-1   the audit ingest ADMITTED list omitted `ai-agent`, so the agent's
            fail-closed gate-audit-before-act refused every action in release
            while debug masked it through the `dev.*` allowance.
-    broker `ARLEN_CONFIG_BROKER_IDENTITY_UID` is set nowhere, so in a release
-           build `broker_expected_uid` is None and the stamped-identity Tier 1
-           refuses without connecting - the launcher stamp cannot be believed.
+    broker `ARLEN_CONFIG_BROKER_IDENTITY_UID` was set nowhere, so in a release
+           build `broker_expected_uid` was None and the stamped-identity Tier 1
+           refused without connecting - the launcher stamp could not be believed.
+           Closed 13 Aug; the entry below records what the boot measured.
     bus    `ARLEN_EVENT_BUS_ENFORCE` is a deliberate shadow default, which is
            fine, but nothing recorded that the observation it waits on had not
            been done.
@@ -93,17 +94,23 @@ SWITCHES = {
         "already logging, not flipping on faith.",
     ),
     "ARLEN_CONFIG_BROKER_IDENTITY_UID": (
-        "unset",
+        "set",
         "the stamped-identity Tier 1 believing the config-broker, which is the "
         "only peer resolution that survives a mount-namespace sandbox",
-        "UNSET IS A GAP, not a default. A release build with no env makes "
-        "`broker_expected_uid` None and the lookup refuses without connecting, so "
-        "Tier 1 falls through to /proc on the booted image. The value today would "
-        "be 0, because the image packages the broker as User=root (see the KNOWN "
-        "DRIFT in check-packaged-units.sh); provisioning the arlen-config user "
-        "must change this in the same commit. Setting it changes nothing "
-        "observable until `[launcher] confined` is on, which is human-gated, so "
-        "it is recorded rather than scaffolded ahead of the flip.",
+        "SET ON 13 Aug, after a boot showed what unset actually cost. It was "
+        "recorded as harmless until `[launcher] confined` flips, and that was "
+        "wrong: the same env gates every peer resolution, so with it unset the "
+        "undo signer rejected four connections on every boot with "
+        "`readlinkat(exe): Permission denied` - the tier was not merely dormant, "
+        "it was failing live. Setting it took those to zero. NOT set as a literal "
+        "in any unit: sysusers allocates the uid, and the image packages the "
+        "broker as User=root against a dist unit that says arlen-config (the KNOWN "
+        "DRIFT in check-packaged-units.sh), so a name-derived value would be "
+        "wrong in exactly the deployment that ships. It is derived from the owner "
+        "of the SYSTEM socket, which is true under either user and is trustworthy "
+        "because /run/arlen is not user-writable - by the session for what it "
+        "starts, and by the user-environment generator for user services that "
+        "start before the session's import.",
     ),
     "ARLEN_EVENT_BUS_ENFORCE": (
         "set",
