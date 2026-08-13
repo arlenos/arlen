@@ -8,4 +8,6 @@
 //! whole job; see [`supervise`] for the decision and why one registration is not
 //! enough.
 
+pub mod broker;
 pub mod supervise;
+pub mod systemd;

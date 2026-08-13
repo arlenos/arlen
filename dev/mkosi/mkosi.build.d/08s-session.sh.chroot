@@ -43,4 +43,19 @@ cargo build --release --manifest-path daemons/session/Cargo.toml
 install -Dm755 "$CARGO_TARGET_DIR/release/arlen-session" \
     "$DESTDIR/usr/bin/arlen-session"
 
-echo ">> staged arlen-session into the image (replacing the shell script)"
+# The supervisor ships WITH the session, because the session spawns it and the
+# grant that lets it register identities is one only the session root can give. A
+# supervisor systemd started could not be given that right, so shipping it as a user
+# unit would produce a binary that runs and registers nothing.
+#
+# `/usr/bin/arlen-*` and not libexec: the session resolves it by bare name through
+# PATH, and the identity resolver names that path `session-supervisor` by rule (2).
+# A libexec install would resolve to no app id at all, so the supervisor could not
+# be stamped and its own registrations would be refused.
+echo ">> cargo build the session supervisor (arlen-session-supervisor)"
+cargo build --release --manifest-path daemons/session-supervisor/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-session-supervisor" \
+    "$DESTDIR/usr/bin/arlen-session-supervisor"
+
+echo ">> staged arlen-session and its supervisor into the image"
