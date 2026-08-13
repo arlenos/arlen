@@ -85,9 +85,22 @@ where
     // Phase 2: fetch the final assistant text.
     write_command(&mut write, &get_last_text_command()).await?;
     loop {
+        // The engine closing here is a FAILURE to fetch, not an empty answer.
+        //
+        // It used to `return Ok(String::new())`, while phase 1 above treats the
+        // identical condition as an error - and that asymmetry is what produced a
+        // green run over nothing on the 13 Aug verify boot: the stream ended, this
+        // returned an empty string, `explain_system` answered its D-Bus caller
+        // successfully with it, and the probe printed `DOGFOOD ASK ok answer=`.
+        //
+        // Nothing downstream can recover the distinction. A caller holding "" has
+        // no way to tell "the assistant had nothing to say" from "the engine died
+        // before answering", and the harness and Settings both render that string
+        // to a person. A function whose whole contract is to fetch the final
+        // assistant text has not fulfilled it when the stream ends first.
         let Some(text) = lines.next_line().await.map_err(|e| format!("engine read failed: {e}"))?
         else {
-            return Ok(String::new());
+            return Err("the engine closed before returning its answer".to_string());
         };
         let trimmed = text.trim();
         if trimmed.is_empty() {
@@ -174,6 +187,22 @@ mod tests {
     async fn an_engine_that_closes_early_errors() {
         let r = drive_for_answer(&b"{\"type\":\"message_start\"}\n"[..], &mut Vec::new(), "x").await;
         assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn an_engine_that_ends_its_turn_then_closes_errors_rather_than_answering_empty() {
+        // The case the test above does NOT cover: the turn ends, so phase 1 is
+        // satisfied, and the stream then closes before the get-text response.
+        // That returned `Ok("")` and produced a green run over nothing on the
+        // 13 Aug verify boot - `explain_system` answered its caller successfully
+        // with an empty string. Phase 1 already called an early close an error;
+        // this pins the same reading for phase 2, where the answer is the point.
+        let pi_out = "{\"type\":\"message_start\"}\n{\"type\":\"agent_end\"}\n";
+        let r = drive_for_answer(pi_out.as_bytes(), &mut Vec::new(), "x").await;
+        assert!(
+            r.is_err(),
+            "a closed stream is a failure to fetch, not an empty answer: {r:?}"
+        );
     }
 
     #[tokio::test]
