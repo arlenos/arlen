@@ -39,6 +39,8 @@ sleep	-	dev probes	base	coreutils
 uname	-	system-monitor	base	coreutils
 dpkg	-	installd	base	the package tool of the distro we are built on
 systemctl	-	shell, quick-actions	base	systemd
+systemd-cat	-	session	base	systemd. The session routes the compositor, the shell and the verify app through it so a headless boot is readable on the serial console; without it those three would run with nowhere to say anything
+xdg-user-dirs-update	xdg-user-dirs	session	ships	names the user's folders in the user's language before anything binds them. Nothing else in the image runs it (a normal desktop gets it from /etc/xdg/autostart, which we do not process), so absent it a German install has its files in ~/Dokumente while the launcher confines ~/Documents
 systemd-inhibit	-	shell caffeine	base	systemd
 journalctl	-	knowledge journald ingest	base	systemd
 findmnt	-	files, capsuled	base	util-linux
