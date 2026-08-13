@@ -118,9 +118,12 @@ def covered(list_path: Path) -> set[str]:
 # call. An entry is a question, not a permission.
 CARRIED = {
     "org.arlen.Accounts1": (
-        "the online-accounts daemon is complete and CI-tested; shipping it is part "
-        "of the same adjudication as modulesd. The visible cost is the file "
-        "manager's remote-places sidebar, empty by construction."
+        "DECIDED 13 Aug: do NOT ship it. Accounts, connections and transfers are "
+        "three daemons and a subsystem, and putting them in front of people looking "
+        "functional while incomplete is worse than the absence. The caller changed "
+        "instead - the file manager now returns `unavailable` rather than an empty "
+        "list, so a missing subsystem cannot read as 'you have no accounts'. This "
+        "entry waits for the subsystem to be finished, not for a gate."
     ),
     "org.arlen.Connections1": (
         "the ai-proxy carries a full client proxy for the Connections egress-delivery "
