@@ -369,23 +369,32 @@ jobs:
         run: dev/check-crate.sh check ${{ matrix.component }}
       - name: test
         run: dev/check-crate.sh test ${{ matrix.component }}
-      - name: born-translatable lint (scans apps/ and ui-kit, not this crate)
-        # Runs on the sdk/i18n leg only: the toolchain and the crate's own build
-        # are already warm there, so arming this costs one `cargo run` rather than
-        # a Rust setup in the build-free structural job. It compares against
-        # `dev/i18n-baseline.tsv` and fails only on a string that is NOT already
-        # accepted, so it passes today and bites on the next new hardcoded one.
-        # An unarmed gate rots: by the time it would catch something, nobody
-        # trusts it.
-        #
-        # The failure has to announce itself. This job is called "rust check +
-        # test (sdk/i18n)", both of those steps pass, and the red comes from a
-        # third step that scans a different part of the tree entirely - so it
-        # read as a job failing with every test green and no error line, three
-        # times, until someone pulled the raw log. The annotation below puts the
-        # reason in the run summary where a red is actually looked at, and the
-        # step name says whose strings it is checking.
-        if: ${{ matrix.component == 'sdk/i18n' }}
+  i18n-lint:
+    # Its own job, and the name says what it scans. It used to be a step inside
+    # "rust check + test (sdk/i18n)", where it was cheap - that leg's toolchain
+    # and crate build are already warm - and where a red went unread for a week:
+    # `check` and `test` both passed, so the job read as green-with-no-error-line
+    # and nobody scrolled to the third step. The step's own name admitted it was
+    # scanning somewhere else, which was the tell that the placement was wrong
+    # rather than a caveat worth keeping. A signal nobody reads is not a gate.
+    name: born-translatable lint (apps + ui-kit)
+    needs: changes
+    # Frontend strings, so it runs when the frontend moves. `rust` too, because
+    # the lint binary itself lives in sdk/i18n and a change there can alter what
+    # it finds.
+    if: ${{ needs.changes.outputs.frontend != '[]' || contains(needs.changes.outputs.rust_touched, 'sdk/i18n') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk/i18n -> target
+      - name: born-translatable lint
+        # Compares against `dev/i18n-baseline.tsv` and fails only on a string that
+        # is NOT already accepted, so it passes today and bites on the next new
+        # hardcoded one. The annotation puts the reason in the run summary, where
+        # a red is actually looked at.
         run: |
           if ! out=$(cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- \
                        --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv 2>&1); then

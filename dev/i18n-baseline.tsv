@@ -49,6 +49,7 @@ apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} MB
 apps/desktop-shell/src/lib/workspace/format.ts	Workspace {}
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb to open the mini-player.
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
+apps/desktop-shell/src/routes/_nettest/+page.svelte	Vesktop
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
 apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
 apps/files/src/routes/+page.svelte	Ctrl+C
