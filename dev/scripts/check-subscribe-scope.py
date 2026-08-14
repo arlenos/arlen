@@ -261,9 +261,19 @@ def main() -> int:
             # An UNUSED grant, which is the other direction and not a break: extra
             # scope is permissive, so nothing goes quiet. It is still worth saying,
             # because "erring narrow" is what these profiles claim about themselves
-            # and an unused `*` is the opposite of narrow. Reported, not failed -
-            # removing a grant can break a consumer this cannot see, so that is a
-            # decision rather than a fix.
+            # and an unused `*` is the opposite of narrow.
+            #
+            # REPORTED, NEVER FAILED, and the sibling gate explains why better than
+            # this one could: `check-read-grants-cover-queries.py` refuses to report
+            # unused grants at all, because "a wrongly-reported unused grant invites
+            # deleting a grant that IS needed", and its author nearly made that
+            # mistake by hand on a multi-line query a regex had not seen. The same
+            # blindness applies here - a subscription assembled at runtime, or made
+            # by a helper this cannot follow, looks like no subscription.
+            #
+            # So the note names BOTH causes and commits to neither, and the repair
+            # is a boot with enforce on, where a real consumer announces itself as a
+            # denial line. Measure it; do not delete on the strength of a scan.
             notes.append(
                 f"{path.name}: grants subscribe {subscribe} and no subscription was "
                 f"found in {directory.relative_to(REPO)}. Either the grant outlived "
