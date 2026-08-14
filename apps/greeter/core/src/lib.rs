@@ -7,6 +7,8 @@
 //! toolchain). The greeter runs before any session and may reach nothing but the
 //! greetd socket; every read here fails closed.
 
+pub mod a11y_state;
+
 use arlen_lock_auth::{AuthStep, GreetdClient};
 use serde::Serialize;
 use std::io::{Read, Write};
@@ -292,36 +294,42 @@ pub fn resolve_avatar(icons_dir: &Path, username: &str) -> Option<String> {
 /// The environment greetd should add when starting the session. greetd + pam_
 /// systemd populate most of it; this pins the session-type hints so a Wayland
 /// compositor comes up correctly and the session is tagged with its id.
-pub fn session_env(session_id: &str, screen_reader: bool) -> Vec<String> {
+pub fn session_env(session_id: &str, screen_reader: Option<bool>) -> Vec<String> {
     let mut env = vec![
         "XDG_SESSION_TYPE=wayland".to_string(),
         format!("XDG_SESSION_DESKTOP={session_id}"),
         format!("XDG_CURRENT_DESKTOP={session_id}"),
     ];
-    // Carry the login screen's accessibility choice into the session.
+    // Carry the login screen's accessibility choice into the session, but ONLY
+    // when somebody actually operated the toggle at this login.
     //
-    // The greeter cannot write it where the session would find it: the config
+    // `None` is the important case and it is not "off". The login screen has its
+    // own remembered default (`a11y_state`), and that default arriving on screen
+    // is not a statement about the person logging in - somebody who has the
+    // reader switched on inside their session must not have it switched off
+    // because they walked past an untouched greeter. So an untouched login says
+    // nothing and the session keeps whatever the user's own config holds.
+    //
+    // `Some(false)` IS a statement: they reached over and turned it off here, and
+    // that should carry the same weight as turning it on.
+    //
+    // The greeter cannot write this where the session would find it: the config
     // broker authenticates exactly one uid, the session user's, and the greeter
     // is a different user. That gate is right - before login no user has been
-    // chosen, and a greeter that could read one user's config could read any
-    // user's. So the choice rides across on the one channel that already
-    // crosses the boundary, and the session writes it as itself.
-    //
-    // Only set when it is ON. Absent means "the login screen has nothing to say
-    // about this", which is not the same as "off" - the session then keeps
-    // whatever the person already had, instead of a login screen nobody touched
-    // silently turning their screen reader off.
-    if screen_reader {
-        env.push(format!("{A11Y_SCREEN_READER_ENV}=1"));
+    // chosen. So the choice rides across on the one channel that already crosses
+    // the boundary, and the session writes it as itself.
+    if let Some(on) = screen_reader {
+        env.push(format!("{A11Y_SCREEN_READER_ENV}={}", if on { "1" } else { "0" }));
     }
     env
 }
 
 /// The variable [`session_env`] uses to hand the screen-reader choice on.
 ///
-/// Read by the shell exactly once at session start, written to the user's own
-/// config broker, and then never read again - the broker is the durable answer
-/// and the bus is how apps hear it. This is a handoff, not a source of truth.
+/// `1` or `0` when the toggle was operated at this login, absent otherwise. Read
+/// by the shell exactly once at session start, written to the user's own config
+/// broker, and then never read again - the broker is the durable answer and the
+/// bus is how apps hear it. This is a handoff, not a source of truth.
 pub const A11Y_SCREEN_READER_ENV: &str = "ARLEN_A11Y_SCREEN_READER";
 
 /// Drive the greetd auth conversation to completion over `stream` and, on success,
@@ -617,5 +625,28 @@ nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
         assert_eq!(power_verb("poweroff"), None);
         assert_eq!(power_verb("--now; rm -rf /"), None);
         assert_eq!(power_verb(""), None);
+    }
+
+    #[test]
+    fn an_untouched_login_hands_nothing_forward() {
+        // The bound that keeps this intent rather than a side effect: a person
+        // with the reader on inside their session must not lose it because they
+        // walked past a greeter nobody touched.
+        let env = session_env("arlen", None);
+        assert!(
+            !env.iter().any(|v| v.starts_with(A11Y_SCREEN_READER_ENV)),
+            "an untouched toggle must say nothing at all"
+        );
+    }
+
+    #[test]
+    fn an_operated_toggle_hands_either_answer_forward() {
+        let on = session_env("arlen", Some(true));
+        assert!(on.contains(&format!("{A11Y_SCREEN_READER_ENV}=1")));
+
+        // Switching it off here is as deliberate as switching it on, so it
+        // travels rather than being dropped as if nobody had touched anything.
+        let off = session_env("arlen", Some(false));
+        assert!(off.contains(&format!("{A11Y_SCREEN_READER_ENV}=0")));
     }
 }

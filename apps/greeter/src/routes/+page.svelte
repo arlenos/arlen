@@ -17,7 +17,7 @@
     type Session,
     type AuthResult,
   } from "$lib/greeter";
-  import { a11y } from "$lib/a11y";
+  import { a11y, screenReaderChoice, loadRememberedA11y } from "$lib/a11y";
   import { t } from "$lib/i18n/messages";
   import GreeterBackground from "$lib/components/GreeterBackground.svelte";
   import Clock from "$lib/components/Clock.svelte";
@@ -49,6 +49,9 @@
   const pickedProfile = $derived(profiles?.find((p) => p.id === picked) ?? null);
 
   onMount(async () => {
+    // First, so somebody who needs a screen reader has it before the prompt is
+    // drawn rather than after.
+    void loadRememberedA11y();
     const [ps, ss, wp] = await Promise.all([listProfiles(), listSessions(), readWallpaper()]);
     profiles = ps;
     sessions = ss ?? [];
@@ -69,9 +72,10 @@
 
   async function onsubmit(secret: string): Promise<AuthResult> {
     if (!pickedProfile) return { ok: false, error: "No profile selected." };
-    // The screen-reader toggle travels with the session, so a person who
-    // turned it on here does not have to turn it on again once they are in.
-    return authenticate(pickedProfile.id, secret, sessionId, $a11y.screenReader);
+    // The toggle travels with the session only when somebody operated it here;
+    // an untouched login screen says nothing and the session keeps whatever
+    // that user's own config holds.
+    return authenticate(pickedProfile.id, secret, sessionId, $screenReaderChoice);
   }
   async function onfactor(): Promise<AuthResult> {
     if (!pickedProfile) return { ok: false, error: "No profile selected." };
