@@ -90,12 +90,40 @@ read = [
 # the 22 would mean a new verb in an existing contract arrives as a silent
 # denial, which is exactly the failure this whole section is meant to prevent.
 #
-# `publish` is empty on purpose and not by omission: the shell holds no
-# UnixEventEmitter anywhere in its tree (checked, not assumed - an older note
-# claimed it emitted focus.activated, and no such emitter exists). It is a pure
-# consumer, so an empty publish list is the honest statement of that.
+# `publish` was empty, with a note saying the shell holds no UnixEventEmitter
+# anywhere in its tree - which is TRUE and led to the wrong conclusion. The shell
+# does not use the SDK emitter; it writes to ARLEN_PRODUCER_SOCKET through two
+# hand-rolled helpers (`projects::emit_to_event_bus`, `event_bus::emit_event`),
+# and it publishes nine topics that way. Looking for the type missed the
+# behaviour.
+#
+# What an empty list would have cost under enforcement, since a denied publish is
+# DROPPED with nothing said to the producer: the audio and network indicators in
+# the top bar stop updating, Focus Mode stops suppressing notifications, every
+# app.* action dispatch stops arriving, and the terminal's screen-reader mirror
+# never switches on. Nine features going quiet while the emitting code looks like
+# it worked.
+#
+# Read out of the source now rather than believed:
+# `dev/scripts/check-subscribe-scope.py` compares this list against what the
+# shell actually emits, so the next topic added to either side has to be added to
+# both.
 [event_bus]
-publish = []
+publish = [
+    # System state the shell owns and republishes for apps (SST-R2).
+    "audio.state",
+    "network.state",
+    "accessibility.state",
+    # Focus Mode, consumed by the notification daemon to suppress by app.
+    "focus.activated",
+    "focus.deactivated",
+    # Action dispatch: the shell renders these surfaces, so it is where the
+    # user's click becomes an event the owning app hears.
+    "app.menu.action_invoked",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+    "app.intent.dispatched",
+]
 subscribe = [
     "window.*",
     "config.*",
