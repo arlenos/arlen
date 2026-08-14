@@ -51,7 +51,7 @@
     clearFacets,
   } from "$lib/stores/facets";
   import { duplicatesOpen } from "$lib/stores/duplicates";
-  import { askDraft, runAsk, applyDraft, clearAsk, loadAiEnabled } from "$lib/stores/ask";
+  import { askDraft, runAsk, applyDraft, clearAsk, loadAskCapability } from "$lib/stores/ask";
   import { columnsFor, emptyLabelFor } from "$lib/locations";
 
   let renamingName = $state<string | null>(null);
@@ -494,7 +494,7 @@
     await loadPlaces();
     void loadFacetOptions();
     void loadSmartFolders();
-    void loadAiEnabled();
+    void loadAskCapability();
     if (get(tabs).length === 0) newTab(get(homePath));
     if (tauriAvailable) {
       invoke<Template[]>("files_templates")

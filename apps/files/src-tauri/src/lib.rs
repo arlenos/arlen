@@ -2244,7 +2244,6 @@ pub fn run() {
             files_find_duplicates,
             files_bulk_rename,
             files_ask,
-            ai_gate::files_ai_enabled,
             files_op,
             files_set_permissions,
             files_set_exif_tags,

@@ -2,8 +2,10 @@
   /// The search row under the headerbar. Two modes when the assistant is on: a
   /// literal name search (the query field + the collapsed Filter) and "Ask
   /// Arlen", a natural-language question scoped to this folder that drafts a
-  /// facet filter. The mode toggle only shows when the assistant is enabled;
-  /// with it off this is the plain search bar.
+  /// facet filter. The mode toggle only shows when the assistant is enabled, and
+  /// when it is not the bar says which of the two reasons applies rather than
+  /// simply dropping the affordance - a person who has heard of Ask Arlen and
+  /// finds nothing here is owed the difference between "off" and "not answering".
   import { tick } from "svelte";
   import { X } from "lucide-svelte";
   import { Search, Sparkles } from "@lucide/svelte";
@@ -18,7 +20,14 @@
     searchOpen,
     searchQuery,
   } from "$lib/stores/search";
-  import { askMode, aiEnabled, askLoading } from "$lib/stores/ask";
+  import {
+    askMode,
+    aiEnabled,
+    askLoading,
+    askCapability,
+    askCapabilityLoaded,
+    askCapabilityMessage,
+  } from "$lib/stores/ask";
 
   let {
     path,
@@ -62,6 +71,7 @@
 </script>
 
 {#if $searchOpen}
+  <div class="search-wrap">
   <div class="search-bar">
     {#if $aiEnabled}
       <SegmentedControl
@@ -115,14 +125,33 @@
       <X size={14} strokeWidth={2} />
     </button>
   </div>
+
+  <!-- Only the two failing states speak. A capability that has not been read yet
+       says nothing either, because "off" would be a claim we have not checked. -->
+  {#if $askCapabilityLoaded && !$aiEnabled}
+    <p class="sb-cap">{$t(askCapabilityMessage($askCapability))}</p>
+  {/if}
+  </div>
 {/if}
 
 <style>
+  .search-wrap {
+    display: flex;
+    flex-direction: column;
+  }
   .search-bar {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 10px 8px;
+  }
+  /* Sits under the row rather than inside it: the row is a control strip, and a
+     sentence squeezed between controls is read as a label for one of them. */
+  .sb-cap {
+    margin: 0;
+    padding: 0 8px 8px;
+    font-size: var(--text-2xs);
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .search-bar :global(input) {
     flex: 1;
