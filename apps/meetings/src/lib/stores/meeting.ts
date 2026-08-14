@@ -289,10 +289,22 @@ export function speakerNum(label: string | undefined): number | null {
   return m ? Number(m[1]) + 1 : null;
 }
 
-/// Open the produced note in the text editor (the KG-citizen handoff seam; the
-/// real note path is the coder's to supply).
+/// Open the produced note in the text editor (the KG-citizen handoff seam).
+///
+/// It cannot work yet and that is worth being exact about: `open_file` requires an
+/// absolute path and refuses anything else, this passes the bare name
+/// `meeting-note.md`, and the note is stored as a `.json` document rather than the
+/// markdown file an editor would open. So the handoff is unbuilt on both ends -
+/// there is no produced markdown file and no path to give.
+///
+/// The button stays, because deleting a planned affordance is a product decision;
+/// the silence does not. A press now reaches `editFailed`, the same line the other
+/// three write paths on this page already use, so it says something instead of
+/// looking broken. When the export lands, this passes its path and the line stops
+/// appearing on its own.
 export function openInEditor(): void {
-  invoke("open_file", { file: "meeting-note.md" }).catch(() => {});
+  editFailed.set(false);
+  invoke("open_file", { file: "meeting-note.md" }).catch(() => editFailed.set(true));
 }
 
 let ticker: ReturnType<typeof setInterval> | null = null;
