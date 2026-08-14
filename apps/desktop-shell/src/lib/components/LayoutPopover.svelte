@@ -8,6 +8,7 @@
   import { Layers, LayoutPanelLeft, Maximize } from "lucide-svelte";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
+  import PopoverErrorBanner from "$lib/components/shared/PopoverErrorBanner.svelte";
   import Switch from "@arlen/ui-kit/components/ui/switch/switch.svelte";
   import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
 
@@ -19,7 +20,7 @@
     tiled_headers: boolean;
   }
 
-  let state = $state<LayoutState>({
+  let layout = $state<LayoutState>({
     mode: "floating",
     inner_gap: 8,
     outer_gap: 8,
@@ -28,11 +29,19 @@
   });
 
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+  /// Whether the layout has been READ. Every field above has a plausible default
+  /// - floating, 8px gaps, smart gaps on - so a compositor that did not answer
+  /// rendered a complete description of the window layout, with "Floating"
+  /// showing as the selected mode. All of it invented.
+  let read = $state(false);
 
   async function poll() {
     try {
-      state = await invoke<LayoutState>("get_layout_state");
-    } catch {}
+      layout = await invoke<LayoutState>("get_layout_state");
+      read = true;
+    } catch {
+      read = false;
+    }
   }
 
   $effect(() => {
@@ -46,31 +55,48 @@
     };
   });
 
+  /// Apply optimistically and put it back if the compositor refuses. Nothing
+  /// re-polls this panel after a write, so a swallowed refusal left the pill
+  /// showing a mode the windows were never in - not for three seconds, but until
+  /// the panel is reopened.
   function setMode(mode: string) {
-    state.mode = mode;
-    invoke("set_layout_mode", { mode }).catch(() => {});
+    const previous = layout.mode;
+    layout.mode = mode;
+    invoke("set_layout_mode", { mode }).catch(() => {
+      layout.mode = previous;
+    });
   }
 
   function setGap(value: number) {
-    state.inner_gap = value;
-    state.outer_gap = value;
+    layout.inner_gap = value;
+    layout.outer_gap = value;
     persistGaps();
   }
 
   function toggleSmartGaps() {
-    state.smart_gaps = !state.smart_gaps;
-    invoke("set_layout_smart_gaps", { enabled: state.smart_gaps }).catch(() => {});
+    const previous = layout.smart_gaps;
+    layout.smart_gaps = !previous;
+    invoke("set_layout_smart_gaps", { enabled: layout.smart_gaps }).catch(() => {
+      layout.smart_gaps = previous;
+    });
   }
 
   function toggleTiledHeaders() {
-    state.tiled_headers = !state.tiled_headers;
-    invoke("set_layout_tiled_headers", { enabled: state.tiled_headers }).catch(() => {});
+    const previous = layout.tiled_headers;
+    layout.tiled_headers = !previous;
+    invoke("set_layout_tiled_headers", { enabled: layout.tiled_headers }).catch(() => {
+      layout.tiled_headers = previous;
+    });
   }
 
   function persistGaps() {
     if (saveTimeout) clearTimeout(saveTimeout);
+    const previous = { inner: layout.inner_gap, outer: layout.outer_gap };
     saveTimeout = setTimeout(() => {
-      invoke("set_layout_gaps", { inner: state.inner_gap, outer: state.outer_gap }).catch(() => {});
+      invoke("set_layout_gaps", { inner: layout.inner_gap, outer: layout.outer_gap }).catch(() => {
+        layout.inner_gap = previous.inner;
+        layout.outer_gap = previous.outer;
+      });
     }, 300);
   }
 </script>
@@ -80,6 +106,9 @@
     <PopoverHeader icon={LayoutPanelLeft} title={$t("sh.layout.title")} />
   {/snippet}
 
+  {#if !read}
+    <PopoverErrorBanner message={$t("sh.layout.stateUnknown")} />
+  {:else}
   <!-- Mode Selector. The pills carry their own text labels, so no
        extra tooltips: "Single" is the monocle mode (one window at a
        time fills the workspace) in plain words. -->
@@ -87,7 +116,7 @@
     <div class="mode-pills">
       <button
         class="mode-pill"
-        class:active={state.mode === "floating"}
+        class:active={layout.mode === "floating"}
         onclick={() => setMode("floating")}
       >
         <Layers size={16} strokeWidth={1.5} />
@@ -95,7 +124,7 @@
       </button>
       <button
         class="mode-pill"
-        class:active={state.mode === "tiling"}
+        class:active={layout.mode === "tiling"}
         onclick={() => setMode("tiling")}
       >
         <LayoutPanelLeft size={16} strokeWidth={1.5} />
@@ -103,7 +132,7 @@
       </button>
       <button
         class="mode-pill"
-        class:active={state.mode === "monocle"}
+        class:active={layout.mode === "monocle"}
         onclick={() => setMode("monocle")}
       >
         <Maximize size={16} strokeWidth={1.5} />
@@ -119,7 +148,7 @@
     <span class="gap-label">{$t("sh.layout.gaps")}</span>
     <div class="gap-slider-wrap">
       <FillSlider
-        value={state.inner_gap}
+        value={layout.inner_gap}
         min={0}
         max={24}
         step={1}
@@ -128,14 +157,14 @@
         oninput={(v) => setGap(v)}
       />
     </div>
-    <span class="gap-value">{$t("sh.layout.gapValue", { px: state.inner_gap })}</span>
+    <span class="gap-value">{$t("sh.layout.gapValue", { px: layout.inner_gap })}</span>
   </div>
 
   <!-- Smart Gaps -->
   <div class="toggle-row">
     <span class="toggle-label">{$t("sh.layout.smartGaps")}</span>
     <Switch
-      value={state.smart_gaps}
+      value={layout.smart_gaps}
       onchange={toggleSmartGaps}
       ariaLabel={$t("sh.layout.smartGaps")}
     />
@@ -148,15 +177,16 @@
     in tiling/monocle and switching back to floating preserves the
     value silently.
   -->
-  {#if state.mode === "tiling" || state.mode === "monocle"}
+  {#if layout.mode === "tiling" || layout.mode === "monocle"}
     <div class="toggle-row">
       <span class="toggle-label">{$t("sh.layout.titleBars")}</span>
       <Switch
-        value={state.tiled_headers}
+        value={layout.tiled_headers}
         onchange={toggleTiledHeaders}
         ariaLabel={$t("sh.layout.tiledTitleBars")}
       />
     </div>
+  {/if}
   {/if}
 </ShellPopover>
 

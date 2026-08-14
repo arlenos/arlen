@@ -331,10 +331,12 @@ const messages: Catalogs = {
     "sh.bat.remaining": "{$time} remaining",
     "sh.bat.onBattery": "On battery",
     "sh.bat.noBattery": "No battery found",
+    "sh.bat.stateUnknown": "Could not read the battery state.",
     "sh.bat.powerMode": "Power Mode",
 
     // Layout popover
     "sh.layout.title": "Layout",
+    "sh.layout.stateUnknown": "Could not read the window layout.",
     "sh.layout.float": "Float",
     "sh.layout.tile": "Tile",
     "sh.layout.single": "Single",
@@ -797,9 +799,11 @@ const messages: Catalogs = {
     "sh.bat.remaining": "noch {$time}",
     "sh.bat.onBattery": "Im Akkubetrieb",
     "sh.bat.noBattery": "Kein Akku gefunden",
+    "sh.bat.stateUnknown": "Der Akkustatus konnte nicht gelesen werden.",
     "sh.bat.powerMode": "Energiemodus",
 
     "sh.layout.title": "Anordnung",
+    "sh.layout.stateUnknown": "Die Fensteranordnung konnte nicht gelesen werden.",
     "sh.layout.float": "Schwebend",
     "sh.layout.tile": "Gekachelt",
     "sh.layout.single": "Einzeln",
