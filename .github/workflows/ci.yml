@@ -312,6 +312,8 @@ jobs:
           python3 dev/scripts/check-wired.py
           python3 dev/scripts/check-binary-names.py
           node dev/scripts/test-check-binary-names.mjs
+          python3 dev/scripts/check-components-rendered.py
+          node dev/scripts/test-check-components-rendered.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
