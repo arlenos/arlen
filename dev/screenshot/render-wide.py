@@ -169,6 +169,9 @@ class Render:
                       f" {self.args.require_width}px and got {css_w}px."
                       f" No screenshot written.", 4)
             return
+        if self.args.probe:
+            self.run_probe()
+            return
         if self.args.axe and not self.args.type and not self.args.open:
             self.run_axe()
             return
@@ -180,6 +183,31 @@ class Render:
             self.click_open()
             return
         self.snapshot()
+
+    def run_probe(self):
+        """Print one expression's value from the rendered page, and shoot nothing.
+
+        Every DOM question so far has been answered by grepping the source, which
+        works until the markup in question is assembled from a shared component -
+        then the source says what each part contributes and nothing says what the
+        page IS. axe reported a `ul` with the wrong children in two apps and named
+        neither; one app's own markup was clean, so the answer was only ever going
+        to come from the render.
+
+        Deliberately narrow in what it returns, not in what it may ask: the value
+        is stringified, so a probe reports a finding rather than driving the page.
+        """
+        js = f"String((() => {{ return ({self.args.probe}); }})())"
+        self.view.evaluate_javascript(js, -1, None, None, None, self.on_probe)
+
+    def on_probe(self, view, result):
+        try:
+            print(view.evaluate_javascript_finish(result).to_string())
+        except Exception as e:  # noqa: BLE001
+            self.fail(f"probe failed: {e}", 10)
+            return
+        self.status = 0
+        self.app.quit()
 
     def run_axe(self):
         """Inject axe-core into the rendered page and report what it finds.
@@ -389,6 +417,9 @@ def main():
                          " only exists once a menu or panel is open. Repeatable:"
                          " each is clicked in turn, so a press INSIDE an opened"
                          " menu is reachable")
+    ap.add_argument("--probe", default=None,
+                    help="evaluate one JS expression against the rendered page and"
+                         " print its value; writes no image")
     ap.add_argument("--axe", action="store_true",
                     help="run axe-core over the rendered page and print the"
                          " violations; exits non-zero if any are found")
