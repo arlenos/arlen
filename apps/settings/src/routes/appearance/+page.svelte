@@ -199,7 +199,9 @@
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    /* 50, measured on the rendered page: 45% of the foreground over #0f0f0f is
+       #797979 for 4.40, under the 4.5 floor at this size. */
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
     padding: 0 0.25rem 0.25rem;
   }
 

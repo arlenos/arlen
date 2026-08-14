@@ -83,7 +83,8 @@
   }
   .or-hint {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    /* 50: 45% measured 4.40 against the page, just under the floor. */
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .or-control {
     display: inline-flex;
