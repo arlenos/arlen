@@ -113,12 +113,27 @@ export const facetBase = writable("/");
 /// change so they survive a restart.
 export const savedFolders = writable<SmartFolder[]>([]);
 
+/// True when the last write of the Smart Folders did not reach disk, so what the
+/// sidebar shows will not survive a restart.
+///
+/// The store promises the opposite in its own doc - "persisted on every change so
+/// they survive a restart" - and a refused write used to keep that promise on
+/// screen and break it on disk. The person finds the folder gone next launch with
+/// nothing having said anything.
+export const foldersUnsaved = writable(false);
+
 // Persist on change, but only after the initial load has run, so restoring the
 // saved set on start doesn't immediately echo straight back to disk.
 let persistReady = false;
 savedFolders.subscribe((list) => {
   if (!persistReady) return;
-  void invoke("files_smart_folders_save", { folders: list }).catch(() => {});
+  // Not reverted: the person just made this folder and taking it off screen
+  // would lose the work they did to define it. It stays, and the sidebar says
+  // it is not saved - which is the true statement about both.
+  invoke("files_smart_folders_save", { folders: list }).then(
+    () => foldersUnsaved.set(false),
+    () => foldersUnsaved.set(true),
+  );
 });
 
 function emptySelection(): Record<FacetGroup, Set<string>> {

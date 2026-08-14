@@ -255,6 +255,7 @@ const messages: Catalogs = {
     "f.sidebar.recent": "Recent",
     "f.sidebar.trash": "Trash",
     "f.sidebar.placesUnavailable": "Your places could not be read, so none are listed.",
+    "f.sidebar.foldersUnsaved": "Not saved. These will be gone after a restart.",
 
     // Tabs
     "f.tab.close": "Close tab",
@@ -542,6 +543,7 @@ const messages: Catalogs = {
     "f.sidebar.recent": "Zuletzt",
     "f.sidebar.trash": "Papierkorb",
     "f.sidebar.placesUnavailable": "Deine Orte konnten nicht gelesen werden, deshalb steht hier keiner.",
+    "f.sidebar.foldersUnsaved": "Nicht gespeichert. Nach einem Neustart sind sie weg.",
 
     "f.tab.close": "Tab schließen",
 

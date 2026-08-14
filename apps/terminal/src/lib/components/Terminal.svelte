@@ -416,7 +416,21 @@
     saveOutput: () => {
       // First cut: write to a timestamped file (~/Downloads, else $HOME). A
       // save-as dialog is the later enhancement (reuses the same write).
-      if (menuBlock) void terminalSaveOutput(blockOutput(menuBlock)).catch(() => {});
+      //
+      // BOTH outcomes go into the grid, which is the only surface this menu has.
+      // The command answers with the path it chose and the menu was throwing it
+      // away along with the failure, so a person pressing Save got the same
+      // nothing either way and no idea where to look for a file that may not
+      // exist. `get`, not `$t`: this runs in a menu callback.
+      if (!menuBlock) return;
+      void terminalSaveOutput(blockOutput(menuBlock)).then(
+        (path) => {
+          term?.write(`\r\n\x1b[32m${get(messages)("term.saved", { path })}\x1b[0m\r\n`);
+        },
+        () => {
+          term?.write(`\r\n\x1b[31m${get(messages)("term.saveFailed")}\x1b[0m\r\n`);
+        },
+      );
     },
   };
 
