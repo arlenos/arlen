@@ -8,6 +8,7 @@
   import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Coffee } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { onMount } from "svelte";
 
   let active = $state(false);
@@ -26,9 +27,9 @@
   }
 
   function handleClick() {
-    invoke("quick_action_run", { id: "qa.toggle_caffeine" })
-      .then(() => refresh())
-      .catch(() => {});
+    void shellAction("quick_action_run", { id: "qa.toggle_caffeine" }, "sh.badge.errCaffeine").then(
+      () => refresh(),
+    );
   }
 </script>
 

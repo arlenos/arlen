@@ -8,6 +8,7 @@
   import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Sunset } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
@@ -32,9 +33,9 @@
   }
 
   function handleClick() {
-    invoke("quick_action_run", { id: "qa.toggle_night_light" })
-      .then(() => refresh())
-      .catch(() => {});
+    void shellAction("quick_action_run", { id: "qa.toggle_night_light" }, "sh.badge.errNightLight").then(
+      () => refresh(),
+    );
   }
 </script>
 

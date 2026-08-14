@@ -1,4 +1,4 @@
-/// Run a quick-settings tile's action and say something if it does not take.
+/// Run a shell control's action and say something if it does not take.
 ///
 /// Every tile swallowed its own click - `try { invoke(...) } catch {}` in eight
 /// files - so the grid was a page of controls that could each do nothing without
@@ -10,8 +10,13 @@
 /// from the backend (`quick_action_run` emits `arlen://toast`). This is the same
 /// notice from the frontend side rather than a second invention.
 ///
-/// Each tile passes its own message key, because the person clicked a named thing:
-/// "Bluetooth could not be turned on" is worth more than "that did not work".
+/// Each caller passes its own message key, because the person clicked a named
+/// thing: "Bluetooth did not change" is worth more than "that did not work".
+///
+/// It was `quicksettings/action.ts` for about ten minutes, until the top-bar
+/// badges turned out to need exactly the same thing - a small control, no room
+/// for a line, on a surface that may be gone before the answer arrives. A helper
+/// named after the first caller lies to the second.
 
 import { invoke } from "@tauri-apps/api/core";
 import { get } from "svelte/store";
@@ -22,10 +27,10 @@ import { t } from "$lib/i18n/messages";
  * Invoke `command`, and on refusal raise `failureKey` as a toast.
  *
  * Returns whether it took, so a caller that applied something optimistically can
- * put it back. Never throws: a tile handler is an event callback, and an
- * unhandled rejection there goes exactly where this exists to stop it going.
+ * put it back. Never throws: these run in event callbacks, and an unhandled
+ * rejection there goes exactly where this exists to stop it going.
  */
-export async function tileAction(
+export async function shellAction(
   command: string,
   args: Record<string, unknown>,
   failureKey: string,

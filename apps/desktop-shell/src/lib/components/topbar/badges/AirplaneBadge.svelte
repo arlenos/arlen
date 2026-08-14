@@ -6,6 +6,7 @@
   import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Plane } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
@@ -25,9 +26,9 @@
   }
 
   function handleClick() {
-    invoke("quick_action_run", { id: "qa.toggle_airplane" })
-      .then(() => refresh())
-      .catch(() => {});
+    void shellAction("quick_action_run", { id: "qa.toggle_airplane" }, "sh.tile.errAirplane").then(
+      () => refresh(),
+    );
   }
 </script>
 
