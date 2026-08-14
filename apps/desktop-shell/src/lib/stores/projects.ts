@@ -7,6 +7,8 @@
 
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "svelte-sonner";
+import { t } from "$lib/i18n/messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -103,10 +105,16 @@ export async function activateFocus(project: Project): Promise<boolean> {
     });
     return true;
   } catch (e) {
-    // Rollback on failure.
+    // Rollback on failure - and SAY so. The rollback was already right; what was
+    // missing is that every caller drops the boolean, and the waypointer closes
+    // the moment it is called. So a failed activation looked exactly like a
+    // successful one: the launcher shuts, the chip never appears, and nothing in
+    // between explains it. The toast is the channel for precisely this - the
+    // surface that started the action is gone before the answer arrives.
     focusState.set({ ...EMPTY_FOCUS });
     removeFocusAccent();
     console.error("[projects] activate focus failed:", e);
+    toast.error(get(t)("sh.focus.errActivate"));
     return false;
   }
 }
@@ -118,7 +126,12 @@ export async function deactivateFocus(): Promise<boolean> {
     await invoke("deactivate_focus");
     return true;
   } catch (e) {
+    // The state is already cleared, so the chip is gone and the accent is back -
+    // but the daemon still holds the focus, which means notifications stay
+    // suppressed while the shell shows no reason for it. The most confusing of
+    // the three, and the one most worth a word.
     console.error("[projects] deactivate focus failed:", e);
+    toast.error(get(t)("sh.focus.errDeactivate"));
     return false;
   }
 }
@@ -155,7 +168,13 @@ export function initProjects(): () => void {
         applyFocusAccent(state.accentColor);
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      // A focus mode the person set and that does not come back is a setting
+      // silently lost - and with it the notification suppression that went with
+      // it. Nothing on screen is WRONG afterwards, which is why it needs saying:
+      // there is no other sign it happened.
+      toast.error(get(t)("sh.focus.errRestore"));
+    });
 
   const pending: Promise<UnlistenFn>[] = [
     // Project lifecycle events.
