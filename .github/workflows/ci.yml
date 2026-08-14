@@ -316,6 +316,8 @@ jobs:
           node dev/scripts/test-check-components-rendered.mjs
           python3 dev/scripts/check-default-then-write.py
           node dev/scripts/test-check-default-then-write.mjs
+          python3 dev/scripts/check-subscribe-scope.py
+          node dev/scripts/test-check-subscribe-scope.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
