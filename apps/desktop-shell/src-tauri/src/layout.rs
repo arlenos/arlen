@@ -94,10 +94,29 @@ pub fn get_layout_state() -> LayoutState {
 /// Update the [layout] section in compositor.toml.
 ///
 /// Reads the existing file, updates only layout fields, writes back.
-fn update_layout_field(key: &str, value: toml::Value) {
+/// Set one `[layout]` key in the compositor config.
+///
+/// It REFUSES rather than writing when the existing file cannot be read or
+/// parsed, and that is the whole point of the function's shape. The read used to
+/// be `read_to_string(..).unwrap_or_default()` into
+/// `from_str(..).unwrap_or_default()`, which turns an unreadable or malformed
+/// file into an EMPTY TABLE - and the write below puts that table back over the
+/// file. One syntax error from hand-editing `compositor.toml`, plus one drag of
+/// the gaps slider, and every keybinding, window rule, xkb setting and system
+/// action in it is replaced by a four-line `[layout]` block. Silently, because
+/// the write was `let _ =`.
+///
+/// An ABSENT file is different and still fine: nobody has configured anything,
+/// so an empty table is the truth and the write creates it.
+fn update_layout_field(key: &str, value: toml::Value) -> Result<(), String> {
     let path = config_path();
-    let content = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut table: toml::Table = toml::from_str(&content).unwrap_or_default();
+    let content = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let mut table: toml::Table = toml::from_str(&content)
+        .map_err(|e| format!("{} is not readable as TOML, so it was left alone: {e}", path.display()))?;
 
     let layout = table
         .entry("layout".to_string())
@@ -106,10 +125,10 @@ fn update_layout_field(key: &str, value: toml::Value) {
         t.insert(key.to_string(), value);
     }
 
-    if let Ok(out) = toml::to_string_pretty(&table) {
-        let _ = std::fs::write(&path, out);
-    }
+    let out = toml::to_string_pretty(&table).map_err(|e| e.to_string())?;
+    std::fs::write(&path, out).map_err(|e| format!("{}: {e}", path.display()))?;
     invalidate_layout_cache();
+    Ok(())
 }
 
 /// Minimum and maximum accepted gap values (pixels). Matches the slider
@@ -129,16 +148,20 @@ fn clamp_gap(name: &str, v: i32) -> i32 {
     clamped
 }
 
-/// Set the gaps. Values outside `[GAP_MIN, GAP_MAX]` are clamped with a
-/// warning; the command never rejects so the UI doesn't have to handle
-/// an error case for a hardware-impossible input.
+/// Set the gaps. Values outside `[GAP_MIN, GAP_MAX]` are clamped with a warning
+/// rather than rejected, so the UI need not handle a hardware-impossible input.
+///
+/// A failed WRITE is different from an out-of-range input and does reject: the
+/// caller has a slider showing a number the file does not contain, and it can
+/// only put it back if it hears.
 #[tauri::command]
-pub fn set_layout_gaps(inner: i32, outer: i32) {
+pub fn set_layout_gaps(inner: i32, outer: i32) -> Result<(), String> {
     let inner = clamp_gap("inner_gap", inner);
     let outer = clamp_gap("outer_gap", outer);
-    update_layout_field("inner_gap", toml::Value::Integer(inner as i64));
-    update_layout_field("outer_gap", toml::Value::Integer(outer as i64));
+    update_layout_field("inner_gap", toml::Value::Integer(inner as i64))?;
+    update_layout_field("outer_gap", toml::Value::Integer(outer as i64))?;
     log::info!("layout: gaps set to inner={inner} outer={outer}");
+    Ok(())
 }
 
 /// Set the layout mode for the active workspace.
@@ -165,9 +188,10 @@ pub fn set_layout_mode(
 
 /// Set smart gaps.
 #[tauri::command]
-pub fn set_layout_smart_gaps(enabled: bool) {
-    update_layout_field("smart_gaps", toml::Value::Boolean(enabled));
+pub fn set_layout_smart_gaps(enabled: bool) -> Result<(), String> {
+    update_layout_field("smart_gaps", toml::Value::Boolean(enabled))?;
     log::info!("layout: smart_gaps={enabled}");
+    Ok(())
 }
 
 /// Toggle compositor-rendered header rendering on tiled SSD windows.
@@ -177,7 +201,8 @@ pub fn set_layout_smart_gaps(enabled: bool) {
 /// Stacks always keep their tab-bar header (functional UI), and floating
 /// windows are unaffected.
 #[tauri::command]
-pub fn set_layout_tiled_headers(enabled: bool) {
-    update_layout_field("tiled_headers", toml::Value::Boolean(enabled));
+pub fn set_layout_tiled_headers(enabled: bool) -> Result<(), String> {
+    update_layout_field("tiled_headers", toml::Value::Boolean(enabled))?;
     log::info!("layout: tiled_headers={enabled}");
+    Ok(())
 }

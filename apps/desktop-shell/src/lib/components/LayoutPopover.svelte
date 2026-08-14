@@ -4,6 +4,7 @@
 
   import { activePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
   import { Layers, LayoutPanelLeft, Maximize } from "lucide-svelte";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
@@ -73,19 +74,32 @@
     persistGaps();
   }
 
+  // These three reverts were written correctly and could never run: the commands
+  // returned `()`, so the promise never rejected. They can now - the writer
+  // refuses rather than replacing a config it could not parse - which makes the
+  // revert live, and a revert on its own is a switch sliding back for no stated
+  // reason. `shellAction` carries the sentence; the panel has no room for one.
   function toggleSmartGaps() {
     const previous = layout.smart_gaps;
     layout.smart_gaps = !previous;
-    invoke("set_layout_smart_gaps", { enabled: layout.smart_gaps }).catch(() => {
-      layout.smart_gaps = previous;
+    void shellAction(
+      "set_layout_smart_gaps",
+      { enabled: layout.smart_gaps },
+      "sh.layout.errSave",
+    ).then((ok) => {
+      if (!ok) layout.smart_gaps = previous;
     });
   }
 
   function toggleTiledHeaders() {
     const previous = layout.tiled_headers;
     layout.tiled_headers = !previous;
-    invoke("set_layout_tiled_headers", { enabled: layout.tiled_headers }).catch(() => {
-      layout.tiled_headers = previous;
+    void shellAction(
+      "set_layout_tiled_headers",
+      { enabled: layout.tiled_headers },
+      "sh.layout.errSave",
+    ).then((ok) => {
+      if (!ok) layout.tiled_headers = previous;
     });
   }
 
@@ -93,9 +107,15 @@
     if (saveTimeout) clearTimeout(saveTimeout);
     const previous = { inner: layout.inner_gap, outer: layout.outer_gap };
     saveTimeout = setTimeout(() => {
-      invoke("set_layout_gaps", { inner: layout.inner_gap, outer: layout.outer_gap }).catch(() => {
-        layout.inner_gap = previous.inner;
-        layout.outer_gap = previous.outer;
+      void shellAction(
+        "set_layout_gaps",
+        { inner: layout.inner_gap, outer: layout.outer_gap },
+        "sh.layout.errSave",
+      ).then((ok) => {
+        if (!ok) {
+          layout.inner_gap = previous.inner;
+          layout.outer_gap = previous.outer;
+        }
       });
     }, 300);
   }
