@@ -156,6 +156,20 @@ console.log("subscribe scope:");
   );
 }
 {
+  // Declared-and-empty is the CORRECT end state for an app that touches no bus:
+  // it keeps a system-tier app bounded instead of exempt. Reporting it would
+  // have the gate nagging about the very shape the profile work aims at.
+  const r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]:
+      '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\npublish = []\nsubscribe = []\n',
+    "apps/demo/src/quiet.rs": "pub fn nothing() {}\n",
+  });
+  check(
+    "an empty grant on an app that uses the bus for nothing is silent",
+    r.code === 0 && !r.out.includes("grants subscribe") && !r.out.includes("grants publish"),
+  );
+}
+{
   const r = run({ "README.md": "no profiles here\n" });
   check("an empty tree refuses rather than passing", r.code === 2);
   check("and says nothing was read", r.out.includes("NOTHING WAS READ"));

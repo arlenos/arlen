@@ -252,7 +252,12 @@ def main() -> int:
             continue
 
         wanted = subscriptions_of(directory, helpers) if subscribe is not None else set()
-        if subscribe is not None and not wanted:
+        # An EMPTY list granting nothing to an app that subscribes to nothing is
+        # the correct end state, not a finding - it is how a profile says "hears
+        # nothing" while staying declared, which is what keeps a system-tier app
+        # bounded instead of exempt. Only a non-empty grant with nothing behind
+        # it is worth a word.
+        if subscribe and not wanted:
             # An UNUSED grant, which is the other direction and not a break: extra
             # scope is permissive, so nothing goes quiet. It is still worth saying,
             # because "erring narrow" is what these profiles claim about themselves
@@ -284,7 +289,7 @@ def main() -> int:
         # The publish half. Same silence, other direction: the event is dropped
         # and the producer, speaking a fire-and-forget protocol, is never told.
         emitted = publishes_of(directory)
-        if publish and not emitted:
+        if publish and not emitted:  # non-empty only, same reason as above
             # The mirror of the unused-subscribe note. Reporting one and not the
             # other would make the gate quietly one-eyed, and an unused publish
             # grant is the likelier paste: publish and subscribe lists travel
