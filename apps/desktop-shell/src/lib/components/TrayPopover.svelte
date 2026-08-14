@@ -7,6 +7,7 @@
   import { Layers } from "lucide-svelte";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
+  import PopoverErrorBanner from "$lib/components/shared/PopoverErrorBanner.svelte";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import SniContextMenuContent from "$lib/components/SniContextMenuContent.svelte";
 
@@ -25,19 +26,33 @@
 
   let items = $state<SniItem[]>([]);
   let loading = $state(false);
+  /// A message key, or null. "No background apps" and "the list could not be
+  /// read" are the same empty list and two different facts, and the first one is
+  /// a claim about what the person is running.
+  let error = $state<string | null>(null);
 
   async function loadItems() {
     loading = true;
+    error = null;
     try {
       items = await invoke<SniItem[]>("get_sni_items");
-    } catch {}
+    } catch {
+      items = [];
+      error = "sh.tray.stateUnknown";
+    }
     loading = false;
   }
 
   async function handleActivate(service: string) {
     try {
       await invoke("activate_sni_item", { service });
-    } catch {}
+    } catch {
+      // Do NOT close on a failure. Closing was the same acknowledgement a
+      // working click gets, so a dead item answered exactly like a live one -
+      // positive feedback for something that did not happen.
+      error = "sh.tray.errActivate";
+      return;
+    }
     closePopover();
   }
 
@@ -57,8 +72,15 @@
     <PopoverHeader icon={Layers} title={$t("sh.tray.title")} />
   {/snippet}
 
+  {#if error}
+    <PopoverErrorBanner message={$t(error)} />
+  {/if}
+
   {#if loading}
     <div class="tray-empty">{$t("sh.tray.loading")}</div>
+  {:else if error}
+    <!-- The banner above already said it; an "empty" line under it would claim
+         the list is empty, which is the thing we do not know. -->
   {:else if items.length === 0}
     <div class="tray-empty">{$t("sh.tray.empty")}</div>
   {:else}
