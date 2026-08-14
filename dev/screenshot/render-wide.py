@@ -99,10 +99,24 @@ class Render:
         self.win.fullscreen()
         self.win.present()
         self.view.connect("load-changed", self.on_load)
+        # A page that could not be fetched still "finishes loading": WebKit swaps
+        # in its own error document and every later step runs against THAT. It
+        # cost a whole axe report - two confident violations about a page whose
+        # `app.html` plainly had both, because the dev server was not up and axe
+        # had audited WebKit's error page. A checker pointed at nothing answers
+        # about nothing, which is the same rule `--open` already follows when its
+        # selector matches no element.
+        self.view.connect("load-failed", self.on_load_failed)
         self.view.load_uri(self.args.url)
         # A page that never finishes loading would otherwise hang the harness
         # forever, which in an unattended sweep looks like a machine that died.
         GLib.timeout_add_seconds(self.args.timeout, self.on_timeout)
+
+    def on_load_failed(self, view, event, failing_uri, error):
+        self.fail(f"refusing: {failing_uri} did not load ({error.message}). "
+                  f"Nothing was captured; anything measured here would be about "
+                  f"WebKit's error page.", 9)
+        return True  # handled: do not let the error document render
 
     def on_timeout(self):
         self.fail(f"gave up after {self.args.timeout}s:"

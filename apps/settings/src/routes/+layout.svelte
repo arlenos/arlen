@@ -8,7 +8,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import AppSidebar from "$lib/components/AppSidebar.svelte";
   import SiteHeader from "$lib/components/SiteHeader.svelte";
-  import { dir, locale } from "$lib/i18n/messages";
+  import { dir, locale, t } from "$lib/i18n/messages";
   import { applyDevLocale } from "@arlen/ui-kit/i18n";
   import {
     SidebarProvider,
@@ -225,6 +225,12 @@
     setTimeout(() => el.classList.remove("setting-highlight"), 2500);
   }
 </script>
+
+<svelte:head>
+  <!-- The document title: what a screen reader announces for the window
+       and what a task switcher shows. -->
+  <title>{$t("s.app.title")}</title>
+</svelte:head>
 
 <!-- A display:contents wrapper carries the reading direction to the whole shell
      (sidebar, header, content) without adding a layout box. -->

@@ -180,7 +180,21 @@
       for (const dispose of disposers) dispose();
     };
   });
+  import { t } from "$lib/i18n/messages";
 </script>
+
+<svelte:head>
+  <!-- Three windows share this layout, so the title is which one this is:
+       a task switcher showing three entries called "Arlen" is no better
+       than three with no name at all. -->
+  <title>
+    {windowLabel === "waypointer"
+      ? $t("sh.app.title.waypointer")
+      : windowLabel === "consent"
+        ? $t("sh.app.title.consent")
+        : $t("sh.app.title")}
+  </title>
+</svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
 

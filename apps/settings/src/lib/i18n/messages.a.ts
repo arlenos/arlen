@@ -5,6 +5,7 @@ import type { Catalogs } from "@arlen/ui-kit/i18n";
 
 export const a: Catalogs = {
   en: {
+    "s.app.title": "Settings",
     "s.a11y.zoom.continuously": "Continuously",
     "s.a11y.zoom.onEdge": "On edge",
     "s.a11y.zoom.centered": "Centered",
@@ -811,6 +812,8 @@ export const a: Catalogs = {
     "s.profile.deleteAction": "Delete",
   },
   de: {
+    "s.app.title": "Einstellungen",
+
     "s.a11y.zoom.continuously": "Fortlaufend",
     "s.a11y.zoom.onEdge": "Am Rand",
     "s.a11y.zoom.centered": "Zentriert",
