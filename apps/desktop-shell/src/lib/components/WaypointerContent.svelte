@@ -1361,7 +1361,10 @@
     padding: 6px 12px;
     border-top: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
+    /* 50, measured on the launcher's own ground (#0a0a0a, darker than an app
+       window): 45% is #767676 there for 4.36, just under the floor. The hints
+       still sit well behind the results at 130 grey. */
+    color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
   }
 
   /* Suppress pointer hover selection while navigating with keyboard. */
