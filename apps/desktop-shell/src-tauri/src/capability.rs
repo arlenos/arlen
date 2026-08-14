@@ -99,8 +99,15 @@ pub(crate) fn ai_config_path() -> std::path::PathBuf {
 }
 
 /// Read the AI capability context for the launcher line. Never errors: an
-/// unreadable or malformed config yields the fail-closed defaults so the line
-/// always renders something truthful.
+/// unreadable or malformed config yields the fail-closed defaults, which report
+/// the AI as off.
+///
+/// That matters for what the person sees, because the line is not always shown.
+/// A status line renders only in the two failing states - off, or the backend not
+/// answering - and the healthy state is silent, which is the rule across the
+/// system rather than this surface's preference. So the fail-closed default does
+/// not make the line "always truthful"; it puts an unreadable config into the
+/// state that speaks, rather than passing it off as a working one.
 #[tauri::command]
 pub async fn ai_capability() -> Capability {
     let defaults = Capability {
