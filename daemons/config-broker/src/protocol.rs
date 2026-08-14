@@ -91,6 +91,29 @@ pub fn is_admitted_accessibility_writer(app_id: &str) -> bool {
     ADMITTED_ACCESSIBILITY_WRITERS.contains(&app_id)
         || (cfg!(debug_assertions)
             && matches!(app_id, "dev.arlen-settings" | "dev.arlen-desktop-shell"))
+        || dev_extra_admits(app_id)
+}
+
+/// A debug-only test affordance, copied from the audit daemon's
+/// (`daemons/audit-daemon/src/ingest/mod.rs`) because the problem is identical:
+/// an integration harness runs as its own cargo-run id, which is hash-suffixed
+/// (`dev.integration_backend_smoke-610fbc70…`) and so cannot be a static entry
+/// in any allowlist. Without this the harness cannot exercise the write path as
+/// itself, and the family-isolation property goes untested over a real socket.
+///
+/// EXACT match against ONE id, never a `dev.` prefix, and compiled out of a
+/// release build entirely - normal dev keeps the tightened allowlist. It admits
+/// the accessibility family only; the AI master switches are untouched by it,
+/// because a test affordance has no business reaching `executor_live`.
+#[cfg(debug_assertions)]
+fn dev_extra_admits(app_id: &str) -> bool {
+    std::env::var("ARLEN_CONFIG_BROKER_EXTRA_ADMIT").is_ok_and(|v| v == app_id)
+}
+
+/// Release builds have no such affordance.
+#[cfg(not(debug_assertions))]
+fn dev_extra_admits(_app_id: &str) -> bool {
+    false
 }
 
 /// A request to the broker.
@@ -260,6 +283,20 @@ mod tests_admission {
     fn settings_may_set_both() {
         assert!(is_admitted_writer("dev.arlen.settings"));
         assert!(is_admitted_accessibility_writer("dev.arlen.settings"));
+    }
+
+    #[test]
+    fn the_test_affordance_never_reaches_the_ai_switches() {
+        // The whole point of admitting one extra id for the accessibility family
+        // is that it stays there. If this ever passes for `is_admitted_writer`,
+        // a test harness can set `executor_live`.
+        let id = "dev.some_test-deadbeef";
+        std::env::set_var("ARLEN_CONFIG_BROKER_EXTRA_ADMIT", id);
+        let a11y = is_admitted_accessibility_writer(id);
+        let ai = is_admitted_writer(id);
+        std::env::remove_var("ARLEN_CONFIG_BROKER_EXTRA_ADMIT");
+        assert!(a11y, "the affordance admits the accessibility family");
+        assert!(!ai, "and must never admit the AI master switches");
     }
 
     #[test]

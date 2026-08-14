@@ -37,6 +37,9 @@ serde_json = "1"
 arlen-consent-contract = { path = "../../contracts/consent-contract" }
 arlen-consent-broker = { path = "../../daemons/consent-broker" }
 arlen-ai-core = { path = "../../ai/ai-core" }
+# The accessibility scenario speaks the config broker through the client the
+# shell and Settings link, rather than hand-rolling its framing.
+arlen-config-broker = { path = "../../daemons/config-broker" }
 
 [build-dependencies]
 prost-build = "0.13"
