@@ -31,6 +31,12 @@
   } = $props();
 
   let draft = $state("");
+  /// True when the last Enter was refused by the shell. Keeping the draft is
+  /// right - losing what someone typed is worse - but keeping it SILENTLY means
+  /// Enter did nothing and said nothing, which reads as a dead terminal rather
+  /// than a refused line. Cleared the moment they type again, because by then
+  /// they are already acting on it.
+  let notAccepted = $state(false);
   let inputRef = $state<HTMLInputElement | null>(null);
   const busy = writable(false);
 
@@ -69,6 +75,7 @@
     const text = draft;
     if (!text.trim() || $busy || !session) return;
     busy.set(true);
+    notAccepted = false;
     try {
       // Send the line WITH a trailing newline: the newline is the Enter
       // the shell needs to actually run the command. Without it the PTY
@@ -78,7 +85,10 @@
       draft = "";
       onsent?.();
     } catch {
-      // The shell did not accept the input; the draft stays put.
+      // The shell did not accept the input. The draft stays put AND the line
+      // below says so: a refusal nobody is told about is the same as a key that
+      // does nothing.
+      notAccepted = true;
     }
     busy.set(false);
   }
@@ -93,6 +103,7 @@
   /// Typing while scrolled up jumps the view back to the prompt, the
   /// way every terminal returns to the tape end on input.
   function onInput() {
+    notAccepted = false;
     inputRef?.scrollIntoView({ block: "nearest" });
   }
 </script>
@@ -118,6 +129,9 @@
         oninput={onInput}
       />
     </div>
+    {#if notAccepted}
+      <p class="ap-refused" role="alert">{$t("term.notAccepted")}</p>
+    {/if}
   </div>
 {/if}
 
@@ -132,6 +146,14 @@
     display: flex;
     align-items: baseline;
     gap: 8px;
+  }
+  /* Under the line rather than over it: the prompt keeps its place in the
+     stream, and the sentence reads as a note about the line just typed. */
+  .ap-refused {
+    margin: 4px 0 0;
+    padding-left: 20px;
+    font-size: var(--text-2xs);
+    color: color-mix(in srgb, var(--color-error, #f87171) 85%, var(--foreground));
   }
   /* Full strength: this is THE input spot; the resting block
      markers stay dimmed. Chevron from plain JetBrains Mono (the NF
