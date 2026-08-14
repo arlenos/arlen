@@ -57,7 +57,12 @@ install -Dm755 "$CARGO_TARGET_DIR/release/arlen-kg-probe" \
 # The check is right to: it cannot tell a temp-file cleanup from a phase quietly
 # deleting release content, and "plus, never minus" is worth more than the
 # convenience. Writing the file where it belongs needs no cleanup at all.
-mkdir -p "$DESTDIR/usr/lib/systemd/system"
+# Both directories, because the probe unit moved to `user/` on 15 Aug and the
+# `mkdir` did not follow it. The build died at `Directory nonexistent`, which is
+# the good version of that mistake: the trap put the previous image back and the
+# next boot would have been against an image that still had the root probe in it,
+# reporting the old answer for the new arrangement.
+mkdir -p "$DESTDIR/usr/lib/systemd/system" "$DESTDIR/usr/lib/systemd/user"
 cat > "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe.service" <<'UNIT'
 [Unit]
 Description=Ask the knowledge graph what it holds (verify image only)
@@ -103,7 +108,7 @@ StandardError=journal+console
 [Install]
 WantedBy=default.target
 UNIT
-chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-kg-probe.service"
+chmod 644 "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe.service"
 
 # And a read scope, or the probe asks and is refused.
 #
