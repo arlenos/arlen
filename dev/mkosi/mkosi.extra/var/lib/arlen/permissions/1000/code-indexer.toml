@@ -1,0 +1,27 @@
+# The code indexer's event-bus profile.
+#
+# WRITTEN BEFORE IT BROKE, which is the only reason it is not another silent
+# failure. Publish exemption stopped following the install tier on 14 Aug, so a
+# producer is now held to what it declares - and this daemon declared nothing
+# while `daemons/code-indexer/src` emits `code.indexed`. It has no profile at
+# all, so the grant would have been empty and the event dropped, with nothing
+# said to the producer.
+#
+# The boot that measured the publish half did not catch it: the daemon connects
+# as a CONSUMER at startup and only publishes once it has actually indexed
+# something, which nothing on a bare boot triggers. So the first symptom would
+# have been the code graph quietly never filling, on a machine where every log
+# line looks healthy. Found instead by listing every id the bus resolved against
+# every profile that exists, and asking which resolved ids have no file.
+#
+# Both halves measured rather than guessed. `code.indexed` is the one emit in its
+# source; `file.opened` is what it registered for on the 14 Aug boot
+# (`consumer registered app_id="code-indexer" ... subscribed=["file.opened"]`),
+# which is how it learns there is something to index.
+[info]
+app_id = "code-indexer"
+tier = "first-party"
+
+[event_bus]
+publish = ["code.indexed"]
+subscribe = ["file.opened"]
