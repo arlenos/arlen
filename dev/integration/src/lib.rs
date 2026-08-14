@@ -425,10 +425,16 @@ impl EphemeralStack {
     /// events dropped at publish and the consumer would see nothing for the
     /// wrong reason.
     ///
-    /// Only System-tier peers (`/usr/bin/arlen-*`, `/usr/lib/arlen/*`) are exempt
-    /// from these checks, and a test binary runs from `target/debug`, so it is
-    /// held to this profile exactly like a third-party app - which is what makes
-    /// it a faithful stand-in for one.
+    /// The two halves are exempted differently, and this used to say only the
+    /// first: PUBLISH is exempt for the named originators alone (the compositor
+    /// and the kernel layer, `PUBLISH_ORIGINATORS` in the bus), which stopped
+    /// being a tier question on 14 Aug; SUBSCRIBE is exempt for a system-tier
+    /// peer that declares nothing at all.
+    ///
+    /// A test binary runs from `target/debug` and is not an originator, so it is
+    /// held to this profile on both counts - which is what makes it a faithful
+    /// stand-in for a third-party app, and now for a first-party one too, since
+    /// those are no longer exempt either.
     pub fn seed_event_bus_profile(
         &self,
         publish: &[&str],
