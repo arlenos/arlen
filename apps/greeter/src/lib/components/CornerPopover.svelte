@@ -10,12 +10,27 @@
     label,
     align = "left",
     id,
+    role,
     children,
   }: {
     icon: Component<{ size?: number; strokeWidth?: number }>;
     label: string;
     align?: "left" | "right";
     id?: string;
+    /// The ARIA role for the panel, when the caller's content earns one.
+    ///
+    /// This used to be a hardcoded `role="menu"`, and it was wrong for one of
+    /// the two callers. An ARIA menu promises `menuitem` children and arrow-key
+    /// navigation; the power menu delivers both, the accessibility panel is a
+    /// title, some switches and a sentence. axe called it out as
+    /// `aria-required-children`, critical - a screen reader is told "menu" and
+    /// then finds nothing to step through, which in the panel that turns a
+    /// screen reader ON is the worst possible place for it.
+    ///
+    /// So the container makes no claim about content it does not own. A caller
+    /// whose children really are menu items passes `role="menu"`; everything
+    /// else gets a plain panel, which is what it is.
+    role?: string;
     children: Snippet<[() => void]>;
   } = $props();
 
@@ -38,7 +53,7 @@
 
 <div class="corner" class:align-right={align === "right"} bind:this={rootEl}>
   {#if open}
-    <div class="menu" role="menu">
+    <div class="menu" {role}>
       {@render children(close)}
     </div>
   {/if}
