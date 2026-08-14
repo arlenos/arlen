@@ -10,6 +10,8 @@
   import { tauriAvailable } from "$lib/tauri";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
+  import OpsOverlays from "$lib/components/OpsOverlays.svelte";
+  import { opError } from "$lib/stores/ops";
   import ProvenanceHalo from "$lib/components/ProvenanceHalo.svelte";
   import type { FileEntry } from "@arlen/ui-kit/components/browser";
 
@@ -70,6 +72,12 @@
   };
 
   let ready = $state(false);
+  onMount(() => {
+    // The op-error line has no data of its own: it renders whatever the last
+    // failed action put there, so the harness puts one there.
+    opError.set("Kingston USB is still in use, so it was not ejected");
+  });
+
   onMount(async () => {
     if (!tauriAvailable) {
       const { mockIPC } = await import("@tauri-apps/api/mocks");
@@ -172,6 +180,13 @@
     <FmStatusBar entries={[]} selected={[]} />
     <FmStatusBar entries={[]} selected={[]} readReason="denied" />
     <FmStatusBar entries={[]} selected={[]} readReason="unavailable" />
+  </section>
+  <!-- The op-error line, which is where a refused eject, a refused mount and a
+       failed pin now land. Before, each of those was a click that changed nothing
+       and said nothing. -->
+  <section class="bars">
+    <h2>Op-error line: an action that was refused</h2>
+    <OpsOverlays />
   </section>
 </div>
 
