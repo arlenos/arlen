@@ -71,12 +71,19 @@ pub struct GreeterA11y {
 /// tells the person - correctly and forever - that it could not save their
 /// choice.
 ///
-/// The pattern to copy is the config-broker's: one `dist/*.tmpfiles.conf`
-/// declaring the directory with its owner and mode. I have not written it,
-/// because it has to name a user, and which user the greeter runs as is part of
-/// the deployment that does not exist yet. Guessing `greeter` because greetd
-/// conventionally uses it would be the kind of plausible invention that produces
-/// a file nobody can write to.
+/// `apps/greeter/dist/arlen-greeter.tmpfiles.conf` is that entry. It names
+/// `_greetd`, which is not the guess this comment used to refuse to make: it is
+/// the system user greetd's own Debian package creates, and the user its shipped
+/// `/etc/greetd/config.toml` runs `[default_session]` as. Read off the package,
+/// not off a convention.
+///
+/// It is not installed anywhere yet, because nothing installs the greeter. This
+/// image's greetd runs `arlen-session` as `arlen` for both sessions and starts
+/// no greeter at all, so provisioning a directory here today would be setting a
+/// table for a program that is not coming. The file ships with the greeter so it
+/// arrives with it. Note it cannot be a unit's `StateDirectory=`, the way every
+/// other component in this tree gets its state directory: greetd spawns the
+/// greeter as a command, so there is no service for systemd to create one for.
 pub fn state_dir() -> PathBuf {
     #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var(STATE_DIR_ENV) {
