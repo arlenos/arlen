@@ -36,7 +36,13 @@
     isHex,
     normHex,
     type ColorRole,
+    loadPalette,
+    paletteLoaded,
+    paletteUnavailable,
   } from "$lib/stores/themeColors";
+  import { onMount } from "svelte";
+
+  onMount(() => void loadPalette());
 
   const common = COLOR_ROLES.filter((r) => r.tier === "common");
   const full = COLOR_ROLES.filter((r) => r.tier === "full");
@@ -51,6 +57,12 @@
   description={$t("s.col.desc")}
 >
   <SectionGrid>
+    <!-- Said before the rows, because the rows are what the sentence is about: a
+         palette that could not be read leaves them empty, and empty swatches on a
+         colour editor read as a theme with no colours rather than as silence. -->
+    {#if $paletteLoaded && $paletteUnavailable}
+      <p class="palette-unavailable span-full" role="alert">{$t("s.col.unavailable")}</p>
+    {/if}
     <div class="editor span-full">
     <div class="controls">
       <Section label={$t("s.col.contrast")}>
@@ -145,6 +157,11 @@
 <style>
   /* Stacked: the live preview sits on top, full width, and scrolls with the page
      (no side column, no sticky). */
+  .palette-unavailable {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-error, #f87171);
+  }
   .editor {
     display: flex;
     flex-direction: column;

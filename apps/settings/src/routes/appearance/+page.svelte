@@ -49,6 +49,7 @@
     isOverridden as isColOv,
     setColorOverride,
     resetColorOverride,
+    loadPalette,
   } from "$lib/stores/themeColors";
   import {
     overrides as geomOv,
@@ -66,7 +67,12 @@
   } from "$lib/stores/themeTypography";
   import { overrideSummary, resetAll } from "$lib/stores/themeOverrides";
 
-  onMount(loadThemes);
+  onMount(() => {
+    void loadThemes();
+    // The preview swatches are the active theme's real roles, not a house
+    // palette that happens to look plausible.
+    void loadPalette();
+  });
 
   const CUSTOMISE = [
     { href: "/appearance/wallpaper", titleKey: "s.appr.card.wallpaper", descKey: "s.appr.card.wallpaper.desc", icon: Image },

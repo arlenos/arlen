@@ -4,11 +4,17 @@
 /// `theme.toml`). The store tracks resolved-vs-override so the page can render the
 /// override mark + reset, and expose the effective colour for the live preview.
 ///
-/// Mock-vs-live: reads a fixture (the dark house palette) until the coder exposes
-/// the resolved per-role palette + the per-field override writes. The intended
-/// bridge is flagged for the coder; switching/editing is affordance-only here.
+/// Mock-vs-live: `theme_resolved_palette` now answers with the active theme's real
+/// roles, and `loadPalette` is the wire. The fixture below survives as the DEV
+/// starting value only - under vite there is no host, and a colour editor with no
+/// colours cannot be looked at. On metal it is never shown: the store starts empty
+/// and either fills from the theme or says it could not be read. It had been the
+/// starting value everywhere, and nothing ever replaced it, so five appearance
+/// pages rendered an invented palette permanently and the picker wrote overrides
+/// against roles the theme did not have.
 
 import { writable, derived, get } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
 
 /// One semantic colour role.
 export interface ColorRole {
@@ -72,7 +78,37 @@ const RESOLVED_FIXTURE: Record<string, string> = {
 
 /// The active theme's resolved colours, and the user's per-field overrides
 /// (sparse: only edited roles appear).
-export const resolved = writable<Record<string, string>>({ ...RESOLVED_FIXTURE });
+export const resolved = writable<Record<string, string>>(
+  import.meta.env.DEV ? { ...RESOLVED_FIXTURE } : {},
+);
+
+/// True once the palette has been read, either way. Until then the pages have
+/// nothing to say rather than something wrong to show.
+export const paletteLoaded = writable(false);
+
+/// True when the active theme's palette could not be read. Distinct from a theme
+/// with no overrides: one is a theme, the other is silence.
+export const paletteUnavailable = writable(false);
+
+/// Read the active theme's resolved roles. Call on mount from any appearance page.
+export async function loadPalette(): Promise<void> {
+  try {
+    const roles = await invoke<{ role: string; hex: string }[]>("theme_resolved_palette");
+    const out: Record<string, string> = {};
+    for (const r of roles) out[r.role] = r.hex;
+    resolved.set(out);
+    paletteUnavailable.set(false);
+  } catch {
+    // The fixture is NOT the answer to a failed read. Under vite the initial
+    // value already holds it and there is no host to ask, so leave it be; on
+    // metal say so rather than colour the page in something invented.
+    if (!import.meta.env.DEV) {
+      resolved.set({});
+      paletteUnavailable.set(true);
+    }
+  }
+  paletteLoaded.set(true);
+}
 export const overrides = writable<Record<string, string>>({});
 
 /// The effective palette: an override wins, else the theme's resolved value.
