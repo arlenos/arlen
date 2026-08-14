@@ -142,6 +142,14 @@ let visibleCount = 0;
 function onToastVisible() {
   visibleCount++;
   if (visibleCount === 1) {
+    // The fourth place that widens the input region, and the one with no answer
+    // yet. If this is refused the toast is drawn and readable, but its action
+    // buttons hand their clicks to the window behind - and unlike a popover
+    // there is nothing to revert: the notification arrived, and a toast about a
+    // toast failing is circular. The honest fix is to render the toast WITHOUT
+    // its actions when the region is not widened, which is a change to the toast
+    // component rather than to this call. Left deliberately, named rather than
+    // swallowed.
     invoke("set_notification_input_region", { expanded: true }).catch(
       () => {}
     );
