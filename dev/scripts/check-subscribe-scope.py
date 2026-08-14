@@ -52,8 +52,15 @@ through a hand-rolled `emit_to_event_bus` instead. Looking for the TYPE missed
 the BEHAVIOUR, which is exactly why this reads what is emitted rather than which
 API is imported.
 
-WHAT THIS CANNOT SEE: it matches the two literal shapes the tree uses today (a
-`subscribe(vec![...])` call and a comma-joined `SUBSCRIPTIONS` const). A
+THREE WAYS A TOPIC GETS SUBSCRIBED, and only the first is visible in the app:
+its own code, an SDK helper it calls by name, and a Tauri plugin it merely LINKS.
+The last was added on 14 Aug after an enforce boot named two patterns this check
+had reported as an unused grant - `tauri-plugin-shell` subscribes them from a
+private function that Tauri's plugin init calls, so no amount of reading the
+app's source finds them. Three profiles were wrong at once.
+
+WHAT THIS STILL CANNOT SEE: it matches the two literal shapes the tree uses today
+(a `subscribe(vec![...])` call and a comma-joined `SUBSCRIPTIONS` const). A
 subscription assembled at runtime from config escapes it. That is why finding
 NOTHING for an app that declares a subscribe list is an error rather than a pass:
 the check refuses to be silently vacuous, which is the failure mode it exists to
@@ -106,6 +113,10 @@ STRING = re.compile(r'"([^"]*)"')
 # the grant. Resolved rather than tabled: find the helpers, read what they ask
 # for, then credit any app that calls one.
 HELPER_FN = re.compile(r"pub\s+(?:async\s+)?fn\s+(\w+)[^{]*\{", re.S)
+
+# Any function with its visibility, so a plugin's PRIVATE subscribes can be told
+# from a library's public ones. See `plugin_subscriptions`.
+ANY_FN = re.compile(r"(?P<vis>pub\s+)?(?:async\s+)?fn\s+\w+[^{;]*\{", re.S)
 CONST_STR = re.compile(r'const\s+(\w+)\s*:\s*&str\s*=\s*"([^"]*)"')
 SKIP = ("/target/", "node_modules", "/.git/", "mkosi.builddir")
 
@@ -151,6 +162,75 @@ def body_of(text: str, start: int) -> str:
     return text[i:]
 
 
+def plugin_subscriptions(repo: Path) -> dict[str, set[str]]:
+    """Crate name -> topics it subscribes for any app that merely LINKS it.
+
+    The named-helper pass below needs the app to call the function, which is the
+    normal SDK shape. A Tauri plugin is not that shape: `tauri-plugin-shell`
+    subscribes `app.toolbar.action_invoked` and `app.shortcut.action_invoked`
+    inside `spawn_action_invoked_consumer`, which nothing in the app names -
+    Tauri's plugin init calls it. So the trigger is the DEPENDENCY, not a call.
+
+    Missing that cost three profiles at once (14 Aug). An enforce boot named the
+    knowledge app's two filtered patterns out loud, and this check had reported
+    the opposite: that the grant had no subscription behind it. Both readings
+    came from the same blind spot, which the note below already predicted -
+    "or made by a helper this cannot follow, looks like no subscription".
+
+    TWO THINGS NARROW IT, because the first cut was wrong in a way worth keeping
+    written down. Scanning every `sdk/*` crate for any `.subscribe(vec![...])`
+    credited `*` and `app.annotation.` to all three apps, because os-sdk is a
+    LIBRARY: its subscribe calls are ones a caller asks for, not ones the app
+    inherits by linking. So:
+
+      * only `tauri-plugin-*` crates, which are the ones Tauri initialises itself;
+      * only subscribes inside a NON-`pub` function, since a private function is
+        one the app cannot have chosen to call.
+
+    `spawn_action_invoked_consumer` is private and reached from plugin init,
+    which is exactly the shape that makes a subscription involuntary.
+    """
+    out: dict[str, set[str]] = {}
+    sdk = repo / "sdk"
+    if not sdk.is_dir():
+        return out
+    for cargo in sdk.glob("tauri-plugin-*/Cargo.toml"):
+        src = cargo.parent / "src"
+        if not src.is_dir():
+            continue
+        topics: set[str] = set()
+        for f in src.rglob("*.rs"):
+            text = f.read_text(encoding="utf-8", errors="replace")
+            for m in ANY_FN.finditer(text):
+                if m.group("vis"):
+                    continue
+                for call in SUBSCRIBE_CALL.finditer(body_of(text, m.end() - 1)):
+                    topics.update(t for t in STRING.findall(call.group("body")) if t)
+        if topics:
+            out[cargo.parent.name] = topics
+    return out
+
+
+def linked_plugin_topics(directory: Path, plugins: dict[str, set[str]]) -> set[str]:
+    """Topics an app inherits from the plugin crates its manifests depend on.
+
+    MATCHED ON THE PATH, not the dependency key, because those differ: the crate
+    lives in `sdk/tauri-plugin-shell` and every app depends on it as
+    `tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }`.
+    Keying on the name found nothing at all and the check stayed quietly green,
+    which is the failure mode it was written to avoid.
+    """
+    found: set[str] = set()
+    for cargo in directory.rglob("Cargo.toml"):
+        if any(s in str(cargo) for s in SKIP):
+            continue
+        text = cargo.read_text(encoding="utf-8", errors="replace")
+        for crate, topics in plugins.items():
+            if re.search(rf'path\s*=\s*"[^"]*/sdk/{re.escape(crate)}"', text):
+                found.update(topics)
+    return found
+
+
 def sdk_helpers(repo: Path) -> dict[str, set[str]]:
     """SDK functions that subscribe for their caller, and to what."""
     helpers: dict[str, set[str]] = {}
@@ -192,9 +272,16 @@ def publishes_of(directory: Path) -> set[str]:
     return found
 
 
-def subscriptions_of(directory: Path, helpers: dict[str, set[str]]) -> set[str]:
-    """Every topic or prefix this app registers with the bus."""
-    found: set[str] = set()
+def subscriptions_of(
+    directory: Path, helpers: dict[str, set[str]], plugins: dict[str, set[str]]
+) -> set[str]:
+    """Every topic or prefix this app registers with the bus.
+
+    Three ways it can get there: its own code, an SDK helper it calls by name,
+    and a plugin crate it merely links. The last one is invisible in the app's
+    source, which is exactly why it has to be read from the manifest.
+    """
+    found: set[str] = set(linked_plugin_topics(directory, plugins))
     for f in directory.rglob("*.rs"):
         if any(s in str(f) for s in SKIP):
             continue
@@ -221,6 +308,7 @@ def main() -> int:
     carried: list[str] = []
     checked = 0
     helpers = sdk_helpers(REPO)
+    plugins = plugin_subscriptions(REPO)
 
     for path in profiles:
         try:
@@ -251,7 +339,11 @@ def main() -> int:
             )
             continue
 
-        wanted = subscriptions_of(directory, helpers) if subscribe is not None else set()
+        wanted = (
+            subscriptions_of(directory, helpers, plugins)
+            if subscribe is not None
+            else set()
+        )
         # An EMPTY list granting nothing to an app that subscribes to nothing is
         # the correct end state, not a finding - it is how a profile says "hears
         # nothing" while staying declared, which is what keeps a system-tier app
