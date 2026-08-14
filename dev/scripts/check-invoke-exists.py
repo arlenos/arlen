@@ -259,6 +259,30 @@ def split_args(text: str) -> list[str]:
 # read as uncalled, which is the direction that costs nothing.
 WRAPPER = re.compile(r"(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)", re.S)
 
+# Helpers that invoke on their caller's behalf and live in ANOTHER file.
+#
+# Both wrapper finders above walk one file: they see `invoke(someVar)` and look
+# BACKWARDS through the same text for the declaration. A helper that is imported
+# is never declared in the file that calls it, so it is invisible to them, and
+# every command routed through it reads as invoked by nobody.
+#
+# That is not hypothetical. `shellAction` was extracted so a control could say
+# when its command was refused, and the moment a call moved onto it this check
+# reported the command as uncalled and told me to delete the entry that carries
+# it. A gate that says "delete this" about live code is worse than no gate.
+#
+# The value is the argument index holding the command name. One entry today; the
+# shape is here so the next helper is one line rather than a rediscovery.
+IMPORTED_INVOKERS: dict[str, int] = {
+    "shellAction": 0,
+}
+
+# The same literal-first-argument shape as `INVOKE`, for those helpers.
+IMPORTED_INVOKE = re.compile(
+    r"\b(?:%s)\s*\(\s*[\"'`]([A-Za-z_][A-Za-z0-9_]*)[\"'`]"
+    % "|".join(re.escape(n) for n in IMPORTED_INVOKERS)
+)
+
 HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
 
 # The commands with no host, as of 9 August, with what each one is. Keeping the
@@ -425,6 +449,7 @@ def main() -> int:
                     f.read_text(encoding="utf-8", errors="replace")
                 )
                 calls |= set(INVOKE.findall(text))
+                calls |= set(IMPORTED_INVOKE.findall(text))
                 assigned, wrapped = indirect_calls(text)
                 indirect |= assigned
                 # A wrapper call is a real call, so it is held to the real rule.

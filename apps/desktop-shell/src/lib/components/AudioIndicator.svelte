@@ -10,6 +10,7 @@
   /// truncates at `--topbar-applet-label-max-w`.
 
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
@@ -85,9 +86,12 @@
     if (!status) return;
     const delta = e.deltaY < 0 ? 5 : -5;
     const newVol = Math.max(0, Math.min(100, status.volume + delta));
-    invoke("set_audio_volume", { volume: newVol })
-      .then(() => poll())
-      .catch(() => {});
+    // Scrolling the indicator is a write like any other. The sink owns the
+    // level, so `poll` settles it either way - and a wheel that changes nothing
+    // and says nothing reads as a dead indicator.
+    void shellAction("set_audio_volume", { volume: newVol }, "sh.tile.errAudio").then(
+      () => void poll(),
+    );
   }
 </script>
 
