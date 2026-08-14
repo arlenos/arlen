@@ -112,7 +112,18 @@ pub fn register_default_handler(apps_dir: &Path, mimeapps_path: &Path, exec: &st
     std::fs::create_dir_all(apps_dir)?;
     std::fs::write(apps_dir.join(DESKTOP_FILE), desktop_entry(exec, &mimes))?;
 
-    let existing = std::fs::read_to_string(mimeapps_path).unwrap_or_default();
+    // ABSENT is the first-run case and merges into a fresh file. ANY OTHER read
+    // failure propagates, because the write below replaces this path wholesale:
+    // defaulting to empty would merge Arlen's entries into nothing and put that
+    // over `mimeapps.list`, which holds the associations for EVERY application
+    // the person uses - which app opens a PDF, a spreadsheet, a video. Losing
+    // those to a transient permissions error while registering an image viewer is
+    // not a trade anyone would make.
+    let existing = match std::fs::read_to_string(mimeapps_path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
     let merged = merge_default_associations(&existing, &mimes);
     if let Some(parent) = mimeapps_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -123,6 +134,46 @@ pub fn register_default_handler(apps_dir: &Path, mimeapps_path: &Path, exec: &st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An unreadable `mimeapps.list` stops the registration instead of replacing
+    /// it. The file holds every application's associations, so the cost of
+    /// guessing here is not ours to pay.
+    ///
+    /// Mode 0222 on purpose: WRITE-ONLY is the one state that separates the two
+    /// behaviours. A directory in the file's place would fail the write too, so
+    /// the test would pass whether or not the read was guarded - it would prove
+    /// nothing while looking like proof. Here the write WOULD succeed, so the
+    /// file surviving means the read refused. Skipped as root, which can read it
+    /// regardless.
+    #[test]
+    fn an_unreadable_mimeapps_stops_the_write() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("arlen-mimeapps-unreadable-{}", std::process::id()));
+        let apps = dir.join("applications");
+        let mimeapps = dir.join("mimeapps.list");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let original = b"[Default Applications]\napplication/pdf=org.pdf.desktop\n";
+        std::fs::write(&mimeapps, original).unwrap();
+        std::fs::set_permissions(&mimeapps, std::fs::Permissions::from_mode(0o222)).unwrap();
+        if std::fs::read_to_string(&mimeapps).is_ok() {
+            std::fs::remove_dir_all(&dir).ok();
+            return; // running as root: the premise does not hold
+        }
+
+        let err = register_default_handler(&apps, &mimeapps, "/usr/bin/arlen-viewer")
+            .expect_err("a read that failed must not become a write");
+        assert_ne!(err.kind(), std::io::ErrorKind::NotFound, "NotFound is the first-run path");
+
+        std::fs::set_permissions(&mimeapps, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(
+            std::fs::read(&mimeapps).unwrap(),
+            original,
+            "the other applications' associations are still there"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn the_desktop_entry_lists_the_mime_types_and_exec() {
