@@ -179,6 +179,18 @@ fn why_exe_unreadable(pid: u32) -> String {
             // discards the evidence that would refute it. So this prints all of
             // them, cheaply, and lets the reader do the eliminating.
             //
+            // THE SAME-READER BASELINE is the experiment this message kept
+            // inviting and nobody ran: read our OWN exe, from this reader, at
+            // this moment, and print the same fields for it. A self-read must
+            // succeed, so it fixes what "working" looks like here - and the diff
+            // against the peer's fields is the whole answer, without anyone
+            // proposing a mechanism from the symptom.
+            //
+            // It exists because six hypotheses died on this one refusal, and the
+            // last two died of METHOD: fields compared across two different
+            // boots. One reader, one moment, both cases - in the same line, so
+            // they cannot be mixed up again.
+            //
             // `Tgid` earns its place by measurement, not by hope: on this host a
             // thread reports `NSpid` equal to its OWN id, never its tgid - so the
             // 14 Aug boot printing `NSpid=651` for `/proc/657` cannot mean 657 is
@@ -207,7 +219,13 @@ fn why_exe_unreadable(pid: u32) -> String {
                  peer Seccomp={}, peer Tgid={}, peer NSpid={} (Tgid different \
                  from the pid means we are looking at a THREAD; more than one \
                  NSpid entry means a nested pid namespace, so this pid is a \
-                 different task here); our /proc mount={})",
+                 different task here); \
+                 SAME-READER BASELINE on ourselves, which MUST succeed - \
+                 self exe read {}, self Uid=[{}], self Seccomp={}, self NSpid={} \
+                 (any field that differs from the peer's above is the candidate; \
+                 if none differ, the printed evidence does not explain the \
+                 refusal and the next step is a measurement, not a hypothesis); \
+                 our /proc mount={})",
                 proc_field(std::process::id(), "Gid"),
                 proc_field(pid, "CapPrm"),
                 proc_field(std::process::id(), "CapPrm"),
@@ -217,6 +235,13 @@ fn why_exe_unreadable(pid: u32) -> String {
                 proc_field(pid, "Seccomp"),
                 proc_field(pid, "Tgid"),
                 proc_field(pid, "NSpid"),
+                match std::fs::read_link(format!("/proc/{}/exe", std::process::id())) {
+                    Ok(_) => "ok".to_string(),
+                    Err(e) => format!("FAILED ({e})"),
+                },
+                proc_field(std::process::id(), "Uid"),
+                proc_field(std::process::id(), "Seccomp"),
+                proc_field(std::process::id(), "NSpid"),
                 proc_mount_options(),
             );
         };
