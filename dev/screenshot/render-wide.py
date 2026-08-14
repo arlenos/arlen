@@ -148,11 +148,57 @@ class Render:
                       f" {self.args.require_width}px and got {css_w}px."
                       f" No screenshot written.", 4)
             return
+        if self.args.type:
+            self.type_into()
+            return
         if self.args.open:
             self.pending = list(self.args.open)
             self.click_open()
             return
         self.snapshot()
+
+    def type_into(self):
+        """Put text in a field the way a person does, then let it settle.
+
+        Not a convenience. A search surface's most important copy is the line
+        under NO results, and reaching it needs a query in the box - so until
+        this existed, no screenshot in this loop had ever contained a typed one,
+        and the launcher's empty state had never been looked at.
+
+        The value is set through the native setter and followed by a real `input`
+        event, because a framework listening for that (cmdk, Svelte's bind) does
+        not see a plain assignment to `.value`.
+        """
+        sel, _, text = self.args.type.partition("::")
+        js = (
+            "(() => { const el = document.querySelector(%s);"
+            " if (!el) return 'missing';"
+            " const set = Object.getOwnPropertyDescriptor("
+            "   Object.getPrototypeOf(el), 'value').set;"
+            " el.focus(); set.call(el, %s);"
+            " el.dispatchEvent(new Event('input', {bubbles: true}));"
+            " return 'typed'; })()" % (json.dumps(sel), json.dumps(text))
+        )
+        self.view.evaluate_javascript(js, -1, None, None, None, self.on_typed)
+
+    def on_typed(self, view, result):
+        try:
+            verdict = view.evaluate_javascript_finish(result).to_string()
+        except Exception as e:  # noqa: BLE001
+            self.fail(f"could not type into {self.args.type!r}: {e}", 6)
+            return
+        if "missing" in verdict:
+            self.fail(f"refusing: --type selector matched no element."
+                      f" No screenshot written.", 5)
+            return
+        sel = self.args.type.split("::")[0]
+        print(f"typed into {sel}", file=sys.stderr)
+        if self.args.open:
+            self.pending = list(self.args.open)
+            GLib.timeout_add(int(self.args.settle * 1000),
+                             lambda: (self.click_open(), False)[1])
+            return
+        GLib.timeout_add(int(self.args.settle * 1000), self.snapshot)
 
     def click_open(self):
         """Click the next element in the queue, then let it animate.
@@ -231,6 +277,9 @@ def main():
                          " only exists once a menu or panel is open. Repeatable:"
                          " each is clicked in turn, so a press INSIDE an opened"
                          " menu is reachable")
+    ap.add_argument("--type", default=None,
+                    help="`selector::text` - put text in a field before the shot,"
+                         " for copy that only appears once something is searched")
     ap.add_argument("--require-width", type=int, default=None,
                     help="refuse, before capturing, if the viewport is narrower")
     return Render(ap.parse_args()).run()

@@ -64,6 +64,7 @@
     invokeQuickAction,
     type QuickActionResult,
   } from "$lib/stores/waypointerQuickActions.js";
+  import { searchRefusals, beginSearch, noteRefusal } from "$lib/stores/searchRefusal";
   import {
     fileResults, updateFileResults, clearFileResults, openFileResult,
     type FileResult,
@@ -209,7 +210,10 @@
         console.log(`[wp-search] apps: ${(performance.now() - t0).toFixed(1)}ms (${r.length} results)`);
         searchResults.set(r);
       })
-      .catch(() => { searchResults.set([]); });
+      .catch(() => {
+        searchResults.set([]);
+        noteRefusal();
+      });
   }
 
   /// Debounce delay for search fan-out. 120ms matches the input poll
@@ -223,6 +227,8 @@
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       console.time("wp-search-total");
+      // One question, one set of answers about it.
+      beginSearch();
       doSearch(q);
       const t0 = performance.now();
       updateWindowResults(q);
@@ -241,7 +247,7 @@
             `[wp-search] power: ${(performance.now() - t2).toFixed(1)}ms`,
           );
         })
-        .catch(() => {});
+        .catch(() => noteRefusal());
       // Quick-Actions plugin: same generic-bridge pattern. Catalog
       // covers DND, network/BT toggles, theme switches, Settings
       // launchers (Sprint D).
@@ -252,7 +258,7 @@
             `[wp-search] quick-actions: ${(performance.now() - t2a).toFixed(1)}ms`,
           );
         })
-        .catch(() => {});
+        .catch(() => noteRefusal());
       // File-search plugin: same bridge, separate section.
       const t3 = performance.now();
       updateFileResults(q)
@@ -261,7 +267,7 @@
             `[wp-search] files: ${(performance.now() - t3).toFixed(1)}ms`,
           );
         })
-        .catch(() => {});
+        .catch(() => noteRefusal());
       // Clipboard-history plugin: only fires when opt-in is on.
       // Backend short-circuits to empty when disabled; we skip the
       // invoke entirely in that case to save the IPC hop.
@@ -272,7 +278,7 @@
             `[wp-search] clipboard: ${(performance.now() - t4).toFixed(1)}ms`,
           );
         })
-        .catch(() => {});
+        .catch(() => noteRefusal());
       // Dictionary plugin: also via the generic bridge. Returns empty
       // until the WordNet data is loaded (first query kicks off the
       // background load, usually ready by the second keystroke).
@@ -283,7 +289,7 @@
             `[wp-search] dict: ${(performance.now() - t5).toFixed(1)}ms`,
           );
         })
-        .catch(() => {});
+        .catch(() => noteRefusal());
       // TEMPORARILY DISABLED: same bisection as the worker-pool
       // init effect above. If a hidden iframe host is the layout
       // regressor, even silently calling searchModules with no
@@ -885,7 +891,13 @@
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
         {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
-          <div class="wp-empty">{$t("sh.wp.noResults")}</div>
+          <!-- Two different sentences, because they are two different facts.
+               Every provider's failure leaves its store empty, which is also
+               what finding nothing looks like, so without the count this said
+               "No results found." to a person whose backend was down. -->
+          <div class="wp-empty">
+            {$searchRefusals > 0 ? $t("sh.wp.searchRefused") : $t("sh.wp.noResults")}
+          </div>
         {/if}
 
         <!-- Power actions from the `core.power` plugin. Placed above
