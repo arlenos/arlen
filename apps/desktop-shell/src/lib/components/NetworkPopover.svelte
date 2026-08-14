@@ -32,12 +32,24 @@
   let networks = $state<WifiNetwork[]>([]);
   let vpns = $state<VpnConnection[]>([]);
   let loading = $state(false);
+  /// A message KEY, not a sentence. `get(t)` here would freeze whichever locale
+  /// rendered first, which the i18n gate refuses and is right to: the banner is
+  /// long-lived and a locale switch has to reach it. The markup calls `$t`.
+  ///
+  /// Six of these were hardcoded English until now, so a German desktop showed
+  /// "Could not connect. Check the password." at the one moment it most needed
+  /// to be read.
   let error = $state<string | null>(null);
   let connectingTo = $state<string | null>(null);
   let showPasswordFor = $state<string | null>(null);
   let passwordInput = $state("");
-  let airplaneMode = $state(false);
-  let wifiEnabled = $state(true);
+  // `null` means the read did not answer, and it is a third thing from on and off.
+  // These used to default to false and true with their reads swallowing, so a
+  // NetworkManager that never replied rendered as a definite claim about the
+  // radio: the panel said "WiFi is off" and offered a switch, about hardware
+  // nobody had managed to ask.
+  let airplaneMode = $state<boolean | null>(false);
+  let wifiEnabled = $state<boolean | null>(true);
   let vpnExpanded = $state(false);
   let connDetails = $state<ConnDetails | null>(null);
 
@@ -50,16 +62,25 @@
     }
   });
 
-  async function checkAirplaneMode() { try { airplaneMode = await invoke<boolean>("get_airplane_mode"); } catch {} }
-  async function checkWifiEnabled() { try { wifiEnabled = await invoke<boolean>("get_wifi_enabled"); } catch {} }
+  async function checkAirplaneMode() {
+    try { airplaneMode = await invoke<boolean>("get_airplane_mode"); }
+    catch { airplaneMode = null; error = "sh.net.stateUnknown"; }
+  }
+  async function checkWifiEnabled() {
+    try { wifiEnabled = await invoke<boolean>("get_wifi_enabled"); }
+    catch { wifiEnabled = null; error = "sh.net.stateUnknown"; }
+  }
   async function toggleWifi() {
     try {
       await invoke("set_wifi_enabled", { enabled: !wifiEnabled });
       wifiEnabled = !wifiEnabled;
       await pollStatus(); if (wifiEnabled) await loadNetworks();
-    } catch { error = "Could not turn WiFi on or off"; }
+    } catch { error = "sh.net.errToggleWifi"; }
   }
-  async function pollStatus() { try { status = await invoke<NetworkStatus>("get_network_status"); } catch {} }
+  async function pollStatus() {
+    try { status = await invoke<NetworkStatus>("get_network_status"); }
+    catch { status = null; error = "sh.net.stateUnknown"; }
+  }
 
   /// Throttle scans so rapid clicks on the refresh button can't spam
   /// nmcli with RF scan requests. A WiFi rescan is expensive (radio
@@ -75,19 +96,25 @@
     if (!force && now - lastScanAt < NET_SCAN_COOLDOWN_MS) return;
     lastScanAt = now;
     loading = true; error = null;
-    try { networks = await invoke<WifiNetwork[]>("get_wifi_networks"); } catch { error = "Could not load networks"; }
+    // The same sentence as the other reads. When NetworkManager is not running
+      // all four fail together and whichever resolved last used to win, so the
+      // banner said "Could not load networks" or "Could not read the network
+      // state" depending on scheduling - two voices for one outage, and only one
+      // of them translated.
+      try { networks = await invoke<WifiNetwork[]>("get_wifi_networks"); }
+      catch { error = "sh.net.stateUnknown"; }
     loading = false;
   }
   async function loadVpns() { try { vpns = await invoke<VpnConnection[]>("get_vpn_connections"); } catch {} }
 
   async function handleConnect(net: WifiNetwork) {
     if (net.is_connected) {
-      try { await invoke("disconnect_wifi"); } catch { error = "Could not disconnect"; }
+      try { await invoke("disconnect_wifi"); } catch { error = "sh.net.errDisconnect"; }
       await pollStatus(); await loadNetworks(true); return;
     }
     if (net.is_known || !net.security || net.security === "--") {
       connectingTo = net.ssid;
-      try { await invoke("connect_wifi", { ssid: net.ssid }); } catch { error = "Could not connect"; }
+      try { await invoke("connect_wifi", { ssid: net.ssid }); } catch { error = "sh.net.errConnect"; }
       connectingTo = null; await pollStatus(); await loadNetworks(true);
     } else { showPasswordFor = net.ssid; passwordInput = ""; }
   }
@@ -97,7 +124,7 @@
     try {
       await invoke("connect_wifi_password", { ssid: showPasswordFor, password: passwordInput });
       showPasswordFor = null; passwordInput = "";
-    } catch { error = "Could not connect. Check the password."; }
+    } catch { error = "sh.net.errPassword"; }
     connectingTo = null; await pollStatus(); await loadNetworks(true);
   }
   async function copyPassword(ssid: string) {
@@ -108,14 +135,14 @@
     try { connDetails = await invoke<ConnDetails>("get_connection_details", { ssid }); } catch { connDetails = null; }
   }
   async function forgetNetwork(ssid: string) {
-    try { await invoke("forget_network", { ssid }); await loadNetworks(true); } catch { error = "Could not forget network"; }
+    try { await invoke("forget_network", { ssid }); await loadNetworks(true); } catch { error = "sh.net.errForget"; }
   }
   async function toggleVpn(vpn: VpnConnection) {
     try {
       if (vpn.active) await invoke("disconnect_vpn", { name: vpn.name });
       else await invoke("connect_vpn", { name: vpn.name });
       await loadVpns(); await pollStatus();
-    } catch { error = "Could not change the VPN connection"; }
+    } catch { error = "sh.net.errVpn"; }
   }
 
   const otherNets = $derived(networks.filter(n => !n.is_connected));
@@ -209,16 +236,23 @@
 
 <ShellPopover id="network" width={280} right={110} bodyPadding="12px" bodyGap="6px">
   {#snippet header()}
-    <PopoverHeader icon={Wifi} title={$t("sh.net.title")} toggled={wifiEnabled && !airplaneMode} onToggle={toggleWifi} />
+    <!-- No switch when the radio state is unknown: a toggle renders a POSITION,
+         so offering one is a claim we cannot make. The banner below says why. -->
+    <PopoverHeader
+      icon={Wifi}
+      title={$t("sh.net.title")}
+      toggled={wifiEnabled === true && airplaneMode !== true}
+      onToggle={wifiEnabled === null || airplaneMode === null ? undefined : toggleWifi}
+    />
   {/snippet}
 
-  {#if airplaneMode}
+  {#if airplaneMode === true}
     <div class="net-msg">
       <Plane size={32} strokeWidth={1} />
       <span class="net-msg-title">{$t("sh.net.airplaneOn")}</span>
       <span class="net-msg-hint">{$t("sh.net.airplaneHint")}</span>
     </div>
-  {:else if !wifiEnabled}
+  {:else if wifiEnabled === false}
     <div class="net-msg">
       <WifiOff size={32} strokeWidth={1} />
       <span class="net-msg-title">{$t("sh.net.wifiOff")}</span>
@@ -226,7 +260,7 @@
     </div>
   {:else}
     {#if error}
-      <PopoverErrorBanner message={error} />
+      <PopoverErrorBanner message={$t(error)} />
     {/if}
 
     <!-- Current connection status (always visible when connected) -->
