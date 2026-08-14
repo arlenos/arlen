@@ -82,15 +82,24 @@ fn greeter_a11y_set(screen_reader: bool) -> Result<(), String> {
 /// The profile is cross-checked against the offered accounts (an authorization
 /// boundary, not just the picker), and an unknown session id is refused before
 /// greetd is touched.
+///
+/// `screen_reader` is the login screen's toggle, handed to the session it starts,
+/// and ONLY when somebody operated it at this login. `None` means the toggle sat
+/// at whatever the login screen remembered and nobody touched it, which the
+/// session reads as "keep what your own config says" rather than "off".
+///
+/// Documented HERE rather than beside the parameter, and that is not only taste.
+/// A `//` comment inside a parameter list is ordinary Rust, but prose has commas
+/// in it, and every tool that reads a signature by splitting on commas sees the
+/// list shred. One did: `check-invoke-shape.py` lost this parameter that way and
+/// reported the CALLER as sending a key the command does not declare - a false
+/// accusation pointing at the wrong file. That parser is fixed, but a signature
+/// no tool can misread is worth more than a parser that gets it right.
 #[tauri::command]
 fn greeter_authenticate(
     profile_id: String,
     secret: String,
     session_id: String,
-    // The login screen's screen-reader toggle, handed to the session it starts -
-    // but ONLY when somebody operated it at this login. `None` means the toggle
-    // sat at whatever the login screen remembered and nobody touched it, which
-    // the session reads as "keep what your own config says" rather than "off".
     screen_reader: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let passwd = std::fs::read_to_string("/etc/passwd")
