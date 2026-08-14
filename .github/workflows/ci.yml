@@ -318,6 +318,8 @@ jobs:
           node dev/scripts/test-check-default-then-write.mjs
           python3 dev/scripts/check-subscribe-scope.py
           node dev/scripts/test-check-subscribe-scope.mjs
+          python3 dev/scripts/check-shared-env-names.py
+          node dev/scripts/test-check-shared-env-names.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
