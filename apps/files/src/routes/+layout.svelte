@@ -157,6 +157,13 @@
   }
 </script>
 
+<svelte:head>
+  <!-- The document title: what a screen reader announces for the window
+       and what a task switcher shows. Every Arlen app was missing one,
+       which axe reports as `document-title` on every surface. -->
+  <title>{$t("f.app.title")}</title>
+</svelte:head>
+
 <svelte:window onkeydown={onWindowKeydown} />
 
 <div dir={$dir} style="display: contents">

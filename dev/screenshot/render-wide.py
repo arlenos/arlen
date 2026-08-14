@@ -50,6 +50,7 @@ asked for.
 """
 import argparse
 import json
+import pathlib
 import sys
 
 import gi
@@ -64,10 +65,16 @@ MIN_ZOOM = 0.2
 MAX_ZOOM = 6.0
 
 
+# axe-core ships with the kit's dev dependencies; the same engine its own jsdom
+# gate uses, so a finding here and a finding there mean the same thing.
+AXE_PATH = pathlib.Path(__file__).resolve().parents[2] / "sdk/ui-kit/node_modules/axe-core/axe.min.js"
+
+
 class Render:
     """One window, one page, one measured capture."""
 
     def __init__(self, args):
+        self.axe_failures = 0
         self.args = args
         self.status = 1
         self.app = Gtk.Application(application_id="dev.arlen.render-wide")
@@ -148,6 +155,9 @@ class Render:
                       f" {self.args.require_width}px and got {css_w}px."
                       f" No screenshot written.", 4)
             return
+        if self.args.axe and not self.args.type and not self.args.open:
+            self.run_axe()
+            return
         if self.args.type:
             self.type_into()
             return
@@ -155,6 +165,91 @@ class Render:
             self.pending = list(self.args.open)
             self.click_open()
             return
+        self.snapshot()
+
+    def run_axe(self):
+        """Inject axe-core into the rendered page and report what it finds.
+
+        The kit's own axe gate runs the primitives under jsdom, which has no
+        layout - so it can check roles and names and cannot check anything that
+        needs a box. This runs the SAME engine against the real WebKit render of
+        a real app page, where an app composes those primitives into a surface
+        the kit never sees: a page with no landmark, a dialog with no accessible
+        name, an icon-only button the app added itself.
+
+        The result goes to stdout as one line per violation rather than into the
+        PNG, because a screenshot cannot show a missing name.
+        """
+        try:
+            axe_src = AXE_PATH.read_text(encoding="utf-8")
+        except OSError as e:
+            self.fail(f"axe-core not readable at {AXE_PATH}: {e}", 8)
+            return
+        # `color-contrast` stays ON here, unlike the kit's jsdom run: this render
+        # has real layout, which is the whole reason to check a11y out here.
+        #
+        # The result is stashed on `window` and read by a second evaluation
+        # rather than returned: `axe.run` is a promise, and WebKit's
+        # `evaluate_javascript` cannot marshal one back ("Unsupported result
+        # type"). So this kicks it off and `poll_axe` waits for the answer.
+        js = (
+            axe_src
+            + "\n;window.__axe = null; window.__axeErr = null;"
+            " axe.run(document, {resultTypes:['violations']}).then("
+            "  r => { window.__axe = JSON.stringify(r.violations.map(v => ({id: v.id,"
+            "    impact: v.impact, help: v.help, n: v.nodes.length,"
+            "    first: v.nodes[0] && v.nodes[0].target.join(' ')}))); },"
+            "  e => { window.__axeErr = String(e); });"
+            # The evaluation's own value must not be the promise: WebKit cannot
+            # marshal one, and the whole script is one expression list, so the
+            # last one is what comes back. A string ends it.
+            " 'started';"
+        )
+        self.axe_waited = 0
+        self.view.evaluate_javascript(js, -1, None, None, None, self.on_axe_started)
+
+    def on_axe_started(self, view, result):
+        try:
+            view.evaluate_javascript_finish(result)
+        except Exception as e:  # noqa: BLE001
+            self.fail(f"axe could not be injected: {e}", 8)
+            return
+        GLib.timeout_add(200, self.poll_axe)
+
+    def poll_axe(self):
+        self.axe_waited += 200
+        if self.axe_waited > 30000:
+            self.fail("axe did not finish within 30s", 8)
+            return False
+        self.view.evaluate_javascript(
+            "window.__axeErr ? 'ERR:' + window.__axeErr : (window.__axe || '')",
+            -1, None, None, None, self.on_axe)
+        return False
+
+    def on_axe(self, view, result):
+        try:
+            payload = view.evaluate_javascript_finish(result).to_string()
+        except Exception as e:  # noqa: BLE001
+            self.fail(f"axe run failed: {e}", 8)
+            return
+        if payload.startswith("ERR:"):
+            self.fail(f"axe threw in the page: {payload[4:]:.200}", 8)
+            return
+        if not payload:
+            GLib.timeout_add(200, self.poll_axe)
+            return
+        try:
+            found = json.loads(payload) if payload and payload != "null" else []
+        except (json.JSONDecodeError, TypeError):
+            self.fail(f"axe returned something unreadable: {payload!r:.200}", 8)
+            return
+        if not found:
+            print("axe: no violations")
+        else:
+            print(f"axe: {len(found)} violation(s)")
+            for v in found:
+                print(f"  {v['id']} ({v['impact']}): {v['help']} [{v['n']}x] -> {v.get('first')}")
+        self.axe_failures = len(found)
         self.snapshot()
 
     def type_into(self):
@@ -242,7 +337,8 @@ class Render:
         if self.pending:
             GLib.timeout_add(300, lambda: (self.click_open(), False)[1])
             return
-        GLib.timeout_add(int(self.args.settle * 1000), self.snapshot)
+        after = self.run_axe if self.args.axe else self.snapshot
+        GLib.timeout_add(int(self.args.settle * 1000), lambda: (after(), False)[1])
 
     def snapshot(self):
         self.view.get_snapshot(WebKit.SnapshotRegion.FULL_DOCUMENT,
@@ -256,7 +352,9 @@ class Render:
             self.fail(f"snapshot failed: {e}", 7)
             return
         print("wrote", self.args.out)
-        self.status = 0
+        # A violation is a finding, not a rendering problem, so the PNG is still
+        # written - but the exit status carries it, so this can be a gate.
+        self.status = 1 if self.axe_failures else 0
         self.app.quit()
 
 
@@ -277,6 +375,9 @@ def main():
                          " only exists once a menu or panel is open. Repeatable:"
                          " each is clicked in turn, so a press INSIDE an opened"
                          " menu is reachable")
+    ap.add_argument("--axe", action="store_true",
+                    help="run axe-core over the rendered page and print the"
+                         " violations; exits non-zero if any are found")
     ap.add_argument("--type", default=None,
                     help="`selector::text` - put text in a field before the shot,"
                          " for copy that only appears once something is searched")

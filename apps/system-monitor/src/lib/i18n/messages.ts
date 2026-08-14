@@ -13,6 +13,7 @@ const PROCESS_COUNT_DE = ".input {$count :number}\n.match $count\none {{{$count}
 
 const messages: Catalogs = {
   en: {
+    "tm.app.title": "Task manager",
     "tm.dp.pid": "PID {$pid}",
     "tm.dp.close": "Close",
     "tm.dp.usingCamera": "Using your camera right now.",
@@ -73,6 +74,8 @@ const messages: Catalogs = {
     "tm.menu.forceQuit": "Force quit",
   },
   de: {
+    "tm.app.title": "Task-Manager",
+
     "tm.dp.pid": "PID {$pid}",
     "tm.dp.close": "Schlie\u00dfen",
     "tm.dp.usingCamera": "Nutzt gerade deine Kamera.",

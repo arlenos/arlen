@@ -9,6 +9,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
+    "v.app.title": "Viewer",
     "v.audioPlayer": "Audio player",
     "v.imageViewer": "Image viewer",
     "v.videoPlayer": "Video player",
@@ -43,6 +44,8 @@ const messages: Catalogs = {
     "v.nothingOpen": "No file is open.",
   },
   de: {
+    "v.app.title": "Betrachter",
+
     "v.audioPlayer": "Audioplayer",
     "v.imageViewer": "Bildbetrachter",
     "v.videoPlayer": "Videoplayer",

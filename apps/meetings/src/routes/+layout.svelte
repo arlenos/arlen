@@ -91,6 +91,13 @@
   }
 </script>
 
+<svelte:head>
+  <!-- The document title: what a screen reader announces for the window
+       and what a task switcher shows. Every Arlen app was missing one,
+       which axe reports as `document-title` on every surface. -->
+  <title>{$t("mt.app.title")}</title>
+</svelte:head>
+
 <div dir={$dir} style="display: contents">
   <SidebarProvider class="h-screen min-h-0 overflow-hidden">
     <Sidebar>

@@ -27,7 +27,7 @@
   import { initTopbar } from "$lib/topbar";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
-  import { dir } from "$lib/i18n/messages";
+  import { dir, t } from "$lib/i18n/messages";
 
   let { children } = $props();
 
@@ -79,6 +79,13 @@
     (await w.isMaximized()) ? await w.unmaximize() : await w.maximize();
   }
 </script>
+
+<svelte:head>
+  <!-- The document title: what a screen reader announces for the window
+       and what a task switcher shows. Every Arlen app was missing one,
+       which axe reports as `document-title` on every surface. -->
+  <title>{$t("term.app.title")}</title>
+</svelte:head>
 
 <svelte:window onkeydown={onWindowKeydown} />
 

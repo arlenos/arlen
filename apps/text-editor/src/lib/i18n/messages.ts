@@ -10,6 +10,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
+    "te.app.title": "Text editor",
     "te.openFile": "Open file",
     "te.open.failed": "This file could not be opened.",
     "te.lineNumbers.toggle": "Toggle line numbers",
@@ -43,6 +44,8 @@ const messages: Catalogs = {
     "te.review.foot": "Every change is logged, and you can undo any of it. Turn the assistant off in Settings.",
   },
   de: {
+    "te.app.title": "Texteditor",
+
     "te.openFile": "Datei öffnen",
     "te.open.failed": "Diese Datei konnte nicht geöffnet werden.",
     "te.lineNumbers.toggle": "Zeilennummern umschalten",
