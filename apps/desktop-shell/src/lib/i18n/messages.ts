@@ -34,6 +34,7 @@ const messages: Catalogs = {
     "sh.bat.performance": "Performance",
     // Network popover
     "sh.net.title": "Network",
+    "sh.popover.notOpened": "That panel could not be opened.",
     "sh.net.airplaneOn": "Airplane Mode is on",
     "sh.net.airplaneHint": "Wireless connections are disabled",
     "sh.net.wifiOff": "WiFi is off",
@@ -509,6 +510,7 @@ const messages: Catalogs = {
     "sh.popover.toggleNamed": "{$name} ein- oder ausschalten",
     "sh.bat.performance": "Leistung",
     "sh.net.title": "Netzwerk",
+    "sh.popover.notOpened": "Das Panel ließ sich nicht öffnen.",
     "sh.net.airplaneOn": "Der Flugmodus ist an",
     "sh.net.airplaneHint": "Drahtlosverbindungen sind abgeschaltet",
     "sh.net.wifiOff": "WLAN ist aus",
