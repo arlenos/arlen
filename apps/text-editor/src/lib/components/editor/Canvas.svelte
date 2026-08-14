@@ -107,6 +107,7 @@
       return mm;
     });
   }
+  import { t } from "$lib/i18n/messages";
 </script>
 
 {#if fileType === "code"}
@@ -118,7 +119,7 @@
         {/each}
       </div>
     {/if}
-    <pre class="cf-code"><code>{#each codeLines as line, i (i)}<span class="cf-line">{@html highlight(line) || "&nbsp;"}</span>{#if i < codeLines.length - 1}{"\n"}{/if}{/each}</code></pre>
+    <pre class="cf-code" tabindex="0" role="region" aria-label={$t("te.code.region")}><code>{#each codeLines as line, i (i)}<span class="cf-line">{@html highlight(line) || "&nbsp;"}</span>{#if i < codeLines.length - 1}{"\n"}{/if}{/each}</code></pre>
   </div>
 {:else}
 <div class="canvas" class:focus={focusMode}>
@@ -148,7 +149,7 @@
               <span class="ln">{i + 1}</span>
             {/each}
           </div>
-          <pre class="code"><code>{#each seg.lines as line, i (i)}<span class="code-line">{@html highlight(line) || "&nbsp;"}</span>{#if i < seg.lines.length - 1}{"\n"}{/if}{/each}</code></pre>
+          <pre class="code" tabindex="0" role="region" aria-label={$t("te.code.region")}><code>{#each seg.lines as line, i (i)}<span class="code-line">{@html highlight(line) || "&nbsp;"}</span>{#if i < seg.lines.length - 1}{"\n"}{/if}{/each}</code></pre>
         </div>
       </div>
     {/if}

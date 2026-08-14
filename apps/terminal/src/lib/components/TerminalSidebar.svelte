@@ -97,9 +97,14 @@
           </SidebarMenuItem>
         {/if}
         {#if $sessionsLoaded && $sessions.length === 0}
-          <div class="ts-empty group-data-[collapsible=icon]:hidden">
+          <!-- An `li`, not a `div`: this sits directly inside the menu's `ul`,
+               and a list may hold only list items - axe rates the mismatch
+               serious because a screen reader counts the items and gets a
+               different number than the eye does. The sentence belongs in the
+               list, it just has to be OF the list. -->
+          <li class="ts-empty group-data-[collapsible=icon]:hidden">
             {$t("term.sidebar.noSessions")}
-          </div>
+          </li>
         {/if}
         {#each $sessions as s (s.id)}
           <SidebarMenuItem>
@@ -178,6 +183,9 @@
   }
 
   .ts-empty {
+    /* An `li` carries a marker by default, and this is a sentence rather than an
+       entry in the list it lives in. */
+    list-style: none;
     padding: 4px 8px;
     font-size: var(--text-xs);
     line-height: 1.5;

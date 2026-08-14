@@ -11,6 +11,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "te.app.title": "Text editor",
+    "te.code.region": "Code, scrolls sideways",
     "te.openFile": "Open file",
     "te.open.failed": "This file could not be opened.",
     "te.lineNumbers.toggle": "Toggle line numbers",
@@ -45,6 +46,7 @@ const messages: Catalogs = {
   },
   de: {
     "te.app.title": "Texteditor",
+    "te.code.region": "Code, seitlich scrollbar",
 
     "te.openFile": "Datei öffnen",
     "te.open.failed": "Diese Datei konnte nicht geöffnet werden.",
