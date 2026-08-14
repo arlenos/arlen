@@ -26,6 +26,22 @@ first-party, so it IS held to its scope under enforcement; a missing grant there
 is a blind person's terminal going silent, from a one-line profile edit that
 reviews clean.
 
+WHO IS ACTUALLY HELD TO THESE LISTS, because the two halves answer differently
+and the profile's own `tier` field answers neither. The bus computes tier from
+the peer's exe path (`peer_tier` -> `detect_tier`), and apps install under
+`/usr/lib/arlen/apps/<id>/bin/`, which that function calls System. So:
+
+  * PUBLISH is exempt for anything system-tier (`hold_to_scope = !is_system`),
+    which today means every first-party app. Their publish lists are honest
+    documentation rather than an active gate.
+  * SUBSCRIBE exempts only a system peer that declares NOTHING. Declaring a
+    subscribe list is how a component opts into being bounded, whatever its tier
+    - so a profile that grows an `[event_bus].subscribe` section moves that app
+    from exempt to held, and an incomplete list then costs it a feature.
+
+That second rule is why this check earns its place: adding a subscribe list is
+the moment an app becomes breakable, and the breakage is silent.
+
 THE PUBLISH SIDE IS THE SAME SHAPE and was found by looking for it: a denied
 publish hits `continue` in the producer loop (`socket.rs:437`), and the wire
 protocol is fire-and-forget, so the producer is never told. It emits into
