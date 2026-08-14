@@ -72,13 +72,26 @@ export async function listSessions(): Promise<Session[] | null> {
 
 /// Attempt a password login for a profile. The backend runs PAM and, on
 /// success, releases the homed key and starts the session.
+///
+/// `screenReader` carries the login screen's a11y toggle into the session. The
+/// greeter cannot write it to the user's config itself (the config broker
+/// authenticates one uid, and before login no user has been chosen), so it
+/// travels with the session that user is about to start, and that session
+/// records it as itself. Somebody who needs a screen reader turns it on here
+/// once and every later login already has it.
 export async function authenticate(
   profileId: string,
   secret: string,
   sessionId: string,
+  screenReader = false,
 ): Promise<AuthResult> {
   try {
-    return await invoke<AuthResult>("greeter_authenticate", { profileId, secret, sessionId });
+    return await invoke<AuthResult>("greeter_authenticate", {
+      profileId,
+      secret,
+      sessionId,
+      screenReader,
+    });
   } catch (e) {
     return { ok: false, error: String(e) };
   }

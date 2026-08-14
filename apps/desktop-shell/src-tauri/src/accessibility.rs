@@ -32,6 +32,50 @@ use std::time::Duration;
 /// How often the broker is re-read. Only a CHANGE publishes.
 const POLL: Duration = Duration::from_secs(2);
 
+/// The variable the greeter hands the login screen's choice on in.
+///
+/// Kept as a literal rather than a dep on the greeter crate: the shell has no
+/// other reason to link the login screen, and the string is the contract. It
+/// matches `arlen_greeter_core::A11Y_SCREEN_READER_ENV`.
+const HANDOFF_ENV: &str = "ARLEN_A11Y_SCREEN_READER";
+
+/// Record the login screen's choice in the user's own config, once, at session
+/// start.
+///
+/// ABSENT MEANS "NOTHING TO SAY", NOT "OFF". The greeter only sets the variable
+/// when the toggle is on, so a login screen nobody touched leaves whatever the
+/// person already had. Turning a screen reader off is a thing somebody does
+/// deliberately in Settings, never a side effect of logging in.
+///
+/// The write is what makes this stick: the greeter cannot read the broker back
+/// (different uid, and before login no user is chosen), but the SHELL reads it
+/// every session. So somebody turns it on at the login screen once, the session
+/// records it, and every later session already has it without the login screen
+/// being involved at all.
+async fn record_login_choice() {
+    if std::env::var(HANDOFF_ENV).ok().as_deref() != Some("1") {
+        return;
+    }
+    let client = arlen_config_broker::ConfigBrokerClient::default_socket();
+    // Read first: if it is already on, there is nothing to record, and a write
+    // that changes nothing is a write that can still fail.
+    match client.get().await {
+        Ok(state) if state.accessibility.screen_reader => return,
+        Ok(_) => {}
+        Err(e) => {
+            log::warn!("accessibility: cannot record the login choice, broker unreadable ({e})");
+            return;
+        }
+    }
+    let wanted = arlen_config_broker::Accessibility { screen_reader: true };
+    match client.set_accessibility(wanted).await {
+        Ok(()) => log::info!("accessibility: recorded the login screen's screen-reader choice"),
+        // Worth a warning rather than silence: the person will find it off again
+        // next login and have no idea why.
+        Err(e) => log::warn!("accessibility: could not record the login choice ({e})"),
+    }
+}
+
 /// Read the current flag from the broker.
 ///
 /// `None` means the broker did not answer or could not be trusted (down,
@@ -59,6 +103,10 @@ fn emit(screen_reader: bool) {
 
 /// Watch the broker and republish on change. Runs for the life of the session.
 pub async fn run_publisher() {
+    // Before the first read, so the session publishes the value the person
+    // just asked for rather than the one from last time.
+    record_login_choice().await;
+
     let mut last: Option<bool> = None;
     loop {
         if let Some(current) = read_screen_reader().await {

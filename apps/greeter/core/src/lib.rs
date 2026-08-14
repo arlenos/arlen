@@ -292,13 +292,37 @@ pub fn resolve_avatar(icons_dir: &Path, username: &str) -> Option<String> {
 /// The environment greetd should add when starting the session. greetd + pam_
 /// systemd populate most of it; this pins the session-type hints so a Wayland
 /// compositor comes up correctly and the session is tagged with its id.
-pub fn session_env(session_id: &str) -> Vec<String> {
-    vec![
+pub fn session_env(session_id: &str, screen_reader: bool) -> Vec<String> {
+    let mut env = vec![
         "XDG_SESSION_TYPE=wayland".to_string(),
         format!("XDG_SESSION_DESKTOP={session_id}"),
         format!("XDG_CURRENT_DESKTOP={session_id}"),
-    ]
+    ];
+    // Carry the login screen's accessibility choice into the session.
+    //
+    // The greeter cannot write it where the session would find it: the config
+    // broker authenticates exactly one uid, the session user's, and the greeter
+    // is a different user. That gate is right - before login no user has been
+    // chosen, and a greeter that could read one user's config could read any
+    // user's. So the choice rides across on the one channel that already
+    // crosses the boundary, and the session writes it as itself.
+    //
+    // Only set when it is ON. Absent means "the login screen has nothing to say
+    // about this", which is not the same as "off" - the session then keeps
+    // whatever the person already had, instead of a login screen nobody touched
+    // silently turning their screen reader off.
+    if screen_reader {
+        env.push(format!("{A11Y_SCREEN_READER_ENV}=1"));
+    }
+    env
 }
+
+/// The variable [`session_env`] uses to hand the screen-reader choice on.
+///
+/// Read by the shell exactly once at session start, written to the user's own
+/// config broker, and then never read again - the broker is the durable answer
+/// and the bus is how apps hear it. This is a handoff, not a source of truth.
+pub const A11Y_SCREEN_READER_ENV: &str = "ARLEN_A11Y_SCREEN_READER";
 
 /// Drive the greetd auth conversation to completion over `stream` and, on success,
 /// start `cmd`. Generic over the stream so it is tested against an in-process mock
