@@ -315,6 +315,13 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- One landmark around the whole workflow. The page has two root surfaces - the
+     annotate tool and the floating thumbnail - and only one is visible at a time,
+     so neither can be THE main on its own; without a wrapper axe reported no main
+     landmark and the visible surface as content outside one. `display: contents`
+     keeps both children exactly where they were in the layout. -->
+<main class="page">
+
 <!-- The annotate surface stays mounted (its canvas is set up on load); the phase
      only shows it once the user opens the capture from the floating thumbnail. -->
 <div class="tool" class:hidden={phase !== "annotate"}>
@@ -389,7 +396,15 @@
   <div class="dismissed">{$t("s.savedToPictures")}</div>
 {/if}
 
+</main>
+
 <style>
+  /* The landmark must not become a layout box: both surfaces stay direct
+     children of the page as far as CSS is concerned. */
+  .page {
+    display: contents;
+  }
+
   .tool.hidden {
     display: none;
   }
