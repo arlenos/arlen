@@ -1327,12 +1327,28 @@ pub fn debug_workspace_update(data: String) {
 mod icon_cache_tests {
     use super::*;
 
-    // Serial execution — the cache is process-wide state. Each test
-    // clears before it runs to avoid cross-talk from the parallel
-    // runner.
+    // The cache is process-wide, so these tests have to run one at a time.
+    //
+    // THIS USED TO BE A COMMENT SAYING SO, and clearing at the top of each test
+    // as the enforcement. It is not enforcement: another test can clear or fill
+    // the cache between this one's clear and its assertion, which is exactly what
+    // happened - `cache_clears_on_overflow` fills past the cap and trips a clear,
+    // and if that lands inside `cache_stores_hits_and_misses` the length it just
+    // asserted is zero. Two full runs in three failed that way; each test passed
+    // alone, which is what made it look like a fluke rather than a race.
+    //
+    // A lock makes the claim true. Poisoning is ignored on purpose: if one test
+    // panics, the others should report their own result rather than a second
+    // failure about a mutex.
+    static CACHE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        CACHE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn cache_stores_hits_and_misses() {
+        let _serial = serial();
         icon_cache_clear();
         // A path that doesn't exist — a cold miss.
         let first = resolve_app_icon_cached("does-not-exist-xyz");
@@ -1348,6 +1364,7 @@ mod icon_cache_tests {
 
     #[test]
     fn cache_clears_on_overflow() {
+        let _serial = serial();
         icon_cache_clear();
         // Fill past cap with unique keys.
         for i in 0..(ICON_CACHE_MAX + 5) {
@@ -1360,6 +1377,7 @@ mod icon_cache_tests {
 
     #[test]
     fn absolute_nonexistent_path_returns_none() {
+        let _serial = serial();
         icon_cache_clear();
         let result = resolve_app_icon_cached("/definitely/does/not/exist.png");
         assert!(result.is_none());
@@ -1369,6 +1387,7 @@ mod icon_cache_tests {
 
     #[test]
     fn cache_clear_empties_store() {
+        let _serial = serial();
         icon_cache_clear();
         let _ = resolve_app_icon_cached("sample");
         assert!(icon_cache_len() >= 1);
