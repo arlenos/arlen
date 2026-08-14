@@ -293,6 +293,10 @@ integration-smoke:
     # too; the heavier daemons stay in `integration-nightly` and their scenarios
     # skip themselves with a note when their binary is absent.
     cargo build --manifest-path "{{ROOT}}/store-backend/Cargo.toml"
+    # Same rationale as the store: small, fast to build, and it carries the
+    # scenario that proves one config family's write leaves the other alone -
+    # the property the whole daemon was split for.
+    cargo build --manifest-path "{{ROOT}}/daemons/config-broker/Cargo.toml"
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
         --test integration_backend_smoke -- --ignored
 

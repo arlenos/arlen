@@ -2796,6 +2796,10 @@ async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
 async fn setting_one_config_family_leaves_the_other_alone() {
     use arlen_config_broker::{Accessibility, AiMasterSwitches, ConfigBrokerClient};
 
+    if !arlen_integration::binary_built("daemons/config-broker", "arlen-config-broker") {
+        eprintln!("SKIP setting_one_config_family_leaves_the_other_alone: arlen-config-broker not built (run `just integration-smoke`)");
+        return;
+    }
     let mut stack = EphemeralStack::new().expect("private runtime root");
     let socket = stack.socket_path("config-broker.sock");
     let state = stack.runtime_dir().join("broker-state");
