@@ -38,10 +38,26 @@ read = [
 # inside it looks exactly like a topic nobody publishes on, which is why the
 # terminal now says so after 20s rather than sitting quiet.
 #
-# Exactly the one topic it consumes. The terminal handles no other bus event.
+# That was written as "exactly the one topic it consumes - the terminal handles
+# no other bus event", which was checked against apps/terminal/src-tauri and is
+# wrong anyway. `sdk/tauri-plugin-shell`, which this app links, subscribes
+# `app.toolbar.action_invoked` and `app.shortcut.action_invoked` from inside the
+# app's own process, so they arrive on this same connection under this same
+# profile. Declaring a subscribe list is what makes an app enforceable at all
+# (`exempt = is_system && !declares_subscribe`), so adding `accessibility.state`
+# silently switched the plugin's two off with it - toolbar buttons and shortcuts,
+# gone, in the same wait-forever way described above.
+#
+# Found on the knowledge app, where an enforce boot named both patterns out loud;
+# the terminal has the identical defect and only escaped the log because the app
+# was not launched on that boot.
 #
 # `publish` is empty by fact, not omission: there is no emitter anywhere in
 # apps/terminal/src-tauri (checked, not assumed). It is a pure consumer.
 [event_bus]
 publish = []
-subscribe = ["accessibility.state"]
+subscribe = [
+    "accessibility.state",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]

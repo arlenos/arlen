@@ -102,6 +102,33 @@ read = [
 # make a system-tier app exempt and hand it the machine-wide view - the opposite
 # of the intent. An empty list is how a profile says "hears nothing", and the
 # reach summary has an arm that renders it exactly that way.
+# MEASURED, not guessed. Stripping this to `subscribe = []` and booting with
+# enforce on named the consumer that was actually there (14 Aug):
+#
+#   subscribe denied, filtering pattern app_id="dev.arlen.knowledge"
+#     pattern=app.toolbar.action_invoked
+#   subscribe denied, filtering pattern app_id="dev.arlen.knowledge"
+#     pattern=app.shortcut.action_invoked
+#
+# and the app then registered with `subscribed=[]` - hearing nothing. Those two
+# are the whole of what it consumes; the boot is the proof, since the bus logs
+# every pattern a peer asks for.
+#
+# THEY ARE NOT THIS APP'S CODE. `sdk/tauri-plugin-shell` subscribes them from
+# inside every Tauri app's own process (`spawn_action_invoked_consumer`), which
+# is how a Quick Action or Breadcrumb click in the shell's top bar reaches an app
+# that the shell has no webview handle for. So the profile of any app linking
+# that plugin has to name them, and reading only the app's own source will always
+# miss them - which is exactly how this got written as empty.
+#
+# The failure is silent by construction: `subscribe` returns Ok, the patterns are
+# filtered out, and the plugin's self-healing loop waits on a receiver that never
+# yields. Toolbar buttons and shortcuts simply stop working, with nothing in the
+# app to say why.
+#
+# `publish = []` is honest but inert: `hold_to_scope = !is_system`
+# (event-bus `socket.rs:204`) and this app installs under /usr/lib/arlen/, which
+# `detect_tier` calls System, so a publish scope is not consulted for it today.
 [event_bus]
 publish = []
-subscribe = []
+subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked"]
