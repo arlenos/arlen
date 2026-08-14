@@ -215,18 +215,18 @@ async fn apply_set_audited(
     // A non-admitted writer is refused with no audit + no write; the
     // pure dispatch produces the canonical refusal message.
     if !is_admitted_writer(app_id) {
-        return handle_request(store, app_id, Request::Set(new));
+        return handle_request(store, app_id, Request::SetAi(new));
     }
     // A corrupt/unreadable store classifies against the fail-closed floor:
     // any authority in `new` then reads as an escalation-from-floor
     // (gated), while a Set to the pure floor stays unconditional - the
     // off-switch still works over a corrupt store, repairing it.
-    let old = store.load().unwrap_or_default();
+    let old = store.load_ai().unwrap_or_default();
     let new_sanitised = new.clone().sanitised();
     let changed = changed_security_keys(&old, &new_sanitised);
     if changed.is_empty() {
         // Nothing security-relevant changed - apply (idempotent), no audit.
-        return handle_request(store, app_id, Request::Set(new));
+        return handle_request(store, app_id, Request::SetAi(new));
     }
     if escalates(&old, &new_sanitised) {
         // Fail-closed: the trail is a precondition for the escalation.
@@ -241,11 +241,11 @@ async fn apply_set_audited(
                 "escalating change refused: the audit ledger is unavailable ({e})"
             ));
         }
-        return handle_request(store, app_id, Request::Set(new));
+        return handle_request(store, app_id, Request::SetAi(new));
     }
     // Non-escalating (the off-switch direction): apply unconditionally,
     // best-effort audit after. A down ledger never blocks removing authority.
-    let response = handle_request(store, app_id, Request::Set(new));
+    let response = handle_request(store, app_id, Request::SetAi(new));
     if matches!(response, Response::Committed) {
         if let Err(e) = sink.submit(switch_change_event(app_id, &changed)).await {
             tracing::warn!(
@@ -301,7 +301,7 @@ pub async fn serve_connection(
         // best-effort audit (the removability invariant). Every other
         // request is the pure read dispatch.
         let response = match request {
-            Request::Set(new) => apply_set_audited(&store, &app_id, new, sink.as_ref()).await,
+            Request::SetAi(new) => apply_set_audited(&store, &app_id, new, sink.as_ref()).await,
             other => handle_request(&store, &app_id, other),
         };
         if write_frame_async(&mut stream, &response).await.is_err() {
@@ -406,7 +406,7 @@ mod tests {
             "escalation must be refused when unrecordable, got {resp:?}"
         );
         // the store stayed at the floor - the escalation never landed
-        assert_eq!(store.load().unwrap(), AiMasterSwitches::default());
+        assert_eq!(store.load_ai().unwrap(), AiMasterSwitches::default());
     }
 
     /// The OFF direction (the removability invariant) is applied
@@ -423,14 +423,14 @@ mod tests {
             executor_live: true,
             ..Default::default()
         };
-        store.store(&on).unwrap();
+        store.store_ai(&on).unwrap();
         let sink = audit_proto::sink::MockAuditSink::failing();
         // turn everything off - a pure de-escalation
         let resp =
             apply_set_audited(&store, "dev.arlen.settings", AiMasterSwitches::default(), &sink).await;
         assert_eq!(resp, Response::Committed, "the off-switch must always apply");
         assert_eq!(
-            store.load().unwrap(),
+            store.load_ai().unwrap(),
             AiMasterSwitches::default(),
             "the AI was turned off despite the down ledger"
         );
@@ -445,7 +445,7 @@ mod tests {
         let want = AiMasterSwitches { enabled: true, access_level: 4, ..Default::default() };
         let resp = apply_set_audited(&store, "dev.arlen.settings", want.clone(), &sink).await;
         assert_eq!(resp, Response::Committed);
-        assert_eq!(store.load().unwrap(), want);
+        assert_eq!(store.load_ai().unwrap(), want);
         // exactly one audit event, naming the caller + the escalation
         let recorded = sink.recorded().await;
         assert_eq!(recorded.len(), 1);
@@ -463,7 +463,7 @@ mod tests {
         let hostile = AiMasterSwitches { executor_live: true, ..Default::default() };
         let resp = apply_set_audited(&store, "org.evil.app", hostile, &sink).await;
         assert!(matches!(resp, Response::Refused(_)));
-        assert_eq!(store.load().unwrap(), AiMasterSwitches::default());
+        assert_eq!(store.load_ai().unwrap(), AiMasterSwitches::default());
         assert_eq!(sink.count().await, 0, "a refused writer must not be audited");
     }
 
@@ -496,7 +496,7 @@ mod tests {
             access_level: 3,
             ..Default::default()
         };
-        store.store(&want).unwrap();
+        store.store_ai(&want).unwrap();
 
         let sock = dir.path().join("broker.sock");
         let listener = bind_socket(&sock).unwrap();
@@ -523,7 +523,7 @@ mod tests {
         client.read_exact(&mut body).await.unwrap();
         let resp: Response = serde_json::from_slice(&body).unwrap();
         match resp {
-            Response::State(got) => assert_eq!(got, want),
+            Response::State(got) => assert_eq!(got.ai, want),
             other => panic!("expected State, got {other:?}"),
         }
 
@@ -553,7 +553,7 @@ mod tests {
             executor_live: true,
             ..Default::default()
         };
-        let req = serde_json::to_vec(&Request::Set(hostile)).unwrap();
+        let req = serde_json::to_vec(&Request::SetAi(hostile)).unwrap();
         client
             .write_all(&(req.len() as u32).to_be_bytes())
             .await
@@ -572,7 +572,7 @@ mod tests {
             "test caller is not an admitted writer, got {resp:?}"
         );
         // the store stayed at the floor
-        assert_eq!(store.load().unwrap(), AiMasterSwitches::default());
+        assert_eq!(store.load_ai().unwrap(), AiMasterSwitches::default());
 
         drop(client);
         let _ = server.await;
@@ -618,6 +618,6 @@ mod tests {
         );
 
         let _ = server.await;
-        assert_eq!(store.load().unwrap(), AiMasterSwitches::default());
+        assert_eq!(store.load_ai().unwrap(), AiMasterSwitches::default());
     }
 }

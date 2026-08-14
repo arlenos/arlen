@@ -1,4 +1,5 @@
-//! The canonical AI master-switch state, owned by the broker.
+//! The canonical state, owned by the broker: [`BrokerState`], one field
+//! per family (the AI master switches, the accessibility settings).
 //!
 //! The state lives as `state.toml` in a 0700 directory the user's
 //! normal uid cannot write (a daemon-uid- or root-owned dir under
@@ -73,6 +74,58 @@ pub struct AiMasterSwitches {
     /// Per-app autonomy grants (the apps allowed to act without the
     /// per-action prompt).
     pub autonomous_apps: BTreeSet<String>,
+}
+
+/// The user's accessibility settings.
+///
+/// A SECOND FAMILY in this broker, not a second broker: it outlives nothing
+/// extra, holds no separate authority, and owns no state this daemon could not.
+/// It is emphatically not a theme - a theme is taste, this decides whether
+/// somebody can use the machine at all, and switching appearance must never cost
+/// a person their screen reader.
+///
+/// One flag today, the one the terminal needs. The rest of the A11Y-R2 set
+/// (reduced motion, high contrast, text scale) has a home here when it is built;
+/// a field nothing reads would be a promise rather than a feature.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Accessibility {
+    /// True when assistive technology is in use, so apps build their
+    /// accessibility tree instead of leaving a screen reader nothing to read.
+    ///
+    /// Defaults false, and that default is a cost decision rather than a guess:
+    /// building the tree is real render work every session pays, so the flag is
+    /// the gate. A person who needs it turns it on once and every app hears.
+    pub screen_reader: bool,
+}
+
+/// Everything this broker holds, one field per family.
+///
+/// The families are separate on the wire and on disk so their write gates can
+/// differ: today the settings app writes both, but "who may change the AI
+/// master switches" and "who may change accessibility" are not the same
+/// question and should not share an answer by accident.
+///
+/// `serde(default)` on both is the fail-closed read: a file written before a
+/// family existed - or one missing a section - resolves that family to its
+/// conservative floor rather than failing the whole read.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BrokerState {
+    /// The AI master switches.
+    pub ai: AiMasterSwitches,
+    /// The accessibility settings.
+    pub accessibility: Accessibility,
+}
+
+impl BrokerState {
+    /// The state with every family clamped to what it may legally hold.
+    pub fn sanitised(self) -> Self {
+        Self {
+            ai: self.ai.sanitised(),
+            accessibility: self.accessibility,
+        }
+    }
 }
 
 impl Default for AiMasterSwitches {
@@ -326,33 +379,63 @@ impl StateStore {
         self.dir.join(STATE_FILE)
     }
 
-    /// Load the canonical state. A missing file resolves to the
-    /// conservative floor ([`AiMasterSwitches::default`]); a present
+    /// Load the canonical state, every family. A missing file resolves
+    /// to the conservative floor ([`BrokerState::default`]); a present
     /// file is parsed and sanitised (out-of-range fields fail closed);
     /// a present-but-unparseable file is an error the caller must
     /// refuse on.
-    pub fn load(&self) -> Result<AiMasterSwitches, StateError> {
+    pub fn load(&self) -> Result<BrokerState, StateError> {
         let path = self.state_path();
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(AiMasterSwitches::default());
+                return Ok(BrokerState::default());
             }
             Err(e) => return Err(StateError::Io(e.to_string())),
         };
-        let switches: AiMasterSwitches =
+        let state: BrokerState =
             toml::from_str(&text).map_err(|e| StateError::Parse(e.to_string()))?;
-        Ok(switches.sanitised())
+        Ok(state.sanitised())
+    }
+
+    /// Replace ONE family, leaving the others as they are.
+    ///
+    /// The whole state lives in one file, so a writer that holds only its own
+    /// family and calls [`store`](Self::store) writes the other families back
+    /// as defaults - which is not a default, it is an erase, and it is exactly
+    /// the shape `dev/scripts/check-default-then-write.py` exists to catch.
+    /// Read, replace the one field, write the whole thing back.
+    ///
+    /// The read here is [`load`](Self::load), so an unreadable store refuses
+    /// rather than defaulting: a corrupt file must not become a fresh one
+    /// because somebody moved a slider.
+    pub fn store_ai(&self, ai: &AiMasterSwitches) -> Result<(), StateError> {
+        let mut state = self.load()?;
+        state.ai = ai.clone();
+        self.store(&state)
+    }
+
+    /// Replace the accessibility family, leaving the AI switches alone.
+    /// See [`store_ai`](Self::store_ai) for why this is not a plain store.
+    pub fn store_accessibility(&self, accessibility: Accessibility) -> Result<(), StateError> {
+        let mut state = self.load()?;
+        state.accessibility = accessibility;
+        self.store(&state)
+    }
+
+    /// Just the AI family, for a caller that has no interest in the rest.
+    pub fn load_ai(&self) -> Result<AiMasterSwitches, StateError> {
+        Ok(self.load()?.ai)
     }
 
     /// Persist the canonical state durably: write a 0600 sibling temp,
     /// fsync it, rename over `state.toml` (atomic), then fsync the
     /// directory so the rename survives a crash.
-    pub fn store(&self, switches: &AiMasterSwitches) -> Result<(), StateError> {
+    pub fn store(&self, state: &BrokerState) -> Result<(), StateError> {
         // Clamp before persisting so an out-of-range field never
         // reaches disk, regardless of caller.
-        let switches = switches.clone().sanitised();
-        let text = toml::to_string_pretty(&switches)
+        let state = state.clone().sanitised();
+        let text = toml::to_string_pretty(&state)
             .map_err(|e| StateError::Io(format!("serialize: {e}")))?;
         let path = self.state_path();
         let tmp = self.dir.join(format!(".{STATE_FILE}.tmp"));
@@ -366,11 +449,15 @@ impl StateStore {
     /// never clobbers a deliberate setting. Returns whether it
     /// seeded. The broker is the single writer at startup (before it
     /// accepts connections), so the check-then-write is race-free.
+    ///
+    /// Only the AI family is seeded: it is the one with an older file to
+    /// inherit from (`ai.toml`). Accessibility starts at its own default,
+    /// because there is no earlier place a person could have set it.
     pub fn seed_if_absent(&self, seed: &AiMasterSwitches) -> Result<bool, StateError> {
         if self.state_path().exists() {
             return Ok(false);
         }
-        self.store(seed)?;
+        self.store(&BrokerState { ai: seed.clone(), accessibility: Accessibility::default() })?;
         Ok(true)
     }
 
@@ -546,7 +633,7 @@ mod tests {
     fn missing_file_loads_the_conservative_floor() {
         let tmp = tempfile::tempdir().unwrap();
         let s = store_in(tmp.path());
-        let got = s.load().unwrap();
+        let got = s.load_ai().unwrap();
         assert_eq!(got, AiMasterSwitches::default());
         assert!(!got.enabled);
         assert_eq!(got.access_level, 0);
@@ -568,8 +655,66 @@ mod tests {
             autonomous_apps: BTreeSet::new(),
         };
         want.autonomous_apps.insert("org.arlen.files".to_string());
-        s.store(&want).unwrap();
-        assert_eq!(s.load().unwrap(), want);
+        s.store_ai(&want).unwrap();
+        assert_eq!(s.load_ai().unwrap(), want);
+    }
+
+    #[test]
+    fn writing_one_family_leaves_the_other_alone() {
+        // The two families share a file, so a writer holding only its own would
+        // write the other back as a default - which is the erase, not a default.
+        // Set each in turn and check the first survives the second.
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store_in(tmp.path());
+        s.store_accessibility(Accessibility { screen_reader: true }).unwrap();
+        s.store_ai(&AiMasterSwitches { enabled: true, access_level: 2, ..Default::default() })
+            .unwrap();
+
+        let got = s.load().unwrap();
+        assert!(got.accessibility.screen_reader, "the AI write erased the screen-reader flag");
+        assert!(got.ai.enabled);
+        assert_eq!(got.ai.access_level, 2);
+
+        // ...and the other way round.
+        s.store_accessibility(Accessibility { screen_reader: false }).unwrap();
+        let got = s.load().unwrap();
+        assert!(got.ai.enabled, "the accessibility write erased the AI switches");
+        assert_eq!(got.ai.access_level, 2);
+        assert!(!got.accessibility.screen_reader);
+    }
+
+    #[test]
+    fn a_family_write_refuses_over_a_corrupt_store() {
+        // Read-modify-write of a file it cannot parse would replace it with one
+        // family's value and a default for the rest. Refuse and leave it for a
+        // person to fix.
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store_in(tmp.path());
+        let path = tmp.path().join(STATE_FILE);
+        std::fs::write(&path, "this = is = not = toml").unwrap();
+
+        assert!(matches!(
+            s.store_accessibility(Accessibility { screen_reader: true }),
+            Err(StateError::Parse(_))
+        ));
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "this = is = not = toml",
+            "the unparseable file must be left exactly as it was"
+        );
+    }
+
+    #[test]
+    fn a_file_from_before_accessibility_existed_still_reads() {
+        // `serde(default)` per family is the fail-closed read: a state file
+        // holding only `[ai]` resolves accessibility to its floor rather than
+        // failing the whole load and taking the AI switches down with it.
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store_in(tmp.path());
+        std::fs::write(tmp.path().join(STATE_FILE), "[ai]\nenabled = true\n").unwrap();
+        let got = s.load().unwrap();
+        assert!(got.ai.enabled);
+        assert!(!got.accessibility.screen_reader);
     }
 
     #[test]
@@ -587,8 +732,8 @@ mod tests {
     fn an_out_of_range_access_level_clamps_to_the_floor() {
         let tmp = tempfile::tempdir().unwrap();
         let s = store_in(tmp.path());
-        std::fs::write(tmp.path().join(STATE_FILE), "access_level = 9\nenabled = true\n").unwrap();
-        let got = s.load().unwrap();
+        std::fs::write(tmp.path().join(STATE_FILE), "[ai]\naccess_level = 9\nenabled = true\n").unwrap();
+        let got = s.load_ai().unwrap();
         assert_eq!(got.access_level, 0, "9 > MAX clamps to the safe floor, not the ceiling");
         assert!(got.enabled, "the valid field is preserved");
     }
@@ -597,8 +742,8 @@ mod tests {
     fn a_partial_file_fills_missing_fields_from_the_floor() {
         let tmp = tempfile::tempdir().unwrap();
         let s = store_in(tmp.path());
-        std::fs::write(tmp.path().join(STATE_FILE), "enabled = true\naccess_level = 2\n").unwrap();
-        let got = s.load().unwrap();
+        std::fs::write(tmp.path().join(STATE_FILE), "[ai]\nenabled = true\naccess_level = 2\n").unwrap();
+        let got = s.load_ai().unwrap();
         assert!(got.enabled);
         assert_eq!(got.access_level, 2);
         // unmentioned security fields stay at the floor
@@ -610,7 +755,7 @@ mod tests {
     fn the_dir_is_0700_and_the_file_is_0600() {
         let tmp = tempfile::tempdir().unwrap();
         let s = store_in(tmp.path());
-        s.store(&AiMasterSwitches::default()).unwrap();
+        s.store_ai(&AiMasterSwitches::default()).unwrap();
         let dir_mode = std::fs::metadata(tmp.path()).unwrap().permissions().mode() & 0o777;
         let file_mode = std::fs::metadata(tmp.path().join(STATE_FILE))
             .unwrap()
@@ -640,12 +785,12 @@ mod tests {
         let s = store_in(tmp.path());
         // fresh: seeds
         assert!(s.seed_if_absent(&AiMasterSwitches::shipped_default()).unwrap());
-        assert_eq!(s.load().unwrap(), AiMasterSwitches::shipped_default());
+        assert_eq!(s.load_ai().unwrap(), AiMasterSwitches::shipped_default());
         // a user narrows to the floor
-        s.store(&AiMasterSwitches::default()).unwrap();
+        s.store_ai(&AiMasterSwitches::default()).unwrap();
         // a later seed (e.g. a restart) does NOT overwrite the narrowing
         assert!(!s.seed_if_absent(&AiMasterSwitches::shipped_default()).unwrap());
-        assert_eq!(s.load().unwrap(), AiMasterSwitches::default());
+        assert_eq!(s.load_ai().unwrap(), AiMasterSwitches::default());
     }
 
     #[test]

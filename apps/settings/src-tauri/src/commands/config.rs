@@ -212,11 +212,11 @@ pub async fn config_set(
 ) -> Result<(), String> {
     if matches!(file, ConfigFile::Ai) && is_ai_switch_key(&key) {
         let client = arlen_config_broker::ConfigBrokerClient::default_socket();
-        match client.get().await {
+        match client.get_ai().await {
             Ok(mut switches) => {
                 apply_ai_switch(&mut switches, &key, &value)?;
                 return client
-                    .set(&switches)
+                    .set_ai(&switches)
                     .await
                     .map_err(|e| format!("config broker set: {e}"));
             }
@@ -259,11 +259,11 @@ pub async fn ai_defaults_set(provider: String, model: String) -> Result<(), Stri
     // separately (provider from the broker, model from ai.toml), so a partial
     // apply is recoverable by a retry, not corrupting.
     let client = arlen_config_broker::ConfigBrokerClient::default_socket();
-    let provider_to_file = match client.get().await {
+    let provider_to_file = match client.get_ai().await {
         Ok(mut switches) => {
             switches.provider = provider.clone();
             client
-                .set(&switches)
+                .set_ai(&switches)
                 .await
                 .map_err(|e| format!("config broker set: {e}"))?;
             false
