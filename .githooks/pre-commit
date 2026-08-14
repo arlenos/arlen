@@ -62,7 +62,22 @@ if [ ! -f "$runner" ]; then
     exit 0
 fi
 
-if ! bash "$runner"; then
+# `git commit` exports GIT_DIR, GIT_INDEX_FILE and friends into its hooks, and a
+# child that runs `git` somewhere else INHERITS them - so a gate whose fixture is
+# a throwaway repo in /tmp silently operates on THIS repo instead. That is not a
+# theory: on 14 Aug the hook reported seventeen failures for a three-line change
+# to some TOML, every one of them a fixture test, while the same runner on the
+# same tree was clean. Reproduced by exporting GIT_DIR by hand.
+#
+# It is worse than a wasted retry. Those seventeen looked exactly like a real
+# breakage, and the message under them offers `--no-verify` - so the response
+# this teaches is to skip every structural gate at once, on the day one of them
+# is right.
+#
+# `env -u` rather than `unset`: the hook itself keeps using git for the
+# divergence report below, and only the gates need the clean environment.
+if ! env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_PREFIX \
+        -u GIT_AUTHOR_DATE -u GIT_EDITOR bash "$runner"; then
     echo >&2
     echo "pre-commit: a structural gate is red, so this commit would land broken." >&2
     echo "Fix it, or pass --no-verify if you know why it is wrong." >&2
