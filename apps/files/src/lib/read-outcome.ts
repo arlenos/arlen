@@ -41,6 +41,20 @@ export type EmptyReason = "unavailable" | "denied" | "empty";
  *
  * So each surface names the thing the person was looking at, in its own words,
  * and this decides which of the three it is saying.
+ *
+ * WHERE THIS DOES NOT APPLY, which is worth writing down because the same app
+ * does the opposite one file over and both are right. The Places sidebar drops a
+ * whole GROUP when its read fails - "no section beats an empty one" - rather than
+ * showing a Bookmarks heading with a reason under it.
+ *
+ * The line is what the person asked for. A listing is the answer to a navigation
+ * they just performed, so silence there leaves them to conclude the folder is
+ * empty; the reason has to be said. A sidebar group is chrome they did not ask
+ * for, and a heading over an explanation is a worse answer than no heading -
+ * it spends the space arguing about something nobody was looking at.
+ *
+ * So: name the reason on what was requested, omit the section that was not. Do
+ * not "fix" one of these to match the other.
  */
 export function reasonState<T>(
   r: ReadOutcome<T> | null | undefined,
