@@ -15,6 +15,7 @@ const messages: Catalogs = {
   en: {
     "sh.bat.powerSaver": "Power Saver",
     "sh.bat.balanced": "Balanced",
+    "sh.layout.errSave": "The layout setting was not saved.",
     "sh.layout.innerGap": "Inner gap",
     "sh.layout.tiledTitleBars": "Title bars on tiled windows",
     "sh.mpris.seek": "Seek",
@@ -518,6 +519,7 @@ const messages: Catalogs = {
   de: {
     "sh.bat.powerSaver": "Energiesparen",
     "sh.bat.balanced": "Ausgewogen",
+    "sh.layout.errSave": "Die Layout-Einstellung wurde nicht gespeichert.",
     "sh.layout.innerGap": "Innerer Abstand",
     "sh.layout.tiledTitleBars": "Titelleisten bei gekachelten Fenstern",
     "sh.mpris.seek": "Spulen",

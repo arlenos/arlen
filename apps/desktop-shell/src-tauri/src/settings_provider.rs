@@ -311,10 +311,20 @@ fn write_toml_key(
     value: serde_json::Value,
 ) -> Result<(), String> {
     let path = config_file_path(file);
-    let content = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut table: toml::Value = toml::from_str(&content).unwrap_or_else(|_| {
-        toml::Value::Table(toml::map::Map::new())
-    });
+    // ABSENT is fine: nobody has configured this file, so an empty table is the
+    // truth and the write creates it. UNREADABLE or MALFORMED is not - both used
+    // to become an empty table, and the write at the end puts that back over the
+    // file. Every other key in it, gone, on one syntax error from a hand-edit and
+    // one flipped switch. `settings_set_value` reaches every config this app
+    // writes, so the blast radius is all of them.
+    let content = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let mut table: toml::Value = toml::from_str(&content).map_err(|e| {
+        format!("{} is not readable as TOML, so it was left alone: {e}", path.display())
+    })?;
 
     // Walk the dot-path, creating tables as needed.
     let parts: Vec<&str> = key.split('.').collect();
@@ -518,6 +528,34 @@ pub fn settings_open_deep_link(panel: String, anchor: Option<String>) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A write must never turn a config it could not parse into a config with one
+    /// key in it.
+    ///
+    /// `settings_set_value` reaches every file this app writes, so the failure is
+    /// not "a setting did not save" - it is `shell.toml` or `notifications.toml`
+    /// replaced by the single key that was being set, on one syntax error from a
+    /// hand-edit. The malformed file must come out byte-identical.
+    #[test]
+    fn a_malformed_config_is_left_alone_rather_than_replaced() {
+        let dir = std::env::temp_dir().join(format!("arlen-cfg-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("arlen")).unwrap();
+        // SAFETY: the test owns its own temp config dir.
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", &dir) };
+
+        let path = dir.join("arlen/shell.toml");
+        let original = b"[focus]\nthis line = = is not toml\n";
+        std::fs::write(&path, original).unwrap();
+
+        let err = write_toml_key("shell", "focus.enabled", serde_json::json!(true)).unwrap_err();
+        assert!(err.contains("left alone"), "says what it did not do: {err}");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            original,
+            "the file a person can still fix by hand is untouched"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     fn make_index() -> Vec<IndexedSetting> {
         vec![
