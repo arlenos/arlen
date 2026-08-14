@@ -65,12 +65,21 @@ PUBLISH_CALL = re.compile(r'(?:emit_to_event_bus|\.emit|emit_event)\s*\(\s*"(?P<
 # perfectly well.
 ARM = re.compile(r'"(?P<path>/usr/[^"]+)"\s*=>\s*\{\s*return\s+Ok\("(?P<id>[a-z0-9.\-]+)"', re.S)
 
-# Components whose directory name is not the id they resolve to.
+# Components whose directory name is not the id they resolve to, or whose binary
+# name keeps the arm lookup from finding it.
+#
+# `knowledge` is in here despite matching its directory, and that is the point:
+# its binary is `arlen-graph-daemon`, so no arm lookup keyed on the directory name
+# can reach the `("/usr/bin/arlen-graph-daemon", "knowledge")` override. Without
+# an entry it fell through to the bare-directory fallback and got the right answer
+# by coincidence - which would have held until the day the id and the directory
+# diverged, and then reported a missing profile under a name nobody uses.
 DIR_TO_ID = {
     "daemons/audit-daemon": "auditd",
     "daemons/notification-daemon": "notifyd",
     "daemons/anomaly-detector": "anomalyd",
     "daemons/power-daemon": "powerd",
+    "daemons/knowledge": "knowledge",
 }
 
 # Emitters that are not in the image, with the reason.
