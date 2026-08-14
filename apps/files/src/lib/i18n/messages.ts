@@ -202,6 +202,10 @@ const messages: Catalogs = {
     "f.info.relatedNone": "None",
     // Named for what the DRIVE did, not for what the click was: "could not eject"
     // reads as the app failing, and the usual cause is a file still open on it.
+    "f.places.pinFailed": "That folder could not be pinned",
+    "f.places.unpinFailed": "That place could not be unpinned",
+    "f.places.mountRefused": "The system refused to mount {place}",
+    "f.places.mountedNowhere": "{place} was mounted, but no location appeared for it",
     "f.places.ejectAria": "Eject {place}",
     "f.places.ejectRefused": "{place} is still in use, so it was not ejected",
     "f.prov.incomplete": "Part of this history could not be read, so steps may be missing",
@@ -485,6 +489,10 @@ const messages: Catalogs = {
     "f.info.relatedUnavailable": "Verwandte Einträge sind auf diesem System nicht verfügbar",
     "f.info.relatedDenied": "Files darf verwandte Einträge nicht lesen",
     "f.info.relatedNone": "Keine",
+    "f.places.pinFailed": "Der Ordner konnte nicht angeheftet werden",
+    "f.places.unpinFailed": "Der Ort konnte nicht gelöst werden",
+    "f.places.mountRefused": "Das System hat das Einhängen von {place} verweigert",
+    "f.places.mountedNowhere": "{place} wurde eingehängt, aber es ist kein Ort dafür aufgetaucht",
     "f.places.ejectAria": "{place} auswerfen",
     "f.places.ejectRefused": "{place} ist noch in Benutzung und wurde nicht ausgeworfen",
     "f.prov.incomplete": "Ein Teil dieser Historie konnte nicht gelesen werden, es fehlen womöglich Schritte",

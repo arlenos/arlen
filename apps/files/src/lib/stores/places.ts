@@ -67,20 +67,29 @@ export const placeGroups = derived([placeGroupsRaw, t], ([$groups, $t]) =>
 );
 
 /// Pin a folder to the sidebar and refresh the groups.
+///
+/// A failed pin says so. The only feedback this action has is the sidebar
+/// changing, so swallowing the error leaves a person who clicked Pin looking at an
+/// unchanged list with no way to tell a refusal from a click that missed.
 export async function addBookmark(path: string): Promise<void> {
   try {
     await invoke("files_bookmark_add", { path });
+    opError.set(null);
   } catch {
+    opError.set(get(t)("f.places.pinFailed"));
     return;
   }
   await loadPlaces();
 }
 
-/// Unpin a folder.
+/// Unpin a folder. Same silence, same fix: the row staying put is the only thing a
+/// person would see.
 export async function removeBookmark(path: string): Promise<void> {
   try {
     await invoke("files_bookmark_remove", { path });
+    opError.set(null);
   } catch {
+    opError.set(get(t)("f.places.unpinFailed"));
     return;
   }
   await loadPlaces();
@@ -112,8 +121,18 @@ export async function removePlace(place: Place): Promise<void> {
 
 /// Navigate to a place. An unmounted removable drive is mounted first (udisks),
 /// then the now-mounted volume is opened; everything else navigates directly.
-/// A mount that fails (busy / polkit-refused) stays put rather than opening the
-/// bare `/dev` node.
+/// Staying put rather than opening the bare `/dev` node is right; staying put
+/// WITHOUT SAYING SO is the defect that was here.
+///
+/// Two ways this ends nowhere, and from the person's side they look identical to a
+/// click that missed:
+///
+///   * the mount is refused - polkit, or a filesystem the system will not take;
+///   * the mount SUCCEEDS and no mountpoint appears for the device, so there is
+///     nothing to open. A success that leads nowhere is the more confusing of the
+///     two, because the drive really did mount.
+///
+/// Both say which now, on the same op-error line a failed file operation uses.
 export async function navigatePlace(
   place: Place,
   navigate: (path: string) => void,
@@ -122,15 +141,18 @@ export async function navigatePlace(
     try {
       await invoke("files_mount", { device: place.path });
     } catch {
+      opError.set(get(t)("f.places.mountRefused", { place: place.label }));
       return;
     }
     await loadPlaces();
     for (const [mountpoint, device] of deviceNodes) {
       if (device === place.path) {
+        opError.set(null);
         navigate(mountpoint);
         return;
       }
     }
+    opError.set(get(t)("f.places.mountedNowhere", { place: place.label }));
     return;
   }
   navigate(place.path);
