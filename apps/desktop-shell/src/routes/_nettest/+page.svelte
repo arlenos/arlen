@@ -39,6 +39,11 @@
       // the honest states can be compared against the definite ones.
       if (pinned === "unknown") throw new Error("the service is not running");
       if (cmd === "get_sni_items")
+        // A tray item's title is the APP's own name, reported by that app over
+        // StatusNotifierItem - never ours to translate. The fixture uses a real
+        // one so the row is the width a real one would be; it sits in the i18n
+        // baseline as declared foreign data for the same reason the live titles
+        // are not translated either.
         return [
           {
             service: "s1",
