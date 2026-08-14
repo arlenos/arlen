@@ -8,6 +8,7 @@
   } from "@arlen/ui-kit/components/ui/dropdown-menu/index.js";
   import { getContext } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import type { Readable } from "svelte/store";
   function handleAction(action: string) {
     const appId = $activeAppId;
@@ -73,9 +74,17 @@
   // outside click reaches the webview to dismiss the menu. Mirrors the
   // popovers' `set_popover_input_region` signalling.
   $effect(() => {
-    invoke("set_popover_input_region", { expanded: openMenu !== null }).catch(
-      () => {},
-    );
+    const wanted = openMenu;
+    // A dropdown drawn without the widened region hands its clicks to the window
+    // underneath, so a refusal closes the menu rather than leaving it hanging
+    // over another app collecting them.
+    void shellAction(
+      "set_popover_input_region",
+      { expanded: wanted !== null },
+      "sh.popover.notOpened",
+    ).then((ok) => {
+      if (!ok && wanted !== null) openMenu = null;
+    });
   });
 </script>
 

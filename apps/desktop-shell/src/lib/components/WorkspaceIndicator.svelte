@@ -20,6 +20,7 @@
     pruneSelection,
   } from "$lib/stores/overlaySelection.js";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { listen } from "@tauri-apps/api/event";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { createDragEngine } from "$lib/workspace/drag.svelte.js";
@@ -107,7 +108,17 @@
 
   function openOverlay() {
     overlayVisible = true;
-    invoke("set_popover_input_region", { expanded: true }).catch(() => {});
+    // Without the widened region the overlay is drawn and every click inside it
+    // falls through to the window behind - so a refused call must not leave it
+    // up. Same reasoning as the popovers; this is the second of the four places
+    // that widen the region, and fixing only the store left three.
+    void shellAction(
+      "set_popover_input_region",
+      { expanded: true },
+      "sh.popover.notOpened",
+    ).then((ok) => {
+      if (!ok) overlayVisible = false;
+    });
   }
 
   /// Tracks whether any card's shadcn ContextMenu is currently open.
