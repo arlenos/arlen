@@ -254,8 +254,16 @@ export async function terminalConfigSet(fontSize: number): Promise<void> {
   await invoke("terminal_config_set", { fontSize });
 }
 
-/// Reads the AI capability context; null when the backend is
-/// unreachable (the composer strip renders that state distinctly).
+/// Reads the AI capability context; null when the backend is unreachable, which
+/// is a different fact from the AI being switched off and wants a different
+/// sentence.
+///
+/// NOTHING CALLS THIS YET. It said the composer strip renders the unreachable
+/// state distinctly, and there is no such strip - a doc describing a renderer
+/// that does not exist is the same defect as a surface describing data it does
+/// not have. The file manager's search bar was wired to the full `ai_capability`
+/// the same way and now says which of the two applies; the terminal's equivalent
+/// needs somewhere to put the sentence, which the prompt row does not have yet.
 export async function readCapability(): Promise<Capability | null> {
   try {
     return await invoke<Capability>("ai_capability");
