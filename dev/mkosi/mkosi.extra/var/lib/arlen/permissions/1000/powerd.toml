@@ -1,0 +1,32 @@
+# The power daemon's event-bus profile.
+#
+# THE VM CANNOT CATCH THIS ONE, which is why it is written from a source sweep
+# rather than from a boot. `arlen-powerd` publishes `power.state` when UPower
+# reports a change, and a QEMU guest has no battery - so it never connects as a
+# producer, never emits, and every enforce boot looks clean. On a laptop it would
+# publish immediately, be denied for having no declared scope, and the shell's
+# battery indicator would simply stop updating, with nothing in any log the user
+# or the developer would see.
+#
+# That combination - works in the VM, breaks on metal, silent on both - is the
+# worst shape a regression can have here, and it arrives the moment publish
+# exemption stops following the install tier (14 Aug). Found by listing every
+# component in the tree that emits a bus topic and asking which have no profile,
+# rather than by waiting for a boot to say so.
+#
+# `powerd`, not `power-daemon` or `arlen-powerd`: it installs at
+# `/usr/lib/arlen/libexec/arlen-powerd`, which is neither `/usr/bin/arlen-*` nor
+# an app directory, so `identity.rs:462` carries an explicit rule mapping it to
+# `powerd`. The filename has to be that id or the profile is never found - the
+# mistake the compositor's profile made for weeks.
+#
+# One topic, and nothing heard: the daemon is a pure producer on the bus. Its
+# other consumers are pull-side (the `org.arlen.Power1` properties the shell and
+# the SDK read), which do not go through here.
+[info]
+app_id = "powerd"
+tier = "first-party"
+
+[event_bus]
+publish = ["power.state"]
+subscribe = []
