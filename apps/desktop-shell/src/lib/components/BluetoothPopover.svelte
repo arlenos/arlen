@@ -37,6 +37,9 @@
 
   let btState = $state<BluetoothState | null>(null);
   let loading = $state(false);
+  /// A message KEY, not a sentence: the banner outlives a locale switch, and the
+  /// i18n gate refuses a translator read in a callback. Five of these were
+  /// hardcoded English until now.
   let error = $state<string | null>(null);
   let connectingTo = $state<string | null>(null);
 
@@ -46,7 +49,7 @@
     try {
       btState = await invoke<BluetoothState>("get_bluetooth_state");
     } catch {
-      error = "Could not load Bluetooth";
+      error = "sh.bt.stateUnknown";
     }
     loading = false;
   }
@@ -92,7 +95,7 @@
       await invoke("set_bluetooth_powered", { enabled: !btState.powered });
       await load();
     } catch {
-      error = "Could not turn Bluetooth on or off";
+      error = "sh.bt.errToggle";
     }
   }
 
@@ -119,7 +122,7 @@
     error = null;
     if (dev.connected) {
       try { await invoke("disconnect_bluetooth_device", { path: dev.path }); }
-      catch { error = "Could not disconnect"; }
+      catch { error = "sh.bt.errDisconnect"; }
       await load();
       return;
     }
@@ -128,7 +131,7 @@
       if (!dev.paired) await invoke("pair_bluetooth_device", { path: dev.path });
       await invoke("connect_bluetooth_device", { path: dev.path });
     } catch {
-      error = "Could not connect";
+      error = "sh.bt.errConnect";
     }
     connectingTo = null;
     await load();
@@ -141,7 +144,7 @@
 
   async function connect(path: string) {
     connectingTo = path;
-    try { await invoke("connect_bluetooth_device", { path }); } catch { error = "Could not connect"; }
+    try { await invoke("connect_bluetooth_device", { path }); } catch { error = "sh.bt.errConnect"; }
     connectingTo = null;
     await load();
   }
@@ -152,7 +155,7 @@
   }
 
   async function remove(path: string) {
-    try { await invoke("remove_bluetooth_device", { path }); } catch { error = "Could not remove device"; }
+    try { await invoke("remove_bluetooth_device", { path }); } catch { error = "sh.bt.errForget"; }
     await load();
   }
 
@@ -261,17 +264,21 @@
 
 <ShellPopover id="bluetooth" width={280} right={80} bodyPadding="12px" bodyGap="6px">
   {#snippet header()}
+    <!-- No switch until the state has been READ. `btState` null means the read
+         did not answer, and a toggle draws a position - so leaving it on put a
+         switch claiming the radio is off directly above a body saying the state
+         could not be read. Same shape as the network panel's. -->
     <PopoverHeader
       icon={Bluetooth}
       title={$t("sh.bt.title")}
       toggled={btState?.powered ?? false}
-      onToggle={togglePower}
+      onToggle={btState ? togglePower : undefined}
     />
   {/snippet}
 
   {#if !btState}
     {#if error}
-      <PopoverErrorBanner message={error} />
+      <PopoverErrorBanner message={$t(error)} />
     {:else}
       <div class="bt-msg">
         <Bluetooth size={32} strokeWidth={1} />
@@ -291,7 +298,7 @@
     </div>
   {:else}
     {#if error}
-      <PopoverErrorBanner message={error} />
+      <PopoverErrorBanner message={$t(error)} />
     {/if}
 
     {#if connectedDevices.length > 0}
@@ -320,7 +327,7 @@
 
     <button class="bt-scan-btn" onclick={(e) => { e.stopPropagation(); toggleScan(); }}>
       <RefreshCw size={12} strokeWidth={2} class={btState.discovering ? "spinning" : ""} />
-      <span>{btState.discovering ? "Scanning..." : "Scan for Devices"}</span>
+      <span>{btState.discovering ? $t("sh.bt.scanning") : $t("sh.bt.scan")}</span>
     </button>
   {/if}
 </ShellPopover>
