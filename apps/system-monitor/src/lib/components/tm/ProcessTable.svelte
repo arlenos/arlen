@@ -345,7 +345,12 @@
     font-weight: 600;
     letter-spacing: 0.02em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    /* 50, not 45. Measured against the rendered page rather than picked: the
+       header is `--color-fg-primary` over `rgb(15,15,15)`, and at 45% that is
+       #797979 for a contrast of 4.40 - under the 4.5 floor for text this size,
+       which axe reported on all nine headers. 50% is the smallest step that
+       clears it, at 5.13, and the difference on screen is 121 grey against 132. */
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     cursor: pointer;
     text-align: start;
   }
@@ -383,7 +388,9 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    /* 50 for the same measured reason as the column headers above: 40% is
+       #6b6b6b on this background, a ratio of 3.70, and this text is 12px. */
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     display: block;
   }
 
@@ -485,7 +492,9 @@
     color: var(--color-warning, #d0a54a);
   }
   .cell.status[data-status="suspended"] {
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    /* 50 for the same measured reason as the column headers above: 40% is
+       #6b6b6b on this background, a ratio of 3.70, and this text is 12px. */
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .cell.num {
     text-align: end;
