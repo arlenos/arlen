@@ -61,6 +61,22 @@ pub struct GreeterA11y {
 /// autologins today), so this is the convention rather than a path some
 /// `StateDirectory=` already creates - which is why the loader treats an absent
 /// directory as "nothing remembered" rather than an error.
+///
+/// WHOEVER WRITES THAT DEPLOYMENT HAS TO PROVISION THIS, and it will not work by
+/// accident: `/var/lib/arlen` is `0755 root root` (see
+/// `daemons/config-broker/dist/arlen-config-broker.tmpfiles.conf`), so the
+/// greeter's user cannot create a subdirectory under it however hard
+/// `create_dir_all` tries. Without a tmpfiles entry owned by whatever user the
+/// greeter runs as, every write here fails with EACCES and the login screen
+/// tells the person - correctly and forever - that it could not save their
+/// choice.
+///
+/// The pattern to copy is the config-broker's: one `dist/*.tmpfiles.conf`
+/// declaring the directory with its owner and mode. I have not written it,
+/// because it has to name a user, and which user the greeter runs as is part of
+/// the deployment that does not exist yet. Guessing `greeter` because greetd
+/// conventionally uses it would be the kind of plausible invention that produces
+/// a file nobody can write to.
 pub fn state_dir() -> PathBuf {
     #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var(STATE_DIR_ENV) {
