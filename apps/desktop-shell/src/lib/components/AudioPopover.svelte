@@ -11,6 +11,8 @@
   } from "lucide-svelte";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
+  import PopoverErrorBanner from "$lib/components/shared/PopoverErrorBanner.svelte";
+  import { dndState, setDnd } from "$lib/stores/notifications";
   import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
 
   interface AudioDevice { id: string; name: string; is_default: boolean; }
@@ -20,11 +22,27 @@
   let muted = $state(false);
   let inputVolume = $state(50);
   let inputMuted = $state(false);
-  let dndEnabled = $state(false);
+  /// Do Not Disturb, read from the store the notification daemon actually feeds.
+  ///
+  /// It used to be a local `$state(false)` that nothing ever read into: the switch
+  /// opened showing whatever that default implied rather than the real mode, never
+  /// followed a change made in quick settings or the notification panel, and wrote
+  /// to `set_dnd_enabled` - a command that logs a line, emits an event with no
+  /// listener, and reaches no daemon. Flipping it suppressed nothing. The quick
+  /// action beside it has always sent the real message; this now sends the same one.
+  const dndOn = $derived($dndState.mode !== "off");
   let outputs = $state<AudioDevice[]>([]);
   let inputs = $state<AudioDevice[]>([]);
   let apps = $state<AppVol[]>([]);
   let appsExpanded = $state(false);
+
+  /// Whether the state has been READ. Everything above starts at a plausible
+  /// value - volume 50, unmuted, no devices - so a PipeWire that never answered
+  /// used to render as a working sound system at half volume with no hardware.
+  /// Three definite claims from a read that did not happen, and sliders to drag.
+  let unread = $state(true);
+  /// A message key; the markup translates it, so a locale switch reaches it.
+  let error = $state<string | null>(null);
 
   /// Projections for the device pickers. `PopoverSelect` takes a flat
   /// `{value, label}[]`, and `value` is the currently-selected id.
@@ -55,7 +73,12 @@
       outputs = r.outputs;
       inputs = r.inputs;
       apps = r.apps;
-    } catch {}
+      unread = false;
+      error = null;
+    } catch {
+      unread = true;
+      error = "sh.audio.stateUnknown";
+    }
   }
 
   $effect(() => {
@@ -66,40 +89,49 @@
 
   function setVolume(val: number) {
     volume = val;
-    invoke("set_audio_volume", { volume: val }).catch(() => {});
+    invoke("set_audio_volume", { volume: val }).catch(() => { error = "sh.audio.errChange"; });
   }
   function toggleMute() {
-    invoke("toggle_audio_mute").then(() => poll()).catch(() => {});
+    invoke("toggle_audio_mute").then(() => poll()).catch(() => { error = "sh.audio.errChange"; });
   }
   function setInputVol(val: number) {
     inputVolume = val;
-    invoke("set_input_volume", { volume: val }).catch(() => {});
+    invoke("set_input_volume", { volume: val }).catch(() => { error = "sh.audio.errChange"; });
   }
   function toggleInputMute() {
-    invoke("toggle_input_mute").then(() => poll()).catch(() => {});
+    invoke("toggle_input_mute").then(() => poll()).catch(() => { error = "sh.audio.errChange"; });
   }
   function selectOutput(id: string) {
-    invoke("set_audio_output", { id }).then(() => poll()).catch(() => {});
+    invoke("set_audio_output", { id }).then(() => poll()).catch(() => { error = "sh.audio.errChange"; });
   }
   function selectInput(id: string) {
-    invoke("set_audio_input", { id }).then(() => poll()).catch(() => {});
+    invoke("set_audio_input", { id }).then(() => poll()).catch(() => { error = "sh.audio.errChange"; });
   }
   function setAppVol(id: number, val: number) {
     const app = apps.find(a => a.id === id);
     if (app) app.volume = val;
-    invoke("set_app_volume", { id, volume: val }).catch(() => {});
+    invoke("set_app_volume", { id, volume: val }).catch(() => { error = "sh.audio.errChange"; });
   }
   function toggleDnd() {
-    dndEnabled = !dndEnabled;
-    invoke("set_dnd_enabled", { enabled: dndEnabled }).catch(() => {});
+    setDnd(dndOn ? "off" : "priority").catch(() => {
+      error = "sh.audio.errChange";
+    });
   }
 </script>
 
 <ShellPopover id="audio" width={280} right={80} bodyPadding="12px" bodyGap="8px">
   {#snippet header()}
-    <PopoverHeader icon={Volume2} title={$t("sh.audio.title")} toggled={!dndEnabled} onToggle={toggleDnd} />
+    <PopoverHeader icon={Volume2} title={$t("sh.audio.title")} toggled={!dndOn} onToggle={toggleDnd} />
   {/snippet}
 
+  {#if error}
+    <PopoverErrorBanner message={$t(error)} />
+  {/if}
+
+  <!-- The controls assert values. With the state unread they would assert
+       invented ones, so the panel says what happened instead of drawing a sound
+       system that may not exist. -->
+  {#if !unread}
   <!-- Output Section -->
   <div class="section-label">{$t("sh.audio.output")}</div>
   <div class="vol-row">
@@ -206,6 +238,7 @@
         {/each}
       </div>
     {/if}
+  {/if}
   {/if}
 </ShellPopover>
 
