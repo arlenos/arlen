@@ -10,6 +10,7 @@
   import { SliderTile } from "@arlen/ui-kit/components/quicksettings";
   import { Sun } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { tileAction } from "$lib/quicksettings/action";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
@@ -56,7 +57,11 @@
     const dev = device;
     const fraction = value / 100;
     writeTimer = setTimeout(() => {
-      invoke("brightness_set", { device: dev, value: fraction }).catch(() => {});
+      void tileAction(
+        "brightness_set",
+        { device: dev, value: fraction },
+        "sh.tile.errBrightness",
+      );
     }, 32);
   }
 </script>

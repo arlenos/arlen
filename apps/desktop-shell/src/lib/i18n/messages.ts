@@ -444,6 +444,11 @@ const messages: Catalogs = {
 
     // Quick Settings tiles
     "sh.tile.airplane": "Airplane Mode",
+    "sh.tile.errAirplane": "Airplane mode did not change.",
+    "sh.tile.errWifi": "WiFi did not change.",
+    "sh.tile.errBluetooth": "Bluetooth did not change.",
+    "sh.tile.errAudio": "The sound setting did not change.",
+    "sh.tile.errBrightness": "The brightness did not change.",
     "sh.tile.sound": "Sound",
     "sh.tile.muteHint": "Toggle mute (right-click for output picker)",
     "sh.tile.bluetooth": "Bluetooth",
@@ -895,6 +900,11 @@ const messages: Catalogs = {
     "sh.hdr.close": "Schlie\u00dfen",
 
     "sh.tile.airplane": "Flugmodus",
+    "sh.tile.errAirplane": "Der Flugmodus hat sich nicht geändert.",
+    "sh.tile.errWifi": "WLAN hat sich nicht geändert.",
+    "sh.tile.errBluetooth": "Bluetooth hat sich nicht geändert.",
+    "sh.tile.errAudio": "Die Toneinstellung hat sich nicht geändert.",
+    "sh.tile.errBrightness": "Die Helligkeit hat sich nicht geändert.",
     "sh.tile.sound": "Ton",
     "sh.tile.muteHint": "Stummschalten umschalten (Rechtsklick f\u00fcr die Ausgabewahl)",
     "sh.tile.bluetooth": "Bluetooth",

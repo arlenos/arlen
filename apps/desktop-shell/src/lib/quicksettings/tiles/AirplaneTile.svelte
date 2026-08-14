@@ -8,6 +8,7 @@
   import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { Plane } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { tileAction } from "$lib/quicksettings/action";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
@@ -27,10 +28,9 @@
   }
 
   async function handleClick() {
-    try {
-      await invoke("set_airplane_mode", { enabled: !on });
+    if (await tileAction("set_airplane_mode", { enabled: !on }, "sh.tile.errAirplane")) {
       on = !on;
-    } catch {}
+    }
   }
 </script>
 

@@ -9,6 +9,7 @@
   import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { Wifi, WifiOff, Cable, Plane } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { tileAction } from "$lib/quicksettings/action";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { openPopover } from "$lib/stores/activePopover.js";
@@ -59,11 +60,10 @@
   /// Airplane mode is a separate tile + topbar badge.
   async function handleClick() {
     if (airplane) return;
-    try {
-      await invoke("set_wifi_enabled", { enabled: !wifiEnabled });
+    if (await tileAction("set_wifi_enabled", { enabled: !wifiEnabled }, "sh.tile.errWifi")) {
       wifiEnabled = !wifiEnabled;
-      await refresh();
-    } catch {}
+    }
+    await refresh();
   }
 
   function openDetail() {
