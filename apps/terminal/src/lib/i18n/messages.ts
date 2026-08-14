@@ -12,6 +12,7 @@ const messages: Catalogs = {
   en: {
     "term.commandInput": "Command input",
     "term.err.newSessionFailed": "The session service may not be running.",
+    "term.err.newSessionRefused": "A new session did not open. The session service may not be running.",
     "term.notAccepted": "The shell did not take that line. It is still here, so you can try again.",
     "term.qa.newSession": "New session (Ctrl+T)",
     "term.qa.history": "History (Ctrl+R)",
@@ -93,6 +94,7 @@ const messages: Catalogs = {
     "term.qa.history": "Verlauf (Strg+R)",
     "term.commandInput": "Befehlseingabe",
     "term.err.newSessionFailed": "Vielleicht läuft der Sitzungsdienst nicht.",
+    "term.err.newSessionRefused": "Es wurde keine neue Sitzung geöffnet. Vielleicht läuft der Sitzungsdienst nicht.",
     "term.notAccepted": "Die Shell hat die Zeile nicht angenommen. Sie steht noch da, du kannst es erneut versuchen.",
     "term.output.placeholder": "Terminal-Ausgabe",
     "term.output.rows": ".input {$rows :number}\n.match $rows\none {{Terminal-Ausgabe, {$rows} Zeile}}\n*   {{Terminal-Ausgabe, {$rows} Zeilen}}",

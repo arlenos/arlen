@@ -11,6 +11,7 @@
   import { terminalInput, type GitInfo, type Session } from "$lib/contract";
   import { t } from "$lib/i18n/messages";
   import { composerPrefill } from "$lib/stores/composer";
+  import { newSessionFailed } from "$lib/stores/sessions";
   import PromptLine from "./PromptLine.svelte";
 
   let {
@@ -37,6 +38,24 @@
   /// than a refused line. Cleared the moment they type again, because by then
   /// they are already acting on it.
   let notAccepted = $state(false);
+
+  /// The one refusal line for this row. The input's own refusal wins when both
+  /// are set, because it is the thing they just did.
+  ///
+  /// A session refusal reaches here rather than dying in a `catch`: four of the
+  /// five `newSession()` call sites fire while a working terminal is on screen -
+  /// the sidebar menu, the topbar, Ctrl+T, the auto-create - and the stranded
+  /// panel that carries the other one is not rendered then. Four sibling apps
+  /// already keep a last-refusal store and render it as an alert line; this is
+  /// the terminal's, in the row where its actions happen.
+  ///
+  /// A different sentence from the stranded panel's for the same fact, which is
+  /// the rule rather than an exception: there the title already says a session
+  /// could not start, so the line adds only a cause; here it stands alone and has
+  /// to name what failed before naming why.
+  const refusal = $derived(
+    notAccepted ? $t("term.notAccepted") : $newSessionFailed ? $t("term.err.newSessionRefused") : null,
+  );
   let inputRef = $state<HTMLInputElement | null>(null);
   const busy = writable(false);
 
@@ -104,6 +123,7 @@
   /// way every terminal returns to the tape end on input.
   function onInput() {
     notAccepted = false;
+    newSessionFailed.set(false);
     inputRef?.scrollIntoView({ block: "nearest" });
   }
 </script>
@@ -129,8 +149,8 @@
         oninput={onInput}
       />
     </div>
-    {#if notAccepted}
-      <p class="ap-refused" role="alert">{$t("term.notAccepted")}</p>
+    {#if refusal}
+      <p class="ap-refused" role="alert">{refusal}</p>
     {/if}
   </div>
 {/if}
