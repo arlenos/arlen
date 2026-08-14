@@ -179,6 +179,14 @@ fn why_exe_unreadable(pid: u32) -> String {
             // discards the evidence that would refute it. So this prints all of
             // them, cheaply, and lets the reader do the eliminating.
             //
+            // `Tgid` earns its place by measurement, not by hope: on this host a
+            // thread reports `NSpid` equal to its OWN id, never its tgid - so the
+            // 14 Aug boot printing `NSpid=651` for `/proc/657` cannot mean 657 is
+            // a thread of 651, and is not explained yet. Tgid is the field that
+            // separates "a thread of another process" from "not the process we
+            // think", and the boot named a supervisor-stamped pid of 651 for the
+            // very daemon whose peer arrived as 657.
+            //
             // `Seccomp` and `NSpid` join them on the same principle, from the
             // list `daemons/consent-broker` had already written down for the
             // identical shape (a DUMPABLE peer whose exe still refuses): a
@@ -196,9 +204,10 @@ fn why_exe_unreadable(pid: u32) -> String {
                  capabilities: peer CapPrm={}, ours={} \
                  (a READ is refused unless ours is a superset); \
                  yama ptrace_scope={}; our LSM label={}, peer's={}; \
-                 peer Seccomp={}, peer NSpid={} (more than one entry means the \
-                 peer is in a nested pid namespace, so this pid is a different \
-                 task here); our /proc mount={})",
+                 peer Seccomp={}, peer Tgid={}, peer NSpid={} (Tgid different \
+                 from the pid means we are looking at a THREAD; more than one \
+                 NSpid entry means a nested pid namespace, so this pid is a \
+                 different task here); our /proc mount={})",
                 proc_field(std::process::id(), "Gid"),
                 proc_field(pid, "CapPrm"),
                 proc_field(std::process::id(), "CapPrm"),
@@ -206,6 +215,7 @@ fn why_exe_unreadable(pid: u32) -> String {
                 read_trimmed("/proc/self/attr/current"),
                 read_trimmed(&format!("/proc/{pid}/attr/current")),
                 proc_field(pid, "Seccomp"),
+                proc_field(pid, "Tgid"),
                 proc_field(pid, "NSpid"),
                 proc_mount_options(),
             );
