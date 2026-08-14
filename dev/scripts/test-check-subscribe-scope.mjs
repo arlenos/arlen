@@ -140,6 +140,22 @@ console.log("subscribe scope:");
   check("a Tauri window event is not read as a bus topic", r.code === 0);
 }
 {
+  // A profile with BOTH halves unused must report both. The first version
+  // `continue`d after the subscribe note and silently skipped the publish
+  // check - a one-eyed gate, and the kind of gap that only shows up when the
+  // second problem is the one you needed to see.
+  const r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]:
+      '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\n' +
+      'publish = ["project.*"]\nsubscribe = ["window.*"]\n',
+    "apps/demo/src/quiet.rs": "pub fn nothing() {}\n",
+  });
+  check(
+    "both unused halves of one profile are reported",
+    r.out.includes("grants subscribe") && r.out.includes("grants publish"),
+  );
+}
+{
   const r = run({ "README.md": "no profiles here\n" });
   check("an empty tree refuses rather than passing", r.code === 2);
   check("and says nothing was read", r.out.includes("NOTHING WAS READ"));

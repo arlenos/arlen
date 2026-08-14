@@ -260,11 +260,14 @@ def main() -> int:
             # removing a grant can break a consumer this cannot see, so that is a
             # decision rather than a fix.
             notes.append(
-                f"{path.name}: grants {subscribe} and no subscription was found in "
-                f"{directory.relative_to(REPO)}. Either the grant outlived its "
-                f"consumer, or the app subscribes in a shape this cannot read."
+                f"{path.name}: grants subscribe {subscribe} and no subscription was "
+                f"found in {directory.relative_to(REPO)}. Either the grant outlived "
+                f"its consumer, or the app subscribes in a shape this cannot read."
             )
-            continue
+            # NO `continue`: the publish half below is a separate question about
+            # the same file, and skipping it here meant a profile with both
+            # problems only ever reported one. Found by running the check after
+            # adding the publish note and not seeing it fire.
 
         checked += 1
         for topic in sorted(wanted):
@@ -280,7 +283,17 @@ def main() -> int:
 
         # The publish half. Same silence, other direction: the event is dropped
         # and the producer, speaking a fire-and-forget protocol, is never told.
-        for topic in sorted(publishes_of(directory)):
+        emitted = publishes_of(directory)
+        if publish and not emitted:
+            # The mirror of the unused-subscribe note. Reporting one and not the
+            # other would make the gate quietly one-eyed, and an unused publish
+            # grant is the likelier paste: publish and subscribe lists travel
+            # together when a profile is copied between components.
+            notes.append(
+                f"{path.name}: grants publish {publish} and emits nothing from "
+                f"{directory.relative_to(REPO)}."
+            )
+        for topic in sorted(emitted):
             if not granted(publish or [], topic):
                 problems.append(
                     f"{path.name}: emits `{topic}` and the profile does not grant it.\n"
