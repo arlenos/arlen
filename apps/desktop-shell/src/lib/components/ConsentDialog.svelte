@@ -18,6 +18,7 @@
   import { onMount } from "svelte";
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { AlertTriangle, Send, Trash2 } from "lucide-svelte";
@@ -68,7 +69,23 @@
     const shown = view !== null;
     if (shown === regionShown) return;
     regionShown = shown;
-    void invoke("set_consent_input_region", { active: shown }).catch(() => {});
+    // The highest-stakes instance of the region call in the shell. A consent
+    // card drawn WITHOUT it is a question about granting something, whose
+    // buttons hand their clicks to the window behind - so "Deny" would land in
+    // an app instead of denying anything, and the person would believe they had
+    // answered. Refusing to show the card is the only safe failure: nothing is
+    // granted, nothing is claimed, and the request is still pending for whoever
+    // asked.
+    void shellAction(
+      "set_consent_input_region",
+      { active: shown },
+      "sh.consent.notInteractive",
+    ).then((ok) => {
+      if (!ok && shown) {
+        regionShown = false;
+        view = null;
+      }
+    });
   });
 
   /// One line into the journal. The shell has no devtools on the image, so this is

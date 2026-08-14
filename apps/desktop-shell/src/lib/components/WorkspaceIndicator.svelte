@@ -186,9 +186,7 @@
         return;
       }
       overlayVisible = false;
-      invoke("set_popover_input_region", { expanded: false }).catch(
-        () => {},
-      );
+      void collapseRegion();
       hoverTimer = null;
     }, 300);
   }
@@ -283,7 +281,22 @@
 
   function closeOverlayAndCollapse(): void {
     overlayVisible = false;
-    invoke("set_popover_input_region", { expanded: false }).catch(() => {});
+    void collapseRegion();
+  }
+
+  /// Narrow the pointer region after the overlay is gone.
+  ///
+  /// Nothing to revert - the overlay is already down - but a refusal leaves the
+  /// bar swallowing clicks over empty screen, which is the least explicable
+  /// state of the three and the reason it says so rather than passing quietly.
+  /// `hideOverlay` deliberately does NOT call this: it leaves the region wide by
+  /// contract, and that distinction is the file's own and not mine to collapse.
+  async function collapseRegion(): Promise<void> {
+    await shellAction(
+      "set_popover_input_region",
+      { expanded: false },
+      "sh.popover.notOpened",
+    );
   }
 
   const kb = createKeyboardNav({

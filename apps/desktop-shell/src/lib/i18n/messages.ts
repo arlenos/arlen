@@ -35,6 +35,7 @@ const messages: Catalogs = {
     // Network popover
     "sh.net.title": "Network",
     "sh.popover.notOpened": "That panel could not be opened.",
+    "sh.consent.notInteractive": "This request could not be made clickable, so nothing was decided.",
     "sh.net.airplaneOn": "Airplane Mode is on",
     "sh.net.airplaneHint": "Wireless connections are disabled",
     "sh.net.wifiOff": "WiFi is off",
@@ -521,6 +522,7 @@ const messages: Catalogs = {
     "sh.bat.performance": "Leistung",
     "sh.net.title": "Netzwerk",
     "sh.popover.notOpened": "Das Panel ließ sich nicht öffnen.",
+    "sh.consent.notInteractive": "Diese Abfrage konnte nicht bedienbar gemacht werden. Es wurde nichts entschieden.",
     "sh.net.airplaneOn": "Der Flugmodus ist an",
     "sh.net.airplaneHint": "Drahtlosverbindungen sind abgeschaltet",
     "sh.net.wifiOff": "WLAN ist aus",
