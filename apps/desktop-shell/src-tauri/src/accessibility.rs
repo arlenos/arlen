@@ -29,8 +29,16 @@
 
 use std::time::Duration;
 
-/// How often the broker is re-read. Only a CHANGE publishes.
-const POLL: Duration = Duration::from_secs(2);
+/// How often the broker is re-read while a login-time write could still be
+/// landing. Only a CHANGE publishes.
+const POLL_EARLY: Duration = Duration::from_secs(2);
+
+/// How often after that.
+const POLL_SETTLED: Duration = Duration::from_secs(30);
+
+/// How long the fast poll lasts. Long enough to cover a slow session start
+/// without keeping the machine awake for it.
+const EARLY_READS: u32 = 15;
 
 /// The variable the greeter hands the login screen's choice on in.
 ///
@@ -133,6 +141,7 @@ pub async fn run_publisher() {
     record_login_choice().await;
 
     let mut last: Option<bool> = None;
+    let mut reads: u32 = 0;
     loop {
         if let Some(current) = read_screen_reader().await {
             if last != Some(current) {
@@ -141,7 +150,8 @@ pub async fn run_publisher() {
                 last = Some(current);
             }
         }
-        tokio::time::sleep(POLL).await;
+        reads = reads.saturating_add(1);
+        tokio::time::sleep(if reads < EARLY_READS { POLL_EARLY } else { POLL_SETTLED }).await;
     }
 }
 
