@@ -58,7 +58,7 @@
                   class="ps-remove ms-auto group-data-[collapsible=icon]:hidden"
                   role="button"
                   tabindex="-1"
-                  aria-label={$kt("k.browser.unpin", { place: place.label })}
+                  aria-label={place.removeLabel ?? $kt("k.browser.unpin", { place: place.label })}
                   onclick={(e) => {
                     e.stopPropagation();
                     onremove?.(place);

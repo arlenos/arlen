@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Place, PlaceGroup } from "@arlen/ui-kit/components/browser";
 
 import { t } from "$lib/i18n/messages";
+import { opError } from "$lib/stores/ops";
 import { rows, type ReadOutcome } from "$lib/read-outcome";
 
 interface Project {
@@ -88,13 +89,20 @@ export async function removeBookmark(path: string): Promise<void> {
 /// (unmount + power-off the drive via udisks); any other removable place (a user
 /// bookmark) unpins. One handler so the sidebar's single affordance does the
 /// right thing per entry type.
+///
+/// A refused eject SAYS SO. Busy and polkit-refused are the common outcomes, not
+/// the exotic ones - a drive with an open file on it refuses every time - and this
+/// used to swallow both: the drive stayed listed, nothing moved, and the person had
+/// no way to tell a refusal from a click that missed. That is the empty-on-error
+/// defect in the shape of a button.
 export async function removePlace(place: Place): Promise<void> {
   const device = deviceNodes.get(place.path);
   if (device) {
     try {
       await invoke("files_eject", { device });
+      opError.set(null);
     } catch {
-      // Busy / polkit-refused: leave the device listed.
+      opError.set(get(t)("f.places.ejectRefused", { place: place.label }));
     }
     await loadPlaces();
   } else {
@@ -168,6 +176,13 @@ export async function loadPlaces(): Promise<void> {
             icon: "drive",
             path: d.mountpoint,
             removable: d.removable,
+            // The kit's affordance says "Unpin" by default, which is what it does
+            // for a bookmark. Here the same X powers off a physical disk, so it
+            // says that instead - a destructive action must not borrow a tidying
+            // action's label.
+            removeLabel: d.removable
+              ? get(t)("f.places.ejectAria", { place: d.label })
+              : undefined,
           });
         } else {
           // An unmounted removable drive: the place path is its /dev node and a

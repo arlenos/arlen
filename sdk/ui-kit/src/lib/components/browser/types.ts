@@ -93,6 +93,12 @@ export interface Place {
   offline?: boolean;
   /// The row offers a quiet hover remove (user bookmarks).
   removable?: boolean;
+  /// What that remove DOES, when it is not unpinning. The kit cannot know: the
+  /// file manager routes the same affordance to unpin for a bookmark and to eject
+  /// for a mounted drive, and labelling both "Unpin" told a person tidying their
+  /// sidebar nothing about powering off a disk. Already-resolved text, like
+  /// `label`, because the kit cannot read an app's catalog.
+  removeLabel?: string;
 }
 
 /// One sidebar group of places.

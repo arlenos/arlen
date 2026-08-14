@@ -200,6 +200,10 @@ const messages: Catalogs = {
     "f.info.relatedUnavailable": "Related items are not available on this system",
     "f.info.relatedDenied": "Files is not allowed to read related items",
     "f.info.relatedNone": "None",
+    // Named for what the DRIVE did, not for what the click was: "could not eject"
+    // reads as the app failing, and the usual cause is a file still open on it.
+    "f.places.ejectAria": "Eject {place}",
+    "f.places.ejectRefused": "{place} is still in use, so it was not ejected",
     "f.prov.incomplete": "Part of this history could not be read, so steps may be missing",
     "f.facet.unavailable": "These options are not available on this system",
     "f.facet.denied": "Files is not allowed to read these options",
@@ -481,6 +485,8 @@ const messages: Catalogs = {
     "f.info.relatedUnavailable": "Verwandte Einträge sind auf diesem System nicht verfügbar",
     "f.info.relatedDenied": "Files darf verwandte Einträge nicht lesen",
     "f.info.relatedNone": "Keine",
+    "f.places.ejectAria": "{place} auswerfen",
+    "f.places.ejectRefused": "{place} ist noch in Benutzung und wurde nicht ausgeworfen",
     "f.prov.incomplete": "Ein Teil dieser Historie konnte nicht gelesen werden, es fehlen womöglich Schritte",
     "f.facet.unavailable": "Diese Optionen sind auf diesem System nicht verfügbar",
     "f.facet.denied": "Files darf diese Optionen nicht lesen",
