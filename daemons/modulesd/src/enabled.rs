@@ -90,9 +90,17 @@ pub fn render_disabled(disabled: &BTreeSet<String>) -> String {
 /// and refusing would leave the user unable to switch a module off at all.
 pub fn persist(module_id: &str, enabled: bool) -> Result<(), String> {
     let path = config_path().ok_or_else(|| "no config directory".to_string())?;
-    let mut disabled = std::fs::read_to_string(&path)
-        .map(|t| parse_disabled(&t))
-        .unwrap_or_default();
+    // ABSENT means nobody has disabled anything, and the write creates the file.
+    // UNREADABLE is refused, because `render_disabled` rewrites the WHOLE file:
+    // defaulting to an empty set puts `modules = []` over the list, which
+    // silently RE-ENABLES every module the person had switched off - and "I
+    // turned that extension off" is exactly the kind of statement a system must
+    // not reverse behind their back.
+    let mut disabled = match std::fs::read_to_string(&path) {
+        Ok(text) => parse_disabled(&text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeSet::new(),
+        Err(e) => return Err(format!("read {}: {e}", path.display())),
+    };
     let changed = if enabled {
         disabled.remove(module_id)
     } else {
@@ -118,6 +126,44 @@ mod tests {
         assert!(set.contains("com.example.a"));
         assert!(set.contains("com.example.b"));
         assert_eq!(set.len(), 2);
+    }
+
+    /// An unreadable list stops the toggle rather than re-enabling everything.
+    ///
+    /// `render_disabled` rewrites the whole file, so a read defaulted to empty
+    /// makes the write an erase - every module the person switched off comes
+    /// back on. Mode 0222 is the state that separates the two behaviours: the
+    /// write WOULD succeed, so the file surviving means the read refused. A
+    /// directory in its place would fail both and prove nothing. Skipped as
+    /// root, which reads it regardless.
+    #[test]
+    fn an_unreadable_list_refuses_rather_than_re_enabling_everything() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("arlen-modules-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("arlen")).unwrap();
+        // SAFETY: the test owns its own temp config dir.
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", &dir) };
+
+        let path = dir.join("arlen/modules.toml");
+        let original = b"[disabled]\nmodules = [\n  \"com.example.tracker\"\n]\n";
+        std::fs::write(&path, original).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o222)).unwrap();
+        if std::fs::read_to_string(&path).is_ok() {
+            std::fs::remove_dir_all(&dir).ok();
+            return; // running as root: the premise does not hold
+        }
+
+        let err = persist("com.example.other", false).expect_err("a failed read must not write");
+        assert!(err.contains("read"), "says which half failed: {err}");
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            original,
+            "the module the person switched off is still switched off"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// An absent section is the common case on a fresh machine and must not
