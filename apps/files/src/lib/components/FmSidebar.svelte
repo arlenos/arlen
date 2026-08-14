@@ -29,6 +29,7 @@
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
   import {
     savedFolders,
+    foldersUnsaved,
     applySmartFolder,
     facetOpen,
     type SmartFolder,
@@ -112,6 +113,13 @@
     {#if $savedFolders.length > 0}
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
         <SidebarGroupLabel>{$t("f.sidebar.smartFolders")}</SidebarGroupLabel>
+        <!-- Under the label, above the folders it is about. They stay listed on a
+             failed write - the person just defined one and removing it would lose
+             that work - so the line carries the part the list cannot: they are on
+             screen and not on disk. -->
+        {#if $foldersUnsaved}
+          <p class="folders-unsaved" role="alert">{$t("f.sidebar.foldersUnsaved")}</p>
+        {/if}
         <SidebarMenu>
           {#each $savedFolders as f (f.id)}
             <SidebarMenuItem>
@@ -200,6 +208,13 @@
   /* Quieter than a place, and it wraps: it is a sentence, not a row, and
      truncating it would leave "Your places could not be…" against a sidebar
      that is exactly as wide as it is. */
+  .folders-unsaved {
+    margin: 0;
+    padding: 0 0.5rem 0.25rem;
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: var(--color-error, #f87171);
+  }
   .places-unavailable {
     margin: 0;
     padding: 0.25rem 0.5rem 0.5rem;
