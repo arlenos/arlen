@@ -94,6 +94,24 @@ console.log("components rendered:");
   check("a .js specifier resolving to a .ts file is followed", r.code === 0);
 }
 {
+  // The module direction. A store is the same question with a different
+  // extension, and the walk was already visiting these files without reporting
+  // them - which is how `applets.ts` sat in the tree since Phase 4 holding a
+  // battery level nobody measured.
+  const r = run({
+    "apps/demo/src/routes/+page.svelte": "<div>nothing imported</div>",
+    "apps/demo/src/lib/stores/dead.ts": "export const x = 1;",
+  });
+  check("a lib module nothing imports is caught", r.code === 1 && r.out.includes("dead.ts"));
+}
+{
+  const r = run({
+    "apps/demo/src/routes/+page.svelte": 'import { x } from "$lib/stores/live";',
+    "apps/demo/src/lib/stores/live.ts": "export const x = 1;",
+  });
+  check("a lib module a route imports passes", r.code === 0);
+}
+{
   const r = run({ "README.md": "no frontend here\n" });
   check("an empty tree refuses rather than passing", r.code === 2);
   check("and says nothing was read", r.out.includes("NOTHING WAS READ"));

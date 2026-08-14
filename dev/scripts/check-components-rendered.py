@@ -69,6 +69,57 @@ KNOWN: dict[str, str] = {
 }
 
 
+# Modules nothing reaches, carried with a reason. Same rule as `KNOWN`: the entry
+# names the condition that retires it.
+KNOWN_MODULES: dict[str, str] = {
+    "apps/desktop-shell/src/lib/invokeWithTimeout.ts": (
+        "a hard timeout around `invoke`, written for the startup path after a hung "
+        "backend froze the shell. Nothing calls it, which means nothing is "
+        "protected - but it is infrastructure someone reached for once and will "
+        "again. Retires when a startup call uses it, or when the decision is taken "
+        "that a hung backend is handled another way"
+    ),
+    "apps/settings/src/lib/stores/compositor.ts": (
+        "the compositor `[layout]` config store, left behind when its consumer "
+        "moved. Retires when the workspaces page reads through it again, or when "
+        "someone confirms the page's own path is the only one wanted"
+    ),
+    "sdk/ui-kit/src/lib/transitions.ts": (
+        "kit transitions, not exported from the barrel and used by nothing. "
+        "Retires when a kit component animates through them or the barrel exports "
+        "them"
+    ),
+    "apps/desktop-shell/src/lib/components/ui/index.ts": (
+        "a shadcn barrel the shell does not import from - components take the deep "
+        "path. Retires when the barrel is the import route or is removed"
+    ),
+    "apps/settings/src/lib/components/ui/index.ts": (
+        "the same shadcn barrel, same story, in Settings"
+    ),
+    "apps/desktop-shell/src/lib/modules/index.ts": (
+        "the module-host barrel, ahead of the Tier-2 module surface. Retires when "
+        "that surface imports it"
+    ),
+    "apps/terminal/src/lib/keymap.ts": (
+        "the terminal's key table, orphaned by the xterm.js cutover, which owns key "
+        "handling now. Retires by deletion once the cutover's leftovers are swept "
+        "as a batch"
+    ),
+    "apps/terminal/src/lib/live-region.ts": (
+        "an aria-live announcer for the old grid renderer, same cutover. Retires "
+        "with it - NB the replacement needs its own announcer, so read this before "
+        "deleting"
+    ),
+}
+
+# `utils.ts` per app: eleven near-identical shadcn scaffold copies of `cn()`, all
+# unimported because components take the kit's. They are scaffold rather than code
+# someone wrote, and `npx shadcn-svelte` regenerates them, so deleting all eleven
+# is a decision about the scaffold and not a cleanup. Excluded by name and
+# recorded here so the report is not eleven lines of the same sentence.
+SCAFFOLD = ("utils.ts",)
+
+
 def sources(repo: Path):
     """Every frontend source file that can import or be imported."""
     out = []
@@ -193,6 +244,27 @@ def main() -> int:
         str(f.relative_to(REPO)) for f in components if f not in seen
     )
 
+    # A store is the same question with a different extension, and the walk was
+    # already visiting these files - it just never reported them. Found by
+    # following a store holding `{ charging: false, level: 72 }`: nothing had
+    # imported `applets.ts` since Phase 4, so a battery level nobody measured sat
+    # in the tree looking like state. Its neighbour's doc said it was "read
+    # directly by WorkspaceIndicator.svelte", which had stopped being true.
+    #
+    # Reported separately from components, because the fix differs: an unrendered
+    # component usually wants wiring, an unimported module usually wants deleting.
+    modules = [
+        f
+        for f in files
+        if f.suffix in (".ts", ".js")
+        and "/src/lib/" in str(f)
+        and not f.name.endswith((".test.ts", ".test.js", ".d.ts"))
+        and f.name not in SCAFFOLD
+    ]
+    unreached_modules = sorted(
+        str(f.relative_to(REPO)) for f in modules if f not in seen
+    )
+
     problems, carried = [], []
     for rel in unreached:
         if rel in KNOWN:
@@ -205,7 +277,23 @@ def main() -> int:
             f"name, say which one."
         )
 
+    for rel in unreached_modules:
+        if rel in KNOWN_MODULES:
+            carried.append(f"{rel}: {KNOWN_MODULES[rel]}")
+            continue
+        problems.append(
+            f"{rel}: nothing a route reaches imports it.\n"
+            f"    Whatever it holds is not state, it is a file. Delete it, or add "
+            f"it to KNOWN_MODULES with the reason it waits."
+        )
+
     if OWN_TREE:
+        for rel in sorted(KNOWN_MODULES):
+            if rel not in unreached_modules:
+                problems.append(
+                    f"{rel}: listed as unimported, and something reaches it now. "
+                    f"Drop the entry."
+                )
         for rel in sorted(KNOWN):
             if rel not in unreached:
                 problems.append(
@@ -226,7 +314,10 @@ def main() -> int:
             print(f"  {p}")
         return 1
 
-    print(f"OK: {len(components)} component(s), every one reachable from a route")
+    print(
+        f"OK: {len(components)} component(s) and {len(modules)} lib module(s), "
+        f"every one reachable from a route"
+    )
     return 0
 
 
