@@ -218,30 +218,30 @@
 
 <div class="pt" role="grid" aria-label={$t("tm.grid.label", { count: procIds.length })} bind:this={rootEl}>
   <div class="head" role="row">
-    <button class="h name" class:sorted={sortKey === "name"} role="columnheader" aria-label={$t("tm.col.name")} aria-sort={ariaSort("name")} onclick={() => sortBy("name")}>
+    <span class="hcell" role="columnheader" aria-sort={ariaSort("name")}><button class="h name" class:sorted={sortKey === "name"} aria-label={$t("tm.col.name")} onclick={() => sortBy("name")}>
       {$t("tm.col.name")}
       {#if sortKey === "name"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}
-    </button>
-    <button class="h" class:sorted={sortKey === "status"} role="columnheader" aria-label={$t("tm.col.status")} aria-sort={ariaSort("status")} onclick={() => sortBy("status")}>
+    </button></span>
+    <span class="hcell" role="columnheader" aria-sort={ariaSort("status")}><button class="h" class:sorted={sortKey === "status"} aria-label={$t("tm.col.status")} onclick={() => sortBy("status")}>
       {$t("tm.col.status")}
-    </button>
+    </button></span>
     <span class="h access" role="columnheader" aria-label={$t("tm.col.access")}>{$t("tm.col.access")}</span>
-    <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-label={totalCpu ? $t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: totalCpu }) : $t("tm.col.cpu")} aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
+    <span class="hcell" role="columnheader" aria-sort={ariaSort("cpu")}><button class="h num" class:sorted={sortKey === "cpu"} aria-label={totalCpu ? $t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: totalCpu }) : $t("tm.col.cpu")} onclick={() => sortBy("cpu")}>
       <span class="h-label">{$t("tm.col.cpu")} {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totalCpu}</span>
-    </button>
-    <button class="h num" class:sorted={sortKey === "memMB"} role="columnheader" aria-label={totalMem ? $t("tm.col.withTotal", { col: $t("tm.col.memory"), total: totalMem }) : $t("tm.col.memory")} aria-sort={ariaSort("memMB")} onclick={() => sortBy("memMB")}>
+    </button></span>
+    <span class="hcell" role="columnheader" aria-sort={ariaSort("memMB")}><button class="h num" class:sorted={sortKey === "memMB"} aria-label={totalMem ? $t("tm.col.withTotal", { col: $t("tm.col.memory"), total: totalMem }) : $t("tm.col.memory")} onclick={() => sortBy("memMB")}>
       <span class="h-label">{$t("tm.col.memory")} {#if sortKey === "memMB"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totalMem}</span>
-    </button>
-    <button class="h num" class:sorted={sortKey === "diskKBs"} role="columnheader" aria-label={totalDisk ? $t("tm.col.withTotal", { col: $t("tm.col.disk"), total: totalDisk }) : $t("tm.col.disk")} aria-sort={ariaSort("diskKBs")} onclick={() => sortBy("diskKBs")}>
+    </button></span>
+    <span class="hcell" role="columnheader" aria-sort={ariaSort("diskKBs")}><button class="h num" class:sorted={sortKey === "diskKBs"} aria-label={totalDisk ? $t("tm.col.withTotal", { col: $t("tm.col.disk"), total: totalDisk }) : $t("tm.col.disk")} onclick={() => sortBy("diskKBs")}>
       <span class="h-label">{$t("tm.col.disk")} {#if sortKey === "diskKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totalDisk}</span>
-    </button>
-    <button class="h num" class:sorted={sortKey === "netKBs"} role="columnheader" aria-label={totalNet ? $t("tm.col.withTotal", { col: $t("tm.col.network"), total: totalNet }) : $t("tm.col.network")} aria-sort={ariaSort("netKBs")} onclick={() => sortBy("netKBs")}>
+    </button></span>
+    <span class="hcell" role="columnheader" aria-sort={ariaSort("netKBs")}><button class="h num" class:sorted={sortKey === "netKBs"} aria-label={totalNet ? $t("tm.col.withTotal", { col: $t("tm.col.network"), total: totalNet }) : $t("tm.col.network")} onclick={() => sortBy("netKBs")}>
       <span class="h-label">{$t("tm.col.network")} {#if sortKey === "netKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totalNet}</span>
-    </button>
+    </button></span>
   </div>
 
   <div class="body">
@@ -334,6 +334,16 @@
     background: var(--color-bg-app, #0f0f0f);
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
   }
+  /* The sortable headers are grid items styled by `.h`, but ARIA does not allow
+     `role="columnheader"` on a <button> - axe flagged six of them. The role and
+     `aria-sort` belong to the CELL, so each button now sits inside one; the cell
+     is `display: contents` so the button remains the grid item and the layout is
+     byte-for-byte what it was. Verified with a screenshot either side, and with
+     axe, which still sees the columnheaders through the contents box. */
+  .hcell {
+    display: contents;
+  }
+
   .h {
     display: flex;
     align-items: baseline;
