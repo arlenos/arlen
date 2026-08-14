@@ -496,10 +496,21 @@ def main() -> int:
         for u in uncalled:
             print(f"  - {u}")
     print(
-        f"\n{len(uncalled)} registered command(s) nothing under apps/*/src invokes. "
-        f"Informational only: a ui-kit helper can call one this scanner cannot "
-        f"see, and a name built at runtime from anything but a plain assignment "
-        f"is invisible the same way."
+        f"\n{len(uncalled)} registered command(s) nothing under apps/*/src invokes.\n"
+        f"    Informational, and worth knowing WHY before chasing one. Four different\n"
+        f"    things land on this list and only one of them is a defect:\n"
+        f"      dead        nothing reaches it at all. `waypointer_search`, superseded\n"
+        f"                  by the plugin-scoped `waypointer_search_plugin`.\n"
+        f"      dispatched  the host calls it itself, keyed by an id the frontend\n"
+        f"                  sends elsewhere. `toggle_caffeine` runs on every click of\n"
+        f"                  the shell's badge, through `quick_action_run`.\n"
+        f"      helper-fed  a ui-kit helper this scanner cannot see calls it, or the\n"
+        f"                  name is built at runtime from something other than a\n"
+        f"                  plain assignment.\n"
+        f"      ahead       a built backend whose surface does not exist yet, which\n"
+        f"                  claims nothing on screen and lies to nobody.\n"
+        f"    Three sweeps rediscovered that split one name at a time before it was\n"
+        f"    written down. Read the caller before deleting anything."
     )
     return 0
 
