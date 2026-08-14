@@ -109,12 +109,6 @@ KNOWN: dict[str, tuple[int, str]] = {
         "setRole, startDownload, cancelDownload - arlen-ui's model picker is live "
         "work; named rather than skipped because the shape is identical"
     ),
-    "apps/meetings/src/lib/stores/meeting.ts": (
-        1,
-        "surfaced by teaching this gate the promise form; meetings is not a "
-        "surface I have swept yet, and a one-line revert there without reading "
-        "what the store means is the kind of fix that looks right and is not"
-    ),
     "apps/settings/src/lib/stores/themes.ts": (
         1,
         "installThemeFile, where a cancelled file picker and a failed install "

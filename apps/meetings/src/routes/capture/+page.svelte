@@ -20,9 +20,10 @@
     fmtTime,
     startCapture,
     stopCapture,
+    captureUnavailable,
   } from "$lib/stores/meeting";
 
-  onMount(startCapture);
+  onMount(() => void startCapture());
 
   let notesEl = $state<HTMLTextAreaElement | null>(null);
   $effect(() => {
@@ -41,12 +42,22 @@
   <MeetingShell>
     {#snippet head()}
       <div class="cap-head">
-        <span class="rec">
-          <span class="dot" aria-hidden="true"></span>
-          {$t("mt.recording")}
-          <span class="time">{fmtTime($elapsed)}</span>
-        </span>
-        <span class="consent">{$t("mt.consent")}</span>
+        <!-- The red dot and the clock are a claim that a microphone is on. They
+             render only when one is, which is why this branch exists at all: a
+             refused capture used to show both, ticking, over silence. -->
+        {#if $captureUnavailable}
+          <span class="rec-failed" role="alert">{$t("mt.captureUnavailable")}</span>
+          <Button variant="outline" size="sm" onclick={() => void startCapture()}>
+            {$t("mt.captureRetry")}
+          </Button>
+        {:else}
+          <span class="rec">
+            <span class="dot" aria-hidden="true"></span>
+            {$t("mt.recording")}
+            <span class="time">{fmtTime($elapsed)}</span>
+          </span>
+          <span class="consent">{$t("mt.consent")}</span>
+        {/if}
         <label class="transcribe">
           <Switch value={$transcribe} size="sm" ariaLabel={$t("mt.transcribe")} onchange={(v) => transcribe.set(v)} />
           {$t("mt.transcribe")}
@@ -96,6 +107,13 @@
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--color-fg-primary);
+  }
+  .rec-failed {
+    display: inline-flex;
+    align-items: center;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-error, #f87171);
   }
   .dot {
     width: 0.55rem;
