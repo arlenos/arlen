@@ -14,7 +14,6 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "s.app.title": "Screenshot",
-    "s.openToAnnotate": "Open the capture to annotate",
     "s.screenCapture": "Screen capture",
     "s.captureActions": "Capture actions",
     "s.annotate": "Annotate",
@@ -45,7 +44,6 @@ const messages: Catalogs = {
   de: {
     "s.app.title": "Bildschirmfoto",
 
-    "s.openToAnnotate": "Aufnahme zum Beschriften öffnen",
     "s.screenCapture": "Bildschirmaufnahme",
     "s.captureActions": "Aktionen zur Aufnahme",
     "s.annotate": "Beschriften",

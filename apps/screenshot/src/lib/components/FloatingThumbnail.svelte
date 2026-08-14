@@ -64,16 +64,20 @@
   }
 </script>
 
+<!-- Click-anywhere-to-annotate is a MOUSE shortcut, and it stays. What it is not
+     is a control: it used to carry `role="button"` and a tabindex while holding
+     three real buttons, which axe rates serious as a nested interactive - a
+     screen reader cannot say whether it is on the outer thing or an inner one,
+     and tabbing lands on a wrapper that duplicates what the first button does.
+     The keyboard path is the Annotate button, which was always here and is
+     properly named. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
   class="thumb"
-  role="button"
-  tabindex="0"
-  aria-label={$t("s.openToAnnotate")}
   onmouseenter={pause}
   onmouseleave={resume}
   onclick={() => onAnnotate?.()}
-  onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onAnnotate?.()}
 >
   {#if src}<img class="thumb-img" {src} alt={$t("s.screenCapture")} />{/if}
 
