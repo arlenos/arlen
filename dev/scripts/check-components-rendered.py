@@ -61,15 +61,6 @@ KNOWN: dict[str, str] = {
         "ahead of the appearance surface (`appearance-surface.md`, deferred but "
         "decided). Retires when that page renders it"
     ),
-    "apps/desktop-shell/src/lib/components/MprisIndicator.svelte": (
-        "NOT a cleanup item: from where a person sits there is no media control on "
-        "this desktop. Built with a harness route and never wired into the top "
-        "bar. Retires when the top bar renders it"
-    ),
-    "apps/desktop-shell/src/lib/components/MprisPopover.svelte": (
-        "the panel behind the media indicator, same missing feature. Retires when "
-        "the indicator opens it"
-    ),
     "sdk/ui-kit/src/lib/components/a11y-kitchen.svelte": (
         "the kit's accessibility demo: rendered by ui-kit's own `_a11y` harness "
         "route and asserted by `a11y.test.ts`. Deliberately not exported, because "
