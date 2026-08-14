@@ -1,0 +1,32 @@
+# The audit daemon's event-bus profile.
+#
+# Filed under the uid it connects with. The daemon runs in the user session and
+# the bus resolved it as `auditd` uid=1000 on the 14 Aug boot, and the bus looks
+# a profile up under the PEER's uid, so this is 1000 rather than 0.
+#
+# WHY IT EXISTS AT ALL, given the daemon ran for months without one: publish
+# exemption used to follow the install tier, so every first-party binary could
+# emit anything and no profile was consulted. That is now a named list of the
+# components which ORIGINATE system events - the compositor and the kernel layer
+# - and everything else is held to what it declares. Without this file the
+# daemon declares nothing, and a producer that declares nothing is denied
+# everything: `audit.tampered` would be dropped at the bus with nothing said to
+# the producer, because the wire protocol is fire-and-forget.
+#
+# `audit.tampered` is the ONE topic it emits (checked against
+# `daemons/audit-daemon`, not assumed). It is how the anomaly detector learns
+# that the ledger's hash chain or its head checkpoint failed to verify - the
+# single event whose loss would leave tamper evidence unreported, which is worth
+# stating because "the audit daemon can no longer report tampering" is a
+# security failure that looks like silence.
+[info]
+app_id = "auditd"
+tier = "first-party"
+
+[event_bus]
+publish = ["audit.tampered"]
+
+# A pure producer. Its own source registers no consumer at all (the only
+# `subscribe` in `daemons/audit-daemon` is `tracing_subscriber`), and the
+# ledger is read over its own socket rather than off the bus.
+subscribe = []

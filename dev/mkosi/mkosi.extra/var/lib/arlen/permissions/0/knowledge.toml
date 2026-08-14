@@ -1,0 +1,33 @@
+# The knowledge daemon's event-bus profile.
+#
+# UNDER 0, NOT 1000, AND THAT IS THE INTERESTING PART. Every other profile in
+# this tree lives under `permissions/1000` because it describes an app acting for
+# that user. This daemon runs as root: the bus resolved it as `knowledge` uid=0
+# on the 14 Aug boot, and `peer_app_profile` looks a profile up under the PEER's
+# uid ("the uid names who the permissions are for, not who reads them"). So a
+# copy under 1000 would never be found, and the daemon would read as declaring
+# nothing. This is the first profile under 0 and the directory is new.
+#
+# WHAT IT LOSES WITHOUT THIS FILE, which is not small: publish exemption used to
+# follow the install tier and now follows a named list of components that
+# originate system events - the compositor and the kernel layer. This daemon is
+# not one of them, so it is held to what it declares, and declaring nothing is
+# declaring none. Its three project events would be dropped at the bus, silently,
+# because a denied publish is a `continue` and the wire protocol tells the
+# producer nothing.
+#
+# Those three are the project pipeline the shell's Focus Mode runs on: the
+# desktop shell subscribes `project.*` and turns them into the project list, the
+# focus indicator and the notification suppression that goes with it. So the
+# failure mode of omitting this file is "Focus Mode quietly stops noticing
+# projects", which is exactly the class of silent break the enforcement was
+# turned on to expose.
+#
+# Read out of `daemons/knowledge` rather than assumed. The daemon emits nothing
+# else onto the bus; it is otherwise a consumer and a query server.
+[info]
+app_id = "knowledge"
+tier = "system"
+
+[event_bus]
+publish = ["project.created", "project.updated", "project.archived"]
