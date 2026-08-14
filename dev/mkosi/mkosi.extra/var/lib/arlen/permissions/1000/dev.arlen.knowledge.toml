@@ -67,40 +67,41 @@ read = [
     "system.Project.expired_at",
 ]
 
-# Event-bus scopes, for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
-# off by default). This daemon is the one with most to lose: under enforce an
-# absent scope means the graph writer receives nothing and the knowledge graph
-# stops being fed, silently, while everything else still looks alive.
+# Event-bus scopes: NONE, and stated rather than omitted.
 #
-# ONE process, TWO consumer registrations, and the bus resolves both connections
-# to the same app_id and the same profile - so this is their union, not a choice:
+# This file is the knowledge APP's profile - a first-party GUI over the graph
+# (its app_id comes from the /usr/lib/arlen/apps/ install path, as the header
+# says). It opens no bus connection at all: nothing under apps/knowledge
+# subscribes, and nothing emits.
 #
-#   *                        the graph writer (`writer.rs:68`). It stores every
-#                            event and lets the promotion pipeline decide later
-#                            what is worth keeping, so its request really is the
-#                            whole band and the grant has to say so.
-#   permission.*, ai.*,      the config/authority consumer (`events.rs:38`):
-#   schema.*                 permission changes invalidate the token cache, the
-#                            AI level gates the agent's reach, schema changes
-#                            reload the registry.
+# It used to carry `subscribe = ["*", "permission.*", "ai.*", "schema.*"]` and
+# `publish = ["project.*"]`, under a careful comment about the graph writer
+# (`writer.rs:68`), the config consumer (`events.rs:38`) and the project emitter
+# (`project/emitter.rs`). Every one of those lives in daemons/knowledge. The
+# DAEMON's scopes had been filed on the APP's profile, which is the tier
+# separation collapsing quietly: an app carrying a service's authority may
+# publish what only the service should.
 #
-# Both are needed and neither covers the other. A grant of `*` matches ONLY a
-# request for `*` - it is compared by equality, having no `.*` suffix to strip -
-# so it would not admit `permission.*`, and `permission.*` would not admit the
-# writer's `*`. That is pinned in the resolver's own tests rather than left to a
-# reading, because getting it wrong looks like a working system with an empty
-# graph.
+# The daemon never loaded this file in the first place, which is the part worth
+# knowing before anyone worries about the removal. `identity.rs` carries an
+# explicit override for its binary: /usr/bin/arlen-graph-daemon resolves to the
+# app id `knowledge` (not `graph-daemon`, which rule 2 alone would give, and not
+# `dev.arlen.knowledge`). So it looks for `knowledge.toml`, which the image does
+# not ship. These grants were addressed to a principal that never asked for them.
 #
-# publish is the project lifecycle the detector emits (`project/emitter.rs`).
-# Granted as the family: created/updated/archived are one contract with one
-# producer, and a fourth verb in it would otherwise be a silent denial.
+# It keeps working regardless: /usr/bin/arlen-* is System tier at the bus, which
+# is exempt from the publish gate outright and from the subscribe gate as long as
+# it declares nothing. If it ever gains a profile, the filename is `knowledge.toml`
+# and the reasoning worth carrying across is this: `*` and `permission.*` do NOT cover each other.
+# A grant of `*` has no `.*` suffix to strip, so it is compared by equality and
+# matches only a request for `*`. Both registrations need naming explicitly, and
+# getting it wrong looks like a working system with an empty graph.
+#
+# DECLARED-AND-EMPTY, not absent. The subscribe exemption hangs on declaring
+# (`declares_subscribe` is `subscribe.is_some()`), so deleting this section would
+# make a system-tier app exempt and hand it the machine-wide view - the opposite
+# of the intent. An empty list is how a profile says "hears nothing", and the
+# reach summary has an arm that renders it exactly that way.
 [event_bus]
-publish = [
-    "project.*",
-]
-subscribe = [
-    "*",
-    "permission.*",
-    "ai.*",
-    "schema.*",
-]
+publish = []
+subscribe = []
