@@ -70,7 +70,9 @@
   }
 </script>
 
-<div class="app" dir={$dir}>
+<!-- `main`, not `div`: this is the page's content, and a document with no main
+     landmark leaves a screen-reader user no way to skip the chrome. -->
+<main class="app" dir={$dir}>
   <!-- The header is a drag surface (a non-keyboard pointer interaction); its
        actual controls are the accessible WindowButtons inside it, so the
        static-interaction lint is a false positive here. Same treatment as the
@@ -152,7 +154,7 @@
       <PerformanceTab />
     </div>
   {/if}
-</div>
+</main>
 
 {#if menu}
   <RowMenu
