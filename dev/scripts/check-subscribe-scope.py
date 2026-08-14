@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Tim Kicker
 #
 # SPDX-License-Identifier: AGPL-3.0-only
-"""A bus subscription the app's profile does not grant is dropped, not refused.
+"""A bus subscription or publish the profile does not grant is dropped, not refused.
 
 `permitted_subscriptions` (event-bus `socket.rs`) FILTERS the patterns a caller's
 `[event_bus].subscribe` scope does not cover, and the connection then succeeds
@@ -25,6 +25,16 @@ WHAT GOES WRONG WITHOUT IT is not an abstraction. The terminal subscribes to
 first-party, so it IS held to its scope under enforcement; a missing grant there
 is a blind person's terminal going silent, from a one-line profile edit that
 reviews clean.
+
+THE PUBLISH SIDE IS THE SAME SHAPE and was found by looking for it: a denied
+publish hits `continue` in the producer loop (`socket.rs:437`), and the wire
+protocol is fire-and-forget, so the producer is never told. It emits into
+nothing. The shell was publishing four topics against a profile that said
+`publish = []`, with a comment reasoning from a true observation - no
+`UnixEventEmitter` in its tree - to a false conclusion, because it publishes
+through a hand-rolled `emit_to_event_bus` instead. Looking for the TYPE missed
+the BEHAVIOUR, which is exactly why this reads what is emitted rather than which
+API is imported.
 
 WHAT THIS CANNOT SEE: it matches the two literal shapes the tree uses today (a
 `subscribe(vec![...])` call and a comma-joined `SUBSCRIPTIONS` const). A
@@ -59,6 +69,13 @@ OUT_OF_TREE = {
 
 # `consumer.subscribe(vec!["a.b".into(), "c.".into()])` and friends.
 SUBSCRIBE_CALL = re.compile(r"\.subscribe\s*\(\s*vec!\s*\[(?P<body>[^\]]*)\]", re.S)
+
+# What an app emits. Two shapes: the SDK emitter's method, and the shell's own
+# hand-rolled helper - which is the one a check written against the SDK type
+# would have missed.
+PUBLISH_CALL = re.compile(
+    r'(?:emit_to_event_bus|\.emit|emit_event)\s*\(\s*"(?P<topic>[^"]+)"', re.S
+)
 
 # The shell's shape: one comma-joined const it registers with.
 SUBSCRIPTIONS_CONST = re.compile(
@@ -143,6 +160,22 @@ def sdk_helpers(repo: Path) -> dict[str, set[str]]:
     return helpers
 
 
+def publishes_of(directory: Path) -> set[str]:
+    """Every topic this app emits onto the bus."""
+    found: set[str] = set()
+    for f in directory.rglob("*.rs"):
+        if any(s in str(f) for s in SKIP):
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace")
+        for m in PUBLISH_CALL.finditer(text):
+            topic = m.group("topic")
+            # A dotted topic, not a Tauri window event or a log line that happens
+            # to sit behind a method called `emit`.
+            if "." in topic and "://" not in topic and " " not in topic:
+                found.add(topic)
+    return found
+
+
 def subscriptions_of(directory: Path, helpers: dict[str, set[str]]) -> set[str]:
     """Every topic or prefix this app registers with the bus."""
     found: set[str] = set()
@@ -180,8 +213,10 @@ def main() -> int:
             problems.append(f"{path.name}: will not parse ({e})")
             continue
 
-        subscribe = profile.get("event_bus", {}).get("subscribe")
-        if subscribe is None:
+        event_bus = profile.get("event_bus", {})
+        subscribe = event_bus.get("subscribe")
+        publish = event_bus.get("publish")
+        if subscribe is None and publish is None:
             # Declares nothing, so the bus does not hold it to anything. Not this
             # check's business - whether it SHOULD declare one is the profile
             # work's call, not a rule this can derive.
@@ -200,8 +235,8 @@ def main() -> int:
             )
             continue
 
-        wanted = subscriptions_of(directory, helpers)
-        if not wanted:
+        wanted = subscriptions_of(directory, helpers) if subscribe is not None else set()
+        if subscribe is not None and not wanted:
             # An UNUSED grant, which is the other direction and not a break: extra
             # scope is permissive, so nothing goes quiet. It is still worth saying,
             # because "erring narrow" is what these profiles claim about themselves
@@ -225,6 +260,18 @@ def main() -> int:
                     f"keeps the connection, so the app waits on a receiver that never "
                     f"yields and nothing anywhere reports it. Add it to "
                     f"[event_bus].subscribe."
+                )
+
+        # The publish half. Same silence, other direction: the event is dropped
+        # and the producer, speaking a fire-and-forget protocol, is never told.
+        for topic in sorted(publishes_of(directory)):
+            if not granted(publish or [], topic):
+                problems.append(
+                    f"{path.name}: emits `{topic}` and the profile does not grant it.\n"
+                    f"    Under ARLEN_EVENT_BUS_ENFORCE the bus DROPS the event and says "
+                    f"nothing to the producer, so every consumer of that topic goes "
+                    f"quiet while the emitting code looks like it worked. Add it to "
+                    f"[event_bus].publish."
                 )
 
     if carried:

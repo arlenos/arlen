@@ -2,11 +2,12 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The control for the subscribe-scope gate.
+// The control for the event-bus scope gate, both halves.
 //
 // This one is worth pinning in both directions more than most, because the thing
-// it guards fails SILENTLY: a subscription the profile does not grant is dropped
-// rather than refused, so a gate that quietly passed everything would look
+// it guards fails SILENTLY on both sides: a subscription the profile does not
+// grant is dropped rather than refused, and a denied publish is dropped with
+// nothing said to the producer. A gate that quietly passed everything would look
 // exactly like a healthy tree. The cases below are the two that matter - a
 // forgotten grant must be caught, and a correct profile must pass - plus the
 // vacuous-pass shapes, since a check that reads nothing and reports OK is the
@@ -102,6 +103,41 @@ console.log("subscribe scope:");
     "a grant with no subscription behind it is reported, not failed",
     r.code === 0 && r.out.includes("no subscription was found"),
   );
+}
+{
+  // The publish half, which is the same silence in the other direction: the
+  // event is dropped and the fire-and-forget producer is never told.
+  const r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]:
+      '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\npublish = []\n',
+    "apps/demo/src/emit.rs":
+      'pub fn go() { emit_to_event_bus("audio.state", payload()); }\n',
+  });
+  check(
+    "an emit the profile does not grant is caught",
+    r.code === 1 && r.out.includes("audio.state"),
+  );
+}
+{
+  const r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]:
+      '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\npublish = ["audio.state"]\n',
+    "apps/demo/src/emit.rs":
+      'pub fn go() { emit_to_event_bus("audio.state", payload()); }\n',
+  });
+  check("the granted emit passes", r.code === 0);
+}
+{
+  // A Tauri window event is not a bus topic. The tree spells those with a
+  // scheme (`arlen://x`, `terminal://frame`), and flagging them would send
+  // somebody to add nonsense to a profile - the kind of false positive that
+  // gets a check switched off.
+  const r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]:
+      '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\npublish = []\n',
+    "apps/demo/src/win.rs": 'pub fn go(app: &App) { let _ = app.emit("arlen://ready", 1); }\n',
+  });
+  check("a Tauri window event is not read as a bus topic", r.code === 0);
 }
 {
   const r = run({ "README.md": "no profiles here\n" });
