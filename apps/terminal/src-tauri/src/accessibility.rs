@@ -22,7 +22,16 @@
 //! (the shell) so every app hears the same thing at the same time; an app that
 //! also read the source directly would be a second answer nobody reconciles.
 
+use std::time::Duration;
+
 use tauri::{AppHandle, Emitter};
+
+/// How long to wait for the first snapshot before saying nothing arrived.
+///
+/// The bus replays a retained `.state` topic on subscribe and the shell
+/// publishes once at session start, so this is generous rather than tight: it
+/// only has to outlast a slow start, not a quiet period.
+const FIRST_EVENT_GRACE: Duration = Duration::from_secs(20);
 
 /// The Tauri event the webview listens on. Payload is the boolean.
 pub const TAURI_EVENT: &str = "arlen://accessibility-changed";
@@ -48,7 +57,47 @@ pub fn start(app: AppHandle) {
             }
         };
 
-        while let Some(event) = events.recv().await {
+        // The bus answers a subscription it will not honour by granting NOTHING,
+        // not by refusing: `permitted_subscriptions` filters patterns the caller's
+        // `[event_bus].subscribe` scope does not cover, and the connection then
+        // succeeds with an empty grant. A consumer cannot tell that apart from a
+        // quiet topic, so it waits forever and the grid stays a canvas nobody can
+        // read, with nothing anywhere saying why.
+        //
+        // The terminal is exempt from that filter TODAY only because it declares
+        // no event-bus scope, which is the state the profile work (GAP-17) is
+        // moving away from. Writing a subscribe list for it and forgetting this
+        // topic is a one-line change with a silent, invisible cost.
+        //
+        // So: say it. The shell publishes once at session start whatever the value
+        // is, so hearing nothing at all means something is wrong rather than the
+        // flag being off - but this deliberately does not GUESS which thing (a
+        // filtered pattern, a bus that never came up, a broker the shell could not
+        // read all look the same from here). It reports what it knows.
+        let first = tokio::time::timeout(FIRST_EVENT_GRACE, events.recv()).await;
+        let mut pending = match first {
+            Ok(Some(event)) => Some(event),
+            // The producer side hung up.
+            Ok(None) => return,
+            Err(_) => {
+                log::warn!(
+                    "terminal: nothing on accessibility.state after {}s - the grid keeps its \
+                     current screen-reader setting. The subscription may have been filtered \
+                     (no `[event_bus].subscribe` grant for it), or nothing is publishing.",
+                    FIRST_EVENT_GRACE.as_secs()
+                );
+                None
+            }
+        };
+
+        loop {
+            let event = match pending.take() {
+                Some(e) => e,
+                None => match events.recv().await {
+                    Some(e) => e,
+                    None => return,
+                },
+            };
             use prost::Message;
             match os_sdk::proto::AccessibilityStatePayload::decode(event.payload.as_slice()) {
                 Ok(state) => {
