@@ -421,7 +421,6 @@ pub fn run() {
             audio::toggle_input_mute,
             audio::get_audio_full_state,
             audio::set_app_volume,
-            audio::set_dnd_enabled,
             battery::get_battery_status,
             power::get_power_profile,
             power::set_power_profile,
