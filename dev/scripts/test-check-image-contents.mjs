@@ -54,8 +54,28 @@ function shelllessImage(name, unit) {
     ],
     { encoding: "utf8" },
   );
-  if (r.status !== 0) throw new Error(`fixture image failed: ${r.stderr}`);
+  // A build failure here is almost never about this check. libguestfs boots a
+  // real qemu, and on a machine already running one - an image build, a verify
+  // boot - it dies on `io_uring: Cannot allocate memory` against an 8 MB
+  // memlock limit. Measured on 14 Aug: red three times in an afternoon and
+  // green minutes later on the identical tree.
+  //
+  // THROWING WAS THE WRONG ANSWER. This runs in the pre-commit hook, whose own
+  // message offers `--no-verify`, so an environmental red teaches the reflex of
+  // skipping every structural gate at once - and the day it is a real finding,
+  // it gets skipped too. So the case is reported as NOT RUN, loudly, and the
+  // rest of the file still runs. Not silently: a check that cannot say whether
+  // it ran is the failure this whole directory exists to prevent.
+  if (r.status !== 0) {
+    console.log(`  SKIP the fixture image could not be built here: ${firstLine(r.stderr)}`);
+    return null;
+  }
   return img;
+}
+
+/** The first useful line of a tool's stderr, so a skip reason stays one line. */
+function firstLine(text) {
+  return (text || "").split("\n").find((l) => l.trim()) ?? "no output";
 }
 
 function check(name, args, expect) {
@@ -95,11 +115,13 @@ console.log("check-image-contents:");
 
 const img = shelllessImage("noshell.raw", "[Service]\nExecStart=/usr/bin/arlen-ghost\n");
 
-check(
-  "an image the inspection could not read is refused, not reported clean",
-  [img],
-  (code, out) => code === 2 && out.includes("the inspection did not run"),
-);
+if (img) {
+  check(
+    "an image the inspection could not read is refused, not reported clean",
+    [img],
+    (code, out) => code === 2 && out.includes("the inspection did not run"),
+  );
+}
 
 check(
   "naming an image that is not there is an error",
