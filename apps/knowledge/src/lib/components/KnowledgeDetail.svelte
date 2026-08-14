@@ -151,7 +151,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .kn-detail-close {
     display: inline-flex;
@@ -179,7 +179,7 @@
   }
   .kn-k {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .kn-v {
     font-size: var(--text-xs);
@@ -235,6 +235,6 @@
     flex-shrink: 0;
     font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 </style>

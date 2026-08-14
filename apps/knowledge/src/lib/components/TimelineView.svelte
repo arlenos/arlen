@@ -490,7 +490,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 
   /* The sentence row: quiet verb, emphasized object, quiet source, tabular
@@ -516,7 +516,7 @@
   .tl-icon {
     display: inline-flex;
     align-self: center;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   /* Fixed verb column so the objects form one scannable column down the whole
      spine (each row is its own grid; a shared width is what aligns them). */
@@ -549,14 +549,14 @@
   }
   .tl-source {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     white-space: nowrap;
   }
   .tl-time {
     justify-self: end;
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     white-space: nowrap;
   }
 
@@ -587,7 +587,7 @@
   .tl-session-chev {
     display: inline-flex;
     align-self: center;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .tl-session-chev.open {
@@ -607,11 +607,11 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .tl-session-meta {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     white-space: nowrap;
   }
   .tl-session-body {
