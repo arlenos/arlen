@@ -847,7 +847,12 @@ async fn files_ask(folder: String, query: String) -> Result<arlen_file_browser_c
 
 /// The home trash contents (paired `files/` + `info/` entries) for the Trash
 /// view, each with its recorded original path + deletion date.
-#[tauri::command]
+///
+/// Not a command, for a sharper reason than `files_recent`: this hands back a
+/// bare `Result<Vec<_>>`, so a frontend calling it directly gets a failed trash
+/// read as a thrown promise and, one `catch` later, an empty Trash. The one door
+/// is `files_list_location("trash")`, which turns the failure into something the
+/// pane can say out loud.
 fn files_trash_list() -> Result<Vec<ops::TrashedItem>, String> {
     let trash = trash_dir()?;
     ops::list_trash(&trash).map_err(|e| e.to_string())
@@ -1823,7 +1828,11 @@ fn recent_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>
 ///
 /// Returns the outcome: an empty Recent section on a machine with no graph reads
 /// as "you have not opened anything", which is a claim about the person's week.
-#[tauri::command]
+///
+/// Not a command. `files_list_location("recent")` is the one door the frontend
+/// uses, and it is the door that carries the outcome to the status bar; a second
+/// registered entrance to the same rows is how one surface ends up believing
+/// something the next one does not.
 async fn files_recent() -> ReadOutcome<RecentFile> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
@@ -2268,8 +2277,6 @@ pub fn run() {
             files_projects,
             files_touched_apps,
             files_saved_searches,
-            files_recent,
-            files_trash_list,
             files_trash_empty,
             files_trash_restore,
             files_trash_delete,
