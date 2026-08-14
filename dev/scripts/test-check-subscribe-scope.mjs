@@ -237,5 +237,22 @@ console.log("subscribe scope:");
   check("linking a library is not an inherited subscription", r.code === 0);
 }
 
+{
+  // A root daemon's profile lives under its own uid, not the session user's,
+  // because the bus looks one up under the PEER's uid. Globbing only `1000`
+  // made the first such profile invisible to this check while it was live at
+  // runtime, so the uid directory has to be part of the walk.
+  const ROOT_PROFILES = PROFILES.replace(/1000$/, "0");
+  const r = run({
+    [`${ROOT_PROFILES}/demo-daemon.toml`]:
+      '[info]\napp_id = "demo-daemon"\n\n[event_bus]\nsubscribe = ["window.*"]\n',
+    "daemons/demo-daemon/src/watch.rs": APP,
+  });
+  check(
+    "a profile under another uid directory is read, not skipped",
+    r.code === 1 && r.out.includes("accessibility.state"),
+  );
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nboth directions hold");
 process.exit(failures ? 1 : 0);
