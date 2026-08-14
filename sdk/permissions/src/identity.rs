@@ -178,6 +178,17 @@ fn why_exe_unreadable(pid: u32) -> String {
             // next boot needed. Narrowing a diagnostic to the leading hypothesis
             // discards the evidence that would refute it. So this prints all of
             // them, cheaply, and lets the reader do the eliminating.
+            //
+            // `Seccomp` and `NSpid` join them on the same principle, from the
+            // list `daemons/consent-broker` had already written down for the
+            // identical shape (a DUMPABLE peer whose exe still refuses): a
+            // seccomp filter on the target, or a nested pid namespace making
+            // /proc/<pid> a different task than the peer. The second is not
+            // hypothetical here - the 14 Aug boot refused the ai-engine-daemon,
+            // and that daemon spawns bwrap with `--unshare-pid`, so a connection
+            // from inside the sandbox presents a pid that means something else on
+            // this side. Without these two fields that boot could only say which
+            // causes it was NOT.
             return format!(
                 " (peer Uid[real effective saved fs]=[{uids}], /proc/{pid} owned by \
                  {dir_owner}, we are {me}; peer Gid=[{gids}], ours={} - a READ \
@@ -185,13 +196,17 @@ fn why_exe_unreadable(pid: u32) -> String {
                  capabilities: peer CapPrm={}, ours={} \
                  (a READ is refused unless ours is a superset); \
                  yama ptrace_scope={}; our LSM label={}, peer's={}; \
-                 our /proc mount={})",
+                 peer Seccomp={}, peer NSpid={} (more than one entry means the \
+                 peer is in a nested pid namespace, so this pid is a different \
+                 task here); our /proc mount={})",
                 proc_field(std::process::id(), "Gid"),
                 proc_field(pid, "CapPrm"),
                 proc_field(std::process::id(), "CapPrm"),
                 read_trimmed("/proc/sys/kernel/yama/ptrace_scope"),
                 read_trimmed("/proc/self/attr/current"),
                 read_trimmed(&format!("/proc/{pid}/attr/current")),
+                proc_field(pid, "Seccomp"),
+                proc_field(pid, "NSpid"),
                 proc_mount_options(),
             );
         };
