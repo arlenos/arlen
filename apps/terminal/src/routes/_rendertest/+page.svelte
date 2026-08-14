@@ -7,9 +7,7 @@
   /// are directly visible. Not shipped in any nav; a dev/test route only.
   import { onMount, tick } from "svelte";
   import { GridRegion } from "@arlen/ui-kit/components/console";
-  import StreamBlock from "$lib/components/StreamBlock.svelte";
   import HistoryPalette from "$lib/components/HistoryPalette.svelte";
-  import Composer from "$lib/components/Composer.svelte";
   import { newSession } from "$lib/stores/sessions";
   import StreamEmpty from "$lib/components/StreamEmpty.svelte";
   import { historyPaletteOpen } from "$lib/stores/history";
@@ -138,17 +136,6 @@
   // route renders exactly as before.
   let paletteReady = $state(false);
 
-  // A live session for the composer row. `refused` drives the real path rather
-  // than a faked flag: `terminal_input` is mocked to throw, then Enter is
-  // dispatched on the actual input, so what the shot proves is the component's
-  // own behaviour and not a state someone set by hand.
-  const session = {
-    id: "s-1",
-    cwd: "/home/tim/projects/arlen",
-    status: "running" as const,
-    last_exit: null,
-  };
-  let composerReady = $state(false);
   let emptyReady = $state(false);
   // The stranded case: no session, one button, and the backend refusing to open
   // a shell. Driven through `newSession()` rather than by setting the store, so
@@ -165,41 +152,6 @@
     }
     emptyReady = true;
     await newSession();
-  });
-
-  // The other half of the session refusal: a WORKING terminal whose Ctrl+T was
-  // refused. The stranded panel is not on screen then, so the line has to reach
-  // the composer row - which is the case that used to vanish into a `catch`.
-  onMount(async () => {
-    if (new URLSearchParams(window.location.search).get("state") !== "session-refused-live") return;
-    if (!tauriAvailable) {
-      const { mockIPC } = await import("@tauri-apps/api/mocks");
-      mockIPC((cmd) => {
-        if (cmd === "terminal_new_session") throw new Error("no session service");
-        if (cmd === "terminal_sessions") return [];
-        return null;
-      });
-    }
-    composerReady = true;
-    await newSession();
-  });
-
-  onMount(async () => {
-    if (new URLSearchParams(window.location.search).get("state") !== "input-refused") return;
-    if (!tauriAvailable) {
-      const { mockIPC } = await import("@tauri-apps/api/mocks");
-      mockIPC((cmd) => {
-        if (cmd === "terminal_input") throw new Error("session is gone");
-        return null;
-      });
-    }
-    composerReady = true;
-    await tick();
-    const el = document.getElementById("terminal-composer-input") as HTMLInputElement | null;
-    if (!el) return;
-    el.value = "cargo test";
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   });
 
   onMount(async () => {
@@ -221,9 +173,6 @@
 
 <div style="background:#0a0a0a;padding:8px;min-height:100vh;">
   <GridRegion {cells} />
-  <div style="margin-top:16px;max-width:760px;">
-    <StreamBlock {block} />
-  </div>
   {#if paletteReady}
     <HistoryPalette />
   {/if}
@@ -232,11 +181,6 @@
          surface proves its own stylesheet and nothing about the app. -->
     <div style="height:220px;max-width:760px;">
       <StreamEmpty kind="none" onretry={() => newSession()} />
-    </div>
-  {/if}
-  {#if composerReady}
-    <div style="margin-top:16px;max-width:760px;">
-      <Composer {session} />
     </div>
   {/if}
 </div>
