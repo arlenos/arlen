@@ -55,6 +55,26 @@ Shown to fail before being trusted: written against the 31 that were there, it
 immediately named a 32nd I had missed by hand - `setAlerts` in the sentinel store,
 one function below the `setDetector` I had just fixed. Reverting any of the fixes
 puts that one back in the list.
+
+REPAIRS, and which one depends on what actually failed. There are two, and the
+wrong one does damage:
+
+  1. REVERT, when the surface claims a change that did not happen. A timeline
+     showing recording paused while it runs, a capsule gone from a list that was
+     never revoked - the state is simply false, and putting it back is the fix.
+
+  2. SAY WHICH HALF FAILED, when the action was compound and only its durable
+     half failed. The greeter's screen-reader toggle applies the reader to THIS
+     login (a store update, which always succeeds) and remembers it for the next
+     start (a file write, which can fail). Reverting there switches off a screen
+     reader somebody just asked for because a write failed - the exact harm this
+     rule exists to prevent. The honest repair is a sentence beside the switch:
+     applies now, will not be remembered.
+
+This check cannot tell those apart. It sees an optimistic update and a swallowed
+rejection, which both shapes have, so it names the finding and leaves the choice
+to whoever knows what the action promised. Reverting on reflex is how a check
+meant to stop a lie ends up telling one.
 """
 
 import re
@@ -275,8 +295,8 @@ def main() -> int:
                 f"{rel}:{line}: a store was updated optimistically and the call's "
                 f"rejection goes to `console`, so the surface states that something "
                 f"happened which did not and the only correction is somewhere "
-                f"nobody is looking. Revert the store and say so where the claim "
-                f"was made."
+                f"nobody is looking. Say so where the claim was made - and read "
+                f"REPAIRS in this file's header before reverting."
             )
         for start, body_start, end in catch_spans(text):
             checked += 1
@@ -298,8 +318,8 @@ def main() -> int:
                 f"{rel}:{line}: a store was updated optimistically, the call failed, "
                 f"and the catch does nothing - so the surface states that something "
                 f"happened which did not. Keep the optimism under "
-                f"`import.meta.env.DEV`, revert in a real session, and say so where "
-                f"the claim is made."
+                f"`import.meta.env.DEV` and say so where the claim is made - and "
+                f"read REPAIRS in this file's header before reverting."
             )
 
     # The half this file has claimed since it was written - "a file whose count
