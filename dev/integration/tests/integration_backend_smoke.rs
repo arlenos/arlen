@@ -2459,6 +2459,121 @@ async fn an_enforcing_bus_delivers_only_the_subscribed_event_type() {
     );
 }
 
+/// An event whose subject uid is not the subscriber's is refused.
+///
+/// The per-user split rests on this: once each human has their own knowledge
+/// daemon, the thing that must not happen is one session's events reaching
+/// another's subscriber. The bus stamps every event with the producer's
+/// kernel-attested uid and a consumer registers the uid it will accept, so the
+/// refusal is a filter rather than a policy anyone can talk their way past.
+///
+/// TWO CONSUMERS IN ONE RUN, and that is the point. A single foreign-uid consumer
+/// receiving nothing proves nothing - a bus that delivered to nobody would look
+/// identical. The control subscribes with `*`, so the same emitted event must
+/// arrive there and not at the foreign-uid one; only the pair distinguishes a
+/// working filter from a dead bus.
+#[tokio::test]
+#[ignore = "needs the built daemons and a FUSE host"]
+async fn an_event_for_another_uid_never_reaches_this_subscriber() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Both halves declared: the bus scopes producers as well, so a missing
+    // publish grant would starve both consumers and the control assertion would
+    // fail for a reason that has nothing to do with uids.
+    stack
+        .seed_event_bus_profile(&["file.opened"], &["file.*"])
+        .expect("seed the event-bus scope for this test process");
+    stack
+        .spawn(
+            "daemons/event-bus",
+            "event-bus",
+            &[("ARLEN_EVENT_BUS_ENFORCE", "1")],
+        )
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("event-bus producer socket appears");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("event-bus consumer socket appears");
+
+    // The emitter is this process, so the bus stamps its uid on every event it
+    // sends. Asking for uid+1 is therefore a uid no event in this run can carry -
+    // a foreign session, expressed without needing a second real user.
+    let own_uid = unsafe { libc::getuid() };
+    let foreign_uid = own_uid + 1;
+
+    let mut mine = tokio::net::UnixStream::connect(stack.consumer_socket())
+        .await
+        .expect("connect the control consumer");
+    mine.write_all(b"it-uid-control
+file.*
+*
+")
+        .await
+        .expect("register the control consumer");
+    mine.flush().await.expect("flush the control registration");
+
+    let mut theirs = tokio::net::UnixStream::connect(stack.consumer_socket())
+        .await
+        .expect("connect the foreign-uid consumer");
+    theirs
+        .write_all(format!("it-uid-foreign
+file.*
+{foreign_uid}
+").as_bytes())
+        .await
+        .expect("register the foreign-uid consumer");
+    theirs.flush().await.expect("flush the foreign registration");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+
+    // Emit until the control has seen one: registration races the first emit and
+    // the bus drops an event with no consumer attached at that moment.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut control_saw = false;
+    while Instant::now() < deadline && !control_saw {
+        let opened = proto::FileOpenedPayload {
+            path: "/tmp/it/uid-split.rs".to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        let _ = emitter.emit("file.opened", opened).await;
+
+        if let Ok(Ok(len)) =
+            tokio::time::timeout(Duration::from_millis(700), mine.read_u32()).await
+        {
+            let mut buf = vec![0u8; len as usize];
+            if tokio::time::timeout(Duration::from_millis(700), mine.read_exact(&mut buf))
+                .await
+                .is_ok()
+            {
+                let event = proto::Event::decode(&buf[..]).expect("decode the control event");
+                control_saw |= event.r#type == "file.opened";
+            }
+        }
+    }
+
+    assert!(
+        control_saw,
+        "the control subscriber received nothing, so this run cannot tell a \
+         working uid filter from a bus that delivered to no one"
+    );
+
+    // The control has had it, so the foreign-uid consumer has had its chance too:
+    // the bus dispatches to every matching consumer in one pass. A read that
+    // times out here is the refusal.
+    let foreign = tokio::time::timeout(Duration::from_millis(1500), theirs.read_u32()).await;
+    assert!(
+        foreign.is_err(),
+        "an event stamped uid {own_uid} reached a subscriber that asked for uid \
+         {foreign_uid}, so the uid filter is inert and one session's events can \
+         reach another's"
+    );
+}
+
 /// The store composes a catalog from what the machine has, and serves cards that
 /// say honestly what can be done with them.
 ///

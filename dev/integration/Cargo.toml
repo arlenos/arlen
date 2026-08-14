@@ -19,6 +19,10 @@ arlen-run-consent-token = { path = "../../contracts/run-consent-token" }
 arlen-terminal-core = { path = "../../apps/terminal/core" }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 prost = "0.13"
+# The uid-split scenario asks the kernel who this process is: it registers a
+# consumer for uid+1, which is a uid no event in the run can carry, so the
+# refusal needs no second real user on the machine.
+libc = "0.2"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v7"] }
 os-sdk = { path = "../../sdk/os-sdk" }
