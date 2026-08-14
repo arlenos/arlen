@@ -7,15 +7,17 @@
   /// answering. That used to render as a definite "WiFi is off" with a switch
   /// beside it, about a radio nobody had managed to ask.
   ///
-  /// `?state=ok|wifi-off|unknown`, `?locale=de`. Not in any nav.
+  /// `?state=ok|wifi-off|unknown`, `?panel=bluetooth`, `?locale=de`. Not in any nav.
   import { onMount } from "svelte";
   import NetworkPopover from "$lib/components/NetworkPopover.svelte";
+  import BluetoothPopover from "$lib/components/BluetoothPopover.svelte";
   import { openPopover } from "$lib/stores/activePopover.js";
   import { locale } from "@arlen/ui-kit/i18n";
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   if (params?.get("locale")) locale.set(params.get("locale") as string);
   const pinned = params?.get("state") ?? "ok";
+  const panel = params?.get("panel") === "bluetooth" ? "bluetooth" : "network";
 
   let ready = $state(false);
 
@@ -25,7 +27,16 @@
       // `unknown` answers nothing at all, which is what a stopped
       // NetworkManager looks like from here. The other two answer normally so
       // the honest states can be compared against the definite ones.
-      if (pinned === "unknown") throw new Error("NetworkManager is not running");
+      if (pinned === "unknown") throw new Error("the service is not running");
+      if (cmd === "get_bluetooth_state")
+        return {
+          available: true,
+          powered: true,
+          discovering: false,
+          devices: [
+            { path: "/d1", name: "WH-1000XM4", connected: true, paired: true, icon: "audio-headphones", battery: 80 },
+          ],
+        };
       if (cmd === "get_airplane_mode") return false;
       if (cmd === "get_wifi_enabled") return pinned !== "wifi-off";
       if (cmd === "get_network_status")
@@ -45,13 +56,17 @@
       return null;
     });
     ready = true;
-    openPopover("network");
+    openPopover(panel);
   });
 </script>
 
 <div class="wrap">
   {#if ready}
-    <NetworkPopover />
+    {#if panel === "bluetooth"}
+      <BluetoothPopover />
+    {:else}
+      <NetworkPopover />
+    {/if}
   {/if}
 </div>
 
