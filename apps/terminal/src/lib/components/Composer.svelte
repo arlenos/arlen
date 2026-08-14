@@ -1,4 +1,19 @@
 <script lang="ts">
+  /// NOT MOUNTED. Nothing renders this since xterm.js took the whole terminal
+  /// (the DOM block stream went with it, having double-rendered against the
+  /// grid). Its refusal line therefore ships nowhere, and I built that line here
+  /// before checking - a fix wired in code and invisible in deployment, which is
+  /// the defect this file's own comments are about, committed by the person
+  /// clearing it. Verified in a harness that mounted the component directly,
+  /// which proves a component works and says nothing about whether anyone sees
+  /// it.
+  ///
+  /// The live equivalent is in `Terminal.svelte`: a refused write says so as a
+  /// line in the grid, which is where a terminal says things.
+  ///
+  /// Kept rather than deleted because whether the prompt row returns is a design
+  /// question, not a cleanup. If it does, this is the shape it had.
+  ///
   /// The active prompt line at the foot of the block stream
   /// (terminal.md §4.3, corrected 11 June): the input IS the next
   /// line in the stream — the same PromptLine chrome a finished

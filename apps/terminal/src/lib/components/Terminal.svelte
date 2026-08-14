@@ -21,6 +21,10 @@
     terminalConfigGet,
   } from "$lib/contract";
   import { matchZoom, zoomStep, type ZoomAction } from "$lib/zoom";
+  import { get } from "svelte/store";
+  // Aliased: `t` is the local xterm instance throughout the mount, and the store
+  // would shadow it inside exactly the callback that needs both.
+  import { t as messages } from "$lib/i18n/messages";
   // arlen-ui owns the look; we only wire it. The ITheme + font tokens make the
   // grid the Arlen palette (not bare black), and the block-chrome builders are
   // anchored to the OSC 133 marks below so the visible block frame is restored.
@@ -62,6 +66,9 @@
 
   let host: HTMLDivElement;
   let term: Terminal | undefined;
+  /// True while the engine is refusing writes, so the message is written once per
+  /// outage rather than once per keystroke.
+  let inputRefused = false;
   let fit: FitAddon | undefined;
   let unlistenFrame: UnlistenFn | undefined;
   let resizeObserver: ResizeObserver | undefined;
@@ -454,7 +461,30 @@
 
     // The grid IS the keystroke target now (not a textbox): xterm.js emits the
     // UTF-8 input string, the engine writes it to the PTY master.
-    t.onData((d) => void terminalInput(sessionId, d));
+    //
+    // A refused write says so IN THE GRID, which is where everything else in a
+    // terminal is said. It used to be `void terminalInput(...)`: the promise
+    // rejected into nothing, so a dead PTY swallowed every keystroke and the
+    // window looked like a terminal that had stopped caring.
+    //
+    // Once per outage, not once per keystroke. `onData` fires per character, so
+    // reporting each one would paint the screen with the same sentence while
+    // someone types - the noise version of the same defect. The next accepted
+    // write re-arms it.
+    t.onData((d) => {
+      terminalInput(sessionId, d).then(
+        () => {
+          inputRefused = false;
+        },
+        () => {
+          if (inputRefused || !term) return;
+          inputRefused = true;
+          // `get`, not `$t`: this runs inside a callback, and a store
+          // subscription there is not a top-level one.
+          term.write(`\r\n\x1b[31m${get(messages)("term.notAccepted")}\x1b[0m\r\n`);
+        },
+      );
+    });
     // When xterm.js recomputes the geometry (on fit), resize the PTY to match so
     // the shell + TUIs reflow. Registered BEFORE the first fit() below: the
     // initial fit emits a resize, and if its handler is not yet attached that
