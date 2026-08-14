@@ -6,10 +6,9 @@
 /// the user acts. When the assistant is off, the Ask mode is unavailable.
 ///
 /// The scoped-ask command does not exist yet (coder seam, `files_ask`); until it
-/// lands the surface drives the review against mocked drafts, and the off-switch
-/// read (`files_ai_enabled`) defaults the Ask mode to unavailable.
+/// lands the surface drives the review against mocked drafts.
 
-import { writable } from "svelte/store";
+import { derived, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { selectedFacets, facetOpen, FACET_GROUPS, type FacetGroup } from "./facets";
 
@@ -35,9 +34,28 @@ export interface AskDraft {
 }
 export const askDraft = writable<AskDraft | null>(null);
 
-/// Whether the assistant is enabled (the off-switch). When false the Ask mode is
-/// greyed and the bar stays literal search.
-export const aiEnabled = writable(false);
+/// What the AI is allowed to do right now, as `ai_capability` reports it - the
+/// same command the harness and the shell read, rather than a fourth narrower
+/// mirror. null means the read itself failed: the backend is not answering, which
+/// is a different fact from the AI being switched off and is said differently.
+export interface AskCapability {
+  enabled: boolean;
+  tier: string;
+  actionMode: string;
+  provider: string | null;
+  model: string | null;
+  executorLive: boolean;
+}
+export const askCapability = writable<AskCapability | null>(null);
+
+/// Whether the capability has been read at all. Until it has, the bar shows no
+/// claim either way - an app that has not looked yet must not say the AI is off.
+export const askCapabilityLoaded = writable(false);
+
+/// Whether the assistant is enabled (the off-switch). Derived rather than stored,
+/// so there is one source for the posture and the boolean cannot drift from the
+/// sentence shown beside it.
+export const aiEnabled = derived(askCapability, (c) => c?.enabled ?? false);
 
 /// The shape `files_ask` returns: a drafted facet selection in the existing
 /// vocabulary, plus what it read.
@@ -46,14 +64,29 @@ export interface AskResult {
   reads: AskReads;
 }
 
-/// Read whether the assistant is on, so the Ask mode can grey out. A missing
-/// command (no AI backend) leaves Ask unavailable rather than half-wired.
-export async function loadAiEnabled(): Promise<void> {
+/// Read the capability behind the Ask affordance. A failed read is kept as null
+/// rather than flattened to "off": those are two different things for the person
+/// in front of it, one to change in Settings and one to wait out.
+export async function loadAskCapability(): Promise<void> {
   try {
-    aiEnabled.set(await invoke<boolean>("files_ai_enabled"));
+    askCapability.set(await invoke<AskCapability>("ai_capability"));
   } catch {
-    aiEnabled.set(false);
+    askCapability.set(null);
+  } finally {
+    askCapabilityLoaded.set(true);
   }
+}
+
+/// Which message the line under the search bar carries, for the two states that
+/// speak; the healthy state renders nothing, which is the shell's rule and Tim's -
+/// a status line that is always on is the noise the rule exists to prevent.
+///
+/// Returns a catalogue key rather than a sentence: the shell hands back English
+/// because it has no catalogue, and copying that here would put untranslatable
+/// text in a translated app. Same vocabulary, said about the thing this surface
+/// offers - not the agent in general, but asking about these files.
+export function askCapabilityMessage(c: AskCapability | null): string {
+  return c === null ? "f.ask.unreachable" : "f.ask.aiOff";
 }
 
 /// Send a scoped natural-language ask; returns the drafted result, or null on

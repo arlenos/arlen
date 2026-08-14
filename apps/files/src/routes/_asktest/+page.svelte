@@ -18,7 +18,7 @@
     runAsk,
     applyDraft,
     clearAsk,
-    loadAiEnabled,
+    loadAskCapability,
   } from "$lib/stores/ask";
 
   const FOLDER = "/home/tim/projects/arlen";
@@ -49,10 +49,23 @@
 
   let ready = $state(false);
   onMount(async () => {
-    const off = new URLSearchParams(window.location.search).get("state") === "off";
+    // Three states, because there are three: the assistant on, switched off, and
+    // a backend that does not answer. The third used to be indistinguishable from
+    // the second here, which is the defect this harness is meant to catch.
+    const state = new URLSearchParams(window.location.search).get("state");
     const { mockIPC } = await import("@tauri-apps/api/mocks");
     mockIPC((cmd) => {
-      if (cmd === "files_ai_enabled") return !off;
+      if (cmd === "ai_capability") {
+        if (state === "unreachable") throw new Error("no backend");
+        return {
+          enabled: state !== "off",
+          tier: "Session",
+          actionMode: "Suggest",
+          provider: "ollama",
+          model: "qwen3:8b",
+          executorLive: false,
+        };
+      }
       if (cmd === "files_projects")
         return {
           state: "rows",
@@ -67,7 +80,7 @@
         };
       return null;
     });
-    await loadAiEnabled();
+    await loadAskCapability();
     await loadFacetOptions();
     askMode.set("ask");
     searchOpen.set(true);

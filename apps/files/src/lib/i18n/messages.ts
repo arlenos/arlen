@@ -128,6 +128,8 @@ const messages: Catalogs = {
 
     // Ask banner
     "f.ask.draftedFrom": "Drafted from",
+    "f.ask.aiOff": "Asking about your files is off. Turn the assistant on in Settings.",
+    "f.ask.unreachable": "Asking about your files isn't available right now.",
     "f.ask.readsFiles": P("count", "Read {$count} file in {$scope}", "Read {$count} files in {$scope}"),
     "f.ask.readsTags": P("count", "{$count} tag from your graph", "{$count} tags from your graph"),
 
@@ -430,6 +432,8 @@ const messages: Catalogs = {
     "f.emptyTrash.body": "Alles im Papierkorb endgültig löschen? Das kann nicht rückgängig gemacht werden.",
 
     "f.ask.draftedFrom": "Entworfen aus",
+    "f.ask.aiOff": "Fragen zu deinen Dateien ist aus. Schalte den Assistenten in den Einstellungen ein.",
+    "f.ask.unreachable": "Fragen zu deinen Dateien ist gerade nicht verfügbar.",
     "f.ask.readsFiles": P("count", "{$count} Datei in {$scope} gelesen", "{$count} Dateien in {$scope} gelesen"),
     "f.ask.readsTags": P("count", "{$count} Tag aus deinem Graphen", "{$count} Tags aus deinem Graphen"),
 

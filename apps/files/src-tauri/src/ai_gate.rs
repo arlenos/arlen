@@ -1,6 +1,7 @@
 //! The file manager's Ask-Arlen off-switch read (file-manager-plan.md item 6b).
 //!
-//! `files_ai_enabled` mirrors the harness `ai_capability` enabled bit: it reads
+//! The BACKEND gate, not a surface read. It mirrors the `ai_capability` enabled
+//! bit: it reads
 //! `[ai].enabled` from `~/.config/arlen/ai.toml` — the same file the ai-daemon
 //! resolves its read scope from — so the Ask-mode affordance shows up only when
 //! the AI layer the daemon enforces is actually on. Read-only and advisory: a
@@ -32,7 +33,12 @@ fn ai_config_path() -> std::path::PathBuf {
 /// Whether the Ask-Arlen mode is available: the `[ai].enabled` flag from
 /// `ai.toml`. Never errors — an unreadable or malformed config reads as `false`
 /// (Ask unavailable), so the off-switch is fail-closed.
-#[tauri::command]
+///
+/// Deliberately NOT a `#[tauri::command]`. The frontend reads `ai_capability`,
+/// the same door the shell and the harness use; a second narrower command
+/// answering a slice of the same question is how one surface ends up believing
+/// something the next one does not. This stays as the enforcement gate in
+/// `files_ask`, which is a different job from telling a person what is going on.
 pub fn files_ai_enabled() -> bool {
     let Ok(text) = std::fs::read_to_string(ai_config_path()) else {
         return false;
