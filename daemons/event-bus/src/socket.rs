@@ -856,13 +856,19 @@ mod tests {
 
     #[test]
     fn the_originator_list_is_keyed_on_resolved_ids() {
-        // The trap this pins: the compositor ships a profile called
-        // `arlen-compositor.toml` declaring `app_id = "arlen-compositor"`, but
-        // rule (2) of the resolver maps /usr/bin/arlen-compositor to
-        // `compositor`, and the bus keys everything on what it resolved. An
-        // entry spelled like the profile would match no peer and the exemption
-        // would silently not apply - which is the same shape as the profile
-        // itself never being found.
+        // The trap this pins, found by writing this list and since fixed at the
+        // other end: the compositor USED to ship `arlen-compositor.toml`
+        // declaring `app_id = "arlen-compositor"`, while rule (2) of the
+        // resolver maps /usr/bin/arlen-compositor to `compositor` and the bus
+        // keys everything on what it resolved. So that profile was never loaded
+        // for anything, and an entry here spelled the same way would match no
+        // peer and exempt nobody - failing exactly as quietly.
+        //
+        // The profile is `compositor.toml` now. This stays because the pull
+        // toward the binary's name is what caused it, and that pull does not go
+        // away: `daemons/session` legitimately calls the PROGRAM
+        // `arlen-compositor`, a keystroke away from an id that means nothing
+        // here.
         assert!(originates_system_events("compositor"));
         assert!(
             !originates_system_events("arlen-compositor"),
