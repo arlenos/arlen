@@ -1,0 +1,24 @@
+# The dogfood probe's event-bus profile.
+#
+# `dev/dogfood` is the verify-image probe that emits a synthetic `file.opened`
+# so a boot can prove the whole ingestion path end to end: bus -> writer ->
+# SQLite -> promotion -> graph. It is not part of a release image; this file is
+# harmless there, since a profile for a binary nobody installed is never looked
+# up.
+#
+# It needs a declaration for the same reason the audit daemon does: publish
+# exemption is now a named property of the components that originate system
+# events, and a probe is not one of those - it imitates one. Without this its
+# event is dropped at the bus and the probe reports the pipeline broken, which
+# would be a false alarm about the thing the probe exists to measure.
+#
+# One topic, checked against the source rather than assumed.
+[info]
+app_id = "dogfood"
+tier = "first-party"
+
+[event_bus]
+publish = ["file.opened"]
+
+# A pure producer: the probe emits one event and reads nothing.
+subscribe = []
