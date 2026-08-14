@@ -73,6 +73,30 @@ for entry in "${SURFACES[@]}"; do
     continue
   fi
 
+  # Assert the page is the app we started, not one still listening from an
+  # earlier run. A stale server on a taken port answers `curl` perfectly well,
+  # and `--strictPort` only stops the NEW vite - so a whole row of this table
+  # was once the previous app's page under this app's name.
+  #
+  # The expected title is DERIVED from the app's own catalogue rather than kept
+  # in a table here: `<prefix>.app.title` is the key every app carries for its
+  # window, so the sweep reads what the app says its name is. A first version
+  # compared each page to the PREVIOUS one, which catches nothing when a single
+  # app is swept - and a guard that passes when there is nothing to compare is
+  # the kind that reads as protection and is not.
+  want=$(grep -hoE '"[a-z]+\.app\.title": "[^"]+"' \
+           "apps/$app/src/lib/i18n/"messages*.ts 2>/dev/null \
+         | head -1 | sed 's/.*: "\(.*\)"/\1/')
+  served=$(python3 dev/screenshot/render-wide.py \
+    --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
+    --probe "document.title" 2>/dev/null | tail -1)
+  if [ -n "$want" ] && [ "$served" != "$want" ]; then
+    printf '%-16s %s\n' "$app" "REFUSED: port $PORT served \"$served\", not \"$want\" - another server holds it"
+    kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
+    PORT=$((PORT + 1))
+    continue
+  fi
+
   python3 dev/screenshot/render-wide.py \
     --url "http://localhost:$PORT$route" \
     --out "$out/$app.png" --width "$WIDTH" --axe --settle 3 \
