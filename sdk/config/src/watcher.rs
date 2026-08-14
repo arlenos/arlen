@@ -18,6 +18,64 @@ use crate::ConfigError;
 /// Debounce window: rapid changes within this period produce a single callback.
 const DEBOUNCE_MS: u64 = 100;
 
+/// How long the loop blocks before re-checking the stop flag.
+const POLL_MS: u64 = 500;
+
+/// Collapses a burst of filesystem events into one reload.
+///
+/// TRAILING EDGE, and that is a correction rather than a preference. The
+/// previous version fired on the FIRST event of a burst and then suppressed for
+/// the window, which loses the burst's outcome: the callback reloads the file at
+/// fire time, so a save that lands two milliseconds later is read by nobody, and
+/// nothing further arrives to correct it. The consumer then holds a stale config
+/// indefinitely while every log line says the reload happened. Waiting for the
+/// burst to settle and reloading once delivers the state the file actually ended
+/// up in, which is the only state a consumer can act on.
+///
+/// It is also the reason this type exists at all rather than two `Instant`s in
+/// the loop. The decision is pure - given the last event's time and the current
+/// time, has the burst settled - so it can be driven by a clock the test writes
+/// down, and "a burst collapses to one reload" becomes an assertion instead of a
+/// sleep long enough to usually be true. `test_debounce_rapid_changes` failed CI
+/// on 13 Aug by losing exactly that race on a loaded runner.
+#[derive(Debug)]
+struct Debounce {
+    window: Duration,
+    /// When the most recent event of the current burst arrived.
+    latest: Option<Instant>,
+}
+
+impl Debounce {
+    fn new(window: Duration) -> Self {
+        Self {
+            window,
+            latest: None,
+        }
+    }
+
+    /// Note an event. The burst is unsettled until the window passes with none.
+    fn record(&mut self, now: Instant) {
+        self.latest = Some(now);
+    }
+
+    /// How long until the current burst settles, or `None` when none is open.
+    fn wait(&self, now: Instant) -> Option<Duration> {
+        self.latest
+            .map(|t| self.window.saturating_sub(now.duration_since(t)))
+    }
+
+    /// Take the settled burst, at most once per burst.
+    fn take_settled(&mut self, now: Instant) -> bool {
+        match self.latest {
+            Some(t) if now.duration_since(t) >= self.window => {
+                self.latest = None;
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 /// A handle to a running config watcher. Drop or call `stop()` to clean up.
 pub struct ConfigWatcher {
     running: Arc<AtomicBool>,
@@ -135,52 +193,56 @@ fn run_watcher<T, F>(
         return;
     }
 
-    let mut last_fire = Instant::now() - Duration::from_secs(10);
+    let poll = Duration::from_millis(POLL_MS);
+    let mut debounce = Debounce::new(Duration::from_millis(DEBOUNCE_MS));
 
     while running.load(Ordering::SeqCst) {
-        // Block with timeout so we can check the running flag periodically.
-        match rx.recv_timeout(Duration::from_millis(500)) {
+        // Wake when the open burst settles, but never block past the poll
+        // interval, so the stop flag is still honoured while nothing changes.
+        let timeout = debounce
+            .wait(Instant::now())
+            .map_or(poll, |until_settled| until_settled.min(poll));
+
+        match rx.recv_timeout(timeout) {
             Ok(event) => {
-                // Filter: only care about events touching our filename.
-                let dominated = event.paths.iter().any(|p| {
-                    p.file_name()
-                        .map(|n| n == filename_owned.as_str())
-                        .unwrap_or(false)
-                });
-                let dominated = dominated
-                    || matches!(
-                        event.kind,
-                        EventKind::Create(_) | EventKind::Modify(_)
-                    ) && event.paths.iter().any(|p| {
-                        // Also match parent dir events (inotify on dir).
-                        p.is_dir()
-                            && watched_dirs.iter().any(|d| d == p)
-                    });
-
-                if !dominated {
-                    continue;
+                if touches(&event, &filename_owned, &watched_dirs) {
+                    debounce.record(Instant::now());
                 }
-
-                // Debounce: skip if too soon after last fire.
-                let now = Instant::now();
-                if now.duration_since(last_fire) < Duration::from_millis(DEBOUNCE_MS) {
-                    continue;
-                }
-                last_fire = now;
-
-                // Reload and invoke callback.
-                let result: Result<T, ConfigError> =
-                    crate::load_from(defaults_path, user_path);
-                callback(result);
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                // Check running flag and loop.
+                // Either the burst has settled or nothing is happening; both
+                // are decided below.
             }
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 break;
             }
         }
+
+        if debounce.take_settled(Instant::now()) {
+            // Read the file as it stands now, which after a burst is its final
+            // state rather than whatever it held when the burst opened.
+            let result: Result<T, ConfigError> = crate::load_from(defaults_path, user_path);
+            callback(result);
+        }
     }
+}
+
+/// Whether an event concerns the config file this watcher was asked about.
+///
+/// The watch is on the parent directory (to catch write-temp-then-rename), so
+/// the raw stream carries every sibling's writes too.
+fn touches(event: &Event, filename: &str, watched_dirs: &[PathBuf]) -> bool {
+    let by_name = event
+        .paths
+        .iter()
+        .any(|p| p.file_name().map(|n| n == filename).unwrap_or(false));
+
+    by_name
+        || matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_))
+            && event
+                .paths
+                .iter()
+                .any(|p| p.is_dir() && watched_dirs.iter().any(|d| d == p))
 }
 
 fn tracing_or_eprintln(msg: &str) {
@@ -203,6 +265,36 @@ mod tests {
     struct TestCfg {
         #[serde(default)]
         value: i32,
+    }
+
+    /// Write with `act` until `cond` holds, or give up.
+    ///
+    /// The deadline is a give-up point, not a window an assertion depends on: a
+    /// loaded machine only makes the loop go round more times. Every sleep in
+    /// this file used to be the other kind, sized to be "usually enough", which
+    /// is what put `test_debounce_rapid_changes` in the CI log.
+    ///
+    /// Writing is retried because a write that beats the watch being armed is
+    /// never seen, and no amount of waiting afterwards recovers it. But each
+    /// attempt then polls WITHOUT writing, and that gap is load-bearing: a
+    /// trailing-edge debouncer fires when the writes stop, so a retry loop that
+    /// re-writes every few milliseconds is a burst that never ends and never
+    /// settles. The first cut did exactly that and all three end-to-end tests
+    /// went red with the callback having fired zero times, which reads at a
+    /// glance like a broken watcher rather than a starved one.
+    fn until(mut act: impl FnMut(), mut cond: impl FnMut() -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            act();
+            let quiet_until = Instant::now() + Duration::from_millis(500);
+            while Instant::now() < quiet_until {
+                if cond() {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        false
     }
 
     fn write_cfg(path: &Path, content: &str) {
@@ -233,64 +325,179 @@ mod tests {
             },
         );
 
-        // Wait for watcher to start.
-        std::thread::sleep(Duration::from_millis(200));
-
-        // Change the config.
-        write_cfg(&cfg_path, "value = 42");
-        std::thread::sleep(Duration::from_millis(300));
+        let arrived = until(
+            || write_cfg(&cfg_path, "value = 42"),
+            || {
+                results
+                    .lock()
+                    .unwrap()
+                    .last()
+                    .and_then(|r| r.as_ref().ok())
+                    .map(|c| c.value == 42)
+                    .unwrap_or(false)
+            },
+        );
 
         watcher.stop();
-        std::thread::sleep(Duration::from_millis(100));
+        assert!(arrived, "the callback never saw the changed config");
+    }
 
-        let results = results.lock().unwrap();
-        assert!(!results.is_empty(), "callback should have been called");
-        let last = results.last().unwrap().as_ref().unwrap();
-        assert_eq!(last.value, 42);
+    // ---- the debouncer itself, on a clock the test writes down -------------
+    //
+    // These replace `test_debounce_rapid_changes`, which drove real writes
+    // through inotify, slept, and counted callbacks. It asserted `count <= 2`,
+    // which is a claim about how fast the machine is: on a loaded CI runner a
+    // gap between two writes stretches past the window, a second callback
+    // fires, and the test goes red without anything being wrong. It did, on
+    // 13 Aug.
+    //
+    // Every time below is written as a fraction or multiple of the debouncer's
+    // own window, so the assertions say "inside the window" and "past it"
+    // rather than naming a number of milliseconds. Nothing sleeps, so load
+    // cannot change the outcome.
+
+    const W: Duration = Duration::from_millis(100);
+
+    #[test]
+    fn a_burst_collapses_into_one_reload() {
+        let mut d = Debounce::new(W);
+        let t0 = Instant::now();
+
+        // Five events, each arriving before the window since the last ran out.
+        for i in 0..5 {
+            let at = t0 + (W / 4) * i;
+            d.record(at);
+            assert!(
+                !d.take_settled(at),
+                "the burst is still open at event {i}, nothing should reload yet"
+            );
+        }
+
+        let last = t0 + (W / 4) * 4;
+        assert!(
+            !d.take_settled(last + W / 2),
+            "still inside the window after the last event"
+        );
+        assert!(
+            d.take_settled(last + W),
+            "the window passed with no further event, so the burst settled"
+        );
+        assert!(
+            !d.take_settled(last + W * 10),
+            "a settled burst is taken once, not once per check"
+        );
     }
 
     #[test]
-    fn test_debounce_rapid_changes() {
+    fn a_later_burst_settles_on_its_own() {
+        let mut d = Debounce::new(W);
+        let t0 = Instant::now();
+
+        d.record(t0);
+        assert!(d.take_settled(t0 + W));
+
+        let second = t0 + W * 5;
+        d.record(second);
+        assert!(!d.take_settled(second), "the second burst has just opened");
+        assert!(d.take_settled(second + W), "and settles like the first");
+    }
+
+    #[test]
+    fn nothing_settles_without_an_event() {
+        let mut d = Debounce::new(W);
+        let t0 = Instant::now();
+        assert!(d.wait(t0).is_none(), "no burst is open");
+        assert!(!d.take_settled(t0 + W * 100));
+    }
+
+    #[test]
+    fn the_wait_is_what_is_left_of_the_window() {
+        let d_at = |elapsed: Duration| {
+            let mut d = Debounce::new(W);
+            let t0 = Instant::now();
+            d.record(t0);
+            d.wait(t0 + elapsed).unwrap()
+        };
+        assert_eq!(d_at(Duration::ZERO), W, "a fresh event waits the window out");
+        assert_eq!(d_at(W / 2), W / 2, "half elapsed, half to go");
+        assert_eq!(
+            d_at(W * 3),
+            Duration::ZERO,
+            "an overdue burst waits no longer, rather than underflowing"
+        );
+    }
+
+    #[test]
+    fn a_rapid_burst_delivers_the_value_the_file_ended_on() {
+        // The end-to-end half, and the one the old leading-edge debounce got
+        // wrong: it fired on the FIRST write and reloaded then, so `value = 5`
+        // was never read by anyone and the callback was left holding an early
+        // value for good.
+        //
+        // THE BURST IS WRITTEN ONCE AND NEVER RETRIED, which is the whole
+        // design of the test. The first version wrote the burst inside the
+        // retry loop, and it passed against the leading-edge code as happily as
+        // against this one: each retry re-fired the leading edge, and by then
+        // the file already held the 5 the previous burst left behind, so it
+        // loaded a 5 for the wrong reason. A test that cannot fail against the
+        // defect it names is worse than no test, so the arming is done first
+        // and separately - one distinct value, retried until the callback
+        // reports it, which proves the watch is established - and only then
+        // does the burst go out, once.
+        //
+        // The assertion is then convergence, not a count, so a slow machine
+        // only makes the poll go round more times.
         let dir = tempfile::TempDir::new().unwrap();
         let cfg_path = dir.path().join("test.toml");
         write_cfg(&cfg_path, "value = 0");
 
-        let call_count = Arc::new(Mutex::new(0usize));
-        let count_clone = call_count.clone();
+        let last: Arc<Mutex<Option<i32>>> = Arc::new(Mutex::new(None));
+        let last_clone = last.clone();
 
         let watcher = ConfigWatcher::watch::<TestCfg, _>(
             "test",
             None,
             Some(cfg_path.clone()),
-            move |_r| {
-                *count_clone.lock().unwrap() += 1;
+            move |r: Result<TestCfg, ConfigError>| {
+                if let Ok(cfg) = r {
+                    *last_clone.lock().unwrap() = Some(cfg.value);
+                }
             },
         );
 
-        std::thread::sleep(Duration::from_millis(200));
+        // Arm: retried, because a write that beats the watch is never seen.
+        assert!(
+            until(
+                || write_cfg(&cfg_path, "value = 7"),
+                || *last.lock().unwrap() == Some(7)
+            ),
+            "the watch never armed, so the burst below would prove nothing"
+        );
 
-        // Rapid-fire 5 changes back to back. No inter-write sleep: the
-        // leading-edge debounce suppresses for DEBOUNCE_MS after it fires,
-        // so writes must land well within that window to collapse. A sleep
-        // here let CI scheduling jitter stretch a gap past the window and
-        // fire again, which made the count assertion flaky.
+        // The burst: written once, and nothing writes again.
         for i in 1..=5 {
             write_cfg(&cfg_path, &format!("value = {i}"));
         }
 
-        // Wait for debounce window + processing.
-        std::thread::sleep(Duration::from_millis(400));
+        let settled = {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if *last.lock().unwrap() == Some(5) {
+                    break true;
+                }
+                if Instant::now() >= deadline {
+                    break false;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
 
         watcher.stop();
-        std::thread::sleep(Duration::from_millis(100));
-
-        let count = *call_count.lock().unwrap();
-        // Debounce should collapse 5 rapid writes into 1-2 callbacks.
         assert!(
-            count <= 2,
-            "expected at most 2 callbacks (debounce), got {count}"
+            settled,
+            "the burst ended on value = 5 and the callback never saw it; got {:?}",
+            *last.lock().unwrap()
         );
-        assert!(count >= 1, "expected at least 1 callback, got {count}");
     }
 
     #[test]
@@ -311,29 +518,23 @@ mod tests {
             },
         );
 
-        std::thread::sleep(Duration::from_millis(200));
+        let refused = until(
+            || write_cfg(&cfg_path, "this is {{{{ invalid"),
+            || results.lock().unwrap().iter().any(|ok| !ok),
+        );
+        assert!(refused, "invalid TOML never reached the callback as an Err");
 
-        // Write invalid TOML.
-        write_cfg(&cfg_path, "this is {{{{ invalid");
-        std::thread::sleep(Duration::from_millis(300));
-
-        // Write valid TOML again -- watcher should still be alive.
-        write_cfg(&cfg_path, "value = 99");
-        std::thread::sleep(Duration::from_millis(300));
+        // The point of the test: the watcher is still alive afterwards.
+        let recovered = until(
+            || write_cfg(&cfg_path, "value = 99"),
+            || *results.lock().unwrap().last().unwrap_or(&false),
+        );
 
         watcher.stop();
-        std::thread::sleep(Duration::from_millis(100));
-
-        let results = results.lock().unwrap();
-        // Should have at least 2 callbacks: one Err (invalid), one Ok (valid).
         assert!(
-            results.len() >= 2,
-            "expected at least 2 callbacks, got {}",
-            results.len()
+            recovered,
+            "the watcher stopped delivering after one invalid file"
         );
-        // First should be Err (invalid TOML), last should be Ok.
-        assert!(!results[0], "first callback should be Err");
-        assert!(*results.last().unwrap(), "last callback should be Ok");
     }
 
     #[test]
