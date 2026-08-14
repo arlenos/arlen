@@ -58,12 +58,8 @@ const HANDOFF_ENV: &str = "ARLEN_A11Y_SCREEN_READER";
 /// records it, and every later session already has it without the login screen
 /// being involved at all.
 async fn record_login_choice() {
-    let chosen = match std::env::var(HANDOFF_ENV).ok().as_deref() {
-        Some("1") => true,
-        Some("0") => false,
-        // Absent, or a value neither side wrote - say nothing rather than guess
-        // at somebody's accessibility setting.
-        _ => return,
+    let Some(chosen) = login_choice(std::env::var(HANDOFF_ENV).ok().as_deref()) else {
+        return;
     };
     let client = arlen_config_broker::ConfigBrokerClient::default_socket();
     // Read first: if it already says this, there is nothing to record, and a
@@ -82,6 +78,26 @@ async fn record_login_choice() {
         // Worth a warning rather than silence: the person will find it off again
         // next login and have no idea why.
         Err(e) => log::warn!("accessibility: could not record the login choice ({e})"),
+    }
+}
+
+/// What the login screen said, if it said anything.
+///
+/// Three-state, and the middle state is the one the whole feature turns on:
+/// `None` means nobody worked the toggle, so the session keeps whatever that
+/// user's own config holds. The greeter has its own remembered default, and that
+/// default arriving on screen is a fact about the door rather than a decision by
+/// the person walking through it - so it must not overwrite a preference they
+/// set inside their session.
+///
+/// A value neither side writes is also `None`. Guessing a boolean out of an
+/// unexpected string would be inventing somebody's accessibility setting, and
+/// the safe direction is to say nothing.
+fn login_choice(raw: Option<&str>) -> Option<bool> {
+    match raw {
+        Some("1") => Some(true),
+        Some("0") => Some(false),
+        _ => None,
     }
 }
 
@@ -132,4 +148,34 @@ pub async fn run_publisher() {
 /// Start the publisher on the shell's runtime.
 pub fn start() {
     tauri::async_runtime::spawn(run_publisher());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::login_choice;
+
+    #[test]
+    fn an_untouched_login_says_nothing() {
+        // The bound that keeps this intent and not a side effect. If this ever
+        // becomes `Some(false)`, a person with the reader on inside their
+        // session loses it by walking past a greeter nobody touched.
+        assert_eq!(login_choice(None), None);
+    }
+
+    #[test]
+    fn both_answers_travel() {
+        assert_eq!(login_choice(Some("1")), Some(true));
+        // Switching it OFF at the login screen is as deliberate as switching it
+        // on, so it must not collapse into the untouched case.
+        assert_eq!(login_choice(Some("0")), Some(false));
+    }
+
+    #[test]
+    fn an_unexpected_value_is_not_a_guess() {
+        // Neither side writes these. Reading `true` as on would be inventing a
+        // setting from a string nobody agreed to.
+        for raw in ["true", "yes", "on", "", " 1", "1 ", "01"] {
+            assert_eq!(login_choice(Some(raw)), None, "{raw:?} must say nothing");
+        }
+    }
 }
