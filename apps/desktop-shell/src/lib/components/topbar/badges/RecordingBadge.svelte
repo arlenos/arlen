@@ -8,6 +8,7 @@
   import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Circle } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { onMount } from "svelte";
 
   interface ToggleStatus {
@@ -42,9 +43,9 @@
   }
 
   function handleClick() {
-    invoke("quick_action_run", { id: "qa.toggle_recording" })
-      .then(() => refresh())
-      .catch(() => {});
+    void shellAction("quick_action_run", { id: "qa.toggle_recording" }, "sh.badge.errRecording").then(
+      () => refresh(),
+    );
   }
 
   const elapsed = $derived(

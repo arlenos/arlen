@@ -7,7 +7,7 @@
   import { SliderTile } from "@arlen/ui-kit/components/quicksettings";
   import { Volume2, VolumeX, Volume1, Headphones, Speaker } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { tileAction } from "$lib/quicksettings/action";
+  import { shellAction } from "$lib/shellAction";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { openPopover } from "$lib/stores/activePopover.js";
@@ -50,7 +50,7 @@
     writeTimer = setTimeout(() => {
       // The slider has already moved, so a refused write leaves it showing a
       // volume the sink is not at; `refresh` puts it back and the toast names it.
-      void tileAction(
+      void shellAction(
         "set_audio_volume",
         { volume: Math.round(value) },
         "sh.tile.errAudio",
@@ -63,7 +63,7 @@
   /// Icon-button click toggles mute (the most likely "I want to do
   /// something fast"). Right-click on the tile opens the popover.
   async function toggleMute() {
-    await tileAction("toggle_audio_mute", {}, "sh.tile.errAudio");
+    await shellAction("toggle_audio_mute", {}, "sh.tile.errAudio");
     await refresh();
   }
 

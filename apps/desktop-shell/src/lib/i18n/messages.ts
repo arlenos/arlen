@@ -468,6 +468,9 @@ const messages: Catalogs = {
     // Top-bar status badges
     "sh.badge.airplane": "Airplane Mode. Click to disable.",
     "sh.badge.caffeine": "Caffeine on. Click to disable.",
+    "sh.badge.errCaffeine": "Caffeine did not change.",
+    "sh.badge.errNightLight": "Night light did not change.",
+    "sh.badge.errRecording": "The recording did not stop.",
     "sh.badge.nightLight": "Night Light on. Click to disable.",
     "sh.badge.recording": "Recording in progress. Click to stop.",
     "sh.badge.dictating": "Dictating",
@@ -923,6 +926,9 @@ const messages: Catalogs = {
 
     "sh.badge.airplane": "Flugmodus. Zum Abschalten klicken.",
     "sh.badge.caffeine": "Wachhalten ist an. Zum Abschalten klicken.",
+    "sh.badge.errCaffeine": "Caffeine hat sich nicht geändert.",
+    "sh.badge.errNightLight": "Das Nachtlicht hat sich nicht geändert.",
+    "sh.badge.errRecording": "Die Aufnahme wurde nicht beendet.",
     "sh.badge.nightLight": "Nachtlicht ist an. Zum Abschalten klicken.",
     "sh.badge.recording": "Aufnahme l\u00e4uft. Zum Stoppen klicken.",
     "sh.badge.dictating": "Diktiert",
