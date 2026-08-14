@@ -10,6 +10,7 @@
   import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { Mic } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { onMount } from "svelte";
 
   interface DictationStatus {
@@ -43,9 +44,19 @@
   }
 
   function handleClick() {
-    invoke("stop_dictation")
-      .then(() => refresh())
-      .catch(() => {});
+    // The one press this badge offers, and a refused one is the worst kind of
+    // silence here: the badge stays lit because the mic IS still listening, so
+    // the surface looks identical whether the click worked or did nothing at
+    // all. The line says which, and the re-read means the badge reports the
+    // dictation daemon rather than the outcome that was hoped for.
+    //
+    // No host registers `stop_dictation` yet - it is a recorded seam, "no speech
+    // engine". On metal that keeps the badge invisible (the status read fails, so
+    // `active` stays false and there is nothing to click), so this cannot cry
+    // wolf; under the dev fixture it fires, which is the honest answer there.
+    void shellAction("stop_dictation", {}, "sh.badge.errDictation").then(
+      () => void refresh(),
+    );
   }
 </script>
 

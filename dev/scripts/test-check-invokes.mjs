@@ -49,6 +49,20 @@ function run(dir) {
   return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
+/// The same, with the uncalled listing turned on.
+///
+/// That direction is advisory: it prints under `ARLEN_LIST_UNCALLED` and never
+/// fails the gate, so a case asserting on the exit code alone would pass whether
+/// the scanner saw the call or not. Which is worse than no case - I wrote one
+/// like that and it stayed green with the fix reverted.
+function runListing(dir) {
+  const r = spawnSync("python3", [GATE, dir], {
+    encoding: "utf8",
+    env: { ...process.env, ARLEN_LIST_UNCALLED: "1" },
+  });
+  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+}
+
 function check(name, dir, expect) {
   const { code, out } = run(dir);
   const ok = expect(code, out);
@@ -311,6 +325,43 @@ check(
   }),
   (code, out) => code !== 0 && out.includes("open_missing"),
 );
+
+// A call routed through an IMPORTED helper. The wrapper finder walks one file,
+// so a helper declared in another one is invisible to it - and the day
+// `shellAction` took over a call, the gate reported that command as invoked by
+// nobody and told me to delete the entry carrying it. Both directions pinned:
+// the typo inside the helper call is still caught...
+check(
+  "a call through an imported invoke helper is still a call site",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      'import { shellAction } from "$lib/shellAction";\n'
+      + 'await shellAction("open_missing", {}, "e.key");\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code !== 0 && out.includes("open_missing"),
+);
+
+// ...and a command reached ONLY through the helper counts as reached, which is
+// the direction that was actually broken: the gate did not merely miss a typo,
+// it named a live command as called by nobody.
+{
+  const dir = tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      'import { shellAction } from "$lib/shellAction";\n'
+      + 'await shellAction("open_thing", {});\n',
+    "apps/demo/src-tauri/src/lib.rs":
+      "#[tauri::command]\nfn open_thing() {}\n"
+      + "fn main() { tauri::generate_handler![open_thing]; }\n",
+  });
+  const { out } = runListing(dir);
+  const ok = !out.includes("`open_thing`");
+  console.log(`  ${ok ? "ok  " : "FAIL"} a command called only through the helper is not listed as uncalled`);
+  if (!ok) failures.push({ name: "helper-only call counts as a call", out });
+  rmSync(dir, { recursive: true, force: true });
+}
 
 console.log(failures.length ? "\nsome cases regressed" : "\nboth directions hold");
 process.exit(failures.length ? 1 : 0);

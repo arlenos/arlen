@@ -229,6 +229,25 @@ def fixed_payload_wrappers(text: str) -> dict[str, set[str]]:
     return out
 
 
+# Helpers that invoke on their caller's behalf and live in ANOTHER file.
+#
+# Both wrapper finders above walk one file: they see `invoke(someVar)` and look
+# BACKWARDS through the same text for the declaration. A helper that is imported
+# is never declared in the file that calls it, so it is invisible to them, and
+# every command routed through it reads as invoked by nobody.
+#
+# That is not hypothetical. `shellAction` was extracted so a control could say
+# when its command was refused, and the moment a call moved onto it this check
+# reported the command as uncalled and told me to delete the entry that carries
+# it. A gate that says "delete this" about live code is worse than no gate.
+#
+# The value is the argument index holding the command name. One entry today; the
+# shape is here so the next helper is one line rather than a rediscovery.
+IMPORTED_INVOKERS: dict[str, int] = {
+    "shellAction": 0,
+}
+
+
 def invoke_calls(root: Path):
     """Yield (app, file, line, command, argument keys or None) for every call."""
     for base in (root / "apps",):
@@ -239,7 +258,12 @@ def invoke_calls(root: Path):
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
             fixed = fixed_payload_wrappers(text)
-            names = ["invoke", *passthrough_wrappers(text), *fixed]
+            names = [
+                "invoke",
+                *passthrough_wrappers(text),
+                *fixed,
+                *IMPORTED_INVOKERS,
+            ]
             for name in names:
                 for m in re.finditer(
                     rf'\b{re.escape(name)}\s*(?:<[^>]*>)?\s*\(\s*"([a-z_0-9]+)"', text
