@@ -70,12 +70,22 @@ export const groupedNotifications = derived(notifications, ($n) => {
 // ── Actions ──────────────────────────────────────────────────────────────
 
 export async function dismissNotification(id: number): Promise<void> {
-  console.log("[notifications] dismiss", id);
-  // Optimistic: remove from store immediately.
-  notifications.update(($n) => $n.filter((n) => n.id !== id));
-  invoke("notification_dismiss", { id }).catch((e) =>
-    console.error("[notifications] dismiss failed:", e)
-  );
+  // Optimistic: remove from the store immediately, and PUT IT BACK if the daemon
+  // refuses. The row used to vanish and stay vanished on a failure, with the only
+  // account of it in a console nobody reads - so the notification was still in
+  // the daemon and reappeared on the next sync, which reads as the panel
+  // resurrecting something the person had dismissed.
+  let removed: Notification | undefined;
+  notifications.update(($n) => {
+    removed = $n.find((n) => n.id === id);
+    return $n.filter((n) => n.id !== id);
+  });
+  try {
+    await invoke("notification_dismiss", { id });
+  } catch (e) {
+    console.error("[notifications] dismiss failed:", e);
+    if (removed) notifications.update(($n) => [removed as Notification, ...$n]);
+  }
 }
 
 export async function invokeAction(
@@ -93,12 +103,20 @@ export async function markRead(id: number): Promise<void> {
 }
 
 export async function clearAll(): Promise<void> {
-  console.log("[notifications] clearAll");
-  // Optimistic: clear store immediately.
-  notifications.set([]);
-  invoke("notification_clear_all").catch((e) =>
-    console.error("[notifications] clearAll failed:", e)
-  );
+  // Optimistic, and reverted on refusal for the same reason as a single dismiss,
+  // one order of magnitude louder: an emptied panel that refills on the next sync
+  // is the surface disagreeing with itself about everything at once.
+  let previous: Notification[] = [];
+  notifications.update(($n) => {
+    previous = $n;
+    return [];
+  });
+  try {
+    await invoke("notification_clear_all");
+  } catch (e) {
+    console.error("[notifications] clearAll failed:", e);
+    notifications.set(previous);
+  }
 }
 
 export async function setDnd(mode: string): Promise<void> {

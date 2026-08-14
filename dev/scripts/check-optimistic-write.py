@@ -109,6 +109,28 @@ KNOWN: dict[str, tuple[int, str]] = {
         "setRole, startDownload, cancelDownload - arlen-ui's model picker is live "
         "work; named rather than skipped because the shape is identical"
     ),
+    "apps/desktop-shell/src/lib/stores/activePopover.ts": (
+        4,
+        "the popover really DID open - what failed is the input-region call that "
+        "follows, so the panel is on screen and its clicks fall through to "
+        "whatever is behind it. A surface that cannot be used while looking usable "
+        "is the same family, but the fix is not a revert of the store: closing the "
+        "panel someone just opened because a region call failed is worse. Wants a "
+        "decision about what an unclickable panel should say"
+    ),
+    "apps/desktop-shell/src/lib/stores/nowPlaying.ts": (
+        3,
+        "play/pause and the transport, optimistically flipped then sent. The "
+        "indicator shows playing while the player never got the command. A plain "
+        "revert, and it lands with the media applet now that the top bar renders "
+        "it at all"
+    ),
+    "apps/meetings/src/lib/stores/meeting.ts": (
+        1,
+        "surfaced by teaching this gate the promise form; meetings is not a "
+        "surface I have swept yet, and a one-line revert there without reading "
+        "what the store means is the kind of fix that looks right and is not"
+    ),
     "apps/settings/src/lib/stores/themes.ts": (
         1,
         "installThemeFile, where a cancelled file picker and a failed install "
@@ -182,6 +204,71 @@ def preceding_code(head: str, upto: int) -> str:
     return code[-PRECEDING_CODE:]
 
 
+#: `invoke(...)` whose rejection is handed to a `.catch(` handler, rather than
+#: sitting inside a `try`. The promise form was invisible to this gate for its
+#: whole life, and its own summary said so - "cannot see ... a catch that only
+#: logs" - which is a limit stated honestly and still a limit. Four instances sat
+#: behind it in the notification store, where the optimistic update is the one
+#: that matters most: dismissing removes the row and clearing empties the panel.
+PROMISE_CATCH = re.compile(r"\binvoke\s*(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\s*\(")
+
+
+def balanced(text: str, open_at: int) -> tuple[str, int]:
+    """The text inside the bracket pair at `open_at`, and the index after it."""
+    if open_at >= len(text) or text[open_at] not in "([{":
+        return "", open_at
+    depth, i = 0, open_at
+    while i < len(text):
+        if text[i] in "([{":
+            depth += 1
+        elif text[i] in ")]}":
+            depth -= 1
+            if depth == 0:
+                return text[open_at + 1 : i], i + 1
+        i += 1
+    return "", len(text)
+
+
+def only_reports_to_a_log(handler: str) -> bool:
+    """Whether a catch handler does nothing a person could notice.
+
+    `console.error(...)` is the shape that reads like handling and is not: the
+    surface has already claimed the change happened, and the only correction goes
+    somewhere nobody is looking. An empty handler counts too - it is the same
+    thing with less ceremony.
+    """
+    code = COMMENT.sub("", "\n".join(l.split("//")[0] for l in handler.splitlines()))
+    # Strip the arrow-function scaffolding, then every console call, and see
+    # whether any statement is left.
+    code = re.sub(r"^\s*\(?\s*\w*\s*\)?\s*=>\s*", "", code.strip())
+    while True:
+        m = re.search(r"console\s*\.\s*\w+\s*\(", code)
+        if not m:
+            break
+        _, after = balanced(code, m.end() - 1)
+        code = code[: m.start()] + code[after:]
+    return not re.sub(r"[\s{};,]", "", code)
+
+
+def promise_catch_findings(text: str, rel: str):
+    """Optimistic store write, then `invoke(...).catch(<only logs>)`."""
+    out = []
+    for m in PROMISE_CATCH.finditer(text):
+        _, after = balanced(text, m.end() - 1)
+        tail = text[after : after + 12]
+        cm = re.match(r"\s*\.\s*catch\s*\(", tail)
+        if not cm:
+            continue
+        handler_at = after + cm.end() - 1
+        handler, _ = balanced(text, handler_at)
+        if not only_reports_to_a_log(handler):
+            continue
+        if not STORE_WRITE.search(preceding_code(text[: m.start()], m.start())):
+            continue
+        out.append(text[: m.start()].count("\n") + 1)
+    return out
+
+
 def main() -> int:
     findings: list[str] = []
     known_hits = 0
@@ -200,6 +287,19 @@ def main() -> int:
         if "invoke(" not in text:
             continue
         rel = str(path.relative_to(ROOT))
+        for line in promise_catch_findings(text, rel):
+            checked += 1
+            seen_per_file[rel] = seen_per_file.get(rel, 0) + 1
+            if rel in KNOWN and seen_per_file[rel] <= KNOWN[rel][0]:
+                known_hits += 1
+                continue
+            findings.append(
+                f"{rel}:{line}: a store was updated optimistically and the call's "
+                f"rejection goes to `console`, so the surface states that something "
+                f"happened which did not and the only correction is somewhere "
+                f"nobody is looking. Revert the store and say so where the claim "
+                f"was made."
+            )
         for start, body_start, end in catch_spans(text):
             checked += 1
             body = COMMENT.sub("", "\n".join(l.split("//")[0] for l in text[body_start:end].splitlines()))
@@ -263,7 +363,8 @@ def main() -> int:
         f"{checked} catch block(s) checked for a mutation that failed silently after "
         f"an optimistic update. {known_hits} in {len(KNOWN)} known file(s) carried as "
         f"a queue, each bounded by its recorded count. Cannot see a revert's correctness, a component-level optimistic "
-        f"write, or a catch that only logs."
+        f"write. A rejection handed to `.catch` is now read too, log-only "
+        f"handlers included."
     )
     if findings:
         print("\nactions that claim to have happened when they did not:\n")

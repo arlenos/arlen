@@ -51,6 +51,35 @@ check(
   (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
 );
 
+// The promise form, invisible to this gate for its whole life while its own
+// summary admitted it. A log is not a revert and not a sentence: the surface has
+// already claimed the change, and the correction goes where nobody looks.
+check(
+  "an optimistic write whose rejection only logs is caught",
+  {
+    "apps/demo/src/lib/stores/thing.ts":
+      "export async function drop(id) {\n" +
+      "  items.update(($i) => $i.filter((n) => n.id !== id));\n" +
+      '  invoke("remove_thing", { id }).catch((e) => console.error("failed", e));\n' +
+      "}\n",
+  },
+  (code, out) => code === 1 && out.includes("console"),
+);
+
+// The boundary that keeps it honest: a handler putting the store back is the fix.
+check(
+  "a rejection handler that reverts the store passes",
+  {
+    "apps/demo/src/lib/stores/thing.ts":
+      "export async function drop(id) {\n" +
+      "  const previous = current;\n" +
+      "  items.update(($i) => $i.filter((n) => n.id !== id));\n" +
+      '  invoke("remove_thing", { id }).catch(() => { items.set(previous); });\n' +
+      "}\n",
+  },
+  (code) => code === 0,
+);
+
 check(
   "an optimistic update with a swallowed failure is caught",
   {
