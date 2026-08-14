@@ -11,13 +11,16 @@
   import { onMount } from "svelte";
   import NetworkPopover from "$lib/components/NetworkPopover.svelte";
   import BluetoothPopover from "$lib/components/BluetoothPopover.svelte";
+  import AudioPopover from "$lib/components/AudioPopover.svelte";
   import { openPopover } from "$lib/stores/activePopover.js";
   import { locale } from "@arlen/ui-kit/i18n";
 
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   if (params?.get("locale")) locale.set(params.get("locale") as string);
   const pinned = params?.get("state") ?? "ok";
-  const panel = params?.get("panel") === "bluetooth" ? "bluetooth" : "network";
+  const requested = params?.get("panel");
+  const panel =
+    requested === "bluetooth" ? "bluetooth" : requested === "audio" ? "audio" : "network";
 
   let ready = $state(false);
 
@@ -28,6 +31,14 @@
       // NetworkManager looks like from here. The other two answer normally so
       // the honest states can be compared against the definite ones.
       if (pinned === "unknown") throw new Error("the service is not running");
+      if (cmd === "get_audio_full_state")
+        return {
+          status: { volume: 62, muted: false, output_type: "speaker" },
+          input_status: { volume: 40, muted: true },
+          outputs: [{ id: "o1", name: "Built-in Speakers", is_default: true }],
+          inputs: [{ id: "i1", name: "Built-in Microphone", is_default: true }],
+          apps: [],
+        };
       if (cmd === "get_bluetooth_state")
         return {
           available: true,
@@ -64,6 +75,8 @@
   {#if ready}
     {#if panel === "bluetooth"}
       <BluetoothPopover />
+    {:else if panel === "audio"}
+      <AudioPopover />
     {:else}
       <NetworkPopover />
     {/if}

@@ -403,6 +403,8 @@ const messages: Catalogs = {
 
     // Audio popover
     "sh.audio.title": "Sound",
+    "sh.audio.stateUnknown": "Could not read the audio state.",
+    "sh.audio.errChange": "That change did not reach the audio service.",
     "sh.audio.output": "Output",
     "sh.audio.input": "Input",
     "sh.audio.unmuteMic": "Unmute microphone",
@@ -853,6 +855,8 @@ const messages: Catalogs = {
     "sh.undo.done": "Erledigt",
 
     "sh.audio.title": "Ton",
+    "sh.audio.stateUnknown": "Der Audio-Status konnte nicht gelesen werden.",
+    "sh.audio.errChange": "Die Änderung hat den Audiodienst nicht erreicht.",
     "sh.audio.output": "Ausgabe",
     "sh.audio.input": "Eingabe",
     "sh.audio.unmuteMic": "Mikrofon einschalten",
