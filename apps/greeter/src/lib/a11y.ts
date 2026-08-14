@@ -62,8 +62,11 @@ export const screenReaderChoice = writable<boolean | null>(null);
 /// decision.
 export async function loadRememberedA11y(): Promise<void> {
   try {
-    const remembered = await invoke<{ screenReader: boolean }>("greeter_a11y_get");
-    if (remembered.screenReader) {
+    // A bare boolean on purpose: a snake_case field on one side read as
+    // camelCase on the other is `undefined`, which is falsy, so the login
+    // screen would forget the setting with nothing to show for it.
+    const remembered = await invoke<boolean>("greeter_a11y_get");
+    if (remembered) {
       a11y.update((s) => ({ ...s, screenReader: true }));
     }
   } catch {

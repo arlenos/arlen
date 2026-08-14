@@ -47,13 +47,20 @@ fn greeter_sessions() -> Result<Vec<Session>, String> {
 /// An unreadable file answers with the default rather than failing: a login
 /// screen that will not draw because of one boolean is worse for everyone than
 /// one that draws with the toggle off, and the toggle is on screen.
+///
+/// Returns the BARE boolean, not the struct. serde serialises the struct's
+/// field as `screen_reader` while the caller would naturally read
+/// `screenReader`, and a mismatch there is not a type error in either language
+/// - it is `undefined`, which is falsy, so the login screen would quietly
+/// forget every setting and nothing would say why. One value has no shape to
+/// get wrong.
 #[tauri::command]
-fn greeter_a11y_get() -> core::a11y_state::GreeterA11y {
+fn greeter_a11y_get() -> bool {
     match core::a11y_state::load_in(&core::a11y_state::state_dir()) {
-        Ok(state) => state,
+        Ok(state) => state.screen_reader,
         Err(e) => {
             eprintln!("greeter: cannot read the remembered accessibility state ({e})");
-            core::a11y_state::GreeterA11y::default()
+            false
         }
     }
 }
