@@ -31,6 +31,8 @@
   let profiles = $state<Profile[] | null>(null);
   let sessions = $state<Session[]>([]);
   let loaded = $state(false);
+  /// True when the last power action was refused, so the bar can say so.
+  let powerFailed = $state(false);
 
   // The wallpaper URL; null until the coder wires the wallpaper source, so
   // the calm gradient fallback shows. The mock may pass one.
@@ -125,11 +127,27 @@
         <SessionSelect {sessions} value={sessionId} onchange={(id) => (sessionId = id)} />
       {/if}
     </div>
-    <div class="bar-side right"><PowerMenu onaction={(a) => power(a)} /></div>
+    <div class="bar-side right">
+      <!-- The line sits beside the menu, because the menu closing is the only
+           other thing that happens and it looks the same either way. -->
+      {#if powerFailed}
+        <span class="power-failed" role="alert">{$t("g.powerFailed")}</span>
+      {/if}
+      <PowerMenu
+        onaction={async (a) => {
+          powerFailed = false;
+          powerFailed = !(await power(a));
+        }}
+      />
+    </div>
   </div>
 </main>
 
 <style>
+  .power-failed {
+    font-size: var(--text-xs);
+    color: var(--color-error, #f87171);
+  }
   .greeter {
     position: relative;
     z-index: 1;
@@ -179,6 +197,7 @@
   }
   .bar-side.right {
     justify-content: flex-end;
+    gap: 0.75rem;
   }
   .bar-center {
     display: flex;
