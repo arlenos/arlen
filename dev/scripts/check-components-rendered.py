@@ -41,85 +41,39 @@ ROOT_NAMES = ("+page.svelte", "+layout.svelte", "+error.svelte")
 # Components reached in a way this walk cannot follow, or deliberately kept while
 # unrendered. An entry is a claim someone checked, not a place to park a file.
 KNOWN: dict[str, str] = {
-    "apps/terminal/src/lib/components/ArtifactCard.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/BlockBody.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/BlockStream.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/ImageBlock.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/LinkRender.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/OriginMarker.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/OutputFrame.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/PromptLine.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/StreamBlock.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/terminal/src/lib/components/TableLens.svelte": (
-        "the DOM block stream, orphaned when xterm.js took the whole terminal - the same event that unmounted Composer. Ten files, one cause. Whether any of it returns is the same design question as the prompt row"
-    ),
-    "apps/desktop-shell/src/lib/components/MprisIndicator.svelte": (
-        "built with a harness route (`_mpristest`) and never wired into the top "
-        "bar. Ahead of its surface rather than left behind by one, but the effect "
-        "on a person is the same: no media control exists"
-    ),
-    "apps/desktop-shell/src/lib/components/MprisPopover.svelte": (
-        "built with a harness route (`_mpristest`) and never wired into the top "
-        "bar. Ahead of its surface rather than left behind by one, but the effect "
-        "on a person is the same: no media control exists"
-    ),
+    # Each entry names the surface it waits for, which is also the condition that
+    # retires it: when that surface exists and renders the component, the walk
+    # reaches it and the entry has to go. An exception with no condition is just a
+    # place to park a file.
     "apps/desktop-shell/src/lib/components/settings/PermissionScope.svelte": (
-        "nothing references it at all, not even a harness. Whether it is ahead of "
-        "a surface that has not been built or left behind by one that changed is "
-        "not something the tree says, and I am not guessing - flagged for a "
-        "decision rather than given an invented reason"
+        "a part of the capability browser (LCG-R7), planned and unbuilt. Retires "
+        "when that surface renders it"
     ),
     "apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte": (
-        "nothing references it at all, not even a harness. Whether it is ahead of "
-        "a surface that has not been built or left behind by one that changed is "
-        "not something the tree says, and I am not guessing - flagged for a "
-        "decision rather than given an invented reason"
+        "a part of the capability browser (LCG-R7), planned and unbuilt. Retires "
+        "when that surface renders it"
     ),
     "apps/settings/src/lib/components/appearance/AccentPicker.svelte": (
-        "nothing references it at all, not even a harness. Whether it is ahead of "
-        "a surface that has not been built or left behind by one that changed is "
-        "not something the tree says, and I am not guessing - flagged for a "
-        "decision rather than given an invented reason"
+        "ahead of the appearance surface (`appearance-surface.md`, deferred but "
+        "decided). Retires when that page renders it"
     ),
     "apps/settings/src/lib/components/appearance/BorderColorPicker.svelte": (
-        "nothing references it at all, not even a harness. Whether it is ahead of "
-        "a surface that has not been built or left behind by one that changed is "
-        "not something the tree says, and I am not guessing - flagged for a "
-        "decision rather than given an invented reason"
+        "ahead of the appearance surface (`appearance-surface.md`, deferred but "
+        "decided). Retires when that page renders it"
     ),
-    "apps/viewers/src/lib/components/ViewerMenu.svelte": (
-        "nothing references it at all, not even a harness. Whether it is ahead of "
-        "a surface that has not been built or left behind by one that changed is "
-        "not something the tree says, and I am not guessing - flagged for a "
-        "decision rather than given an invented reason"
+    "apps/desktop-shell/src/lib/components/MprisIndicator.svelte": (
+        "NOT a cleanup item: from where a person sits there is no media control on "
+        "this desktop. Built with a harness route and never wired into the top "
+        "bar. Retires when the top bar renders it"
+    ),
+    "apps/desktop-shell/src/lib/components/MprisPopover.svelte": (
+        "the panel behind the media indicator, same missing feature. Retires when "
+        "the indicator opens it"
     ),
     "sdk/ui-kit/src/lib/components/a11y-kitchen.svelte": (
         "the kit's accessibility demo: rendered by ui-kit's own `_a11y` harness "
         "route and asserted by `a11y.test.ts`. Deliberately not exported, because "
         "it is a test surface rather than a part apps compose with"
-    ),
-    "apps/terminal/src/lib/components/Composer.svelte": (
-        "unmounted since xterm.js took the whole terminal, and its own header says "
-        "so. Kept because whether the prompt row returns is a design question; the "
-        "live equivalent of its refusal line is in Terminal.svelte"
     ),
 }
 
