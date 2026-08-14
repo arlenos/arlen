@@ -190,18 +190,45 @@ struct PublishDecision<'a> {
     hold_to_scope: bool,
 }
 
-/// Decide both at once, so the tier can reach only the one it is entitled to.
+/// The components whose publishing is not held to a declared list, BY NAME.
+///
+/// Exemption is a property of originating system events, not of where a binary
+/// is installed. These two observe the machine and are the sole source of what
+/// they emit: the compositor is where window events come from, and the kernel
+/// layer forwards what it sees from eBPF stamped with the observed process's
+/// uid. Neither could be granted less by a profile than it already holds, so a
+/// list for them would be decoration.
+///
+/// IT USED TO BE THE TIER, and that was too coarse in a way no boot could see.
+/// `hold_to_scope = !is_system` made every first-party app exempt, because
+/// `detect_tier` calls anything under `/usr/lib/arlen/` System - so `apps/files`
+/// publishing whatever it liked wore the compositor's exemption. Worse, it made
+/// the publish half structurally unmeasurable: no boot could ever produce a
+/// publish denial for an app, so a profile's `publish` list was documentation
+/// that could quietly be wrong forever.
+///
+/// Everything else - first-party apps, the daemons, the probes - is held to its
+/// list. An addition here should be argued in the same terms: does this
+/// component ORIGINATE the events, and would a grant be able to narrow it?
+const PUBLISH_ORIGINATORS: &[&str] = &["compositor", "kernel-layer"];
+
+/// Whether this peer's publishing is exempt from its declared list.
+fn originates_system_events(app_id: &str) -> bool {
+    PUBLISH_ORIGINATORS.contains(&app_id)
+}
+
+/// Decide both at once, so identity can reach only the one it is entitled to.
 ///
 /// A function rather than two lines in the handler because the bug it replaces
 /// was invisible in the handler: exempting a system producer by swapping its
 /// scope for `PeerScope::Unresolved` reads as scoping, and silently also blanked
-/// the stamped origin. Here the tier can only touch `hold_to_scope`, and
+/// the stamped origin. Here the exemption can only touch `hold_to_scope`, and
 /// `origin` is derived from the peer alone - so the entanglement cannot be
 /// reintroduced by editing this, only by deleting it.
-fn publish_decision(scope: &PeerScope, is_system: bool) -> PublishDecision<'_> {
+fn publish_decision(scope: &PeerScope) -> PublishDecision<'_> {
     PublishDecision {
         origin: scope.authenticated_origin(),
-        hold_to_scope: !is_system,
+        hold_to_scope: !originates_system_events(scope.app_id()),
     }
 }
 
@@ -340,17 +367,24 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     // the tier never changes mid-stream. Drives the EBK-2 uid-restamp exemption.
     let peer = Peer::resolve(&stream);
     let is_system_producer = peer.is_system();
-    // Non-system producers are held to their declared `[event_bus].publish`
-    // scope. System-tier producers - the eBPF kernel-layer, the compositor,
-    // first-party daemons - are exempt, mirroring the uid-restamp exemption: they
-    // emit machine-wide events by design.
+    // Producers are held to their declared `[event_bus].publish` scope unless
+    // they are one of the named `PUBLISH_ORIGINATORS`. That list is the whole
+    // exemption now; the tier no longer touches the publish side at all, because
+    // install path is a name and originating events is the effect.
+    //
+    // `is_system_producer` below is still the UID-RESTAMP exemption, which is a
+    // different question with a different answer and is deliberately left alone
+    // here. (It has the same over-broad shape - every first-party app is exempt
+    // from restamping too, while only the kernel layer forwards other uids'
+    // events - but narrowing it changes who can attribute an event to whom, so
+    // it belongs to the producer-trust decision, not to this one.)
     //
     // The exemption is PUBLISH-only and stays that way: a privileged producer is
     // not automatically a privileged consumer, which is why the subscribe side
-    // above hangs its exemption on the declaration instead of the tier.
+    // above hangs its exemption on the declaration too.
     //
-    // It is expressed by the `!is_system_producer` guard on the publish check
-    // below, and ONLY there. This used to also swap in `PeerScope::Unresolved`
+    // It is expressed by `decision.hold_to_scope` on the publish check below,
+    // and ONLY there. This used to also swap in `PeerScope::Unresolved`
     // for a system producer, which the guard already made redundant - and being
     // redundant was not the same as being harmless. `Unresolved` is how the bus
     // says "I could not identify this peer", so reusing it to mean "identified,
@@ -370,7 +404,7 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     // ("no scope" and "no identity" are kept apart because merging them points
     // every repair at the wrong place). Same error, one level up.
     let publish_scope = peer.scope;
-    let decision = publish_decision(&publish_scope, is_system_producer);
+    let decision = publish_decision(&publish_scope);
     let enforce = enforce_pubsub();
     debug!(
         app_id = publish_scope.app_id(),
@@ -424,9 +458,9 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                 // from external content, instead of confirming on every event.
                 event.authenticated_origin = decision.origin.to_string();
 
-                // Hold a non-system producer to its declared publish scope.
-                // Shadow mode logs a would-deny and still dispatches; enforce
-                // mode drops the event. System producers skipped (exempt above).
+                // Hold the producer to its declared publish scope unless it is
+                // a named originator. Shadow mode logs a would-deny and still
+                // dispatches; enforce mode drops the event.
                 if decision.hold_to_scope
                     && !publish_allowed(publish_scope.event_bus(), &event.r#type)
                 {
@@ -776,7 +810,7 @@ mod tests {
         // are.
         //
         // The substitution was already redundant: the check reads
-        // `!is_system_producer && !publish_allowed(...)`, so the guard alone
+        // `decision.hold_to_scope && !publish_allowed(...)`, so the flag alone
         // exempts. This pins the part that was NOT redundant, because a rewrite
         // that reintroduces the sentinel would otherwise pass every existing test.
         use arlen_permissions::PermissionProfile;
@@ -784,30 +818,59 @@ mod tests {
         let profile: PermissionProfile =
             toml::from_str("[info]\napp_id = \"app\"\ntier = \"system\"\n")
                 .expect("fixture profile parses");
-        let scope = PeerScope::Profiled("arlen-compositor".to_string(), Box::new(profile));
+        // `compositor`, not `arlen-compositor`: rule (2) of the resolver maps
+        // /usr/bin/arlen-compositor to `compositor`, and this list is keyed on
+        // the id the bus actually resolves.
+        let exempt = PeerScope::Profiled("compositor".to_string(), Box::new(profile.clone()));
+        let held = PeerScope::Profiled("dev.arlen.files".to_string(), Box::new(profile));
 
-        // The same peer, decided as system and as not. The stamped origin must be
-        // identical across the pair and the scope check must differ - that pair of
-        // assertions IS the bug: the old code produced "" for the system case.
-        let as_system = publish_decision(&scope, true);
-        let as_ordinary = publish_decision(&scope, false);
+        // An originator and an ordinary app. The stamped origin must be a
+        // property of the peer in both cases and the scope check must differ -
+        // that pair of assertions IS the bug: the old code produced "" for the
+        // exempt case.
+        let as_originator = publish_decision(&exempt);
+        let as_ordinary = publish_decision(&held);
 
         assert_eq!(
-            as_system.origin, "arlen-compositor",
-            "a resolved system producer stamps its attested id, not an empty origin"
+            as_originator.origin, "compositor",
+            "a resolved producer stamps its attested id, not an empty origin"
         );
         assert_eq!(
-            as_system.origin, as_ordinary.origin,
-            "the stamped origin is a property of the peer; the tier must not reach it"
+            as_ordinary.origin, "dev.arlen.files",
+            "the stamped origin is a property of the peer; the exemption must not reach it"
         );
-        assert!(!as_system.hold_to_scope, "a system producer is exempt");
-        assert!(as_ordinary.hold_to_scope, "and nothing else is");
+        assert!(!as_originator.hold_to_scope, "a named originator is exempt");
+        assert!(
+            as_ordinary.hold_to_scope,
+            "and a first-party app is not, however it is installed - the whole point \
+             of naming originators instead of reading the install path"
+        );
 
         // The exemption has to come from that flag rather than from an absent
         // scope: on its own, no declared publish list is a deny.
         assert!(
-            !publish_allowed(scope.event_bus(), "window.focused"),
-            "no declared publish list is a deny on its own; only the tier flag exempts"
+            !publish_allowed(exempt.event_bus(), "window.focused"),
+            "no declared publish list is a deny on its own; only the originator flag exempts"
+        );
+    }
+
+    #[test]
+    fn the_originator_list_is_keyed_on_resolved_ids() {
+        // The trap this pins: the compositor ships a profile called
+        // `arlen-compositor.toml` declaring `app_id = "arlen-compositor"`, but
+        // rule (2) of the resolver maps /usr/bin/arlen-compositor to
+        // `compositor`, and the bus keys everything on what it resolved. An
+        // entry spelled like the profile would match no peer and the exemption
+        // would silently not apply - which is the same shape as the profile
+        // itself never being found.
+        assert!(originates_system_events("compositor"));
+        assert!(
+            !originates_system_events("arlen-compositor"),
+            "the list is keyed on the id the resolver produces, not on a profile filename"
+        );
+        assert!(
+            !originates_system_events("dev.arlen.files"),
+            "a first-party app is held to its list however it is installed"
         );
     }
 
