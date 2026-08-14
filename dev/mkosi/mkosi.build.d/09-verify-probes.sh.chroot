@@ -58,7 +58,7 @@ install -Dm755 "$CARGO_TARGET_DIR/release/arlen-kg-probe" \
 # deleting release content, and "plus, never minus" is worth more than the
 # convenience. Writing the file where it belongs needs no cleanup at all.
 mkdir -p "$DESTDIR/usr/lib/systemd/system"
-cat > "$DESTDIR/usr/lib/systemd/system/arlen-kg-probe.service" <<'UNIT'
+cat > "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe.service" <<'UNIT'
 [Unit]
 Description=Ask the knowledge graph what it holds (verify image only)
 After=arlen-graph.service
@@ -67,14 +67,16 @@ Wants=arlen-graph.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# No User=, so root. The reasoning is at the top of this file; what was missing
-# was the evidence, so here it is. Tried as `User=arlen` on 12 Aug because an app
-# is a user process: every question came back `Connection reset by peer` and the
-# daemon logged `rejecting untrusted cross-uid client peer_uid=1000
-# app_id=kg-probe`. The tier in `cross_uid_admitted` comes from the hardcoded
-# `QuotaConfig::arlen_default()` table, not from the `tier` field in the profile
-# below, and `kg-probe` must not be added to that table - it is release policy and
-# this binary is on no release image.
+# A USER unit since 15 Aug, and the 12 Aug evidence for the opposite no longer
+# applies. It ran as root because a `User=arlen` attempt got `Connection reset by
+# peer` and `rejecting untrusted cross-uid client peer_uid=1000` - a CROSS-UID
+# refusal, which it was: the daemon was root and the probe was not.
+#
+# The daemon moved under the user manager, so both are uid 1000 now and there is
+# no cross-uid check to fail. Root is what would break today: the socket lives at
+# $XDG_RUNTIME_DIR/arlen, which for root is /run/user/0, and the probe reported
+# `No such file or directory` for every question on the 15 Aug boot while the
+# daemon was listening perfectly well one uid over.
 
 # The probe now asks twice with a gap, so it outlives systemd's default 90s start
 # timeout. Nothing waits on this unit, so a generous ceiling costs nothing and a
@@ -90,13 +92,16 @@ TimeoutStartSec=300
 # symptom would have been the probe silently never running. `timeout` needs no
 # counter, and the leading `-` tells systemd to run ExecStart even when the wait
 # expires.
-ExecStartPre=-/usr/bin/timeout 60 /bin/sh -c 'while [ ! -S /run/arlen/knowledge.sock ]; do sleep 1; done'
+# %t is the unit's own runtime directory, so this follows the socket to wherever
+# the manager puts it instead of naming /run/arlen, which is no longer where the
+# daemon binds.
+ExecStartPre=-/usr/bin/timeout 60 /bin/sh -c 'while [ ! -S %t/arlen/knowledge.sock ]; do sleep 1; done'
 ExecStart=/usr/bin/arlen-kg-probe
 StandardOutput=journal+console
 StandardError=journal+console
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 UNIT
 chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-kg-probe.service"
 
