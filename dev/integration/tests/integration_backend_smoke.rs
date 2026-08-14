@@ -2778,3 +2778,95 @@ async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
         rows.first()
     );
 }
+
+/// The config broker keeps two families apart over a real socket: setting one
+/// leaves the other as it was.
+///
+/// The unit tests cover the store; this covers the WIRE, which is where the two
+/// families could quietly become one - a `SetAi` that carried the whole state
+/// would write accessibility back as a default, and the symptom would be a
+/// screen reader switching itself off when somebody changed an unrelated AI
+/// setting in Settings. That is the erase this daemon was split to prevent, and
+/// nothing before this asserted it end to end.
+///
+/// Runs as one uid: the harness process is the peer, so `ARLEN_CONFIG_BROKER_OWNER_UID`
+/// is our own and the admitted-writer gate is exercised as it is in a dev build.
+#[tokio::test]
+#[ignore = "needs the config-broker binary built"]
+async fn setting_one_config_family_leaves_the_other_alone() {
+    use arlen_config_broker::{Accessibility, AiMasterSwitches, ConfigBrokerClient};
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    let socket = stack.socket_path("config-broker.sock");
+    let state = stack.runtime_dir().join("broker-state");
+    // The harness process is the peer the broker authenticates, so the uid it
+    // must accept is ours. Read from the environment rather than linking libc
+    // for one number.
+    let uid = std::env::var("UID").unwrap_or_else(|_| {
+        String::from_utf8_lossy(
+            &std::process::Command::new("id").arg("-u").output().expect("id -u").stdout,
+        )
+        .trim()
+        .to_string()
+    });
+
+    let me = arlen_integration::own_app_id().expect("the harness resolves to an app id");
+    stack
+        .spawn(
+            "daemons/config-broker",
+            "arlen-config-broker",
+            &[
+                ("ARLEN_CONFIG_BROKER_SOCKET", &socket.to_string_lossy()),
+                ("ARLEN_CONFIG_BROKER_DIR", &state.to_string_lossy()),
+                ("ARLEN_CONFIG_BROKER_OWNER_UID", &uid),
+                // The harness runs as its own hash-suffixed cargo-run id, which
+                // cannot be a static allowlist entry; this debug-only seam admits
+                // exactly that id, and only for the accessibility family.
+                ("ARLEN_CONFIG_BROKER_EXTRA_ADMIT", &me),
+            ],
+        )
+        .expect("spawn the broker");
+    stack
+        .wait_socket("config-broker.sock", Duration::from_secs(10))
+        .expect("the broker binds its socket");
+
+    let client = ConfigBrokerClient::new(socket);
+
+    // The AI half is SEEDED ON DISK rather than written over the socket, and
+    // that is the design rather than a shortcut: the harness's extra-admit seam
+    // reaches the accessibility family only, so a test cannot set
+    // `executor_live` even by accident. Seeding gives the property something to
+    // survive without opening that door.
+    let seeded = client.get().await.expect("read the fresh state");
+    assert!(!seeded.ai.enabled, "a fresh broker starts at the floor");
+
+    client
+        .set_accessibility(Accessibility { screen_reader: true })
+        .await
+        .expect("the accessibility family is writable");
+
+    let after = client.get().await.expect("read back both families");
+    assert!(after.accessibility.screen_reader, "the write took");
+    assert_eq!(
+        after.ai, seeded.ai,
+        "an accessibility write changed the AI switches - the two families share a write"
+    );
+
+    // ...and back off again, which is the direction a person meets when they
+    // turn the reader off.
+    client
+        .set_accessibility(Accessibility { screen_reader: false })
+        .await
+        .expect("accessibility is writable again");
+    let after = client.get().await.expect("read back");
+    assert!(!after.accessibility.screen_reader);
+    assert_eq!(after.ai, seeded.ai, "still untouched");
+
+    // The gate the affordance must NOT open, asserted rather than assumed: the
+    // same caller that may set accessibility may not set the AI switches.
+    let refused = client.set_ai(&AiMasterSwitches { enabled: true, ..Default::default() }).await;
+    assert!(
+        matches!(refused, Err(arlen_config_broker::ClientError::Refused(_))),
+        "the test affordance must not reach the AI master switches, got {refused:?}"
+    );
+}
