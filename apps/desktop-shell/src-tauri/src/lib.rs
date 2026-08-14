@@ -1,3 +1,4 @@
+mod accessibility;
 mod app_history;
 mod consent_window;
 mod app_index;
@@ -311,6 +312,7 @@ pub fn run() {
             // revocation".
             app.manage(permission_watcher::start(app.handle().clone()));
             sni::start(app.handle().clone(), sni_items);
+            accessibility::start();
             bluetooth::start_monitor(app.handle().clone());
             mpris::start_monitor(app.handle().clone());
             // Register the BlueZ Agent1 implementation so first-time
