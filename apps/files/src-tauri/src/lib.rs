@@ -19,7 +19,7 @@ use arlen_ai_undo_core::undo_log::UndoEntry;
 use arlen_file_browser_core::receipt;
 use arlen_file_browser_core::undo::{UndoStack, UndoableOp};
 use arlen_file_browser_core::{
-    breadcrumb, bulk_rename, dedup, list_dir, ops, properties, search, sort_entries, Crumb,
+    bulk_rename, dedup, list_dir, ops, properties, search, sort_entries,
     EntryKind, FileEntry, SortKey,
 };
 use cap_std::ambient_authority;
@@ -82,12 +82,6 @@ fn files_list(
     let mut entries = list_dir(&dir, rel(&path)).map_err(|e| e.to_string())?;
     sort_entries(&mut entries, sort_key(&sort), folders_first, ascending);
     Ok(entries)
-}
-
-/// Decompose a path into clickable crumbs.
-#[tauri::command]
-fn files_breadcrumb(path: String) -> Vec<Crumb> {
-    breadcrumb(Path::new(&path))
 }
 
 /// A navigable place in the sidebar (contract shape: label, icon key,
@@ -2243,7 +2237,6 @@ pub fn run() {
             files_list_location,
             files_list_location_as_of,
             files_verwandt_as_of,
-            files_breadcrumb,
             files_places,
             files_info,
             provenance_of,
