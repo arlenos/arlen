@@ -1,0 +1,77 @@
+[Unit]
+Description=Arlen Graph Daemon
+Documentation=https://github.com/arlenos/knowledge
+# The bus is a SYSTEM unit and this is now a USER one, so a user manager cannot
+# order against it - this line is a no-op and is kept only until the bus moves
+# per-user too (the second half of the same job). The daemon does not need the
+# ordering: its writer reconnects to the consumer socket with backoff, so a bus
+# that is not up yet costs a retry rather than a failed start.
+After=arlen-event-bus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/arlen-graph-daemon
+Restart=on-failure
+RestartSec=1
+
+# Paths. The daemon reads ARLEN_GRAPH_PATH (not ARLEN_GRAPH_DB) and binds its
+# read-query socket at knowledge.sock; the knowledge-mcp server connects to the
+# same path, so the two units must agree on it.
+Environment=ARLEN_DAEMON_SOCKET=/run/user/%U/arlen/knowledge.sock
+Environment=ARLEN_GRAPH_PATH=%h/.local/share/arlen/graph
+Environment=ARLEN_DB_PATH=%h/.local/share/arlen/events.db
+# Read graph.toml from /usr/share/arlen-config. The original reason was that a
+# SYSTEM daemon could not reliably surface the file from a home directory; that
+# reason is gone now that this runs as the user, and the user's own
+# `~/.config/arlen/graph.toml` would be the natural source.
+#
+# It stays for now anyway, deliberately: this variable decides which directories
+# the project watcher scans, so changing it in the same commit that changes the
+# unit topology would mix a behaviour change into a placement change and leave a
+# boot with two candidate explanations. It moves in its own step, with its own
+# boot.
+Environment=XDG_CONFIG_HOME=/usr/share/arlen-config
+# Debug the watch-config resolution: logs the exact graph.toml path checked
+# (loaded vs not-found), so the serial confirms config_dir() resolves right.
+# PIN THE BUS SOCKETS, because the default is now wrong for this unit. The SDK
+# resolves an unset socket to `$XDG_RUNTIME_DIR/arlen/`, which is right for a user
+# service - and the event bus is still a SYSTEM unit binding `/run/arlen/`. Left
+# unset, the writer would dial a path nothing binds and retry forever, which is a
+# knowledge graph that stays empty while every log line looks healthy.
+#
+# These come out when the bus moves per-user, which is the second half of this
+# job; until then they are what makes the halves fit together.
+Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+
+Environment=RUST_LOG=info
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+# ProtectHome=no, NOT read-only: this daemon's PURPOSE is reading the user's home
+# (project detection, file.opened path promotion), and now it is that user's own
+# service rather than a root one reaching across. The capability-scoped query
+# socket, not ProtectHome, is its access boundary.
+ProtectHome=no
+ReadWritePaths=%h/.local/share/arlen
+ReadWritePaths=/run/user/%U/arlen
+# RESOLVED, and left here because the resolution is the interesting part: this
+# daemon used to mount the timeline itself, and under the hardening above the
+# mount was invisible to the session that wanted it (a hardened unit gets a
+# private mount namespace, so a FUSE mount made here propagates nowhere). Running
+# per-user does not change that - the namespace is per-unit, not per-manager.
+#
+# The fix that suggests itself - `PrivateMounts=no`, a shared `MountFlags` - is
+# the one thing not to do, and this note used to recommend it. It buys visibility
+# by letting a hardened unit reach the host's mount namespace, which trades the
+# sandbox for a presentation detail in the unit whose sandbox matters most. The
+# timeline is a VIEW of the graph, not authority over it.
+#
+# So the mount moved out (`arlen-timeline`, which needs the SUID `fusermount3`
+# and is unfenced by design) and this daemon serves the data over its socket.
+# `main.rs` says the same in the place the mount used to be. Nothing here mounts
+# anything, and no propagation directive belongs in this file.
+
+[Install]
+WantedBy=default.target

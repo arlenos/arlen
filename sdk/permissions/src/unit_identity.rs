@@ -116,10 +116,8 @@ pub fn unit_from_cgroup(cgroup_text: &str) -> Result<String, UnitError> {
 ///
 /// Kept in step with the shipped units by `dev/scripts/check-unit-identity.py`.
 const UNIT_APP_IDS: &[(&str, &str)] = &[
-    ("arlen-graph.service", "knowledge"),
     ("arlen-event-bus.service", "event-bus"),
     ("arlen-config-broker.service", "config-broker"),
-    ("arlen-timeline.service", "timeline"),
 ];
 
 /// The per-user units and the app_id each one's peers authenticate as.
@@ -144,14 +142,22 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-anomalyd.service", "anomalyd"),
     ("arlen-auditd.service", "auditd"),
     ("arlen-capsuled.service", "capsuled"),
+    // Moved from the SYSTEM table on 15 Aug with the units themselves: the graph
+    // daemon and its timeline view now run under the user manager, so the
+    // supervisor is what stamps them and a lookup has to find them here. Leaving
+    // them in the system table would not have failed loudly - `app_id_for_unit`
+    // would keep answering for a unit no system manager runs, while
+    // `app_id_for_user_unit` returned None for the one that does.
     ("arlen-clockd.service", "clockd"),
     ("arlen-code-indexer.service", "code-indexer"),
     ("arlen-consent-broker.service", "consent-broker"),
     ("arlen-dogfood.service", "dogfood"),
+    ("arlen-graph.service", "knowledge"),
     ("arlen-journald-parser.service", "journald-parser"),
     ("arlen-notifyd.service", "notifyd"),
     ("arlen-powerd.service", "powerd"),
     ("arlen-terminal-run-mcp.service", "terminal-run-mcp"),
+    ("arlen-timeline.service", "timeline"),
     ("arlen-undod.service", "undod"),
     ("arlen-wallpaperd.service", "wallpaperd"),
 ];
@@ -214,9 +220,25 @@ mod tests {
 
     #[test]
     fn a_system_unit_is_named_by_its_cgroup() {
-        let line = "0::/system.slice/arlen-graph.service\n";
-        assert_eq!(unit_from_cgroup(line).unwrap(), "arlen-graph.service");
-        assert_eq!(app_id_for_unit("arlen-graph.service"), Some("knowledge"));
+        // `arlen-event-bus` rather than `arlen-graph`: the graph daemon moved to
+        // the user manager on 15 Aug, and a system-table assertion about it kept
+        // passing for a while afterwards because the entry was still there. The
+        // unit named here has to be one that is actually a system unit, or the
+        // test outlives the fact it asserts.
+        let line = "0::/system.slice/arlen-event-bus.service\n";
+        assert_eq!(unit_from_cgroup(line).unwrap(), "arlen-event-bus.service");
+        assert_eq!(app_id_for_unit("arlen-event-bus.service"), Some("event-bus"));
+    }
+
+    #[test]
+    fn the_graph_daemon_is_a_user_unit_now() {
+        // The move is only half done if the tables disagree with the unit files:
+        // the supervisor stamps by the user table, so an entry left in the system
+        // one would answer for a manager that never runs it.
+        assert_eq!(app_id_for_user_unit("arlen-graph.service"), Some("knowledge"));
+        assert_eq!(app_id_for_user_unit("arlen-timeline.service"), Some("timeline"));
+        assert_eq!(app_id_for_unit("arlen-graph.service"), None);
+        assert_eq!(app_id_for_unit("arlen-timeline.service"), None);
     }
 
     #[test]

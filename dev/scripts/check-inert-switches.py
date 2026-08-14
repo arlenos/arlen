@@ -57,14 +57,20 @@ IMAGE = "dev/mkosi/mkosi.extra"
 # env -> (expected image state, what turning it on buys, why it is in that state)
 SWITCHES = {
     "ARLEN_OWNER_USER": (
-        "set",
+        "unset",
         "the knowledge daemon serves a cross-uid first-party peer only when it is "
         "the named desktop owner, so another human user on the box cannot reach "
         "this user's graph through a canonical binary",
-        "set to `arlen` in the arlen-graph system drop-in. A name, not a number: "
-        "the socket sits at the shared /run/arlen and the desktop uid is whatever "
-        "useradd picked, so a hardcoded 1000 would refuse the real user and leave "
-        "the graph unreachable - failing in the direction nobody notices.",
+        "UNSET since 15 Aug, and unset is now the correct state rather than a "
+        "regression. It was set to `arlen` in a drop-in that made the graph daemon "
+        "a SYSTEM service on a shared /run/arlen socket - one socket for every "
+        "human on the box, so the daemon had to be told which of them owned the "
+        "graph.\n"
+        "        The daemon moved under the user manager and its socket moved to "
+        "/run/user/<uid>/arlen, which the kernel already scopes to one uid. There "
+        "is no shared socket left for another user to reach, so the switch has "
+        "nothing to guard: the protection it provided is now structural. If a "
+        "shared socket ever returns, this goes back with it.",
     ),
     "ARLEN_STAMPED_IDENTITY": (
         "set",

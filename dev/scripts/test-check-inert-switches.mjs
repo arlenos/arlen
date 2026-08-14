@@ -53,7 +53,10 @@ fn _reads() {
 const U = "dev/mkosi/mkosi.extra/usr/lib/systemd/system";
 const BASE = {
   "src/lib.rs": READS,
-  [`${U}/arlen-graph.service`]: UNIT("Environment=ARLEN_OWNER_USER=arlen"),
+  // ARLEN_OWNER_USER is recorded UNSET since 15 Aug (the graph daemon's socket
+  // went per-user, so there is no shared socket for it to guard) - so the base
+  // fixture must NOT set it, or every case fails on that mismatch instead of on
+  // what it is testing. It used to be set here, back when the switch was.
   // Recorded as `set`, and only two real units carry it - the check sees the
   // tree, not the rollout, so one unit here is the whole of that state.
   [`${U}/arlen-auditd.service`]: UNIT("Environment=ARLEN_STAMPED_IDENTITY=enforce"),
@@ -119,8 +122,12 @@ check(
 
 check(
   "losing a switch that is recorded as on is caught",
-  { ...BASE, [`${U}/arlen-graph.service`]: UNIT("Environment=ARLEN_DB_PATH=/var/lib/arlen/events.db") },
-  (code, out) => code === 1 && out.includes("ARLEN_OWNER_USER"),
+  // Overrides the unit that CARRIES the switch. It used to override the graph
+  // unit, which carried ARLEN_OWNER_USER until that went per-user; pointing the
+  // override at one file and the assertion at a switch in another would pass or
+  // fail for reasons unrelated to losing anything.
+  { ...BASE, [`${U}/arlen-auditd.service`]: UNIT("Environment=RUST_LOG=info") },
+  (code, out) => code === 1 && out.includes("ARLEN_STAMPED_IDENTITY"),
 );
 
 // A mention is not a setting: the daemon's own source names every one of these
