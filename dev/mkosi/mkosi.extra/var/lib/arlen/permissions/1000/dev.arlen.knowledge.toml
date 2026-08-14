@@ -126,9 +126,15 @@ read = [
 # yields. Toolbar buttons and shortcuts simply stop working, with nothing in the
 # app to say why.
 #
-# `publish = []` is honest but inert: `hold_to_scope = !is_system`
-# (event-bus `socket.rs:204`) and this app installs under /usr/lib/arlen/, which
-# `detect_tier` calls System, so a publish scope is not consulted for it today.
+# `app.menu.*` is not this app's code either, and for the same reason as the two
+# subscriptions above: `sdk/os-sdk/src/menu.rs:170` emits `app.menu.registered`
+# from the `Menu` helper that `tauri-plugin-shell` holds, and the app drives it
+# through a Tauri command the plugin registers - so there is no Rust call site in
+# `apps/knowledge` at all. I read that absence as "publishes nothing" and wrote
+# `publish = []`; the first enforce boot answered in one line.
+#
+# `dev.arlen.files` had this right already, which is the tell I should have
+# followed: a profile granting `app.menu.*` to an app whose source names no emit.
 [event_bus]
-publish = []
+publish = ["app.menu.*"]
 subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked"]

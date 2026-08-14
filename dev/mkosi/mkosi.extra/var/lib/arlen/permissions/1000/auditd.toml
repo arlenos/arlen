@@ -24,7 +24,12 @@ app_id = "auditd"
 tier = "first-party"
 
 [event_bus]
-publish = ["audit.tampered"]
+# `audit.ai.*` is COMPOSED, not written: `ingest/mod.rs:258` builds
+# `format!("audit.ai.{}", req.kind.as_str())`, so no scan of this tree could
+# ever have found it and the first enforce boot named it in one line
+# (`publish denied ... event_type=audit.ai.permission`). The wildcard is the
+# family, since the suffix is whatever `AuditKind` grows next.
+publish = ["audit.tampered", "audit.ai.*"]
 
 # A pure producer. Its own source registers no consumer at all (the only
 # `subscribe` in `daemons/audit-daemon` is `tracing_subscriber`), and the
