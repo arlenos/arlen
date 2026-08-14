@@ -143,28 +143,31 @@
   {/if}
 {/snippet}
 
+<!-- Every branch is the whole page, and they are mutually exclusive - so each is
+     `main`, and exactly one main renders. A viewer with no `main` leaves a
+     screen-reader user nothing to skip to; the failure states are content too. -->
 {#if loaded?.kind === "image"}
-  <div class="fill"><ImageViewer file={loaded.file} raster={loaded.raster} /></div>
+  <main class="fill"><ImageViewer file={loaded.file} raster={loaded.raster} /></main>
 {:else if loaded?.kind === "audio"}
-  <div class="fill"><AudioPlayer file={loaded.file} /></div>
+  <main class="fill"><AudioPlayer file={loaded.file} /></main>
 {:else if loadError}
-  <div class="fill err">
+  <main class="fill err">
     {readsAsInternal(loadError)
       ? $t("v.couldNotOpenUnknown")
       : $t("v.couldNotOpen", { reason: loadError })}
-  </div>
+  </main>
 {:else if noFile}
   <!-- Before the demo branches on purpose: in the real shell an empty window is
        an empty window, and the sample below is for the harness and the browser. -->
-  <div class="fill err">{$t("v.nothingOpen")}</div>
+  <main class="fill err">{$t("v.nothingOpen")}</main>
 {:else if framed}
-  <div class="frame" style="width:{w}px;height:{h}px">
+  <main class="frame" style="width:{w}px;height:{h}px">
     {@render face(demo)}
-  </div>
+  </main>
 {:else}
-  <div class="fill">
+  <main class="fill">
     {@render face(demo)}
-  </div>
+  </main>
 {/if}
 
 <style>
