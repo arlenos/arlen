@@ -1,10 +1,15 @@
 //! The broker wire protocol + the pure request dispatch.
 //!
-//! A caller reads the current AI master switches ([`Request::Get`])
-//! or replaces them ([`Request::Set`]). `Set` is the privileged op:
-//! only an ADMITTED writer (the app that legitimately owns these
-//! settings - `settings` today) may mutate the
-//! canonical state. The caller's app id is resolved by the socket
+//! A caller reads everything the broker holds ([`Request::Get`]) and
+//! replaces ONE FAMILY at a time ([`Request::SetAi`],
+//! [`Request::SetAccessibility`]). The families are separate ops rather
+//! than one `Set` because their write gates are separate questions: today
+//! `settings` answers both, but "who may turn the AI on" and "who may turn
+//! a screen reader on" should not share a gate by accident.
+//!
+//! Reads are open. The AI switches and the accessibility flag are the
+//! session's own settings, not secrets, and a reader that cannot see them
+//! cannot honour them. The caller's app id is resolved by the socket
 //! layer from the `SO_PEERPIDFD`-pinned pid
 //! ([`arlen_permissions::peer_pidfd`]); this dispatch is pure over
 //! `(store, caller_app_id, request)` so the gate is unit-testable
@@ -17,7 +22,7 @@ use std::io::{Read, Write};
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::{AiMasterSwitches, StateStore};
+use crate::state::{Accessibility, AiMasterSwitches, BrokerState, StateStore};
 
 /// The largest accepted frame body. The state is a handful of small
 /// fields + a bounded app-id set, so 64 KiB is generous; a larger
@@ -54,21 +59,24 @@ pub fn is_admitted_writer(app_id: &str) -> bool {
 /// A request to the broker.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
-    /// Read the current master-switch state.
+    /// Read everything the broker holds, every family.
     Get,
-    /// Replace the master-switch state (privileged - admitted
-    /// writers only).
-    Set(AiMasterSwitches),
+    /// Replace the AI master switches (privileged - admitted writers only).
+    SetAi(AiMasterSwitches),
+    /// Replace the accessibility settings (privileged - admitted writers
+    /// only). Separate from [`SetAi`](Self::SetAi) so the two gates can
+    /// diverge without a protocol change.
+    SetAccessibility(Accessibility),
 }
 
 /// The broker's reply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     /// The current state (reply to `Get`).
-    State(AiMasterSwitches),
-    /// A `Set` was applied + persisted.
+    State(BrokerState),
+    /// A set was applied + persisted.
     Committed,
-    /// A `Set` from a non-admitted caller; nothing was written.
+    /// A set from a non-admitted caller; nothing was written.
     Refused(String),
     /// The store could not be read or written; the caller must NOT
     /// proceed on a guessed state.
@@ -90,7 +98,7 @@ pub fn handle_request(
             // the caller refuses rather than acting on a guess.
             Err(e) => Response::Error(e.to_string()),
         },
-        Request::Set(switches) => {
+        Request::SetAi(switches) => {
             if !is_admitted_writer(caller_app_id) {
                 return Response::Refused(format!(
                     "caller '{caller_app_id}' may not set the AI master switches"
@@ -98,7 +106,18 @@ pub fn handle_request(
             }
             // `store` clamps before persisting; the explicit sanitise
             // here keeps the gate honest even if that changes.
-            match store.store(&switches.sanitised()) {
+            match store.store_ai(&switches.sanitised()) {
+                Ok(()) => Response::Committed,
+                Err(e) => Response::Error(e.to_string()),
+            }
+        }
+        Request::SetAccessibility(accessibility) => {
+            if !is_admitted_writer(caller_app_id) {
+                return Response::Refused(format!(
+                    "caller '{caller_app_id}' may not set the accessibility settings"
+                ));
+            }
+            match store.store_accessibility(accessibility) {
                 Ok(()) => Response::Committed,
                 Err(e) => Response::Error(e.to_string()),
             }
@@ -203,9 +222,9 @@ mod tests {
             access_level: 3,
             ..Default::default()
         };
-        s.store(&want).unwrap();
+        s.store_ai(&want).unwrap();
         match handle_request(&s, "anyone", Request::Get) {
-            Response::State(got) => assert_eq!(got, want),
+            Response::State(got) => assert_eq!(got.ai, want),
             other => panic!("expected State, got {other:?}"),
         }
     }
@@ -221,11 +240,11 @@ mod tests {
         };
         want.autonomous_apps.insert("org.arlen.files".to_string());
         assert_eq!(
-            handle_request(&s, "dev.arlen.settings", Request::Set(want.clone())),
+            handle_request(&s, "dev.arlen.settings", Request::SetAi(want.clone())),
             Response::Committed
         );
         // a fresh store sees the persisted state
-        assert_eq!(store(tmp.path()).load().unwrap(), want);
+        assert_eq!(store(tmp.path()).load_ai().unwrap(), want);
     }
 
     #[test]
@@ -237,12 +256,12 @@ mod tests {
             access_level: 4,
             ..Default::default()
         };
-        match handle_request(&s, "org.evil.app", Request::Set(hostile)) {
+        match handle_request(&s, "org.evil.app", Request::SetAi(hostile)) {
             Response::Refused(_) => {}
             other => panic!("expected Refused, got {other:?}"),
         }
         // the store stayed at the floor - the hostile set never landed
-        assert_eq!(s.load().unwrap(), AiMasterSwitches::default());
+        assert_eq!(s.load_ai().unwrap(), AiMasterSwitches::default());
     }
 
     #[test]
@@ -254,15 +273,15 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            handle_request(&s, "dev.arlen.settings", Request::Set(bad)),
+            handle_request(&s, "dev.arlen.settings", Request::SetAi(bad)),
             Response::Committed
         );
-        assert_eq!(s.load().unwrap().access_level, 0);
+        assert_eq!(s.load_ai().unwrap().access_level, 0);
     }
 
     #[test]
     fn frames_round_trip() {
-        let req = Request::Set(AiMasterSwitches {
+        let req = Request::SetAi(AiMasterSwitches {
             enabled: true,
             autonomous_apps: BTreeSet::from(["a".to_string(), "b".to_string()]),
             ..Default::default()

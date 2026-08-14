@@ -17,7 +17,7 @@ use thiserror::Error;
 use tokio::net::UnixStream;
 
 use crate::protocol::{read_frame_async, write_frame_async, Request, Response};
-use crate::state::AiMasterSwitches;
+use crate::state::{Accessibility, AiMasterSwitches, BrokerState};
 
 /// A failure talking to the broker.
 #[derive(Debug, Error)]
@@ -65,8 +65,8 @@ impl ConfigBrokerClient {
         })
     }
 
-    /// Read the current master switches.
-    pub async fn get(&self) -> Result<AiMasterSwitches, ClientError> {
+    /// Read everything the broker holds.
+    pub async fn get(&self) -> Result<BrokerState, ClientError> {
         let mut stream = self.connect().await?;
         write_frame_async(&mut stream, &Request::Get)
             .await
@@ -82,11 +82,28 @@ impl ConfigBrokerClient {
         }
     }
 
-    /// Replace the master switches. Returns [`ClientError::Refused`]
+    /// Read just the AI master switches.
+    pub async fn get_ai(&self) -> Result<AiMasterSwitches, ClientError> {
+        Ok(self.get().await?.ai)
+    }
+
+    /// Replace the accessibility settings. Returns [`ClientError::Refused`]
     /// if this process is not an admitted writer.
-    pub async fn set(&self, switches: &AiMasterSwitches) -> Result<(), ClientError> {
+    pub async fn set_accessibility(&self, a: Accessibility) -> Result<(), ClientError> {
+        self.send_set(Request::SetAccessibility(a)).await
+    }
+
+    /// Replace the AI master switches. Returns [`ClientError::Refused`]
+    /// if this process is not an admitted writer.
+    pub async fn set_ai(&self, switches: &AiMasterSwitches) -> Result<(), ClientError> {
+        self.send_set(Request::SetAi(switches.clone())).await
+    }
+
+    /// The shared half of every set: one round trip, and a `State` reply to
+    /// a set is as wrong as an error - the caller must not read it as applied.
+    async fn send_set(&self, request: Request) -> Result<(), ClientError> {
         let mut stream = self.connect().await?;
-        write_frame_async(&mut stream, &Request::Set(switches.clone()))
+        write_frame_async(&mut stream, &request)
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))?;
         let resp: Response = read_frame_async(&mut stream)
@@ -143,8 +160,8 @@ mod tests {
             access_level: 3,
             ..Default::default()
         };
-        store.store(&want).unwrap();
-        assert_eq!(client.get().await.unwrap(), want);
+        store.store_ai(&want).unwrap();
+        assert_eq!(client.get().await.unwrap().ai, want);
     }
 
     /// A `set` from the non-admitted test caller maps to `Refused`
@@ -157,11 +174,11 @@ mod tests {
             executor_live: true,
             ..Default::default()
         };
-        match client.set(&hostile).await {
+        match client.set_ai(&hostile).await {
             Err(ClientError::Refused(_)) => {}
             other => panic!("expected Refused, got {other:?}"),
         }
-        assert_eq!(store.load().unwrap(), AiMasterSwitches::default());
+        assert_eq!(store.load_ai().unwrap(), AiMasterSwitches::default());
     }
 
     /// A client pointed at a dead socket fails transport-closed, not

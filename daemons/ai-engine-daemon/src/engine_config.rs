@@ -148,7 +148,7 @@ fn from_broker<T>(pick: impl FnOnce(&arlen_config_broker::AiMasterSwitches) -> T
 pub async fn refresh_broker_switches(interval: std::time::Duration) {
     let client = arlen_config_broker::ConfigBrokerClient::default_socket();
     loop {
-        match client.get().await {
+        match client.get_ai().await {
             Ok(switches) => publish_broker_switches(Some(switches)),
             Err(_) => publish_broker_switches(None),
         }
