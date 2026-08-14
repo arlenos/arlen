@@ -17,7 +17,8 @@
   ]);
 </script>
 
-<CornerPopover icon={Power} label={$t("g.power")} align="right" id="greeter-power">
+<!-- `role="menu"` is earned here: every child below is a `menuitem` button. -->
+<CornerPopover icon={Power} label={$t("g.power")} align="right" id="greeter-power" role="menu">
   {#snippet children(close: () => void)}
     {#each ITEMS as it (it.action)}
       <button
