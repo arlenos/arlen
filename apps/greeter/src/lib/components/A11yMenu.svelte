@@ -8,7 +8,12 @@
   import { Accessibility } from "@lucide/svelte";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import CornerPopover from "./CornerPopover.svelte";
-  import { a11y, toggleA11y, type A11yState } from "$lib/a11y";
+  import {
+    a11y,
+    toggleA11y,
+    screenReaderNotRemembered,
+    type A11yState,
+  } from "$lib/a11y";
   import { t } from "$lib/i18n/messages";
 
   // `$derived`, so the labels follow a language switch: a plain const resolves
@@ -36,6 +41,16 @@
     {/each}
     {#if $a11y.screenReader}
       <p class="hint">{$t("g.a11y.readerHint")}</p>
+    {/if}
+    <!--
+      Said beside the switch that made the claim, not in a console. Flipping this
+      does two things and only one of them can fail: it applies now (a store
+      update) and it is meant to be remembered for the next start (a file write).
+      Silence here would let somebody set it once and find it gone at every boot,
+      which is the exclusion this whole feature exists to remove.
+    -->
+    {#if $screenReaderNotRemembered}
+      <p class="hint warn">{$t("g.a11y.notRemembered")}</p>
     {/if}
   {/snippet}
 </CornerPopover>
@@ -71,5 +86,14 @@
     font-size: var(--text-xs);
     line-height: 1.45;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+
+  /* Full-strength foreground rather than the muted hint colour: this one is not
+     background information, it is the difference between a setting that sticks
+     and one that has to be found again at every boot. Weight rather than a
+     colour, so it still reads under the high-contrast palette. */
+  .warn {
+    color: var(--foreground);
+    font-weight: 500;
   }
 </style>
