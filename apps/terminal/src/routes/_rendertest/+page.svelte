@@ -167,6 +167,23 @@
     await newSession();
   });
 
+  // The other half of the session refusal: a WORKING terminal whose Ctrl+T was
+  // refused. The stranded panel is not on screen then, so the line has to reach
+  // the composer row - which is the case that used to vanish into a `catch`.
+  onMount(async () => {
+    if (new URLSearchParams(window.location.search).get("state") !== "session-refused-live") return;
+    if (!tauriAvailable) {
+      const { mockIPC } = await import("@tauri-apps/api/mocks");
+      mockIPC((cmd) => {
+        if (cmd === "terminal_new_session") throw new Error("no session service");
+        if (cmd === "terminal_sessions") return [];
+        return null;
+      });
+    }
+    composerReady = true;
+    await newSession();
+  });
+
   onMount(async () => {
     if (new URLSearchParams(window.location.search).get("state") !== "input-refused") return;
     if (!tauriAvailable) {
