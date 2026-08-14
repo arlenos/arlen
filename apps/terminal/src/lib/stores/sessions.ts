@@ -28,6 +28,14 @@ export const sessionsLoaded = writable(false);
 /// differently and auto-create never fires into a dead backend.
 export const sessionsError = writable(false);
 
+/// True when the last attempt to open a shell was refused.
+///
+/// Distinct from `sessionsError`, which says the session LIST could not be read.
+/// Here the list read fine and the create did not, and the difference matters to
+/// the person: one is a terminal that cannot see anything, the other is a button
+/// they just pressed that did nothing.
+export const newSessionFailed = writable(false);
+
 /// True when the very first successful load found no sessions — a
 /// fresh launch. The sidebar starts collapsed then: nothing to
 /// switch between, the stream and composer get the room.
@@ -71,6 +79,7 @@ export async function loadSessions(): Promise<void> {
 /// pre-engine stubs do not, and a phantom selection would point the
 /// stream at nothing).
 export async function newSession(): Promise<void> {
+  newSessionFailed.set(false);
   try {
     const s = await terminalNewSession();
     const list = await terminalSessions();
@@ -82,7 +91,10 @@ export async function newSession(): Promise<void> {
       activeSessionId.set(list[0].id);
     }
   } catch {
-    // The backend refused; the list stays as it is.
+    // The backend refused. The list stays as it is AND the empty state says so:
+    // someone with no session is looking at one button, and a button that
+    // changes nothing when pressed is indistinguishable from a dead app.
+    newSessionFailed.set(true);
   }
 }
 

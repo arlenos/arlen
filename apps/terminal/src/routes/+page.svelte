@@ -18,6 +18,7 @@
     initSessionExitListener,
   } from "$lib/stores/sessions";
   import Terminal from "$lib/components/Terminal.svelte";
+  import StreamEmpty from "$lib/components/StreamEmpty.svelte";
   import { t, dir } from "$lib/i18n/messages";
 
   onMount(() => {
@@ -35,21 +36,9 @@
 <div class="console" dir={$dir} oncontextmenu={(e) => e.preventDefault()}>
   <div class="stream">
     {#if $sessionsLoaded && $sessionsError}
-      <div class="stream-empty">
-        <span class="stream-empty-title">{$t("term.err.unreachable")}</span>
-        <span class="stream-empty-hint">{$t("term.err.unreachableHint")}</span>
-        <button class="stream-empty-btn" onclick={() => loadSessions()}>
-          {$t("term.err.tryAgain")}
-        </button>
-      </div>
+      <StreamEmpty kind="unreachable" onretry={() => loadSessions()} />
     {:else if $sessionsLoaded && $sessions.length === 0}
-      <div class="stream-empty">
-        <span class="stream-empty-title">{$t("term.err.noSession")}</span>
-        <span class="stream-empty-hint">{$t("term.err.noSessionHint")}</span>
-        <button class="stream-empty-btn" onclick={() => newSession()}>
-          {$t("term.sidebar.newSession")}
-        </button>
-      </div>
+      <StreamEmpty kind="none" onretry={() => newSession()} />
     {:else if $activeSessionId}
       <!-- One xterm.js for the whole session: live grid, scrollback and any
            fullscreen TUI all flow through the same instance (xterm switches to
@@ -85,38 +74,4 @@
     padding: 4px 8px;
   }
 
-  .stream-empty {
-    margin: auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    text-align: center;
-    padding: 2rem;
-  }
-  /* Chrome voice; the hierarchy is weight + dim, not size. */
-  .stream-empty-title {
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--foreground);
-  }
-  .stream-empty-hint {
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .stream-empty-btn {
-    margin-top: 8px;
-    height: var(--height-control, 28px);
-    padding: 0 12px;
-    border-radius: var(--radius-input);
-    border: 1px solid var(--control-border);
-    background: var(--control-bg);
-    color: var(--foreground);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
-  }
-  .stream-empty-btn:hover {
-    background: var(--control-bg-hover);
-  }
 </style>

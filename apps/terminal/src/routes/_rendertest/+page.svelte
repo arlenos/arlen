@@ -10,6 +10,8 @@
   import StreamBlock from "$lib/components/StreamBlock.svelte";
   import HistoryPalette from "$lib/components/HistoryPalette.svelte";
   import Composer from "$lib/components/Composer.svelte";
+  import { newSession } from "$lib/stores/sessions";
+  import StreamEmpty from "$lib/components/StreamEmpty.svelte";
   import { historyPaletteOpen } from "$lib/stores/history";
   import { tauriAvailable } from "$lib/tauri";
   import type { Block } from "$lib/contract";
@@ -147,6 +149,24 @@
     last_exit: null,
   };
   let composerReady = $state(false);
+  let emptyReady = $state(false);
+  // The stranded case: no session, one button, and the backend refusing to open
+  // a shell. Driven through `newSession()` rather than by setting the store, so
+  // the shot proves the store is actually reached from the refusal.
+  onMount(async () => {
+    if (new URLSearchParams(window.location.search).get("state") !== "session-refused") return;
+    if (!tauriAvailable) {
+      const { mockIPC } = await import("@tauri-apps/api/mocks");
+      mockIPC((cmd) => {
+        if (cmd === "terminal_new_session") throw new Error("no session service");
+        if (cmd === "terminal_sessions") return [];
+        return null;
+      });
+    }
+    emptyReady = true;
+    await newSession();
+  });
+
   onMount(async () => {
     if (new URLSearchParams(window.location.search).get("state") !== "input-refused") return;
     if (!tauriAvailable) {
@@ -189,6 +209,13 @@
   </div>
   {#if paletteReady}
     <HistoryPalette />
+  {/if}
+  {#if emptyReady}
+    <!-- The REAL panel, not a copy of its markup. A harness that redraws the
+         surface proves its own stylesheet and nothing about the app. -->
+    <div style="height:220px;max-width:760px;">
+      <StreamEmpty kind="none" onretry={() => newSession()} />
+    </div>
   {/if}
   {#if composerReady}
     <div style="margin-top:16px;max-width:760px;">
