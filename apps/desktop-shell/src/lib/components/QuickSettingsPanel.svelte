@@ -15,6 +15,7 @@
   /// `focusGrid` keyboard helper from `@arlen/ui-kit/keyboard`).
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
@@ -173,7 +174,11 @@
             <button
               class="qs-link"
               onclick={() =>
-                invoke("quick_action_run", { id: "qa.open_settings_appearance" }).catch(() => {})}
+                shellAction(
+                  "quick_action_run",
+                  { id: "qa.open_settings_appearance" },
+                  "sh.user.errSettings",
+                )}
             >
               {$t("sh.qs.tilesPath")}
             </button>

@@ -11,6 +11,9 @@
 
 import { writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
+import { toast } from "svelte-sonner";
+import { t } from "$lib/i18n/messages";
 
 export interface QuickActionResult {
   id: string;
@@ -53,13 +56,20 @@ export function clearQuickActionResults(): void {
 }
 
 /// Dispatch the action by id. The id is the catalog's `qa.<name>`
-/// key — `quick_action_run` switches on it server-side, performs
+/// key - `quick_action_run` switches on it server-side, performs
 /// the work, and emits a `arlen://toast` event for the post-
 /// state confirmation.
-export async function invokeQuickAction(id: string): Promise<void> {
+///
+/// A refusal comes back here instead, and needs saying: the launcher closes on
+/// Enter, so the only evidence a person has that anything happened is what
+/// appears afterwards. Nothing appearing means it worked, and that reading was
+/// wrong for every action that failed. The name is the one they just picked
+/// from the list, which is why the line can be specific about it.
+export async function invokeQuickAction(id: string, label?: string): Promise<void> {
   try {
     await invoke("quick_action_run", { id });
   } catch (e) {
     console.warn(`[waypointer] quick action ${id} failed:`, e);
+    toast.error(get(t)("sh.wp.qaFailed", { action: label ?? id }));
   }
 }

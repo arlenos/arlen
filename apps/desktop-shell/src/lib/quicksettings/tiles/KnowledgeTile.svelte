@@ -15,6 +15,7 @@
   import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { Brain } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { onMount } from "svelte";
 
   interface Bucket {
@@ -55,8 +56,10 @@
   }
 
   function openSettings() {
-    invoke("quick_action_run", { id: "qa.open_settings_knowledge" }).catch(
-      () => {},
+    void shellAction(
+      "quick_action_run",
+      { id: "qa.open_settings_knowledge" },
+      "sh.user.errSettings",
     );
   }
 

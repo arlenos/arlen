@@ -366,6 +366,7 @@ const messages: Catalogs = {
     "sh.wp.hintWeb": "? web search",
     "sh.wp.hintProjects": "p: projects",
     "sh.wp.hintAgent": "Tab ask the agent",
+    "sh.wp.qaFailed": "{$action} did not happen.",
 
     // User row and power flyout
     "sh.user.settings": "Settings",
@@ -376,6 +377,15 @@ const messages: Catalogs = {
     "sh.user.switchToLight": "Switch to light",
     "sh.user.switchToDark": "Switch to dark",
     "sh.user.accountPower": "Account / power",
+    // One per action, because the press closes the panel: by the time the
+    // answer arrives there is nothing left on screen to put a line under, and
+    // "that did not work" about a menu of four is not worth reading.
+    "sh.user.errLock": "The screen did not lock.",
+    "sh.user.errLogOut": "You were not signed out.",
+    "sh.user.errRestart": "The restart did not begin.",
+    "sh.user.errShutDown": "The shutdown did not begin.",
+    "sh.user.errSettings": "Settings did not open.",
+    "sh.user.errTheme": "The look did not change.",
 
     // Zoom toolbar
     "sh.zoom.out": "Zoom out",
@@ -842,6 +852,7 @@ const messages: Catalogs = {
     "sh.wp.hintWeb": "? Websuche",
     "sh.wp.hintProjects": "p: Projekte",
     "sh.wp.hintAgent": "Tab fragt den Agenten",
+    "sh.wp.qaFailed": "{$action} ist nicht passiert.",
 
     "sh.user.settings": "Einstellungen",
     "sh.user.lock": "Sperren",
@@ -851,6 +862,12 @@ const messages: Catalogs = {
     "sh.user.switchToLight": "Auf hell wechseln",
     "sh.user.switchToDark": "Auf dunkel wechseln",
     "sh.user.accountPower": "Konto / Energie",
+    "sh.user.errLock": "Der Bildschirm wurde nicht gesperrt.",
+    "sh.user.errLogOut": "Du wurdest nicht abgemeldet.",
+    "sh.user.errRestart": "Der Neustart hat nicht begonnen.",
+    "sh.user.errShutDown": "Das Herunterfahren hat nicht begonnen.",
+    "sh.user.errSettings": "Die Einstellungen wurden nicht geöffnet.",
+    "sh.user.errTheme": "Das Erscheinungsbild hat sich nicht geändert.",
 
     "sh.zoom.out": "Verkleinern",
     "sh.zoom.in": "Vergr\u00f6\u00dfern",

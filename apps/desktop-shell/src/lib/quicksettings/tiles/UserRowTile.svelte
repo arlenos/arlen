@@ -13,6 +13,7 @@
   import { Settings, Power, Lock, LogOut, RotateCcw, Sun, Moon } from "lucide-svelte";
   import { closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
@@ -40,21 +41,29 @@
   }
 
   async function cycleTheme() {
-    try {
-      await invoke("set_theme", { id: isDark ? "light" : "dark" });
-      isDark = !isDark;
-    } catch {}
+    // No local flip: the theme is applied by the backend and announced back on
+    // `arlen://theme-changed`, which `refreshTheme` listens for. Flipping the icon
+    // here would show a sun over a dark desktop whenever the write was refused.
+    await shellAction("set_theme", { id: isDark ? "light" : "dark" }, "sh.user.errTheme");
   }
 
-  function runQuickAction(id: string) {
+  /// Runs one of the power actions, each with its own line for the refusal.
+  ///
+  /// The order matters and is deliberate: the flyout and the panel close FIRST,
+  /// because a menu that hangs about after you picked from it feels stuck. But
+  /// dismissing is also how this surface acknowledges a press, so a refusal that
+  /// went unsaid was indistinguishable from a shutdown that had begun - the panel
+  /// vanished either way and the machine simply stayed on. The toast outlives the
+  /// panel, which is the whole reason it is the channel here.
+  function runQuickAction(id: string, failureKey: string) {
     powerOpen = false;
     closePopover();
-    invoke("quick_action_run", { id }).catch(() => {});
+    void shellAction("quick_action_run", { id }, failureKey);
   }
 
   function openSettings() {
     closePopover();
-    invoke("quick_action_run", { id: "qa.open_settings" }).catch(() => {});
+    void shellAction("quick_action_run", { id: "qa.open_settings" }, "sh.user.errSettings");
   }
 </script>
 
@@ -105,17 +114,17 @@
   {#if powerOpen}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="user-power" onclick={(e) => e.stopPropagation()}>
-      <button onclick={() => runQuickAction("qa.lock_screen")}>
+      <button onclick={() => runQuickAction("qa.lock_screen", "sh.user.errLock")}>
         <Lock size={14} strokeWidth={1.5} /><span>{$t("sh.user.lock")}</span>
       </button>
-      <button onclick={() => runQuickAction("qa.logout")}>
+      <button onclick={() => runQuickAction("qa.logout", "sh.user.errLogOut")}>
         <LogOut size={14} strokeWidth={1.5} /><span>{$t("sh.user.logOut")}</span>
       </button>
       <div class="user-sep"></div>
-      <button onclick={() => runQuickAction("qa.reboot")}>
+      <button onclick={() => runQuickAction("qa.reboot", "sh.user.errRestart")}>
         <RotateCcw size={14} strokeWidth={1.5} /><span>{$t("sh.user.restart")}</span>
       </button>
-      <button class="danger" onclick={() => runQuickAction("qa.shutdown")}>
+      <button class="danger" onclick={() => runQuickAction("qa.shutdown", "sh.user.errShutDown")}>
         <Power size={14} strokeWidth={1.5} /><span>{$t("sh.user.shutDown")}</span>
       </button>
     </div>

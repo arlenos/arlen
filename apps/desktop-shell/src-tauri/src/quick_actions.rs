@@ -46,23 +46,31 @@ pub(crate) fn emit_toast(app: &AppHandle, kind: ToastKind, message: impl Into<St
 }
 
 /// Dispatch a quick action by its catalog id (declared in
-/// `waypointer_system::plugins::quick_actions::ACTIONS`). Errors are
-/// logged AND surfaced as warning toasts; the command itself
-/// returns Ok so the frontend doesn't double-toast on its own
-/// error path.
+/// `waypointer_system::plugins::quick_actions::ACTIONS`).
+///
+/// Success emits the confirmation toast, because the post-state read above is
+/// the honest one and only this process has it. FAILURE IS RETURNED, and this
+/// is a deliberate reversal: it used to raise its own warning toast and hand
+/// the caller `Ok(())`, on the reasoning that one channel avoids a double
+/// notice. What that produced was `qa.shutdown: <rust error>` - the internal id
+/// and an untranslated reason - and, worse, it made every frontend guard on
+/// this command dead code. Six call sites had written one believing it fired.
+///
+/// The caller knows which named thing the person pressed and holds the
+/// catalog, so it can say "The shutdown did not begin." in their language.
+/// That is the better line, and it can only be said if the refusal reaches it.
 #[tauri::command]
 pub async fn quick_action_run(id: String, app: AppHandle) -> Result<(), String> {
-    let outcome = dispatch(&id, app.clone()).await;
-    match outcome {
+    match dispatch(&id, app.clone()).await {
         Ok(message) => {
             emit_toast(&app, ToastKind::Success, message);
+            Ok(())
         }
         Err(e) => {
             log::warn!("quick_action_run({id}): {e}");
-            emit_toast(&app, ToastKind::Warning, format!("{id}: {e}"));
+            Err(e)
         }
     }
-    Ok(())
 }
 
 /// Per-action dispatch. Returns the user-facing message on success.
@@ -370,11 +378,11 @@ mod tests {
     async fn unknown_id_returns_err() {
         // Tauri AppHandle is hard to fake here, so we test the
         // matcher directly via a thin shim. The real entry point
-        // (`quick_action_run`) wraps any error into a warning toast
-        // and still returns Ok — the inner `dispatch` is where
-        // unknown ids surface as Err. We can't test the full path
-        // without a Tauri test harness; this test is the next-best
-        // safeguard.
+        // (`quick_action_run`) returns that error to the caller, which
+        // turns it into a line in the reader's language - the inner
+        // `dispatch` is where unknown ids surface as Err. We can't test
+        // the full path without a Tauri test harness; this test is the
+        // next-best safeguard.
         //
         // We construct the matcher in isolation (mirrors the real
         // dispatch) so we don't depend on AppHandle for this guard.
