@@ -118,13 +118,6 @@ KNOWN: dict[str, tuple[int, str]] = {
         "panel someone just opened because a region call failed is worse. Wants a "
         "decision about what an unclickable panel should say"
     ),
-    "apps/desktop-shell/src/lib/stores/nowPlaying.ts": (
-        3,
-        "play/pause and the transport, optimistically flipped then sent. The "
-        "indicator shows playing while the player never got the command. A plain "
-        "revert, and it lands with the media applet now that the top bar renders "
-        "it at all"
-    ),
     "apps/meetings/src/lib/stores/meeting.ts": (
         1,
         "surfaced by teaching this gate the promise form; meetings is not a "

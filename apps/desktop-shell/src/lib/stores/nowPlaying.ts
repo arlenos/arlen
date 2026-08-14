@@ -72,10 +72,20 @@ export function playPause(): void {
   const n = get(nowPlaying);
   if (!n || !n.canControl) return;
   nowPlaying.set({ ...n, status: n.status === "playing" ? "paused" : "playing" });
-  void invoke("mpris_play_pause", { id: n.activeId }).catch(() => {});
+  // Put the icon back if the player refused. The 3s poll would have corrected it
+  // anyway, so this is not a leak - it is the difference between a wrong glyph
+  // for one frame and a wrong glyph for three seconds, during which someone
+  // presses it again because the first press appeared to work.
+  void invoke("mpris_play_pause", { id: n.activeId }).catch(() => {
+    nowPlaying.set(n);
+  });
 }
 
 /// Skip to the previous / next track.
+///
+/// Neither touches the store, so neither CLAIMS anything: a refused skip leaves
+/// the same track showing, which is the truth. They stay silent for that reason
+/// rather than by omission.
 export function previous(): void {
   const n = get(nowPlaying);
   if (!n || !n.canPrev) return;
@@ -93,7 +103,12 @@ export function seek(seconds: number): void {
   const n = get(nowPlaying);
   if (!n || !n.canSeek) return;
   nowPlaying.set({ ...n, position: Math.max(0, Math.min(n.length, seconds)) });
-  void invoke("mpris_set_position", { id: n.activeId, seconds }).catch(() => {});
+  // Same as `playPause`, and more visible: a scrub head that lands where the
+  // person dropped it and then jumps back three seconds later reads as the
+  // control fighting them.
+  void invoke("mpris_set_position", { id: n.activeId, seconds }).catch(() => {
+    nowPlaying.set(n);
+  });
 }
 
 /// Promote + pin a player as the active one (manual override of auto-follow).
@@ -101,5 +116,10 @@ export function pinPlayer(id: string): void {
   const n = get(nowPlaying);
   if (!n) return;
   nowPlaying.set({ ...n, activeId: id });
-  void invoke("mpris_pin", { id }).catch(() => {});
+  // The switcher shows the newly-picked player as active the moment it is
+  // clicked; a refusal used to leave it showing that forever, since the pin is
+  // what the poll reads back. Put the previous choice back.
+  void invoke("mpris_pin", { id }).catch(() => {
+    nowPlaying.set(n);
+  });
 }
