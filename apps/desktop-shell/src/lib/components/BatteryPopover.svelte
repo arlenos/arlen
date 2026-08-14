@@ -18,14 +18,33 @@
   }
 
   let status = $state<BatteryStatus | null>(null);
-  let powerProfile = $state("balanced");
+  /// `null` until a read answers. It used to default to "balanced", which is a
+  /// claim about the machine's power mode made before anyone had asked - and the
+  /// pill for it rendered as selected.
+  let powerProfile = $state<string | null>(null);
   /// True once the first poll answered — before that the status area
   /// stays blank instead of claiming "No battery" while loading.
   let polled = $state(false);
+  /// The read failed, which is a third thing from "answered" and "not yet". The
+  /// `polled` flag above already separated loading from answered; without this,
+  /// a refused read set `polled` and the panel said "No battery" - a claim about
+  /// the hardware from a question nobody got an answer to.
+  let unreadable = $state(false);
 
   async function poll() {
-    try { status = await invoke<BatteryStatus | null>("get_battery_status"); } catch {}
-    try { powerProfile = await invoke<string>("get_power_profile"); } catch {}
+    unreadable = false;
+    try {
+      status = await invoke<BatteryStatus | null>("get_battery_status");
+    } catch {
+      status = null;
+      unreadable = true;
+    }
+    try {
+      powerProfile = await invoke<string>("get_power_profile");
+    } catch {
+      powerProfile = null;
+      unreadable = true;
+    }
     polled = true;
   }
 
@@ -77,6 +96,10 @@
           {$t("sh.bat.onBattery")}
         {/if}
       </span>
+    </div>
+  {:else if unreadable}
+    <div class="bat-status">
+      <span class="bat-detail">{$t("sh.bat.stateUnknown")}</span>
     </div>
   {:else if polled}
     <div class="bat-status">
