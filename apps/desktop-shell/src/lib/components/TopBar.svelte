@@ -16,6 +16,8 @@
   import BluetoothIndicator from "$lib/components/BluetoothIndicator.svelte";
   import BluetoothPopover from "$lib/components/BluetoothPopover.svelte";
   import TrayIndicator from "$lib/components/TrayIndicator.svelte";
+  import MprisIndicator from "$lib/components/MprisIndicator.svelte";
+  import MprisPopover from "$lib/components/MprisPopover.svelte";
   import TrayPopover from "$lib/components/TrayPopover.svelte";
   import PanelTrigger from "$lib/components/PanelTrigger.svelte";
   import NotificationsTrigger from "$lib/components/NotificationsTrigger.svelte";
@@ -103,6 +105,10 @@
     bluetooth: BluetoothIndicator,
     battery: BatteryIndicator,
     layout: LayoutIndicator,
+    // Built with a harness route and never rendered, so until now this desktop
+    // had no media control at all. The applet hides itself when no player is
+    // registered, so adding it costs a hidden element rather than an empty one.
+    mpris: MprisIndicator,
   };
 
   /// The saved order, or the default one. Starts at the default so the bar is
@@ -117,6 +123,16 @@
       const arranged = items
         .filter((i) => i.shown && i.id in ARRANGEABLE)
         .map((i) => i.id);
+      // An applet the inventory does not MENTION is one the saved file predates,
+      // and it goes on the end. Absent is not the same as `shown: false`: the
+      // second is someone turning it off, the first is a file written before the
+      // applet existed. Without this, adding one ships it only to people with no
+      // saved arrangement - wired in code and invisible to everyone else, which
+      // is the failure the media indicator already spent months in.
+      const named = new Set(items.map((i) => i.id));
+      for (const id of Object.keys(ARRANGEABLE)) {
+        if (!named.has(id)) arranged.push(id);
+      }
       // An inventory that names none of these is a mismatch, not a request for
       // an empty bar, so the default stands rather than blanking the cluster.
       if (arranged.length > 0) arrangedApplets = arranged;
@@ -380,6 +396,7 @@
   <UndoPopover />
   <BatteryPopover />
   <BluetoothPopover />
+  <MprisPopover />
   <TrayPopover />
   <NotificationsPopover />
   <QuickSettingsPanel />
