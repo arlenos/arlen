@@ -17,9 +17,23 @@
 //! changed as a side effect of changing how things look.
 //!
 //! A poll rather than a subscription, because the broker's protocol has no
-//! watch op. Two seconds is a boolean nobody toggles twice in a row, and a
-//! publish only happens when the value actually changed, so the bus sees one
-//! event per change rather than one every tick.
+//! watch op. Two seconds, uniformly, and a publish only happens when the value
+//! actually changed - so the bus sees one event per change rather than one every
+//! tick.
+//!
+//! A BACKOFF WAS TRIED AND REVERTED, because the trade runs the wrong way. Fast
+//! early and slow later saves wakeups, but the delay it buys lands on exactly one
+//! person: somebody who just switched a screen reader on in Settings and is
+//! waiting for the terminal to become readable. Half a minute of that is not a
+//! setting arriving late, it is the machine staying unusable after they asked for
+//! help. What it saves is a socket connect and a few bytes every two seconds,
+//! which is below the noise of a session that renders a compositor and ticks a
+//! clock.
+//!
+//! The real fix is a watch op on the broker, so nothing polls at all. That is a
+//! protocol change on an authenticated daemon - who may hold a long-lived
+//! connection, who may watch which family - and belongs to whoever designs it
+//! rather than to this consumer.
 //!
 //! LATE JOINERS ARE FREE: the bus retains the last event of any `.state` topic
 //! and delivers it on subscribe, so an app that starts an hour into the session
@@ -29,16 +43,8 @@
 
 use std::time::Duration;
 
-/// How often the broker is re-read while a login-time write could still be
-/// landing. Only a CHANGE publishes.
-const POLL_EARLY: Duration = Duration::from_secs(2);
-
-/// How often after that.
-const POLL_SETTLED: Duration = Duration::from_secs(30);
-
-/// How long the fast poll lasts. Long enough to cover a slow session start
-/// without keeping the machine awake for it.
-const EARLY_READS: u32 = 15;
+/// How often the broker is re-read. Only a CHANGE publishes.
+const POLL: Duration = Duration::from_secs(2);
 
 /// The variable the greeter hands the login screen's choice on in.
 ///
@@ -141,7 +147,6 @@ pub async fn run_publisher() {
     record_login_choice().await;
 
     let mut last: Option<bool> = None;
-    let mut reads: u32 = 0;
     loop {
         if let Some(current) = read_screen_reader().await {
             if last != Some(current) {
@@ -150,8 +155,7 @@ pub async fn run_publisher() {
                 last = Some(current);
             }
         }
-        reads = reads.saturating_add(1);
-        tokio::time::sleep(if reads < EARLY_READS { POLL_EARLY } else { POLL_SETTLED }).await;
+        tokio::time::sleep(POLL).await;
     }
 }
 
