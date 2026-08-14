@@ -60,9 +60,9 @@
   /// Airplane mode is a separate tile + topbar badge.
   async function handleClick() {
     if (airplane) return;
-    if (await shellAction("set_wifi_enabled", { enabled: !wifiEnabled }, "sh.tile.errWifi")) {
-      wifiEnabled = !wifiEnabled;
-    }
+    // No local flip at all: `refresh` reads the owner and sets every field from
+    // it, so assuming the new value first could only ever be right by luck.
+    await shellAction("set_wifi_enabled", { enabled: !wifiEnabled }, "sh.tile.errWifi");
     await refresh();
   }
 
