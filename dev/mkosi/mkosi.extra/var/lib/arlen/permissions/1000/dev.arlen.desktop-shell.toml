@@ -97,12 +97,19 @@ read = [
 # and it publishes nine topics that way. Looking for the type missed the
 # behaviour.
 #
-# What an empty list would have cost under enforcement, since a denied publish is
-# DROPPED with nothing said to the producer: the audio and network indicators in
-# the top bar stop updating, Focus Mode stops suppressing notifications, every
-# app.* action dispatch stops arriving, and the terminal's screen-reader mirror
-# never switches on. Nine features going quiet while the emitting code looks like
-# it worked.
+# INERT TODAY, and written out anyway. The bus takes tier from the peer's exe
+# path, not from this file's `tier` field, and apps install under
+# /usr/lib/arlen/apps/<id>/bin/ - which `detect_tier` calls System, and a system
+# producer is exempt from the publish gate entirely. So an empty list was never
+# going to drop anything.
+#
+# It is here because the exemption rests on an install path rather than on
+# intent. If apps ever move, or the tier rule tightens, an empty list would
+# silently drop nine things at once - a denied publish is dropped with nothing
+# said to the producer, so the audio and network indicators would stop updating,
+# Focus Mode would stop suppressing notifications, app.* dispatch would stop
+# arriving, and the terminal's screen-reader mirror would never switch on, all
+# while the emitting code looked like it worked.
 #
 # Read out of the source now rather than believed:
 # `dev/scripts/check-subscribe-scope.py` compares this list against what the
