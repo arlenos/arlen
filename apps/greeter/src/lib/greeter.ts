@@ -106,11 +106,19 @@ export async function readWallpaper(): Promise<string | null> {
   }
 }
 
-/// Request a power action. Best-effort: a failure leaves the greeter up.
-export async function power(action: PowerAction): Promise<void> {
+/// Request a power action. Returns whether it was accepted.
+///
+/// It used to swallow the refusal on the reasoning that there is "nothing to
+/// surface on the login screen". There is, and this is the surface where it
+/// matters most: a person picks Shut Down, the menu closes, and a machine that
+/// stays on looks exactly like one about to go off. They walk away from it. The
+/// login screen has no notification area and no second window, so the caller
+/// renders the line itself.
+export async function power(action: PowerAction): Promise<boolean> {
   try {
     await invoke("greeter_power", { action });
+    return true;
   } catch {
-    // Nothing to surface on the login screen; the machine stays up.
+    return false;
   }
 }
