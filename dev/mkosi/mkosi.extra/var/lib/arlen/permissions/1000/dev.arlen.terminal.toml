@@ -23,3 +23,25 @@ read = [
     "system.Project.root_path",
     "system.Project.expired_at",
 ]
+
+# Event-bus scopes, for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default). This app is first-party, NOT system tier, so it is held to
+# this section the moment enforcement is on - and a caller with no declared
+# scope keeps no subscription at all.
+#
+# What that costs here is not a degraded feature, it is an excluded person.
+# xterm.js paints the grid on a canvas, which a screen reader cannot read at
+# all; `screenReaderMode` makes it keep a hidden live-region mirror instead, and
+# the terminal turns that on when it hears `accessibility.state`. Without this
+# grant the subscription is FILTERED, not refused: the connection succeeds, the
+# pattern is dropped, and the app waits on a receiver that never yields. From
+# inside it looks exactly like a topic nobody publishes on, which is why the
+# terminal now says so after 20s rather than sitting quiet.
+#
+# Exactly the one topic it consumes. The terminal handles no other bus event.
+#
+# `publish` is empty by fact, not omission: there is no emitter anywhere in
+# apps/terminal/src-tauri (checked, not assumed). It is a pure consumer.
+[event_bus]
+publish = []
+subscribe = ["accessibility.state"]

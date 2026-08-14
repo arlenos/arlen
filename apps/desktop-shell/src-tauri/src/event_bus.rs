@@ -26,7 +26,13 @@ const CONSUMER_ID: &str = "desktop-shell";
 /// `.*` patterns, and under `ARLEN_EVENT_BUS_ENFORCE` the bus keeps only the
 /// requested patterns its profile admits. A prefix added on one side alone is
 /// not an error anywhere - the subscription is simply dropped, and the surface
-/// it fed goes quiet. The two lists were checked equal on 11 Aug.
+/// it fed goes quiet.
+///
+/// That equality is CHECKED now rather than remembered:
+/// `dev/scripts/check-subscribe-scope.py` reads this constant and the profile and
+/// compares them, so a prefix added on one side alone goes red instead of dark.
+/// The hand-check it replaces was dated 11 Aug, which is exactly how long that
+/// kind of guarantee lasts.
 const SUBSCRIPTIONS: &str =
     "window.,config.,project.,app.toolbar.,app.shortcut.,app.badge.,app.ambient.,app.menu.,power.";
 
