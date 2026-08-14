@@ -70,17 +70,19 @@ pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, S
     // That is the whole reason it goes through the map rather than being read
     // straight out of the environment where it is needed.
     //
-    // Only when set. Absent means the login screen said nothing, which the
-    // session reads as "keep what you had" rather than "off".
+    // Only when set, and BOTH values travel. Absent means nobody operated the
+    // toggle at this login, which the session reads as "keep what your own
+    // config says". A `0` is as deliberate as a `1` - somebody reached over and
+    // turned it off - so it must not be dropped as if it were the absent case.
     if let Ok(v) = std::env::var(A11Y_SCREEN_READER) {
-        if v == "1" {
+        if v == "1" || v == "0" {
             env.insert(A11Y_SCREEN_READER.into(), v);
         }
     }
     env
 }
 
-/// The greeter's screen-reader handoff. Matches
+/// The greeter's screen-reader handoff: `1`, `0`, or absent. Matches
 /// `arlen_greeter_core::A11Y_SCREEN_READER_ENV`; the shell reads it once at
 /// session start and writes it to the user's config broker.
 pub const A11Y_SCREEN_READER: &str = "ARLEN_A11Y_SCREEN_READER";
@@ -134,9 +136,16 @@ mod tests {
         // there is a handoff that silently does nothing.
         std::env::set_var(A11Y_SCREEN_READER, "1");
         let env = session_env("s-1", "");
-        std::env::remove_var(A11Y_SCREEN_READER);
         assert_eq!(env.get(A11Y_SCREEN_READER).map(String::as_str), Some("1"));
         assert!(import_list(&env).contains(&A11Y_SCREEN_READER.to_string()));
+
+        // A deliberate switch-OFF travels too. Dropping it would make "they
+        // turned it off here" indistinguishable from "nobody touched it", and
+        // the session would then keep an on-flag they just cleared.
+        std::env::set_var(A11Y_SCREEN_READER, "0");
+        let env = session_env("s-1", "");
+        std::env::remove_var(A11Y_SCREEN_READER);
+        assert_eq!(env.get(A11Y_SCREEN_READER).map(String::as_str), Some("0"));
     }
 
     #[test]

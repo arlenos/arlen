@@ -42,10 +42,15 @@ const HANDOFF_ENV: &str = "ARLEN_A11Y_SCREEN_READER";
 /// Record the login screen's choice in the user's own config, once, at session
 /// start.
 ///
-/// ABSENT MEANS "NOTHING TO SAY", NOT "OFF". The greeter only sets the variable
-/// when the toggle is on, so a login screen nobody touched leaves whatever the
-/// person already had. Turning a screen reader off is a thing somebody does
-/// deliberately in Settings, never a side effect of logging in.
+/// ABSENT MEANS "NOBODY OPERATED THE TOGGLE", NOT "OFF". The greeter sets the
+/// variable only when somebody actually worked the switch at that login, so an
+/// untouched login screen leaves whatever the person already had. Their own
+/// config must not be overwritten by a default they never chose - and the login
+/// screen has its own remembered default, which arriving on screen says nothing
+/// about the person walking up to it.
+///
+/// A `0` IS a statement: they reached over and turned it off, which carries the
+/// same weight as turning it on.
 ///
 /// The write is what makes this stick: the greeter cannot read the broker back
 /// (different uid, and before login no user is chosen), but the SHELL reads it
@@ -53,23 +58,27 @@ const HANDOFF_ENV: &str = "ARLEN_A11Y_SCREEN_READER";
 /// records it, and every later session already has it without the login screen
 /// being involved at all.
 async fn record_login_choice() {
-    if std::env::var(HANDOFF_ENV).ok().as_deref() != Some("1") {
-        return;
-    }
+    let chosen = match std::env::var(HANDOFF_ENV).ok().as_deref() {
+        Some("1") => true,
+        Some("0") => false,
+        // Absent, or a value neither side wrote - say nothing rather than guess
+        // at somebody's accessibility setting.
+        _ => return,
+    };
     let client = arlen_config_broker::ConfigBrokerClient::default_socket();
-    // Read first: if it is already on, there is nothing to record, and a write
-    // that changes nothing is a write that can still fail.
+    // Read first: if it already says this, there is nothing to record, and a
+    // write that changes nothing is a write that can still fail.
     match client.get().await {
-        Ok(state) if state.accessibility.screen_reader => return,
+        Ok(state) if state.accessibility.screen_reader == chosen => return,
         Ok(_) => {}
         Err(e) => {
             log::warn!("accessibility: cannot record the login choice, broker unreadable ({e})");
             return;
         }
     }
-    let wanted = arlen_config_broker::Accessibility { screen_reader: true };
+    let wanted = arlen_config_broker::Accessibility { screen_reader: chosen };
     match client.set_accessibility(wanted).await {
-        Ok(()) => log::info!("accessibility: recorded the login screen's screen-reader choice"),
+        Ok(()) => log::info!("accessibility: recorded the login choice, screen_reader {chosen}"),
         // Worth a warning rather than silence: the person will find it off again
         // next login and have no idea why.
         Err(e) => log::warn!("accessibility: could not record the login choice ({e})"),

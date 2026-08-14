@@ -38,6 +38,39 @@ fn greeter_sessions() -> Result<Vec<Session>, String> {
     Ok(sessions)
 }
 
+/// What this login screen remembers about itself.
+///
+/// The greeter's own state, not any user's: *this login screen was last used
+/// with a screen reader*. Read at startup so somebody who cannot see it can
+/// reach the prompt without finding the toggle again at every boot.
+///
+/// An unreadable file answers with the default rather than failing: a login
+/// screen that will not draw because of one boolean is worse for everyone than
+/// one that draws with the toggle off, and the toggle is on screen.
+#[tauri::command]
+fn greeter_a11y_get() -> core::a11y_state::GreeterA11y {
+    match core::a11y_state::load_in(&core::a11y_state::state_dir()) {
+        Ok(state) => state,
+        Err(e) => {
+            eprintln!("greeter: cannot read the remembered accessibility state ({e})");
+            core::a11y_state::GreeterA11y::default()
+        }
+    }
+}
+
+/// Remember the toggle for the next boot.
+///
+/// Called the moment it is operated, not on a successful login: somebody who
+/// switches the reader on and then mistypes their password still needs it when
+/// they try again.
+#[tauri::command]
+fn greeter_a11y_set(screen_reader: bool) -> Result<(), String> {
+    core::a11y_state::store_in(
+        &core::a11y_state::state_dir(),
+        core::a11y_state::GreeterA11y { screen_reader },
+    )
+}
+
 /// Password authentication through greetd, starting the chosen session on success.
 /// The profile is cross-checked against the offered accounts (an authorization
 /// boundary, not just the picker), and an unknown session id is refused before
@@ -47,9 +80,10 @@ fn greeter_authenticate(
     profile_id: String,
     secret: String,
     session_id: String,
-    // The login screen's screen-reader toggle, handed to the session it starts.
-    // Optional so an older caller (or the hardware-factor path) simply says
-    // nothing about it, which the session reads as "keep what you had".
+    // The login screen's screen-reader toggle, handed to the session it starts -
+    // but ONLY when somebody operated it at this login. `None` means the toggle
+    // sat at whatever the login screen remembered and nobody touched it, which
+    // the session reads as "keep what your own config says" rather than "off".
     screen_reader: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let passwd = std::fs::read_to_string("/etc/passwd")
@@ -65,7 +99,7 @@ fn greeter_authenticate(
     let sock = std::env::var(GREETD_SOCK_ENV)
         .map_err(|_| "login is not reachable (greetd socket unavailable)".to_string())?;
     let stream = UnixStream::connect(&sock).map_err(|e| format!("cannot reach greetd: {e}"))?;
-    core::run_login(stream, &profile_id, &secret, cmd, core::session_env(&session_id, screen_reader.unwrap_or(false)))?;
+    core::run_login(stream, &profile_id, &secret, cmd, core::session_env(&session_id, screen_reader))?;
     Ok(serde_json::json!({ "ok": true }))
 }
 
@@ -111,7 +145,9 @@ pub fn run() {
             greeter_sessions,
             greeter_authenticate,
             greeter_factor_begin,
-            greeter_power
+            greeter_power,
+            greeter_a11y_get,
+            greeter_a11y_set
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-greeter");
