@@ -5,7 +5,12 @@
   /// all - and its empty state carries a whole sentence with a button inside it,
   /// which is exactly the shape that goes wrong quietly.
   ///
-  /// `?locale=de` renders it in German. Not in any nav; the `_undotest` pattern.
+  /// `?locale=de` renders it in German, `?state=empty` shows the no-tiles copy,
+  /// and `?state=refuse` makes every command reject - which is the state worth
+  /// looking at hardest, because a refused press used to look exactly like a
+  /// press that worked: the panel closes either way and nothing is said.
+  ///
+  /// Not in any nav; the `_undotest` pattern.
   import { onMount } from "svelte";
   import QuickSettingsPanel from "$lib/components/QuickSettingsPanel.svelte";
   import { openPopover } from "$lib/stores/activePopover.js";
@@ -16,6 +21,15 @@
   if (typeof window !== "undefined") {
     const params = new URLSearchParams(window.location.search);
     if (params.get("locale")) locale.set(params.get("locale") as string);
+    if (params.get("state") === "refuse") {
+      // Every command rejects. The panel still lays itself out from its own
+      // fallback, so the tiles are all there to press.
+      (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+        invoke: async (cmd: string) => {
+          throw new Error(`refused: ${cmd}`);
+        },
+      };
+    }
     if (params.get("state") === "empty") {
       // Answer the layout read with nothing, so the empty state is reachable.
       // Under vite there is no Tauri at all, and the panel's own fallback fills

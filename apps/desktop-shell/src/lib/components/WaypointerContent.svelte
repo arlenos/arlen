@@ -929,7 +929,9 @@
               <CommandItem
                 value={`qa-${qa.id}`}
                 onSelect={() => {
-                  invokeQuickAction(qa.id);
+                  // The same words the row shows, so a refusal names what was
+                  // picked rather than `qa.toggle_wifi`.
+                  invokeQuickAction(qa.id, qa.title_key ? $t(qa.title_key) : qa.title);
                   close();
                 }}
               >

@@ -149,20 +149,28 @@ class Render:
                       f" No screenshot written.", 4)
             return
         if self.args.open:
+            self.pending = list(self.args.open)
             self.click_open()
             return
         self.snapshot()
 
     def click_open(self):
-        """Click one element, then let it animate before the shot.
+        """Click the next element in the queue, then let it animate.
 
         A dropdown's contents do not exist in the DOM until it is opened, so a
         plain render of a page cannot photograph what a menu says - which is
         exactly where an empty menu tells a person they have no projects. The
         click is dispatched rather than synthesised at the pointer because the
         target may be off-screen in a wide harness page.
+
+        `--open` may be given more than once, and then each selector is clicked
+        in turn. One click reaches a menu; it does not reach what PRESSING
+        something in that menu does, and a refusal only exists after the press.
+        The power flyout is two clicks from the panel, so photographing its
+        refused shutdown was impossible with a single one.
         """
-        sel = json.dumps(self.args.open)
+        self.current = self.pending.pop(0)
+        sel = json.dumps(self.current)
         self.view.evaluate_javascript(
             f"(() => {{ const el = document.querySelector({sel});"
             f" if (!el) return 'missing'; el.click(); return 'clicked'; }})()",
@@ -178,10 +186,16 @@ class Render:
         # the unopened page: a screenshot of the thing not happening is the most
         # expensive kind of green.
         if "missing" in verdict:
-            self.fail(f"refusing: --open {self.args.open!r} matched no element."
+            self.fail(f"refusing: --open {self.current!r} matched no element."
                       f" No screenshot written.", 5)
             return
-        print(f"clicked {self.args.open}", file=sys.stderr)
+        print(f"clicked {self.current}", file=sys.stderr)
+        # Between clicks the wait is short: it only has to outlast the state
+        # change that puts the next target in the DOM. The full settle is spent
+        # once, before the shot, where an animation actually matters.
+        if self.pending:
+            GLib.timeout_add(300, lambda: (self.click_open(), False)[1])
+            return
         GLib.timeout_add(int(self.args.settle * 1000), self.snapshot)
 
     def snapshot(self):
@@ -212,9 +226,11 @@ def main():
                     help="seconds after the zoom change, before measuring")
     ap.add_argument("--timeout", type=int, default=60,
                     help="give up if the page has not finished loading by then")
-    ap.add_argument("--open", default=None,
+    ap.add_argument("--open", default=None, action="append",
                     help="CSS selector to click before the shot, for content that"
-                         " only exists once a menu or panel is open")
+                         " only exists once a menu or panel is open. Repeatable:"
+                         " each is clicked in turn, so a press INSIDE an opened"
+                         " menu is reachable")
     ap.add_argument("--require-width", type=int, default=None,
                     help="refuse, before capturing, if the viewport is narrower")
     return Render(ap.parse_args()).run()
