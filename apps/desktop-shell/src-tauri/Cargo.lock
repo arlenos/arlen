@@ -135,6 +135,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-config-broker"
+version = "0.1.0"
+dependencies = [
+ "arlen-permissions",
+ "audit-proto",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.2",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "arlen-consent-broker"
 version = "0.1.0"
 dependencies = [
@@ -164,6 +180,7 @@ dependencies = [
 name = "arlen-desktop-shell"
 version = "0.1.0"
 dependencies = [
+ "arlen-config-broker",
  "arlen-consent-broker",
  "arlen-desktop-shell-core",
  "arlen-i18n",
