@@ -38,7 +38,16 @@ PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions"
 # Components that participate in the bus and deliberately keep the unbounded
 # view. Empty on purpose today: every shipped participant declares both halves,
 # and an entry here should have to argue for itself.
-UNBOUNDED: dict[str, str] = {}
+UNBOUNDED: dict[str, str] = {
+    # The Graph Writer registers with the pattern `*` and stores every event, so
+    # the promotion pipeline can decide later what is worth keeping. Narrowing it
+    # would mean deciding at ingestion what the knowledge graph may ever know,
+    # which is the opposite of how it is designed - and it registers by writing
+    # the three-line handshake directly (`writer.rs`), a shape
+    # `check-subscribe-scope.py` cannot read, so `subscribe = []` here would look
+    # correct to every check while severing the ingestion path.
+    "knowledge": "the Graph Writer stores every event; the promotion pass filters, not the bus",
+}
 
 
 def main() -> int:

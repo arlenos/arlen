@@ -22,9 +22,18 @@ function check(name, ok) {
   if (!ok) failures++;
 }
 
-function tree(profiles) {
+// The gate also refuses an UNBOUNDED entry that names a component shipping no
+// profile, so the table cannot rot into excusing something that left. That means
+// a fixture tree has to carry a profile for every excused name, or every case
+// fails for a reason unrelated to what it is testing. `excused: false` opts out,
+// which is how the stale-entry direction is tested.
+const EXCUSED = "knowledge";
+const EXCUSED_PROFILE = `[info]\napp_id = "${EXCUSED}"\n\n[event_bus]\npublish = ["project.*"]\n`;
+
+function tree(profiles, { excused = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "bus-decl-"));
   mkdirSync(join(dir, PROFILES), { recursive: true });
+  if (excused) writeFileSync(join(dir, PROFILES, `${EXCUSED}.toml`), EXCUSED_PROFILE);
   for (const [name, body] of Object.entries(profiles)) {
     writeFileSync(join(dir, PROFILES, `${name}.toml`), body);
   }
@@ -71,6 +80,17 @@ const NO_BUS = '[info]\napp_id = "c"\n\n[graph]\nread = ["system.File.id"]\n';
 {
   const d = mkdtempSync(join(tmpdir(), "bus-decl-empty-"));
   check("an absent profile directory is an error, not a pass", run(d).code === 2);
+  rmSync(d, { recursive: true, force: true });
+}
+
+// The reverse direction, which is what keeps the excuse list honest: a name
+// excused from declaring `subscribe` that ships no profile at all is a stale
+// entry, and saying so is the difference between a list and a graveyard.
+{
+  const d = tree({ a: BOTH }, { excused: false });
+  const r = run(d);
+  check("an excuse for a component that ships nothing is caught", r.code === 1);
+  check("and the message says to delete the entry", r.out.includes("delete the entry"));
   rmSync(d, { recursive: true, force: true });
 }
 

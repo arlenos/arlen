@@ -76,12 +76,29 @@ OWN_TREE = len(sys.argv) <= 1
 REPO = Path(__file__).resolve().parents[2] if OWN_TREE else Path(sys.argv[1]).resolve()
 
 # The shipped profiles, under the uid of the user they apply to.
-PROFILE_DIR = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
+# EVERY uid directory, not just 1000. The bus looks a profile up under the
+# PEER's uid, so a root daemon's profile lives under 0 - and globbing one uid
+# meant the first such profile (the knowledge daemon's) was invisible to this
+# check while being perfectly live at runtime.
+PROFILE_DIR = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions"
 
 # Where an app id's source lives. DERIVED, not tabled: `dev.arlen.terminal` ->
 # `apps/terminal` or `daemons/terminal`. An id that resolves to no directory is
 # reported rather than skipped.
-SOURCE_ROOTS = ("apps", "daemons")
+SOURCE_ROOTS = ("apps", "daemons", "dev")
+
+# Ids whose source directory is not the id. A small hand table on purpose, with
+# the same discipline as OUT_OF_TREE: an id that resolves nowhere is REPORTED,
+# so an entry missing here is loud rather than silent, and the table cannot rot
+# into skipping something.
+DIR_ALIASES = {
+    "auditd": "daemons/audit-daemon",
+    "knowledge": "daemons/knowledge",
+    "notifyd": "daemons/notification-daemon",
+    "anomalyd": "daemons/anomaly-detector",
+    "clockd": "daemons/clock",
+    "powerd": "daemons/power-daemon",
+}
 
 # Components whose source is not in this tree. The compositor is its own repo, so
 # what it subscribes to cannot be read from here - carried with the reason rather
@@ -138,6 +155,9 @@ def granted(patterns: list[str], topic: str) -> bool:
 
 
 def source_dir(repo: Path, app_id: str) -> Path | None:
+    if app_id in DIR_ALIASES:
+        d = repo / DIR_ALIASES[app_id]
+        return d if d.is_dir() else None
     name = app_id.removeprefix("dev.arlen.")
     for root in SOURCE_ROOTS:
         d = repo / root / name
@@ -298,7 +318,7 @@ def subscriptions_of(
 
 
 def main() -> int:
-    profiles = sorted((REPO / PROFILE_DIR).glob("*.toml"))
+    profiles = sorted((REPO / PROFILE_DIR).glob("*/*.toml"))
     if not profiles:
         print(f"NOTHING WAS READ: no profiles under {REPO / PROFILE_DIR}", file=sys.stderr)
         return 2
