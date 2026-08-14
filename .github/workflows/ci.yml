@@ -219,6 +219,7 @@ jobs:
           node dev/scripts/check-catalogs.mjs
           node dev/scripts/check-i18n-reactivity.mjs
           python3 dev/scripts/check-invoke-shape.py
+          node dev/scripts/test-check-invoke-shape.mjs
           python3 dev/scripts/check-invoke-exists.py
           python3 dev/scripts/check-optimistic-write.py
           python3 dev/scripts/check-granted-and-used.py
