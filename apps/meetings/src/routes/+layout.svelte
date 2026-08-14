@@ -31,6 +31,7 @@
   import { Plus } from "lucide-svelte";
   import { t, dir } from "$lib/i18n/messages";
   import {
+    captureUnavailable,
     meetings,
     meetingsMocked,
     meetingsUnavailable,
@@ -53,7 +54,11 @@
 
   const path = $derived($page.url.pathname);
   const activeId = $derived(path.startsWith("/meeting/") ? path.slice("/meeting/".length) : null);
-  const capturing = $derived(path === "/capture");
+  // Being ON the capture route is not the same as capturing. The pill carries a
+  // red dot and the word "Recording", which is a claim about a microphone, and
+  // the URL knows nothing about one - so a refused capture showed the page's own
+  // "Recording did not start" beside a sidebar still saying Recording.
+  const capturing = $derived(path === "/capture" && !$captureUnavailable);
   // The surface title, said once: the recording surface, the open note or the app.
   const title = $derived(
     capturing ? $t("mt.newMeeting") : activeId && $meeting ? $meeting.note.title : $t("mt.title")

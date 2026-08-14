@@ -62,6 +62,11 @@ export const meetingsUnavailable = writable(false);
 /// True when a real session could not read the open meeting's note.
 export const noteUnavailable = writable(false);
 
+/// True when capture could not be started, so the surface must not claim to be
+/// recording. Its sibling one route over: a note that could not be read is not
+/// an empty note, and a capture that did not start is not a silent room.
+export const captureUnavailable = writable(false);
+
 /// Live capture state: the transcript as it streams in, the notes you type as the
 /// anchor, whether transcription is on (a separate, opt-outable step - recording
 /// and transcribing are different consents), and the elapsed time in ms.
@@ -303,14 +308,38 @@ function clearTimers(): void {
 /// Begin capturing. Live: the ASR feed fills `liveTranscript` (when transcription
 /// is on); under vite a dev stream reveals the fixture segments so the streaming
 /// experience shows. On-device, nothing joins the call.
-export function startCapture(): void {
+export async function startCapture(): Promise<void> {
   clearTimers();
   liveTranscript.set({ language: "en", segments: [] });
   liveNotes.set("");
   transcribe.set(true);
   elapsed.set(0);
-  invoke("meeting_start_capture").catch(() => {});
+  captureUnavailable.set(false);
+  // AWAITED, and nothing starts until it answers. The clock and the red dot used
+  // to start regardless: a refused capture showed a running recording of a
+  // meeting nothing was listening to, which is the worst thing this surface can
+  // say. Same defect the note route already fixed one door down.
+  try {
+    await invoke("meeting_start_capture");
+  } catch {
+    // Under vite there is no host at all, so a refusal here says nothing about
+    // capture - it says there is no Tauri, which is true of every command in
+    // this file and is why the others carry the same gate. The dev stream still
+    // runs so the streaming experience can be looked at; `?capture=refused`
+    // reaches THIS state deliberately, which is how it gets photographed.
+    const forced =
+      typeof location !== "undefined" &&
+      new URLSearchParams(location.search).get("capture") === "refused";
+    if (!import.meta.env.DEV || forced) {
+      captureUnavailable.set(true);
+      return;
+    }
+  }
   ticker = setInterval(() => elapsed.update((e) => e + 1000), 1000);
+  // DEV only, like every other fixture in this file - and unlike this one, which
+  // was not gated. On metal it streamed invented sentences about a KG lens into
+  // a real meeting's live transcript while the person watched it fill in.
+  if (!import.meta.env.DEV) return;
   const seg = [...FIXTURE.note.transcript.segments];
   let i = 0;
   streamer = setInterval(() => {
