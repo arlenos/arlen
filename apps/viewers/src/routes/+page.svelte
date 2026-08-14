@@ -15,6 +15,15 @@
   import { tauriAvailable } from "$lib/tauri";
 
   let demo = $derived(page.url.searchParams.get("demo") ?? "audio");
+  /// DEV: pin a failure state so it can be looked at. Both are reachable only
+  /// from a real backend, so until this existed the two branches that carry the
+  /// app's honesty - "could not open" and "nothing open" - were the only ones
+  /// nobody had ever seen. The `noFile` comment below records that its defect was
+  /// found by looking; this is what makes looking possible again.
+  ///
+  /// DEV-gated like the clock's `?nowake`: a shipped viewer must not be talkable
+  /// into showing a failure that did not happen.
+  const pinnedState = import.meta.env.DEV ? page.url.searchParams.get("state") : null;
   let w = $derived(Number(page.url.searchParams.get("w")));
   let h = $derived(Number(page.url.searchParams.get("h")));
   let framed = $derived(!!page.url.searchParams.get("w") && !!page.url.searchParams.get("h"));
@@ -44,11 +53,42 @@
   // which says so. Found on 9 August in the first desktop-width sweep.
   let noFile = $state(false);
 
+  /// Whether a failure message is machinery talking rather than something for a
+  /// person. A decoder's own words are worth showing - "unsupported JPEG
+  /// progressive scan" tells someone what is wrong with their file - but a JS
+  /// runtime error names an internal and offers nothing to do about it.
+  ///
+  /// The same predicate as `readsAsInternal` in ui-kit's `FileBrowser`, which
+  /// learned it by greeting a user with "TypeError: undefined is not an object
+  /// (evaluating 'window.__TAURI_INTERNALS__.invoke')" in the middle of the pane.
+  /// Copied rather than shared because it lives inside that component and the
+  /// viewer does not depend on the browser module; if a third app needs it, that
+  /// is the moment it moves somewhere both can reach.
+  function readsAsInternal(message: string): boolean {
+    return /\b(TypeError|ReferenceError|SyntaxError)\b|undefined is not|is not a function|window\.__/.test(
+      message,
+    );
+  }
+
   function basename(p: string): string {
     return p.split("/").filter(Boolean).pop() ?? p;
   }
 
   onMount(async () => {
+    if (pinnedState === "load-error") {
+      loadError = "decode-image: unsupported JPEG progressive scan";
+      return;
+    }
+    if (pinnedState === "internal-error") {
+      // The half that has to be SUPPRESSED, so the guard can be seen working and
+      // not just read.
+      loadError = "TypeError: undefined is not an object (evaluating 'window.__TAURI_INTERNALS__.invoke')";
+      return;
+    }
+    if (pinnedState === "no-file") {
+      noFile = true;
+      return;
+    }
     if (!tauriAvailable) return;
     let path: string | null = null;
     try {
@@ -108,7 +148,11 @@
 {:else if loaded?.kind === "audio"}
   <div class="fill"><AudioPlayer file={loaded.file} /></div>
 {:else if loadError}
-  <div class="fill err">{$t("v.couldNotOpen", { reason: loadError })}</div>
+  <div class="fill err">
+    {readsAsInternal(loadError)
+      ? $t("v.couldNotOpenUnknown")
+      : $t("v.couldNotOpen", { reason: loadError })}
+  </div>
 {:else if noFile}
   <!-- Before the demo branches on purpose: in the real shell an empty window is
        an empty window, and the sample below is for the harness and the browser. -->

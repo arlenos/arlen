@@ -39,6 +39,7 @@ const messages: Catalogs = {
     "v.showInFiles": "Show in Files",
     "v.copy": "Copy",
     "v.couldNotOpen": "Could not open this file: {$reason}",
+    "v.couldNotOpenUnknown": "Could not open this file.",
     "v.nothingOpen": "No file is open.",
   },
   de: {
@@ -72,6 +73,7 @@ const messages: Catalogs = {
     "v.showInFiles": "In Dateien zeigen",
     "v.copy": "Kopieren",
     "v.couldNotOpen": "Diese Datei konnte nicht geöffnet werden: {$reason}",
+    "v.couldNotOpenUnknown": "Diese Datei konnte nicht geöffnet werden.",
     "v.nothingOpen": "Es ist keine Datei geöffnet.",
   },
 };
