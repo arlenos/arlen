@@ -10,6 +10,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
+    "term.app.title": "Terminal",
     "term.commandInput": "Command input",
     "term.err.newSessionFailed": "The session service may not be running.",
     "term.err.newSessionRefused": "A new session did not open. The session service may not be running.",
@@ -92,6 +93,8 @@ const messages: Catalogs = {
     "term.menu.ask": "Ask the agent about this block…",
   },
   de: {
+    "term.app.title": "Terminal",
+
     "term.qa.newSession": "Neue Sitzung (Strg+T)",
     "term.qa.history": "Verlauf (Strg+R)",
     "term.commandInput": "Befehlseingabe",

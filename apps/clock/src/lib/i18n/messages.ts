@@ -6,6 +6,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
+    "c.app.title": "Clock",
     "c.title": "Clock",
     "c.tabs": "Clock surfaces",
     "c.tab.alarms": "Alarms",
@@ -77,6 +78,8 @@ const messages: Catalogs = {
     "c.wo.offset": "{$sign}{$hours} h, {$day}",
   },
   de: {
+    "c.app.title": "Uhr",
+
     "c.title": "Uhr",
     "c.tabs": "Uhr-Flächen",
     "c.tab.alarms": "Wecker",

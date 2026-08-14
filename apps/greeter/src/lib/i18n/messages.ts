@@ -17,6 +17,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
+    "g.app.title": "Sign in",
     "g.a11y": "Accessibility",
     "g.a11y.highContrast": "High contrast",
     "g.a11y.largerText": "Larger text",
@@ -47,6 +48,8 @@ const messages: Catalogs = {
     "g.starting": "Starting",
   },
   de: {
+    "g.app.title": "Anmelden",
+
     "g.a11y": "Barrierefreiheit",
     "g.a11y.highContrast": "Hoher Kontrast",
     "g.a11y.largerText": "Größere Schrift",

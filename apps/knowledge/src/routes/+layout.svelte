@@ -20,6 +20,14 @@
     void initArlenLocale();
     void initArlenTheme();
   });
+  import { t } from "$lib/i18n/messages";
 </script>
+
+<svelte:head>
+  <!-- The document title: what a screen reader announces for the window
+       and what a task switcher shows. Every Arlen app was missing one,
+       which axe reports as `document-title` on every surface. -->
+  <title>{$t("k.app.title")}</title>
+</svelte:head>
 
 {@render children()}

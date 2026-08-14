@@ -14,6 +14,7 @@ const P = (input: string, one: string, other: string) =>
 
 const messages: Catalogs = {
   en: {
+    "f.app.title": "Files",
     "f.places.places": "Places",
     "f.loc.recent": "Recent",
     "f.loc.trash": "Trash",
@@ -328,6 +329,8 @@ const messages: Catalogs = {
     "f.rename.confirm": P("changing", "Rename {$changing} file", "Rename {$changing} files"),
   },
   de: {
+    "f.app.title": "Dateien",
+
     "f.places.places": "Orte",
     "f.loc.recent": "Zuletzt",
     "f.loc.trash": "Papierkorb",
