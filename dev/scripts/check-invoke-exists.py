@@ -164,16 +164,100 @@ def indirect_calls(text: str) -> tuple[set[str], set[str]]:
     # `findall` would yield tuples.
     wrapped: set[str] = set()
     for wm in WRAPPER.finditer(text):
-        wrapper = wm.group(1)
-        for m in re.finditer(rf"\b{re.escape(wrapper)}\s*\(\s*(\"[^\"]+\"|'[^']+')", text):
-            wrapped.add(m.group(1)[1:-1])
+        wrapper, params = wm.group(1), wm.group(2)
+        body = braced(text, text.find("{", wm.end() - 1))
+        # The body is taken by BRACE MATCHING, not by a pattern that stops at the
+        # first `}`. The editor's hunk driver opens a callback before it reaches
+        # `invoke`, so a stop-at-the-first-brace scan saw no forwarding at all and
+        # three unregistered commands read as uncalled. Two different reasons for
+        # the same green, in one function.
+        fm = re.search(r"\binvoke\s*(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\(\s*(\w+)\b", body)
+        if not fm:
+            continue
+        names = [q.strip().split(":")[0].strip() for q in split_args(params)]
+        if fm.group(1) not in names:
+            continue
+        # WHICH parameter, not "the first". `driveHunk(index, next, cmd, failure)`
+        # takes the command third, so a first-argument rule read its call sites as
+        # no call at all.
+        at = names.index(fm.group(1))
+        for m in re.finditer(rf"\b{re.escape(wrapper)}\s*\(", text):
+            args = split_args(braced(text, m.end() - 1))
+            if len(args) <= at:
+                continue
+            arg = args[at].strip()
+            if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in "\"'":
+                wrapped.add(arg[1:-1])
     return assigned, wrapped
-# A function whose body passes its own first parameter to `invoke`: the helper
-# every command in that file goes through. Captures the helper's name.
-WRAPPER = re.compile(
-    r"(?:async\s+)?function\s+(\w+)\s*\(\s*(\w+)[^)]*\)[^{]*\{[^}]*?\binvoke\s*\(\s*\2\b",
-    re.S,
-)
+
+
+def braced(text: str, open_at: int) -> str:
+    """The text inside a balanced bracket pair starting at `open_at`.
+
+    Empty when the bracket is missing or never closes, so a truncated or
+    unparsable file yields nothing rather than a wrong span - which for the
+    strict direction would harvest the wrong literal and manufacture a finding.
+    """
+    if open_at < 0 or open_at >= len(text) or text[open_at] not in "([{":
+        return ""
+    depth, i = 0, open_at
+    while i < len(text):
+        c = text[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                return text[open_at + 1 : i]
+        i += 1
+    return ""
+
+
+def split_args(text: str) -> list[str]:
+    """Split an argument list on TOP-LEVEL commas.
+
+    Naive `split(",")` would cut inside `{ a: 1, b: 2 }` and inside a nested
+    call, and the position this feeds is only right if the count is. Quotes are
+    tracked too, so a comma inside a string does not shift every argument after
+    it by one - which would harvest the wrong literal and manufacture a finding.
+    """
+    out, depth, quote, cur = [], 0, "", []
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if quote:
+            if c == "\\":
+                cur.append(c)
+                i += 1
+                if i < len(text):
+                    cur.append(text[i])
+                    i += 1
+                continue
+            if c == quote:
+                quote = ""
+        elif c in "\"'`":
+            quote = c
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
+        i += 1
+    out.append("".join(cur))
+    return out
+# A function whose body passes one of its own parameters to `invoke`: the helper
+# every command in that file goes through. Captures the helper's name, its whole
+# parameter list, and the parameter that reaches `invoke` - the caller then reads
+# the literal at THAT position rather than assuming the first.
+# Only the `function` form. An arrow helper (`const send = async (cmd) => ...`)
+# is not matched, and that is a stated limit rather than a silent one: it would
+# read as uncalled, which is the direction that costs nothing.
+WRAPPER = re.compile(r"(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)", re.S)
 
 HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
 
@@ -288,14 +372,20 @@ KNOWN: dict[str, dict[str, str]] = {
         "store_update_all_routine": "update all (arlen-ui's lane)",
     },
     "text-editor": {
-        # Its blocker was never written down, and it is not a small one. The
-        # store's own header names the whole path: `ai_edit` -> ACT-layer proxy ->
-        # the gate via the gate-class registry -> execute -> compensation store ->
-        # HMAC audit, plus per-hunk apply and undo, all behind pi's executor-live.
-        # The command is the front door of that, not a wrapper over a model call -
-        # the proposal it returns carries a gate class per hunk, which only means
-        # something once the gate is deciding them.
-        "ai_edit": "proposing an assistant edit (the gated edit path, executor-live)",
+        "ai_edit": (
+            "proposing an assistant edit (the gated edit path, executor-live)"
+        ),
+        # The three below are the same unbuilt path's accept / reject / undo, and
+        # they became visible only when the wrapper hop learned to follow a
+        # command that arrives at a helper's THIRD parameter. They are unreachable
+        # rather than broken: `proposeEdit` catches the missing `ai_edit`, sets
+        # `unavailable`, and the review renders no hunks - so there is no button to
+        # press. They land with `ai_edit`, and if that one is ever registered
+        # without them the review gets an Accept that throws, which is why they are
+        # written down separately instead of folded into its line.
+        "ai_edit_accept": "applying one reviewed hunk; unreachable until `ai_edit` exists",
+        "ai_edit_reject": "holding one reviewed hunk back; unreachable until `ai_edit` exists",
+        "ai_edit_undo": "compensating an applied hunk; unreachable until `ai_edit` exists",
     },
 }
 

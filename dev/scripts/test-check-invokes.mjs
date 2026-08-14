@@ -212,6 +212,52 @@ check(
   (code, out) => code === 1 && out.includes("open_thnig"),
 );
 
+// The two ways the wrapper hop was blind, both found in the text editor and both
+// green at the time. A first-argument rule and a stop-at-the-first-brace body scan
+// each read three unregistered commands as no call at all, so the gate reported
+// nothing about a review panel that throws on every button.
+check(
+  "a command at a wrapper's LATER parameter is followed too",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      "async function drive(index: number, cmd: string) { await invoke(cmd, { index }); }\n" +
+      'await drive(1, "open_thnig");\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code === 1 && out.includes("open_thnig"),
+);
+
+check(
+  "a wrapper that opens a block before its invoke is still followed",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      "async function drive(cmd: string) {\n" +
+      "  store.update((p) => { return p; });\n" +
+      "  await invoke(cmd);\n" +
+      "}\n" +
+      'await drive("open_thnig");\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code === 1 && out.includes("open_thnig"),
+);
+
+// The boundary for the position rule: an argument that is not at the forwarded
+// parameter's index must not be harvested. Without this, a helper taking a label
+// beside its command would turn every label into a command that needs a host.
+check(
+  "an argument beside the forwarded one is not read as a command",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      "async function drive(cmd: string, label: string) { await invoke(cmd, { label }); }\n" +
+      'await drive("open_thing", "Some Label");\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code === 0 && !out.includes("Some Label"),
+);
+
 check(
   "an app with no host at all does not crash the gate",
   tree({
