@@ -78,16 +78,37 @@ static WINDOW_HEADER_RECTS: Mutex<Vec<HeaderRect>> = Mutex::new(Vec::new());
 /// Calls `input_shape_combine_region` directly on the `gtk::Window`
 /// obtained via `webview.inner().toplevel()` -- the same surface that
 /// `layer_shell.rs` configures.
+/// Apply an input-region mode to the bar's GTK surface.
+///
+/// WHAT THIS CAN AND CANNOT TELL A CALLER, because a whole night of frontend work
+/// was built on the wrong assumption about it. The commands above return `()`, so
+/// an `invoke` of them resolves whatever happens here - the frontend can learn
+/// that the command is missing, and nothing else. Every giving-up path below was
+/// additionally silent, so a shell whose surface never took the region logged
+/// nothing and told nobody.
+///
+/// They now warn. That is the honest half: a region that did not apply is a
+/// surface whose clicks fall through to the window behind, and the log is the
+/// only place that fact can currently appear. Reporting it back to the caller
+/// needs `with_webview`'s closure outcome, which runs on the webview thread and
+/// does not return through this call - a real change, not a 6am one.
 fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
     let Some(w) = app.get_webview_window("main") else {
+        log::warn!("set_input_region: no main window, the region was NOT applied");
         return;
     };
-    let _ = w.with_webview(move |webview| {
+    if let Err(e) = w.with_webview(move |webview| {
         use gtk::prelude::{Cast, WidgetExt};
         use gtk::cairo::{RectangleInt, Region};
 
-        let Some(toplevel) = webview.inner().toplevel() else { return };
-        let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else { return };
+        let Some(toplevel) = webview.inner().toplevel() else {
+            log::warn!("set_input_region: no toplevel, the region was NOT applied");
+            return;
+        };
+        let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else {
+            log::warn!("set_input_region: toplevel is not a GtkWindow, the region was NOT applied");
+            return;
+        };
 
         let region = match mode {
             InputRegionMode::FullScreen => {
@@ -155,7 +176,9 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
         if let Some(display) = gtk::gdk::Display::default() {
             display.flush();
         }
-    });
+    }) {
+        log::warn!("set_input_region: with_webview failed ({e}), the region was NOT applied");
+    }
 }
 
 /// Tauri command called from `windowHeaders.ts` whenever the header
