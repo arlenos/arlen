@@ -19,22 +19,34 @@
   let supported = $state(false);
   let writeTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /// Reads the position off the hardware. The backlight owns the value, so this
+  /// is what settles the slider - both on mount and after a write, because
+  /// `arlen://brightness-changed` is emitted by the Fn-key path only and says
+  /// nothing about whether the slider's own write landed.
+  async function readHardware(): Promise<void> {
+    try {
+      const dev = await invoke<{
+        name: string;
+        max: number;
+        current: number;
+        kind: string;
+      } | null>("brightness_get_primary");
+      if (!dev) {
+        supported = false;
+        return;
+      }
+      supported = true;
+      device = dev.name;
+      const linear = dev.max > 0 ? dev.current / dev.max : 0;
+      // Inverse gamma curve so the slider position matches perception.
+      percent = Math.round(Math.pow(linear, 1 / 2.2) * 100);
+    } catch {
+      supported = false;
+    }
+  }
+
   onMount(() => {
-    invoke<{ name: string; max: number; current: number; kind: string } | null>(
-      "brightness_get_primary",
-    )
-      .then((dev) => {
-        if (!dev) {
-          supported = false;
-          return;
-        }
-        supported = true;
-        device = dev.name;
-        const linear = dev.max > 0 ? dev.current / dev.max : 0;
-        // Inverse gamma curve so the slider position matches perception.
-        percent = Math.round(Math.pow(linear, 1 / 2.2) * 100);
-      })
-      .catch(() => (supported = false));
+    void readHardware();
 
     let stop: UnlistenFn | null = null;
     listen<{ device: string; fraction: number }>(
@@ -57,11 +69,15 @@
     const dev = device;
     const fraction = value / 100;
     writeTimer = setTimeout(() => {
+      // Settle on the hardware afterwards. Dragging moves the handle first
+      // because anything else feels broken, but that position is a guess until
+      // the backlight confirms it - and a refused write used to leave the
+      // slider sitting at a brightness the screen never had.
       void shellAction(
         "brightness_set",
         { device: dev, value: fraction },
         "sh.tile.errBrightness",
-      );
+      ).then(() => void readHardware());
     }, 32);
   }
 </script>

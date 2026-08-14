@@ -50,13 +50,13 @@
     writeTimer = setTimeout(() => {
       // The slider has already moved, so a refused write leaves it showing a
       // volume the sink is not at; `refresh` puts it back and the toast names it.
+      // The slider moved before the write, which is what makes dragging feel
+      // right - but the sink is the owner, so it settles the value either way.
       void shellAction(
         "set_audio_volume",
         { volume: Math.round(value) },
         "sh.tile.errAudio",
-      ).then((ok) => {
-        if (!ok) void refresh();
-      });
+      ).then(() => void refresh());
     }, 32);
   }
 

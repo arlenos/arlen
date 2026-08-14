@@ -111,10 +111,13 @@ export async function activateFocus(project: Project): Promise<boolean> {
     // successful one: the launcher shuts, the chip never appears, and nothing in
     // between explains it. The toast is the channel for precisely this - the
     // surface that started the action is gone before the answer arrives.
-    focusState.set({ ...EMPTY_FOCUS });
-    removeFocusAccent();
     console.error("[projects] activate focus failed:", e);
     toast.error(get(t)("sh.focus.errActivate"));
+    // RE-READ rather than assume. Clearing the state was a guess that the daemon
+    // is where it was before, and a guess is what put the shell and the daemon
+    // out of step in the first place: the daemon owns the focus, so it answers
+    // what the focus is.
+    await reconcileFocus();
     return false;
   }
 }
@@ -126,13 +129,37 @@ export async function deactivateFocus(): Promise<boolean> {
     await invoke("deactivate_focus");
     return true;
   } catch (e) {
-    // The state is already cleared, so the chip is gone and the accent is back -
-    // but the daemon still holds the focus, which means notifications stay
-    // suppressed while the shell shows no reason for it. The most confusing of
-    // the three, and the one most worth a word.
+    // This was the worst divergence in the sweep: the shell cleared its state
+    // while the daemon kept the focus, so notifications stayed suppressed and
+    // nothing on screen said why - a person simply stops being told things.
+    // Re-reading puts the chip back if the focus is still on, which is both the
+    // truth and the only way they can see it is still on.
     console.error("[projects] deactivate focus failed:", e);
     toast.error(get(t)("sh.focus.errDeactivate"));
+    await reconcileFocus();
     return false;
+  }
+}
+
+/// Ask the daemon what the focus actually is, and render that.
+///
+/// The shell keeps an optimistic copy so the UI reacts before the invoke returns,
+/// which is fine while the command succeeds. On a refusal the copy is a guess -
+/// so this replaces it with the owner's answer. If even the re-read fails, the
+/// state is left ALONE rather than cleared: an unknown focus rendered as "off"
+/// is the same claim that made this worth fixing.
+async function reconcileFocus(): Promise<void> {
+  try {
+    const state = await invoke<FocusState | null>("get_focus_state");
+    if (state?.projectId) {
+      focusState.set(state);
+      applyFocusAccent(state.accentColor);
+    } else {
+      focusState.set({ ...EMPTY_FOCUS });
+      removeFocusAccent();
+    }
+  } catch (e) {
+    console.error("[projects] focus reconcile failed:", e);
   }
 }
 

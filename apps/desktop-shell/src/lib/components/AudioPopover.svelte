@@ -114,6 +114,10 @@
     invoke("set_app_volume", { id, volume: val }).catch(() => { error = "sh.audio.errChange"; });
   }
   function toggleDnd() {
+    // The daemon owns do-not-disturb; `dndState` is fed by its own event, so a
+    // refused change needs no local guess - the store still holds what the daemon
+    // last said, and the toast names the failure. Nothing to revert because
+    // nothing was assumed.
     setDnd(dndOn ? "off" : "priority").catch(() => {
       error = "sh.audio.errChange";
     });

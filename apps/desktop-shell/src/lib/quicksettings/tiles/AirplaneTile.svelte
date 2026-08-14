@@ -28,9 +28,12 @@
   }
 
   async function handleClick() {
-    if (await shellAction("set_airplane_mode", { enabled: !on }, "sh.tile.errAirplane")) {
-      on = !on;
-    }
+    await shellAction("set_airplane_mode", { enabled: !on }, "sh.tile.errAirplane");
+    // Re-read either way. On success the flip was a guess that happened to be
+    // right; on refusal it would have been a guess that was wrong. The rfkill
+    // state is the owner, so it answers - and the tile shows what is true rather
+    // than what was attempted.
+    await refresh();
   }
 </script>
 
