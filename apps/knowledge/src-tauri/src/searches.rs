@@ -87,7 +87,18 @@ pub async fn knowledge_search_save(search: SavedSearch) -> Result<Vec<SavedSearc
         return Err("a saved search needs a name".into());
     }
     let path = store_path().ok_or_else(|| "no state directory".to_string())?;
-    let mut list = knowledge_searches().await.unwrap_or_default();
+    // PROPAGATED, not defaulted. `knowledge_searches` already tells an absent
+    // file (`Ok(vec![])` - a person who has saved nothing has saved nothing) from
+    // one it could not read (`Err`), and `unwrap_or_default` threw that
+    // distinction away: an unreadable file started this list EMPTY and the rename
+    // below put it over the real one, so a permissions blip or a corrupt byte
+    // deleted every saved search and reported success with one entry in it.
+    //
+    // The comment on that rename says a half-file must not read as "you have
+    // saved nothing". This is the same sentence about the read.
+    let mut list = knowledge_searches()
+        .await
+        .map_err(|e| format!("not saved, because the existing list could not be read: {e}"))?;
     list.retain(|s| s.id != search.id);
     list.insert(0, search);
     list.truncate(MAX_SAVED);
@@ -111,6 +122,13 @@ pub async fn knowledge_search_save(search: SavedSearch) -> Result<Vec<SavedSearc
 mod tests {
     use super::*;
 
+    /// These tests each point `XDG_STATE_HOME` at their own directory, and cargo
+    /// runs them on threads of one process - so without this they set the SAME
+    /// variable underneath each other, and one test's `remove_dir_all` pulls the
+    /// store out from under another mid-write. Adding the second test is what
+    /// surfaced it; the first had simply never had company.
+    static STATE_DIR: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn search(id: &str, name: &str) -> SavedSearch {
         SavedSearch {
             id: id.into(),
@@ -122,6 +140,7 @@ mod tests {
 
     #[tokio::test]
     async fn saving_reads_back_and_replaces_by_id() {
+        let _serial = STATE_DIR.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("arlen-searches-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // SAFETY: the test owns its own temp state dir; no other thread reads it.
@@ -141,6 +160,35 @@ mod tests {
 
         let read_back = knowledge_searches().await.unwrap();
         assert_eq!(read_back, list, "what is on disk is what was returned");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A save that cannot read the existing list must refuse, not replace it.
+    ///
+    /// The write is a read-modify-rename, so defaulting the read to empty made
+    /// the rename an erase: one unreadable byte and every saved search was gone,
+    /// with `Ok` returned and one entry in the list to prove it "worked". The
+    /// corrupt file is left exactly as it was, which is what makes it
+    /// recoverable.
+    #[tokio::test]
+    async fn a_save_refuses_rather_than_overwrite_a_list_it_cannot_read() {
+        let _serial = STATE_DIR.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("arlen-searches-corrupt-{}", std::process::id()));
+        let store = dir.join("arlen/knowledge");
+        std::fs::create_dir_all(&store).unwrap();
+        // SAFETY: the test owns its own temp state dir; no other thread reads it.
+        unsafe { std::env::set_var("XDG_STATE_HOME", &dir) };
+
+        let path = store.join("saved-searches.json");
+        std::fs::write(&path, b"{ this is not the list }").unwrap();
+
+        let err = knowledge_search_save(search("a", "First")).await.unwrap_err();
+        assert!(err.contains("could not be read"), "says why it refused: {err}");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"{ this is not the list }",
+            "the unreadable file is untouched, so it can still be recovered"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
