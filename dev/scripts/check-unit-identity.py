@@ -90,6 +90,16 @@ def derived_from_binary(exe: str) -> str:
 # Table entries whose id deliberately differs from the binary convention, each
 # with the reason. Anything not listed here must agree.
 BINARY_DEVIATIONS = {
+    "arlen-graph.service": (
+        "knowledge",
+        "the daemon's binary is `arlen-graph-daemon` and its id is `knowledge`, a "
+        "split the resolver already carries explicitly (an arm in identity.rs maps "
+        "/usr/bin/arlen-graph-daemon -> knowledge) - so both resolvers DO agree; "
+        "what disagrees is the binary's name, which is the graph-versus-knowledge "
+        "naming question this tree has carried for months and which is Tim's to "
+        "settle. Recording it here rather than renaming either side keeps the "
+        "deviation visible instead of resolving it by accident",
+    ),
     "arlen-ai-engine-daemon.service": (
         "ai-agent",
         "the daemon is the AI agent; `ai-engine-daemon` is the unit's name for it "

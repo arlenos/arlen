@@ -69,6 +69,14 @@ function withTree(mutate) {
   check("and the message names the unit", r.out.includes("arlen-newthing.service"));
 }
 
+// Both fixtures below inject into the SYSTEM table, so they anchor on a unit
+// that is unambiguously in it. They used to anchor on `arlen-timeline.service`,
+// which moved to the per-user table on 15 Aug - the replace still matched, the
+// injected entry landed in the wrong table, and both cases failed on the message
+// rather than on the behaviour. Anchoring on the event bus, which is a system
+// unit by nature, is what keeps that from happening again.
+const SYSTEM_ANCHOR = '("arlen-event-bus.service", "event-bus"),';
+
 // An entry for a unit that no longer ships: coverage that cannot fire.
 {
   const r = withTree((dir) => {
@@ -76,8 +84,8 @@ function withTree(mutate) {
     writeFileSync(
       p,
       readFileSync(p, "utf8").replace(
-        '("arlen-timeline.service", "timeline"),',
-        '("arlen-timeline.service", "timeline"),\n    ("arlen-gone.service", "gone"),',
+        SYSTEM_ANCHOR,
+        `${SYSTEM_ANCHOR}\n    ("arlen-gone.service", "gone"),`,
       ),
     );
   });
@@ -93,8 +101,8 @@ function withTree(mutate) {
     writeFileSync(
       p,
       readFileSync(p, "utf8").replace(
-        '("arlen-timeline.service", "timeline"),',
-        '("arlen-timeline.service", "timeline"),\n    ("arlen-llama.service", "llama"),',
+        SYSTEM_ANCHOR,
+        `${SYSTEM_ANCHOR}\n    ("arlen-llama.service", "llama"),`,
       ),
     );
   });

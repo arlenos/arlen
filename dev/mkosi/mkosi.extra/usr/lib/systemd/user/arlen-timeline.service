@@ -15,10 +15,24 @@ RestartSec=2
 # SUT system topology (matches arlen-graph's 10-system-sut.conf): the daemon's
 # read socket on /run/arlen and the timeline mount under the StateDirectory, not
 # the per-user ~/.timeline.
-Environment=ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock
-Environment=ARLEN_TIMELINE_MOUNT=/var/lib/arlen/timeline
+Environment=ARLEN_DAEMON_SOCKET=/run/user/%U/arlen/knowledge.sock
+# Back to ~/.timeline, which is where the feature was designed to live and where
+# a person looks for it. It moved to /var/lib/arlen/timeline when this was a
+# SYSTEM unit and ProtectHome fenced the home directory off; as a user service
+# mounting into its own home there is nothing to fence.
+Environment=ARLEN_TIMELINE_MOUNT=%h/.timeline
+# PIN THE BUS SOCKETS, because the default is now wrong for this unit. The SDK
+# resolves an unset socket to `$XDG_RUNTIME_DIR/arlen/`, which is right for a user
+# service - and the event bus is still a SYSTEM unit binding `/run/arlen/`. Left
+# unset, the writer would dial a path nothing binds and retry forever, which is a
+# knowledge graph that stays empty while every log line looks healthy.
+#
+# These come out when the bus moves per-user, which is the second half of this
+# job; until then they are what makes the halves fit together.
+Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+
 Environment=RUST_LOG=info
-StateDirectory=arlen
 
 # This is the UNFENCED helper by design (same-uid-isolation-plan.md option b):
 # the FUSE mount needs the SUID fusermount3, so NoNewPrivileges must stay false

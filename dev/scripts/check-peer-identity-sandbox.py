@@ -172,6 +172,24 @@ def runs_as_root_with_ptrace(text, system_unit):
 
 # name -> why it is carried. Empty is the state to aim for.
 KNOWN = {
+    "arlen-graph": (
+        "ARRIVED 15 Aug WITH THE PER-USER MOVE, and it is the same defect as the "
+        "undo signer's below rather than a new one. As a SYSTEM unit this daemon "
+        "read its peers' /proc fine - not because its sandbox was weaker, but "
+        "because it ran as root, and the refusal this check describes falls on "
+        "non-root readers. Measured on the 14 Aug boot: the event bus (system, "
+        "root) resolved every peer it saw while the undo signer (user, uid 1000) "
+        "refused every one, on identical targets.\n"
+        "    So moving it under the user manager, which the product needs, costs "
+        "it the root exemption it was silently relying on. That is worth stating "
+        "plainly: the per-user topology and /proc-based peer identity cannot both "
+        "be had, and the second is the one that has to go.\n"
+        "    Carried rather than fixed here because the fix is the same one the "
+        "signer waits on - a launcher stamp producer - and inventing a second "
+        "route for this one daemon would leave two identity paths to reason "
+        "about. What it costs meanwhile: the graph's read-scope gate cannot name "
+        "its callers, so it falls back to whatever an unresolved peer gets."
+    ),
     "arlen-ai-undo-signer": (
         "the live instance of this defect, found 10 Aug: it refuses every caller "
         "on the image. Dropping the hardening is not the fix (it holds the undo "
