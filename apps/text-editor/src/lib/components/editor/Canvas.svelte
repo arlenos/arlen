@@ -215,7 +215,10 @@
     text-underline-offset: 2px;
   }
   :global(.md-url) {
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    /* 50, measured: at 45% this is #797979 on the editor's background for 4.40,
+       under the 4.5 floor at 16px. The URL is meant to recede behind the link
+       text, and it still does - 132 grey against the 250 of `.md-link`. */
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 
   /* Fenced code: a line-number gutter + tonal (monochrome) highlighting. */
@@ -233,7 +236,12 @@
     right: 0.75rem;
     font-size: var(--text-2xs);
     letter-spacing: 0.03em;
-    color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
+    /* Measured against the code block's OWN surface, not the page: the block is
+       4% of the foreground over the background, so #181818 rather than #0f0f0f,
+       and a mix on it comes out lighter than the same mix on the page. At 35%
+       this label sat at 3.14; 50% gives 5.08. Worth doing the arithmetic per
+       surface rather than reusing the page's number. */
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .code-body {
     display: flex;
@@ -277,7 +285,11 @@
     color: var(--syntax-num, #c9a877);
   }
   :global(.tok-comment) {
-    color: var(--syntax-comment, color-mix(in srgb, var(--color-fg-primary) 38%, transparent));
+    /* The FALLBACK is ours and was 38% - about 3.4 on the block's surface. A
+       theme that sets `--syntax-comment` owns its own ratio; ours has to clear
+       the floor on its own. Comments still read as the dimmest thing in the
+       block: 137 grey against the 250 of code text. */
+    color: var(--syntax-comment, color-mix(in srgb, var(--color-fg-primary) 50%, transparent));
     font-style: italic;
   }
 

@@ -108,7 +108,7 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 
   .prov {
@@ -142,7 +142,7 @@
   }
   .prov-when {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 
   .rel {
@@ -180,7 +180,7 @@
   .empty {
     margin: 0;
     font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 
   .proj-name {
