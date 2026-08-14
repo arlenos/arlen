@@ -89,7 +89,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .kn-group-first {
     padding-top: 0.35rem;
@@ -122,11 +122,11 @@
   .kn-caret {
     margin-inline-start: auto;
     display: inline-flex;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .kn-linkout-note {
     padding: 0.05rem 0.5rem 0;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 </style>

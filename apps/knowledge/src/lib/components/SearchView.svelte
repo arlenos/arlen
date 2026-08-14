@@ -327,7 +327,7 @@
   }
   .se-matchline {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .se-save {
     display: inline-flex;
@@ -368,7 +368,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 
   /* Result rows: type tag, emphasized title, quiet context, tabular time. */
@@ -425,7 +425,7 @@
     gap: 0.4rem;
     min-width: 0;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -442,7 +442,7 @@
     justify-self: end;
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     white-space: nowrap;
   }
 </style>
