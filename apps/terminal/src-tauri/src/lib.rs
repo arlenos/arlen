@@ -21,6 +21,7 @@ use arlen_terminal_engine::PtyEngine;
 use os_sdk::graph::ReadOutcome;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod accessibility;
 mod capability;
 mod url;
 
@@ -797,6 +798,9 @@ pub fn run() {
             // here so it exists for the app's whole life; it serves only what a
             // valid consent token covers.
             spawn_read_listener(app.handle().clone());
+            // The session's accessibility flag, so the grid can build its
+            // screen-reader mirror when somebody needs it.
+            accessibility::start(app.handle().clone());
             Ok(())
         })
         .manage(Mutex::new(SessionRegistry {
