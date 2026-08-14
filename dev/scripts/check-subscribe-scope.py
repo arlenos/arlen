@@ -59,6 +59,22 @@ had reported as an unused grant - `tauri-plugin-shell` subscribes them from a
 private function that Tauri's plugin init calls, so no amount of reading the
 app's source finds them. Three profiles were wrong at once.
 
+THE PUBLISH SIDE HAS THE SAME BLIND SPOT AND NO STATIC FIX, which is worth
+stating rather than leaving to be rediscovered. The first enforce boot of the
+publish half (14 Aug) denied three topics no scan here could have found: one
+COMPOSED at runtime (`format!("audit.ai.{}", ...)`, a string that does not exist
+in the source), one built as a STRUCT LITERAL rather than passed to an emit call
+(`r#type: "permission.changed"`), and one emitted by an SDK helper a plugin holds
+and the FRONTEND drives through a Tauri command, so there is no Rust call site at
+all.
+
+I tried the symmetric plugin pass for publishes and threw it away: crediting an
+app with every topic its plugin's helpers CAN emit demanded grants for things
+apps never send, and a profile inflated with unused grants stops meaning
+"least privilege". The subscribe side has a signal that separates involuntary
+from optional (a private fn); the publish side does not. So a boot with enforce
+on is the oracle for publishes, and this check is the cheap first pass.
+
 WHAT THIS STILL CANNOT SEE: it matches the two literal shapes the tree uses today
 (a `subscribe(vec![...])` call and a comma-joined `SUBSCRIPTIONS` const). A
 subscription assembled at runtime from config escapes it. That is why finding
@@ -104,7 +120,10 @@ DIR_ALIASES = {
 # what it subscribes to cannot be read from here - carried with the reason rather
 # than reported every run as a derivation failure.
 OUT_OF_TREE = {
-    "arlen-compositor": "cosmic-comp fork, separate repo (~/Repositories/compositor)",
+    # Keyed on the id the BUS resolves (`/usr/bin/arlen-compositor` -> rule (2)
+    # -> `compositor`), not on the profile filename. The two differed until
+    # 14 Aug, which is how a profile nothing could load sat here being carried.
+    "compositor": "cosmic-comp fork, separate repo (~/Repositories/compositor)",
 }
 
 # `consumer.subscribe(vec!["a.b".into(), "c.".into()])` and friends.
