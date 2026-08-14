@@ -125,12 +125,15 @@
     font-size: var(--text-xs);
     color: var(--foreground);
   }
+  /* Wraps rather than ellipsising. This line carries the only account a person
+     gets of a refused action, and "Kingston USB is still in use, so it ..." is a
+     refusal that has been shown and still cannot be read - the same defect the
+     line was added to fix, one size down. Long paths still break rather than
+     widen the window. */
   .op-errorline span {
     flex: 1;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
   .op-dismiss {
     height: var(--height-control-compact, 24px);
