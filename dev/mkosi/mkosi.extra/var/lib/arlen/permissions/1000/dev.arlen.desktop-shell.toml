@@ -130,6 +130,14 @@ publish = [
     "app.toolbar.action_invoked",
     "app.shortcut.action_invoked",
     "app.intent.dispatched",
+    # Built as a struct literal (`permission_watcher.rs:238` sets
+    # `r#type: "permission.changed"`), not passed to an emit call, so the scan
+    # that reads emit arguments cannot see it. The enforce boot dropped it
+    # thirteen times before anyone noticed, and the consumer is the knowledge
+    # daemon's `permission.*` subscription - the one that invalidates its token
+    # cache and marks an app's grants stale. Losing it means a revoked
+    # permission keeps working until the daemon restarts.
+    "permission.changed",
 ]
 subscribe = [
     "window.*",
