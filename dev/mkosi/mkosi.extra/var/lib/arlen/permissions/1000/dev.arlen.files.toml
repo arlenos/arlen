@@ -97,6 +97,16 @@ custom = [
 # a prefix on a dot boundary, the two publishes and the one subscribe are the
 # whole of that contract, and a third verb in it would otherwise be a silent
 # denial in an app that had already been granted the family.
+#
+# The toolbar and shortcut topics are NOT this app's code and are easy to leave
+# out for that reason: `sdk/tauri-plugin-shell` subscribes them from inside every
+# Tauri app's process, so they ride this app's connection under this profile.
+# Because declaring any subscribe list drops the system-tier exemption
+# (`exempt = is_system && !declares_subscribe`), granting `app.menu.*` alone
+# switched them off - toolbar buttons and shortcuts stop arriving, and nothing
+# says so, since the subscribe returns Ok and the patterns are just filtered out.
+# Caught on the knowledge app, where an enforce boot named both by pattern
+# (14 Aug); this app has the same shape and was never launched to prove it.
 [event_bus]
 publish = [
     "file.opened",
@@ -104,4 +114,6 @@ publish = [
 ]
 subscribe = [
     "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
 ]
