@@ -5,10 +5,11 @@
   /// GridRegion with a representative neofetch-like fixture (coloured SGR cells,
   /// a full ANSI palette row, aligned columns) so colour + fixed-width alignment
   /// are directly visible. Not shipped in any nav; a dev/test route only.
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { GridRegion } from "@arlen/ui-kit/components/console";
   import StreamBlock from "$lib/components/StreamBlock.svelte";
   import HistoryPalette from "$lib/components/HistoryPalette.svelte";
+  import Composer from "$lib/components/Composer.svelte";
   import { historyPaletteOpen } from "$lib/stores/history";
   import { tauriAvailable } from "$lib/tauri";
   import type { Block } from "$lib/contract";
@@ -134,6 +135,36 @@
   // `?state=scopes-unavailable`; without it the palette stays closed and this
   // route renders exactly as before.
   let paletteReady = $state(false);
+
+  // A live session for the composer row. `refused` drives the real path rather
+  // than a faked flag: `terminal_input` is mocked to throw, then Enter is
+  // dispatched on the actual input, so what the shot proves is the component's
+  // own behaviour and not a state someone set by hand.
+  const session = {
+    id: "s-1",
+    cwd: "/home/tim/projects/arlen",
+    status: "running" as const,
+    last_exit: null,
+  };
+  let composerReady = $state(false);
+  onMount(async () => {
+    if (new URLSearchParams(window.location.search).get("state") !== "input-refused") return;
+    if (!tauriAvailable) {
+      const { mockIPC } = await import("@tauri-apps/api/mocks");
+      mockIPC((cmd) => {
+        if (cmd === "terminal_input") throw new Error("session is gone");
+        return null;
+      });
+    }
+    composerReady = true;
+    await tick();
+    const el = document.getElementById("terminal-composer-input") as HTMLInputElement | null;
+    if (!el) return;
+    el.value = "cargo test";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+
   onMount(async () => {
     const state = new URLSearchParams(window.location.search).get("state");
     if (state !== "scopes-unavailable") return;
@@ -158,5 +189,10 @@
   </div>
   {#if paletteReady}
     <HistoryPalette />
+  {/if}
+  {#if composerReady}
+    <div style="margin-top:16px;max-width:760px;">
+      <Composer {session} />
+    </div>
   {/if}
 </div>
