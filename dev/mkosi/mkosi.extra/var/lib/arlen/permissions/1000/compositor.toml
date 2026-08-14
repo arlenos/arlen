@@ -1,5 +1,18 @@
 # The compositor: publishes freely, hears nothing.
 #
+# RENAMED FROM `arlen-compositor.toml`, WHICH NOTHING EVER LOADED. The bus keys a
+# profile on the id it RESOLVES for the peer, and resolver rule (2) maps
+# `/usr/bin/arlen-compositor` to `compositor` - so a lookup went to
+# `compositor.toml` and found nothing, and everything below had been addressed to
+# a principal that never asked for it.
+#
+# It hid because both halves failed the same way. Publishing was exempt by tier,
+# and a peer with NO profile also counts as declaring no subscribe list, so the
+# `subscribe = []` a few lines down - the whole point of the file - was inert
+# too. This is the failure `peer_app_profile` names in its own comment: a lookup
+# under a wrong id answers "no grants", and no grants is indistinguishable from
+# correctly locked down.
+#
 # It is the origin of every window and session event on the machine - nothing
 # else produces them - and it already holds more power over the session than any
 # publish grant could confer, so bounding its publish buys nothing. Subscribing
@@ -7,13 +20,16 @@
 # graph's own traffic, is reach the compositor has no claim to. A privileged
 # producer is not automatically a privileged consumer (planner, 12 Aug).
 #
-# `subscribe = []` is a POSITIVE statement, not an omission. The bus tells the
+# `subscribe = []` is a POSITIVE statement, not an omission, and it is live now
+# rather than decorative. Checked before making it so, from both ends: the
+# compositor's own `event_bus.rs:191` says it does not subscribe, and no boot
+# journal has ever shown a consumer registration from it. The bus tells the
 # two apart: a component that declares nothing keeps the machine-wide view its
 # tier gives it, and one that declares a list is held to the list whatever its
 # tier. Deleting this line would not tighten the profile, it would loosen it -
 # back to the exemption that hid this question in the first place.
 [info]
-app_id = "arlen-compositor"
+app_id = "compositor"
 tier = "system"
 
 [event_bus]
