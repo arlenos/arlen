@@ -210,6 +210,24 @@ struct PublishDecision<'a> {
 /// Everything else - first-party apps, the daemons, the probes - is held to its
 /// list. An addition here should be argued in the same terms: does this
 /// component ORIGINATE the events, and would a grant be able to narrow it?
+///
+/// `compositor` IS VERIFIED and `kernel-layer` IS NOT, which matters more than it
+/// looks. The first was read off a boot journal (`/usr/bin/arlen-compositor`,
+/// resolver rule (2), the bus logs `app_id="compositor"`). The second is a name I
+/// chose: the kernel layer ships no binary, no unit and no install path in this
+/// tree, so nothing has ever resolved it and this entry currently exempts
+/// nobody.
+///
+/// THE DAY IT SHIPS, CHECK THE ID BEFORE TRUSTING THIS. If its binary lands
+/// somewhere rule (2) does not cover - `/usr/lib/arlen/libexec/`, as most daemons
+/// do - it resolves to something else entirely, this entry misses, and it is held
+/// to a profile that does not exist. That means every eBPF file, process and
+/// network event dropped at the bus, silently, which is the whole Knowledge Graph
+/// going quiet with nothing in any log to say why.
+///
+/// And nothing else will catch it: the kernel layer writes framed protobuf to the
+/// producer socket directly rather than through the SDK emitter, so
+/// `check-emitters-declared.py` cannot see it either.
 const PUBLISH_ORIGINATORS: &[&str] = &["compositor", "kernel-layer"];
 
 /// Whether this peer's publishing is exempt from its declared list.
