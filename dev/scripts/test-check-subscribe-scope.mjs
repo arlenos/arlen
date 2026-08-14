@@ -48,6 +48,25 @@ pub async fn watch(consumer: &C) {
 }
 `;
 
+// A Tauri plugin subscribes from inside the app's process, so the app inherits
+// the topics by LINKING it - nothing in the app's own source names them. The
+// subscribe sits in a private fn, which is what distinguishes an involuntary
+// subscription from a library call the app chose to make.
+const PLUGIN = `
+fn spawn_action_invoked_consumer(app: &M) {
+    let rx = consumer.subscribe(vec!["app.toolbar.action_invoked".to_string()]).await;
+}
+`;
+// os-sdk's public helpers subscribe only when the caller asks, so linking it
+// must credit an app with nothing.
+const LIBRARY = `
+pub async fn subscribe_all(consumer: &C) {
+    consumer.subscribe(vec!["*".to_string()]).await
+}
+`;
+const linksPlugin = (crate) =>
+  `[dependencies]\ntauri-plugin-arlen-shell = { path = "../../../sdk/${crate}" }\n`;
+
 console.log("subscribe scope:");
 
 {
@@ -173,6 +192,49 @@ console.log("subscribe scope:");
   const r = run({ "README.md": "no profiles here\n" });
   check("an empty tree refuses rather than passing", r.code === 2);
   check("and says nothing was read", r.out.includes("NOTHING WAS READ"));
+}
+
+{
+  // The defect that cost three profiles: the app's own source names one topic,
+  // its plugin subscribes another, and the profile grants only the first.
+  const r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]:
+      '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\nsubscribe = ["accessibility.state"]\n',
+    "apps/demo/src/watch.rs": APP,
+    "apps/demo/src-tauri/Cargo.toml": linksPlugin("tauri-plugin-shell"),
+    "sdk/tauri-plugin-shell/Cargo.toml": '[package]\nname = "tauri-plugin-arlen-shell"\n',
+    "sdk/tauri-plugin-shell/src/lib.rs": PLUGIN,
+  });
+  check(
+    "a topic the app's PLUGIN subscribes is caught",
+    r.code === 1 && r.out.includes("app.toolbar.action_invoked"),
+  );
+}
+{
+  const r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]:
+      '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\nsubscribe = ["accessibility.state", "app.toolbar.action_invoked"]\n',
+    "apps/demo/src/watch.rs": APP,
+    "apps/demo/src-tauri/Cargo.toml": linksPlugin("tauri-plugin-shell"),
+    "sdk/tauri-plugin-shell/Cargo.toml": '[package]\nname = "tauri-plugin-arlen-shell"\n',
+    "sdk/tauri-plugin-shell/src/lib.rs": PLUGIN,
+  });
+  check("granting the plugin's topic too passes", r.code === 0);
+}
+{
+  // A plain library is not a plugin: its public subscribe is one the caller
+  // asks for, so linking it must not be read as an inherited subscription.
+  // Getting this wrong credited every app with `*` and reported three apps at
+  // once for topics none of them subscribe to.
+  const r = run({
+    [`${PROFILES}/dev.arlen.demo.toml`]:
+      '[info]\napp_id = "dev.arlen.demo"\n\n[event_bus]\nsubscribe = ["accessibility.state"]\n',
+    "apps/demo/src/watch.rs": APP,
+    "apps/demo/src-tauri/Cargo.toml": linksPlugin("os-sdk"),
+    "sdk/os-sdk/Cargo.toml": '[package]\nname = "arlen-os-sdk"\n',
+    "sdk/os-sdk/src/lib.rs": LIBRARY,
+  });
+  check("linking a library is not an inherited subscription", r.code === 0);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nboth directions hold");
