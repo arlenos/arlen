@@ -61,8 +61,29 @@ pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, S
     if !compositing_enabled(product_family) {
         env.insert("WEBKIT_DISABLE_COMPOSITING_MODE".into(), "1".into());
     }
+    // The greeter's accessibility handoff, if it made one.
+    //
+    // INHERITED rather than computed: greetd puts it in this process's own
+    // environment, and it has to land in the map because the import list is
+    // derived from these keys - a variable that is not here reaches the session
+    // process and stops, so the shell, a systemd user service, never sees it.
+    // That is the whole reason it goes through the map rather than being read
+    // straight out of the environment where it is needed.
+    //
+    // Only when set. Absent means the login screen said nothing, which the
+    // session reads as "keep what you had" rather than "off".
+    if let Ok(v) = std::env::var(A11Y_SCREEN_READER) {
+        if v == "1" {
+            env.insert(A11Y_SCREEN_READER.into(), v);
+        }
+    }
     env
 }
+
+/// The greeter's screen-reader handoff. Matches
+/// `arlen_greeter_core::A11Y_SCREEN_READER_ENV`; the shell reads it once at
+/// session start and writes it to the user's config broker.
+pub const A11Y_SCREEN_READER: &str = "ARLEN_A11Y_SCREEN_READER";
 
 /// The compositor's own display, learned only after it publishes its socket - so
 /// it is not in [`session_env`] and has to join the import list separately.
@@ -96,6 +117,27 @@ pub const MUST_BE_UNSET: &[&str] = &["DISPLAY", "WAYLAND_DISPLAY"];
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_greeter_handoff_travels_only_when_it_was_made() {
+        // ONE test for both directions on purpose: `set_var` is process-wide,
+        // so two tests over the same variable race each other under the default
+        // parallel runner - and the one that loses reads the other's value.
+        std::env::remove_var(A11Y_SCREEN_READER);
+        assert!(
+            !session_env("s-1", "").contains_key(A11Y_SCREEN_READER),
+            "an untouched login screen must say nothing, not 'off'"
+        );
+
+        // The shell is a systemd user service: it sees only what the import
+        // list carries. A variable that reaches the session process and stops
+        // there is a handoff that silently does nothing.
+        std::env::set_var(A11Y_SCREEN_READER, "1");
+        let env = session_env("s-1", "");
+        std::env::remove_var(A11Y_SCREEN_READER);
+        assert_eq!(env.get(A11Y_SCREEN_READER).map(String::as_str), Some("1"));
+        assert!(import_list(&env).contains(&A11Y_SCREEN_READER.to_string()));
+    }
 
     #[test]
     fn the_daemon_sockets_point_at_the_system_paths() {

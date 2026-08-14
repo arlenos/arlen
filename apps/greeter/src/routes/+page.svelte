@@ -69,7 +69,9 @@
 
   async function onsubmit(secret: string): Promise<AuthResult> {
     if (!pickedProfile) return { ok: false, error: "No profile selected." };
-    return authenticate(pickedProfile.id, secret, sessionId);
+    // The screen-reader toggle travels with the session, so a person who
+    // turned it on here does not have to turn it on again once they are in.
+    return authenticate(pickedProfile.id, secret, sessionId, $a11y.screenReader);
   }
   async function onfactor(): Promise<AuthResult> {
     if (!pickedProfile) return { ok: false, error: "No profile selected." };

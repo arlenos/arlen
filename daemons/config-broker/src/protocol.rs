@@ -46,6 +46,34 @@ pub const MAX_FRAME: usize = 64 * 1024;
 /// closes - this allowlist is the structure that tier slots into.
 const ADMITTED_WRITERS: &[&str] = &["dev.arlen.settings"];
 
+/// The apps allowed to mutate the ACCESSIBILITY family. A SUPERSET of the AI
+/// writers, and the reason the two families have separate ops.
+///
+/// The shell is here because of where the choice is made. Somebody who needs a
+/// screen reader turns it on at the LOGIN screen, before any session exists -
+/// and the greeter cannot write this itself: the broker authenticates exactly
+/// one uid (the session user's, `server::owner_uid`), and the greeter is a
+/// different user. Before login there is no chosen user, so that gate is right
+/// rather than in the way. The session the greeter starts IS that user, so the
+/// shell carries the choice across the boundary in the safe direction: the
+/// user's own session, writing the user's own config, from what that user just
+/// asked for at their own keyboard.
+///
+/// Admitting the shell to the AI switches would be a different proposition
+/// entirely - `executor_live` is a security gate. It is admitted for exactly
+/// one boolean whose worst case is a screen reader somebody did not want, and
+/// which they can turn off in Settings.
+/// THE ID IS THE ONE THE PID ROUTE PRODUCES, which is not the obvious one.
+/// `/usr/bin/arlen-desktop-shell` is a symlink into
+/// `/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/`, so naming the link
+/// resolves to `desktop-shell` while `/proc/<pid>/exe` - what the broker's
+/// `app_id_from_pid` reads - canonicalises to `dev.arlen.desktop-shell`
+/// (`identity.rs:881`). An allowlist written against the first id would refuse
+/// every real caller while looking correct, which is how a gate ends up
+/// protecting nothing.
+const ADMITTED_ACCESSIBILITY_WRITERS: &[&str] =
+    &["dev.arlen.settings", "dev.arlen.desktop-shell"];
+
 /// True iff `app_id` may mutate the master switches. In a debug
 /// build the `dev.arlen-*` cargo-run id of an admitted app also
 /// passes (the resolver yields `dev.<bin>` for an unpackaged binary),
@@ -54,6 +82,15 @@ const ADMITTED_WRITERS: &[&str] = &["dev.arlen.settings"];
 pub fn is_admitted_writer(app_id: &str) -> bool {
     ADMITTED_WRITERS.contains(&app_id)
         || (cfg!(debug_assertions) && app_id == "dev.arlen-settings")
+}
+
+/// True iff `app_id` may mutate the accessibility settings. Same debug-id
+/// convention as [`is_admitted_writer`]; the SET is wider, see
+/// [`ADMITTED_ACCESSIBILITY_WRITERS`] for why.
+pub fn is_admitted_accessibility_writer(app_id: &str) -> bool {
+    ADMITTED_ACCESSIBILITY_WRITERS.contains(&app_id)
+        || (cfg!(debug_assertions)
+            && matches!(app_id, "dev.arlen-settings" | "dev.arlen-desktop-shell"))
 }
 
 /// A request to the broker.
@@ -112,7 +149,7 @@ pub fn handle_request(
             }
         }
         Request::SetAccessibility(accessibility) => {
-            if !is_admitted_writer(caller_app_id) {
+            if !is_admitted_accessibility_writer(caller_app_id) {
                 return Response::Refused(format!(
                     "caller '{caller_app_id}' may not set the accessibility settings"
                 ));
@@ -201,6 +238,35 @@ where
     writer.write_all(&(body.len() as u32).to_be_bytes()).await?;
     writer.write_all(&body).await?;
     writer.flush().await
+}
+
+#[cfg(test)]
+mod tests_admission {
+    use super::*;
+
+    #[test]
+    fn the_shell_may_set_accessibility_and_not_the_ai_switches() {
+        // The whole point of two ops. If these ever agree, the shell has quietly
+        // gained `executor_live`, which is a security gate rather than a
+        // preference.
+        assert!(is_admitted_accessibility_writer("dev.arlen.desktop-shell"));
+        assert!(!is_admitted_writer("dev.arlen.desktop-shell"));
+        // And the id the SYMLINK route would produce is not admitted, because
+        // that is not the id the broker ever sees.
+        assert!(!is_admitted_accessibility_writer("desktop-shell"));
+    }
+
+    #[test]
+    fn settings_may_set_both() {
+        assert!(is_admitted_writer("dev.arlen.settings"));
+        assert!(is_admitted_accessibility_writer("dev.arlen.settings"));
+    }
+
+    #[test]
+    fn an_unlisted_caller_may_set_neither() {
+        assert!(!is_admitted_writer("org.example.thing"));
+        assert!(!is_admitted_accessibility_writer("org.example.thing"));
+    }
 }
 
 #[cfg(test)]

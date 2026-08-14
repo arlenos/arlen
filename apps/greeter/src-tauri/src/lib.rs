@@ -47,6 +47,10 @@ fn greeter_authenticate(
     profile_id: String,
     secret: String,
     session_id: String,
+    // The login screen's screen-reader toggle, handed to the session it starts.
+    // Optional so an older caller (or the hardware-factor path) simply says
+    // nothing about it, which the session reads as "keep what you had".
+    screen_reader: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let passwd = std::fs::read_to_string("/etc/passwd")
         .map_err(|_| "login is not reachable (account list unavailable)".to_string())?;
@@ -61,7 +65,7 @@ fn greeter_authenticate(
     let sock = std::env::var(GREETD_SOCK_ENV)
         .map_err(|_| "login is not reachable (greetd socket unavailable)".to_string())?;
     let stream = UnixStream::connect(&sock).map_err(|e| format!("cannot reach greetd: {e}"))?;
-    core::run_login(stream, &profile_id, &secret, cmd, core::session_env(&session_id))?;
+    core::run_login(stream, &profile_id, &secret, cmd, core::session_env(&session_id, screen_reader.unwrap_or(false)))?;
     Ok(serde_json::json!({ "ok": true }))
 }
 
