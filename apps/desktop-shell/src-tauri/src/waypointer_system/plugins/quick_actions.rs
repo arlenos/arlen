@@ -6,7 +6,7 @@
 /// (`quick_action_run`) rather than this plugin's `execute()`. The
 /// reason is process-boundary: `WaypointerPlugin::execute()` is sync
 /// with no `AppHandle`, so it can't call into Tauri-managed state
-/// (`set_dnd_enabled`, `night_light_set`, …). The frontend's
+/// (`night_light_set`, …). The frontend's
 /// dispatch path mirrors the `waypointerPower.ts` pattern: a
 /// dedicated store + invoke pair.
 ///

@@ -27,9 +27,10 @@
   /// It used to be a local `$state(false)` that nothing ever read into: the switch
   /// opened showing whatever that default implied rather than the real mode, never
   /// followed a change made in quick settings or the notification panel, and wrote
-  /// to `set_dnd_enabled` - a command that logs a line, emits an event with no
-  /// listener, and reaches no daemon. Flipping it suppressed nothing. The quick
-  /// action beside it has always sent the real message; this now sends the same one.
+  /// to a command that logged a line, emitted an event with no listener, and
+  /// reached no daemon. Flipping it suppressed nothing. The quick action beside
+  /// it has always sent the real message; this sends the same one, and the dead
+  /// command has since been deleted.
   const dndOn = $derived($dndState.mode !== "off");
   let outputs = $state<AudioDevice[]>([]);
   let inputs = $state<AudioDevice[]>([]);

@@ -572,15 +572,6 @@ pub async fn set_app_volume(id: u32, volume: u8) -> Result<(), String> {
     Ok(())
 }
 
-/// Set Do Not Disturb state. Emits `dnd-changed` Tauri event.
-#[tauri::command]
-pub fn set_dnd_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
-    use tauri::Emitter;
-    let _ = app.emit("dnd-changed", enabled);
-    log::info!("DND set to {enabled}");
-    Ok(())
-}
-
 /// Toggles mute on the default audio sink.
 #[tauri::command]
 pub async fn toggle_audio_mute() -> Result<(), String> {
