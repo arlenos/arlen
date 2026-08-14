@@ -71,6 +71,7 @@
   let inputRefused = false;
   let fit: FitAddon | undefined;
   let unlistenFrame: UnlistenFn | undefined;
+  let unlistenA11y: UnlistenFn | undefined;
   let resizeObserver: ResizeObserver | undefined;
   // The persisted base font size (terminal config, §5b); zoom is a transient
   // delta over it and Ctrl+0 resets back to it. Loaded on mount, the const is
@@ -510,6 +511,20 @@
       if (e.payload === sessionId) void drain();
     }).then((un) => (unlistenFrame = un));
 
+    // The session's screen-reader flag, published by the shell from the config
+    // broker. xterm paints the grid on a canvas, which a screen reader cannot
+    // read at all; `screenReaderMode` makes it keep a hidden live-region mirror
+    // of the visible rows instead, so the terminal has something to announce.
+    //
+    // It is off by default because the mirror costs DOM writes on every render,
+    // and driven by the session flag rather than a per-app setting: somebody who
+    // needs it needs it everywhere, and should not have to find the switch again
+    // in each app. The host subscribes to a retained `.state` topic, so the
+    // first event arrives whether or not anything has changed since login.
+    void listen<boolean>("arlen://accessibility-changed", (e) => {
+      t.options.screenReaderMode = e.payload;
+    }).then((un) => (unlistenA11y = un));
+
     // xterm.js owns input + focus now (its textarea is the keystroke target), so
     // focus it on mount: the cursor draws solid (not the inactive outline) and
     // keystrokes land without a click. xterm re-focuses on click too.
@@ -588,6 +603,7 @@
 
   onDestroy(() => {
     unlistenFrame?.();
+    unlistenA11y?.();
     resizeObserver?.disconnect();
     term?.dispose();
   });
