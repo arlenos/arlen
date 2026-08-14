@@ -96,7 +96,7 @@ def rust_commands(root: Path) -> dict[str, dict[str, tuple[set[str], set[str]]]]
             text,
             re.S,
         ):
-            name, params = m.group(1), m.group(2)
+            name, params = m.group(1), strip_comments(m.group(2))
             all_p: set[str] = set()
             required: set[str] = set()
             for raw in split_params(params):
@@ -114,6 +114,25 @@ def rust_commands(root: Path) -> dict[str, dict[str, tuple[set[str], set[str]]]]
                     required.add(snake(pname))
             out.setdefault(app, {})[name] = (all_p, required)
     return out
+
+
+def strip_comments(params: str) -> str:
+    """Drop comments from a parameter list before anything tries to parse it.
+
+    A documented parameter is ordinary Rust and it broke this check twice over:
+    `split_params` splits on commas, and prose has commas, so one commented
+    parameter shredded into fragments; then the fragment holding the real
+    declaration began with comment text, so its "name" was not an identifier and
+    the parameter vanished. The command then looked like it did not declare
+    something it declares, and the report blamed the CALLER for sending a key
+    "it does not declare" - a false accusation pointing at the wrong file.
+
+    Rust has no default arguments, so a parameter list holds no string literals
+    and a `//` inside one is always a comment. Stripping is safe here in a way it
+    would not be elsewhere.
+    """
+    params = re.sub(r"/\*.*?\*/", "", params, flags=re.S)
+    return re.sub(r"//[^\n]*", "", params)
 
 
 def split_params(params: str) -> list[str]:
