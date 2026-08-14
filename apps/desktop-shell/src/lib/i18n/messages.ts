@@ -13,6 +13,9 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
+    "sh.app.title": "Arlen",
+    "sh.app.title.waypointer": "Search",
+    "sh.app.title.consent": "Permission request",
     "sh.bat.powerSaver": "Power Saver",
     "sh.bat.balanced": "Balanced",
     "sh.layout.errSave": "The layout setting was not saved.",
@@ -517,6 +520,12 @@ const messages: Catalogs = {
     "sh.module.failed": "Module failed; click to retry",
   },
   de: {
+    "sh.app.title": "Arlen",
+
+    "sh.app.title.waypointer": "Suche",
+
+    "sh.app.title.consent": "Berechtigungsanfrage",
+
     "sh.bat.powerSaver": "Energiesparen",
     "sh.bat.balanced": "Ausgewogen",
     "sh.layout.errSave": "Die Layout-Einstellung wurde nicht gespeichert.",
