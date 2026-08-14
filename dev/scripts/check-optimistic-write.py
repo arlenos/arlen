@@ -109,15 +109,6 @@ KNOWN: dict[str, tuple[int, str]] = {
         "setRole, startDownload, cancelDownload - arlen-ui's model picker is live "
         "work; named rather than skipped because the shape is identical"
     ),
-    "apps/desktop-shell/src/lib/stores/activePopover.ts": (
-        4,
-        "the popover really DID open - what failed is the input-region call that "
-        "follows, so the panel is on screen and its clicks fall through to "
-        "whatever is behind it. A surface that cannot be used while looking usable "
-        "is the same family, but the fix is not a revert of the store: closing the "
-        "panel someone just opened because a region call failed is worse. Wants a "
-        "decision about what an unclickable panel should say"
-    ),
     "apps/meetings/src/lib/stores/meeting.ts": (
         1,
         "surfaced by teaching this gate the promise form; meetings is not a "
