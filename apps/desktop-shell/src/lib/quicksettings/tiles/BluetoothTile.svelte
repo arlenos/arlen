@@ -10,6 +10,7 @@
   import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { Bluetooth, BluetoothOff } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { tileAction } from "$lib/quicksettings/action";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { openPopover } from "$lib/stores/activePopover.js";
@@ -47,10 +48,12 @@
   }
 
   async function handleClick() {
-    try {
-      await invoke("set_bluetooth_powered", { enabled: !state.powered });
-      await refresh();
-    } catch {}
+    await tileAction(
+      "set_bluetooth_powered",
+      { enabled: !state.powered },
+      "sh.tile.errBluetooth",
+    );
+    await refresh();
   }
 
   function openDetail() {
