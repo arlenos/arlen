@@ -53,6 +53,20 @@ export function applyA11y(state: A11yState): void {
 /// carries the same weight as switching it on.
 export const screenReaderChoice = writable<boolean | null>(null);
 
+/// True when the toggle applied but could not be written down.
+///
+/// The two halves of flipping this switch fail differently. Turning the reader on
+/// FOR THIS LOGIN is a store update that always succeeds; REMEMBERING it for the
+/// next start is a file write that can fail. Only the second one is at risk, and
+/// only the second one is worth a sentence.
+///
+/// NOT a revert. The obvious repair for an optimistic update whose write failed is
+/// to put the store back, and here that would switch off a screen reader somebody
+/// just asked for because a file write failed - causing the exact harm the honesty
+/// rule exists to prevent. What was claimed and not delivered is the REMEMBERING,
+/// so that is what gets said, next to the switch that made the claim.
+export const screenReaderNotRemembered = writable(false);
+
 /// Seed the toggles from what this login screen remembers.
 ///
 /// Only the screen reader persists. The others (contrast, large text, on-screen
@@ -87,8 +101,10 @@ export function toggleA11y(key: keyof A11yState): void {
   if (key === "screenReader") {
     const on = get(a11y).screenReader;
     screenReaderChoice.set(on);
+    // Clear first: a retry that succeeds must take the sentence back down.
+    screenReaderNotRemembered.set(false);
     void invoke("greeter_a11y_set", { screenReader: on }).catch(() => {
-      // It still applies to this login; it just will not be there next boot.
+      screenReaderNotRemembered.set(true);
     });
   }
 }
