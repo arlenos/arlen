@@ -191,8 +191,12 @@ async fn open_file(file: String) -> Result<(), String> {
 }
 
 /// Start on-device capture. The ASR/diarization engine is provisioned separately
-/// (model-gated); until it lands this reports so, and the frontend runs its own
-/// local capture. The frontend ignores the error by design.
+/// (model-gated); until it lands this reports so.
+///
+/// The frontend does NOT ignore the error: it used to, and the result was a
+/// running clock and a streaming transcript over a microphone nothing had opened.
+/// It now shows "Recording did not start" and offers a retry, so this error is
+/// read as the answer it is.
 #[tauri::command]
 async fn meeting_start_capture() -> Result<(), String> {
     Err("on-device capture requires the ASR engine (not yet provisioned)".to_string())
