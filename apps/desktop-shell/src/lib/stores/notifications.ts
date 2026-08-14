@@ -5,6 +5,7 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { shellAction } from "$lib/shellAction";
 import { writable, derived, get } from "svelte/store";
 import { toast } from "svelte-sonner";
 import type { Component } from "svelte";
@@ -159,8 +160,14 @@ function onToastVisible() {
 function onToastGone() {
   visibleCount = Math.max(0, visibleCount - 1);
   if (visibleCount === 0) {
-    invoke("set_notification_input_region", { expanded: false }).catch(
-      () => {}
+    // The collapse half. Nothing to revert - the toast is gone - and a refusal
+    // leaves the shell taking clicks over the empty corner where it was. Said
+    // through the same channel as the popovers' collapse, since there is no
+    // surface left to put a line in.
+    void shellAction(
+      "set_notification_input_region",
+      { expanded: false },
+      "sh.popover.notOpened",
     );
   }
 }
