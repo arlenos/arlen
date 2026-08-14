@@ -456,6 +456,37 @@ message AmbientClearedPayload {
   string app_id = 1;
 }
 
+// ── Accessibility state ────────────────────────────────────────────────
+// The user's accessibility settings, published on change and retained like
+// the other `.state` topics, so an app that starts later is told on subscribe
+// rather than never (accessibility-plan.md A11Y-R2).
+//
+// WHY A STATE TOPIC AND NOT A THEME. A theme is taste; this decides whether
+// somebody can use the machine at all. Switching appearance must never cost a
+// person their screen reader, so this lives in user config and travels the bus
+// on its own topic - no app polls for it, hardcodes it, or grows its own
+// switch, and the greeter reads the same value the session does.
+//
+// SCOPE IS ONE FLAG TODAY. `screen_reader` is what the terminal needs: xterm.js
+// builds no accessibility tree unless it is told to, and building one always
+// costs render work, so the setting is the correct gate rather than an excuse.
+// Field numbers 2-4 are RESERVED for the rest of the A11Y-R2 set - reduced
+// motion, high contrast, text scale - so they have a home without renumbering
+// what ships first. They are not declared yet because a field nothing reads is
+// a promise, not a feature.
+//
+// An app that cannot honour a flag says so rather than ignoring it quietly.
+// Event type: "accessibility.state".
+message AccessibilityStatePayload {
+  // True when assistive technology is in use and apps should build their
+  // accessibility tree, announce live regions, and prefer semantics over
+  // custom-drawn surfaces.
+  bool screen_reader = 1;
+
+  reserved 2, 3, 4;
+  reserved "reduced_motion", "high_contrast", "text_scale";
+}
+
 // Event type: "audio.state" - the audio popover snapshot published by the
 // shell's pactl-subscribe monitor on every sink/source change (SST-R2), so
 // apps and the AI layer consume one shared value instead of each polling
