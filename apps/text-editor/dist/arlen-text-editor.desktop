@@ -1,0 +1,27 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Text Editor
+Name[de]=Texteditor
+Comment=Read and edit text, with the file's history beside it
+Comment[de]=Text lesen und bearbeiten, mit der Herkunft der Datei daneben
+Exec=arlen-text-editor %f
+Icon=arlen-text-editor
+Terminal=false
+Categories=Utility;TextEditor;Development;
+Keywords=text;edit;editor;code;write;notes;
+Keywords[de]=text;editor;bearbeiten;schreiben;notizen;
+StartupNotify=true
+
+# `text/plain` and the two markup types it is actually asked for. Source files
+# (text/x-rust, text/x-python, application/javascript and the rest) are subclasses
+# of text/plain in shared-mime-info, so an editor registered for text/plain is
+# offered for them too - listing thirty of them here would add names, not reach.
+#
+# Nothing binary, and nothing this cannot render: an editor that opens a PDF as
+# mojibake is worse than one the user has to pick deliberately.
+MimeType=text/plain;text/markdown;text/x-markdown;application/json;text/csv;text/xml;
+
+# The identity the permission system keys on, stated rather than derived from the
+# desktop-id, as the other apps do.
+X-Arlen-AppId=dev.arlen.text-editor

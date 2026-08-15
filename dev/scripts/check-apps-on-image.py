@@ -65,11 +65,6 @@ NOT_ON_IMAGE: dict[str, str] = {
         "no image step yet, and no desktop entry. It has a core and a frontend build but "
         "nothing that puts it on the machine - the same shape the viewer was in"
     ),
-    "text-editor": (
-        "no image step yet, and no desktop entry. Its host was written on 9 August (it was "
-        "the last app that could not launch at all), so absence from the image is now the "
-        "only thing between it and being usable"
-    ),
     "trash-rm": (
         "a command-line tool (`arlen-trash-rm`), not a desktop app, so it has no launcher "
         "entry by nature. It still belongs in `/usr/bin` if the trash flow is meant to work "
