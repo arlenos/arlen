@@ -36,9 +36,15 @@ SRC="$SRCDIR/arlen/daemons/kernel-layer"
 
 # The nightly toolchain the eBPF target needs. `rust-src` is not optional:
 # `-Z build-std=core` compiles core from source for a target with no prebuilt std.
-echo ">> kernel layer: nightly toolchain + bpfel target"
+echo ">> kernel layer: nightly toolchain"
 rustup toolchain install nightly --profile minimal --component rust-src
-rustup target add bpfel-unknown-none --toolchain nightly
+
+# NO `rustup target add bpfel-unknown-none` here, and its absence is the point.
+# The target has no prebuilt std - rustup answers `has no prebuilt artifacts
+# available`, which is what killed the first run of this phase - and that is
+# precisely why the build passes `-Z build-std=core` and why `rust-src` is a
+# required component above. core is compiled from source for this target; there is
+# nothing to download.
 
 # bpf-linker, which rustc invokes to produce the BPF object. Skipped when already
 # cached, because this is the expensive half.
