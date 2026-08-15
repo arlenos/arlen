@@ -3231,7 +3231,7 @@ async fn handle_client(
                                 let scoped = if system_anchored {
                                     ids
                                 } else {
-                                    let readable = caller_readable_labels(peer.as_ref(), &auth).await;
+                                    let readable = caller_readable_labels(peer.as_ref(), &app_id, &auth).await;
                                     filter_ids_to_readable_labels(&graph, &ids, &readable, Some((&uses, &app_id))).await
                                 };
                                 serde_json::to_string(&scoped).unwrap_or_else(|_| "[]".to_string())
@@ -3281,7 +3281,7 @@ async fn handle_client(
                                     let ids: Vec<String> =
                                         items.iter().map(|i| i.id.clone()).collect();
                                     let readable =
-                                        caller_readable_labels(peer.as_ref(), &auth).await;
+                                        caller_readable_labels(peer.as_ref(), &app_id, &auth).await;
                                     let allowed: std::collections::HashSet<String> =
                                         filter_ids_to_readable_labels(
                                             &graph,
@@ -3421,7 +3421,7 @@ async fn handle_client(
                                     let ids: Vec<String> =
                                         candidates.iter().map(|c| c.id.clone()).collect();
                                     let readable =
-                                        caller_readable_labels(peer.as_ref(), &auth).await;
+                                        caller_readable_labels(peer.as_ref(), &app_id, &auth).await;
                                     let allowed: std::collections::HashSet<String> =
                                         filter_ids_to_readable_labels(
                                             &graph,
@@ -3813,7 +3813,7 @@ async fn handle_client(
         let readable_labels: Vec<String> = if system_anchored {
             Vec::new()
         } else {
-            caller_readable_labels(peer.as_ref(), &auth).await
+            caller_readable_labels(peer.as_ref(), &app_id, &auth).await
         };
 
         // Failure responses are the plaintext `ERROR: ...` form in both
@@ -4434,12 +4434,28 @@ fn scrub_sensitive_columns_json(json: &str) -> String {
 /// fail-closed default, so a caller with no scope can read nothing labelled.
 async fn caller_readable_labels(
     peer: Option<&WritePeer>,
+    app_id: &str,
     auth: &Arc<Mutex<Authenticator>>,
 ) -> Vec<String> {
     match peer {
         Some(p) => match (p.start_time, pid_start_time(p.pid).ok()) {
             (Some(captured), Some(now)) if now == captured => {
-                match auth.lock().await.issue_token_for_pid(p.uid, p.pid) {
+                // The CONNECTION's app_id, not a second resolution from the pid.
+                //
+                // This used to call `issue_token_for_pid`, which re-derives the
+                // identity from `/proc/<pid>/exe` - the read the daemon lost when
+                // it moved under the user manager. The connection resolver was
+                // taught to ask the identity broker first, and this was not, so
+                // the two disagreed in the worst possible way: the deny log named
+                // the caller correctly (`app_id=timeline`) while the scope behind
+                // it was empty, which reads as "this app has no grant" when the
+                // grant was sitting in its profile unread.
+                //
+                // Reusing the connection's id is also strictly the better
+                // attestation. It came from a pidfd-pinned broker lookup, which
+                // cannot be raced; re-resolving from a bare pid can be, and the
+                // pid here is the same one either way.
+                match auth.lock().await.issue_token_for_app(p.uid, app_id, p.pid) {
                     Ok(token) => readable_system_labels(&token.read_scopes),
                     Err(_) => Vec::new(),
                 }
