@@ -189,6 +189,47 @@ fn detect_media_kind(path: String) -> Result<String, String> {
     }
 }
 
+/// The file after or before this one in its folder, for the arrow keys.
+///
+/// `direction` is `"next"` or `"previous"`. Returns the absolute path of the
+/// neighbour, or `None` when there is nowhere to go - a lone picture in its
+/// folder, or a file the viewer cannot show. `None` is a real answer here and the
+/// frontend leaves the view as it is; returning the current path instead would
+/// make the key look like it worked.
+///
+/// The directory read happens here and the ORDER is decided by the shared core,
+/// which is where the rules and their reasons live (same folder, same media
+/// kind, a total case-insensitive order, wrapping at both ends). Splitting it
+/// that way keeps the part worth testing free of the disk.
+#[tauri::command]
+fn neighbour_file(path: String, direction: String) -> Result<Option<String>, String> {
+    let here = Path::new(&path);
+    let dir = here
+        .parent()
+        .ok_or_else(|| "the file has no parent directory".to_string())?;
+    let name = here
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "the file has no readable name".to_string())?;
+
+    // Names only, and non-UTF-8 ones dropped rather than lossily converted: a
+    // name that does not round-trip cannot be handed back as a path to open.
+    let entries: Vec<String> = std::fs::read_dir(dir)
+        .map_err(|e| format!("cannot read the folder: {e}"))?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+        .collect();
+
+    let picked = match direction.as_str() {
+        "next" => arlen_viewers_core::navigate::next(name, &entries),
+        "previous" => arlen_viewers_core::navigate::previous(name, &entries),
+        other => return Err(format!("unknown direction: {other}")),
+    };
+
+    Ok(picked.map(|n| dir.join(n).to_string_lossy().into_owned()))
+}
+
 /// Tauri entry point (invoked from `main.rs`).
 pub fn run() {
     // This app at info, dependencies at warn, and both halves are a fix.
@@ -219,6 +260,7 @@ pub fn run() {
             decode_image,
             probe_audio,
             detect_media_kind,
+            neighbour_file,
             initial_file
         ])
         .run(tauri::generate_context!())
