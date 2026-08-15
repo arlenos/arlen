@@ -80,6 +80,31 @@ async fn wait_for_job(conn: &Connection, job_id: &str) -> Result<(), String> {
 }
 
 /// Remove an installed app.
+/// Say which of the two very different things went wrong.
+///
+/// `installd` is one of the units the image does not ship yet, so on a running
+/// Arlen the overwhelmingly likely failure is that nothing owns the name at all.
+/// The previous message called that "the install daemon refused the request",
+/// which is a sentence about a daemon that made a decision - and a user reading
+/// it has every reason to go looking for the permission they are missing. What is
+/// true is that app removal is not available on this system.
+///
+/// The distinction is on the wire: D-Bus answers a call to an unowned name with
+/// `org.freedesktop.DBus.Error.ServiceUnknown`, which is not something a running
+/// daemon can produce. Matched by substring for the same reason
+/// `tauri-plugin-portal` does it: the error name arrives as an owned string and
+/// zbus offers no typed variant to match on.
+fn describe_call_failure(err: zbus::Error) -> String {
+    match &err {
+        zbus::Error::MethodError(name, _, _) if name.as_str().contains("ServiceUnknown") => {
+            "removing apps is unavailable on this system: nothing provides the \
+             install daemon"
+                .to_owned()
+        }
+        _ => format!("the install daemon refused the request: {err}"),
+    }
+}
+
 #[tauri::command]
 pub async fn settings_app_uninstall(app_id: String) -> Result<(), String> {
     if !is_safe_app_id(&app_id) {
@@ -97,7 +122,7 @@ pub async fn settings_app_uninstall(app_id: String) -> Result<(), String> {
             &(app_id.clone(),),
         )
         .await
-        .map_err(|e| format!("the install daemon refused the request: {e}"))?;
+        .map_err(describe_call_failure)?;
     let job_id: String = reply
         .body()
         .deserialize()
@@ -122,5 +147,35 @@ mod tests {
         assert!(!is_safe_app_id(".."));
         assert!(!is_safe_app_id("org.arlen.files; rm -rf /"));
         assert!(!is_safe_app_id("../../etc"));
+    }
+
+    /// The two failures have to read differently, because they send the reader
+    /// to different places: one to look for a missing permission, the other to
+    /// understand the feature is not on this system.
+    #[test]
+    fn an_absent_daemon_does_not_read_as_a_refusal() {
+        let absent = zbus::Error::MethodError(
+            zbus::names::OwnedErrorName::try_from("org.freedesktop.DBus.Error.ServiceUnknown")
+                .unwrap(),
+            None,
+            zbus::Message::method_call("/org/arlen/InstallDaemon1", "Uninstall")
+                .unwrap()
+                .build(&())
+                .unwrap(),
+        );
+        let said = describe_call_failure(absent);
+        assert!(said.contains("unavailable"), "got {said}");
+        assert!(!said.contains("refused"), "an absent daemon refused nothing: {said}");
+
+        let refused = zbus::Error::MethodError(
+            zbus::names::OwnedErrorName::try_from("org.arlen.InstallDaemon1.Error.Denied")
+                .unwrap(),
+            None,
+            zbus::Message::method_call("/org/arlen/InstallDaemon1", "Uninstall")
+                .unwrap()
+                .build(&())
+                .unwrap(),
+        );
+        assert!(describe_call_failure(refused).contains("refused"));
     }
 }
