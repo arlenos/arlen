@@ -17,7 +17,7 @@ export default defineConfig(async () => ({
       ? {
           protocol: "ws",
           host,
-          port: 1437,
+          port: 1536,
         }
       : undefined,
     watch: {

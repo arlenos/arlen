@@ -11,14 +11,14 @@ export default defineConfig(async () => ({
   server: {
     // Distinct port from the other apps (shell 1420, settings 1421,
     // harness 1423, terminal 1425, files 1427) so they can all run in dev.
-    port: 1429,
+    port: 1447,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1430,
+          port: 1547,
         }
       : undefined,
     watch: {

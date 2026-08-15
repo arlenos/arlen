@@ -10,14 +10,14 @@ export default defineConfig(async () => ({
   resolve: { dedupe: ["@tauri-apps/api"] },
   clearScreen: false,
   server: {
-    port: 1429,
+    port: 1445,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1430,
+          port: 1545,
         }
       : undefined,
     watch: {

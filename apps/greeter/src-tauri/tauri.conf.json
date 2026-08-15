@@ -5,7 +5,7 @@
   "identifier": "dev.arlen.greeter",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1429",
+    "devUrl": "http://localhost:1447",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../build"
   },
