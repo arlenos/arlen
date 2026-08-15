@@ -255,6 +255,31 @@ fn try_net_state_change(ctx: TracePointContext) -> Result<(), i64> {
     let pid = (unsafe { aya_ebpf::helpers::bpf_get_current_pid_tgid() } >> 32) as u32;
     let timestamp_ns = unsafe { bpf_ktime_get_ns() };
 
+    // Same rule as the other probes, for the same measured reason: every fallible
+    // read happens BEFORE the reservation. The address reads used to sit after it,
+    // and their `?` returned holding the slot - the verifier answered
+    // `Unreleased reference id=7 alloc_insn=74` and refused to load the program.
+    //
+    // The IPv6 loopback case still discards explicitly further down; that path
+    // decides not to send an event it has already reserved for, which is what
+    // `discard` is for. What must never happen is LEAVING without saying either.
+    let (saddr_v4, daddr_v4, saddr_v6, daddr_v6) = if family == 2 {
+        // IPv4: 4 bytes each at offsets 24 and 28.
+        let s: [u8; 4] = unsafe { ctx.read_at(24).map_err(|_| -1i64)? };
+        let d: [u8; 4] = unsafe { ctx.read_at(28).map_err(|_| -1i64)? };
+        (s, d, [0u8; 16], [0u8; 16])
+    } else {
+        // IPv6: 16 bytes each at offsets 32 and 48.
+        let s: [u8; 16] = unsafe { ctx.read_at(32).map_err(|_| -1i64)? };
+        let d: [u8; 16] = unsafe { ctx.read_at(48).map_err(|_| -1i64)? };
+        // Loopback ::1 is dropped before anything is reserved, so this case no
+        // longer needs a discard at all.
+        if d == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1] {
+            return Ok(());
+        }
+        ([0u8; 4], [0u8; 4], s, d)
+    };
+
     let mut entry = NET_EVENTS.reserve::<NetStateEvent>(0).ok_or(-1i64)?;
     let event = unsafe { entry.assume_init_mut() };
     event.pid = pid;
@@ -271,25 +296,11 @@ fn try_net_state_change(ctx: TracePointContext) -> Result<(), i64> {
     event.saddr_v6 = [0u8; 16];
     event.daddr_v6 = [0u8; 16];
 
-    // Read addresses
-    if family == 2 {
-        // IPv4: 4 bytes each at offsets 24 and 28
-        let saddr: [u8; 4] = unsafe { ctx.read_at(24).map_err(|_| -1i64)? };
-        let daddr: [u8; 4] = unsafe { ctx.read_at(28).map_err(|_| -1i64)? };
-        event.saddr = saddr;
-        event.daddr = daddr;
-    } else {
-        // IPv6: 16 bytes each at offsets 32 and 48
-        let saddr: [u8; 16] = unsafe { ctx.read_at(32).map_err(|_| -1i64)? };
-        let daddr: [u8; 16] = unsafe { ctx.read_at(48).map_err(|_| -1i64)? };
-        event.saddr_v6 = saddr;
-        event.daddr_v6 = daddr;
-        // Check IPv6 loopback ::1
-        if daddr == [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1] {
-            entry.discard(0);
-            return Ok(());
-        }
-    }
+    // The addresses were read above, before the reservation.
+    event.saddr = saddr_v4;
+    event.daddr = daddr_v4;
+    event.saddr_v6 = saddr_v6;
+    event.daddr_v6 = daddr_v6;
 
     entry.submit(0);
     Ok(())
