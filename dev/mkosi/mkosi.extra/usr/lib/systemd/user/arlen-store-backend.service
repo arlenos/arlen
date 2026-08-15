@@ -40,11 +40,21 @@ LockPersonality=yes
 MemoryDenyWriteExecute=yes
 NoNewPrivileges=yes
 RestrictAddressFamilies=AF_UNIX
-# No network today: the compose reads local files only. When the live catalog
-# fetchers land (Flathub API, the Debian mirror, odrs.gnome.org, per-publisher
-# .well-known), this relaxes to an IPAddressAllow of exactly those hosts, with every
-# request audited and carrying no per-user identifier (store-app.md section 9.5).
-IPAddressDeny=any
+# No network today: the compose reads local files only, and the
+# RestrictAddressFamilies line above is what enforces that - it is seccomp, so it
+# holds in a user unit.
+#
+# This carried an `IPAddressDeny=any` as well until 15 Aug. That directive does
+# nothing here: systemd applies IP firewalling by attaching BPF to the cgroup, and
+# the per-user manager has no privileges for it. The boot says so once, for
+# whichever unit tries first, and says nothing for any unit after it.
+#
+# The plan that stood here - relax to an `IPAddressAllow` of exactly the catalog
+# hosts when the live fetchers land - does not work for the same reason, and
+# RestrictAddressFamilies cannot express it either (it cannot tell one destination
+# from another). Per-host egress for a user unit is the netns-plus-proxy enforcer
+# in sdk/net-guard; that is what the fetchers will have to go through
+# (store-app.md section 9.5 for the audit and no-identifier requirements).
 UMask=0077
 
 [Install]

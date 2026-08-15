@@ -331,6 +331,8 @@ jobs:
           node dev/scripts/test-check-bus-path-in-source.mjs
           python3 dev/scripts/check-user-units-started.py
           node dev/scripts/test-check-user-units-started.mjs
+          python3 dev/scripts/check-user-unit-firewall.py
+          node dev/scripts/test-check-user-unit-firewall.mjs
           python3 dev/scripts/check-image-writes.py
           node dev/scripts/test-check-image-writes.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)

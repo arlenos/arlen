@@ -15,17 +15,30 @@ Restart=on-failure
 RestartSec=2
 
 # It talks the session D-Bus (AF_UNIX) and forwards HTTP to the local llama-server
-# on 127.0.0.1:11434 (AF_INET). In this image the ONLY provider is local, so lock
-# egress to loopback - the zero-egress posture (a product image with cloud
-# providers would relax IPAddressAllow).
+# on 127.0.0.1:11434 (AF_INET). In this image the ONLY provider is local, so the
+# intent is loopback-only egress - the zero-egress posture.
+#
+# READ THE IPAddress LINES BELOW AS INTENT, NOT ENFORCEMENT. They do nothing in a
+# user unit: systemd applies IP firewalling by attaching BPF to the cgroup, which
+# the per-user manager has no privileges for. The boot log says so once, for
+# whichever unit happens to configure a filter first, and stays silent for every
+# unit after that - so this reads like a packet-level lock and is not one.
+#
+# There is no unit directive that restores it. RestrictAddressFamilies has to keep
+# AF_INET for the loopback forward, and it cannot tell one destination from
+# another. Per-destination egress for a user unit is the netns-plus-proxy enforcer
+# in sdk/net-guard, which is built and not yet applied to this unit. Until it is,
+# what actually bounds this proxy is its own provider catalogue and caller
+# allowlist in the code, not the sandbox.
 #
 # It authorises each forward by resolving the caller's /proc/<pid>/exe against
 # its caller allowlist, so it must NOT use mount-namespace hardening (ProtectSystem,
 # ProtectHome, PrivateTmp, ProtectKernel*, ProtectControlGroups): those make a
 # same-uid /proc/<pid>/exe read fail, which would reject every forward. The
-# non-namespace hardening is kept - and egress is still locked to loopback at the
-# packet level via the IP filter (eBPF, not a mount namespace), which is the
-# property that actually matters for an egress proxy.
+# non-namespace hardening is kept. This used to add that egress was "still locked
+# to loopback at the packet level via the IP filter (eBPF, not a mount
+# namespace)", which was the reassuring half of the trade and was not true - see
+# the note above.
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 IPAddressAllow=localhost
 IPAddressDeny=any
