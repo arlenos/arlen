@@ -144,9 +144,18 @@ NO_UNIT: dict[str, str] = {
         "not a service that runs"
     ),
     "kernel-layer": (
-        "the eBPF loader needs the bpf toolchain, is outside the CI matrix, and "
-        "putting it on a shipped image is a scope decision rather than a packaging "
-        "oversight. NOTE this is why a booted image records no file.opened at all"
+        "outside the CI matrix, and putting it on a shipped image is a scope "
+        "decision rather than a packaging oversight. NOTE this is why a booted "
+        "image records no file.opened at all.\n"
+        "    CORRECTED 15 Aug: the toolchain is NOT the blocker. bpf-linker and a "
+        "nightly toolchain are both installed on the dev box, and the eBPF crate "
+        "still fails to compile - `kernel-layer-ebpf/src/main.rs:126-128` calls "
+        "`TracePointContext::as_ptr` and `bpf_probe_read_kernel_str_bytes`, "
+        "neither of which exists in the pinned aya-ebpf 0.1.1. So the probes have "
+        "bit-rotted against their own dependency, and anyone budgeting this work "
+        "as 'install the toolchain' will hit two API errors in kernel-space code "
+        "instead. That is a fix, not a setup step, and it cannot be verified by "
+        "compiling alone"
     ),
     "session": (
         "no unit by design, like arlen-run: greetd starts the session from "
