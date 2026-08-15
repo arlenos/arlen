@@ -532,6 +532,34 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
 ///
 /// After registration, the bus writes length-prefixed protobuf Event messages
 /// to the socket as they arrive.
+/// Hold a consumer's uid filter to the uid the kernel attested for it.
+///
+/// The third registration line is a CLAIM, and until now it was honoured as
+/// written: any consumer could register `*` and receive every user's events, or
+/// name another user's uid outright. On a single-user image nothing exercised
+/// that, which is exactly why it needed writing down rather than waiting for a
+/// second user to find it.
+///
+/// It is also the rule the per-user bus design is built on - "the filter is
+/// enforced with the attested uid of the connecting bus, never a claimed one" -
+/// because that design routes a system observer's events to a user by the
+/// SUBJECT's uid. A per-user bus that could ask for another user's events by
+/// asking wrongly would make the whole arrangement decorative.
+///
+/// Root keeps what it claims. A uid-0 consumer is the system side: the graph
+/// writer on a system deployment, and the forwarding a per-user bus subscribes
+/// through. Everyone else is narrowed to their own uid, whatever they asked for -
+/// narrowed rather than refused, because the honest reading of "give me
+/// everything" from a user process is "give me everything of mine", and refusing
+/// the connection would turn a scope question into an outage.
+fn clamp_uid_filter(claimed: UidFilter, attested_uid: u32) -> UidFilter {
+    if attested_uid == 0 {
+        claimed
+    } else {
+        UidFilter::Exact(attested_uid)
+    }
+}
+
 async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>) -> Result<()> {
     debug!("new consumer connection");
 
@@ -546,7 +574,21 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
         .filter(|s| !s.is_empty())
         .collect();
 
-    let uid_filter = UidFilter::parse(&uid_line).map_err(|e| anyhow::anyhow!(e))?;
+    let claimed_filter = UidFilter::parse(&uid_line).map_err(|e| anyhow::anyhow!(e))?;
+    // Fail closed: an unreadable peer cred is not a reason to serve everything.
+    let Some(consumer_uid) = peer_uid(&stream) else {
+        warn!("event-bus: refusing a consumer whose peer credentials cannot be read");
+        return Ok(());
+    };
+    let uid_filter = clamp_uid_filter(claimed_filter.clone(), consumer_uid);
+    if uid_filter != claimed_filter {
+        debug!(
+            consumer_uid,
+            claimed = ?claimed_filter,
+            effective = ?uid_filter,
+            "event-bus: consumer uid filter narrowed to its attested uid"
+        );
+    }
 
     // Hold a consumer to its declared `[event_bus].subscribe` scope - and DECLARING
     // is what decides that, not the tier.
@@ -682,6 +724,65 @@ async fn read_line(stream: &mut UnixStream) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A user consumer cannot ask for another user's events, however it asks.
+    ///
+    /// The three shapes are the three ways the claim can be wrong, and they must
+    /// all land on the same answer: everything (`*`), someone else's uid, and its
+    /// own uid. The middle one is the attack and the first is the accident - a
+    /// consumer written before per-user buses existed sends `*` because that was
+    /// the only sensible thing to send.
+    #[test]
+    fn a_user_consumer_is_held_to_its_own_uid() {
+        for claimed in [UidFilter::All, UidFilter::Exact(0), UidFilter::Exact(1001)] {
+            assert_eq!(
+                clamp_uid_filter(claimed.clone(), 1000),
+                UidFilter::Exact(1000),
+                "claimed {claimed:?} must not survive for a uid-1000 consumer"
+            );
+        }
+    }
+
+    /// Root keeps what it claims, which is what makes the forwarding possible.
+    ///
+    /// Clamping root too would leave nothing able to observe the machine: the
+    /// system side of a per-user arrangement subscribes across uids by design, and
+    /// so does the graph writer on a system deployment.
+    #[test]
+    fn a_root_consumer_keeps_the_filter_it_asked_for() {
+        assert_eq!(clamp_uid_filter(UidFilter::All, 0), UidFilter::All);
+        assert_eq!(clamp_uid_filter(UidFilter::Exact(1000), 0), UidFilter::Exact(1000));
+    }
+
+    /// What the clamp does and does not settle, asserted rather than assumed.
+    ///
+    /// It closes the cross-USER direction: after clamping, uid 1001's events do
+    /// not reach a uid-1000 consumer however that consumer asked.
+    ///
+    /// It does NOT close uid 0. `UidFilter::accepts` short-circuits on
+    /// `event_uid == 0` and delivers to everyone, so root's activity still reaches
+    /// every consumer. That is a second, separate rule - carried in the reviews as
+    /// the uid-0-to-all escape hatch - and it matters more now than it did last
+    /// week: while the kernel layer stamped every observation with 0, this
+    /// short-circuit was the only thing making kernel events arrive at all, so
+    /// removing it then would have looked like a fix and been an outage. Now that
+    /// the observed uid is real, the hatch is what is left between here and "a
+    /// user's graph never receives an event whose subject uid is not that user's".
+    ///
+    /// Pinned as it stands so the next person changing it sees both halves at
+    /// once, rather than discovering the second after shipping the first.
+    #[test]
+    fn the_clamp_closes_the_cross_user_direction_but_not_uid_zero() {
+        let f = clamp_uid_filter(UidFilter::All, 1000);
+        assert!(f.accepts(1000), "its own events arrive");
+        assert!(!f.accepts(1001), "another user's do not");
+        assert!(
+            f.accepts(0),
+            "root's still do, via the escape hatch in UidFilter::accepts - the \
+             remaining half of the cross-user guarantee"
+        );
+    }
+
     use arlen_permissions::PermissionError;
 
     #[test]
