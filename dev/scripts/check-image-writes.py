@@ -64,6 +64,12 @@ INSTALL_PLAIN = re.compile(
 MKDIR = re.compile(r'(?:mkdir\s+-p|install\s+(?:[^\n]*?\s)?-d\b)\s+(?P<args>[^\n]+)')
 MKDIR_ARG = re.compile(r'"\$DESTDIR/(?P<path>[^"$]+)"')
 # Only the commands that genuinely need the file to be there already.
+# A write whose $DESTDIR path contains a shell variable: countable, not checkable.
+NONLITERAL_WRITE = re.compile(
+    r'(?:cat|tee|printf|echo)\s[^\n]*?>>?\s*"\$DESTDIR/[^"]*\$'
+    r'|ln\s+-s[a-z]*\s+[^\n]*?"\$DESTDIR/[^"]*\$'
+    r'|install\s+(?![^\n]*-d\b)[^\n]*"\$DESTDIR/[^"]*\$'
+)
 TOUCHES = re.compile(r'(?P<cmd>chmod|chown)\s+[^\n]*?"\$DESTDIR/(?P<path>[^"$]+)"')
 
 
@@ -142,6 +148,16 @@ def main() -> int:
         for i, line in enumerate(lines, start=1):
             if line.lstrip().startswith("#"):
                 continue
+
+            # A write whose path carries a shell variable is not checkable, and
+            # until now it was not COUNTABLE either - the patterns simply did not
+            # match and the line vanished. `mkdir` already reported its
+            # non-literals; writes did not, so a looped `cat >`/`ln -s` was
+            # indistinguishable from a step with no writes at all.
+            if NONLITERAL_WRITE.search(line) and not MKDIR.search(line):
+                skipped.append(
+                    f"{rel}:{line_no.get(i, i)}: write path is not a literal, not checked"
+                )
 
             for m in list(WRITE.finditer(line)) + list(INSTALL_PLAIN.finditer(line)):
                 path = m.group("path") or m.groupdict().get("link")

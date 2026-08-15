@@ -157,6 +157,53 @@ mkdir -p "$DESTDIR/usr/lib/systemd/user/default.target.wants"
 ln -sf ../arlen-kg-probe-hardened.service \
        "$DESTDIR/usr/lib/systemd/user/default.target.wants/arlen-kg-probe-hardened.service"
 
+# THE BISECT. The combined control reads 1 of 21 where the plain probe reads 28
+# of 30, so the hardening is the cause; these two split it. One directive each,
+# same binary, same boot, three comparable sweep lines in one journal.
+#
+# Written out twice rather than looped: a loop puts `$variant` in the path, and
+# `check-image-writes.py` only follows literal `$DESTDIR/...` paths - so a looped
+# write is skipped silently, which is the same blind spot that let a broken
+# symlink through an hour ago.
+mkdir -p "$DESTDIR/usr/lib/systemd/user/default.target.wants"
+cat > "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe-nnp.service" <<'UNIT'
+[Unit]
+Description=The probe under NoNewPrivileges alone (verify image only)
+After=arlen-graph.service
+
+[Service]
+Type=oneshot
+Environment=ARLEN_KG_PROBE_SWEEP_ONLY=1
+ExecStart=/usr/bin/arlen-kg-probe
+NoNewPrivileges=true
+ProtectHome=no
+
+[Install]
+WantedBy=default.target
+UNIT
+chmod 644 "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe-nnp.service"
+ln -sf ../arlen-kg-probe-nnp.service \
+       "$DESTDIR/usr/lib/systemd/user/default.target.wants/arlen-kg-probe-nnp.service"
+
+cat > "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe-protect.service" <<'UNIT'
+[Unit]
+Description=The probe under ProtectSystem=strict alone (verify image only)
+After=arlen-graph.service
+
+[Service]
+Type=oneshot
+Environment=ARLEN_KG_PROBE_SWEEP_ONLY=1
+ExecStart=/usr/bin/arlen-kg-probe
+ProtectSystem=strict
+ProtectHome=no
+
+[Install]
+WantedBy=default.target
+UNIT
+chmod 644 "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe-protect.service"
+ln -sf ../arlen-kg-probe-protect.service \
+       "$DESTDIR/usr/lib/systemd/user/default.target.wants/arlen-kg-probe-protect.service"
+
 # And a read scope, or the probe asks and is refused.
 #
 # Running as root got it past the cross-uid rule; the read-scope label gate then

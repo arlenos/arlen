@@ -126,6 +126,16 @@ chmod 755 "$DESTDIR/usr/lib/arlen/libexec/thing"
   );
   check("a continued write with its mkdir above it passes", r.code === 0);
 }
+{
+  // A write whose path is built from a shell variable cannot be checked. It must
+  // still be COUNTED, or a looped write reads the same as no write at all.
+  const r = run(
+    'mkdir -p "$DESTDIR/usr/lib/systemd/user"\n' +
+      'cat > "$DESTDIR/usr/lib/systemd/user/arlen-$variant.service" <<UNIT\nx\nUNIT\n'
+  );
+  check("a non-literal write path is reported, not silently dropped", r.out.includes("not a literal"));
+  check("and it does not fail the step", r.code === 0);
+}
 
 console.log(failures ? `\n${failures} failure(s)` : "\nboth directions hold");
 process.exit(failures ? 1 : 0);
