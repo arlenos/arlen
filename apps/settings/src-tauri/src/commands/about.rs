@@ -87,7 +87,7 @@ async fn daemon_statuses() -> Vec<DaemonStatus> {
         DaemonStatus {
             name: "Event Bus".into(),
             running: event_bus_socket_exists(),
-            probe_path: "/run/arlen/event-bus-consumer.sock".into(),
+            probe_path: event_bus_socket_path_string(),
         },
         DaemonStatus {
             name: "Install Daemon".into(),
@@ -127,8 +127,21 @@ fn notification_socket_exists() -> bool {
     !p.is_empty() && Path::new(&p).exists()
 }
 
+/// Where the event bus actually binds, asked of the SDK rather than written down.
+///
+/// This said `/run/arlen/event-bus-consumer.sock`, which was true while the bus
+/// was a system service and stopped being true when it went per-user on 15 Aug.
+/// A hardcoded probe path is the same defect the install-daemon row had: a string
+/// that looks like a measurement and reports "not running" about something that
+/// is running fine.
+fn event_bus_socket_path_string() -> String {
+    os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock")
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn event_bus_socket_exists() -> bool {
-    Path::new("/run/arlen/event-bus-consumer.sock").exists()
+    Path::new(&event_bus_socket_path_string()).exists()
 }
 
 /// The install daemon is reached by bus name, not by socket.

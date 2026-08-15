@@ -514,11 +514,13 @@ pub(crate) mod proto {
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
-const PRODUCER_SOCKET: &str = "/run/arlen/event-bus-producer.sock";
 
 pub(crate) fn emit_to_event_bus(event_type: &str, payload: Vec<u8>) {
-    let socket = std::env::var("ARLEN_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| PRODUCER_SOCKET.to_string());
+    let socket = std::env::var("ARLEN_PRODUCER_SOCKET").unwrap_or_else(|_| {
+        os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock")
+            .to_string_lossy()
+            .into_owned()
+    });
 
     let event = proto::Event {
         id: uuid::Uuid::now_v7().to_string(),

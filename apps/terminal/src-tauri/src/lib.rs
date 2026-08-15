@@ -53,7 +53,7 @@ struct SessionRegistry {
 /// exists); the topbar quick actions only make sense there.
 #[tauri::command]
 fn shell_present() -> bool {
-    std::path::Path::new("/run/arlen/event-bus-producer.sock").exists()
+    os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock").exists()
 }
 
 /// Export `ARLEN_TERM_ZDOTDIR` so a spawned shell sources the block-mark

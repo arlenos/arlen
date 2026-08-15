@@ -33,7 +33,7 @@ use tauri::Emitter;
 /// hides the local fallback toolbar.
 #[tauri::command]
 fn shell_present() -> bool {
-    std::path::Path::new("/run/arlen/event-bus-producer.sock").exists()
+    os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock").exists()
 }
 
 /// Route a log line from the frontend into the Rust logger so it shows

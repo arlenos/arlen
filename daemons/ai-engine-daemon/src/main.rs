@@ -806,7 +806,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     info!("no enabled event-triggered behaviours; the curator does not subscribe");
                 } else {
                     let consumer_socket = std::env::var("ARLEN_CONSUMER_SOCKET")
-                        .unwrap_or_else(|_| orchestrator::DEFAULT_CONSUMER_SOCKET.to_string());
+                        .unwrap_or_else(|_| orchestrator::default_consumer_socket());
                     match orchestrator::EventBusSource::subscribe(consumer_socket, sub_types).await {
                         Ok(source) => {
                             let handler = CuratorHandler::new(

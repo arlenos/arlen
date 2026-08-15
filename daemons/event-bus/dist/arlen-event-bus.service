@@ -24,10 +24,21 @@ Type=simple
 ExecStart=/usr/bin/event-bus
 Restart=on-failure
 
-# No RuntimeDirectory=: a user manager already provides %t
-# ($XDG_RUNTIME_DIR), and the daemon creates the `arlen` subdirectory it binds
-# into. The system unit needed one because /run/arlen does not exist until
-# something makes it.
+# RuntimeDirectory=, and dropping it is what broke the first per-user boot.
+#
+# The daemon does create its own socket directory - `socket.rs:748` calls
+# `create_dir_all` on the parent - so this looked redundant, and the unit shipped
+# without it. Then `ProtectSystem=strict` remounts everything read-only including
+# %t, the create failed with `Read-only file system`, and the bus restarted in a
+# loop while every client logged `No such file or directory`. Nothing said the two
+# directives were related; the boot did.
+#
+# systemd creates %t/arlen BEFORE the read-only remount, which is the whole point
+# of the directive. Preserve=yes because the directory is shared with the other
+# per-user daemons and systemd does not ref-count it.
+RuntimeDirectory=arlen
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 
 # Hardening: a pure AF_UNIX IPC daemon - no filesystem write beyond its socket
 # dir, no network, no privilege escalation.

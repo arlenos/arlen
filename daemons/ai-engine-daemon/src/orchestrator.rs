@@ -22,9 +22,17 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::future::Future;
 use std::time::{Duration, SystemTime};
 
-/// The Event Bus consumer socket the orchestrator subscribes on. The daemon
-/// resolves the real path from `ARLEN_CONSUMER_SOCKET` (this is the fallback).
-pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
+/// The Event Bus consumer socket the orchestrator subscribes on.
+///
+/// Asked of the SDK rather than written down. It was a `const` naming
+/// `/run/arlen`, which was the bus's home until it became a per-user service -
+/// after which the fallback pointed at nothing and an unpinned daemon never
+/// subscribed.
+pub fn default_consumer_socket() -> String {
+    os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock")
+        .to_string_lossy()
+        .into_owned()
+}
 
 /// A decoded trigger event the orchestrator dispatches on: the event type, the
 /// payload fields the router filters read, and the external-content origin flag.
