@@ -102,6 +102,10 @@ fn main() -> std::process::ExitCode {
                     tracing::info!(unit, pid, ?replacing, "identity registered")
                 }
                 Ok(Action::NotRunning) => tracing::debug!(unit, "not running"),
+                // Debug, not warn: an entry absent from this image is expected on
+                // every production boot (the verify probe), and a warning per
+                // round per absent unit buries the ones that mean something.
+                Ok(Action::NotInstalled) => tracing::debug!(unit, "not installed on this image"),
                 Err(e) => tracing::warn!(unit, "not supervised: {e}"),
             }
         }
