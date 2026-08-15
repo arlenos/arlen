@@ -105,6 +105,13 @@ async fn main() {
     // defect in the system under test. Failing on it would put a permanent red in
     // every verify run - and a red that is always there is one nobody reads,
     // which is the habit that cost us a real CI failure last week.
+    // The hardened control unit runs this same binary and must not ask the graph
+    // anything - it exists to print one comparable sweep line, nothing else.
+    if std::env::var_os("ARLEN_KG_PROBE_SWEEP_ONLY").is_some() {
+        report_proc_sweep();
+        println!("kg-probe: sweep-only run, asked the graph nothing");
+        return;
+    }
     report_profile();
     report_proc_sweep();
     report_grants(&client).await;
