@@ -234,6 +234,35 @@ fn why_exe_unreadable(pid: u32) -> String {
                 Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => "EACCES",
                 Err(_) => "err",
             };
+            // THE MIRROR SWEEP. The probe ran the same count from its side and
+            // read 29 of 31 same-uid processes, refused only on the session
+            // manager and its (sd-pam) helper - so the route works and the
+            // refusal is not general. That leaves reader-versus-target, and only
+            // this side can answer it: if WE can read most peers, the target is
+            // special; if we can read none, the reader is.
+            //
+            // Counting only, and only same-uid, so it stays cheap enough to run
+            // on a refusal path.
+            let (mut others, mut others_ok) = (0usize, 0usize);
+            if let Ok(entries) = std::fs::read_dir("/proc") {
+                for e in entries.flatten() {
+                    let n = e.file_name();
+                    let Some(n) = n.to_str() else { continue };
+                    if !n.bytes().all(|b| b.is_ascii_digit()) || n == pid.to_string() {
+                        continue;
+                    }
+                    let Ok(md) = std::fs::metadata(format!("/proc/{n}")) else { continue };
+                    use std::os::unix::fs::MetadataExt;
+                    if md.uid() != me {
+                        continue;
+                    }
+                    others += 1;
+                    if std::fs::read_link(format!("/proc/{n}/exe")).is_ok() {
+                        others_ok += 1;
+                    }
+                }
+            }
+
             let peer_cwd = sibling("cwd");
             let peer_root = sibling("root");
 
@@ -248,6 +277,9 @@ fn why_exe_unreadable(pid: u32) -> String {
                  from the pid means we are looking at a THREAD; more than one \
                  NSpid entry means a nested pid namespace, so this pid is a \
                  different task here); \
+                 OUR OWN sweep: of {others} other same-uid process(es) we can \
+                 read {others_ok} exe link(s) (if that is most of them the peer is \
+                 special, if it is none we are); \
                  peer other reads: cmdline={peer_cmdline}, cwd={peer_cwd}, \
                  root={peer_root} (cmdline needs no ptrace permission, cwd and \
                  root need the same one exe does, so this splits a ptrace refusal \
