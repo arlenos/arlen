@@ -26,6 +26,7 @@ mod tests {
             uid: 1000,
             timestamp_ns: 1_000_000_000,
             ret: 3,
+            cgroup_id: 0,
             path: [0u8; MAX_PATH_LEN],
         };
         let bytes = path.as_bytes();
@@ -80,23 +81,39 @@ mod tests {
         event
     }
 
-    /// Helper: encode using the same logic as normalizer's encode_envelope.
+    /// The uid `make_open_event` stamps, so an assertion can name it.
+    const TEST_UID: u32 = 1000;
+
+    /// Encode through the REAL encoder rather than a copy of it.
+    ///
+    /// This used to rebuild the envelope inline, "using the same logic as
+    /// normalizer's encode_envelope" - and a copy of the logic is exactly as
+    /// correct as the day it was written. The real encoder hardcoded `uid: 0` for
+    /// months, which meant every kernel event claimed root did it and the bus
+    /// delivered it to every consumer; no test could see that, because the tests
+    /// were checking their own copy.
     fn encode_test(event_type: &str, pid: u32, ts: u64, session_id: &str, payload: Vec<u8>) -> Vec<u8> {
-        let proto_event = proto::Event {
-            id: uuid::Uuid::now_v7().to_string(),
-            r#type: event_type.to_string(),
-            timestamp: ts as i64,
-            source: "ebpf".to_string(),
-            pid,
-            origin: session_id.to_string(),
-            payload,
+        crate::normalizer::encode_envelope(event_type, pid, TEST_UID, ts, session_id, payload)
+            .expect("the envelope encodes")
+    }
+
+    #[test]
+    fn the_envelope_carries_the_observed_uid() {
+        // The regression for the hardcoded zero. It is the routing key for
+        // per-user buses: a subject uid that is always 0 sends every observation
+        // either everywhere or nowhere.
+        let payload = proto::FileOpenedPayload {
+            path: "/home/someone/notes.md".into(),
+            app_id: "ebpf:1".into(),
+            flags: 0,
+            cgroup_id: 0,
         };
-        let encoded = proto_event.encode_to_vec();
-        let len = u32::try_from(encoded.len()).unwrap();
-        let mut msg = Vec::with_capacity(4 + encoded.len());
-        msg.extend_from_slice(&len.to_be_bytes());
-        msg.extend_from_slice(&encoded);
-        msg
+        let msg = encode_test("file.opened", 1, 1_000_000, "sess", payload.encode_to_vec());
+        let decoded = proto::Event::decode(&msg[4..]).expect("the envelope decodes");
+        assert_eq!(
+            decoded.uid, TEST_UID,
+            "the envelope must carry the observed task's uid, not root's"
+        );
     }
 
     // ===== file.opened tests =====
@@ -107,6 +124,7 @@ mod tests {
             path: "/home/tim/file.txt".into(),
             app_id: "ebpf:1234".into(),
             flags: 0,
+            cgroup_id: 0,
         };
         let msg = encode_test("file.opened", 1234, 1_000_000, "sess", payload.encode_to_vec());
         let decoded = proto::Event::decode(&msg[4..]).unwrap();
@@ -277,6 +295,7 @@ mod tests {
             path: "/home/tim/test.txt".into(),
             app_id: "ebpf:42".into(),
             flags: 0,
+            cgroup_id: 0,
         };
         let msg = encode_test("file.opened", 42, 1_000_000, "test-session", payload.encode_to_vec());
 

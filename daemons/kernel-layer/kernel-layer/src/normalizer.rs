@@ -138,7 +138,7 @@ fn handle_file_opened(
         flags: 0,
         cgroup_id: event.cgroup_id,
     };
-    encode_envelope("file.opened", event.pid, event.timestamp_ns, session_id, payload.encode_to_vec())
+    encode_envelope("file.opened", event.pid, event.uid, event.timestamp_ns, session_id, payload.encode_to_vec())
 }
 
 // ===== process.started handler =====
@@ -165,7 +165,7 @@ fn handle_process_exec(
         comm,
         exit_code: 0,
     };
-    encode_envelope("process.started", event.pid, event.timestamp_ns, session_id, payload.encode_to_vec())
+    encode_envelope("process.started", event.pid, event.uid, event.timestamp_ns, session_id, payload.encode_to_vec())
 }
 
 // ===== file.written handler =====
@@ -195,7 +195,7 @@ fn handle_file_written(
         app_id: format!("ebpf:{}", event.pid),
         bytes: event.count,
     };
-    encode_envelope("file.written", event.pid, event.timestamp_ns, session_id, payload.encode_to_vec())
+    encode_envelope("file.written", event.pid, event.uid, event.timestamp_ns, session_id, payload.encode_to_vec())
 }
 
 /// Resolve a file descriptor to a path via /proc/pid/fd/N.
@@ -231,7 +231,7 @@ fn handle_net_state(
     };
 
     let event_type = format!("network.{}", payload.direction);
-    encode_envelope(&event_type, event.pid, event.timestamp_ns, session_id, payload.encode_to_vec())
+    encode_envelope(&event_type, event.pid, event.uid, event.timestamp_ns, session_id, payload.encode_to_vec())
 }
 
 fn format_net_event(event: &NetStateEvent) -> (String, String) {
@@ -303,9 +303,10 @@ fn is_blocked(path: &str) -> bool {
     BLOCKED_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
 }
 
-fn encode_envelope(
+pub(crate) fn encode_envelope(
     event_type: &str,
     pid: u32,
+    uid: u32,
     timestamp_ns: u64,
     session_id: &str,
     payload: Vec<u8>,
@@ -318,7 +319,22 @@ fn encode_envelope(
         pid,
         origin: session_id.to_string(),
         payload,
-        uid: 0,
+        // THE OBSERVED TASK'S UID, not zero.
+        //
+        // This was hardcoded to 0, which says "root did this" about every open,
+        // exec, write and connection on the machine - and uid 0 is the value the
+        // bus treats as system, so every kernel event was delivered to every
+        // consumer regardless of whose it was. On a multi-user machine that is a
+        // privacy boundary that never existed; on a single-user one it is a record
+        // that attributes the user's whole day to root.
+        //
+        // It is also the precondition for per-user buses. The design routes a
+        // system observer's events to a user by the SUBJECT's uid, so a subject
+        // uid that is always 0 makes that routing meaningless: every event would
+        // either go everywhere or nowhere. The eBPF probes have carried this field
+        // all along - `kernel-layer-common` has `uid: u32` on all four event
+        // structs - and only the envelope dropped it.
+        uid,
         project_id: String::new(),
     };
 
