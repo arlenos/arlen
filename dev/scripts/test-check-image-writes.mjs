@@ -104,6 +104,28 @@ chmod 755 "$DESTDIR/usr/lib/arlen/libexec/thing"
   const r = run(`echo hi\n`);
   check("a step with no DESTDIR write passes rather than refusing", r.code === 0);
 }
+{
+  // THE SHAPE THAT GOT THROUGH. A command split over two physical lines with a
+  // trailing backslash. Every pattern in the gate matches within one line, so
+  // this was not merely unflagged - it was never examined, and the build died on
+  // it at `No such file or directory`. Two symlinks in the real tree were written
+  // this way and had never been checked.
+  const r = run(
+    'ln -sf ../a.service \\\n' +
+      '       "$DESTDIR/usr/lib/systemd/user/default.target.wants/a.service"\n'
+  );
+  check("a write split across a line continuation is caught", r.code === 1);
+}
+{
+  // And the same write, with its mkdir above it, still passes - the join must not
+  // turn a correct step red.
+  const r = run(
+    'mkdir -p "$DESTDIR/usr/lib/systemd/user/default.target.wants"\n' +
+      'ln -sf ../a.service \\\n' +
+      '       "$DESTDIR/usr/lib/systemd/user/default.target.wants/a.service"\n'
+  );
+  check("a continued write with its mkdir above it passes", r.code === 0);
+}
 
 console.log(failures ? `\n${failures} failure(s)` : "\nboth directions hold");
 process.exit(failures ? 1 : 0);

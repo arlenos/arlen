@@ -99,6 +99,30 @@ def main() -> int:
         text = step.read_text(encoding="utf-8", errors="replace")
         lines = text.splitlines()
 
+        # Join backslash continuations FIRST, keeping the line number of the
+        # physical line the command starts on.
+        #
+        # Every pattern here uses `[^\n]*?` between the command and its
+        # `$DESTDIR` path, so a command split across two physical lines matched
+        # nothing at all - it was not flagged, it was never examined. That is the
+        # worst failure mode a gate has: it reported OK on a step whose `ln` died
+        # at `No such file or directory` on the very next build, and the two
+        # symlinks in the tree written this way had simply never been checked.
+        joined: list[tuple[int, str]] = []
+        buf, start = "", 0
+        for n, raw in enumerate(lines, start=1):
+            if not buf:
+                start = n
+            if raw.rstrip().endswith("\\"):
+                buf += raw.rstrip()[:-1] + " "
+                continue
+            joined.append((start, buf + raw))
+            buf = ""
+        if buf:
+            joined.append((start, buf))
+        lines = [text for _, text in joined]
+        line_no = {idx: n for idx, (n, _) in enumerate(joined, start=1)}
+
         made: list[tuple[int, str]] = []
         written: dict[str, int] = {}
 
@@ -109,7 +133,7 @@ def main() -> int:
                 for a in MKDIR_ARG.finditer(m.group("args")):
                     made.append((i, a.group("path")))
                 if "$DESTDIR" in m.group("args") and not MKDIR_ARG.search(m.group("args")):
-                    skipped.append(f"{rel}:{i}: mkdir path is not a literal, not checked")
+                    skipped.append(f"{rel}:{line_no.get(i, i)}: mkdir path is not a literal, not checked")
             for m in INSTALL_D.finditer(line):
                 # -D makes the parents, so the directory exists from here on.
                 made.append((i, parent_of(m.group("path"))))
@@ -129,7 +153,7 @@ def main() -> int:
                 parent = parent_of(path)
                 if parent not in dirs_made_by(i, made):
                     problems.append(
-                        f"{rel}:{i}: writes $DESTDIR/{path}, but nothing above it "
+                        f"{rel}:{line_no.get(i, i)}: writes $DESTDIR/{path}, but nothing above it "
                         f"creates $DESTDIR/{parent}.\n"
                         f"    `cat >` does not make parents, so this dies with "
                         f"`Directory nonexistent` at the end of a full image build - "
