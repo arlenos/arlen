@@ -106,6 +106,7 @@ async fn main() {
     // every verify run - and a red that is always there is one nobody reads,
     // which is the habit that cost us a real CI failure last week.
     report_profile();
+    report_proc_sweep();
     report_grants(&client).await;
 
     // Always ask. An earlier cut skipped the questions when `access_grants` came
@@ -129,6 +130,62 @@ async fn main() {
     }
     failures += report_timeline();
     println!("kg-probe: done, {failures} question(s) failed");
+}
+
+/// Can ANY same-uid process on this image read another's `/proc/<pid>/exe`?
+///
+/// The daemon refuses to name this caller because `readlinkat` on its exe link
+/// returns EACCES, and the refusal survived every explanation: uid, gid,
+/// capabilities, Yama, LSM label, seccomp and pid namespace are identical on both
+/// sides, and the reader can read its own link. `cwd` and `root` are refused too
+/// while `cmdline` is allowed, so it is the ptrace permission check itself.
+///
+/// That leaves one question worth asking from here, and it is a measurement
+/// rather than a seventh hypothesis: is this pair special, or does the check
+/// refuse every cross-process read on this image? A sweep answers it. If nothing
+/// but self reads, the `/proc` identity route does not work here at all and the
+/// stamped table is the only way any caller gets a name. If some pairs read, the
+/// ones that do are the comparison that explains the ones that do not.
+fn report_proc_sweep() {
+    // SAFETY: getuid never fails.
+    let me = unsafe { libc::getuid() };
+    let mut mine = 0usize;
+    let mut readable = 0usize;
+    let mut refused = 0usize;
+    let mut examples: Vec<String> = Vec::new();
+
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        println!("kg-probe: proc sweep: /proc unreadable");
+        return;
+    };
+    for e in entries.flatten() {
+        let name = e.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        // Same uid only: a cross-uid refusal is expected and would drown the
+        // signal we are after.
+        let Ok(md) = std::fs::metadata(format!("/proc/{name}")) else { continue };
+        use std::os::unix::fs::MetadataExt;
+        if md.uid() != me {
+            continue;
+        }
+        mine += 1;
+        match std::fs::read_link(format!("/proc/{name}/exe")) {
+            Ok(p) => {
+                readable += 1;
+                if examples.len() < 4 {
+                    examples.push(format!("{name}={}", p.display()));
+                }
+            }
+            Err(_) => refused += 1,
+        }
+    }
+    println!(
+        "kg-probe: proc sweep: {mine} same-uid process(es), exe readable for \
+         {readable}, refused for {refused}; readable examples {examples:?}"
+    );
 }
 
 /// Whether this caller's permission profile is where the daemon will look.
