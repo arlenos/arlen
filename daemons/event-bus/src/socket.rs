@@ -305,6 +305,24 @@ fn profile_absence_is_a_result(e: &arlen_permissions::PermissionError) -> bool {
 }
 
 /// Resolve the connected peer from its kernel-attested pid.
+/// Whether this peer's identity is worth asking about again.
+///
+/// Only an unresolved one. A peer the broker named keeps that name for the life
+/// of the connection - re-asking could only ever replace an attested identity
+/// with a different one, which is the opposite of what attestation is for.
+fn should_retry_identity(current: &PeerScope) -> bool {
+    matches!(current, PeerScope::Unresolved)
+}
+
+/// Whether a retry's answer is worth adopting.
+///
+/// Only a resolved one. An unresolved retry leaves the peer exactly as it was,
+/// which matters because the retry runs per event while unresolved: adopting a
+/// second `Unresolved` would be a no-op that reads like progress in the logs.
+fn adopt_retry(retried: &PeerScope) -> bool {
+    !matches!(retried, PeerScope::Unresolved)
+}
+
 fn peer_app_profile(stream: &UnixStream) -> PeerScope {
     let Ok(cred) = stream.peer_cred() else {
         return PeerScope::Unresolved;
@@ -570,9 +588,9 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                 // peer publishes, so whatever registration it was racing has had
                 // until now to land. Costs one resolution per event only while
                 // unresolved, and stops the first time it works.
-                if matches!(publish_scope, PeerScope::Unresolved) {
+                if should_retry_identity(&publish_scope) {
                     let retried = peer_app_profile(&stream);
-                    if !matches!(retried, PeerScope::Unresolved) {
+                    if adopt_retry(&retried) {
                         debug!(
                             app_id = retried.app_id(),
                             "producer resolved on retry; it connected before its \
@@ -833,6 +851,36 @@ async fn read_line(stream: &mut UnixStream) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// The retry exists for a producer that connected before the session
+    /// supervisor registered it. Measured on the 15 Aug boot: connect at 5.249s,
+    /// first registration at 5.980s - and since identity is resolved once per
+    /// connection, that peer stayed `<unresolved>` for the life of a connection a
+    /// daemon holds for the whole session.
+    #[test]
+    fn only_an_unresolved_peer_is_asked_about_again() {
+        assert!(
+            should_retry_identity(&PeerScope::Unresolved),
+            "the peer the retry exists for"
+        );
+        assert!(
+            !should_retry_identity(&PeerScope::NoProfile("dogfood".into())),
+            "a named peer must keep the name it was attested with - re-asking \
+             could only replace an attested identity with a different one"
+        );
+    }
+
+    /// Adopting a second `Unresolved` would be a no-op that reads like progress,
+    /// and the retry runs per event while unresolved, so it would read like
+    /// progress repeatedly.
+    #[test]
+    fn only_a_resolved_retry_is_adopted() {
+        assert!(!adopt_retry(&PeerScope::Unresolved));
+        assert!(adopt_retry(&PeerScope::NoProfile("kernel-layer".into())));
+    }
+
+
 
     /// Only a whole-machine observer may attribute an event to another user.
     ///
