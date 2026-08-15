@@ -1,0 +1,46 @@
+# The screenshot app's profile, under the uid it applies to.
+#
+# THE CAPABILITY THAT MATTERS IS NOT IN THIS FILE, and that is worth saying plainly:
+# this app reads the whole screen, and it gets that from the compositor over
+# wlr-screencopy, not from anything granted here. A permission profile cannot narrow
+# it and does not pretend to. What bounds it today is that the compositor only
+# advertises the interface to clients of the session, and the app tells the user what
+# it can do - `capture_available()` exists so the window can say "capture unavailable
+# here" rather than fail silently.
+#
+# That gap is the honest state, not an oversight to paper over: a screenshot tool is
+# the clearest case for the consent flow that does not exist yet, where taking a
+# picture of the screen is an act the user authorises rather than a capability an app
+# holds. Recording it here so the next reader does not mistake a small profile for a
+# small reach.
+[info]
+app_id = "dev.arlen.screenshot"
+tier = "first-party"
+
+# Writes the flattened PNG to the freedesktop screenshots directory:
+# `$XDG_SCREENSHOTS_DIR`, else `$XDG_PICTURES_DIR/Screenshots`, else
+# `~/Pictures/Screenshots` (`sdk/screen-capture::screenshots_dir`). All three are
+# under home in any ordinary setup, so home is the whole of the filesystem reach -
+# no media mounts, because this app does not open files from anywhere, it writes one
+# to a known place.
+[filesystem]
+home = true
+
+# Reads nothing from the knowledge graph, so there is no [graph] section rather than
+# an empty one - the two say different things.
+
+# Publishes nothing: grepped, no emitter. A capture does not reach the event bus, so
+# the graph does not learn that a screenshot was taken; whether it should is the same
+# open question the viewer and the editor raise.
+#
+# The subscribe list is `sdk/tauri-plugin-shell`'s, not this app's: it subscribes
+# these three from inside every Tauri process, and declaring any subscribe list drops
+# the system-tier exemption, so leaving them out switches the topbar menu, the toolbar
+# and the shortcuts off silently.
+[event_bus]
+publish = []
+subscribe = [
+    "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]

@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Screenshot
+Name[de]=Bildschirmfoto
+Comment=Capture the screen, a window or a region, then annotate it
+Comment[de]=Bildschirm, Fenster oder Ausschnitt aufnehmen und beschriften
+Exec=arlen-screenshot
+Icon=arlen-screenshot
+Terminal=false
+Categories=Graphics;Utility;
+Keywords=screenshot;capture;screen;grab;snip;annotate;
+Keywords[de]=bildschirmfoto;aufnahme;bildschirm;ausschnitt;
+StartupNotify=true
+
+# No MimeType: this app makes files, it does not open them. Registering it as a
+# handler for image/png would put a capture tool in the "open with" list for every
+# picture on the machine, which is not what any of those clicks mean.
+
+# The identity the permission system keys on, stated rather than derived from the
+# desktop-id, as the other apps do.
+X-Arlen-AppId=dev.arlen.screenshot
