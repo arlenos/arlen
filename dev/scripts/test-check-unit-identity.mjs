@@ -41,6 +41,16 @@ function withTree(mutate) {
   cpSync(join(ROOT, USER_UNITS), join(dir, USER_UNITS), { recursive: true });
   cpSync(join(ROOT, RESOLVER), join(dir, RESOLVER));
   cpSync(CHECK, join(dir, "dev/scripts/check-unit-identity.py"));
+  // The verify build phase, because the check now reads it: a table entry for a
+  // unit that only exists on verify images is excused only if that phase really
+  // writes the unit. Without the file in the copy, every run here would report
+  // the exception as stale and the whole control would go red for the wrong
+  // reason.
+  mkdirSync(join(dir, "dev/mkosi/mkosi.build.d"), { recursive: true });
+  cpSync(
+    join(ROOT, "dev/mkosi/mkosi.build.d/09-verify-probes.sh.chroot"),
+    join(dir, "dev/mkosi/mkosi.build.d/09-verify-probes.sh.chroot")
+  );
   mutate(dir);
   const r = spawnSync("python3", [join(dir, "dev/scripts/check-unit-identity.py")], {
     encoding: "utf8",
@@ -55,6 +65,19 @@ function withTree(mutate) {
   const r = withTree(() => {});
   check("the tree as it stands passes", r.code === 0);
   check("and it says how many units are named", r.out.includes("named by the cgroup resolver"));
+}
+{
+  // The verify-only exception must EXPIRE. If the phase stops writing the unit,
+  // the entry is stale in exactly the way this check exists to catch, and being
+  // marked verify-only must not make it permanent.
+  const r = withTree((dir) => {
+    writeFileSync(
+      join(dir, "dev/mkosi/mkosi.build.d/09-verify-probes.sh.chroot"),
+      "#!/bin/sh\necho the phase no longer writes any probe unit\n"
+    );
+  });
+  check("a verify-only entry whose phase stopped writing it is caught", r.code === 1);
+  check("and the message says the phase does not write it", r.out.includes("does not write it"));
 }
 
 // A new system daemon ships and nobody maps it. This is the quiet one.

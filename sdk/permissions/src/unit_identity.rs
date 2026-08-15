@@ -154,6 +154,16 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-event-bus.service", "event-bus"),
     ("arlen-graph.service", "knowledge"),
     ("arlen-journald-parser.service", "journald-parser"),
+    // Verify images only, and it earns its place rather than borrowing one. With
+    // the `/proc` fallback removed, a caller the supervisor has not registered
+    // cannot be named at all - so a probe whose whole job is asking the graph
+    // what it holds has to be registered or it gets refused at connect, which is
+    // exactly what the 15 Aug boot showed it doing.
+    //
+    // Absent on a production image, where the supervisor reports `NotInstalled`
+    // and moves on. Nothing can claim the name there either: the unit file does
+    // not exist, so there is nothing for systemd to start under it.
+    ("arlen-kg-probe.service", "kg-probe"),
     ("arlen-modulesd.service", "modulesd"),
     ("arlen-notifyd.service", "notifyd"),
     ("arlen-powerd.service", "powerd"),

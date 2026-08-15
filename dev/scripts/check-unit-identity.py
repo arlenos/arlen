@@ -57,6 +57,28 @@ NOT_A_PEER = {
 }
 
 
+
+# Units that exist only on verify images, written by a build phase rather than
+# shipped in `mkosi.extra`. They still need a table entry - with the `/proc`
+# fallback removed, an unregistered caller cannot be named at all, so a probe
+# that reads the graph is refused at connect unless the supervisor stamps it.
+#
+# The entry is not taken on trust: the phase named here must actually write the
+# unit, checked below. An exception that cannot expire is the thing this file
+# exists to prevent.
+VERIFY_ONLY = {
+    "arlen-kg-probe.service": "dev/mkosi/mkosi.build.d/09-verify-probes.sh.chroot",
+}
+
+
+def verify_only_unit_is_written(repo, unit: str) -> bool:
+    """Whether the build phase claimed for `unit` really writes it."""
+    phase = repo / VERIFY_ONLY[unit]
+    if not phase.is_file():
+        return False
+    return unit in phase.read_text(encoding="utf-8", errors="replace")
+
+
 def table_entries(src: str) -> dict[str, str]:
     """The `("unit.service", "app_id")` pairs in UNIT_APP_IDS."""
     block = re.search(r"UNIT_APP_IDS: &\[\(&str, &str\)\] = &\[(.*?)\];", src, re.S)
@@ -160,6 +182,15 @@ def check_user_units(src: str) -> list[str]:
 
     for unit in sorted(entries):
         if unit not in shipped:
+            if unit in VERIFY_ONLY:
+                if verify_only_unit_is_written(ROOT, unit):
+                    continue
+                problems.append(
+                    f"{unit} is carried as a verify-only unit written by "
+                    f"{VERIFY_ONLY[unit]}, but that phase does not write it. "
+                    f"Either the phase changed or the entry is stale."
+                )
+                continue
             problems.append(
                 f"{unit} is mapped to '{entries[unit]}' but no such user unit "
                 f"ships; delete the entry"

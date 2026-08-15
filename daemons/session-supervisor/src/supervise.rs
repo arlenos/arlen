@@ -56,6 +56,13 @@ pub enum Action {
     /// is between restarts, or has given up. Either way there is nothing to
     /// register and the next round will see the new pid if one arrives.
     NotRunning,
+    /// The unit is not installed on this image. Not an error either: the table is
+    /// compiled in and some entries only exist on some images - the verify probe
+    /// ships on verify builds and nowhere else. Reporting it as a failure would
+    /// put a line in every round of every production boot for a unit that is
+    /// absent on purpose, which trains a reader to skip the section where the
+    /// real failures appear.
+    NotInstalled,
 }
 
 /// What this supervisor has registered for each unit it manages.
@@ -125,7 +132,15 @@ fn one(
     // Unconditional and idempotent: on the first round this starts the unit, and
     // on a later one it is how a unit systemd gave up on (start-limit-hit) comes
     // back rather than staying down for the session's lifetime.
-    systemd.start(unit)?;
+    // A unit that is not installed is a fact about the image, not a failure of
+    // this round. systemd answers `NoSuchUnit` for it, and that string is the
+    // only thing distinguishing it from a real start error.
+    if let Err(e) = systemd.start(unit) {
+        if e.contains("NoSuchUnit") || e.contains("not found") {
+            return Ok(Action::NotInstalled);
+        }
+        return Err(e);
+    }
     let action = decide(systemd.main_pid(unit)?, registered.pid_for(unit));
     if let Action::Register { pid, .. } = action {
         registrar.register(pid, app_id)?;
