@@ -21,8 +21,20 @@ mod proto {
 /// Producer socket path; the same env override and default as the other
 /// Event Bus emitters.
 fn producer_socket_path() -> String {
-    std::env::var("ARLEN_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string())
+    // Pin, then per-user, then the system path - the SDK's order, reproduced here
+    // because this crate does not depend on os-sdk and one helper is not worth the
+    // dependency. What it must NOT do is what it did: fall straight from the pin
+    // to /run/arlen, skipping the per-user location the bus has bound since it
+    // became a user service, so an unpinned installd dialled nothing.
+    if let Ok(pinned) = std::env::var("ARLEN_PRODUCER_SOCKET") {
+        if !pinned.is_empty() {
+            return pinned;
+        }
+    }
+    if let Some(dir) = std::env::var("XDG_RUNTIME_DIR").ok().filter(|s| !s.is_empty()) {
+        return format!("{dir}/arlen/event-bus-producer.sock");
+    }
+    "/run/arlen/event-bus-producer.sock".to_string()
 }
 
 fn now_micros() -> i64 {

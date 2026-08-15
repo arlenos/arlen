@@ -222,7 +222,11 @@ fn on_change(change: ProfileChange) {
 /// existing `projects.rs::emit_to_event_bus`.
 fn producer_socket_path() -> String {
     std::env::var("ARLEN_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string())
+        .unwrap_or_else(|_| {
+            os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock")
+                .to_string_lossy()
+                .into_owned()
+        })
 }
 
 /// Best-effort emit of `permission.changed` on the Event Bus.

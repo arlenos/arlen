@@ -8,7 +8,6 @@ use std::os::unix::net::UnixStream;
 use arlen_desktop_shell_core::retry::Backoff;
 use tauri::{AppHandle, Emitter};
 
-const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
 const CONSUMER_ID: &str = "desktop-shell";
 /// Subscribe to window, config, project, and the app.* state
 /// surfaces (toolbar, shortcut, badge, ambient).
@@ -61,7 +60,16 @@ pub struct ConfigChangedPayload {
 /// seconds forever - the failure was real and invisible inside its own noise.
 pub fn start(app: AppHandle, shortcuts_state: crate::app_state::ShortcutsState) {
     let socket_path = std::env::var("ARLEN_CONSUMER_SOCKET")
-        .unwrap_or_else(|_| DEFAULT_CONSUMER_SOCKET.to_string());
+        .unwrap_or_else(|_| {
+            // The SDK's resolution, not a constant. This named /run/arlen, which
+            // is where the bus lived while it was a system service; it is a
+            // per-user service now and that path binds nothing. A hardcoded
+            // default survives every unit-level fix, which is exactly how this
+            // one survived removing eighteen `Environment=` pins.
+            os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock")
+                .to_string_lossy()
+                .into_owned()
+        });
 
     std::thread::spawn(move || {
         let mut backoff = Backoff::new();
@@ -601,7 +609,11 @@ fn battery_view(p: &proto::PowerStatePayload, observed_at_micros: i64) -> serde_
 fn emit_event(event_type: &str, payload: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
     use prost::Message;
     let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
+        .unwrap_or_else(|_| {
+            os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock")
+                .to_string_lossy()
+                .into_owned()
+        });
 
     let event = proto::Event {
         id: uuid::Uuid::now_v7().to_string(),

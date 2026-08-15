@@ -47,10 +47,22 @@ pub fn compositing_enabled(product_family: &str) -> bool {
 /// invisible until something downstream reads the wrong socket.
 pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
-    // The SYSTEM daemons' sockets, ahead of the XDG_RUNTIME_DIR default.
-    env.insert("ARLEN_PRODUCER_SOCKET".into(), "/run/arlen/event-bus-producer.sock".into());
-    env.insert("ARLEN_CONSUMER_SOCKET".into(), "/run/arlen/event-bus-consumer.sock".into());
-    env.insert("ARLEN_KNOWLEDGE_SOCKET".into(), "/run/arlen/knowledge.sock".into());
+    // NO SOCKET PINS. This exported all three - producer, consumer and knowledge -
+    // at /run/arlen, "ahead of the XDG_RUNTIME_DIR default", back when those
+    // daemons were system services. Both have moved per-user since, and an export
+    // here reaches further than any unit file: it lands in the environment of
+    // EVERY process the session starts, so it overrode the SDK's correct
+    // resolution for the whole desktop.
+    //
+    // The knowledge pin had been stale for days before this was found, and the
+    // symptom was in plain sight the whole time - the shell logging `list_projects:
+    // graph query failed (is knowledge daemon running?)` while the daemon was
+    // running perfectly, one path over. It was read as a knowledge problem because
+    // that is what the message says.
+    //
+    // Unset, the SDK derives $XDG_RUNTIME_DIR/arlen/, which is where both daemons
+    // now bind. A deployment that really does run them system-wide sets these in
+    // the units that need them, where the choice is visible.
     env.insert(crate::session_id::SESSION_ID_VAR.into(), session_id.into());
     env.insert("XDG_CURRENT_DESKTOP".into(), "arlen".into());
     // Software GL, and the WebKit paths that cannot use it.
@@ -149,13 +161,29 @@ mod tests {
     }
 
     #[test]
-    fn the_daemon_sockets_point_at_the_system_paths() {
-        // A user-session client has XDG_RUNTIME_DIR, so without these it looks
-        // under /run/user/<uid>/arlen and finds nothing.
+    fn the_session_pins_no_daemon_socket() {
+        // INVERTED 15 Aug. This asserted the opposite - that all three point at
+        // /run/arlen - with a comment explaining that a user-session client would
+        // otherwise "look under /run/user/<uid>/arlen and find nothing". That was
+        // true when both daemons were system services and became false when they
+        // moved; the test then held the whole desktop to a path nothing binds,
+        // which is the strongest possible way for a test to be wrong.
+        //
+        // Nothing may pin them here, because this environment reaches every
+        // process the session starts and so beats any per-unit decision made
+        // downstream.
         let env = session_env("s-1", "");
-        assert_eq!(env["ARLEN_KNOWLEDGE_SOCKET"], "/run/arlen/knowledge.sock");
-        assert_eq!(env["ARLEN_PRODUCER_SOCKET"], "/run/arlen/event-bus-producer.sock");
-        assert_eq!(env["ARLEN_CONSUMER_SOCKET"], "/run/arlen/event-bus-consumer.sock");
+        for var in [
+            "ARLEN_KNOWLEDGE_SOCKET",
+            "ARLEN_PRODUCER_SOCKET",
+            "ARLEN_CONSUMER_SOCKET",
+        ] {
+            assert!(
+                !env.contains_key(var),
+                "{var} is pinned here, which overrides the per-user resolution for \
+                 every process in the session"
+            );
+        }
         assert_eq!(env["ARLEN_SESSION_ID"], "s-1");
     }
 
