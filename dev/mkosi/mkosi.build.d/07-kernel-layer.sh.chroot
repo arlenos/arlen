@@ -1,0 +1,100 @@
+#!/bin/sh
+# The eBPF kernel layer: the sensor that produces `file.opened` and
+# `process.started` from the kernel itself.
+#
+# WHY THIS PHASE DID NOT EXIST. Nothing built the kernel layer into any image -
+# `grep kernel-layer dev/mkosi/mkosi.build.d/` came back empty on 15 Aug. So the
+# graph's file and process picture has never come from the kernel on a booted
+# system; what it holds comes from the dogfood driver and the shell. The daemon
+# and its probes are written and now compile, and they ship nowhere.
+#
+# OFF UNLESS ASKED, and deliberately so. This phase needs a nightly toolchain
+# (the eBPF target needs `-Z build-std=core`) and `bpf-linker`, which
+# `cargo install` builds from source along with a large part of LLVM. Putting
+# that in every image build would make every unrelated build pay for it, so it
+# follows the verify-probe pattern: `ARLEN_KERNEL_LAYER=1` turns it on, a plain
+# build runs this and does nothing.
+#
+# The flag is what gets removed once the cost is measured on a real run and the
+# planner decides the sensor ships by default.
+set -eu
+
+if [ "${ARLEN_KERNEL_LAYER:-0}" != "1" ]; then
+    echo ">> kernel layer not requested; skipping (set ARLEN_KERNEL_LAYER=1)"
+    exit 0
+fi
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-bpf"
+PATH="$CARGO_HOME/bin:$PATH"
+export PATH
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+SRC="$SRCDIR/arlen/daemons/kernel-layer"
+
+# The nightly toolchain the eBPF target needs. `rust-src` is not optional:
+# `-Z build-std=core` compiles core from source for a target with no prebuilt std.
+echo ">> kernel layer: nightly toolchain + bpfel target"
+rustup toolchain install nightly --profile minimal --component rust-src
+rustup target add bpfel-unknown-none --toolchain nightly
+
+# bpf-linker, which rustc invokes to produce the BPF object. Skipped when already
+# cached, because this is the expensive half.
+if [ ! -x "$CARGO_HOME/bin/bpf-linker" ]; then
+    echo ">> kernel layer: building bpf-linker (slow, cached afterwards)"
+    cargo install bpf-linker --locked
+fi
+
+# The eBPF program first: the userspace daemon embeds the object, so the object
+# has to exist before the daemon compiles. RELEASE because that is the path the
+# daemon's build.rs looks for, and because a debug BPF object routinely exceeds
+# the verifier's instruction limit.
+echo ">> kernel layer: building the eBPF program"
+cargo +nightly build --release \
+    --manifest-path "$SRC/Cargo.toml" \
+    -p kernel-layer-ebpf \
+    --target bpfel-unknown-none \
+    -Z build-std=core
+
+echo ">> kernel layer: building the userspace daemon"
+cargo build --release --manifest-path "$SRC/Cargo.toml" -p kernel-layer
+
+install -Dm755 "$CARGO_TARGET_DIR/release/kernel-layer" \
+        "$DESTDIR/usr/bin/arlen-kernel-layer"
+
+# The unit. It runs as root under the SYSTEM manager, and both are load-bearing:
+# loading a BPF program and attaching a tracepoint need CAP_BPF and CAP_PERFMON,
+# and the sensor observes the whole machine rather than one session.
+#
+# It carries no mount-namespace hardening. That is not an oversight - it produces
+# events rather than serving callers, so it resolves nobody's identity, and the
+# directives that would matter here (ProtectSystem) are the ones measured on
+# 15 Aug to take away `/proc` reads. Nothing it does needs them.
+mkdir -p "$DESTDIR/usr/lib/systemd/system"
+cat > "$DESTDIR/usr/lib/systemd/system/arlen-kernel-layer.service" <<'UNIT'
+[Unit]
+Description=Arlen kernel layer (eBPF sensor)
+Documentation=https://github.com/arlenos/arlen
+# It produces into the bus, so the bus should be there first. Not a hard
+# dependency: the emitter reconnects, and a sensor that refuses to start because
+# the bus was slow would lose the events it exists to capture.
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/arlen-kernel-layer
+Restart=on-failure
+RestartSec=2
+# CAP_BPF and CAP_PERFMON to load the program and attach the tracepoints;
+# CAP_SYS_RESOURCE for the ring buffer's memlock accounting on older kernels.
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-kernel-layer.service"
+
+echo ">> staged the kernel layer into the image"
