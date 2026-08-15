@@ -82,10 +82,22 @@ done
 # `dev/scripts/check-verify-image.sh` rather than by anyone remembering it, because
 # an image that differs by omission verifies a system that does not ship.
 verify_args=()
-if [ "${1:-}" = "--verify" ]; then
-    verify_args=(-E ARLEN_VERIFY_IMAGE=1)
-    echo ">> verify variant: the release image plus the probes"
-fi
+for arg in "$@"; do
+    case "$arg" in
+        --verify)
+            verify_args+=(-E ARLEN_VERIFY_IMAGE=1)
+            echo ">> verify variant: the release image plus the probes"
+            ;;
+        # The eBPF sensor, off by default because its phase installs a nightly
+        # toolchain and builds bpf-linker from source. Both cache in the build
+        # dir, so the cost is paid once - but it is paid by whoever asks, not by
+        # every unrelated image build.
+        --kernel-layer)
+            verify_args+=(-E ARLEN_KERNEL_LAYER=1)
+            echo ">> kernel layer: building and staging the eBPF sensor"
+            ;;
+    esac
+done
 
 echo ">> mkosi build --incremental --force"
 # Move the last good image aside before mkosi deletes it, so a failure anywhere
