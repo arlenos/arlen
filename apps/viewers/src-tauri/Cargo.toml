@@ -25,6 +25,7 @@ env_logger = "0.11"
 # the core types + the decode-worker invocation.
 arlen-viewers-host = { path = "../host" }
 arlen-viewers-core = { path = "../core" }
+arlen-freedesktop-trash = { path = "../../../contracts/freedesktop-trash" }
 
 # This app is its own standalone crate (its decode workers + host carry their own
 # `[workspace]`), so it is not a member of any parent workspace.

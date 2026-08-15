@@ -232,6 +232,86 @@
     }
   }
 
+  /// The last delete, kept until it is undone or superseded.
+  ///
+  /// Everything an undo needs is in here because `trash_file` returned it - the
+  /// app holds no hidden state about what it deleted, so the offer to undo cannot
+  /// outlive the knowledge of what to undo.
+  type Deleted = { trashed: string; info: string; original: string; name: string };
+  let lastDeleted = $state<Deleted | null>(null);
+
+  /// A failed ACTION, as opposed to a file that would not open.
+  ///
+  /// These are different states and putting them in one variable hid a real one:
+  /// `loadError` is only rendered when nothing is loaded (the branch for a picture
+  /// wins over it), so a delete that failed while a picture was on screen set a
+  /// message nobody could see - the file stayed, the app said nothing, and the
+  /// keypress looked ignored. Measured on 16 August with a file on a tmpfs, where
+  /// the trash move fails with EXDEV.
+  let actionError = $state<string | null>(null);
+
+  /// Delete the open file to the trash and move on to the next one.
+  ///
+  /// TRASH, NEVER UNLINK. The delete key in a viewer is pressed by someone looking
+  /// at a picture, usually while moving quickly, and the only acceptable answer to
+  /// "that was the wrong one" is that it comes back.
+  ///
+  /// The neighbour is resolved BEFORE the delete, because afterwards the file is
+  /// gone from the folder and has no neighbours - asking then would answer about a
+  /// file that no longer exists.
+  async function deleteCurrent() {
+    if (!tauriAvailable || !currentPath) return;
+    actionError = null;
+    const doomed = currentPath;
+    const name = basename(doomed);
+    let neighbour: string | null = null;
+    try {
+      neighbour = await invoke<string | null>("neighbour_file", {
+        path: doomed,
+        direction: "next",
+      });
+    } catch {
+      // No neighbour is a fine answer; the delete still happens.
+    }
+    try {
+      const t = await invoke<{ trashed: string; info: string; original: string }>("trash_file", {
+        path: doomed,
+      });
+      lastDeleted = { ...t, name };
+    } catch (e) {
+      actionError = $t("v.couldNotDelete", { reason: String(e) });
+      return;
+    }
+    if (neighbour && neighbour !== doomed) {
+      currentPath = neighbour;
+      await openFile(neighbour);
+    } else {
+      // It was the only file its kind in the folder: there is nothing to show, and
+      // saying so is better than leaving the deleted picture on screen.
+      loaded = null;
+      currentPath = null;
+      noFile = true;
+    }
+  }
+
+  /// Put the last deleted file back and show it again.
+  async function undoDelete() {
+    if (!tauriAvailable || !lastDeleted) return;
+    const d = lastDeleted;
+    try {
+      await invoke("restore_file", { trashed: d.trashed, info: d.info, original: d.original });
+    } catch (e) {
+      actionError = $t("v.couldNotRestore", { reason: String(e) });
+      return;
+    }
+    lastDeleted = null;
+    noFile = false;
+    loadError = null;
+    actionError = null;
+    currentPath = d.original;
+    await openFile(d.original);
+  }
+
   /// Arrow keys walk the folder, which is the behaviour that makes this a viewer
   /// rather than a file-opener - opening one picture puts you in the folder, the
   /// way imv does.
@@ -255,10 +335,23 @@
   }
 
   function onKey(event: KeyboardEvent) {
+    // Ctrl+Z undoes the last delete, which is the one modifier combination this
+    // window claims - and it is claimed before the modifier guard below, which
+    // exists to keep every OTHER combination behaving as it does everywhere else.
+    if (event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      void undoDelete();
+      return;
+    }
     // Ignored with a modifier held: Ctrl+Right is a word-jump everywhere else,
     // and a viewer that swallowed it would be the one application that does not
     // behave.
     if (event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.key === "Delete") {
+      event.preventDefault();
+      void deleteCurrent();
+      return;
+    }
     if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === " ") {
       event.preventDefault();
       void step("next");
@@ -332,9 +425,59 @@
   </main>
 {/if}
 
+{#if actionError}
+  <!-- Over whatever is on screen, because that is where the failure happened. The
+       load-error branch below cannot serve here: it only renders when nothing is
+       loaded, so it is invisible in exactly the case an action fails. -->
+  <div class="undobar bad" role="alert">
+    <span>{actionError}</span>
+    <button onclick={() => (actionError = null)}>{$t("v.close")}</button>
+  </div>
+{:else if lastDeleted}
+  <!-- Over every state, including "no file is open" - that is precisely the state
+       left behind by deleting the last picture in a folder, and the moment the
+       offer matters most. -->
+  <div class="undobar" role="status">
+    <span>{$t("v.movedToTrash", { name: lastDeleted.name })}</span>
+    <button onclick={() => undoDelete()}>{$t("v.undo")}</button>
+  </div>
+{/if}
+
 <style>
   :global(body) {
     margin: 0;
+  }
+  .undobar {
+    position: fixed;
+    left: 50%;
+    bottom: 68px;
+    transform: translateX(-50%);
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px 8px 14px;
+    border-radius: var(--radius-card, 12px);
+    background: color-mix(in srgb, #141414 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary, #fafafa) 14%, transparent);
+    color: var(--color-fg-primary, #fafafa);
+    font-size: 13px;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
+  }
+  .undobar button {
+    all: unset;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--color-fg-primary, #fafafa) 14%, transparent);
+  }
+  .undobar.bad {
+    border-color: color-mix(in srgb, var(--color-error, #ef4444) 55%, transparent);
+  }
+  .undobar button:hover {
+    background: color-mix(in srgb, var(--color-fg-primary, #fafafa) 22%, transparent);
   }
   /* Mock-harness only: size the document to the window so a headless full-page
      screenshot is exactly the window. Never part of the product. */

@@ -260,6 +260,72 @@ fn file_facts(path: String) -> Result<FileFactsDto, String> {
     })
 }
 
+/// Where a deleted file went, and what putting it back needs.
+///
+/// Handed to the frontend so an undo is possible without the app holding hidden
+/// state: everything needed to reverse the delete is in the value the delete
+/// returned.
+#[derive(Serialize)]
+pub struct TrashedDto {
+    /// The file's new location under `Trash/files/`.
+    pub trashed: String,
+    /// Its `.trashinfo` sidecar, which the restore removes.
+    pub info: String,
+    /// Where it came from, which is where a restore puts it back.
+    pub original: String,
+}
+
+/// Move the open file to the freedesktop home trash.
+///
+/// Trash, never unlink. A viewer's delete key is pressed by someone looking at a
+/// picture, often while moving quickly through a folder, and the only acceptable
+/// answer to "that was the wrong one" is that it comes back. `restore_file` is the
+/// exact inverse, and the delete hands back everything that inverse needs.
+///
+/// The freedesktop layout and its atomicity live in `arlen-freedesktop-trash`
+/// (sidecar first, no-clobber move, canonical paths validated before any side
+/// effect) - the same contract `trash-rm` uses, rather than a second trash
+/// implementation with its own edge cases.
+#[tauri::command]
+fn trash_file(path: String) -> Result<TrashedDto, String> {
+    let base = arlen_freedesktop_trash::home_trash_dir()
+        .ok_or_else(|| "no home trash directory: neither XDG_DATA_HOME nor HOME is absolute".to_string())?;
+    let files = base.join("files");
+    let info = base.join("info");
+    for dir in [&files, &info] {
+        std::fs::create_dir_all(dir).map_err(|e| format!("cannot prepare the trash: {e}"))?;
+    }
+    let name = Path::new(&path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "the file has no readable name".to_string())?;
+
+    let slot = arlen_freedesktop_trash::trash_into(&files, &info, name, &path)
+        .map_err(|e| format!("could not move the file to the trash: {e:?}"))?;
+    let (trashed, trash_info) = slot.into_parts();
+    Ok(TrashedDto {
+        trashed: trashed.as_str().to_string(),
+        info: trash_info.as_str().to_string(),
+        original: path,
+    })
+}
+
+/// Put a trashed file back where it was, and drop its sidecar.
+///
+/// `rename_noreplace` rather than a plain rename: if something has taken the
+/// original name since the delete, the restore refuses rather than overwriting it.
+/// The sidecar is removed only after the file is back, so a failed restore leaves
+/// the trash entry intact and undoable again.
+#[tauri::command]
+fn restore_file(trashed: String, info: String, original: String) -> Result<(), String> {
+    arlen_freedesktop_trash::rename_noreplace(&trashed, &original)
+        .map_err(|e| format!("could not put the file back: {e:?}"))?;
+    // A leftover sidecar describes a file that is no longer in the trash; it is
+    // untidy rather than harmful, so a failure here does not fail the restore.
+    let _ = std::fs::remove_file(&info);
+    Ok(())
+}
+
 /// The folder a file lives in, its own name, and the file names beside it.
 ///
 /// Non-UTF-8 names are dropped rather than lossily converted: a name that does
@@ -318,6 +384,8 @@ pub fn run() {
             neighbour_file,
             folder_position,
             file_facts,
+            trash_file,
+            restore_file,
             initial_file
         ])
         .run(tauri::generate_context!())
