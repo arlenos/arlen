@@ -5,7 +5,7 @@
 ///
 /// See `docs/architecture/CAPABILITY-TOKENS.md` Sections 7-8.
 
-use crate::identity::{app_id_from_pid, process_alive, IdentityError};
+use crate::identity::{process_alive, IdentityError};
 use arlen_permissions::{load_profile_for_user, PermissionError, PermissionProfile};
 
 use crate::permission::GraphScopeExt;
@@ -35,30 +35,14 @@ pub struct Authenticator {
     signer: TokenSigner,
 }
 
-/// A debug-only caller-id fallback for a same-uid peer whose `/proc/<pid>/exe`
-/// (and cgroup) could not resolve an app id.
-///
-/// A NON-root knowledge daemon (the integration harness and `just dev`, which
-/// run every daemon as the developer uid) cannot read a same-uid peer's
-/// `/proc/<pid>/exe`, so `app_id_from_pid` fails and per-request token issuance
-/// (readable-label scoping for the read ops, the connect-time grant emission)
-/// would fail closed even though the connection resolver already knows the
-/// caller via the same launcher-declared id. This mirrors the resolver's
-/// `same_uid_unresolved_id` (`daemon.rs`): honor `ARLEN_KNOWLEDGE_DEV_SELF_ID`
-/// so token issuance for the resolved caller succeeds. Release builds always
-/// return `None` (the deployed daemon runs as root and reads the exe directly),
-/// so this is a debug-only test/dev accommodation with no production effect.
-fn dev_self_caller_id() -> Option<String> {
-    #[cfg(debug_assertions)]
-    {
-        if let Ok(id) = std::env::var("ARLEN_KNOWLEDGE_DEV_SELF_ID") {
-            if !id.is_empty() {
-                return Some(id);
-            }
-        }
-    }
-    None
-}
+// `dev_self_caller_id` stood here and went with `issue_token_for_pid` on 15 Aug.
+//
+// It existed to paper over that same second /proc resolution in dev builds: a
+// non-root daemon could not read a same-uid peer's exe link, so token issuance
+// fell back to a launcher-declared id. With the resolved name carried on the
+// peer there is nothing left to paper over, in dev or in release - the token is
+// minted from the identity the connection was authenticated with.
+
 
 impl Authenticator {
     /// Create a new authenticator with a fresh HMAC key.
@@ -68,46 +52,19 @@ impl Authenticator {
         }
     }
 
-    /// Issue a token for a connecting process.
-    ///
-    /// 1. Resolves app_id from PID via `/proc/{pid}/exe`
-    /// 2. Loads permission profile
-    /// 3. Checks `[graph]` access
-    /// 4. Builds and signs token from profile scopes
-    /// 5. Caches token with profile mtime
-    ///
-    /// `uid` is the peer's, and it selects WHOSE permissions are read. This
-    /// daemon runs as root, so resolving the profile from its own uid looked
-    /// under `/var/lib/arlen/permissions/0` while the set that applies to the
-    /// connecting user is filed under theirs (decided 11 Aug: the directory is
-    /// keyed on the user a profile applies to, never on the process reading it).
-    /// Taking it as a parameter rather than reading `getuid()` is what makes that
-    /// distinction unskippable at every call site.
-    pub fn issue_token_for_pid(
-        &mut self,
-        uid: u32,
-        pid: u32,
-    ) -> Result<CapabilityToken, AuthError> {
-        // A hardened, non-dumpable peer's /proc/exe is EACCES even to root, and
-        // there is no second way to identify it. There used to be: the peer's
-        // cgroup unit. It was removed because the peer owns that text - a
-        // directory named after a daemon inside its own slice read as that
-        // daemon - so it turned "I could not identify you" into "you are the AI
-        // daemon", which is what the token, the tier and the read scope key on.
-        // A failed identification stays a failure here; the caller gets the
-        // resolver's error rather than an identity nobody proved.
-        let app_id = match app_id_from_pid(pid) {
-            Ok(id) => id,
-            // A launcher-declared same-uid caller (debug harness / `just dev`)
-            // keys token issuance on the SAME id the connection resolver assigned
-            // (`same_uid_unresolved_id`, which uses the declared id directly for a
-            // same-uid peer); otherwise a connect-time Grant node would be keyed
-            // on a divergent id and the caller's own `access_grants` read would
-            // not find it. Release builds return `None` here.
-            Err(e) => dev_self_caller_id().ok_or(e)?,
-        };
-        self.issue_token_for_app(uid, &app_id, pid)
-    }
+    // `issue_token_for_pid` stood here and is gone as of 15 Aug.
+    //
+    // It resolved the caller by reading `/proc/<pid>/exe` - a SECOND resolution
+    // for a connection the daemon had already named through the identity broker.
+    // That read cannot succeed in this daemon: measured with one binary in four
+    // units on one boot, a plain process reads 29 of 31 same-uid exe links and
+    // the same binary under `ProtectSystem=strict` reads 1 of 25. This unit
+    // carries that directive.
+    //
+    // So the second resolution failed where the first had succeeded, and the
+    // token was minted from whatever the fallback produced instead of from the
+    // attested identity. `WritePeer` now carries the resolved `app_id` and every
+    // mint goes through `issue_token_for_app` with it.
 
     /// Issue a token for a known app_id and PID (skips identity resolution).
     /// Useful for testing and for cases where app_id is already known.
