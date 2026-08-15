@@ -2954,35 +2954,66 @@ async fn handle_client(
                 ("unknown".to_string(), None)
             } else {
                 let pid = pid as u32;
-                // Resolve the peer's identity. As a system service this daemon
-                // runs as root, so it can read a cross-uid peer's
-                // `/proc/<pid>/exe` even when that peer is process-hardened
-                // (non-dumpable) - the resolution that lets the per-user AI layer
-                // reach the system Knowledge Graph.
-                let id = match app_id_from_pid(pid) {
-                    Ok(id) => id,
-                    Err(e) => {
-                        // A hardened, non-dumpable cross-uid peer's /proc/exe is
-                        // EACCES even to root (the VM boot proved the old "root can
-                        // always read it" assumption false), and there is no longer
-                        // a second source to ask. The peer's cgroup unit used to
-                        // answer here, until it turned out the peer owns the
-                        // directory names under its own unit: naming one after the
-                        // AI daemon made an unreadable identity into that daemon's,
-                        // which is what the tier and the read scope key on. An
-                        // unresolvable caller is unresolved, and recorded as such.
-                        if cross_uid {
-                            warn!(
-                                peer_uid = uid,
-                                pid,
-                                error = %e,
-                                "graph daemon: cross-uid app_id resolution failed (peer served as unknown)"
-                            );
-                            "unknown".to_string()
-                        } else {
-                            same_uid_unresolved_id()
+                // ASK THE BROKER FIRST, then fall back to `/proc`.
+                //
+                // This daemon used to run as root, and the root exemption was what
+                // made the `/proc/<pid>/exe` read below work. Moving it under the
+                // user manager on 15 Aug took that away: the 15 Aug boot resolved
+                // EVERY caller to `unknown`, so the read-scope gate denied every
+                // graph read from every app, once per query, with `app_id=unknown`
+                // in the log and an empty pane in the app.
+                //
+                // The launcher-stamped broker answers without reading `/proc` at
+                // all. The same boot proved it works: the undo signer hit the
+                // identical `/proc` refusal and still resolved its caller
+                // (`stamped="ai-agent" source=Stamped`) - this daemon simply never
+                // asked, because it called its own resolver rather than the shared
+                // one.
+                //
+                // Strictly additive, which is why it goes in front rather than
+                // replacing. `app_id_from_connection` pins the peer with
+                // SO_PEERPIDFD and REFUSES a cross-uid peer, and cross-uid is a
+                // case this daemon must keep serving (the per-user AI layer reaching
+                // the graph). So a broker miss, an unreachable broker, an old kernel
+                // and a cross-uid peer all fall through to exactly the resolution
+                // that ran before. It can name more callers than yesterday and
+                // never fewer.
+                //
+                // A caller the broker does not know still ends at `/proc`: the
+                // registrar stamps the units the session root spawned, so a process
+                // outside that set - a verify probe, anything hand-started - is
+                // unresolvable here for the same reason it was this morning.
+                let id = match arlen_permissions::stamped_identity::app_id_from_connection(
+                    &stream, uid,
+                ) {
+                    Ok(stamped) => stamped.app_id().to_string(),
+                    Err(_) => match app_id_from_pid(pid) {
+                        Ok(id) => id,
+                        Err(e) => {
+                            // Both tiers are out. A hardened peer's /proc/exe is
+                            // EACCES even to root (the VM boot proved the old "root
+                            // can always read it" assumption false), and the broker
+                            // above did not know this caller. There is no third
+                            // source: the peer's cgroup unit used to answer here,
+                            // until it turned out the peer owns the directory names
+                            // under its own unit, so naming one after the AI daemon
+                            // made an unreadable identity into that daemon's - which
+                            // is exactly what the tier and the read scope key on. An
+                            // unresolvable caller is unresolved, and recorded as
+                            // such.
+                            if cross_uid {
+                                warn!(
+                                    peer_uid = uid,
+                                    pid,
+                                    error = %e,
+                                    "graph daemon: cross-uid app_id resolution failed (peer served as unknown)"
+                                );
+                                "unknown".to_string()
+                            } else {
+                                same_uid_unresolved_id()
+                            }
                         }
-                    }
+                    },
                 };
                 // A SAME-uid peer is served, scoped by `id` (other root services).
                 // A CROSS-uid peer is served only when it resolves FirstParty/
