@@ -115,6 +115,20 @@ fn try_process_exec(ctx: TracePointContext) -> Result<(), i64> {
     let pid = (unsafe { aya_ebpf::helpers::bpf_get_current_pid_tgid() } >> 32) as u32;
     let timestamp_ns = unsafe { bpf_ktime_get_ns() };
 
+    // READ THE FIELD BEFORE RESERVING, and the order is load-bearing rather than
+    // stylistic. This read is fallible, and its `?` used to sit AFTER the
+    // reservation - so the error path returned while still holding the ring-buffer
+    // slot. The verifier rejects the whole program for it:
+    //
+    //     Unreleased reference id=5 alloc_insn=11
+    //     the BPF_PROG_LOAD syscall failed ... Invalid argument (os error 22)
+    //
+    // Nothing caught it until the sensor was put on an image and the kernel
+    // refused to load it, because the program had never been loaded anywhere.
+    // The sibling openat probe already reads its pointer before reserving; this
+    // now matches, and a reservation is only taken once nothing left can fail.
+    let data_loc: u32 = unsafe { ctx.read_at(8).map_err(|_| -1i64)? };
+
     let mut entry = EXEC_EVENTS.reserve::<ProcessExecEvent>(0).ok_or(-1i64)?;
     let event = unsafe { entry.assume_init_mut() };
     event.pid = pid;
@@ -128,10 +142,8 @@ fn try_process_exec(ctx: TracePointContext) -> Result<(), i64> {
         aya_ebpf::helpers::bpf_get_current_comm()
     }.map(|comm| event.comm = comm);
 
-    // Read the filename from the data_loc field at offset 8 (absolute)
-    // in the sched_process_exec tracepoint entry.
-    // data_loc format: low 16 bits = offset from entry start, high 16 bits = length.
-    let data_loc: u32 = unsafe { ctx.read_at(8).map_err(|_| -1i64)? };
+    // `data_loc` was read above, before the reservation. Its low 16 bits are the
+    // offset of the string from the entry start, the high 16 its length.
     let str_offset = (data_loc & 0xFFFF) as usize;
     let filename_ptr = (ctx.as_ptr() as usize + str_offset) as *const u8;
     unsafe {
