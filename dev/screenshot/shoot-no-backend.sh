@@ -101,7 +101,11 @@ rm -f "$OUT"
 # it produced for months: a narrow-layout PNG that reads as a desktop one.
 # Piped through grep, so the exit code here is grep's; the file check below is
 # the real verdict.
+# `env -u WAYLAND_DISPLAY` for the same reason `shoot-compositor.sh` does it: xvfb-run
+# sets DISPLAY only, so a WebKit that prefers Wayland would render against the real
+# session and this "headless" shot would be of the developer's compositor.
 xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+  env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
   python3 "$ROOT/dev/screenshot/render-wide.py" \
     --url "$URL" --out "$OUT" --width "$W" --require-width "$W" \
   2>&1 | grep -v "Gdk-WARNING" || true
