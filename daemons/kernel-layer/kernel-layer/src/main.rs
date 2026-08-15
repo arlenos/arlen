@@ -61,16 +61,26 @@ async fn main() -> Result<()> {
     //
     // Absent is a deployment defect and is said so: substituting would make the
     // graph look joined while joining nothing.
-    let session_id = std::env::var("ARLEN_SESSION_ID").unwrap_or_default();
-    if session_id.is_empty() {
-        log::error!(
-            "ARLEN_SESSION_ID is unset: kernel events cannot be attributed to a \
-             session and the bus will refuse them"
-        );
-    }
+    // A SYSTEM SOURCE, not a session. This looked for `ARLEN_SESSION_ID` and
+    // logged an error when it was missing, which it always is: the session
+    // exports that variable to its own children, and this sensor is a system
+    // unit started at boot, before any session exists. It cannot have one.
+    //
+    // The bus already accounts for this - `origin` takes "a session reference, or
+    // a named system source for the things that happen in no session", and its
+    // rule refuses only an EMPTY origin. So the sensor names itself rather than
+    // sending a blank the bus would reject or borrowing a session id that would
+    // attribute machine-wide events to whichever session happened to start first.
+    //
+    // A session-scoped consumer can still find its own events: they carry the
+    // uid, which is what the bus filters on.
+    let session_id = std::env::var("ARLEN_SESSION_ID")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "system:kernel-layer".to_string());
 
     info!("starting kernel-layer daemon");
-    info!("session_id={session_id}");
+    info!("origin={session_id}");
 
     // The path comes from build.rs, which locates the object under whichever
     // target directory cargo is using. A literal relative path assumed the target
