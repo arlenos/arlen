@@ -49,6 +49,12 @@ rustup toolchain install nightly --profile minimal --component rust-src
 # bpf-linker, which rustc invokes to produce the BPF object. Skipped when already
 # cached, because this is the expensive half.
 if [ ! -x "$CARGO_HOME/bin/bpf-linker" ]; then
+    # bpf-linker links against a SPECIFIC LLVM major through llvm-sys, so the
+    # version that installs depends on the LLVM in this image. Printing both
+    # before trying means a mismatch names itself instead of arriving as
+    # `could not find llvm-config`, which is how the first run failed - with no
+    # LLVM present at all.
+    echo ">> kernel layer: llvm-config reports $(llvm-config --version 2>/dev/null || echo ABSENT)"
     echo ">> kernel layer: building bpf-linker (slow, cached afterwards)"
     cargo install bpf-linker --locked
 fi
