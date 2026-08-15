@@ -193,9 +193,13 @@
             artist: info.artist,
             codec: info.codec,
             durationSec: (info.duration_ms ?? 0) / 1000,
-            // The real waveform from the probe's decode pass; the mock stands in
-            // only when the track length is unknown or silent (empty peaks).
-            peaks: info.peaks.length ? info.peaks : mockPeaks(),
+            // The real waveform from the probe's decode pass, scaled from the
+            // probe's 0-255 bytes into the 0..1 the Waveform documents. Without
+            // the divide every sample was >= 1, the silhouette clipped to full
+            // height, and a 17-second speech recording drew as one solid block -
+            // while the demo looked perfect, because `mockPeaks` was already
+            // 0..1. A surface that had only ever been seen with fixture data.
+            peaks: info.peaks.length ? info.peaks.map((p) => p / 255) : mockPeaks(),
             index: at?.[0],
             total: at?.[1],
           },

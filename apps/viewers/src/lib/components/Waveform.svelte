@@ -20,6 +20,27 @@
     onseek?: (fraction: number) => void;
   } = $props();
 
+  /// Say so when a caller hands over the wrong units, instead of drawing a lie.
+  ///
+  /// `peaks` is documented 0..1, and the audio probe returns 0-255 bytes. A caller
+  /// that forwards those unscaled makes every sample >= 1, the silhouette clips to
+  /// full height, and the result is a solid block that looks like a rendered
+  /// waveform rather than like a bug - which is how it survived: the mock peaks are
+  /// already 0..1, so every demo looked right and every real file was flat.
+  ///
+  /// Dev only, and a warning rather than a clamp: clamping would draw the same lie
+  /// silently, and the caller is the thing that needs fixing.
+  $effect(() => {
+    if (!import.meta.env.DEV) return;
+    const worst = peaks.reduce((m, p) => Math.max(m, p), 0);
+    if (worst > 1) {
+      console.warn(
+        `Waveform: peaks must be 0..1, largest is ${worst.toFixed(1)} - ` +
+          "the probe's 0-255 bytes need scaling, or every sample clips to full height",
+      );
+    }
+  });
+
   let host: HTMLDivElement;
   let canvas: HTMLCanvasElement;
   let raf = 0;
