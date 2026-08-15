@@ -47,9 +47,15 @@ console.log("socket servers:");
 {
   // An entry for a socket the tree no longer mentions: the table would otherwise
   // sit there looking like coverage of something that is gone.
+  //
+  // Anchored on `knowledge.sock`, the one entry that cannot go away while there
+  // is a knowledge daemon. It used to anchor on `installd.sock`, which was itself
+  // a stale entry - installd binds no socket, the About page was the only thing
+  // that ever named one - so removing it on 15 Aug took this control down with
+  // it. Anchor a control on the thing least likely to be the next defect.
   const r = run((s) =>
-    s.replace('    "installd.sock": "installd",',
-      '    "installd.sock": "installd",\n    "no-such-thing.sock": "arlen-graph-daemon",'),
+    s.replace('    "knowledge.sock": "arlen-graph-daemon",',
+      '    "knowledge.sock": "arlen-graph-daemon",\n    "no-such-thing.sock": "arlen-graph-daemon",'),
   );
   check("a table entry for a vanished socket is caught", r.code === 1);
   check("and names it", r.out.includes("no-such-thing.sock"));

@@ -89,7 +89,6 @@ SERVERS = {
     "transfer.sock": "arlen-transferd",
     "portal-picker.sock": "xdg-desktop-portal-arlen",
     "modulesd.sock": "arlen-modulesd",
-    "installd.sock": "installd",
     "settings-broker.sock": "arlen-settings-broker",
 }
 

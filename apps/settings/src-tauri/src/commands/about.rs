@@ -1,9 +1,14 @@
 //! System info for the About settings page.
 //!
-//! Read-only stats: kernel version, compositor build, daemon
-//! statuses. Uses the same socket-existence pattern as
-//! `commands/knowledge.rs::knowledge_stats_get` — file-based
-//! signals, no token-authenticated daemon round-trip.
+//! Read-only stats: kernel version, compositor build, daemon statuses. Nothing
+//! here makes a token-authenticated round-trip; each daemon is checked by the
+//! cheapest signal that is actually true of it.
+//!
+//! For three of them that is socket existence, the same pattern as
+//! `commands/knowledge.rs::knowledge_stats_get`. For the install daemon it is bus
+//! name ownership, because that daemon binds no socket - probing a path for it
+//! reported "down" on every system ever booted, which is where the note on
+//! `installd_name_has_owner` comes from.
 
 use std::path::Path;
 use std::process::Command;
@@ -29,18 +34,20 @@ pub struct SystemInfo {
 pub struct DaemonStatus {
     pub name: String,
     pub running: bool,
-    /// Path of the socket / file used to test liveness. Surfaced
-    /// for debug — UI shows it on hover.
+    /// What was checked to decide `running`. A socket path for the daemons that
+    /// bind one, and a bus name for the install daemon, which does not. Surfaced
+    /// for debug - the UI shows it on hover, so it has to name the thing that was
+    /// actually looked at rather than a path that sounds plausible.
     pub probe_path: String,
 }
 
 #[tauri::command]
-pub fn about_get_system_info() -> SystemInfo {
+pub async fn about_get_system_info() -> SystemInfo {
     SystemInfo {
         arlen_version: read_version_file(),
         kernel: kernel_release(),
         wayland_display: std::env::var("WAYLAND_DISPLAY").ok(),
-        daemons: daemon_statuses(),
+        daemons: daemon_statuses().await,
     }
 }
 
@@ -65,7 +72,7 @@ fn kernel_release() -> Option<String> {
     }
 }
 
-fn daemon_statuses() -> Vec<DaemonStatus> {
+async fn daemon_statuses() -> Vec<DaemonStatus> {
     vec![
         DaemonStatus {
             name: "Knowledge Graph".into(),
@@ -84,8 +91,8 @@ fn daemon_statuses() -> Vec<DaemonStatus> {
         },
         DaemonStatus {
             name: "Install Daemon".into(),
-            running: installd_socket_exists(),
-            probe_path: installd_socket_path_string(),
+            running: installd_name_has_owner().await,
+            probe_path: INSTALLD_BUS_NAME.into(),
         },
     ]
 }
@@ -124,15 +131,38 @@ fn event_bus_socket_exists() -> bool {
     Path::new("/run/arlen/event-bus-consumer.sock").exists()
 }
 
-fn installd_socket_path_string() -> String {
-    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/arlen/installd.sock");
-    }
-    "/run/arlen/installd.sock".into()
-}
+/// The install daemon is reached by bus name, not by socket.
+const INSTALLD_BUS_NAME: &str = "org.arlen.InstallDaemon1";
 
-fn installd_socket_exists() -> bool {
-    Path::new(&installd_socket_path_string()).exists()
+/// Whether anything owns the install daemon's bus name.
+///
+/// THE SOCKET THIS USED TO PROBE HAS NEVER EXISTED. It looked for
+/// `$XDG_RUNTIME_DIR/arlen/installd.sock`, and `installd.sock` appears exactly
+/// once in the whole tree - here, in the code looking for it. `daemons/installd`
+/// binds no Unix listener at all; it owns `org.arlen.InstallDaemon1` on the
+/// session bus and that is its entire interface. So this row reported the install
+/// daemon as down unconditionally, on every system, including one where it was
+/// running perfectly.
+///
+/// The knowledge row above carries a comment about the same defect found the same
+/// way, with one difference that matters: that probe named a real socket at the
+/// wrong path, so a path fix could work. This one had no right answer available -
+/// nothing this function could have looked for on disk would ever have been true.
+///
+/// `NameHasOwner` is the question actually being asked. It is false when nothing
+/// provides the daemon, which is the state of the current image, and true the
+/// moment something does.
+async fn installd_name_has_owner() -> bool {
+    let Ok(conn) = zbus::Connection::session().await else {
+        return false;
+    };
+    let Ok(dbus) = zbus::fdo::DBusProxy::new(&conn).await else {
+        return false;
+    };
+    match zbus::names::BusName::try_from(INSTALLD_BUS_NAME) {
+        Ok(name) => dbus.name_has_owner(name).await.unwrap_or(false),
+        Err(_) => false,
+    }
 }
 
 #[cfg(test)]
@@ -151,22 +181,32 @@ mod tests {
 
     /// Daemon-status list is exhaustive — all four daemons present
     /// regardless of host state. Catches accidental list-truncation.
-    #[test]
-    fn daemon_statuses_lists_all_four() {
-        let list = daemon_statuses();
+    #[tokio::test]
+    async fn daemon_statuses_lists_all_four() {
+        let list = daemon_statuses().await;
         assert_eq!(list.len(), 4, "expected 4 daemons, got {}", list.len());
         let names: Vec<&str> = list.iter().map(|d| d.name.as_str()).collect();
         assert!(names.contains(&"Knowledge Graph"));
         assert!(names.contains(&"Notification"));
         assert!(names.contains(&"Event Bus"));
         assert!(names.contains(&"Install Daemon"));
+
+        // The install daemon binds no socket, so its probe has to name the bus.
+        // A path here would be the defect this replaced: a plausible-looking
+        // string nothing ever creates, and a row that reads "down" forever.
+        let installd = list.iter().find(|d| d.name == "Install Daemon").unwrap();
+        assert_eq!(installd.probe_path, "org.arlen.InstallDaemon1");
+        assert!(
+            !installd.probe_path.contains(".sock"),
+            "nothing in the tree ever binds an installd socket"
+        );
     }
 
     /// `about_get_system_info` always returns — fields may be null
     /// but the call itself must succeed on any host.
-    #[test]
-    fn system_info_returns_well_formed_struct() {
-        let info = about_get_system_info();
+    #[tokio::test]
+    async fn system_info_returns_well_formed_struct() {
+        let info = about_get_system_info().await;
         assert_eq!(info.daemons.len(), 4);
     }
 
