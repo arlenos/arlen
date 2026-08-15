@@ -145,6 +145,7 @@
   /// what the launch does: the two paths must not drift, or arrowing to a picture
   /// would show it differently from opening it directly.
   async function openFile(path: string) {
+    quarters = 0;
     const name = basename(path);
     // Asked for, not assumed. `null` when the folder cannot be read or the file
     // is not in it, and the surface then shows no position rather than a made-up
@@ -239,6 +240,10 @@
   /// outlive the knowledge of what to undo.
   type Deleted = { trashed: string; info: string; original: string; name: string };
   let lastDeleted = $state<Deleted | null>(null);
+
+  /// Quarter turns the picture is shown at, reset whenever a different file is
+  /// loaded: rotating one photo must not silently rotate the next.
+  let quarters = $state(0);
 
   /// A failed ACTION, as opposed to a file that would not open.
   ///
@@ -358,6 +363,11 @@
     } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
       event.preventDefault();
       void step("previous");
+    } else if (event.key === "r" || event.key === "R") {
+      // R turns clockwise, Shift+R the other way - one key for the common case and
+      // the same key reversed for the other, rather than two keys to remember.
+      event.preventDefault();
+      quarters = (((quarters + (event.shiftKey ? -1 : 1)) % 4) + 4) % 4;
     } else if (event.key === "i" || event.key === "I") {
       // Toggles, so the key that opens it closes it - the plan gives `I` and no
       // second key, and a panel with no way back is a trap.
@@ -391,6 +401,7 @@
     <ImageViewer
       file={loaded.file}
       raster={loaded.raster}
+      {quarters}
       onnext={() => step("next")}
       onprev={() => step("previous")}
     />
