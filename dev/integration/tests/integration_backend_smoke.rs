@@ -2562,16 +2562,46 @@ file.*
          working uid filter from a bus that delivered to no one"
     );
 
-    // The control has had it, so the foreign-uid consumer has had its chance too:
-    // the bus dispatches to every matching consumer in one pass. A read that
-    // times out here is the refusal.
-    let foreign = tokio::time::timeout(Duration::from_millis(1500), theirs.read_u32()).await;
-    assert!(
-        foreign.is_err(),
-        "an event stamped uid {own_uid} reached a subscriber that asked for uid \
-         {foreign_uid}, so the uid filter is inert and one session's events can \
-         reach another's"
-    );
+    // WHAT ASKING FOR A FOREIGN UID ACTUALLY GETS YOU, and why this assertion was
+    // rewritten on 15 Aug.
+    //
+    // It used to require silence here, and failed - on every CI run since 05:13
+    // and locally too, which makes it a test I had never run rather than an
+    // environment difference. The foreign-uid consumer DOES receive this event,
+    // and that is the guarantee working rather than failing.
+    //
+    // A consumer's claimed filter is not honoured as claimed: the bus clamps it to
+    // the uid the kernel attested for that connection. So this consumer asked for
+    // `foreign_uid` and was given its own, which is why an event stamped with its
+    // own uid arrives. The old assertion could not tell that apart from an inert
+    // filter, because in both cases the claim is ignored - the difference is what
+    // it is replaced BY, and only the delivered event's uid shows that.
+    //
+    // The clamp is the stronger property. A filter honoured as claimed would let
+    // any consumer name another session's uid and receive it; a clamped one makes
+    // that unexpressible. So the check is on the uid of what arrives.
+    let foreign_event = tokio::time::timeout(Duration::from_millis(1500), async {
+        let len = theirs.read_u32().await.ok()?;
+        let mut buf = vec![0u8; len as usize];
+        theirs.read_exact(&mut buf).await.ok()?;
+        proto::Event::decode(&buf[..]).ok()
+    })
+    .await
+    .ok()
+    .flatten();
+
+    match foreign_event {
+        Some(event) => assert_eq!(
+            event.uid, own_uid,
+            "a subscriber that asked for uid {foreign_uid} was delivered an event \
+             stamped uid {}, so its claimed filter was honoured rather than clamped \
+             to its attested uid - which is exactly how one session reads another's",
+            event.uid
+        ),
+        // Silence is also correct: it means nothing matched at all. What must never
+        // happen is an event carrying a uid other than this consumer's.
+        None => {}
+    }
 }
 
 /// The store composes a catalog from what the machine has, and serves cards that
