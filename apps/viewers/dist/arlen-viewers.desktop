@@ -8,7 +8,12 @@ Comment[de]=Ein Bild oder eine Tondatei öffnen
 Exec=arlen-viewers %f
 Icon=arlen-viewers
 Terminal=false
-Categories=Graphics;Viewer;AudioVideo;Audio;
+# One MAIN category (Graphics) plus the additional `Viewer`. Listing AudioVideo and
+# Audio beside it named three main categories, and desktop-file-validate warns that
+# an app with more than one appears more than once in the menu - the same tool the
+# files app passes cleanly. Sound files still reach this app by association, which
+# is how a viewer is opened anyway.
+Categories=Graphics;Viewer;
 Keywords=image;picture;photo;audio;music;view;open;
 Keywords[de]=bild;foto;musik;ton;ansehen;öffnen;
 StartupNotify=true

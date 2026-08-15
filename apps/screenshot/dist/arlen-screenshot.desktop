@@ -8,7 +8,9 @@ Comment[de]=Bildschirm, Fenster oder Ausschnitt aufnehmen und beschriften
 Exec=arlen-screenshot
 Icon=arlen-screenshot
 Terminal=false
-Categories=Graphics;Utility;
+# One main category. Graphics rather than Utility because what it produces is a
+# picture, and two main categories put the app in the menu twice.
+Categories=Graphics;
 Keywords=screenshot;capture;screen;grab;snip;annotate;
 Keywords[de]=bildschirmfoto;aufnahme;bildschirm;ausschnitt;
 StartupNotify=true
