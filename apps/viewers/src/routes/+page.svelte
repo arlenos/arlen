@@ -9,6 +9,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { page } from "$app/state";
   import AudioPlayer from "$lib/components/AudioPlayer.svelte";
+  import DetailsPanel, { type Fact } from "$lib/components/DetailsPanel.svelte";
   import ImageViewer from "$lib/components/ImageViewer.svelte";
   import VideoViewer from "$lib/components/VideoViewer.svelte";
   import { audioMock, imageMock, videoMock, mockPeaks, type AudioMock, type ImageMock } from "$lib/mock";
@@ -104,6 +105,37 @@
     await openFile(path);
   });
 
+  /// Whether the details panel is open, and the facts behind it. Both are set
+  /// only from what a decode, a probe or a stat actually returned - see
+  /// `DetailsPanel` for why a fact nobody measured gets no row at all.
+  let detailsOpen = $state(false);
+  let facts = $state<Fact[]>([]);
+
+  /// Bytes as a person reads them. Binary units, because that is what a file
+  /// manager and `ls -lh` show and the viewer should not disagree with them.
+  function readableSize(bytes: number): string {
+    const units = ["B", "KiB", "MiB", "GiB"];
+    let n = bytes;
+    let u = 0;
+    while (n >= 1024 && u < units.length - 1) {
+      n /= 1024;
+      u += 1;
+    }
+    return `${u === 0 ? n : n.toFixed(1)} ${units[u]}`;
+  }
+
+  function readableDuration(seconds: number): string {
+    const s = Math.round(seconds);
+    const m = Math.floor(s / 60);
+    return `${m}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  function channelsLabel(n: number): string {
+    if (n === 1) return $t("v.channelsMono");
+    if (n === 2) return $t("v.channelsStereo");
+    return $t("v.channelsN", { count: n });
+  }
+
   /// The file the arrow keys move from. Held because the neighbour lookup needs a
   /// path, and `loaded` carries only what the surface renders (a name, a title) -
   /// which is not enough to find what is beside it on disk.
@@ -127,9 +159,31 @@
       const kind = await invoke<string>("detect_media_kind", { path });
       if (kind === "image") {
         const raster = await invoke<Raster>("decode_image", { path });
+        facts = [
+          { label: $t("v.factName"), value: name },
+          { label: $t("v.factKind"), value: kind },
+          { label: $t("v.factDimensions"), value: `${raster.width} × ${raster.height}` },
+          ...(await statFacts(path)),
+        ];
         loaded = { kind: "image", file: { name, index: at?.[0], total: at?.[1] }, raster };
       } else if (kind === "audio") {
         const info = await invoke<AudioInfo>("probe_audio", { path });
+        facts = [
+          { label: $t("v.factName"), value: name },
+          { label: $t("v.factKind"), value: kind },
+          { label: $t("v.factTitle"), value: info.title },
+          { label: $t("v.factArtist"), value: info.artist },
+          { label: $t("v.factCodec"), value: info.codec },
+          { label: $t("v.factSampleRate"), value: `${info.sample_rate} Hz` },
+          { label: $t("v.factChannels"), value: channelsLabel(info.channels) },
+          {
+            label: $t("v.factDuration"),
+            // Absent rather than "0:00" when the container declares no length:
+            // a duration the file does not state is not a duration of zero.
+            value: info.duration_ms === null ? null : readableDuration(info.duration_ms / 1000),
+          },
+          ...(await statFacts(path)),
+        ];
         loaded = {
           kind: "audio",
           file: {
@@ -151,6 +205,26 @@
       }
     } catch (e) {
       loadError = String(e);
+    }
+  }
+
+  /// Size and modification time, or nothing at all. A file that cannot be
+  /// stat-ed still opens and still shows everything else; the two rows are simply
+  /// not there.
+  async function statFacts(path: string): Promise<Fact[]> {
+    try {
+      const f = await invoke<{ size_bytes: number; modified_ms: number | null }>("file_facts", {
+        path,
+      });
+      return [
+        { label: $t("v.factSize"), value: readableSize(f.size_bytes) },
+        {
+          label: $t("v.factModified"),
+          value: f.modified_ms === null ? null : new Date(f.modified_ms).toLocaleString(),
+        },
+      ];
+    } catch {
+      return [];
     }
   }
 
@@ -187,6 +261,13 @@
     } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
       event.preventDefault();
       void step("previous");
+    } else if (event.key === "i" || event.key === "I") {
+      // Toggles, so the key that opens it closes it - the plan gives `I` and no
+      // second key, and a panel with no way back is a trap.
+      event.preventDefault();
+      detailsOpen = !detailsOpen;
+    } else if (event.key === "Escape") {
+      detailsOpen = false;
     }
   }
 </script>
@@ -216,10 +297,16 @@
       onnext={() => step("next")}
       onprev={() => step("previous")}
     />
+    {#if detailsOpen}
+      <DetailsPanel {facts} onclose={() => (detailsOpen = false)} />
+    {/if}
   </main>
 {:else if loaded?.kind === "audio"}
   <main class="fill">
     <AudioPlayer file={loaded.file} onnext={() => step("next")} onprev={() => step("previous")} />
+    {#if detailsOpen}
+      <DetailsPanel {facts} onclose={() => (detailsOpen = false)} />
+    {/if}
   </main>
 {:else if loadError}
   <main class="fill err">
@@ -256,6 +343,8 @@
   .fill {
     width: 100vw;
     height: 100vh;
+    /* The details panel positions against the window, so this is its root. */
+    position: relative;
   }
   .err {
     display: grid;
