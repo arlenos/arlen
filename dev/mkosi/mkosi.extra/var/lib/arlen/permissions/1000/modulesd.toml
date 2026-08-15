@@ -27,6 +27,18 @@
 # an event_bus capability has to widen this file in the same change. Starting
 # narrow makes that a deliberate widening; starting wide would have made it an
 # accident nobody noticed.
+# NO `[graph]` SECTION, and for the same reason as the empty subscribe list. The
+# runtime carries a graph host import (`host/graph.rs`), so a Tier 1 module can
+# ask it to query the knowledge graph, and that request reaches the daemon as
+# `modulesd` rather than as the module. With no read scope here the daemon denies
+# it, which is correct while no module ships and wrong the moment one does - the
+# module's own manifest capability will pass and the read will come back refused,
+# so it will look broken rather than unauthorised.
+#
+# Whoever ships the first module with a graph capability sets the outer bound
+# here, and should set it from that module's queries rather than from a category:
+# see the timeline's profile, whose grant is exactly the seven questions its views
+# ask.
 [info]
 app_id = "modulesd"
 tier = "first-party"
