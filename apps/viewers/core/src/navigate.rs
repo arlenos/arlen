@@ -71,6 +71,21 @@ pub fn previous(current: &str, entries: &[String]) -> Option<String> {
     step(current, entries, -1)
 }
 
+/// Where this file sits among its neighbours, as `(index, total)` counting from
+/// one.
+///
+/// For the `3 / 17` the viewer shows. It was hardcoded to `1 / 1`, which a
+/// screenshot of a three-image folder showed saying "1 / 1" - a surface stating
+/// something nobody measured, and the reason to render before believing.
+///
+/// `None` when the file is not viewable or is not in the listing; the caller
+/// shows nothing rather than a made-up position.
+pub fn position(current: &str, entries: &[String]) -> Option<(usize, usize)> {
+    let list = siblings(current, entries);
+    let here = list.iter().position(|n| n == current)?;
+    Some((here + 1, list.len()))
+}
+
 fn step(current: &str, entries: &[String], delta: isize) -> Option<String> {
     let list = siblings(current, entries);
     if list.len() < 2 {
@@ -123,6 +138,16 @@ mod tests {
         assert_eq!(next("c.png", &dir).as_deref(), Some("a.png"), "wraps forward");
         assert_eq!(previous("a.png", &dir).as_deref(), Some("c.png"), "wraps back");
         assert_eq!(previous("b.png", &dir).as_deref(), Some("a.png"));
+    }
+
+    #[test]
+    fn the_position_counts_from_one_among_its_own_kind() {
+        let dir = names(&["a.png", "b.png", "c.png", "song.flac", "notes.txt"]);
+        assert_eq!(position("a.png", &dir), Some((1, 3)));
+        assert_eq!(position("c.png", &dir), Some((3, 3)), "the song is not counted");
+        // A file the viewer cannot show has no position to state.
+        assert_eq!(position("notes.txt", &dir), None);
+        assert_eq!(position("gone.png", &dir), None);
     }
 
     #[test]

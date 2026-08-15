@@ -17,9 +17,9 @@ export interface AudioMock {
   /// Normalised 0..1 amplitude peaks, one per waveform bar.
   peaks: number[];
   /// Position in the folder, for the transient `n / total`.
-  index: number;
-  /// Folder size.
-  total: number;
+  index?: number;
+  /// Folder size, absent under the same conditions as `index`.
+  total?: number;
 }
 
 /// A deterministic speech/music-like peak envelope, so the mock waveform looks
@@ -42,10 +42,14 @@ export function mockPeaks(count = 180, seed = 7): number[] {
 export interface ImageMock {
   /// File name, shown in the shell topbar and the transient nav toast.
   name: string;
-  /// Position in the folder.
-  index: number;
-  /// Folder size.
-  total: number;
+  /// Position in the folder, counting from one. Absent when it is not known -
+  /// the folder has not been read, or the file is no longer in it - and the
+  /// surface then shows no position at all. It was a required number, and the
+  /// real viewer passed a literal `1`, so a folder of three pictures said
+  /// "1 / 1" on screen for as long as anyone had looked at it.
+  index?: number;
+  /// Folder size, absent under the same conditions as `index`.
+  total?: number;
 }
 
 /// The image fixture the demo route renders.
@@ -62,9 +66,9 @@ export interface VideoMock {
   /// File name, shown in the dock.
   name: string;
   /// Position in the folder.
-  index: number;
-  /// Folder size.
-  total: number;
+  index?: number;
+  /// Folder size, absent under the same conditions as `index`.
+  total?: number;
   /// Total duration in seconds.
   durationSec: number;
 }

@@ -203,7 +203,39 @@ fn detect_media_kind(path: String) -> Result<String, String> {
 /// that way keeps the part worth testing free of the disk.
 #[tauri::command]
 fn neighbour_file(path: String, direction: String) -> Result<Option<String>, String> {
-    let here = Path::new(&path);
+    let (dir, name, entries) = listing(&path)?;
+
+    let picked = match direction.as_str() {
+        "next" => arlen_viewers_core::navigate::next(&name, &entries),
+        "previous" => arlen_viewers_core::navigate::previous(&name, &entries),
+        other => return Err(format!("unknown direction: {other}")),
+    };
+
+    Ok(picked.map(|n| dir.join(n).to_string_lossy().into_owned()))
+}
+
+/// Where the open file sits among its neighbours, as `[index, total]`.
+///
+/// The counter in the status pill read `1 / 1` for a folder of three pictures,
+/// because the frontend had those two numbers hardcoded. Reading the folder is
+/// the only way to know them, and this is the same read `neighbour_file` does,
+/// so the counter and the arrow keys cannot disagree about what the folder holds.
+///
+/// `None` when the file is not viewable or has vanished from its own folder;
+/// the pill then shows no position rather than an invented one.
+#[tauri::command]
+fn folder_position(path: String) -> Result<Option<[usize; 2]>, String> {
+    let (_, name, entries) = listing(&path)?;
+    Ok(arlen_viewers_core::navigate::position(&name, &entries).map(|(i, n)| [i, n]))
+}
+
+/// The folder a file lives in, its own name, and the file names beside it.
+///
+/// Non-UTF-8 names are dropped rather than lossily converted: a name that does
+/// not round-trip cannot be handed back as a path to open, and counting one
+/// would make the total describe files the viewer can never reach.
+fn listing(path: &str) -> Result<(PathBuf, String, Vec<String>), String> {
+    let here = Path::new(path);
     let dir = here
         .parent()
         .ok_or_else(|| "the file has no parent directory".to_string())?;
@@ -212,8 +244,6 @@ fn neighbour_file(path: String, direction: String) -> Result<Option<String>, Str
         .and_then(|n| n.to_str())
         .ok_or_else(|| "the file has no readable name".to_string())?;
 
-    // Names only, and non-UTF-8 ones dropped rather than lossily converted: a
-    // name that does not round-trip cannot be handed back as a path to open.
     let entries: Vec<String> = std::fs::read_dir(dir)
         .map_err(|e| format!("cannot read the folder: {e}"))?
         .filter_map(|e| e.ok())
@@ -221,13 +251,7 @@ fn neighbour_file(path: String, direction: String) -> Result<Option<String>, Str
         .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
         .collect();
 
-    let picked = match direction.as_str() {
-        "next" => arlen_viewers_core::navigate::next(name, &entries),
-        "previous" => arlen_viewers_core::navigate::previous(name, &entries),
-        other => return Err(format!("unknown direction: {other}")),
-    };
-
-    Ok(picked.map(|n| dir.join(n).to_string_lossy().into_owned()))
+    Ok((dir.to_path_buf(), name.to_string(), entries))
 }
 
 /// Tauri entry point (invoked from `main.rs`).
@@ -261,6 +285,7 @@ pub fn run() {
             probe_audio,
             detect_media_kind,
             neighbour_file,
+            folder_position,
             initial_file
         ])
         .run(tauri::generate_context!())

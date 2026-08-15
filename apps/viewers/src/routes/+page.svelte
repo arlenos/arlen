@@ -114,11 +114,20 @@
   /// would show it differently from opening it directly.
   async function openFile(path: string) {
     const name = basename(path);
+    // Asked for, not assumed. `null` when the folder cannot be read or the file
+    // is not in it, and the surface then shows no position rather than a made-up
+    // one - the whole reason this call exists.
+    let at: [number, number] | null = null;
+    try {
+      at = await invoke<[number, number] | null>("folder_position", { path });
+    } catch {
+      // A folder that will not list is not a reason to refuse to show the file.
+    }
     try {
       const kind = await invoke<string>("detect_media_kind", { path });
       if (kind === "image") {
         const raster = await invoke<Raster>("decode_image", { path });
-        loaded = { kind: "image", file: { name, index: 1, total: 1 }, raster };
+        loaded = { kind: "image", file: { name, index: at?.[0], total: at?.[1] }, raster };
       } else if (kind === "audio") {
         const info = await invoke<AudioInfo>("probe_audio", { path });
         loaded = {
@@ -133,8 +142,8 @@
             // The real waveform from the probe's decode pass; the mock stands in
             // only when the track length is unknown or silent (empty peaks).
             peaks: info.peaks.length ? info.peaks : mockPeaks(),
-            index: 1,
-            total: 1,
+            index: at?.[0],
+            total: at?.[1],
           },
         };
       } else {
@@ -198,9 +207,20 @@
      `main`, and exactly one main renders. A viewer with no `main` leaves a
      screen-reader user nothing to skip to; the failure states are content too. -->
 {#if loaded?.kind === "image"}
-  <main class="fill"><ImageViewer file={loaded.file} raster={loaded.raster} /></main>
+  <!-- The chevrons and the arrow keys are the same move. They were drawn but
+       unwired, so a viewer that looked navigable did nothing when clicked. -->
+  <main class="fill">
+    <ImageViewer
+      file={loaded.file}
+      raster={loaded.raster}
+      onnext={() => step("next")}
+      onprev={() => step("previous")}
+    />
+  </main>
 {:else if loaded?.kind === "audio"}
-  <main class="fill"><AudioPlayer file={loaded.file} /></main>
+  <main class="fill">
+    <AudioPlayer file={loaded.file} onnext={() => step("next")} onprev={() => step("previous")} />
+  </main>
 {:else if loadError}
   <main class="fill err">
     {readsAsInternal(loadError)
