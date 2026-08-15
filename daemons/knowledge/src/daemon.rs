@@ -29,7 +29,7 @@ use tracing::{debug, error, info, warn};
 use crate::auth::Authenticator;
 use crate::events::{self, GraphEvent};
 use crate::graph::GraphHandle;
-use crate::identity::{app_id_from_pid, pid_start_time, process_alive};
+use crate::identity::{pid_start_time, process_alive};
 use crate::proto::Event;
 use crate::quota::{AppTier, QuotaConfig, RateLimiter};
 use crate::schema::SchemaRegistry;
@@ -463,13 +463,26 @@ async fn handle_graph_event(
 /// peer exited and the number was reused by another process) cannot borrow the
 /// connection's authority. `start_time` is `None` only if it could not be read
 /// at connection, in which case a write fails closed (reuse is unguardable).
-#[derive(Clone, Copy)]
+// Clone but not Copy: it carries the resolved app_id, and a name is worth the
+// explicit clone at the two sites that need an owned peer.
+#[derive(Clone)]
 struct WritePeer {
     pid: u32,
     /// The peer's uid, carried because it selects WHOSE permission profile the
     /// token is minted from. The daemon is root, so its own uid names the wrong
     /// set; the profile that applies is filed under the connecting user's.
     uid: u32,
+    /// The name the identity broker gave this connection, carried so nothing
+    /// downstream resolves it a second time.
+    ///
+    /// Per-request token issuance used to call `issue_token_for_pid`, which reads
+    /// `/proc/<pid>/exe` again for a caller the connection had already named.
+    /// That read cannot succeed here: measured 15 Aug, one binary in four units
+    /// on one boot read 29 of 31 same-uid exe links plain and 1 of 25 under
+    /// `ProtectSystem=strict`, which this unit carries. So the second resolution
+    /// failed while the first had succeeded, and the token was minted from
+    /// whatever the fallback produced rather than from the attested identity.
+    app_id: String,
     start_time: Option<u64>,
 }
 
@@ -929,7 +942,7 @@ async fn handle_provenance_read(
         Ok(now) if now == captured_start => {}
         _ => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     }
-    let token = match auth.lock().await.issue_token_for_pid(peer.uid, peer.pid) {
+    let token = match auth.lock().await.issue_token_for_app(peer.uid, &peer.app_id, peer.pid) {
         Ok(t) => t,
         Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     };
@@ -1021,7 +1034,7 @@ async fn handle_typed_read(
         Ok(now) if now == captured_start => {}
         _ => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     }
-    let token = match auth.lock().await.issue_token_for_pid(peer.uid, peer.pid) {
+    let token = match auth.lock().await.issue_token_for_app(peer.uid, &peer.app_id, peer.pid) {
         Ok(t) => t,
         Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     };
@@ -1671,7 +1684,7 @@ async fn handle_write_request(
 
     // The token is issued from the pid's permission profile and fails closed if
     // it has no graph access or no matching relation scope.
-    let token = match auth.lock().await.issue_token_for_pid(peer.uid, peer.pid) {
+    let token = match auth.lock().await.issue_token_for_app(peer.uid, &peer.app_id, peer.pid) {
         Ok(t) => t,
         Err(e) => return format!("ERROR: {e}"),
     };
@@ -3058,7 +3071,7 @@ async fn handle_client(
                     return Ok(());
                 }
                 let start_time = pid_start_time(pid).ok();
-                (id, Some(WritePeer { pid, uid, start_time }))
+                (id.clone(), Some(WritePeer { pid, uid, app_id: id, start_time }))
             }
         }
         Err(e) => {
@@ -3078,7 +3091,7 @@ async fn handle_client(
     // so its grants never pool under one shared id.
     if app_id != "unknown" {
         if let Some(p) = &peer {
-            let minted = auth.lock().await.issue_token_for_pid(p.uid, p.pid).ok();
+            let minted = auth.lock().await.issue_token_for_app(p.uid, &p.app_id, p.pid).ok();
             if let Some(token) = minted {
                 match crate::lcg::emit_grant_node(&graph, &token).await {
                     Ok(true) => {
@@ -3178,7 +3191,11 @@ async fn handle_client(
                 (
                     handle_write_request(
                         body,
-                        peer,
+                        // Cloned rather than moved: `WritePeer` stopped being
+                        // `Copy` when it started carrying the resolved app_id, and
+                        // this call sits inside the per-request loop, so moving it
+                        // would leave the next request without a peer.
+                        peer.clone(),
                         &registry,
                         &graph,
                         &pool,
@@ -3380,7 +3397,7 @@ async fn handle_client(
                 // the merge is bound to the owner's CURRENT capability (revocation-
                 // honouring), the same way the entity-write path mints it.
                 let token = if let Some(p) = &peer {
-                    auth.lock().await.issue_token_for_pid(p.uid, p.pid).ok()
+                    auth.lock().await.issue_token_for_app(p.uid, &p.app_id, p.pid).ok()
                 } else {
                     None
                 };
@@ -4551,6 +4568,19 @@ async fn record_capability_uses(
 
 #[cfg(test)]
 mod tests {
+    /// The app_id the connection resolver would carry for this test process.
+    ///
+    /// `WritePeer` gained the resolved name so per-request token issuance stops
+    /// re-reading `/proc`, and a test peer has to carry the same thing a real one
+    /// does. Resolved through the same path resolver the daemon uses rather than
+    /// hardcoded, so a test peer cannot claim an id the resolver would refuse.
+    fn own_app_id_for_test() -> String {
+        std::fs::read_link("/proc/self/exe")
+            .ok()
+            .and_then(|p| arlen_permissions::identity::path_to_app_id(&p).ok())
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+
     use super::*;
 
     /// Every socket op must own its mode byte.
@@ -6217,6 +6247,9 @@ mod tests {
             pid: std::process::id(),
             // SAFETY: getuid never fails.
             uid: unsafe { libc::getuid() },
+            // The id the connection resolver would have carried. The test process
+            // is its own peer, so this is what the broker names it.
+            app_id: own_app_id_for_test(),
             start_time: Some(0),
         };
 
@@ -6258,6 +6291,9 @@ mod tests {
             pid: std::process::id(),
             // SAFETY: getuid never fails.
             uid: unsafe { libc::getuid() },
+            // The id the connection resolver would have carried. The test process
+            // is its own peer, so this is what the broker names it.
+            app_id: own_app_id_for_test(),
             start_time: Some(0),
         };
         let resp =
@@ -6288,6 +6324,7 @@ mod tests {
             pid: std::process::id(),
             // SAFETY: getuid never fails.
             uid: unsafe { libc::getuid() },
+            app_id: own_app_id_for_test(),
             start_time: None,
         };
         let resp =

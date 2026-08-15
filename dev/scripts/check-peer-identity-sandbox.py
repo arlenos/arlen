@@ -172,29 +172,6 @@ def runs_as_root_with_ptrace(text, system_unit):
 
 # name -> why it is carried. Empty is the state to aim for.
 KNOWN = {
-    "arlen-graph": (
-        "BROKER FIRST since 15 Aug, and this entry now covers only what is left "
-        "under that. The daemon asks the launcher-stamped identity broker, which "
-        "answers from a pidfd without touching /proc; the /proc read this check "
-        "matches on is the fallback beneath it.\n"
-        "    That is not cosmetic - it is the difference between naming every "
-        "caller and naming none. Measured across two boots: as a fresh per-user "
-        "unit it resolved EVERY caller to `unknown` and denied every graph read; "
-        "with the broker asked first it named `timeline` and served it.\n"
-        "    THE FALLBACK IS GONE as of 15 Aug: the connection resolver asks the "
-        "broker and refuses a caller it does not know, with a line naming it. It "
-        "no longer hands an unnameable caller an empty read scope, which denied "
-        "every label and read like a permissions decision rather than a failed "
-        "lookup.\n"
-        "    What still matches this check is `auth.rs`: per-request token "
-        "issuance calls `issue_token_for_pid`, which resolves through /proc a "
-        "second time for a caller the connection already named. Carried until "
-        "those call sites take the resolved id instead - the same fix, one layer "
-        "down.\n"
-        "    Why the bus is no longer listed here: it had the identical shape and "
-        "its fallback came out in the same change, so the entry stopped "
-        "describing anything. This check said so itself on the next run."
-    ),
     "arlen-ai-undo-signer": (
         "the live instance of this defect, found 10 Aug: it refuses every caller "
         "on the image. Dropping the hardening is not the fix (it holds the undo "
@@ -270,7 +247,15 @@ def resolves_peers(crate):
             text = rs.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if any(n in text for n in RESOLVES_PEER):
+        # Comments do not resolve anything. Skipping them matters more here than
+        # it looks: the fix for this defect is to REMOVE the /proc call and leave
+        # a note saying why, and the note names the thing it removed. Counting
+        # that as the defect keeps a crate flagged forever for having documented
+        # its own fix, which is the opposite of what should be encouraged.
+        code = "\n".join(
+            line for line in text.splitlines() if not line.lstrip().startswith("//")
+        )
+        if any(n in code for n in RESOLVES_PEER):
             return rs.relative_to(REPO)
     return None
 
