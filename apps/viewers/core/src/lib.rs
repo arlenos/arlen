@@ -342,3 +342,7 @@ pub mod decode;
 
 /// The audio-probe transfer frame (codec/sample-rate/channels/duration).
 pub mod audio;
+
+/// Next and previous within the folder - the affordance that makes this a viewer
+/// rather than a file-opener.
+pub mod navigate;
