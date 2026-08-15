@@ -154,7 +154,11 @@
 
   <div class="dock">
     <span class="name">{file.name}</span>
-    <span class="pos">{file.index} / {file.total}</span>
+    <!-- Only when the folder has actually been read. A viewer that always
+         prints a position prints a wrong one whenever it does not have one. -->
+    {#if file.index && file.total}
+      <span class="pos">{file.index} / {file.total}</span>
+    {/if}
     <span class="sep"></span>
     <Button variant="ghost" size="icon-sm" aria-label={$t("v.zoomOut")} onclick={() => setZoom(zoom / 1.25)}>
       <ZoomOut class="size-[16px]" strokeWidth={2} />
