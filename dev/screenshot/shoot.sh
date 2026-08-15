@@ -50,7 +50,15 @@ require_xvfb() {
 }
 require_xvfb xvfb-run
 
+# The host session is cut off here, the same way `shoot-compositor.sh` does it for
+# the nested compositor. `xvfb-run` sets DISPLAY and nothing else, so an inherited
+# WAYLAND_DISPLAY stays valid and a toolkit that prefers Wayland renders against the
+# developer's real session instead of this Xvfb. On 15 August that let an app driven
+# through the sibling app-harness capture the real desktop; nothing here captures, but
+# a shot that silently came from the wrong display is not a shot of anything.
 xvfb-run -a bash -c '
+  unset WAYLAND_DISPLAY
+  export GDK_BACKEND=x11
   set -euo pipefail
   WebKitWebDriver --port="$SHOOT_PORT" >/tmp/arlen-wkwd.log 2>&1 &
   wd=$!
