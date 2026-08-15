@@ -45,20 +45,41 @@ BUILD_STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 # unit -> why it is not on the image. Each line is a CLAIM, not a shrug: if it is
 # wrong, it is wrong somewhere a reader can see it. "Unreviewed" is an honest
 # entry; an invented rationale is not.
+# EACH ENTRY CARRIES THE DATE ITS REASON WAS LAST CHECKED, because the reason is
+# a claim about the tree and claims go stale. `modulesd` sat here reading "the
+# module runtime is a later phase" long after the runtime worked; it shipped on
+# 15 Aug once someone read the code instead of the note.
+#
+# What was checked on 15 Aug for every entry below: that NO shipped component
+# dials the daemon. The socket half is measured continuously by
+# `check-socket-servers.py`, which is green. The bus half was read by hand, and
+# exactly two shipped callers reach an unshipped daemon - Settings to
+# `org.arlen.InstallDaemon1` and Files to `org.arlen.Accounts1`. Both now answer
+# "unavailable on this system" rather than an empty list or a dead button, which
+# is the rule for a backend that does not exist yet.
 NOT_YET_DEPLOYED: dict[str, str] = {
-    "arlen-accountsd.service": "online-accounts is not part of the image scope yet",
-    "arlen-connectionsd.service": "connections daemon is not part of the image scope yet",
-    "arlen-transferd.service": "transfer daemon is not part of the image scope yet",
-    "arlen-settings-broker.service": "settings broker is not part of the image scope yet",
-    "arlen-trash-cleanup.service": "trash retention timer, unreviewed for deployment",
-    "arlen-file-manager-mcp.service": "MCP servers are not staged into the image yet",
-    "arlen-knowledge-mcp.service": "MCP servers are not staged into the image yet",
-    "arlen-system-monitor-mcp.service": "MCP servers are not staged into the image yet",
-    "installd.service": "the install path is not exercised on the appliance image",
-    "install-helper.service": "the install path is not exercised on the appliance image",
-    "permission-helper.service": "the install path is not exercised on the appliance image",
+    "arlen-accountsd.service": (
+        "online-accounts is not part of the image scope yet (15 Aug). The Files "
+        "sidebar is the one shipped caller and distinguishes absent from "
+        "none-configured, with a test for it"
+    ),
+    "arlen-connectionsd.service": "connections daemon is not part of the image scope yet (15 Aug, no shipped caller)",
+    "arlen-transferd.service": "transfer daemon is not part of the image scope yet (15 Aug, no shipped caller)",
+    "arlen-settings-broker.service": "settings broker is not part of the image scope yet (15 Aug, no shipped caller)",
+    "arlen-trash-cleanup.service": "trash retention timer, unreviewed for deployment (15 Aug)",
+    "arlen-file-manager-mcp.service": "MCP servers are not staged into the image yet (15 Aug)",
+    "arlen-knowledge-mcp.service": "MCP servers are not staged into the image yet (15 Aug)",
+    "arlen-system-monitor-mcp.service": "MCP servers are not staged into the image yet (15 Aug)",
+    "installd.service": (
+        "the install path is not exercised on the appliance image (15 Aug). "
+        "Settings dials it and says removing apps is unavailable when nothing "
+        "answers; the store is arlen-ui's and is sequenced after this"
+    ),
+    "install-helper.service": "the install path is not exercised on the appliance image (15 Aug, reached only by installd)",
+    "permission-helper.service": "the install path is not exercised on the appliance image (15 Aug, reached only by installd)",
     "xdg-desktop-portal-arlen.service": (
-        "the portal is not staged into the image yet, so the security fixes it now "
+        "the portal is not staged into the image yet (15 Aug), so the security fixes "
+        "it now "
         "carries are not in effect: the OpenFile descriptor TOCTOU, the resolved "
         "mount containment, the picker peer-credential check. Not urgent - nothing "
         "on the image routes through the portal yet - but this is a deferral of "
