@@ -17,6 +17,7 @@
     raster = null,
     onnext,
     onprev,
+    quarters = 0,
   }: {
     file: ImageMock;
     /// The decoded raster from the `decode_image` backend (8-bit RGBA, row-major).
@@ -25,19 +26,52 @@
     raster?: { width: number; height: number; rgba: number[] } | null;
     onnext?: () => void;
     onprev?: () => void;
+    /// Quarter turns applied to the view, 0-3, owned by the window so a new file
+    /// arrives upright rather than wearing the last one's rotation.
+    ///
+    /// VIEW ONLY - nothing is written. A picture stored sideways is still stored
+    /// sideways after this, which is the honest scope for an app that has never
+    /// written a file: saving a rotation means re-encoding (or lossless jpegtran
+    /// for the one format that has it), and that is an edit feature with its own
+    /// decisions rather than a side effect of looking.
+    quarters?: number;
   } = $props();
 
   // Paint the decoded RGBA onto the canvas whenever it arrives. ImageData wants a
   // Uint8ClampedArray; the raster crosses the IPC boundary as a number[].
+  //
+  // The ROTATION IS PAINTED, not applied as a CSS transform on the canvas box. The
+  // canvas is fitted by `object-fit: contain`, so a CSS rotate would turn the
+  // already-fitted rectangle and push a landscape picture off both sides of the
+  // window. Painting into a canvas whose dimensions are swapped for a quarter turn
+  // keeps `contain` doing the fitting, and leaves zoom and pan untouched.
   let canvasEl: HTMLCanvasElement | undefined = $state();
   $effect(() => {
     if (!raster || !canvasEl) return;
-    canvasEl.width = raster.width;
-    canvasEl.height = raster.height;
+    const turned = quarters % 2 === 1;
+    canvasEl.width = turned ? raster.height : raster.width;
+    canvasEl.height = turned ? raster.width : raster.height;
     const ctx = canvasEl.getContext("2d");
     if (!ctx) return;
     const data = new Uint8ClampedArray(raster.rgba);
-    ctx.putImageData(new ImageData(data, raster.width, raster.height), 0, 0);
+    const image = new ImageData(data, raster.width, raster.height);
+    if (quarters === 0) {
+      ctx.putImageData(image, 0, 0);
+      return;
+    }
+    // `putImageData` ignores the context transform by definition, so the pixels go
+    // onto an offscreen canvas first and are then drawn through the rotation.
+    const off = document.createElement("canvas");
+    off.width = raster.width;
+    off.height = raster.height;
+    const offCtx = off.getContext("2d");
+    if (!offCtx) return;
+    offCtx.putImageData(image, 0, 0);
+    ctx.save();
+    ctx.translate(canvasEl.width / 2, canvasEl.height / 2);
+    ctx.rotate((quarters * Math.PI) / 2);
+    ctx.drawImage(off, -raster.width / 2, -raster.height / 2);
+    ctx.restore();
   });
 
   let chromeVisible = $state(true);
