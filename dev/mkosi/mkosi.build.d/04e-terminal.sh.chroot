@@ -61,6 +61,25 @@ ln -sf "../lib/arlen/apps/dev.arlen.terminal/bin/arlen-terminal" "$DESTDIR/usr/b
 # staged by the same step that stages the binary and cannot drift from it.
 install -Dm644 "$SRCDIR/arlen/apps/terminal/dist/arlen-terminal.desktop" \
         "$DESTDIR/usr/share/applications/arlen-terminal.desktop"
+# THE SHELL INTEGRATION, without which the block-mode terminal has no blocks.
+#
+# `ensure_curated_zdotdir` (src-tauri/src/lib.rs) looks for
+# `/usr/share/arlen/terminal/zdotdir` and falls back to the in-repo directory for
+# `cargo tauri dev`. Nothing installed the first one, so on the image neither path
+# existed, the function did nothing, and zsh started with its ordinary config: no
+# OSC 133 marks, so the whole block UI the terminal is built around had nothing
+# producing its marks - silently, because every step of that chain degrades politely.
+#
+# The layout is a contract, not a preference: the curated `.zshrc` sources
+# `${ARLEN_CURATED_ZDOTDIR:h}/arlen-shell-integration.zsh`, the SIBLING of the
+# zdotdir, so the script goes one level above it and not inside.
+for f in .zshenv .zshrc .zprofile; do
+    install -Dm644 "$SRCDIR/arlen/apps/terminal/integration/zdotdir/$f" \
+            "$DESTDIR/usr/share/arlen/terminal/zdotdir/$f"
+done
+install -Dm644 "$SRCDIR/arlen/apps/terminal/integration/arlen-shell-integration.zsh" \
+        "$DESTDIR/usr/share/arlen/terminal/arlen-shell-integration.zsh"
+
 install -Dm644 "$SRCDIR/arlen/apps/terminal/src-tauri/icons/128x128.png" \
         "$DESTDIR/usr/share/icons/hicolor/128x128/apps/arlen-terminal.png"
 echo ">> staged arlen-terminal into the image"
