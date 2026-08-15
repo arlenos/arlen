@@ -1,0 +1,44 @@
+# The timeline FUSE helper's read scope.
+#
+# WITHOUT THIS `~/.timeline` IS AN EMPTY DIRECTORY, and that is what it was until
+# 15 Aug. The helper mounted fine, logged a successful mount, and then every
+# lookup inside it failed with `fuse: date query failed: timeline graph read
+# failed: read denied: label outside the caller's read scope`. A user opening the
+# timeline saw nothing and had no way to tell "nothing happened yet" from "this
+# feature is not allowed to work".
+#
+# It went unnoticed because until the same day the daemon could not name ANY
+# caller: it ran as root, then moved under the user manager and lost the /proc
+# read its identity resolution depended on, so every read was refused with
+# `app_id=unknown` and this one was indistinguishable from the rest. Once the
+# daemon asked the identity broker instead, the refusal became `app_id=timeline` -
+# a named caller with no grant, which is a one-file fix rather than a mystery.
+#
+# THE GRANT IS THE QUERIES, not a category. `fuse.rs` asks exactly seven things
+# and between them they touch three labels:
+#
+#   File     last_accessed (the date buckets), path (every listing)
+#   App      id (the by-app view, reached through ACCESSED_BY)
+#   Project  id, name, root_path, status (the project tree)
+#
+# Nothing else is listed, because a wider grant would let the timeline surface
+# rows no view of it can render - and the timeline is a place people look to
+# understand what the system recorded about them, so it is the last surface that
+# should hold more than it shows.
+#
+# Read only. The helper never writes: it is a view onto the graph, and its own
+# mount is the only thing it creates.
+[info]
+app_id = "timeline"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.File.path",
+    "system.File.last_accessed",
+    "system.App.id",
+    "system.Project.id",
+    "system.Project.name",
+    "system.Project.root_path",
+    "system.Project.status",
+]
