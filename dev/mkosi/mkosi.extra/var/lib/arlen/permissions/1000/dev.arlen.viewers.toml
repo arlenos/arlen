@@ -1,0 +1,60 @@
+# The viewer's profile, under the uid it applies to, like every other app here.
+#
+# NARROW BY CONSTRUCTION, because the viewer is a narrow app: it is handed one
+# path on the command line, decodes it in a sandboxed worker, and walks the other
+# files in that one folder. It does not browse, it does not index, and it reads
+# nothing from the knowledge graph - so there is no `[graph]` section at all
+# rather than an empty one, which would be a different statement.
+#
+# Each grant below was read out of the source, not assumed:
+#
+#   home + the media mounts   a picture is opened from wherever the user keeps
+#                             it, and `neighbour_file`/`folder_position` list its
+#                             folder to walk it (src-tauri/src/lib.rs). A picture
+#                             on a USB stick is the ordinary case that a home-only
+#                             grant would break, so the mount points are here for
+#                             the same reason the file manager has them - and via
+#                             the same `$USER` substitution, which comes from the
+#                             account's home directory and never from the
+#                             environment.
+#
+# NO write anywhere. The viewer has never written a file: there is no rotate, no
+# crop and no convert yet, and when those arrive they land as a `custom` write
+# grant or a portal save, decided then rather than pre-granted now against a
+# feature nobody has built.
+[info]
+app_id = "dev.arlen.viewers"
+tier = "first-party"
+
+[filesystem]
+home = true
+custom = [
+    "/run/media/$USER",
+    "/media",
+    "/mnt",
+]
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# NOTHING IS PUBLISHED, because the viewer publishes nothing. My first draft of
+# this file granted `file.opened` and said in a comment that the viewer is one of
+# the producers the graph is built from - which sounded right and is false: there
+# is no emitter anywhere in `apps/viewers` (grepped, 15 Aug). Opening a picture
+# does not currently reach the knowledge graph at all. Whether it should is a
+# design question and not a grant to make in advance; when an emitter exists, the
+# publish line lands with it.
+#
+# The subscribe list is not this app's own code either, and that is why it is
+# here: `sdk/tauri-plugin-shell` subscribes these three from inside every Tauri
+# process, and declaring any subscribe list drops the system-tier exemption - so
+# omitting them silently switches off the topbar menu, the toolbar and the
+# shortcuts while the subscribe still returns Ok. Found on the knowledge app under
+# an enforce boot on 14 August; this app has the same shape.
+[event_bus]
+publish = []
+subscribe = [
+    "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]

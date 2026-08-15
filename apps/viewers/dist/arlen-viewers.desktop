@@ -1,0 +1,41 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Viewer
+Name[de]=Betrachter
+Comment=Open a picture or a sound file
+Comment[de]=Ein Bild oder eine Tondatei öffnen
+Exec=arlen-viewers %f
+Icon=arlen-viewers
+Terminal=false
+Categories=Graphics;Viewer;AudioVideo;Audio;
+Keywords=image;picture;photo;audio;music;view;open;
+Keywords[de]=bild;foto;musik;ton;ansehen;öffnen;
+StartupNotify=true
+# Shown in the launcher, not hidden behind a file association. Opening it with
+# nothing to show is a real state the app already handles - it says "No file is
+# open." rather than falling back to a mock track, which is a defect that was
+# found and fixed on 9 August - so hiding the entry would conceal a surface that
+# works.
+
+# MIME TYPES: exactly what `detect_by_extension` and `detect_by_magic` in
+# `apps/viewers/core` actually resolve, one line, no wildcards.
+#
+# `image/*` would be the short version and it would be a lie: this app cannot
+# open an SVG, and claiming the whole tree makes the file manager hand it files
+# it answers with "unsupported file format". A viewer that is the default for a
+# format it cannot show is worse than one that is not the default at all,
+# because the user has already been told it is the right application.
+#
+# THERE IS NO VIDEO TYPE HERE, and that is deliberate: `MediaKind` has only
+# `Image` and `Audio`, so a real `.mp4` resolves to nothing and the window says
+# "unsupported file format" (measured, 15 Aug). The `VideoViewer` component and
+# the `?demo=video` route exist, but no real file can ever reach them. When the
+# video face is built, its types join this line - not before.
+MimeType=image/png;image/jpeg;image/gif;image/webp;image/tiff;image/bmp;image/avif;image/heic;image/jxl;image/qoi;image/x-icon;image/x-tga;image/x-portable-anymap;image/x-dds;image/x-farbfeld;image/vnd.radiance;image/x-raw;audio/flac;audio/mpeg;audio/wav;audio/ogg;audio/aiff;audio/mp4;audio/aac;
+
+# The identity the permission system keys on, stated rather than left to the
+# desktop-id, exactly as the files app does: the resolver reads the directory
+# name under `/usr/lib/arlen/apps/`, so the profile, the audit actor and every
+# capability check say the same thing the launcher does.
+X-Arlen-AppId=dev.arlen.viewers

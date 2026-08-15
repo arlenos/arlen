@@ -71,7 +71,13 @@ PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
 # string.
 PENDING: dict[str, str] = {}
 
-INSTALL = re.compile(r'\$DESTDIR/usr/lib/arlen/apps/([A-Za-z0-9._-]+)/bin/')
+# No trailing slash required after `bin`: a step that assigns the app directory to
+# a variable first (`app="$DESTDIR/usr/lib/arlen/apps/<id>/bin"`, then
+# `install ... "$app/arlen-<name>"`) writes the path exactly once and ends it at
+# `bin`. The stricter pattern missed exactly that shape, so a new app step reported
+# nothing and this check printed a green line about the seven apps it could still
+# see - the same blind spot the image-writes check had with line continuations.
+INSTALL = re.compile(r'\$DESTDIR/usr/lib/arlen/apps/([A-Za-z0-9._-]+)/bin\b')
 
 
 def installed_apps() -> dict[str, str]:

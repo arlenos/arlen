@@ -1,0 +1,76 @@
+#!/bin/sh
+# Phase 4h of the Debian-native build (CHROOT): the viewer (arlen-viewers, a Tauri 2
+# app), same two-step as the files app (04c) - build the SvelteKit frontend, then the
+# Tauri Rust backend.
+#
+# WHY THIS STEP DID NOT EXIST until 15 Aug: the viewer was built, decoded real files,
+# and was never put on the machine. There was no build step, so no binary, no desktop
+# entry, and therefore no MIME registration - which means the file manager could not
+# launch it and `quickview-plan.md`'s premise ("the File manager launches it, via
+# xdg") was unimplemented while the app itself worked on the host.
+#
+# THE WORKERS ARE THE PART THAT IS EASY TO GET WRONG. The viewer decodes nothing in
+# its own process: `worker_dir()` spawns a per-format binary from the directory of
+# the running viewer, each under bwrap with no write and no network. Installing the
+# viewer without them yields an app that opens, renders its chrome, and fails every
+# single file - so the four workers are staged next to the binary here, in the same
+# step, and the step fails if any one of them is missing.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-viewers"  # own dir; app is a separate workspace
+export CXXFLAGS="-include cstdint"
+export LIBGL_ALWAYS_SOFTWARE=1                   # llvmpipe, harmless at build time
+export npm_config_cache="$cache/npm"
+mkdir -p "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen/apps/viewers"
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+
+echo ">> tauri build --no-bundle (production) arlen-viewers"
+./node_modules/.bin/tauri build --no-bundle
+
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-viewers' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! arlen-viewers not found after build" >&2; exit 1; }
+
+app="$DESTDIR/usr/lib/arlen/apps/dev.arlen.viewers/bin"
+install -Dm755 "$out" "$app/arlen-viewers"
+mkdir -p "$DESTDIR/usr/bin"
+ln -sf "../lib/arlen/apps/dev.arlen.viewers/bin/arlen-viewers" \
+        "$DESTDIR/usr/bin/arlen-viewers"
+
+# The sandboxed decoders, beside the binary because that is where `worker_dir()`
+# looks. Each is its own crate with its own workspace, built in turn; heic and jxl
+# link C libraries (libheif, libjxl) that phases 1-2 installed.
+for w in decode-image decode-audio decode-heic decode-jxl; do
+    echo ">> cargo build --release arlen-$w"
+    ( cd "$SRCDIR/arlen/apps/viewers/$w" \
+        && CARGO_TARGET_DIR="$cache/target-viewers-$w" cargo build --release )
+    bin=$(find "$cache/target-viewers-$w" -type f -path "*/release/arlen-$w" 2>/dev/null \
+            | head -1)
+    [ -n "$bin" ] || { echo "!! arlen-$w not found after build" >&2; exit 1; }
+    install -Dm755 "$bin" "$app/arlen-$w"
+done
+
+# The desktop entry carries the MIME types, which is what makes this app the thing
+# the file manager opens a picture with. It claims exactly the formats the detect
+# table resolves and no video, because there is no video face - see the file itself.
+install -Dm644 "$SRCDIR/arlen/apps/viewers/dist/arlen-viewers.desktop" \
+        "$DESTDIR/usr/share/applications/arlen-viewers.desktop"
+install -Dm644 "$SRCDIR/arlen/apps/viewers/src-tauri/icons/128x128.png" \
+        "$DESTDIR/usr/share/icons/hicolor/128x128/apps/arlen-viewers.png"
+echo ">> staged arlen-viewers and its four decoders into the image"
