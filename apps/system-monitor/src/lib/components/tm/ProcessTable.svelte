@@ -1,7 +1,18 @@
 <script lang="ts">
   /// The process table: the task-manager landing. A dense, sortable, heat-coloured
-  /// list grouped into Apps / Background / System, a Stop on every row. The Arlen
-  /// daemons + the AI agent sit in Background as ordinary rows. No verdict page.
+  /// list grouped into Apps / Background / System. The Arlen daemons + the AI agent
+  /// sit in Background as ordinary rows. No verdict page.
+  ///
+  /// STOP LIVES IN THE ROW MENU, not on the row. This header said "a Stop on every
+  /// row" until 16 August, which stopped being true on 8 July when the per-row
+  /// button was moved into `RowMenu` to make space for the access column. Right
+  /// click, or the ContextMenu key / Shift+F10 on the focused row, which is the
+  /// platform convention and keeps the action keyboard-reachable.
+  ///
+  /// NB `system-monitor-plan.md` (a) lists "Stop visible on every row (not buried)"
+  /// among the first-class interactions, so the placement is a live disagreement
+  /// between the plan and the app rather than a settled question - raised in
+  /// `coder-reports.md` on 16 August.
   import { ChevronRight, Cog, Cpu, Camera, Mic, Brain } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
   import { sensorsFor } from "$lib/stores/detail";
