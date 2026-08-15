@@ -2,7 +2,11 @@
 # SPDX-FileCopyrightText: 2026 Tim Kicker
 #
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Check that every `/usr/share/arlen/...` a component reads is put there by the image.
+"""Check that every system path a component reads is one the image puts there.
+
+Covers `/usr/share/arlen/...` (assets) and `/etc/arlen/...` (system configuration and
+trust anchors). Roots are reported as `share:<name>` and `etc:<name>` so the two trees
+cannot be confused for each other.
 
 WHY THIS EXISTS. The terminal app looks for `/usr/share/arlen/terminal/zdotdir` at
 startup and falls back to an in-repo path for `cargo tauri dev`. Nothing installed the
@@ -43,11 +47,24 @@ ROOT = Path(ARGS[0]).resolve() if ARGS else Path(__file__).resolve().parents[2]
 
 SCAN = ("apps", "daemons", "sdk", "ai")
 STEPS = ROOT / "dev/mkosi/mkosi.build.d"
-EXTRA = ROOT / "dev/mkosi/mkosi.extra/usr/share/arlen"
+EXTRA = {
+    "share": ROOT / "dev/mkosi/mkosi.extra/usr/share/arlen",
+    "etc": ROOT / "dev/mkosi/mkosi.extra/etc/arlen",
+}
 
 # Asset root to the reason the image does not provide it. Checked on 15 August.
 NOT_PROVIDED: dict[str, str] = {
-    "defaults": (
+    "etc:trusted-keys": (
+        "the Ed25519 public keys installd verifies a .lunpkg against "
+        "(`/etc/arlen/trusted-keys/*.pub`). The image ships NO /etc/arlen at all, so every "
+        "package install fails with `no trusted public keys found` - fail-closed by design "
+        "(\"invalid or missing signature blocks the install, there is no Install Anyway "
+        "bypass\"), which makes this the right failure and still means the whole install "
+        "path is inert on a real machine. Shipping a key is a signing-infrastructure "
+        "decision - whose key, generated where, rotated how - and not an install line to "
+        "guess at"
+    ),
+    "share:defaults": (
         "the system-defaults layer of the config system (`sdk/config`: "
         "/usr/share/arlen/defaults/{component}.toml under ~/.config/arlen). NOTHING in the "
         "tree ships a defaults file, so the documented two-layer config is one layer in "
@@ -55,12 +72,12 @@ NOT_PROVIDED: dict[str, str] = {
         "are no shipped defaults to ship - but it means the layer is untested, and the "
         "first component that relies on one will find out at runtime"
     ),
-    "modules": (
+    "share:modules": (
         "the system-wide module directory (modulesd, Phase 7B). No first-party module "
         "exists to install, and both readers handle an absent directory, so an empty tree "
         "is the honest state rather than a missing install"
     ),
-    "wallpaper": (
+    "share:wallpaper": (
         "the distro default wallpaper manifest (`/usr/share/arlen/wallpaper/default.toml`, "
         "the wallpaper daemon's fallback when the user has set none). The image installs "
         "`/usr/share/arlen/wallpapers/` - the plural CATALOGUE the picker lists - and no "
@@ -72,18 +89,22 @@ NOT_PROVIDED: dict[str, str] = {
         "differ by one letter and mean different things, which is how a manual sweep "
         "matched `wallpaper` inside `wallpapers` and called this provided"
     ),
-    "settings-schemas": (
+    "share:settings-schemas": (
         "read by the Settings app, which is not on the image either. It lands with "
         "whatever stages Settings; see `check-apps-on-image.py`"
     ),
-    "version": (
+    "share:version": (
         "read by the Settings About page, which is not on the image either - so nothing "
         "reads it today. It lands with whatever writes the OS version at image build, and "
         "that is the same decision as staging Settings"
     ),
 }
 
-LITERAL = re.compile(r'"/usr/share/arlen/([A-Za-z0-9._-]+)')
+# Both trees, tagged, so `etc:defaults` and `share:defaults` stay distinct.
+LITERALS = (
+    ("share", re.compile(r'"/usr/share/arlen/([A-Za-z0-9._-]+)')),
+    ("etc", re.compile(r'"/etc/arlen/([A-Za-z0-9._-]+)')),
+)
 
 
 def roots_in_code() -> dict[str, str]:
@@ -102,20 +123,24 @@ def roots_in_code() -> dict[str, str]:
             cut = text.find("#[cfg(test)]")
             if cut != -1:
                 text = text[:cut]
-            for m in LITERAL.finditer(text):
-                found.setdefault(m.group(1), str(src.relative_to(ROOT)))
+            for tag, pattern in LITERALS:
+                for m in pattern.finditer(text):
+                    found.setdefault(f"{tag}:{m.group(1)}", str(src.relative_to(ROOT)))
     return found
 
 
 def provided() -> set[str]:
     out: set[str] = set()
-    if EXTRA.is_dir():
-        out |= {p.name for p in EXTRA.iterdir()}
+    for tag, extra in EXTRA.items():
+        if extra.is_dir():
+            out |= {f"{tag}:{p.name}" for p in extra.iterdir()}
     if STEPS.is_dir():
         for step in STEPS.glob("*.chroot"):
             text = step.read_text(encoding="utf-8", errors="replace")
             for m in re.finditer(r"share/arlen/([A-Za-z0-9._-]+)", text):
-                out.add(m.group(1))
+                out.add(f"share:{m.group(1)}")
+            for m in re.finditer(r"etc/arlen/([A-Za-z0-9._-]+)", text):
+                out.add(f"etc:{m.group(1)}")
     return out
 
 
@@ -139,14 +164,14 @@ def main() -> int:
         if root in have:
             if root in NOT_PROVIDED:
                 problems.append(
-                    f"/usr/share/arlen/{root} IS provided by the image and is still listed "
+                    f"{root} IS provided by the image and is still listed "
                     f"in NOT_PROVIDED; drop the entry, a stale excuse says a gap is known "
                     f"when it is closed"
                 )
             continue
         if root not in NOT_PROVIDED:
             problems.append(
-                f"{where} reads /usr/share/arlen/{root} and no build step or extra puts it "
+                f"{where} reads {root.replace('share:', '/usr/share/arlen/').replace('etc:', '/etc/arlen/')} and no build step or extra puts it "
                 f"there. On a real machine that lookup finds nothing - and if the code "
                 f"degrades politely, as this kind usually does, the feature is simply "
                 f"absent and nothing says so. Install it, or add it to NOT_PROVIDED with "

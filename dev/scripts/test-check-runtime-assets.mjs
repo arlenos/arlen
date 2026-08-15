@@ -41,7 +41,11 @@ function tree(reads, steps) {
   for (const [name, body] of Object.entries(steps)) writeFileSync(join(stepDir, name), body);
   // The excused roots must be read by something, or the check reports them as stale
   // entries - correctly. One file naming them keeps each case about its own subject.
-  const refs = excused.map((e) => `const _${e.replace(/-/g, "_")}: &str = "/usr/share/arlen/${e}";`);
+  const refs = excused.map((e, i) => {
+    const [tag, name] = e.split(":");
+    const dir = tag === "etc" ? "/etc/arlen" : "/usr/share/arlen";
+    return `const _E${i}: &str = "${dir}/${name}";`;
+  });
   writeFileSync(join(root, "apps/x/src/excused.rs"), refs.join("\n"));
   return root;
 }
@@ -121,7 +125,20 @@ function run(root) {
   rmSync(root, { recursive: true, force: true });
 }
 
-// 5. A moved layout is not a pass.
+// 5. The second tree is read the same way: a trust anchor nothing installs is caught.
+{
+  const root = tree(
+    { "lib.rs": 'const K: &str = "/etc/arlen/nonesuch/k.pub";' },
+    { "04-x.sh.chroot": "#!/bin/sh\ninstall -Dm755 x $DESTDIR/usr/bin/x\n" },
+  );
+  const rc = run(root);
+  rc === 1
+    ? ok("an /etc/arlen path nothing installs is caught")
+    : bad("an /etc/arlen path nothing installs is caught", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+// 6. A moved layout is not a pass.
 {
   const root = mkdtempSync(join(tmpdir(), "runtime-assets-empty-"));
   const rc = run(root);
@@ -131,7 +148,7 @@ function run(root) {
   rmSync(root, { recursive: true, force: true });
 }
 
-// 6. The repository itself, which is what the hook runs.
+// 7. The repository itself, which is what the hook runs.
 {
   const rc = run(join(here, "..", ".."));
   rc === 0
