@@ -13,7 +13,11 @@ Type=oneshot
 ExecStart=/usr/bin/arlen-dogfood
 # The event-bus producer socket is a SYSTEM daemon under /run/arlen; the default
 # matches but pin it so a path change here is explicit.
-Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+# NO SOCKET PINS since 15 Aug: the bus is a per-user service, so the SDK's default
+# of $XDG_RUNTIME_DIR/arlen/ is where it actually binds. These lines used to point
+# at /run/arlen because the bus was a system unit, and a user service that did not
+# pin them dialled a path nothing bound - silently, forever. Keeping them now would
+# recreate that defect pointing the other way.
 # Markers go to the journal; the kernel cmdline forwards the journal to ttyS0, so
 # DOGFOOD lines land in the serial log the verify channel reads.
 StandardOutput=journal

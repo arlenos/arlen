@@ -116,7 +116,6 @@ pub fn unit_from_cgroup(cgroup_text: &str) -> Result<String, UnitError> {
 ///
 /// Kept in step with the shipped units by `dev/scripts/check-unit-identity.py`.
 const UNIT_APP_IDS: &[(&str, &str)] = &[
-    ("arlen-event-bus.service", "event-bus"),
     ("arlen-config-broker.service", "config-broker"),
 ];
 
@@ -152,6 +151,7 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-code-indexer.service", "code-indexer"),
     ("arlen-consent-broker.service", "consent-broker"),
     ("arlen-dogfood.service", "dogfood"),
+    ("arlen-event-bus.service", "event-bus"),
     ("arlen-graph.service", "knowledge"),
     ("arlen-journald-parser.service", "journald-parser"),
     ("arlen-modulesd.service", "modulesd"),

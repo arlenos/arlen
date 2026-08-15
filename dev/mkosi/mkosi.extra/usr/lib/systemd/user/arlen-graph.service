@@ -41,8 +41,6 @@ Environment=XDG_CONFIG_HOME=/usr/share/arlen-config
 #
 # These come out when the bus moves per-user, which is the second half of this
 # job; until then they are what makes the halves fit together.
-Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
-Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
 
 Environment=RUST_LOG=info
 

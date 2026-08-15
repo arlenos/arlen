@@ -28,8 +28,11 @@ Type=notify
 # These pins are correct while the bus is a system service. When it goes per-user
 # (planner, 12 Aug), they move with it - or come out, since the fallback would
 # then be right.
-Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
-Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+# NO SOCKET PINS since 15 Aug: the bus is a per-user service, so the SDK's default
+# of $XDG_RUNTIME_DIR/arlen/ is where it actually binds. These lines used to point
+# at /run/arlen because the bus was a system unit, and a user service that did not
+# pin them dialled a path nothing bound - silently, forever. Keeping them now would
+# recreate that defect pointing the other way.
 ExecStart=/usr/lib/arlen/libexec/arlen-anomalyd
 Restart=on-failure
 RestartSec=2

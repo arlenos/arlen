@@ -21,8 +21,11 @@ Type=notify
 #
 # `arlen-ai-engine-daemon.service` already pins its sockets this way; this is that
 # pattern, applied where a boot log showed it was missing.
-Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
-Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+# NO SOCKET PINS since 15 Aug: the bus is a per-user service, so the SDK's default
+# of $XDG_RUNTIME_DIR/arlen/ is where it actually binds. These lines used to point
+# at /run/arlen because the bus was a system unit, and a user service that did not
+# pin them dialled a path nothing bound - silently, forever. Keeping them now would
+# recreate that defect pointing the other way.
 Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-code-indexer
 Restart=on-failure

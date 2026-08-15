@@ -50,10 +50,11 @@ const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
 
 // The defect: a daemon that publishes, on a user unit, with no pin.
 {
+  // INVERTED 15 Aug with the gate: the bus is per-user, so an unpinned unit is
+  // the correct one and a unit still naming /run/arlen is the defect.
   const d = tree({ source: PRODUCER });
   const r = run(d);
-  check("a publisher with no producer pin is caught", r.code === 1);
-  check("and the message names the missing pin", r.out.includes("ARLEN_PRODUCER_SOCKET"));
+  check("a publisher with no pin passes, because the default is now right", r.code === 0);
   rmSync(d, { recursive: true, force: true });
 }
 
@@ -63,7 +64,9 @@ const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
     source: PRODUCER,
     unitEnv: ["ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock"],
   });
-  check("a pinned publisher passes", run(d).code === 0);
+  const pinned = run(d);
+  check("a publisher pinned at /run/arlen is caught", pinned.code === 1);
+  check("and the message names the pin", pinned.out.includes("ARLEN_PRODUCER_SOCKET"));
   rmSync(d, { recursive: true, force: true });
 }
 
@@ -80,9 +83,12 @@ const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
 
 // A subscriber needs the other direction, and only that one.
 {
-  const d = tree({ source: CONSUMER });
+  const d = tree({
+    source: CONSUMER,
+    unitEnv: ["ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock"],
+  });
   const r = run(d);
-  check("a subscriber with no consumer pin is caught", r.code === 1);
+  check("a subscriber pinned at /run/arlen is caught", r.code === 1);
   check("and is not asked for a producer pin", !r.out.includes("PRODUCER"));
   rmSync(d, { recursive: true, force: true });
 }

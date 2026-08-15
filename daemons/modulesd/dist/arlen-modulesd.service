@@ -29,8 +29,6 @@ ExecStart=/usr/lib/arlen/libexec/arlen-modulesd
 # and no log line disagrees.
 #
 # These come out when the bus moves per-user, the same way the graph unit's do.
-Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
-Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
 Restart=on-failure
 RestartSec=2
 

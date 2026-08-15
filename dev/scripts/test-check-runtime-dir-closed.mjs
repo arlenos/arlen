@@ -19,7 +19,11 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-runtime-dir-closed.py");
 const UNIT_REL = "dev/mkosi/mkosi.extra/usr/lib/systemd/system";
-const UNIT = "arlen-event-bus.service";
+// The unit that declares /run/arlen, which is a moving target on purpose: the
+// event bus held it until it went per-user on 15 Aug, and the config broker took
+// it over because it is now the only shipped system unit that could. What the
+// gate checks is that SOMETHING declares it; this names whichever one does.
+const UNIT = "arlen-config-broker.service";
 
 let failures = 0;
 function check(name, ok) {
@@ -47,7 +51,7 @@ console.log("runtime dir closed:");
 {
   const r = run((s) => s);
   check("the tree as it stands passes", r.code === 0);
-  check("and names the unit that creates it", r.out.includes("arlen-event-bus.service"));
+  check("and names the unit that creates it", r.out.includes(UNIT));
 }
 {
   // The one that matters: group/other write is exactly what lets a user bind a
@@ -64,7 +68,11 @@ console.log("runtime dir closed:");
 {
   // A non-root owner: the directory is then owned by whatever that account is,
   // and the gate should say so rather than assume it is a service account.
-  const r = run((s) => s.replace("RuntimeDirectoryMode=0755", "User=tim\nRuntimeDirectoryMode=0755"));
+  // Replaces the unit's existing `User=` rather than adding a second one. Adding
+  // one is what this case used to do, and it silently tested nothing: the unit
+  // already says `User=root` higher up, so the gate - reading the first match -
+  // saw root and passed. Fixing the case turned up the gate bug behind it.
+  const r = run((s) => s.replace("User=root", "User=tim"));
   check("a non-root owner is reported", r.code === 1 && r.out.includes("User=tim"));
 }
 {
