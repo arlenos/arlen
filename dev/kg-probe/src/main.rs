@@ -202,8 +202,13 @@ fn report_proc_sweep() {
             }
         }
     }
+    // The unit says which variant this is. Reading it from the environment rather
+    // than inferring from pid order: three controls start in the same
+    // millisecond, and pid order is a guess about systemd's internals - the kind
+    // of guess that has been wrong at every step of this investigation.
+    let label = std::env::var("ARLEN_KG_PROBE_LABEL").unwrap_or_else(|_| "plain".into());
     println!(
-        "kg-probe: proc sweep: {mine} same-uid process(es), exe readable for \
+        "kg-probe: proc sweep [{label}]: {mine} same-uid process(es), exe readable for \
          {readable}, refused for {refused}; refused are {refused_names:?}; \
          readable examples {examples:?}"
     );

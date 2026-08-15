@@ -140,6 +140,7 @@ After=arlen-graph.service
 [Service]
 Type=oneshot
 Environment=ARLEN_KG_PROBE_SWEEP_ONLY=1
+Environment=ARLEN_KG_PROBE_LABEL=both
 ExecStart=/usr/bin/arlen-kg-probe
 # The two directives under test, copied from arlen-graph.service. Nothing else.
 NoNewPrivileges=true
@@ -174,6 +175,7 @@ After=arlen-graph.service
 [Service]
 Type=oneshot
 Environment=ARLEN_KG_PROBE_SWEEP_ONLY=1
+Environment=ARLEN_KG_PROBE_LABEL=nnp-only
 ExecStart=/usr/bin/arlen-kg-probe
 NoNewPrivileges=true
 ProtectHome=no
@@ -193,6 +195,7 @@ After=arlen-graph.service
 [Service]
 Type=oneshot
 Environment=ARLEN_KG_PROBE_SWEEP_ONLY=1
+Environment=ARLEN_KG_PROBE_LABEL=protect-only
 ExecStart=/usr/bin/arlen-kg-probe
 ProtectSystem=strict
 ProtectHome=no
