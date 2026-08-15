@@ -117,6 +117,42 @@ WantedBy=default.target
 UNIT
 chmod 644 "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe.service"
 
+# THE CONTROLLED COMPARISON. The unhardened probe above reads 29 of 31 same-uid
+# exe links; the graph daemon, asking the same question of the same kernel, reads
+# 1 of 32. Reader and target are therefore not symmetric, and the two processes
+# differ in exactly one way: the daemon carries `NoNewPrivileges=true` and
+# `ProtectSystem=strict` and the probe carries nothing.
+#
+# So this runs the SAME BINARY with those two directives and nothing else. One
+# variable, one boot, and the sweep line it prints is directly comparable to the
+# plain probe's in the same journal. If it drops to ~1, the hardening is the
+# cause and the next question is which of the two directives; if it stays at ~29,
+# the difference is somewhere I have not looked and the guessing stops there
+# rather than continuing.
+#
+# It asks the graph nothing - `ARLEN_KG_PROBE_SWEEP_ONLY` keeps it to the sweep -
+# so it cannot muddle the real probe's answers.
+cat > "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe-hardened.service" <<'UNIT'
+[Unit]
+Description=The same probe under the graph daemon's hardening (verify image only)
+After=arlen-graph.service
+
+[Service]
+Type=oneshot
+Environment=ARLEN_KG_PROBE_SWEEP_ONLY=1
+ExecStart=/usr/bin/arlen-kg-probe
+# The two directives under test, copied from arlen-graph.service. Nothing else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=no
+
+[Install]
+WantedBy=default.target
+UNIT
+chmod 644 "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe-hardened.service"
+ln -sf ../arlen-kg-probe-hardened.service \
+       "$DESTDIR/usr/lib/systemd/user/default.target.wants/arlen-kg-probe-hardened.service"
+
 # And a read scope, or the probe asks and is refused.
 #
 # Running as root got it past the cross-uid rule; the read-scope label gate then
