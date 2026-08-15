@@ -229,6 +229,37 @@ fn folder_position(path: String) -> Result<Option<[usize; 2]>, String> {
     Ok(arlen_viewers_core::navigate::position(&name, &entries).map(|(i, n)| [i, n]))
 }
 
+/// What the filesystem knows about the open file, for the details panel.
+///
+/// Deliberately only what a `stat` actually answers. The plan calls this panel
+/// "EXIF for image, tags/codec for audio, format/streams for video", and the
+/// tags and the codec are real - the audio probe reads them - but there is no
+/// EXIF parser in this app, so the panel shows no EXIF rather than a section of
+/// blanks implying the picture carried none.
+#[derive(Serialize)]
+pub struct FileFactsDto {
+    /// Size on disk in bytes.
+    pub size_bytes: u64,
+    /// Last modification, milliseconds since the epoch. `None` when the platform
+    /// does not report one, which is a real answer and not zero.
+    pub modified_ms: Option<i64>,
+}
+
+/// `stat` the open file for the details panel.
+#[tauri::command]
+fn file_facts(path: String) -> Result<FileFactsDto, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| format!("cannot stat the file: {e}"))?;
+    let modified_ms = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|d| i64::try_from(d.as_millis()).ok());
+    Ok(FileFactsDto {
+        size_bytes: meta.len(),
+        modified_ms,
+    })
+}
+
 /// The folder a file lives in, its own name, and the file names beside it.
 ///
 /// Non-UTF-8 names are dropped rather than lossily converted: a name that does
@@ -286,6 +317,7 @@ pub fn run() {
             detect_media_kind,
             neighbour_file,
             folder_position,
+            file_facts,
             initial_file
         ])
         .run(tauri::generate_context!())
