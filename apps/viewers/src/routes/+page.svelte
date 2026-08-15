@@ -100,6 +100,19 @@
       noFile = true;
       return;
     }
+    currentPath = path;
+    await openFile(path);
+  });
+
+  /// The file the arrow keys move from. Held because the neighbour lookup needs a
+  /// path, and `loaded` carries only what the surface renders (a name, a title) -
+  /// which is not enough to find what is beside it on disk.
+  let currentPath: string | null = $state(null);
+
+  /// Load one file into the viewer. Split out of `onMount` so a keypress can do
+  /// what the launch does: the two paths must not drift, or arrowing to a picture
+  /// would show it differently from opening it directly.
+  async function openFile(path: string) {
     const name = basename(path);
     try {
       const kind = await invoke<string>("detect_media_kind", { path });
@@ -130,8 +143,46 @@
     } catch (e) {
       loadError = String(e);
     }
-  });
+  }
+
+  /// Arrow keys walk the folder, which is the behaviour that makes this a viewer
+  /// rather than a file-opener - opening one picture puts you in the folder, the
+  /// way imv does.
+  ///
+  /// A `null` answer means there is nowhere to go: a lone picture, or a file the
+  /// viewer cannot show. The view is left exactly as it is, because moving to
+  /// nothing and blanking the surface would read as the file having failed.
+  async function step(direction: "next" | "previous") {
+    if (!tauriAvailable || !currentPath) return;
+    try {
+      const neighbour = await invoke<string | null>("neighbour_file", {
+        path: currentPath,
+        direction,
+      });
+      if (!neighbour) return;
+      currentPath = neighbour;
+      await openFile(neighbour);
+    } catch (e) {
+      loadError = String(e);
+    }
+  }
+
+  function onKey(event: KeyboardEvent) {
+    // Ignored with a modifier held: Ctrl+Right is a word-jump everywhere else,
+    // and a viewer that swallowed it would be the one application that does not
+    // behave.
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === " ") {
+      event.preventDefault();
+      void step("next");
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      void step("previous");
+    }
+  }
 </script>
+
+<svelte:window on:keydown={onKey} />
 
 {#snippet face(d: string)}
   {#if d === "audio"}
