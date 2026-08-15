@@ -56,7 +56,16 @@ if [ ! -x "$CARGO_HOME/bin/bpf-linker" ]; then
     # LLVM present at all.
     echo ">> kernel layer: llvm-config reports $(llvm-config --version 2>/dev/null || echo ABSENT)"
     echo ">> kernel layer: building bpf-linker (slow, cached afterwards)"
-    cargo install bpf-linker --locked
+    # PINNED TO THE IMAGE'S LLVM, from the third run's measurement rather than a
+    # preference. `llvm-config` in this image reports 19.1.7 (trixie's LLVM), and
+    # the unpinned latest bpf-linker builds against llvm-sys 231 - LLVM 21 - so it
+    # got as far as linking and died on `unable to find library -lLLVM`.
+    #
+    # 0.9.13 is the line that links against LLVM 19. If this pin is wrong the
+    # build says so immediately and loudly, which is why the version printed above
+    # sits right next to it: the two have to agree, and both are visible in the
+    # same three lines of log.
+    cargo install bpf-linker --locked --version 0.9.13
 fi
 
 # The eBPF program first: the userspace daemon embeds the object, so the object

@@ -15,7 +15,7 @@ set -eu
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-# `llvm-dev` is here for the eBPF sensor and nothing else: `bpf-linker`, which
+# LLVM 19 for the eBPF sensor and nothing else: `bpf-linker`, which
 # rustc invokes to emit the BPF object, links against llvm-sys and refuses to
 # build without `llvm-config`. The first gated run of the kernel-layer phase died
 # on exactly that - `could not find llvm-config in directories specified by
@@ -27,7 +27,7 @@ apt-get update
 # is discarded anyway and never reaches the shipped one.
 apt-get install -y --no-install-recommends \
     ca-certificates curl xz-utils cmake g++ make protobuf-compiler pkg-config libfuse3-dev \
-    llvm-dev \
+    llvm-19-dev libpolly-19-dev \
     libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev \
     libinput-dev libdbus-1-dev libsystemd-dev libseat-dev libdisplay-info-dev \
     libpixman-1-dev \
