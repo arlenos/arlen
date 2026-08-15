@@ -114,6 +114,7 @@ async fn main() {
     }
     report_profile();
     report_proc_sweep();
+    wait_until_named(&client).await;
     report_grants(&client).await;
 
     // Always ask. An earlier cut skipped the questions when `access_grants` came
@@ -212,6 +213,50 @@ fn report_proc_sweep() {
          {readable}, refused for {refused}; refused are {refused_names:?}; \
          readable examples {examples:?}"
     );
+}
+
+/// Wait until the daemon will accept this caller at all.
+///
+/// The unit's `ExecStartPre` waits for the knowledge socket to exist, and that is
+/// a different condition from being nameable. The socket is bound within a second
+/// of boot; the session supervisor registers this unit with the identity broker
+/// on its first round, which was 10.1s on the 15 Aug boot. In between the daemon
+/// accepts the connection and closes it immediately - correctly, since an
+/// unregistered caller has no attested name and is refused rather than handed an
+/// empty scope.
+///
+/// So the first round asked at 5.9s and every question came back `Connection
+/// reset by peer`, while the second at 80.8s answered all seven with real rows.
+/// Same probe, same daemon; the only difference was that registration had
+/// happened. Reporting seven failures for that is reporting a race as a defect.
+///
+/// A cheap read is the readiness signal, because it is the exact thing being
+/// waited for. Bounded, and it does NOT fail the run on timeout: if the wait
+/// expires the questions run anyway, and their refusals are the report.
+async fn wait_until_named(client: &UnixGraphClient) {
+    const DEADLINE: std::time::Duration = std::time::Duration::from_secs(45);
+    const POLL: std::time::Duration = std::time::Duration::from_millis(500);
+    let start = std::time::Instant::now();
+    let mut attempts = 0usize;
+    loop {
+        attempts += 1;
+        if client.access_grants().await.is_ok() {
+            println!(
+                "kg-probe: named after {attempts} attempt(s), {:?} - the socket existed \
+                 from the start, this waits for the supervisor to register the unit",
+                start.elapsed()
+            );
+            return;
+        }
+        if start.elapsed() >= DEADLINE {
+            println!(
+                "kg-probe: still refused after {DEADLINE:?} ({attempts} attempts). Asking \
+                 anyway - the refusals below are the finding, not this wait"
+            );
+            return;
+        }
+        tokio::time::sleep(POLL).await;
+    }
 }
 
 /// Whether this caller's permission profile is where the daemon will look.
