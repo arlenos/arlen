@@ -2983,52 +2983,43 @@ async fn handle_client(
                 // registrar stamps the units the session root spawned, so a process
                 // outside that set - a verify probe, anything hand-started - is
                 // unresolvable here for the same reason it was this morning.
+                // THE STAMPED ROUTE IS THE ROUTE. There is no `/proc` fallback
+                // here any more, and removing it is the fix rather than a
+                // regression.
+                //
+                // Measured on 15 Aug, one binary in four units on one boot: a
+                // plain process reads 29 of 31 same-uid `/proc/<pid>/exe` links,
+                // the same binary under `ProtectSystem=strict` reads 1 of 25. This
+                // daemon carries that directive and cannot drop it, so
+                // `app_id_from_pid` was never going to name a caller here - not
+                // intermittently, structurally. What it produced instead was
+                // `unknown`, which carries an empty read scope, so every question
+                // came back "label outside the caller's read scope" and read like
+                // a decision somebody made rather than a lookup that failed.
+                //
+                // So a caller the broker does not know is REFUSED, with a line
+                // that says which caller and what to do about it. Not registered
+                // means not nameable, and not nameable is a refusal - never a
+                // silent empty scope.
                 let id = match arlen_permissions::stamped_identity::app_id_from_connection(
                     &stream, uid,
                 ) {
                     Ok(stamped) => stamped.app_id().to_string(),
-                    Err(_) => match app_id_from_pid(pid) {
-                        Ok(id) => id,
-                        Err(e) => {
-                            // Both tiers are out. A hardened peer's /proc/exe is
-                            // EACCES even to root (the VM boot proved the old "root
-                            // can always read it" assumption false), and the broker
-                            // above did not know this caller. There is no third
-                            // source: the peer's cgroup unit used to answer here,
-                            // until it turned out the peer owns the directory names
-                            // under its own unit, so naming one after the AI daemon
-                            // made an unreadable identity into that daemon's - which
-                            // is exactly what the tier and the read scope key on. An
-                            // unresolvable caller is unresolved, and recorded as
-                            // such.
-                            if cross_uid {
-                                warn!(
-                                    peer_uid = uid,
-                                    pid,
-                                    error = %e,
-                                    "graph daemon: cross-uid app_id resolution failed (peer served as unknown)"
-                                );
-                                "unknown".to_string()
-                            } else {
-                                // Say so. This branch was silent, and its silence
-                                // cost four boots: a same-uid caller that cannot be
-                                // named gets an empty read scope, so every question
-                                // it asks comes back "label outside the caller's
-                                // read scope" - which reads as a caller that was
-                                // named and not granted, not as one that was never
-                                // named. The two need opposite fixes.
-                                warn!(
-                                    peer_uid = uid,
-                                    pid,
-                                    error = %e,
-                                    "graph daemon: same-uid app_id resolution failed \
-                                     (peer served as unresolved, so its read scope is \
-                                     empty and every read it makes will be denied)"
-                                );
-                                same_uid_unresolved_id()
-                            }
-                        }
-                    },
+                    Err(e) => {
+                        warn!(
+                            peer_uid = uid,
+                            pid,
+                            cross_uid,
+                            error = %e,
+                            "graph daemon: refusing a caller the identity broker does not \
+                             know. The session supervisor registers the units it starts; a \
+                             process outside that set has no attested name, and this daemon \
+                             will not serve one an empty scope that looks like a permissions \
+                             decision. Register the unit, or reach the graph through one \
+                             that is."
+                        );
+                        return Ok(());
+                    }
                 };
                 // A SAME-uid peer is served, scoped by `id` (other root services).
                 // A CROSS-uid peer is served only when it resolves FirstParty/

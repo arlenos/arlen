@@ -329,14 +329,24 @@ fn peer_app_profile(stream: &UnixStream) -> PeerScope {
     // is correct rather than limiting: its callers are its own session. A broker
     // miss still falls through to the old path, so nothing that resolved before
     // stops resolving.
-    let stamped = arlen_permissions::stamped_identity::app_id_from_connection(stream, peer_uid)
-        .ok()
-        .map(|s| s.app_id().to_string());
-    let Some(app_id) = stamped.or_else(|| {
-        cred.pid()
-            .and_then(|pid| u32::try_from(pid).ok())
-            .and_then(|pid| arlen_permissions::identity::app_id_from_pid(pid).ok())
-    }) else {
+    // The stamped route, and only the stamped route.
+    //
+    // The `/proc` fallback that stood here could not work in this daemon and the
+    // comment above it said the opposite - that a broker miss "still falls
+    // through to the old path, so nothing that resolved before stops resolving".
+    // Measured on 15 Aug: one binary in four units on one boot read 29 of 31
+    // same-uid `/proc/<pid>/exe` links plain and 1 of 25 under
+    // `ProtectSystem=strict`. This unit carries that directive, so the fallback
+    // resolved almost nothing and the sentence describing it was wrong.
+    //
+    // Removing it changes an unnameable peer from silently unscoped to
+    // explicitly unresolved, which is what `PeerScope::Unresolved` already means
+    // and what its callers already handle.
+    let Some(app_id) =
+        arlen_permissions::stamped_identity::app_id_from_connection(stream, peer_uid)
+            .ok()
+            .map(|s| s.app_id().to_string())
+    else {
         return PeerScope::Unresolved;
     };
     match arlen_permissions::load_profile_for_user(peer_uid, &app_id) {
