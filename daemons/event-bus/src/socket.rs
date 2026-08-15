@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 /// Start both the producer socket and the consumer socket concurrently.
 /// Both run forever; if either exits the daemon exits.
@@ -228,6 +228,14 @@ struct PublishDecision<'a> {
 /// And nothing else will catch it: the kernel layer writes framed protobuf to the
 /// producer socket directly rather than through the SDK emitter, so
 /// `check-emitters-declared.py` cannot see it either.
+/// The largest single event the bus will read, on any of its sockets.
+///
+/// Named rather than repeated: the producer path checked `1024 * 1024` inline,
+/// and the upstream forwarder needs the same ceiling for the same reason - a
+/// length prefix is attacker-supplied on both, and allocating from it before
+/// bounding it is how a four-byte header becomes a memory limit.
+const MAX_EVENT_SIZE: usize = 1024 * 1024;
+
 const PUBLISH_ORIGINATORS: &[&str] = &["compositor", "kernel-layer"];
 
 /// The producers allowed to say an event was about SOMEONE ELSE.
@@ -479,7 +487,7 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
         }
 
         let len = u32::from_be_bytes(len_buf) as usize;
-        if len == 0 || len > 1024 * 1024 {
+        if len == 0 || len > MAX_EVENT_SIZE {
             warn!(len, "invalid message length, closing connection");
             return Ok(());
         }
@@ -1104,6 +1112,72 @@ mod tests {
     /// newline-terminated lines, then length-prefixed protobuf out - and proves
     /// an event actually arrives.
     #[tokio::test]
+    async fn the_forwarder_carries_an_upstream_event_into_this_bus() {
+        // The per-user half of the design: a whole-machine observer publishes to
+        // the system bus, and each user's bus pulls from it. Two registries here
+        // stand in for the two buses, which is what they are - the forwarder is a
+        // consumer of one and a producer into the other.
+        let dir = tempfile::tempdir().unwrap();
+        let upstream_consumers = dir.path().join("up-consumer.sock").to_str().unwrap().to_string();
+
+        let upstream = ConsumerRegistry::new();
+        let up = Arc::clone(&upstream);
+        let path = upstream_consumers.clone();
+        tokio::spawn(async move { listen_consumers(&path, up).await });
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !Path::new(&upstream_consumers).exists() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(Path::new(&upstream_consumers).exists(), "the upstream must be bound");
+
+        // The downstream bus, and a consumer on it to observe what arrives.
+        let downstream = ConsumerRegistry::new();
+        let mut seen = downstream
+            .register("watcher".to_string(), vec!["*".to_string()], UidFilter::All)
+            .await;
+
+        let fwd_registry = Arc::clone(&downstream);
+        let fwd_path = upstream_consumers.clone();
+        tokio::spawn(async move { forward_from_upstream(&fwd_path, fwd_registry).await });
+
+        // Dispatch upstream until the forwarder has registered and it lands.
+        let mine = unsafe { libc::getuid() };
+        let event = Event {
+            id: "01890000-0000-7000-8000-0000000000ff".to_string(),
+            r#type: "file.opened".to_string(),
+            timestamp: 1_700_000_000_000_000,
+            source: "ebpf".to_string(),
+            uid: mine,
+            ..Default::default()
+        };
+
+        let mut arrived = None;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            upstream.dispatch(&event).await;
+            if let Ok(Ok(got)) = tokio::time::timeout(
+                std::time::Duration::from_millis(100),
+                seen.recv(),
+            )
+            .await
+            .map(|o| o.ok_or("closed"))
+            {
+                arrived = Some(got);
+                break;
+            }
+        }
+
+        let got = arrived.expect("the forwarder never carried an upstream event across");
+        assert_eq!(got.id, event.id);
+        assert_eq!(
+            got.uid, mine,
+            "the observed subject's uid must survive the hop - overwriting it here \
+             is the one thing that would make per-user routing meaningless"
+        );
+    }
+
+    #[tokio::test]
     async fn an_event_crosses_from_a_producer_socket_to_a_consumer_socket() {
         let dir = tempfile::tempdir().unwrap();
         let producer_path = dir.path().join("producer.sock").to_str().unwrap().to_string();
@@ -1257,5 +1331,70 @@ mod tests {
         // Its own timestamp, not the moment it was handed over. This is what lets
         // a consumer show it as last-known instead of painting it as live.
         assert_eq!(got.timestamp, 1_700_000_000_000_000);
+    }
+}
+
+/// Subscribe to an upstream bus and republish what it sends into this one.
+///
+/// THE ONE THING A PER-USER BUS CANNOT DO FOR ITSELF. A whole-machine observer -
+/// the eBPF kernel layer - watches every process on the box and has no per-user
+/// form, so it keeps publishing to the system bus. Each user's bus then pulls
+/// what belongs to it. The coupling points that way on purpose: the system side
+/// holds no connections into anyone's runtime directory and does not need to know
+/// which users exist.
+///
+/// It asks for `*` and does not get it. The upstream bus clamps a consumer's
+/// filter to the uid it attested through `SO_PEERCRED` (see `clamp_uid_filter`),
+/// so this registration comes back narrowed to this bus's own uid whatever it
+/// requested - which is why the design can say a per-user bus cannot reach
+/// another user's events "even by asking wrongly". Asking for everything is the
+/// honest request to make; being held to your own is the upstream's job.
+///
+/// Reconnects with a fixed delay rather than giving up: the upstream is a
+/// separate unit with its own restarts, and a forwarder that exits on the first
+/// hiccup turns a momentary gap into a permanently empty graph.
+pub async fn forward_from_upstream(
+    upstream_consumer_path: &str,
+    registry: Arc<ConsumerRegistry>,
+) -> Result<()> {
+    const RECONNECT_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+    loop {
+        match forward_once(upstream_consumer_path, &registry).await {
+            Ok(()) => debug!(upstream = upstream_consumer_path, "upstream closed the stream"),
+            Err(e) => debug!(upstream = upstream_consumer_path, "upstream forward ended: {e}"),
+        }
+        tokio::time::sleep(RECONNECT_DELAY).await;
+    }
+}
+
+/// One connection's worth of forwarding, so the retry loop above stays readable.
+async fn forward_once(upstream_consumer_path: &str, registry: &Arc<ConsumerRegistry>) -> Result<()> {
+    let mut stream = UnixStream::connect(upstream_consumer_path).await?;
+
+    // The consumer registration is three newline-terminated lines: id, patterns,
+    // uid filter. `*` for both because this bus forwards whatever its own
+    // consumers may later want, and the upstream decides what that may include.
+    let uid = unsafe { libc::getuid() };
+    let registration = format!("event-bus-forwarder-{uid}\n*\n*\n");
+    stream.write_all(registration.as_bytes()).await?;
+    stream.flush().await?;
+    info!(upstream = upstream_consumer_path, uid, "forwarding from the upstream bus");
+
+    loop {
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf).await?;
+        let len = u32::from_be_bytes(len_buf) as usize;
+        if len > MAX_EVENT_SIZE {
+            anyhow::bail!("upstream event of {len} bytes exceeds the {MAX_EVENT_SIZE} cap");
+        }
+        let mut body = vec![0u8; len];
+        stream.read_exact(&mut body).await?;
+
+        // Forwarded verbatim. The upstream already restamped the producer's uid
+        // and origin, and re-stamping here would overwrite the observed subject
+        // with this bus's own identity - which is the single thing the whole
+        // arrangement exists to preserve.
+        let event = Event::decode(&body[..])?;
+        registry.dispatch(&event).await;
     }
 }
