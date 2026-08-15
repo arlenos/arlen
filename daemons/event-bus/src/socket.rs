@@ -488,8 +488,29 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     // `PeerScope`'s own doc warns against exactly this collapse one level down
     // ("no scope" and "no identity" are kept apart because merging them points
     // every repair at the wrong place). Same error, one level up.
-    let publish_scope = peer.scope;
-    let decision = publish_decision(&publish_scope);
+    let mut publish_scope = peer.scope;
+
+    // RE-RESOLVE AN UNRESOLVED PEER, once, before it publishes.
+    //
+    // "Resolved once at connect" is right about peercred, which the kernel fixes
+    // for the connection's life. It is not right about the broker: a producer can
+    // connect before the session supervisor has registered it, and then it is
+    // unnameable for reasons that stop being true a moment later.
+    //
+    // Measured on the 15 Aug boot: a producer connected at 5.249s and the
+    // supervisor's first registration landed at 5.980s - 731ms later. That
+    // producer stayed `<unresolved>` for the life of its connection, and daemons
+    // hold their producer connection for the whole session. Today the bus is in
+    // shadow mode, so it logged `publish would be denied` and let the event
+    // through. With publish scoping enforced, that daemon's events would be
+    // refused for the entire session because of a startup race - which reads as a
+    // broken daemon, not as a race.
+    //
+    // Only the unresolved case retries, so a named peer keeps the name it was
+    // attested with and nothing about the normal path changes. The retry happens
+    // at PUBLISH time rather than here: retrying at connect would ask again in the
+    // same millisecond that already failed, which answers the same way.
+    let mut decision = publish_decision(&publish_scope);
     let enforce = enforce_pubsub();
     debug!(
         app_id = publish_scope.app_id(),
@@ -545,6 +566,23 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                 // origin classifier treats it as external, fail-closed. This is what
                 // the AI engine reads to distinguish an internal first-party event
                 // from external content, instead of confirming on every event.
+                // The retry described above, at the moment it can succeed: this
+                // peer publishes, so whatever registration it was racing has had
+                // until now to land. Costs one resolution per event only while
+                // unresolved, and stops the first time it works.
+                if matches!(publish_scope, PeerScope::Unresolved) {
+                    let retried = peer_app_profile(&stream);
+                    if !matches!(retried, PeerScope::Unresolved) {
+                        debug!(
+                            app_id = retried.app_id(),
+                            "producer resolved on retry; it connected before its \
+                             registration landed"
+                        );
+                        publish_scope = retried;
+                        decision = publish_decision(&publish_scope);
+                    }
+                }
+
                 event.authenticated_origin = decision.origin.to_string();
 
                 // Hold the producer to its declared publish scope unless it is
