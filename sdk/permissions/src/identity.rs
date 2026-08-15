@@ -209,6 +209,34 @@ fn why_exe_unreadable(pid: u32) -> String {
             // from inside the sandbox presents a pid that means something else on
             // this side. Without these two fields that boot could only say which
             // causes it was NOT.
+            // WHICH OF THE PEER'S ENTRIES READ, not just this one. `exe`, `cwd`
+            // and `root` all sit behind PTRACE_MODE_READ; `cmdline` and `status`
+            // do not. So the split says what kind of refusal this is without
+            // anyone naming a mechanism first:
+            //
+            //   cmdline ok, exe/cwd/root refused -> the ptrace check itself is
+            //     saying no, and the cause is policy rather than this link
+            //   cwd ok, exe refused              -> not the ptrace check; the
+            //     exe link specifically, which is a different investigation
+            //
+            // Added after a boot where every credential field matched on both
+            // sides and the message's own closing line said the printed evidence
+            // did not explain the refusal.
+            let sibling = |name: &str| -> &'static str {
+                match std::fs::read_link(format!("/proc/{pid}/{name}")) {
+                    Ok(_) => "ok",
+                    Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => "EACCES",
+                    Err(_) => "err",
+                }
+            };
+            let peer_cmdline = match std::fs::read(format!("/proc/{pid}/cmdline")) {
+                Ok(_) => "ok",
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => "EACCES",
+                Err(_) => "err",
+            };
+            let peer_cwd = sibling("cwd");
+            let peer_root = sibling("root");
+
             return format!(
                 " (peer Uid[real effective saved fs]=[{uids}], /proc/{pid} owned by \
                  {dir_owner}, we are {me}; peer Gid=[{gids}], ours={} - a READ \
@@ -220,6 +248,10 @@ fn why_exe_unreadable(pid: u32) -> String {
                  from the pid means we are looking at a THREAD; more than one \
                  NSpid entry means a nested pid namespace, so this pid is a \
                  different task here); \
+                 peer other reads: cmdline={peer_cmdline}, cwd={peer_cwd}, \
+                 root={peer_root} (cmdline needs no ptrace permission, cwd and \
+                 root need the same one exe does, so this splits a ptrace refusal \
+                 from an exe-specific one); \
                  SAME-READER BASELINE on ourselves, which MUST succeed - \
                  self exe read {}, self Uid=[{}], self Seccomp={}, self NSpid={} \
                  (any field that differs from the peer's above is the candidate; \
