@@ -1,0 +1,60 @@
+#!/bin/sh
+# Phase 4i of the Debian-native build (CHROOT): the text editor (arlen-text-editor,
+# a Tauri 2 app), same two-step as the files app (04c) - the SvelteKit frontend, then
+# the Tauri Rust backend.
+#
+# WHY IT WAS ABSENT. Its host was written on 9 August because it was the last app
+# that could not launch at all, and after that nothing put it on a machine: no build
+# step, no desktop entry, no MIME registration. So the app that fixed "cannot launch"
+# still could not be launched by anything, for a different reason. Found by the sweep
+# on 15 August that `check-apps-on-image.py` now makes automatic.
+#
+# It was built and driven on a real file before this step was written: opened on a
+# six-line source file it shows the text with line numbers and syntax colour, its
+# title reads the file name, and its right-hand lens pane is captioned as example
+# data rather than pretending to be that file's history.
+#
+# There are no decode workers here - unlike the viewer, this app reads the file in
+# process - so the binary, the entry and the icon are the whole of it.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-text-editor"  # own dir; separate workspace
+export CXXFLAGS="-include cstdint"
+export LIBGL_ALWAYS_SOFTWARE=1
+export npm_config_cache="$cache/npm"
+mkdir -p "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen/apps/text-editor"
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+
+echo ">> tauri build --no-bundle (production) arlen-text-editor"
+./node_modules/.bin/tauri build --no-bundle
+
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-text-editor' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! arlen-text-editor not found after build" >&2; exit 1; }
+
+install -Dm755 "$out" \
+        "$DESTDIR/usr/lib/arlen/apps/dev.arlen.text-editor/bin/arlen-text-editor"
+mkdir -p "$DESTDIR/usr/bin"
+ln -sf "../lib/arlen/apps/dev.arlen.text-editor/bin/arlen-text-editor" \
+        "$DESTDIR/usr/bin/arlen-text-editor"
+install -Dm644 "$SRCDIR/arlen/apps/text-editor/dist/arlen-text-editor.desktop" \
+        "$DESTDIR/usr/share/applications/arlen-text-editor.desktop"
+install -Dm644 "$SRCDIR/arlen/apps/text-editor/src-tauri/icons/128x128.png" \
+        "$DESTDIR/usr/share/icons/hicolor/128x128/apps/arlen-text-editor.png"
+echo ">> staged arlen-text-editor into the image"

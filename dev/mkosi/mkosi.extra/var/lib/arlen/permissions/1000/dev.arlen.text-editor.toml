@@ -1,0 +1,56 @@
+# The text editor's profile, under the uid it applies to.
+#
+# The grants below were read out of the app rather than assumed, and the graph
+# section is the interesting one: the lens panel beside the text is not decoration,
+# it runs a real query (`lens.rs`) for the open file's path, the app that touched it
+# and when. Those three fields are the whole of what it asks for, so they are the
+# whole of what it gets.
+#
+# What it does NOT get is equally deliberate. The lens's other two sections -
+# backlinks and project membership - are edge queries, and the knowledge daemon
+# refuses any query naming a relationship type to a caller that is not
+# system-anchored. `lens.rs` says so in its own header and keeps a labelled sample
+# for those two rather than asking and failing. Granting node fields here does not
+# change that: it is a gate on relationship types, not a missing scope, and it is the
+# same wall the knowledge app's timeline hits. Widening this profile would not open
+# it and would only make the grant look bigger than the app's reach.
+[info]
+app_id = "dev.arlen.text-editor"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.File.path",
+    "system.File.app_id",
+    "system.File.last_accessed",
+]
+
+# An editor is handed a path and opens it; the file lives wherever the user keeps
+# it. The media mounts are here for the same reason as the file manager's: editing
+# a text file on a USB stick is ordinary, and `/run/media/$USER` is outside home.
+# `$USER` is substituted from the account's home directory, never from the
+# environment.
+[filesystem]
+home = true
+custom = [
+    "/run/media/$USER",
+    "/media",
+    "/mnt",
+]
+
+# Nothing is published: grepped, this app has no emitter. Editing a file does not
+# reach the event bus today, which means the graph learns about files that were
+# browsed and not about files that were edited - the same gap the viewer has, and
+# the same question for whoever decides what `file.opened` is for.
+#
+# The subscribe list is `sdk/tauri-plugin-shell`'s, not this app's: it subscribes
+# these three from inside every Tauri process, and declaring any subscribe list drops
+# the system-tier exemption, so leaving them out switches the topbar menu, the
+# toolbar and the shortcuts off silently.
+[event_bus]
+publish = []
+subscribe = [
+    "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]
