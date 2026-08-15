@@ -23,8 +23,11 @@ async fn main() {
     };
     let app_id = args.next().unwrap_or_else(|| "dogfood".to_string());
 
-    let socket = std::env::var("ARLEN_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
+    // The SDK's resolution, same as dogfood's, and for the same reason: the
+    // written-out fallback stopped naming anything the day the bus went per-user.
+    let socket = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock")
+        .to_string_lossy()
+        .into_owned();
 
     // flags 0 == a plain read-open (O_RDONLY); promotion only keys off the path.
     let payload = FileOpenedPayload {

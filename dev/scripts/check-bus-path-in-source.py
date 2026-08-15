@@ -31,9 +31,15 @@ from pathlib import Path
 OWN_TREE = len(sys.argv) <= 1
 REPO = Path(__file__).resolve().parents[2] if OWN_TREE else Path(sys.argv[1]).resolve()
 
-# Where a hardcoded path would actually be dialled. The SDK is excluded because it
-# is the thing being asked; `dev/` because harnesses pin paths deliberately.
-SCAN = ("apps", "daemons")
+# Where a hardcoded path would actually be dialled.
+#
+# `dev/` is in here since the first run of this gate, and its absence was not
+# hypothetical: `dev/dogfood` fell from the pin straight to /run/arlen, so the
+# driver that produces every `file.opened` on the image dialled nothing after the
+# bus moved. It was excluded on the reasoning that harnesses pin deliberately -
+# but pinning deliberately means setting the variable, which the SDK honours
+# first. Nothing needs to write the fallback out.
+SCAN = ("apps", "daemons", "dev")
 SKIP = ("/target/", "node_modules", "/.git/", "mkosi.builddir")
 
 # The literal, in any of the spellings that reach a connect().

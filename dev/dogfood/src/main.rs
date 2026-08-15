@@ -349,8 +349,14 @@ fn raise_consent() -> Option<std::os::unix::net::UnixStream> {
 
 /// Emit a `file.opened` onto the event-bus producer socket.
 async fn emit_open(path: &str) -> Result<(), String> {
-    let socket = std::env::var("ARLEN_PRODUCER_SOCKET")
-        .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
+    // The SDK's resolution. This fell from the pin straight to /run/arlen, so when
+    // the bus went per-user the dogfood driver spent its whole retry budget
+    // dialling a path nothing binds and reported `every file.opened attempt
+    // failed` - which reads as the bus being down rather than as looking in the
+    // wrong place.
+    let socket = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock")
+        .to_string_lossy()
+        .into_owned();
     let payload = FileOpenedPayload {
         path: path.to_string(),
         app_id: "dogfood".to_string(),
