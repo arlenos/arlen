@@ -20,6 +20,15 @@ Documentation=https://github.com/arlenos/arlen
 # a socket nobody binds.
 
 [Service]
+# Subscribe to the system instance, so machine-wide producers reach this session.
+# The eBPF sensor runs as root before any session exists and cannot publish to a
+# per-user bus; it publishes to `arlen-event-bus-system.service`, and this
+# forwards from there.
+#
+# `/run/arlen` is not image topology - it is where the system instance binds on
+# any deployment, because a system unit has no XDG_RUNTIME_DIR and the resolver
+# falls there by design.
+Environment=ARLEN_UPSTREAM_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
 Type=simple
 ExecStart=/usr/bin/event-bus
 Restart=on-failure

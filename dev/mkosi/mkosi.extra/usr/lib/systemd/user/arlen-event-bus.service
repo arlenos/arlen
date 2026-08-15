@@ -15,11 +15,22 @@ Documentation=https://github.com/arlenos/arlen
 # A whole-machine observer still cannot be per-user: the eBPF kernel layer watches
 # every process by definition. That case is served the other way round - it keeps
 # publishing to a system bus and this one subscribes to it, filtered to this
-# session's uid, via ARLEN_UPSTREAM_CONSUMER_SOCKET. Unset here because no such
-# observer ships yet; the forwarder stays quiet without it rather than retrying at
-# a socket nobody binds.
+# session's uid, via ARLEN_UPSTREAM_CONSUMER_SOCKET, which is set below.
+#
+# It was unset while no such observer shipped. The eBPF sensor is that observer
+# and now ships, so the variable is set and the forwarder has an upstream.
 
 [Service]
+# Subscribe to the system instance, so machine-wide producers reach this session.
+# The eBPF sensor runs as root before any session exists and cannot publish here;
+# it publishes to `arlen-event-bus-system.service`, and this forwards from there.
+#
+# The cross-user rule survives the join: the forwarder registers as an ordinary
+# consumer, so its subscription is clamped to this bus's attested uid, and the
+# system instance keeps the uid the sensor OBSERVED rather than restamping it.
+# A session therefore receives the machine-wide events that are about its own
+# user, and none about anyone else's.
+Environment=ARLEN_UPSTREAM_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
 Type=simple
 ExecStart=/usr/bin/event-bus
 Restart=on-failure

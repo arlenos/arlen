@@ -1,0 +1,41 @@
+[Unit]
+Description=Arlen event bus (system instance, for machine-wide producers)
+Documentation=https://github.com/arlenos/arlen
+# WHY THERE ARE TWO BUSES.
+#
+# The bus went per-user on 15 Aug so that one user's events cannot reach another
+# user's graph. That is right for everything produced inside a session, and it
+# leaves nowhere for a producer that belongs to no session: the eBPF sensor runs
+# as root before any session exists, has no XDG_RUNTIME_DIR, and dialled
+# `/run/arlen/event-bus-producer.sock` - which nothing had bound since the move.
+# It loaded its program, watched the kernel, and emitted into a socket that did
+# not exist.
+#
+# So machine-wide producers publish here, and each per-user bus subscribes to
+# this one and re-dispatches into its own session (ARLEN_UPSTREAM_CONSUMER_SOCKET
+# on the user unit). The separation is what makes the cross-user rule hold across
+# the join: this instance stamps each event with the uid the sensor OBSERVED, and
+# the per-user bus clamps its subscription to its own attested uid, so a user's
+# session sees the machine-wide events that are about that user and no others.
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/event-bus
+Restart=on-failure
+RestartSec=1
+# `/run/arlen`, created before ProtectSystem would make it read-only, and
+# traversable by the session uids whose buses subscribe here. The sockets
+# themselves are 0666 with peer credentials as the actual boundary; a mode that
+# excluded other uids would exclude everything this instance exists to serve.
+RuntimeDirectory=arlen
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=yes
+# No ProtectSystem here, and it is not an omission. This instance resolves its
+# producers' identities, and `ProtectSystem=strict` was measured on 15 Aug to take
+# away exactly the reads that resolution depends on: one binary read 29 of 31
+# same-uid exe links plain and 1 of 25 under that directive.
+
+[Install]
+WantedBy=multi-user.target

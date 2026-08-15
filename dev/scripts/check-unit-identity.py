@@ -58,22 +58,25 @@ NOT_A_PEER = {
 
 
 
-# Units that exist only on verify images, written by a build phase rather than
-# shipped in `mkosi.extra`. They still need a table entry - with the `/proc`
-# fallback removed, an unregistered caller cannot be named at all, so a probe
-# that reads the graph is refused at connect unless the supervisor stamps it.
+# Units written by a BUILD PHASE rather than shipped in `mkosi.extra`, each with
+# the phase that writes it. They still need a table entry: with the `/proc`
+# fallback removed, a caller the broker cannot name is refused outright, so a unit
+# that talks to anything has to be nameable whether it ships from the extra tree
+# or from a phase.
 #
-# The entry is not taken on trust: the phase named here must actually write the
+# The entry is not taken on trust - the phase named here must actually write the
 # unit, checked below. An exception that cannot expire is the thing this file
-# exists to prevent.
-VERIFY_ONLY = {
+# exists to prevent, and both entries here are conditional: one ships only on
+# verify images, the other only when the kernel layer is asked for.
+PHASE_WRITTEN = {
     "arlen-kg-probe.service": "dev/mkosi/mkosi.build.d/09-verify-probes.sh.chroot",
+    "arlen-kernel-layer.service": "dev/mkosi/mkosi.build.d/07-kernel-layer.sh.chroot",
 }
 
 
-def verify_only_unit_is_written(repo, unit: str) -> bool:
+def phase_written_unit_is_written(repo, unit: str) -> bool:
     """Whether the build phase claimed for `unit` really writes it."""
-    phase = repo / VERIFY_ONLY[unit]
+    phase = repo / PHASE_WRITTEN[unit]
     if not phase.is_file():
         return False
     return unit in phase.read_text(encoding="utf-8", errors="replace")
@@ -182,13 +185,13 @@ def check_user_units(src: str) -> list[str]:
 
     for unit in sorted(entries):
         if unit not in shipped:
-            if unit in VERIFY_ONLY:
-                if verify_only_unit_is_written(ROOT, unit):
+            if unit in PHASE_WRITTEN:
+                if phase_written_unit_is_written(ROOT, unit):
                     continue
                 problems.append(
-                    f"{unit} is carried as a verify-only unit written by "
-                    f"{VERIFY_ONLY[unit]}, but that phase does not write it. "
-                    f"Either the phase changed or the entry is stale."
+                    f"{unit} is carried as written by {PHASE_WRITTEN[unit]}, but "
+                    f"that phase does not write it. Either the phase changed or "
+                    f"the entry is stale."
                 )
                 continue
             problems.append(
@@ -226,6 +229,18 @@ def main() -> int:
 
     for unit in sorted(entries):
         if unit not in shipped:
+            # Same allowance as the user-unit loop above: a unit written by a
+            # build phase is not in the extra tree, and the phase must really
+            # write it.
+            if unit in PHASE_WRITTEN:
+                if phase_written_unit_is_written(ROOT, unit):
+                    continue
+                problems.append(
+                    f"{unit} is carried as written by {PHASE_WRITTEN[unit]}, but "
+                    f"that phase does not write it. Either the phase changed or "
+                    f"the entry is stale."
+                )
+                continue
             problems.append(
                 f"{unit} is mapped to '{entries[unit]}' but no such unit ships. "
                 f"An entry for a unit that does not exist is coverage that "

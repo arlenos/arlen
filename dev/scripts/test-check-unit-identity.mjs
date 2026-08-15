@@ -46,10 +46,15 @@ function withTree(mutate) {
   // writes the unit. Without the file in the copy, every run here would report
   // the exception as stale and the whole control would go red for the wrong
   // reason.
-  mkdirSync(join(dir, "dev/mkosi/mkosi.build.d"), { recursive: true });
+  // The whole phase directory, not one named file: the check allows a table entry
+  // for any unit a build phase writes, and there are two such units now (the
+  // verify probe and the eBPF sensor). Copying them by name meant adding a line
+  // here every time, and forgetting turned the control red for a reason that had
+  // nothing to do with what it was testing.
   cpSync(
-    join(ROOT, "dev/mkosi/mkosi.build.d/09-verify-probes.sh.chroot"),
-    join(dir, "dev/mkosi/mkosi.build.d/09-verify-probes.sh.chroot")
+    join(ROOT, "dev/mkosi/mkosi.build.d"),
+    join(dir, "dev/mkosi/mkosi.build.d"),
+    { recursive: true }
   );
   mutate(dir);
   const r = spawnSync("python3", [join(dir, "dev/scripts/check-unit-identity.py")], {
