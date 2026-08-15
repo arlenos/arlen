@@ -5,7 +5,7 @@
   "identifier": "dev.arlen.system-monitor",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1429",
+    "devUrl": "http://localhost:1445",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../build"
   },
