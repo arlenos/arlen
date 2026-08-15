@@ -105,66 +105,71 @@ async fn main() {
     // defect in the system under test. Failing on it would put a permanent red in
     // every verify run - and a red that is always there is one nobody reads,
     // which is the habit that cost us a real CI failure last week.
-    let named = report_identity(&client).await;
+    report_grants(&client).await;
 
+    // Always ask. An earlier cut skipped the questions when `access_grants` came
+    // back empty, on the reasoning that an unnamed caller can only produce scope
+    // denials. That reasoning was wrong twice over: empty grants do not mean the
+    // caller is unnamed (the daemon resolved `/usr/bin/arlen-kg-probe` to
+    // `kg-probe` perfectly well - what is missing is a Grant NODE in the graph,
+    // which is a different thing), and skipping replaced the measurement with an
+    // inference. The run then reported "identity NOT RESOLVED" as fact, and the
+    // verify verdict repeated it as a decision Tim had to make.
+    //
+    // A denial is a result. Print it and let the reader see which questions were
+    // refused and which were answered.
     let mut failures = 0;
-    if named {
-        for round in 1..=ROUNDS {
-            if round > 1 {
-                tokio::time::sleep(ROUND_GAP).await;
-            }
-            println!("kg-probe: round {round} of {ROUNDS}");
-            failures += ask_all(&client).await;
+    for round in 1..=ROUNDS {
+        if round > 1 {
+            tokio::time::sleep(ROUND_GAP).await;
         }
-    } else {
-        println!(
-            "kg-probe: SKIPPED the graph questions: this caller has no identity the \
-             daemon can resolve, so every answer would be a scope denial that says \
-             nothing about the graph"
-        );
+        println!("kg-probe: round {round} of {ROUNDS}");
+        failures += ask_all(&client).await;
     }
     failures += report_timeline();
     println!("kg-probe: done, {failures} question(s) failed");
 }
 
-/// Whether the daemon could name this caller, reported either way.
+/// Report the capability grants the daemon holds for this caller.
 ///
 /// `access_grants` is the one op that answers about the CALLER rather than the
 /// graph: the daemon scopes it by the app_id it attested from the peer itself and
-/// ignores the request body entirely. So a non-empty answer is proof the caller
-/// was resolved, and an empty one is proof it was not - no guessing from the shape
-/// of other failures.
+/// ignores the request body entirely.
 ///
-/// The probe is a verify-only unit and is deliberately NOT in the shipped
-/// `USER_UNIT_APP_IDS` table, which is the set the session supervisor stamps into
-/// the identity broker. So on a hardened per-user system it is expected to be
-/// anonymous: the broker has never heard of it and the `/proc` route its identity
-/// used to come from is refused to a non-root reader. That is the read gate
-/// working, not a regression, and it is why this prints the reason rather than a
-/// count of failures.
-async fn report_identity(client: &UnixGraphClient) -> bool {
+/// WHAT IT DOES AND DOES NOT PROVE. A non-empty answer proves the caller was
+/// named. An empty one proves nothing on its own, and the first cut of this
+/// function got that backwards - it printed "identity: NOT RESOLVED" and skipped
+/// every graph question.
+///
+/// Empty is what a correctly-named caller sees when no Grant NODE has been
+/// written for it yet. Those nodes are emitted into the graph at connect time; a
+/// probe that connects and immediately asks can beat its own grant into
+/// existence. Meanwhile the binary route names `/usr/bin/arlen-kg-probe` as
+/// `kg-probe` without difficulty - measured directly against `path_to_app_id`,
+/// not assumed.
+///
+/// So this reports and does not decide. The graph questions run either way, and
+/// their answers say more about the caller's scope than this op does.
+async fn report_grants(client: &UnixGraphClient) {
     match client.access_grants().await {
         Ok(grants) if grants.is_empty() => {
             println!(
-                "kg-probe: identity: NOT RESOLVED (no grants for this caller). The probe \
-                 is not in the stamped-unit table and its /proc route is refused, so the \
-                 daemon has no name to scope reads by."
+                "kg-probe: grants: none recorded for this caller yet. That is not \
+                 proof of an unnamed caller - a Grant node is written at connect \
+                 time and this probe asks immediately. The questions below are the \
+                 real signal."
             );
-            false
         }
         Ok(grants) => {
+            let ids: Vec<&str> = grants.iter().map(|g| g.app_id.as_str()).collect();
             println!(
-                "kg-probe: identity: resolved as {} ({} grant(s))",
-                grants[0].app_id,
-                grants.len()
+                "kg-probe: grants: {} for caller(s) {:?}",
+                grants.len(),
+                ids
             );
-            true
         }
         Err(e) => {
-            // Not the anonymous case: the op itself did not answer, which is a
-            // fact about the daemon rather than about this caller's name.
-            println!("kg-probe: identity: FAILED to ask: {e}");
-            false
+            println!("kg-probe: grants: FAILED to ask: {e}");
         }
     }
 }

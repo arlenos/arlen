@@ -68,15 +68,32 @@ const ROUND = (n, rows, own = rows) =>
 // graph nothing. Zero rows and zero failures - identical to the empty-graph case
 // from the outside, and the opposite finding. Without this the run would report a
 // broken ingestion path on a system whose ingestion is fine.
+// A probe with no grants recorded is NOT a special verdict any more. It used to
+// be: the probe inferred "identity: NOT RESOLVED" from empty grants, skipped every
+// question, and the verdict handed Tim a fork between changing shipped release
+// code and dropping the coverage. Empty grants mean no Grant node has been written
+// yet - the binary route names the probe fine - so the inference was wrong and the
+// fork was invented.
+//
+// What must hold now is that a run which reports no grants and then answers its
+// questions is judged on the ANSWERS, like any other run.
 {
   const j =
-    "kg-probe: identity: NOT RESOLVED (no grants for this caller).\n" +
-    "kg-probe: SKIPPED the graph questions: this caller has no identity\n" +
+    "kg-probe: grants: none recorded for this caller yet.\n" +
+    `${ROUND(1, 3)}\n${ROUND(2, 3)}\n` +
     "kg-probe: done, 0 question(s) failed\n";
   const r = verdict(j);
-  check("an unnameable probe is refused", r.code === 1);
-  check("and is not reported as an empty graph", !r.out.includes("the graph was empty"));
-  check("and says the run verified less", r.out.includes("verified less"));
+  check("no grants plus real answers is a pass", r.code === 0);
+}
+{
+  // And a run whose questions were all refused still fails, through the ordinary
+  // path rather than a branch about identity.
+  const j =
+    "kg-probe: grants: none recorded for this caller yet.\n" +
+    `${ROUND(1, 0)}\n${ROUND(2, 0)}\n` +
+    "kg-probe: done, 0 question(s) failed\n";
+  const r = verdict(j);
+  check("no grants plus no rows is still refused", r.code === 1);
 }
 
 // The defect the directive named: nothing ingests, so every question is answered
