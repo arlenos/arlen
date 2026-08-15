@@ -221,14 +221,22 @@ mod tests {
 
     #[test]
     fn a_system_unit_is_named_by_its_cgroup() {
-        // `arlen-event-bus` rather than `arlen-graph`: the graph daemon moved to
-        // the user manager on 15 Aug, and a system-table assertion about it kept
-        // passing for a while afterwards because the entry was still there. The
-        // unit named here has to be one that is actually a system unit, or the
-        // test outlives the fact it asserts.
-        let line = "0::/system.slice/arlen-event-bus.service\n";
-        assert_eq!(unit_from_cgroup(line).unwrap(), "arlen-event-bus.service");
-        assert_eq!(app_id_for_unit("arlen-event-bus.service"), Some("event-bus"));
+        // The subject moved twice, and the comment that stood here predicted the
+        // second move without preventing it. It said the unit named must be one
+        // that is ACTUALLY a system unit, or the test outlives the fact it
+        // asserts - and it named `arlen-event-bus`, which went to the user
+        // manager later the same day, leaving this red for exactly the reason it
+        // warned about.
+        //
+        // `arlen-config-broker` is the whole system table now, and it is the one
+        // component that cannot move: it is the identity broker, so it has to be
+        // nameable before any session exists to stamp it.
+        let line = "0::/system.slice/arlen-config-broker.service\n";
+        assert_eq!(unit_from_cgroup(line).unwrap(), "arlen-config-broker.service");
+        assert_eq!(
+            app_id_for_unit("arlen-config-broker.service"),
+            Some("config-broker")
+        );
     }
 
     #[test]
@@ -295,12 +303,30 @@ mod tests {
     }
 
     #[test]
-    fn the_event_bus_gets_an_identity_it_has_no_other_way_to_get() {
-        // `/usr/bin/event-bus` resolves to UnknownBinary by path (it carries no
-        // `arlen-` prefix and lives in no app directory), so before this resolver
-        // the core event funnel had no attested identity by any route.
-        assert!(crate::identity::path_to_app_id(std::path::Path::new("/usr/bin/event-bus")).is_err());
-        assert_eq!(app_id_for_unit("arlen-event-bus.service"), Some("event-bus"));
+    fn the_event_bus_is_named_by_the_registration_not_by_its_path() {
+        // WHAT THIS USED TO SAY, and why the rewrite is not a weakening. It was
+        // `the_event_bus_gets_an_identity_it_has_no_other_way_to_get`, and it
+        // asserted the SYSTEM table named the bus - true while the bus was a
+        // system unit with no launcher above it. Since each session started
+        // bringing up its own bus, it has another way: the supervisor registers
+        // it. The premise changed, not the mechanism, so the sentence is rewritten
+        // rather than the code bent to keep it true.
+        //
+        // The half that has not changed is the reason any of this exists. The
+        // binary is `/usr/bin/event-bus` with no `arlen-` prefix and no app
+        // directory, so the path resolver cannot name it and never could.
+        assert!(
+            crate::identity::path_to_app_id(std::path::Path::new("/usr/bin/event-bus")).is_err(),
+            "the path route must still refuse it - that is why registration exists"
+        );
+
+        // What names it now: the user table, which is what the session supervisor
+        // stamps from.
+        assert_eq!(app_id_for_user_unit("arlen-event-bus.service"), Some("event-bus"));
+
+        // And the system table must NOT, or two resolvers would answer for one
+        // unit and the answer would depend on which ran.
+        assert_eq!(app_id_for_unit("arlen-event-bus.service"), None);
     }
 
     #[test]
