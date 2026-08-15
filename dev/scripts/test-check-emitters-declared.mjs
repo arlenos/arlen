@@ -11,7 +11,7 @@
 // and says so.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -40,14 +40,23 @@ async fn publish(emitter: &E) {
 `;
 const PROFILE = '[info]\napp_id = "powerd"\n\n[event_bus]\npublish = ["power.state"]\nsubscribe = []\n';
 
-function run(files) {
+// The gate's own NOT_SHIPPED table, injected for the carried case below rather
+// than borrowed from it. That table named `daemons/modulesd` until modulesd
+// shipped on 15 Aug and it went empty, at which point the case that exercises
+// carrying had no subject and went red while nothing was wrong. A control tied to
+// a live entry expires the day the entry is resolved.
+const CARRIED = 'NOT_SHIPPED: dict[str, str] = {"daemons/example": "not in the image yet"}';
+
+function run(files, mutate = (s) => s) {
   const dir = mkdtempSync(join(tmpdir(), "emitters-"));
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, body);
   }
-  const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
+  const gate = join(dir, "check.py");
+  writeFileSync(gate, mutate(readFileSync(GATE, "utf8")));
+  const r = spawnSync("python3", [gate, dir], { encoding: "utf8" });
   rmSync(dir, { recursive: true, force: true });
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
@@ -90,11 +99,14 @@ console.log("emitters declared:");
   );
 }
 {
-  const r = run({
-    [IDENTITY]: ARMS,
-    "daemons/modulesd/src/main.rs": 'fn f() { emitter.emit("module.installed", b).await }\n',
-    [`${PROFILES}/powerd.toml`]: PROFILE,
-  });
+  const r = run(
+    {
+      [IDENTITY]: ARMS,
+      "daemons/example/src/main.rs": 'fn f() { emitter.emit("example.thing", b).await }\n',
+      [`${PROFILES}/powerd.toml`]: PROFILE,
+    },
+    (s) => s.replace(/NOT_SHIPPED: dict\[str, str\] = \{[\s\S]*?\}/, CARRIED),
+  );
   check("an emitter that is not shipped is carried, not failed", r.code === 0);
   check("and says it needs one the day it ships", r.out.includes("the day it ships"));
 }

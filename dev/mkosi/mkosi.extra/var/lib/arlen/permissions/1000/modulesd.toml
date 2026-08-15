@@ -1,0 +1,36 @@
+# The module runtime's event-bus profile.
+#
+# THIS IS THE OUTER BOUND ON A CONFUSED DEPUTY, which is why it is narrow. Every
+# other daemon's profile lists what that daemon itself sends; modulesd sends
+# whatever a hosted module asks it to. `runtime/host_bindings.rs:80` passes a
+# module-supplied `event_type` straight to the shared emitter, gated only by that
+# module's own declared `event_bus.publish` prefixes
+# (`host/events.rs::check_publish`).
+#
+# That inner gate reads the module's manifest, and a manifest is written by
+# whoever wrote the module. So it decides which of the runtime's authority a
+# module may use; it cannot bound the runtime's authority itself. This file does.
+# With `module.*` alone, a module that declares `publish = ["power."]` in its
+# manifest passes its own check and is still refused at the bus - it cannot use
+# the runtime as a route to speak as the power daemon.
+#
+# `module.*` because that is the namespace the module system owns by convention
+# (`host/events.rs` documents `module.com.example.` as the shape) and the one no
+# first-party component publishes into.
+#
+# SUBSCRIBE IS EMPTY, AND THAT IS A DECISION WITH A COST. No module ships on this
+# image, so nothing is dropped today. But an ungranted subscribe pattern is
+# FILTERED rather than refused - the connection succeeds and the events simply
+# never arrive - so the day a module ships declaring `subscribe = ["focus."]`,
+# its own gate will pass, the bus will quietly deliver nothing, and the module
+# will look broken rather than unauthorised. Whoever ships the first module with
+# an event_bus capability has to widen this file in the same change. Starting
+# narrow makes that a deliberate widening; starting wide would have made it an
+# accident nobody noticed.
+[info]
+app_id = "modulesd"
+tier = "first-party"
+
+[event_bus]
+publish = ["module.*"]
+subscribe = []

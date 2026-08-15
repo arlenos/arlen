@@ -83,8 +83,10 @@ DIR_TO_ID = {
 }
 
 # Emitters that are not in the image, with the reason.
-NOT_SHIPPED = {
-    "daemons/modulesd": "the module runtime is a later phase (see check-shipped-units.py)",
+NOT_SHIPPED: dict[str, str] = {
+    # Empty since 15 Aug, when `modulesd` shipped. Kept because the next
+    # component to be built-but-unstaged needs somewhere to say so, and an
+    # emitter with no entry and no profile is a failure rather than a note.
 }
 
 SKIP = ("/target/", "node_modules", "/.git/")
