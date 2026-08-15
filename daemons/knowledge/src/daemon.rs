@@ -3010,6 +3010,21 @@ async fn handle_client(
                                 );
                                 "unknown".to_string()
                             } else {
+                                // Say so. This branch was silent, and its silence
+                                // cost four boots: a same-uid caller that cannot be
+                                // named gets an empty read scope, so every question
+                                // it asks comes back "label outside the caller's
+                                // read scope" - which reads as a caller that was
+                                // named and not granted, not as one that was never
+                                // named. The two need opposite fixes.
+                                warn!(
+                                    peer_uid = uid,
+                                    pid,
+                                    error = %e,
+                                    "graph daemon: same-uid app_id resolution failed \
+                                     (peer served as unresolved, so its read scope is \
+                                     empty and every read it makes will be denied)"
+                                );
                                 same_uid_unresolved_id()
                             }
                         }
