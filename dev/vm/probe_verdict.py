@@ -83,6 +83,25 @@ def probe_verdict(journal_text: str) -> tuple[bool, str]:
         failed = [l.strip() for l in lines if "FAILED" in l]
         detail = "".join(f"\n    {l}" for l in failed)
         return False, f"the knowledge probe reported failures: {tally[-1].strip()}{detail}"
+    # Checked BEFORE the empty-graph verdict, because the probe now has a third
+    # state and the empty-graph message is a false statement about it. Since the
+    # per-user move the daemon names its callers from the identity broker, and the
+    # probe is a verify-only unit that is deliberately not in the shipped
+    # stamped-unit table - so it asks anonymously, is refused, and asks nothing
+    # about the graph at all. Reporting that as "the graph was empty" would send
+    # somebody to debug ingestion that is very likely fine.
+    if any("identity: NOT RESOLVED" in l for l in lines):
+        return False, (
+            "the knowledge probe could not be named by the daemon, so it asked the "
+            "graph nothing and this run verified less than it looks like it did. "
+            "This is not an ingestion failure and not a regression: the read gate is "
+            "working and the probe is anonymous to it.\n"
+            "    It needs a decision rather than a patch. Either the probe joins the "
+            "stamped-unit table - which is shipped release code, changed for a "
+            "verify-only artefact, against the plus-never-minus rule this image "
+            "follows - or the verify image stops asking the graph what it holds and "
+            "that coverage goes away."
+        )
     if not rows:
         return False, (
             "the knowledge probe was answered but the graph was empty - every "
