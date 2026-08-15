@@ -745,12 +745,32 @@ async fn promote_window_focused(
     // nothing anywhere said so: no error, no warning, just a surface rendering a
     // row with nothing in it. A fallback that never announces itself is
     // indistinguishable from a measurement.
+    // PER EVENT, not a shared `unknown`, and that difference is the whole point.
+    //
+    // This used to fall back to the literal string "unknown", which is an id like
+    // any other: `MERGE (a:App {id: 'unknown'})` finds the node the LAST such event
+    // made. So two different applications that both focused a window without
+    // sending an app id became one App node, and every session edge and window
+    // title either produced hung off it together. The graph then says those
+    // windows belong to the same application - a relationship nothing observed, in
+    // the densest record this system keeps about a person.
+    //
+    // The two file paths in this file already avoid it by falling back to
+    // `source:pid`, which is measured and therefore distinct per process. A focus
+    // event has no pid to lean on, so the event's own id serves: unresolved
+    // subjects stay separate, and separate is the honest answer when the producer
+    // told us nothing about who was focused.
+    //
+    // Recorded rather than refused because the observation is still true - a
+    // window WAS focused, and the timeline should say so - and because dropping it
+    // would silently shorten the record instead of marking the gap.
     let app_id = if win_payload.app_id.is_empty() {
         warn!(
             event_id,
-            "window.focused carried no app id; recording it as unknown"
+            "window.focused carried no app id; recording it under a per-event \
+             unresolved id so it cannot merge with another app's"
         );
-        "unknown".to_string()
+        format!("unresolved:{event_id}")
     } else {
         win_payload.app_id.clone()
     };
@@ -1904,6 +1924,71 @@ mod shell_event_tests {
             .await
             .unwrap();
         assert_eq!(edge.rows[0][0].as_i64(), 1, "the app is active in the session");
+    }
+
+    #[tokio::test]
+    async fn two_unidentified_windows_do_not_become_one_app() {
+        // The planted test for the merge. Two focus events, different sessions,
+        // different titles, neither carrying an app id - which is what a producer
+        // that never set ARLEN_APP_ID sends.
+        //
+        // Before the per-event fallback both landed on `App {id: 'unknown'}`, so
+        // the graph held one application active in two sessions and holding both
+        // windows. Nothing observed that. It is the sharpest kind of wrong this
+        // record can be: not a missing row, an invented relationship between two
+        // things a person did separately.
+        let (graph, _tmp) = setup().await;
+
+        for (event_id, session, title) in [
+            ("focus-a", "sess-a", "bank statement.pdf"),
+            ("focus-b", "sess-b", "holiday photos"),
+        ] {
+            let payload = WindowFocusedPayload {
+                app_id: String::new(),
+                window_title: title.into(),
+                prev_app_id: String::new(),
+            };
+            let mut buf = Vec::new();
+            payload.encode(&mut buf).unwrap();
+            promote_window_focused(&graph, event_id, &500, session, &buf)
+                .await
+                .expect("an app-less window.focused still promotes");
+        }
+
+        let apps = graph
+            .query_rows("MATCH (a:App) RETURN a.id AS id ORDER BY a.id".into())
+            .await
+            .unwrap();
+        assert_eq!(
+            apps.rows.len(),
+            2,
+            "each unidentified window keeps its own App node, got {:?}",
+            apps.rows.iter().map(|r| r[0].as_str()).collect::<Vec<_>>()
+        );
+
+        // The specific shape that was wrong: no single App reaches both sessions.
+        let pooled = graph
+            .query_rows(
+                "MATCH (a:App)-[:ACTIVE_IN]->(s:Session) \
+                 RETURN a.id AS id, count(s) AS sessions ORDER BY sessions DESC"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            pooled.rows[0][1].as_i64(),
+            1,
+            "no App is active in more than one session"
+        );
+
+        // And the ids say why they are separate rather than looking like real ones.
+        for row in &apps.rows {
+            let id = row[0].as_str();
+            assert!(
+                id.starts_with("unresolved:"),
+                "an unidentified app is marked unresolved, got {id:?}"
+            );
+        }
     }
 
     #[tokio::test]
