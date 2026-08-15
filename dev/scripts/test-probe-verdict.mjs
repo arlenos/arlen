@@ -64,6 +64,21 @@ const ROUND = (n, rows, own = rows) =>
   check("and the message names the ingestion question", r.out.includes("this run's file"));
 }
 
+// The probe's third state, added 15 Aug: it could not be named, so it asked the
+// graph nothing. Zero rows and zero failures - identical to the empty-graph case
+// from the outside, and the opposite finding. Without this the run would report a
+// broken ingestion path on a system whose ingestion is fine.
+{
+  const j =
+    "kg-probe: identity: NOT RESOLVED (no grants for this caller).\n" +
+    "kg-probe: SKIPPED the graph questions: this caller has no identity\n" +
+    "kg-probe: done, 0 question(s) failed\n";
+  const r = verdict(j);
+  check("an unnameable probe is refused", r.code === 1);
+  check("and is not reported as an empty graph", !r.out.includes("the graph was empty"));
+  check("and says the run verified less", r.out.includes("verified less"));
+}
+
 // The defect the directive named: nothing ingests, so every question is answered
 // and every answer is empty. `0 failed` would otherwise make this a green tick.
 {

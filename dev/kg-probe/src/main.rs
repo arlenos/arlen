@@ -90,16 +90,83 @@ async fn main() {
     println!("kg-probe: socket {}", socket.display());
     let client = UnixGraphClient::new(socket.to_string_lossy().into_owned());
 
+    // Ask who the daemon thinks we are BEFORE asking anything about the graph.
+    //
+    // Without this the probe cannot tell its two failures apart, and they mean
+    // opposite things. `read denied: label outside the caller's read scope` is
+    // what an unnamed caller gets for every question, and it is also what a
+    // caller with a real scope gap gets for one. On the 15 Aug boot all six
+    // questions came back with it because the daemon could not resolve the probe
+    // at all - so the output read as "the graph is broken" when the graph was
+    // fine and the probe was anonymous.
+    //
+    // That distinction now decides whether a run FAILS. A probe that cannot be
+    // named is a probe that cannot ask, which is a fact about this build, not a
+    // defect in the system under test. Failing on it would put a permanent red in
+    // every verify run - and a red that is always there is one nobody reads,
+    // which is the habit that cost us a real CI failure last week.
+    let named = report_identity(&client).await;
+
     let mut failures = 0;
-    for round in 1..=ROUNDS {
-        if round > 1 {
-            tokio::time::sleep(ROUND_GAP).await;
+    if named {
+        for round in 1..=ROUNDS {
+            if round > 1 {
+                tokio::time::sleep(ROUND_GAP).await;
+            }
+            println!("kg-probe: round {round} of {ROUNDS}");
+            failures += ask_all(&client).await;
         }
-        println!("kg-probe: round {round} of {ROUNDS}");
-        failures += ask_all(&client).await;
+    } else {
+        println!(
+            "kg-probe: SKIPPED the graph questions: this caller has no identity the \
+             daemon can resolve, so every answer would be a scope denial that says \
+             nothing about the graph"
+        );
     }
     failures += report_timeline();
     println!("kg-probe: done, {failures} question(s) failed");
+}
+
+/// Whether the daemon could name this caller, reported either way.
+///
+/// `access_grants` is the one op that answers about the CALLER rather than the
+/// graph: the daemon scopes it by the app_id it attested from the peer itself and
+/// ignores the request body entirely. So a non-empty answer is proof the caller
+/// was resolved, and an empty one is proof it was not - no guessing from the shape
+/// of other failures.
+///
+/// The probe is a verify-only unit and is deliberately NOT in the shipped
+/// `USER_UNIT_APP_IDS` table, which is the set the session supervisor stamps into
+/// the identity broker. So on a hardened per-user system it is expected to be
+/// anonymous: the broker has never heard of it and the `/proc` route its identity
+/// used to come from is refused to a non-root reader. That is the read gate
+/// working, not a regression, and it is why this prints the reason rather than a
+/// count of failures.
+async fn report_identity(client: &UnixGraphClient) -> bool {
+    match client.access_grants().await {
+        Ok(grants) if grants.is_empty() => {
+            println!(
+                "kg-probe: identity: NOT RESOLVED (no grants for this caller). The probe \
+                 is not in the stamped-unit table and its /proc route is refused, so the \
+                 daemon has no name to scope reads by."
+            );
+            false
+        }
+        Ok(grants) => {
+            println!(
+                "kg-probe: identity: resolved as {} ({} grant(s))",
+                grants[0].app_id,
+                grants.len()
+            );
+            true
+        }
+        Err(e) => {
+            // Not the anonymous case: the op itself did not answer, which is a
+            // fact about the daemon rather than about this caller's name.
+            println!("kg-probe: identity: FAILED to ask: {e}");
+            false
+        }
+    }
 }
 
 /// Whether the timeline mount is there and this process can read it.
