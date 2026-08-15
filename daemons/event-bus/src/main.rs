@@ -15,7 +15,8 @@ mod validation;
 use anyhow::Result;
 use registry::ConsumerRegistry;
 use std::path::PathBuf;
-use tracing::info;
+use std::sync::Arc;
+use tracing::{error, info};
 
 /// Resolve a daemon socket path per the standard Arlen 3-tier
 /// convention: the `env_var` override (non-empty) wins, else
@@ -73,6 +74,27 @@ async fn main() -> Result<()> {
     socket::log_enforcement_mode();
 
     let registry = ConsumerRegistry::new();
+
+    // Pull from an upstream bus when one is configured, and not otherwise.
+    //
+    // A whole-machine observer - the eBPF kernel layer - has no per-user form, so
+    // it publishes to a system bus and each user's bus subscribes to it filtered
+    // to its own uid. That upstream only exists on a machine running such an
+    // observer, so an unset variable is the ordinary case and must be silent: a
+    // forwarder retrying against a socket nobody binds would fill the journal to
+    // say nothing.
+    if let Some(upstream) = std::env::var_os("ARLEN_UPSTREAM_CONSUMER_SOCKET")
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string_lossy().into_owned())
+    {
+        let forwarding = Arc::clone(&registry);
+        tokio::spawn(async move {
+            if let Err(e) = socket::forward_from_upstream(&upstream, forwarding).await {
+                error!("upstream forwarding stopped: {e}");
+            }
+        });
+    }
+
     socket::listen(
         &producer_socket.to_string_lossy(),
         &consumer_socket.to_string_lossy(),

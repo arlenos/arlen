@@ -75,7 +75,13 @@ function withTree(mutate) {
 // injected entry landed in the wrong table, and both cases failed on the message
 // rather than on the behaviour. Anchoring on the event bus, which is a system
 // unit by nature, is what keeps that from happening again.
-const SYSTEM_ANCHOR = '("arlen-event-bus.service", "event-bus"),';
+// A line in the SYSTEM table to hang the mutations on. It has been re-anchored
+// twice now - first off `arlen-timeline`, then off `arlen-event-bus` - because
+// both moved to the user table when their daemons moved per-user, and a control
+// anchored on a line that moves goes red while nothing is wrong. Anchor on the
+// entry least likely to move, and expect to move this again if the config broker
+// ever follows the others.
+const SYSTEM_ANCHOR = '("arlen-config-broker.service", "config-broker"),';
 
 // An entry for a unit that no longer ships: coverage that cannot fire.
 {

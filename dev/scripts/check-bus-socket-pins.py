@@ -5,11 +5,19 @@
 
 """A user service that talks to the event bus must be told where the bus is.
 
-`event-bus` is a SYSTEM service: it binds `/run/arlen/event-bus-*.sock`. A USER
-service has `$XDG_RUNTIME_DIR=/run/user/<uid>`, and the SDK's fallback therefore
-dials `/run/user/<uid>/arlen/…` - a path nothing ever binds. The daemon then
-retries forever against a socket that will never appear, and says so only in a
-log nobody was reading.
+INVERTED ON 15 AUG, when the bus moved per-user. What follows is the defect it was
+written for, kept because the shape is the same and only the direction changed.
+
+`event-bus` WAS a system service binding `/run/arlen/event-bus-*.sock`, while a
+user service has `$XDG_RUNTIME_DIR=/run/user/<uid>` and the SDK's fallback dialled
+`/run/user/<uid>/arlen/…` - a path nothing bound. The daemon retried forever
+against a socket that would never appear, and said so only in a log nobody read.
+The repair was an `Environment=` pin in each user unit.
+
+The bus binds per-user now, so the SDK default is right and the pins are what
+would be wrong: a unit still naming `/run/arlen` dials the path nothing binds. So
+this checks that no unit pins the system path, and the eighteen that carried one
+had it removed in the same change.
 
 Measured on the 12 Aug boot: `arlen-anomalyd` logged `event bus subscribe failed`
 every five seconds for the whole run - the anomaly detector is the channel the
@@ -114,15 +122,18 @@ def main() -> int:
         stem = unit.stem
         if stem in UNPINNED:
             continue
-        missing = [
-            p for p in sorted(needed) if not re.search(rf"^Environment={p}=", text, re.M)
+        pinned = [
+            p
+            for p in sorted(needed)
+            if re.search(rf"^Environment={p}=/run/arlen/", text, re.M)
         ]
-        if missing:
+        if pinned:
             problems.append(
                 f"{stem} runs {binary} ({crate.relative_to(ROOT)}), whose source talks "
-                f"to the event bus, and does not pin {', '.join(missing)}. A user "
-                f"service without these dials /run/user/<uid>/arlen/ and retries "
-                f"forever against a socket the SYSTEM bus never binds."
+                f"to the event bus, and pins {', '.join(pinned)} at /run/arlen. The bus "
+                f"is a per-user service now, so that path is the one nothing binds - "
+                f"this unit would dial into nothing and retry forever, which is the "
+                f"same defect this check was written for, pointing the other way."
             )
 
     # A binary whose crate cannot be found is not a pass: it is a unit this check
@@ -146,8 +157,8 @@ def main() -> int:
         return 1
 
     print(
-        f"{checked} user unit(s) whose daemon opens a bus socket; each pins the "
-        f"direction it uses ({len(UNPINNED)} excused)"
+        f"{checked} user unit(s) whose daemon opens a bus socket; none pins the "
+        f"system path the per-user bus replaced ({len(UNPINNED)} excused)"
     )
     return 0
 

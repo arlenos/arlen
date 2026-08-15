@@ -1,28 +1,38 @@
 [Unit]
-Description=Arlen Event Bus (the system event funnel feeding the Knowledge Graph)
+Description=Arlen Event Bus (this session's event funnel)
 Documentation=https://github.com/arlenos/arlen
-# The foundation the sensor + knowledge daemons order behind (they declare
-# After=arlen-event-bus.service); start it early in the system boot.
+# PER-USER since 15 Aug, and the second half of moving the knowledge daemon.
+#
+# The bus used to be one system service at /run/arlen/, which every session
+# component connected to. That is a single funnel carrying one machine's whole
+# activity: every user's events crossed it, isolation rested entirely on a filter,
+# and one user could flood the channel everyone else's graph depends on.
+#
+# Now each session gets its own, bound under $XDG_RUNTIME_DIR/arlen/ - which is
+# where the SDK already looked by default, so its clients needed no change. What
+# needed changing was the units that PINNED them back to /run/arlen to compensate.
+#
+# A whole-machine observer still cannot be per-user: the eBPF kernel layer watches
+# every process by definition. That case is served the other way round - it keeps
+# publishing to a system bus and this one subscribes to it, filtered to this
+# session's uid, via ARLEN_UPSTREAM_CONSUMER_SOCKET. Unset here because no such
+# observer ships yet; the forwarder stays quiet without it rather than retrying at
+# a socket nobody binds.
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/event-bus
 Restart=on-failure
 
-# The producer + consumer sockets live in /run/arlen/. RuntimeDirectory= has PID1
-# create + bind-mount it writable BEFORE ProtectSystem=strict remounts read-only,
-# so no ReadWritePaths= is needed (which would hard-fail on the not-yet-existing
-# dir). Preserve=yes is MANDATORY: /run/arlen is shared with the other system
-# daemons and systemd does not ref-count it, so without it the first of them to
-# stop would delete the dir out from under the rest.
-RuntimeDirectory=arlen
-RuntimeDirectoryMode=0755
-RuntimeDirectoryPreserve=yes
+# No RuntimeDirectory=: a user manager already provides %t
+# ($XDG_RUNTIME_DIR), and the daemon creates the `arlen` subdirectory it binds
+# into. The system unit needed one because /run/arlen does not exist until
+# something makes it.
 
 # Hardening: a pure AF_UNIX IPC daemon - no filesystem write beyond its socket
 # dir, no network, no privilege escalation.
 ProtectSystem=strict
-ProtectHome=yes
+ProtectHome=read-only
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectKernelTunables=yes
@@ -34,4 +44,4 @@ MemoryDenyWriteExecute=yes
 LockPersonality=yes
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

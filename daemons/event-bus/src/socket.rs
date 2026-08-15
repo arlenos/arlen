@@ -315,11 +315,28 @@ fn peer_app_profile(stream: &UnixStream) -> PeerScope {
     // (decided 11 Aug: the uid names who the permissions are for, not who reads
     // them). Same file for every reader, which is the point.
     let peer_uid = cred.uid();
-    let Some(app_id) = cred
-        .pid()
-        .and_then(|pid| u32::try_from(pid).ok())
-        .and_then(|pid| arlen_permissions::identity::app_id_from_pid(pid).ok())
-    else {
+    // BROKER FIRST, `/proc` second, and the order is what makes this work at all
+    // now that the bus is a per-user service.
+    //
+    // Reading a peer's `/proc/<pid>/exe` needs the reader to be root or the target
+    // to be un-hardened, and this daemon is neither since 15 Aug: its own unit
+    // sandboxes it and it runs as the session user. The knowledge daemon hit this
+    // first - moving it per-user made it resolve every caller as `unknown` and
+    // deny every read - and the fix there is the fix here. The launcher-stamped
+    // identity broker answers from a pidfd without touching `/proc`.
+    //
+    // `app_id_from_connection` refuses a cross-uid peer, which for a per-user bus
+    // is correct rather than limiting: its callers are its own session. A broker
+    // miss still falls through to the old path, so nothing that resolved before
+    // stops resolving.
+    let stamped = arlen_permissions::stamped_identity::app_id_from_connection(stream, peer_uid)
+        .ok()
+        .map(|s| s.app_id().to_string());
+    let Some(app_id) = stamped.or_else(|| {
+        cred.pid()
+            .and_then(|pid| u32::try_from(pid).ok())
+            .and_then(|pid| arlen_permissions::identity::app_id_from_pid(pid).ok())
+    }) else {
         return PeerScope::Unresolved;
     };
     match arlen_permissions::load_profile_for_user(peer_uid, &app_id) {

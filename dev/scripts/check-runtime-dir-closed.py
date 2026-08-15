@@ -57,9 +57,14 @@ def units_declaring(name):
         )
         if not declares:
             continue
-        mode = re.search(r"^RuntimeDirectoryMode=(\S+)", text, re.M)
-        user = re.search(r"^User=(\S+)", text, re.M)
-        out.append((unit.name, mode.group(1) if mode else None, user.group(1) if user else "root"))
+        # The LAST occurrence of each, because that is the one systemd honours.
+        # Reading the first hid a real case: the config broker already carries
+        # `User=root` near the top, so a second `User=` further down - which is how
+        # an override or a careless edit would arrive - was invisible here while
+        # being the value that actually took effect.
+        modes = re.findall(r"^RuntimeDirectoryMode=(\S+)", text, re.M)
+        users = re.findall(r"^User=(\S+)", text, re.M)
+        out.append((unit.name, modes[-1] if modes else None, users[-1] if users else "root"))
     return out
 
 

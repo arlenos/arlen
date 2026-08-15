@@ -18,6 +18,18 @@ Type=simple
 # user-cannot-write property today without an image-build useradd.
 User=root
 ExecStart=/usr/lib/arlen/libexec/arlen-config-broker
+
+# CREATES /run/arlen, and since 15 Aug it is the only shipped system unit that
+# does. The event bus used to, and it moved per-user - taking with it the thing
+# that made this directory root-owned and non-user-writable, which is precisely
+# what this broker's callers authenticate it by. Nothing said so; a check did.
+#
+# Preserve=yes is MANDATORY: the directory is shared with the other system
+# daemons and systemd does not ref-count it, so without it the first to stop
+# would delete it out from under the rest.
+RuntimeDirectory=arlen
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 Restart=on-failure
 RestartSec=1
 

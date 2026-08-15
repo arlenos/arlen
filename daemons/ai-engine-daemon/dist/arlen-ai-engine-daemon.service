@@ -21,7 +21,11 @@ RestartSec=2
 # point it at the system path; the audit ingest socket is per-user (its default).
 Environment=ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock
 Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
-Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+# NO SOCKET PINS since 15 Aug: the bus is a per-user service, so the SDK's default
+# of $XDG_RUNTIME_DIR/arlen/ is where it actually binds. These lines used to point
+# at /run/arlen because the bus was a system unit, and a user service that did not
+# pin them dialled a path nothing bound - silently, forever. Keeping them now would
+# recreate that defect pointing the other way.
 # The config broker is a root SYSTEM service binding at /run/arlen (not this
 # --user service's $XDG_RUNTIME_DIR). Point the engine at the system path so its
 # executor_live / read-tier / autonomy come from the broker; absent the broker it
