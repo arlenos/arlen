@@ -98,7 +98,48 @@ async fn main() {
         println!("kg-probe: round {round} of {ROUNDS}");
         failures += ask_all(&client).await;
     }
+    failures += report_timeline();
     println!("kg-probe: done, {failures} question(s) failed");
+}
+
+/// Whether the timeline mount is there and this process can read it.
+///
+/// Asked because "the unit started and logged `mounting`" is not the same claim.
+/// The timeline was a SYSTEM unit until 15 Aug, and a hardened system unit gets
+/// its own mount namespace - so it could log a successful mount, hold it, and
+/// have it be invisible to every process in the user's session. The log looked
+/// identical in both worlds.
+///
+/// This runs in the session's own manager, so what it can see is what an app can
+/// see. Directory contents are not printed: they are derived from the user's
+/// graph, and the question here is reachability, not content.
+fn report_timeline() -> usize {
+    let home = match std::env::var_os("HOME") {
+        Some(h) => std::path::PathBuf::from(h),
+        None => {
+            println!("kg-probe: timeline: mount: FAILED: no HOME in the environment");
+            return 1;
+        }
+    };
+    let mount = home.join(".timeline");
+    match std::fs::read_dir(&mount) {
+        Ok(entries) => {
+            println!(
+                "kg-probe: timeline: mount: readable at {} ({} entr(ies))",
+                mount.display(),
+                entries.count()
+            );
+            0
+        }
+        Err(e) => {
+            println!(
+                "kg-probe: timeline: mount: FAILED: {} is not readable from this \
+                 session: {e}",
+                mount.display()
+            );
+            1
+        }
+    }
 }
 
 /// Ask every question once; answer how many failed.

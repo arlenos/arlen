@@ -37,21 +37,28 @@ cargo build --release --manifest-path "$SRCDIR/arlen/dev/kg-probe/Cargo.toml"
 install -Dm755 "$CARGO_TARGET_DIR/release/arlen-kg-probe" \
         "$DESTDIR/usr/bin/arlen-kg-probe"
 
-# Run it once at boot, as root, and put the answer on the serial console.
+# Run it once at boot, beside the daemon it questions, and put the answer on the
+# serial console.
 #
-# Two reasons it is a unit and not the session hook. First, there is no shell into
-# this VM - the harness speaks QMP, so anything I want to read has to arrive in the
-# journal or on the console by itself. Second, and this is the part I got wrong the
-# first time: run from the session the probe is uid 1000 with a THIRD-PARTY id, and
-# `cross_uid_admitted` refuses it before the owner check is even reached. That
-# refusal is the gate working, and it made the probe's six questions all report
-# "Broken pipe" while saying nothing about the graph.
+# It is a unit rather than a session hook because there is no shell into this VM -
+# the harness speaks QMP, so anything worth reading has to arrive in the journal
+# or on the console by itself.
 #
-# As root the probe is the daemon's own uid, so no cross-uid rule applies and the
-# question it answers is "what does the graph hold". That is NOT the same question
-# as "what does the app see" - an app is uid 1000 with a first-party id and passes
-# a different pair of checks. Anyone reading this output for the second question
-# will get a confident wrong answer, which is why it is written down here.
+# The uid has been wrong in both directions, and the reasoning is worth keeping
+# because each mistake produced a confident, plausible, useless answer:
+#
+#   * as a SESSION process against a root daemon, `cross_uid_admitted` refused it
+#     before the owner check was reached, and all six questions reported "Broken
+#     pipe" while saying nothing at all about the graph;
+#   * as ROOT against a per-user daemon (15 Aug), the socket it looked for was
+#     /run/user/0/arlen and every question said "No such file or directory" while
+#     the daemon was listening perfectly well one uid over.
+#
+# Both are uid 1000 now, so no cross-uid rule applies and the probe asks the same
+# socket the app would. That still does NOT make this "what the app sees": the app
+# carries a first-party id and its own profile, so it passes a different pair of
+# checks. Anyone reading this output for that question gets a confident wrong
+# answer, which is why it is written down here.
 # Written straight to its final path. The obvious shape - heredoc to /tmp, install,
 # delete the temp - trips check (3), which fails any verify phase that runs `rm`.
 # The check is right to: it cannot tell a temp-file cleanup from a phase quietly
@@ -127,10 +134,15 @@ chmod 644 "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe.service"
 # into $DESTDIR; it does NOT go in `mkosi.extra/var/lib/arlen/permissions/`, where
 # the app profiles live, because everything there ships in every image and a
 # release system has no `kg-probe` to grant anything to.
-# Under 0/, not 1000/: the daemon resolves a profile by the PEER uid, and the
-# peer here is root. See the User= reasoning in the unit above.
-mkdir -p "$DESTDIR/var/lib/arlen/permissions/0"
-cat > "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml" <<'PROFILE'
+# Under 1000/, because the daemon resolves a profile by the PEER uid and the
+# probe is a user unit as of 15 Aug. It sat under 0/ for as long as the probe ran
+# as root, and moving the unit without moving this produced the most misleading
+# possible result: the probe connected fine, every question came back `read
+# denied: label outside the caller's read scope`, and that is the read gate
+# working exactly as designed on a caller with no profile. Nothing in the output
+# says "your profile is one directory over".
+mkdir -p "$DESTDIR/var/lib/arlen/permissions/1000"
+cat > "$DESTDIR/var/lib/arlen/permissions/1000/kg-probe.toml" <<'PROFILE'
 # Verify images only. The probe reads exactly what the knowledge app reads, so
 # that what it reports is what the app would have seen.
 [info]
@@ -153,7 +165,7 @@ read = [
     "system.Project.created_at",
 ]
 PROFILE
-chmod 644 "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml"
+chmod 644 "$DESTDIR/var/lib/arlen/permissions/1000/kg-probe.toml"
 # No enable symlink here: the unit's own `[Install] WantedBy=multi-user.target`
 # above is the enable, and mkosi's preset pass acts on it. The build log shows it
 # creating exactly this link in /etc, so writing a second one by hand only added a
