@@ -153,6 +153,7 @@ fn report_proc_sweep() {
     let mut readable = 0usize;
     let mut refused = 0usize;
     let mut examples: Vec<String> = Vec::new();
+    let mut refused_names: Vec<String> = Vec::new();
 
     let Ok(entries) = std::fs::read_dir("/proc") else {
         println!("kg-probe: proc sweep: /proc unreadable");
@@ -179,12 +180,25 @@ fn report_proc_sweep() {
                     examples.push(format!("{name}={}", p.display()));
                 }
             }
-            Err(_) => refused += 1,
+            Err(e) => {
+                refused += 1;
+                // Name them. The counts alone said 29 of 31 read, which killed
+                // "the /proc route is broken on this image" but left the useful
+                // question open: WHICH two, and what do they have that the other
+                // twenty-nine do not. `comm` is readable without ptrace
+                // permission, so it survives exactly the refusal being reported.
+                let comm = std::fs::read_to_string(format!("/proc/{name}/comm"))
+                    .unwrap_or_default();
+                if refused_names.len() < 6 {
+                    refused_names.push(format!("{name}={} ({})", comm.trim(), e.kind()));
+                }
+            }
         }
     }
     println!(
         "kg-probe: proc sweep: {mine} same-uid process(es), exe readable for \
-         {readable}, refused for {refused}; readable examples {examples:?}"
+         {readable}, refused for {refused}; refused are {refused_names:?}; \
+         readable examples {examples:?}"
     );
 }
 
