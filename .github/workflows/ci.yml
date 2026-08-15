@@ -335,6 +335,8 @@ jobs:
           node dev/scripts/test-check-user-unit-firewall.mjs
           python3 dev/scripts/check-image-writes.py
           node dev/scripts/test-check-image-writes.mjs
+          python3 dev/scripts/check-apps-on-image.py
+          node dev/scripts/test-check-apps-on-image.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
