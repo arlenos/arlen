@@ -150,6 +150,10 @@ ProtectHome=no
 WantedBy=default.target
 UNIT
 chmod 644 "$DESTDIR/usr/lib/systemd/user/arlen-kg-probe-hardened.service"
+# Its own mkdir rather than borrowing the one further down: this link was written
+# before that mkdir ran and the build died on `No such file or directory`. mkdir
+# -p is idempotent, so the later one still stands.
+mkdir -p "$DESTDIR/usr/lib/systemd/user/default.target.wants"
 ln -sf ../arlen-kg-probe-hardened.service \
        "$DESTDIR/usr/lib/systemd/user/default.target.wants/arlen-kg-probe-hardened.service"
 
