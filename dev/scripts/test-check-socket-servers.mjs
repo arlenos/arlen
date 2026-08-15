@@ -64,8 +64,15 @@ console.log("socket servers:");
 {
   // A carried violation that has been resolved must be dropped, not left: an entry
   // saying "known, unshipped" about something now shipped reads as coverage.
+  //
+  // The case SYNTHESISES its entry rather than borrowing the real one. It used to
+  // mutate the table around `modulesd.sock`, the only carried entry the tree had
+  // ever held - so when modulesd shipped on 15 Aug and `KNOWN` went empty, this
+  // case lost its subject and went red while nothing was wrong. A control that
+  // only works while a particular defect exists stops working the day it is
+  // fixed, which is the wrong way round.
   const r = run((s) =>
-    s.replace('    "modulesd.sock": "arlen-modulesd",', '    "modulesd.sock": "arlen-graph-daemon",'),
+    s.replace("KNOWN: dict[str, str] = {}", 'KNOWN = {"knowledge.sock": "carried for the control"}'),
   );
   check("a carried violation whose server now ships is caught", r.code === 1);
 }

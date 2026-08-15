@@ -97,18 +97,21 @@ SERVERS = {
 # than a measurement. An entry here is a question for the planner, not a permission
 # to leave it: the rule says ship the server or remove the caller, and this records
 # which one is being asked for.
-KNOWN = {
-    "modulesd.sock": (
-        "the module runtime is Phase 7B and incomplete - Tier 1 WASM execution is "
-        "configured but the linker is never populated - so shipping it would put a "
-        "daemon on the image that answers and does nothing. The caller is the "
-        "shell's module client, sixteen crates reference modulesd, and removing all "
-        "of that discards a built subsystem to silence a log line. Adjudicate: ship "
-        "it incomplete, or take the client out until it is finished. Meanwhile the "
-        "shell no longer spins - it says the socket is unreachable once and backs "
-        "off for a minute."
-    ),
-}
+# Empty since 15 Aug, when `modulesd` shipped and settled the one entry this
+# table has ever held. Kept rather than deleted because the next socket in this
+# position needs somewhere to be a question instead of a silence.
+#
+# The entry claimed the runtime was incomplete - "Tier 1 WASM execution is
+# configured but the linker is never populated" - and that had stopped being true.
+# `tier1.rs:128` calls `populate_linker`, which registers the real WIT host traits
+# for graph, network, events and log; 140 unit tests pass.
+#
+# One thing to know before reading its test suite: `cargo test --release` fails
+# both socket round-trips with `Connection reset by peer`, and that is the
+# admission gate working rather than a defect. The tests admit themselves through
+# `ARLEN_MODULESD_EXTRA_ADMIT`, which is `#[cfg(debug_assertions)]` on purpose so a
+# release binary carries no test affordance at all. Run them in debug.
+KNOWN: dict[str, str] = {}
 
 # Sockets served by something outside this tree. Short on purpose: an entry is a
 # promise that a package we depend on answers.

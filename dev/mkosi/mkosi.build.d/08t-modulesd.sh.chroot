@@ -1,0 +1,57 @@
+#!/bin/sh
+# Phase 8t (CHROOT): the module runtime (arlen-modulesd). It hosts Tier 1 WASM
+# component modules in-process and brokers Tier 2 iframe modules for the shell.
+#
+# WHY IT IS HERE NOW. The shell dials it on every boot - `lib.rs:187` builds a
+# `ModulesdClient` at startup and logs `modulesd_client: connect failed` when
+# nothing answers - and sixteen call sites in the shell and Settings route
+# through it. A shipped component dialling a socket nothing serves is the shape
+# the unit audit exists to remove: the caller looks healthy, the feature is
+# simply absent, and the only trace is one warn line at boot. So either the
+# daemon ships or the callers go, and with sixteen of them the answer is that it
+# ships.
+#
+# Both units, not just the service. It is `Type=notify` with
+# `Requires=arlen-modulesd.socket`, and `socket/server.rs:92` takes the
+# activation fd when `LISTEN_FDS` is set and binds its own when it is not - so
+# the pair works whether systemd hands it a socket or it starts on its own.
+# Shipping only the service would leave `Requires=` naming a unit that does not
+# exist, which systemd treats as a hard start failure.
+#
+# Its own standalone cargo workspace (daemons/modulesd) -> its own target dir in
+# the persistent cache. It pulls wasmtime and cranelift, so this is one of the
+# slower steps; it is Rust only, no C or C++ toolchain beyond what the base has.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-modulesd"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the module runtime (arlen-modulesd) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/modulesd/Cargo.toml --bin arlen-modulesd
+
+# The libexec path is the canonical one `path_to_app_id` resolves to `modulesd`
+# (`sdk/permissions/src/identity.rs:566`), and that id is what its permission
+# profile is named after. Installed anywhere else the daemon still runs and every
+# capability check against it fails closed.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-modulesd" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-modulesd"
+
+# The units ship as static extras beside their siblings, under
+# mkosi.extra/usr/lib/systemd/user/, so `check-packaged-units.sh` can compare
+# them against the canonical pair in daemons/modulesd/dist/. The permission
+# profile is likewise a static extra at
+# mkosi.extra/var/lib/arlen/permissions/1000/modulesd.toml - profiles are read
+# from the system tier by uid, and writing one from here would put it where
+# nothing looks.
+echo ">> staged arlen-modulesd into the image"

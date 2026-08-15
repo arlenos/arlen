@@ -22,6 +22,15 @@ Type=notify
 # file in ~/.config/systemd/user/ pointing at the debug binary —
 # this file stays the canonical production unit.
 ExecStart=/usr/lib/arlen/libexec/arlen-modulesd
+# The bus is still a SYSTEM unit binding /run/arlen/, and this is a USER service,
+# so the SDK's default resolution to $XDG_RUNTIME_DIR/arlen/ points at a path
+# nothing binds. Left unset, a module's `events::emit` would dial into nothing and
+# retry forever - the module looks like it published, every consumer stays quiet,
+# and no log line disagrees.
+#
+# These come out when the bus moves per-user, the same way the graph unit's do.
+Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
 Restart=on-failure
 RestartSec=2
 

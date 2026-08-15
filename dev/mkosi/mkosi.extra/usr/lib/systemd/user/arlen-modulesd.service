@@ -1,0 +1,73 @@
+[Unit]
+Description=Arlen Module Runtime daemon (user service)
+Documentation=https://github.com/arlenos/modulesd
+# Wait for the upstream daemons modulesd's host imports reach into.
+# If those run as user services too, this `After=` chain ensures
+# discovery doesn't race them; if they're system services, this is a
+# no-op (systemd just ignores unknown user-side dependencies).
+# arlen-graph.service, not arlen-knowledge.service: the knowledge daemon's unit
+# is named for the graph it serves. systemd ignores an ordering dependency on a
+# unit that does not exist, so the previous name made this half of the line a
+# silent no-op and modulesd could start before the graph was up.
+After=arlen-event-bus.service arlen-graph.service
+Requires=arlen-modulesd.socket
+
+[Service]
+# `Type=notify` lets modulesd announce readiness only after the
+# socket is bound + sd_notify(READY=1) fires in main.rs. Without
+# this, dependent units could connect before the daemon is ready.
+Type=notify
+# Production binary path (system-wide install via
+# distro/install-modulesd.sh). Dev mode generates its own service
+# file in ~/.config/systemd/user/ pointing at the debug binary —
+# this file stays the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-modulesd
+# The bus is still a SYSTEM unit binding /run/arlen/, and this is a USER service,
+# so the SDK's default resolution to $XDG_RUNTIME_DIR/arlen/ points at a path
+# nothing binds. Left unset, a module's `events::emit` would dial into nothing and
+# retry forever - the module looks like it published, every consumer stays quiet,
+# and no log line disagrees.
+#
+# These come out when the bus moves per-user, the same way the graph unit's do.
+Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+Restart=on-failure
+RestartSec=2
+
+# Tier 1 modules run in-process as WASM components; the daemon
+# itself does NOT need write access to most of the system. Tight
+# hardening: filesystem read-only except for the wasmtime cache
+# (compiled component artefacts). Modules' host imports route
+# through socket clients, not direct fs writes.
+#
+# `CacheDirectory=wasmtime` is the systemd-managed way to get a
+# writable cache dir without a pre-existing-path requirement.
+# systemd creates `$XDG_CACHE_HOME/wasmtime/` (per-user services
+# resolve `$XDG_CACHE_HOME` to `~/.cache`) before the daemon starts,
+# which is exactly the path `wasmtime::Cache::from_file(None)`
+# expects. Codex S7 review: the previous `ReadWritePaths=
+# %h/.cache/wasmtime` made the service fail on first start when
+# the dir was absent because systemd treats `ReadWritePaths=`
+# entries as required paths during namespace setup.
+ProtectSystem=strict
+ProtectHome=read-only
+CacheDirectory=wasmtime
+# modulesd binds its request socket at $XDG_RUNTIME_DIR/arlen/modulesd.sock
+# (socket/server.rs). Under ProtectSystem=strict the whole tree is read-only
+# except the systemd-managed dirs, so creating that socket file needs an
+# explicit write grant for the shared arlen runtime dir - the same line every
+# socket-binding arlen user daemon carries (knowledge-mcp, anomalyd, transferd,
+# system-monitor-mcp, file-manager-mcp). Without it the bind fails EROFS and the
+# Type=notify readiness never fires. A ReadWritePaths grant (not RuntimeDirectory)
+# because the dir is SHARED across the arlen daemons - a RuntimeDirectory would
+# remove it on stop and clobber the siblings' sockets.
+ReadWritePaths=/run/user/%U/arlen
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

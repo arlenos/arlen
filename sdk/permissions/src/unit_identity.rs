@@ -154,6 +154,7 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-dogfood.service", "dogfood"),
     ("arlen-graph.service", "knowledge"),
     ("arlen-journald-parser.service", "journald-parser"),
+    ("arlen-modulesd.service", "modulesd"),
     ("arlen-notifyd.service", "notifyd"),
     ("arlen-powerd.service", "powerd"),
     ("arlen-terminal-run-mcp.service", "terminal-run-mcp"),
