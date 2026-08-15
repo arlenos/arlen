@@ -7,8 +7,18 @@ use aya_ebpf::{
     programs::TracePointContext,
     helpers::{
         bpf_get_current_cgroup_id, bpf_get_current_uid_gid, bpf_ktime_get_ns,
-        bpf_probe_read_user_str_bytes,
+        // Both string readers, because the two probes read from different address
+        // spaces and the distinction is not cosmetic: `openat` gets a userspace
+        // pointer out of the syscall arguments, while `sched_process_exec` reads
+        // its filename out of the tracepoint's own buffer, which is kernel
+        // memory. Using the user reader on the kernel buffer returns nothing.
+        bpf_probe_read_kernel_str_bytes, bpf_probe_read_user_str_bytes,
     },
+    // `as_ptr` is a trait method rather than an inherent one, so the trait has to
+    // be in scope for `ctx.as_ptr()` to resolve. Its absence is what made this
+    // crate fail to build with `no method named as_ptr found for
+    // TracePointContext` - a missing import reading like a missing API.
+    EbpfContext,
 };
 use aya_log_ebpf::debug;
 use kernel_layer_common::{

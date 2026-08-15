@@ -72,8 +72,11 @@ async fn main() -> Result<()> {
     info!("starting kernel-layer daemon");
     info!("session_id={session_id}");
 
+    // The path comes from build.rs, which locates the object under whichever
+    // target directory cargo is using. A literal relative path assumed the target
+    // dir sat beside this crate and broke as soon as the repo set a shared one.
     let ebpf_owned = Box::leak(Box::new(Ebpf::load(aya::include_bytes_aligned!(
-        "../../target/bpfel-unknown-none/release/kernel-layer-ebpf"
+        env!("ARLEN_EBPF_OBJECT")
     ))
     .context("failed to load eBPF program")?));
 
