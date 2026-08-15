@@ -30,13 +30,25 @@ impl UidFilter {
         }
     }
 
-    /// Check whether an event with the given UID passes this filter.
-    /// System events (uid=0) always pass regardless of filter.
+    /// Whether an event about `event_uid` passes this filter.
+    ///
+    /// UID 0 USED TO SHORT-CIRCUIT THIS AND REACH EVERY CONSUMER. That was load
+    /// bearing for as long as it was wrong twice over: the kernel-layer normalizer
+    /// stamped every observation with 0, and the bus exempted every root-owned
+    /// binary from restamping, so most of what crossed the bus claimed to be
+    /// root's and the short-circuit was the only thing delivering it. Removing it
+    /// then would have looked like a fix and been an outage.
+    ///
+    /// Both causes are fixed, and the 15 Aug boot measured the result: every event
+    /// on the bus carried the uid of the user who caused it, and not one carried 0.
+    /// So nothing rides this any more, and what it costs is the guarantee the
+    /// per-user design is built on - a user's graph never receives an event whose
+    /// subject uid is not that user's.
+    ///
+    /// Root's own activity is now delivered to root's consumers and nobody else's,
+    /// which is the same rule everyone else already lives under rather than a
+    /// special case for it.
     pub fn accepts(&self, event_uid: u32) -> bool {
-        // System events (uid=0) are delivered to all consumers.
-        if event_uid == 0 {
-            return true;
-        }
         match self {
             UidFilter::All => true,
             UidFilter::Exact(uid) => event_uid == *uid,
@@ -397,16 +409,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_uid_filtering_system_events() {
+    async fn root_events_do_not_reach_a_user_consumer() {
+        // Was `test_uid_filtering_system_events`, asserting the opposite. The
+        // rename is the point: "system event" was a description of uid 0 that made
+        // delivering it everywhere sound principled, when what it really described
+        // was two defects upstream - a normalizer that stamped 0 on every
+        // observation, and a restamp exemption that covered every root-owned
+        // binary. With those fixed, uid 0 means root did it, and root's activity
+        // belongs to root's consumers.
         let registry = ConsumerRegistry::new();
         let mut receiver = registry
             .register("c1".to_string(), vec!["*".to_string()], UidFilter::Exact(1000))
             .await;
 
-        // uid=0 is a system event, should reach all consumers.
         registry.dispatch(&make_event("schema.registered", 0)).await;
 
-        assert!(receiver.try_recv().is_ok(), "system event (uid=0) should reach all consumers");
+        assert!(
+            receiver.try_recv().is_err(),
+            "a uid-1000 consumer must not receive an event about root"
+        );
     }
 
     #[tokio::test]
@@ -443,7 +464,11 @@ mod tests {
         assert!(all.accepts(2000));
 
         let exact = UidFilter::Exact(1000);
-        assert!(exact.accepts(0));     // system events always pass
+        // uid 0 is root's activity, not a free pass. It used to short-circuit
+        // this and reach every consumer, which was the last thing standing
+        // between the bus and "a user's graph never receives an event whose
+        // subject uid is not that user's".
+        assert!(!exact.accepts(0));
         assert!(exact.accepts(1000));  // matching UID
         assert!(!exact.accepts(2000)); // different UID
     }

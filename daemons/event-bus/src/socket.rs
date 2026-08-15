@@ -818,33 +818,20 @@ mod tests {
         assert_eq!(clamp_uid_filter(UidFilter::Exact(1000), 0), UidFilter::Exact(1000));
     }
 
-    /// What the clamp does and does not settle, asserted rather than assumed.
+    /// The invariant the per-user design asks to be asserted rather than assumed:
+    /// a consumer receives its own user's events and nobody else's.
     ///
-    /// It closes the cross-USER direction: after clamping, uid 1001's events do
-    /// not reach a uid-1000 consumer however that consumer asked.
-    ///
-    /// It does NOT close uid 0. `UidFilter::accepts` short-circuits on
-    /// `event_uid == 0` and delivers to everyone, so root's activity still reaches
-    /// every consumer. That is a second, separate rule - carried in the reviews as
-    /// the uid-0-to-all escape hatch - and it matters more now than it did last
-    /// week: while the kernel layer stamped every observation with 0, this
-    /// short-circuit was the only thing making kernel events arrive at all, so
-    /// removing it then would have looked like a fix and been an outage. Now that
-    /// the observed uid is real, the hatch is what is left between here and "a
-    /// user's graph never receives an event whose subject uid is not that user's".
-    ///
-    /// Pinned as it stands so the next person changing it sees both halves at
-    /// once, rather than discovering the second after shipping the first.
+    /// This test named uid 0 as the unclosed half yesterday. It is closed now -
+    /// the two upstream causes went first (a normalizer stamping 0 on everything,
+    /// and a restamp exemption covering every root-owned binary), and only once a
+    /// boot measured zero uid-0 events on the bus was it safe to stop delivering
+    /// them to everyone.
     #[test]
-    fn the_clamp_closes_the_cross_user_direction_but_not_uid_zero() {
+    fn a_clamped_consumer_receives_only_its_own_users_events() {
         let f = clamp_uid_filter(UidFilter::All, 1000);
         assert!(f.accepts(1000), "its own events arrive");
         assert!(!f.accepts(1001), "another user's do not");
-        assert!(
-            f.accepts(0),
-            "root's still do, via the escape hatch in UidFilter::accepts - the \
-             remaining half of the cross-user guarantee"
-        );
+        assert!(!f.accepts(0), "and neither does root's");
     }
 
     use arlen_permissions::PermissionError;
