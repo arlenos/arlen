@@ -166,11 +166,34 @@ read = [
 ]
 PROFILE
 chmod 644 "$DESTDIR/var/lib/arlen/permissions/1000/kg-probe.toml"
-# No enable symlink here: the unit's own `[Install] WantedBy=multi-user.target`
-# above is the enable, and mkosi's preset pass acts on it. The build log shows it
-# creating exactly this link in /etc, so writing a second one by hand only added a
-# way for the two to disagree - which is what happened to the user units, where a
-# hand-kept set drifted one entry from the generated one.
+# The enable. This says `default.target.wants` and not `multi-user.target.wants`
+# because the probe became a USER unit on 15 Aug, and nothing else in the image
+# would have started it.
+#
+# The comment that stood here said no symlink was needed - mkosi's preset pass
+# acts on `[Install]`, and a hand-written second link only creates something to
+# disagree with. That was true while the probe was a system unit. It stopped being
+# true the moment the unit moved, because two different mechanisms start the two
+# kinds:
+#
+#   system unit   mkosi preset pass, acting on [Install] at build time
+#   user unit     the session supervisor, calling StartUnit on the units in
+#                 USER_UNIT_APP_IDS - and on nothing else
+#
+# So a user unit that is not in the supervisor's table does not start. Not
+# "starts and is refused" - never runs at all, and the whole boot is silent about
+# it. That is what happened here: the last boot has no `arlen-kg-probe` line
+# anywhere, and the verify verdict read it as the probe failing to resolve an
+# identity rather than as the probe never having run.
+#
+# The symlink is the right fix rather than a table entry, because the table is
+# shipped release code and the probe is a verify artefact. The user manager reads
+# `default.target.wants` directly, so this starts the unit without the supervisor
+# knowing it exists - and the probe's identity then comes from the binary route,
+# which already names `/usr/bin/arlen-kg-probe` as `kg-probe`.
+mkdir -p "$DESTDIR/usr/lib/systemd/user/default.target.wants"
+ln -sf ../arlen-kg-probe.service \
+       "$DESTDIR/usr/lib/systemd/user/default.target.wants/arlen-kg-probe.service"
 echo ">> staged the verify probes into the image"
 
 # Admit the dogfood driver as a user surface, on THIS image only.
