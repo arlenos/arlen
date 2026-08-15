@@ -74,8 +74,27 @@ require_xvfb() {
 }
 require_xvfb xvfb-run
 
+# THE HOST SESSION IS CUT OFF HERE, and it was not before 15 August.
+#
+# `xvfb-run` sets DISPLAY and touches nothing else, so WAYLAND_DISPLAY still pointed
+# at the developer's real compositor for everything launched below. That is not a
+# theoretical leak: rendering the screenshot app under this harness connected it to
+# the live session over wlr-screencopy and wrote a picture of the developer's actual
+# desktop - terminal contents, browser tabs, chat - into /tmp, in a run whose whole
+# premise was that it is headless.
+#
+# It also quietly undermines every other shot: an app that prefers the Wayland
+# backend was talking to the real compositor, so "verified headless" meant less than
+# it read. GDK_BACKEND=x11 makes the toolkit choice explicit rather than leaving it
+# to whichever socket happens to be reachable.
+#
+# The compositor harness (shoot-compositor.sh) is the place where a real Wayland
+# session is the point; this one is Xvfb, and an app here has no business reaching
+# outside it.
 xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   set -euo pipefail
+  unset WAYLAND_DISPLAY
+  export GDK_BACKEND=x11
   # A window manager so the WebKit app window holds real keyboard focus; without
   # one, synthetic keystrokes never route to the focusable .console surface (so
   # the assert mode cannot drive the terminal). Best-effort: harmless if absent.
