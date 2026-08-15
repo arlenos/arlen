@@ -12,5 +12,6 @@ path = "src/main.rs"
 [dependencies]
 os-sdk = { path = "../../sdk/os-sdk" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+libc = "0.2"
 
 [workspace]
