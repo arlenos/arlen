@@ -70,6 +70,11 @@ arlen-theme = { path = "../../../sdk/theme" }
 arlen-i18n = { path = "../../../sdk/i18n" }
 # The pure, CI-tested shell core (the theme resolution pipeline).
 arlen-desktop-shell-core = { path = "../core" }
+# For the socket resolver, as terminal, files and settings already do. The shell
+# talks to more Arlen daemons than any of them and was the only one writing their
+# paths out by hand - which is how four of them still named /run/arlen after the
+# bus moved per-user.
+os-sdk = { path = "../../../sdk/os-sdk" }
 bytes = "1"
 wordnet-db = "0.1"
 wordnet-morphy = "0.1"
