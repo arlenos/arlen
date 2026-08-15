@@ -86,22 +86,16 @@ def probe_verdict(journal_text: str) -> tuple[bool, str]:
     # Checked BEFORE the empty-graph verdict, because the probe now has a third
     # state and the empty-graph message is a false statement about it. Since the
     # per-user move the daemon names its callers from the identity broker, and the
-    # probe is a verify-only unit that is deliberately not in the shipped
-    # stamped-unit table - so it asks anonymously, is refused, and asks nothing
-    # about the graph at all. Reporting that as "the graph was empty" would send
-    # somebody to debug ingestion that is very likely fine.
-    if any("identity: NOT RESOLVED" in l for l in lines):
-        return False, (
-            "the knowledge probe could not be named by the daemon, so it asked the "
-            "graph nothing and this run verified less than it looks like it did. "
-            "This is not an ingestion failure and not a regression: the read gate is "
-            "working and the probe is anonymous to it.\n"
-            "    It needs a decision rather than a patch. Either the probe joins the "
-            "stamped-unit table - which is shipped release code, changed for a "
-            "verify-only artefact, against the plus-never-minus rule this image "
-            "follows - or the verify image stops asking the graph what it holds and "
-            "that coverage goes away."
-        )
+    # This branch used to fire on the probe's own "identity: NOT RESOLVED" line and
+    # hand back a decision: put the probe in the shipped stamped-unit table, or
+    # drop the graph coverage. Both halves of that were wrong. The probe inferred
+    # the unresolved identity from an empty `access_grants`, and empty grants mean
+    # no Grant node has been written yet, not that the caller has no name - the
+    # binary route resolves /usr/bin/arlen-kg-probe to `kg-probe` when asked
+    # directly. So the verdict escalated an inference into a fork for Tim.
+    #
+    # The probe now always asks its questions and prints what came back. A refused
+    # question is a result, and it is caught below with the rest of them.
     if not rows:
         return False, (
             "the knowledge probe was answered but the graph was empty - every "
