@@ -11,7 +11,7 @@
 // and the declaration disappearing altogether.
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdtempSync, cpSync, rmSync, mkdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdtempSync, cpSync, rmSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -32,7 +32,7 @@ function check(name, ok) {
 }
 
 /** Run the gate against a COPY of the unit tree with `mutate` applied to the unit. */
-function run(mutate) {
+function run(mutate, opts = {}) {
   const dir = mkdtempSync(join(tmpdir(), "runtime-dir-"));
   const units = join(dir, UNIT_REL);
   mkdirSync(units, { recursive: true });
@@ -41,6 +41,15 @@ function run(mutate) {
   const next = mutate(readFileSync(path, "utf8"));
   if (next === null) rmSync(path);
   else writeFileSync(path, next);
+  if (opts.alsoRemoveDeclaringUnits) {
+    // Only .service files: the directory also holds `*.wants` subdirectories, and
+    // reading one as a file throws EISDIR.
+    for (const f of readdirSync(units)) {
+      if (!f.endsWith(".service")) continue;
+      const p = join(units, f);
+      if (readFileSync(p, "utf8").includes("RuntimeDirectory=arlen")) rmSync(p);
+    }
+  }
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
   rmSync(dir, { recursive: true, force: true });
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
@@ -78,7 +87,13 @@ console.log("runtime dir closed:");
 {
   // The declaration vanishing is the quietest failure of all: nothing is wrong
   // with any unit, the directory is simply whatever created it.
-  const r = run(() => null);
+  //
+  // Deleting ONE unit no longer does it. Two units declare the directory since
+  // the system event-bus instance joined the config broker - which is the gate
+  // working, not a hole - so losing the declaration means losing both. Written as
+  // "every unit that declares it" rather than a second filename, so a third
+  // declaring unit does not quietly turn this case into a no-op.
+  const r = run(() => null, { alsoRemoveDeclaringUnits: true });
   check("losing the declaration entirely is caught", r.code === 1);
   check("and says the check would rest on air", r.out.includes("rests on air"));
 }

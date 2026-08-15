@@ -117,6 +117,21 @@ pub fn unit_from_cgroup(cgroup_text: &str) -> Result<String, UnitError> {
 /// Kept in step with the shipped units by `dev/scripts/check-unit-identity.py`.
 const UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-config-broker.service", "config-broker"),
+    // The eBPF sensor. A system unit by necessity - loading a BPF program and
+    // attaching a tracepoint need capabilities a session manager does not have,
+    // and what it observes is the whole machine rather than one session - so it is
+    // named here by its cgroup rather than by a launcher stamp.
+    //
+    // It has to be nameable for a reason beyond tidiness: the bus keeps a producer's
+    // observed uid instead of restamping it only for producers it recognises as
+    // whole-machine observers, and that recognition is by app_id. Unnameable, its
+    // events would be restamped to root's uid and reach no user's consumer.
+    ("arlen-kernel-layer.service", "kernel-layer"),
+    // The system bus instance, which machine-wide producers publish to and each
+    // per-user bus forwards from. Named for the same reason as any other daemon:
+    // it speaks Arlen sockets, and an unnamed system daemon authenticates as
+    // nobody - which reads from outside exactly like one refused on purpose.
+    ("arlen-event-bus-system.service", "event-bus"),
 ];
 
 /// The per-user units and the app_id each one's peers authenticate as.
