@@ -105,6 +105,7 @@ async fn main() {
     // defect in the system under test. Failing on it would put a permanent red in
     // every verify run - and a red that is always there is one nobody reads,
     // which is the habit that cost us a real CI failure last week.
+    report_profile();
     report_grants(&client).await;
 
     // Always ask. An earlier cut skipped the questions when `access_grants` came
@@ -128,6 +129,34 @@ async fn main() {
     }
     failures += report_timeline();
     println!("kg-probe: done, {failures} question(s) failed");
+}
+
+/// Whether this caller's permission profile is where the daemon will look.
+///
+/// Asked because a denial says "label outside the caller's read scope" whether
+/// the caller was never granted anything or its profile is simply not on disk,
+/// and those need different fixes. The daemon resolves the system tier at
+/// `/var/lib/arlen/permissions/{uid}/{app_id}.toml`, so that is the exact path
+/// checked here - not a plausible-looking one.
+///
+/// The probe's own profile is written by the verify build phase rather than
+/// shipped in `mkosi.extra`, and the extra trees are copied over `$DESTDIR`
+/// afterwards. Whether that merges or replaces the directory is the difference
+/// between a granted probe and a denied one, and this line answers it from
+/// inside the booted image.
+fn report_profile() {
+    // SAFETY: getuid never fails.
+    let uid = unsafe { libc::getuid() };
+    let path = format!("/var/lib/arlen/permissions/{uid}/kg-probe.toml");
+    match std::fs::read_to_string(&path) {
+        Ok(text) => {
+            let reads = text.lines().filter(|l| l.trim_start().starts_with('"')).count();
+            println!("kg-probe: profile: {path} present, {reads} read pattern(s)");
+        }
+        Err(e) => {
+            println!("kg-probe: profile: {path} NOT USABLE: {e}");
+        }
+    }
 }
 
 /// Report the capability grants the daemon holds for this caller.
