@@ -8,7 +8,9 @@ Comment[de]=Text lesen und bearbeiten, mit der Herkunft der Datei daneben
 Exec=arlen-text-editor %f
 Icon=arlen-text-editor
 Terminal=false
-Categories=Utility;TextEditor;Development;
+# One main category (Utility) plus the additional `TextEditor`. `Development` is a
+# second main category, and this is an editor rather than an IDE.
+Categories=Utility;TextEditor;
 Keywords=text;edit;editor;code;write;notes;
 Keywords[de]=text;editor;bearbeiten;schreiben;notizen;
 StartupNotify=true
