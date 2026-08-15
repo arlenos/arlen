@@ -61,10 +61,6 @@ NOT_ON_IMAGE: dict[str, str] = {
     ),
     "harness": "arlen-ui's live work, and the surface they are redesigning",
     "store": "arlen-ui's live work",
-    "screenshot": (
-        "no image step yet, and no desktop entry. It has a core and a frontend build but "
-        "nothing that puts it on the machine - the same shape the viewer was in"
-    ),
     "trash-rm": (
         "a command-line tool (`arlen-trash-rm`), not a desktop app, so it has no launcher "
         "entry by nature. It still belongs in `/usr/bin` if the trash flow is meant to work "
