@@ -230,6 +230,38 @@ struct PublishDecision<'a> {
 /// `check-emitters-declared.py` cannot see it either.
 const PUBLISH_ORIGINATORS: &[&str] = &["compositor", "kernel-layer"];
 
+/// The producers allowed to say an event was about SOMEONE ELSE.
+///
+/// A whole-machine observer must: the eBPF kernel layer watches every process on
+/// the box and forwards each observation stamped with the uid of the task it
+/// observed, so restamping those onto the observer's own uid would collapse every
+/// kernel event onto one user and make per-user routing meaningless.
+///
+/// Nobody else may, and this list is how that is decided since 15 Aug. It used to
+/// follow the install TIER, which is the same over-broad shape
+/// `PUBLISH_ORIGINATORS` above was written to replace: every root-owned binary
+/// under `/usr/bin/arlen-*` counts as system tier, so the shell, the dogfood tool
+/// and the compositor were all exempt from restamping too - and none of them
+/// observes anything but its own session.
+///
+/// MEASURED on the 15 Aug boot, which is what turned this from a shape into a
+/// defect: 17 `file.opened` and one `window.focus_left` arrived carrying uid 0,
+/// from `dogfood` and `dev.arlen.desktop-shell`, both logged `system=true`. They
+/// do not set the field, so it takes the protobuf default - and 0 is the value the
+/// consumer filter short-circuits on, so those events were delivered to every
+/// consumer on the machine as though root had done them.
+///
+/// The compositor is a `PUBLISH_ORIGINATORS` member and deliberately NOT one here:
+/// originating an event and attributing it to another user are different powers.
+/// Its window and session events are about the session it runs in, so its own uid
+/// is the right answer for them.
+const UID_OBSERVERS: &[&str] = &["kernel-layer"];
+
+/// Whether this peer may stamp an event with a uid other than its own.
+fn observes_other_uids(app_id: &str) -> bool {
+    UID_OBSERVERS.contains(&app_id)
+}
+
 /// Whether this peer's publishing is exempt from its declared list.
 fn originates_system_events(app_id: &str) -> bool {
     PUBLISH_ORIGINATORS.contains(&app_id)
@@ -384,7 +416,7 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     // Resolved once at connect: peercred is fixed for the connection's life, so
     // the tier never changes mid-stream. Drives the EBK-2 uid-restamp exemption.
     let peer = Peer::resolve(&stream);
-    let is_system_producer = peer.is_system();
+    let forwards_other_uids = observes_other_uids(peer.scope.app_id());
     // Producers are held to their declared `[event_bus].publish` scope unless
     // they are one of the named `PUBLISH_ORIGINATORS`. That list is the whole
     // exemption now; the tier no longer touches the publish side at all, because
@@ -427,7 +459,11 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     debug!(
         app_id = publish_scope.app_id(),
         uid = producer_uid,
-        system = is_system_producer,
+        // Renamed with the exemption it reports: "system" described the install
+        // tier, which is no longer what decides this, and a boot log saying
+        // system=true about the shell is how the over-broad exemption stayed
+        // invisible for so long.
+        forwards_other_uids,
         "new producer connection"
     );
 
@@ -463,7 +499,7 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                 // kernel-layer's own uid and break per-user routing). A producer
                 // whose identity could not be attested resolves as non-system,
                 // so it is restamped — fail-safe.
-                if !is_system_producer {
+                if !forwards_other_uids {
                     event.uid = producer_uid;
                 }
 
@@ -724,6 +760,34 @@ async fn read_line(stream: &mut UnixStream) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// Only a whole-machine observer may attribute an event to another user.
+    ///
+    /// The boot that prompted this had `dogfood` and `dev.arlen.desktop-shell`
+    /// exempt from restamping because both install as root-owned binaries and so
+    /// counted as system tier. Neither observes anything but its own session, and
+    /// between them they put 18 uid-0 events on the bus - which the consumer
+    /// filter then delivered to everyone.
+    ///
+    /// `<unresolved>` is in here on purpose: a peer the bus could not name must
+    /// fall on the restamping side, so an identity failure cannot buy the power to
+    /// speak for another user.
+    #[test]
+    fn only_a_named_observer_may_stamp_another_users_uid() {
+        assert!(observes_other_uids("kernel-layer"));
+        for id in [
+            "dogfood",
+            "dev.arlen.desktop-shell",
+            "compositor",
+            "knowledge",
+            "<unresolved>",
+        ] {
+            assert!(
+                !observes_other_uids(id),
+                "{id} observes only its own session and must be restamped"
+            );
+        }
+    }
 
     /// A user consumer cannot ask for another user's events, however it asks.
     ///
