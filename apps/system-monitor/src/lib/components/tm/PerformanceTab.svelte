@@ -30,8 +30,14 @@
         return s.ratesReady ? `${n(s.diskReadMbs + s.diskWriteMbs, 1)} MB/s` : "\u2014";
       case "network":
         return s.ratesReady ? `${n(s.netRxMbs + s.netTxMbs, 1)} MB/s` : "\u2014";
+      // Not the dash the others use, and the difference is the whole point: for
+      // CPU, disk and network a dash means "the second tick has not landed yet"
+      // and a number follows a moment later. Nothing will ever follow here -
+      // tokens per second is the engine's figure, not a kernel counter, and no
+      // producer reports it. The same glyph for both would say "wait" about
+      // something that is not coming.
       case "ai":
-        return "\u2014";
+        return $t("tm.col.notMeasured");
     }
   }
 
