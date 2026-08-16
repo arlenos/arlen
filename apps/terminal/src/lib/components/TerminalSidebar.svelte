@@ -26,6 +26,7 @@
     sessions,
     activeSessionId,
     sessionsLoaded,
+    sessionsError,
     newSession,
     selectSession,
   } from "$lib/stores/sessions";
@@ -96,7 +97,17 @@
             </SidebarMenuButton>
           </SidebarMenuItem>
         {/if}
-        {#if $sessionsLoaded && $sessions.length === 0}
+        <!-- The error case FIRST, the way `+page.svelte` does it for the pane.
+             Without it a failed read renders "No open sessions. Start one with
+             the plus button" - a claim about sessions nobody managed to count,
+             followed by an instruction that would fail the same way. The pane
+             one file over has branched on `$sessionsError` since it was written;
+             this list never did. -->
+        {#if $sessionsLoaded && $sessionsError}
+          <li class="ts-empty group-data-[collapsible=icon]:hidden">
+            {$t("term.sidebar.sessionsUnavailable")}
+          </li>
+        {:else if $sessionsLoaded && $sessions.length === 0}
           <!-- An `li`, not a `div`: this sits directly inside the menu's `ul`,
                and a list may hold only list items - axe rates the mismatch
                serious because a screen reader counts the items and gets a
