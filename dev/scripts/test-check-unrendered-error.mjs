@@ -92,8 +92,54 @@ check(
   (code) => code === 0,
 );
 
+// Shape 2: the failure is a field on the store's state rather than a store of
+// its own. This is the shape that got past the first rule and reached a shipped
+// page, where a failed read printed `No bindings match ""`.
+const STATE_STORE =
+  'import type { Readable } from "svelte/store";\n' +
+  "interface BindingsState {\n" +
+  "  data: string[];\n" +
+  "  loading: boolean;\n" +
+  "  error: string | null;\n" +
+  "}\n" +
+  "export const bindings: Readable<BindingsState> = inner;\n";
+
+check(
+  "a store whose state carries an unread error is caught",
+  {
+    "apps/demo/src/lib/stores/bindings.ts": STATE_STORE,
+    "apps/demo/src/lib/View.svelte":
+      "<p>{$bindings.data.length ? 'ok' : 'No bindings match.'}</p>\n",
+  },
+  (code, out) => code === 1 && out.includes("bindings"),
+);
+
+check(
+  "the same store passes once a component reads the field",
+  {
+    "apps/demo/src/lib/stores/bindings.ts": STATE_STORE,
+    "apps/demo/src/lib/View.svelte":
+      "<p>{$bindings.error ? 'Cannot read your bindings.' : ''}</p>\n",
+  },
+  (code) => code === 0,
+);
+
+// A state object without the field is not this rule's business, and neither is
+// a same-file derived store - only the one declared to hold that state.
+check(
+  "a state object with no error field is not a finding",
+  {
+    "apps/demo/src/lib/stores/plain2.ts":
+      'import type { Readable } from "svelte/store";\n' +
+      "interface Shape {\n  data: string[];\n  loading: boolean;\n}\n" +
+      "export const shape: Readable<Shape> = inner;\n",
+    "apps/demo/src/lib/View.svelte": "<p>{$shape.data.length}</p>\n",
+  },
+  (code) => code === 0,
+);
+
 for (const f of failures) {
   console.error(`\n--- ${f.name}\nexit=${f.code}\n${f.out}`);
 }
 if (failures.length) process.exit(1);
-console.log("a recorded failure must have a reader, and the fix passes");
+console.log("a recorded failure must have a reader, as a store or as a field, and both fixes pass");
