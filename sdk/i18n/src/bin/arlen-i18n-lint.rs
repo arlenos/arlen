@@ -298,9 +298,35 @@ fn scan_svelte(src: &str) -> Vec<Finding> {
         }
 
         // Svelte expression / block: { ... } (incl. {#if}, {@html}, {expr})
+        //
+        // Attributes learned this lesson first: `statusText={on ? "A" : "B"}` is
+        // how a component picks between two labels, and skipping the expression
+        // hid every one of them. The identical construct in a text position -
+        // `<span>{builtin ? "Source" : "Install path"}</span>` - was still being
+        // skipped, and that is exactly where it sat in a settings card, one line
+        // below two `$t()` calls.
+        //
+        // A block directive is not a display position (`{#if kind === "Photo"}`
+        // renders nothing), so its literals are left to the script scan, which
+        // decides by position and does not count a comparison as one.
         if c == '{' {
             flush_text!();
-            skip_expr(&chars, &mut i, &mut line);
+            let vline = line;
+            let body = take_expr(&chars, &mut i, &mut line);
+            if !body.trim_start().starts_with(['#', '/', ':', '@']) {
+                for lit in expr_literals(&body) {
+                    if let Some(t) = user_facing_text(&lit) {
+                        out.push(Finding {
+                            line: vline,
+                            text: t,
+                        });
+                    }
+                }
+            }
+            out.extend(scan_script(&body).into_iter().map(|f| Finding {
+                line: vline + f.line - 1,
+                text: f.text,
+            }));
             continue;
         }
 
@@ -315,14 +341,6 @@ fn scan_svelte(src: &str) -> Vec<Finding> {
     }
     flush_text!();
     out
-}
-
-/// Skip a `{...}` region starting at `*i` (which must point at `{`), advancing
-/// `*i` past the matching `}` and counting newlines into `*line`. Brace depth is
-/// tracked, and quotes (`'`, `"`, backtick) inside the expression are honored so
-/// a brace inside a string literal does not close the region early.
-fn skip_expr(chars: &[char], i: &mut usize, line: &mut usize) {
-    take_expr(chars, i, line);
 }
 
 /// Step over a `{...}` and return what was inside, braces excluded.
@@ -1273,6 +1291,32 @@ mod tests {
         // components take, so every component's accessible name was invisible.
         let attr = scan_svelte("<X ariaLabel=\"Interface font\" />");
         assert_eq!(attr.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(), vec!["Interface font"]);
+    }
+
+    #[test]
+    fn a_conditional_in_a_text_position_is_copy() {
+        // The same shape the attribute scan already catches, one position over.
+        // It sat in a settings card between two `$t()` calls and this gate read
+        // the file as clean, because a markup expression was stepped over whole.
+        let found = texts("<span>{builtin ? \"Source\" : \"Install path\"}</span>");
+        assert!(found.contains(&"Source".to_string()), "{found:?}");
+        assert!(found.contains(&"Install path".to_string()), "{found:?}");
+    }
+
+    #[test]
+    fn a_value_and_a_key_in_a_text_position_are_not_copy() {
+        // `{count}` is a value and `{$t("s.mod.id")}` is the fix, not the defect.
+        assert!(texts("<span>{count}</span>").is_empty());
+        assert!(texts("<span>{$t(\"s.mod.id\")}</span>").is_empty());
+        assert!(texts("<span>{kind === \"builtin\"}</span>").is_empty());
+    }
+
+    #[test]
+    fn a_block_directive_is_not_a_display_position() {
+        // `{#if kind === "Photo"}` renders nothing, so its operand is not copy.
+        // Capitalised, spaceless and in a position the literal scan would take
+        // if block directives were not held back for the script scan to judge.
+        assert!(texts("{#if kind === \"Photo\"}x{/if}").is_empty());
     }
 
     #[test]
