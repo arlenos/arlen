@@ -45,6 +45,7 @@ SHOTS=(
   "knowledge - knowledge-unavailable"
   "knowledge - knowledge-projects-unavailable button[data-place=projects]"
   "knowledge - knowledge-library-unavailable button[data-place=library]"
+  "knowledge - knowledge-searches-unavailable button[data-place=searches]"
   "meetings - meetings-unavailable"
   "settings printers settings-printers-unavailable"
   "settings keyboard settings-keyboard-unavailable"
