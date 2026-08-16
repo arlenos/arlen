@@ -73,7 +73,9 @@
             <span class="contrast-label">{$t(pair.labelKey)}</span>
             <span class="contrast-value">
               <span class="contrast-num">{formatDecimal(ratio, 1, $locale)}:1</span>
-              <Badge variant={pass ? "success" : "warn"}>{pass ? "Passes" : "Low"}</Badge>
+              <Badge variant={pass ? "success" : "warn"}>
+                {pass ? $t("s.col.contrastPasses") : $t("s.col.contrastLow")}
+              </Badge>
             </span>
           </div>
         {/each}

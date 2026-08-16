@@ -171,9 +171,7 @@ apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
 apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
 apps/settings/src/lib/components/AddProviderDialog.svelte	https://api.example.com/v1
 apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Click again to confirm
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Uninstall
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Large
@@ -269,8 +267,6 @@ apps/settings/src/lib/stores/themeSystem.ts	Pop
 apps/settings/src/lib/stores/themeSystem.ts	Soft
 apps/settings/src/lib/stores/themeSystem.ts	Tela
 apps/settings/src/routes/about/+page.svelte	Arlen OS
-apps/settings/src/routes/appearance/colors/+page.svelte	Low
-apps/settings/src/routes/appearance/colors/+page.svelte	Passes
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
@@ -294,8 +290,6 @@ apps/settings/src/routes/knowledge/+page.svelte	{} GB
 apps/settings/src/routes/knowledge/+page.svelte	{} KB
 apps/settings/src/routes/knowledge/+page.svelte	{} MB
 apps/settings/src/routes/notifications/+page.svelte	Alarms
-apps/settings/src/routes/notifications/+page.svelte	No per-app rules yet. Pick an app above to override its priority, mute it, or block it entirely.
-apps/settings/src/routes/notifications/+page.svelte	No rules match this filter.
 apps/settings/src/routes/notifications/+page.svelte	Priority
 apps/settings/src/routes/notifications/+page.svelte	Total
 apps/settings/src/routes/printers/+page.svelte	A4
