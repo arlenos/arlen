@@ -54,6 +54,20 @@ What it does NOT cover, and the omission is deliberate rather than an oversight:
     content from an honest failure state is a reading, not a regex.
   * Whether a store that DOES branch on `isTauri()` or `import.meta.env.DEV` put
     the fixture on the right side of it.
+  * A catch that returns and leaves a fixture ALREADY on screen. The `return`
+    half above only fires when a fixture name sits in the catch; when the
+    fixture arrives by falling through to the default render, the catch body is
+    a bare `return` and there is nothing here to match. That is how the viewers
+    app kept its "Nightswim" branch through the 9 August fix and until 16
+    August - the catch beside the one that was fixed said only `return`, and the
+    mock was three hundred lines away in the markup.
+
+    Not widened to "a bare return in a file whose fixture reaches markup",
+    though that rule would have caught it: viewers has many catches and one of
+    them mattered, so it would demand acknowledgements for the rest and teach
+    people to write them without reading. What actually finds this one is
+    shooting the app with no backend and looking, which is what
+    `shoot-no-backend.sh` is for.
   * Anything outside `apps/*/src`. The `dev` fixtures and the test suites are
     supposed to be fixtures.
 
@@ -211,6 +225,16 @@ ACKNOWLEDGED: dict[str, str] = {
     # is no host to ask, and the `?demo=` path the screenshot harness drives. Both
     # are contexts where a sample IS the answer. If the `noFile` branch above it
     # ever goes, these three go back to being the defect they were.
+    #
+    # There were TWO routes in, and 9 August closed one. The `catch` beside that
+    # null check returned to the same mock, and it sits after the `tauriAvailable`
+    # guard - `__TAURI_INTERNALS__` is present from the moment a real webview
+    # loads - so a shipped viewer whose backend threw on `initial_file` landed on
+    # "Nightswim" too. Closed 16 August; the catch now sets `loadError`. The
+    # acknowledgement below said "the real shell with no file is answered above
+    # it" for a week while one branch over still answered with a song. Worth
+    # remembering when reading any entry here: what is acknowledged is the path
+    # the author had in mind, and the code may have more of them than the note.
     "apps/viewers/src/routes/+page.svelte:audioMock": (
         "The demo face, reachable only with no Tauri host or an explicit `?demo=`; the real shell with no file is answered above it."
     ),
