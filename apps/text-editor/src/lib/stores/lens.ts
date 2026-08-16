@@ -53,6 +53,11 @@ interface LensState {
   /// The graph holds membership for this file, but only from after the instant
   /// being asked about. Distinct from "no project": one is absence of record.
   projectUnrecorded: boolean;
+  /// True while a PAST instant is selected. Only the project section can honour
+  /// it - `ACCESSED_BY` and `LINKS_TO` are bare edges with no stamps at all - so
+  /// the sections that cannot must say which time they are showing rather than
+  /// let the panel read as one consistent moment.
+  asOfActive: boolean;
   related: Backlink[];
   project: ProjectContext | null;
   /// The RELATED section alone is still a sample; see `loadLens`.
@@ -89,6 +94,7 @@ export const lens = writable<LensState>({
   mocked: true,
   relatedMocked: true,
   projectUnrecorded: false,
+  asOfActive: false,
 });
 
 /// Load the lens for a file. Live: the three graph queries; fixture under vite.
@@ -147,11 +153,18 @@ export async function loadLens(ref: string, asOf: number | null = null): Promise
       related,
       project,
       projectUnrecorded,
+      asOfActive: asOf !== null,
       mocked: projectMocked,
       relatedMocked,
     });
   } catch {
-    lens.set({ ...FIXTURE, mocked: true, relatedMocked: true, projectUnrecorded: false });
+    lens.set({
+      ...FIXTURE,
+      mocked: true,
+      relatedMocked: true,
+      projectUnrecorded: false,
+      asOfActive: false,
+    });
   }
 }
 
