@@ -29,6 +29,29 @@
 
   const now = Date.now();
 
+  /// What an empty column says, which depends on WHICH column is empty.
+  ///
+  /// One label served both levels, so drilling into a project and finding nothing
+  /// answered "No projects detected yet." - the root's sentence, about the wrong
+  /// thing, and false while 95 projects sat listed in the column beside it
+  /// (measured 16 August). A member listing is refused for this caller today (the
+  /// read gate keeps `FILE_PART_OF` out of any non-system-anchored scope), so the
+  /// sentence a user actually meets there has to name that rather than imply their
+  /// graph is empty.
+  ///
+  /// Derived rather than called inline, because the catalogue is a store: a label
+  /// built in a plain function would keep the sentence it was first rendered with
+  /// when the locale changes, which is the reactivity the i18n gate looks for.
+  const emptyLabel = $derived(
+    $path !== "/projects" && $path !== "/"
+      ? $projectsUnavailable
+        ? $t("k.projects.membersUnavailable")
+        : $t("k.projects.noMembers")
+      : $projectsUnavailable
+        ? $t("k.projects.unavailable")
+        : $t("k.empty.projects"),
+  );
+
   function onselection(entries: FileEntry[]): void {
     onselect(entries[0] ?? null, $path);
   }
@@ -109,7 +132,7 @@
   {/if}
 
   <div class="pr-columns">
-    <FileBrowser controller={ctrl} {onselection} {onactivate} {now} nameLabel={$t("k.place.projects")} emptyLabel={$projectsUnavailable ? $t("k.projects.unavailable") : $t("k.empty.projects")} />
+    <FileBrowser controller={ctrl} {onselection} {onactivate} {now} nameLabel={$t("k.place.projects")} emptyLabel={emptyLabel} />
   </div>
 </div>
 

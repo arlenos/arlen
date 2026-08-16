@@ -42,6 +42,12 @@ const messages: Catalogs = {
     "k.tl.unavailable": "Cannot read your timeline right now, so nothing is shown.",
     "k.empty.projects": "No projects detected yet.",
     "k.projects.unavailable": "Cannot read your projects right now, so nothing is listed.",
+    // A column INSIDE a project, which is a different sentence from the one above
+    // it: the root's "No projects detected yet." was being shown for a project's
+    // members, where it is about the wrong thing and false besides - the projects
+    // are listed one column over.
+    "k.projects.noMembers": "Nothing is recorded as part of this project yet.",
+    "k.projects.membersUnavailable": "This system cannot read what belongs to a project, so nothing is listed.",
     "k.empty.searches": "No saved searches yet.",
     "k.empty.library": "No sources bridged in yet.",
     "k.detail.title": "Details",
@@ -141,6 +147,8 @@ const messages: Catalogs = {
     "k.tl.unavailable": "Deine Chronik kann gerade nicht gelesen werden, daher wird nichts angezeigt.",
     "k.empty.projects": "Noch keine Projekte erkannt.",
     "k.projects.unavailable": "Deine Projekte k\u00f6nnen gerade nicht gelesen werden, daher steht hier nichts.",
+    "k.projects.noMembers": "Zu diesem Projekt ist noch nichts erfasst.",
+    "k.projects.membersUnavailable": "Dieses System kann nicht lesen, was zu einem Projekt gehört, daher steht hier nichts.",
     "k.empty.searches": "Noch keine gespeicherten Suchen.",
     "k.empty.library": "Noch keine Quellen eingebunden.",
     "k.detail.title": "Details",
