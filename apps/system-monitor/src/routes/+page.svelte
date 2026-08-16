@@ -86,7 +86,17 @@
 
   <nav class="tabs" aria-label={$t("tm.views")}>
     {#each TABS as tb (tb.key)}
-      <button type="button" class="tab" class:active={tab === tb.key} onclick={() => (tab = tb.key)}>
+      <!-- Addressable like the clock's tabs (`id="tab-alarms"`). Performance
+           lives behind this click, so with no way to press it the panel
+           carrying the 8 August memory bug had never been in a headless
+           no-backend shot. -->
+      <button
+        type="button"
+        class="tab"
+        id={`tab-${tb.key.toLowerCase()}`}
+        class:active={tab === tb.key}
+        onclick={() => (tab = tb.key)}
+      >
         {$t(tb.id)}
       </button>
     {/each}

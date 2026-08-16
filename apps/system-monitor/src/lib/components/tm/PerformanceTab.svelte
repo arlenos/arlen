@@ -45,7 +45,13 @@
   function detail(d: Device): string {
     const s = $tick;
     if (d === "ai") return $t("tm.perf.ai.detail");
-    if (!s) return $t("tm.perf.waiting");
+    // No sample is two different states and they must not share a sentence. The
+    // sidebar note above draws this line for its dash and this line missed it:
+    // "Measuring." under a graph whose header says the counters could not be
+    // read says wait about something that is not coming. Seen the first time
+    // this tab was shot with no backend, on 16 August - it lives behind a click
+    // and the sweep could not press one until today.
+    if (!s) return $perfError ? $t("tm.col.notMeasured") : $t("tm.perf.waiting");
     switch (d) {
       case "cpu":
         return $t("tm.perf.cpu.detail", { count: String(s.cpuCount) });
