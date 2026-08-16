@@ -81,13 +81,16 @@ export async function loadLens(ref: string): Promise<void> {
     // whole load is what used to drop the entire panel to its fixture, including
     // the part that was real.
     const provenance = await invoke<ProvenanceStep[]>("provenance_of", { ref });
-    let project = FIXTURE.project;
+    let project: ProjectContext | null = FIXTURE.project;
     let projectMocked = true;
     try {
       const name = await invoke<string | null>("project_of", { ref });
-      // A file in no project is a TRUE answer, and the panel says so with an
-      // empty section rather than by borrowing the sample's project.
-      project = name ? { name, members: [] } : { name: "", members: [] };
+      // A file in no project is NULL, not a project with an empty name. The panel
+      // guards the section with `{#if $lens.project}` and an object is truthy, so
+      // the empty-name version rendered "Part of" followed by nothing - a claim
+      // about a project that does not exist, which is the failure this whole
+      // section was rebuilt to stop making.
+      project = name ? { name, members: [] } : null;
       projectMocked = false;
     } catch {
       // Keep the labelled sample for this section only.
