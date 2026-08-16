@@ -203,6 +203,21 @@
   /// attribution lands, rather than deleting the column now - the plan lists
   /// Network among the default columns.
   const netMeasured = false;
+
+  /// Whether the Access column reflects the machine. It does not.
+  ///
+  /// `sensorsFor` reads a hand-keyed table in `stores/detail.ts` matched on process
+  /// NAME - the file says so itself, calling it a stand-in for the permission
+  /// profile - so on a real machine it lights up for nothing, and would light a
+  /// camera icon for any process that happened to be called "Meet". A security
+  /// column that answers from a name table is worse than one that stays quiet:
+  /// blank reads as "nothing is using your camera", which nobody checked.
+  ///
+  /// So the icons are held back until the column is driven by the profile data
+  /// Settings already derives (`stores/grants.ts`), and the header says it is not
+  /// measured. The rendering stays so that wiring the real source is a one-line
+  /// flip rather than a rebuild.
+  const accessMeasured = false;
   const totalNet = $derived(netMeasured && list.length ? rate(totals.netKBs) || "0" : "");
 
   // `$locale` rather than the default, so the table re-renders on a language
@@ -246,7 +261,9 @@
     <span class="hcell" role="columnheader" aria-sort={ariaSort("status")}><button class="h" class:sorted={sortKey === "status"} aria-label={$t("tm.col.status")} onclick={() => sortBy("status")}>
       {$t("tm.col.status")}
     </button></span>
-    <span class="h access" role="columnheader" aria-label={$t("tm.col.access")}>{$t("tm.col.access")}</span>
+    <span class="h access" role="columnheader" aria-label={$t("tm.col.access")} title={accessMeasured ? undefined : $t("tm.col.accessUnavailable")}>
+      {$t("tm.col.access")}{#if !accessMeasured}<span class="h-total unmeasured">{$t("tm.col.notMeasured")}</span>{/if}
+    </span>
     <span class="hcell" role="columnheader" aria-sort={ariaSort("cpu")}><button class="h num" class:sorted={sortKey === "cpu"} aria-label={totalCpu ? $t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: totalCpu }) : $t("tm.col.cpu")} onclick={() => sortBy("cpu")}>
       <span class="h-label">{$t("tm.col.cpu")} {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totalCpu}</span>
@@ -326,10 +343,11 @@
             <span>{$t(p.paused ? "tm.status.suspended" : STATUS_ID[p.status])}</span>
             {#if p.limited && !p.paused}<span class="limtag">{$t("tm.tag.limited")}</span>{/if}
           </div>
-          <div class="cell access" role="gridcell">
-            {#if sensors.camera}<Camera size={13} strokeWidth={2} />{/if}
-            {#if sensors.mic}<Mic size={13} strokeWidth={2} />{/if}
-            {#if sensors.knowledge}<span class="kg-glyph"><Brain size={13} strokeWidth={2} /></span>{/if}
+          <div class="cell access" role="gridcell" title={accessMeasured ? undefined : $t("tm.col.accessUnavailable")}>
+            {#if !accessMeasured}<span class="unknown">-</span>{/if}
+            {#if accessMeasured && sensors.camera}<Camera size={13} strokeWidth={2} />{/if}
+            {#if accessMeasured && sensors.mic}<Mic size={13} strokeWidth={2} />{/if}
+            {#if accessMeasured && sensors.knowledge}<span class="kg-glyph"><Brain size={13} strokeWidth={2} /></span>{/if}
           </div>
           <div class="cell num" role="gridcell" style="--heat: {dispHeat(p)}">{formatDecimal(dispCpu(p), 1, $locale)}%</div>
           <div class="cell num" role="gridcell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
@@ -404,6 +422,9 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 0.05rem;
+  }
+  .cell.access .unknown {
+    opacity: 0.45;
   }
   .h-total.unmeasured {
     /* Quieter than a number, because it is the absence of one. */
