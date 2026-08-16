@@ -632,8 +632,12 @@ def main():
                     help="with --app, fail unless the screenshot OCRs a substring "
                          "(case-insensitive), e.g. a process name the app must show")
     ap.add_argument("--require-ai", action="store_true",
-                    help="fail unless the AI layer came up: the journal (forwarded to "
-                         "serial) must show the llama engine + the AI session daemons started")
+                    help="fail unless the llama inference engine started (a system "
+                         "unit, so its journal reaches the serial reliably). The AI "
+                         "session daemons are user units whose logs only reach the "
+                         "serial if the user journal is forwarded, so they are "
+                         "REPORTED, not required - this said they 'must show' for "
+                         "weeks while gating on the engine alone")
     ap.add_argument("--require-dogfood", action="store_true",
                     help="fail unless the in-VM KG-AI dogfood completed: the serial "
                          "journal must show an injected event and a terminal marker. "
