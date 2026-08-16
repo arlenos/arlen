@@ -524,6 +524,19 @@ fn run_worker(sandbox_bin: &Path, input: &[u8]) -> Result<Vec<u8>, SandboxError>
     }
 
     let mut child = Command::new(sandbox_bin)
+        // Hand the worker an EMPTY environment.
+        //
+        // It parses untrusted documents, and it is the one process here whose
+        // input is chosen by someone else. Without this it inherits ours - every
+        // API key, token and socket path the calling daemon happens to hold - and
+        // although the seccomp allowlist denies it network and file opening, it
+        // deliberately allows stdout, because stdout is how it returns the text.
+        // So a compromised parser does not need an exfiltration channel: it can
+        // write `getenv("...")` into its output and the value arrives as
+        // "extracted document text", tagged as external content and handed to the
+        // model. Clearing costs nothing - the binary is executed by absolute path,
+        // so it needs no PATH, and it opens no files by name.
+        .env_clear()
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         // Discard the worker's stderr rather than pipe it: nothing reads it, so a
