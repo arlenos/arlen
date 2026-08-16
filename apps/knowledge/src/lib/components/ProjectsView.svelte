@@ -132,7 +132,17 @@
   {/if}
 
   <div class="pr-columns">
-    <FileBrowser controller={ctrl} {onselection} {onactivate} {now} nameLabel={$t("k.place.projects")} emptyLabel={emptyLabel} />
+    <FileBrowser
+      controller={ctrl}
+      {onselection}
+      {onactivate}
+      {now}
+      nameLabel={$t("k.place.projects")}
+      emptyLabel={emptyLabel}
+      errorTitle={$t("k.fb.errorTitle")}
+      hintUnknown={$t("k.fb.hintUnknown")}
+      browserLabel={$t("k.fb.browserLabel")}
+    />
   </div>
 </div>
 

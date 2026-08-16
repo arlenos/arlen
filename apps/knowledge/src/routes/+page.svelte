@@ -166,6 +166,9 @@
           {now}
           nameLabel={$t(labelKeyFor($path))}
           emptyLabel={$unavailable ? $t("k.browse.unavailable") : $t(emptyKeyFor($path))}
+          errorTitle={$t("k.fb.errorTitle")}
+          hintUnknown={$t("k.fb.hintUnknown")}
+          browserLabel={$t("k.fb.browserLabel")}
         />
       </div>
     {/if}

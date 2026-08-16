@@ -24,6 +24,12 @@ const messages: Catalogs = {
     "k.title": "Knowledge",
     "k.sample": "Example data - not your real graph yet.",
     "k.browse.unavailable": "Cannot read your graph right now, so nothing is listed here.",
+    // The kit's FileBrowser defaults to English and to the word "folder".
+    // Neither is right here: these places are the graph answering, and the
+    // default reached every locale because nothing overrode it.
+    "k.fb.errorTitle": "Can't show this",
+    "k.fb.hintUnknown": "Something went wrong reading your graph."
+    ,"k.fb.browserLabel": "Graph browser",
     "k.library.unavailable": "Cannot read your library right now.",
     "k.capsules.unavailable": "Cannot read your capsules right now. This is not a list of none.",
     "k.settingsOpenFailed": "Settings could not be opened.",
@@ -138,6 +144,9 @@ const messages: Catalogs = {
     "k.title": "Wissen",
     "k.sample": "Beispieldaten - noch nicht dein echter Graph.",
     "k.browse.unavailable": "Dein Graph kann gerade nicht gelesen werden, daher steht hier nichts.",
+    "k.fb.errorTitle": "Kann nicht angezeigt werden",
+    "k.fb.hintUnknown": "Beim Lesen deines Graphen ist etwas schiefgegangen.",
+    "k.fb.browserLabel": "Graph-Browser",
     "k.library.unavailable": "Deine Bibliothek kann gerade nicht gelesen werden.",
     "k.capsules.unavailable": "Deine Kapseln k\u00f6nnen gerade nicht gelesen werden. Das hei\u00dft nicht, dass es keine gibt.",
     "k.settingsOpenFailed": "Die Einstellungen konnten nicht geöffnet werden.",
