@@ -32,7 +32,13 @@ ln -sf "$REALXDG/arlen/ai-engine-drive.sock" "$XDG_RUNTIME_DIR/arlen/ai-engine-d
 # (ai_activity_recent -> ReadClient over $XDG_RUNTIME_DIR/arlen/audit-read.sock)
 # can read the real ledger, not fall to its "can't read the record" state.
 ln -sf "$REALXDG/arlen/audit-read.sock" "$XDG_RUNTIME_DIR/arlen/audit-read.sock"
-cleanup() { kill "${sway_pid:-0}" 2>/dev/null; rm -rf "$XDG_RUNTIME_DIR" 2>/dev/null; }
+# Kill, wait, then remove: the runtime dir is where sway keeps its socket, so
+# removing it while sway is still going down races the process it just signalled.
+cleanup() {
+  kill "${sway_pid:-0}" 2>/dev/null
+  wait "${sway_pid:-0}" 2>/dev/null
+  rm -rf "$XDG_RUNTIME_DIR" 2>/dev/null
+}
 trap cleanup EXIT
 
 cfg="$(mktemp)"

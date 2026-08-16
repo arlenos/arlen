@@ -40,7 +40,11 @@ WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
   XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY= \
   sway -c "$conf" >"$runtime/sway.log" 2>&1 &
 sway_pid=$!
-trap 'kill "$sway_pid" 2>/dev/null || true; rm -rf "$runtime"' EXIT
+# Kill, WAIT, then remove. The three are in that order deliberately: the runtime
+# dir holds sway's socket and its log, so removing it in the same breath as the
+# signal takes the directory out from under a process that is still writing to
+# it. Waiting costs milliseconds and makes the teardown mean what it says.
+trap 'kill "$sway_pid" 2>/dev/null || true; wait "$sway_pid" 2>/dev/null || true; rm -rf "$runtime"' EXIT
 
 for _ in $(seq 50); do
   [ -S "$runtime/wayland-1" ] && break

@@ -24,7 +24,23 @@ TYPE_TEXT="${4:-}"
 # (a privacy leak). A fresh dir holds only the headless sway's socket.
 export XDG_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/arlen-shot-rt.XXXXXX")"
 chmod 700 "$XDG_RUNTIME_DIR"
-cleanup() { rm -rf "$XDG_RUNTIME_DIR" 2>/dev/null; }
+# Take the children down, wait for them, THEN remove the runtime dir.
+#
+# This used to remove the directory and nothing else, which left both halves of
+# the teardown wrong. Sway and the dev server were killed only on the two paths
+# that reach their explicit kills - so any other exit (a failed grim, an
+# interrupt, an unset variable under `set -u`) left a headless compositor holding
+# a display and a vite server holding :1425, while the trap deleted the runtime
+# dir out from under the compositor still using it. Both are set after this
+# point, hence the `:-` defaults.
+cleanup() {
+  kill "${sway_pid:-0}" 2>/dev/null
+  [ -n "${vite:-}" ] && kill "$vite" 2>/dev/null
+  wait "${sway_pid:-0}" 2>/dev/null
+  [ -n "${vite:-}" ] && wait "$vite" 2>/dev/null
+  rm -rf "$XDG_RUNTIME_DIR" 2>/dev/null
+  return 0
+}
 trap cleanup EXIT
 
 vite=""
