@@ -109,7 +109,7 @@
         </div>
         <div class="row">
           <span class="row-label">
-            {module.source === "builtin" ? "Source" : "Install path"}
+            {module.source === "builtin" ? $t("s.mod.source") : $t("s.mod.installPath")}
           </span>
           <span class="row-value mono path" title={module.path}>{module.path}</span>
         </div>
@@ -278,23 +278,25 @@
     font-style: italic;
   }
 
+  /* One grid for all three rows, so the label column is as wide as the longest
+     label and the values still line up. The rows were separate flex lines with
+     an 84px label, which is a measurement of English: "Vertrauensstufe" and
+     "Installationspfad" both run past it, and a fixed width has nowhere to put
+     the overflow. `max-content` measures whatever the catalogue actually says.
+     `.row` carries no box of its own, so it can step out of the way. */
   .rows {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 3px 10px;
   }
   .row {
-    display: flex;
-    gap: 10px;
+    display: contents;
     font-size: var(--text-2xs);
   }
   .row-label {
-    width: 84px;
-    flex-shrink: 0;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .row-value {
-    flex: 1;
     min-width: 0;
     color: color-mix(in srgb, var(--foreground) 85%, transparent);
   }
