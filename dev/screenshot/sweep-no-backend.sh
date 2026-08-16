@@ -48,6 +48,7 @@ SHOTS=(
   "settings appearance/wallpaper settings-appearance-wallpaper-unavailable"
   "settings windows-apps settings-windows-apps-unavailable"
   "system-monitor - system-monitor-unavailable"
+  "system-monitor - system-monitor-performance-unavailable #tab-performance"
   "terminal - terminal-unavailable"
   "text-editor - text-editor-unavailable"
   "viewers - viewers-unavailable"
