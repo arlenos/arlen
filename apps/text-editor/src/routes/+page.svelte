@@ -3,6 +3,8 @@
   /// The lens is a co-star (it is the reason the editor exists), not a hidden
   /// sidebar. The slim titlebar carries the file name, a focus-mode toggle, and the
   /// as-of scrubber (time-travel over the file + its context).
+  import { invoke } from "@tauri-apps/api/core";
+  import Buffer from "$lib/components/editor/Buffer.svelte";
   import Canvas from "$lib/components/editor/Canvas.svelte";
   import LensPanel from "$lib/components/editor/LensPanel.svelte";
   import AiEditReview from "$lib/components/editor/AiEditReview.svelte";
@@ -95,6 +97,47 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   // name: offering to switch back to a demo document from a file the user opened
   // would put invented text one click from their own.
   const file = $derived($openDocument ?? FILES[fileIdx]);
+
+  /// The buffer's text, and whether it differs from what is on disk.
+  ///
+  /// Only a REAL file gets the editable buffer: the two demo documents are shown
+  /// through the reading canvas, because offering to save invented text under an
+  /// invented name would be the one thing this app must never do.
+  let draft = $state<string | null>(null);
+  let saveError = $state<string | null>(null);
+  let savedAt = $state(0);
+  const editable = $derived(!!$openDocument);
+  const dirty = $derived(draft !== null && draft !== file.content);
+
+  /// The grammar for the open file, from its extension. Unknown means no
+  /// highlighting rather than a guess.
+  const language = $derived.by(() => {
+    const name = ($openDocument?.name ?? "").toLowerCase();
+    if (name.endsWith(".md") || name.endsWith(".markdown")) return "markdown" as const;
+    if (name.endsWith(".rs")) return "rust" as const;
+    if (name.endsWith(".js") || name.endsWith(".ts") || name.endsWith(".json")) return "javascript" as const;
+    return "text" as const;
+  });
+
+  /// Write the buffer back through the host, which does the temp-file-and-rename.
+  ///
+  /// A failure is SHOWN. An editor that silently fails to save is worse than one
+  /// that cannot save at all, because the user walks away believing their work is
+  /// on disk.
+  async function save() {
+    const target = $openDocument;
+    if (!target || draft === null) return;
+    saveError = null;
+    try {
+      await invoke("editor_save", { path: target.path, text: draft });
+      // The document is now what is on disk, so the buffer is no longer dirty
+      // without having to re-read the file.
+      openDocument.set({ ...target, content: draft });
+      savedAt = Date.now();
+    } catch (e) {
+      saveError = String(e);
+    }
+  }
   // A launch file names the window even when it failed to open: the alternative
   // is a demo document's name over a pane that says the file could not be read.
   const fileOptions = $derived(
@@ -203,6 +246,17 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
           <p class="of-title">{$t("te.open.failed")}</p>
           <p class="of-detail">{$openError}</p>
         </div>
+      {:else if editable}
+        <!-- A real file gets the real buffer. The demo documents below keep the
+             reading canvas: they are not on disk, and an editor that let you type
+             into invented text under an invented name would be inviting work that
+             cannot be saved anywhere. -->
+        <Buffer
+          doc={file.content}
+          {language}
+          onchange={(t) => (draft = t)}
+          onsave={() => void save()}
+        />
       {:else}
         <Canvas doc={file.content} fileType={file.type} {focusMode} {lineNumbers} />
       {/if}
