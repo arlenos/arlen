@@ -101,10 +101,19 @@ fn pick_data_path(env_var: &str, name: &str, system_default: &str) -> String {
 }
 
 fn main() -> Result<()> {
+    // BOTH TREES, because this crate compiles into two of them. The package is
+    // `knowledge`, so the library's modules log under `knowledge::*` - but the
+    // installed binary is `arlen-graph-daemon`, and everything `main.rs` declares
+    // (`mod graph`, `mod promotion`, `mod daemon` ...) logs under
+    // `arlen_graph_daemon::*`. The directive named only the first, so since the bin
+    // was renamed the daemon's own default has matched nothing it emits: an
+    // operator saw ERROR and silence from the process that does the work, while
+    // sibling daemons are readable at a glance.
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("knowledge=debug".parse()?),
+                .add_directive("knowledge=debug".parse()?)
+                .add_directive("arlen_graph_daemon=debug".parse()?),
         )
         .init();
 
