@@ -929,6 +929,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn link_file_opens_the_bitemporal_interval() {
+        // These stamps are read by NOTHING today, which is exactly why they need
+        // a test: promotion left them NULL for as long as the columns existed,
+        // and no surface noticed because the liveness reads all test `IS NULL`
+        // and a missing `valid_at` looks identical to an open one. The cost only
+        // showed up as an as-of question nobody could answer.
+        let (store, _tmp) = setup().await;
+        let p = Project::new_inferred("test".into(), "/a".into(), 90);
+        store.create(&p).await.unwrap();
+        let file_path = "/a/src/main.rs";
+        store
+            .graph
+            .write(format!(
+                "CREATE (f:File {{id: '{file_path}', path: '{file_path}', \
+                 app_id: 'test', last_accessed: 0}})"
+            ))
+            .await
+            .unwrap();
+        let before = crate::time::now().0;
+        store.link_file(file_path, p.id).await.unwrap();
+
+        let row = store
+            .graph
+            .query_rows(format!(
+                "MATCH (:File {{id: '{file_path}'}})-[r:FILE_PART_OF]->(:Project {{id: '{}'}}) \
+                 RETURN r.valid_at AS va, r.created_at AS ca, r.origin AS origin, \
+                        r.invalid_at AS ia, r.expired_at AS ea",
+                p.id
+            ))
+            .await
+            .unwrap();
+        // `as_i64` answers 0 for a NULL cell, so "stamped" and "not stamped" are
+        // told apart by the value being a real clock reading rather than a
+        // default - which is the whole assertion.
+        let valid_at = row.rows[0][0].as_i64();
+        let created_at = row.rows[0][1].as_i64();
+        assert!(valid_at >= before, "the interval opens at write time, not at zero");
+        assert_eq!(valid_at, created_at, "observed and recorded at the same instant");
+        assert_eq!(
+            row.rows[0][2].as_str(),
+            "graph",
+            "the system observed this membership; nobody asserted it"
+        );
+        // The OPEN end of the interval, and the reason every liveness read still
+        // works unchanged: an edge that has not been closed carries no close.
+        assert!(matches!(row.rows[0][3], CellValue::Null), "invalid_at stays open");
+        assert!(matches!(row.rows[0][4], CellValue::Null), "expired_at stays open");
+    }
+
+    #[tokio::test]
     async fn link_file_stamps_the_hlc_when_a_merge_clock_is_attached() {
         // GD-R5: with a merge clock attached, a promoted membership carries the
         // HLC + device id so a future cross-device merge can order it. Without a
