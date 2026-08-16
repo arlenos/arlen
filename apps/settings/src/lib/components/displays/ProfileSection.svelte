@@ -67,11 +67,25 @@
   // Delete confirm-dialog state.
   let deleteCandidate = $state<ProfileSummary | null>(null);
 
+  /// True when the last list read did not answer, so the empty list below is
+  /// "we could not ask" rather than "you have none".
+  ///
+  /// Without it the catch left `profiles` at `[]` and the section rendered "No
+  /// saved layouts yet. Save your current arrangement below…" - which tells
+  /// someone who HAS saved layouts that they have none, and then invites them to
+  /// make another. `check-fixture-on-failure.py` lists this exact shape among the
+  /// things it deliberately cannot judge: an empty list in a catch is the honest
+  /// answer for some stores and a false claim for others, and only reading the
+  /// store tells you which. This one is a false claim.
+  let loadFailed = $state(false);
+
   async function reload() {
     try {
       profiles = await invoke<ProfileSummary[]>("display_profiles_list");
+      loadFailed = false;
     } catch (err) {
       console.warn("display_profiles_list failed:", err);
+      loadFailed = true;
     }
   }
 
@@ -174,7 +188,9 @@
 </script>
 
 <Section label={$t("s.profile.title")}>
-  {#if profiles.length === 0}
+  {#if loadFailed}
+    <div class="empty">{$t("s.profile.unavailable")}</div>
+  {:else if profiles.length === 0}
     <div class="empty">{$t("s.profile.empty")}</div>
   {:else}
     {#each profiles as p (p.id)}
