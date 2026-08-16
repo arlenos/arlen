@@ -88,27 +88,28 @@ pub async fn knowledge_timeline() -> Result<Vec<TimelineItem>, String> {
 /// File accesses: the promotion pipeline stamps `last_accessed` and the app that
 /// opened it.
 ///
-/// **No project join, and that is not an oversight.** The read gate requires
-/// every label AND relationship type in a query to be in the caller's readable
-/// set, and that set is built by stripping `system.` from the profile's read
-/// scopes and keeping only names that are entirely alphanumeric - so
-/// `FILE_PART_OF` can never be in it. Measured against the gate itself, a
-/// timeline query carrying the membership join answers "read denied: label
-/// outside the caller's read scope" for any caller that is not system-anchored,
-/// which this app is not (the first-party list is the four daemons).
+/// **The project join is asked for, and the comment that removed it was wrong.**
+/// It said the read gate refuses any query naming a relationship type, because
+/// the readable set keeps only entirely-alphanumeric names so `FILE_PART_OF`
+/// could never be in it. Neither half holds: `is_safe_graph_identifier`
+/// (daemon.rs:804) allows underscores, and `raw_read_label_gate` (daemon.rs:4394)
+/// authorises a traversal by its ENDPOINTS - only `RESTRICTED_RELATIONS` needs an
+/// explicit grant, and that list is empty. Measured on 16 August against a live
+/// daemon: the membership traversal is answered, with rows.
 ///
-/// Asking for the join anyway would cost the WHOLE read - the spine would fall
-/// back to fixture data rather than show what the graph really holds. So this
-/// asks for what it can have. The project column stays empty until the scope
-/// question is settled one way or the other, and an empty column is a smaller
-/// lie than an invented timeline.
+/// OPTIONAL, so the join can only ADD a column and never drop a row. A file the
+/// graph has no project for still appears, exactly as before - which is the
+/// property worth keeping from the old caution, now that the reason for it is
+/// gone.
 async fn read_file_accesses(
     client: &os_sdk::graph::UnixGraphClient,
 ) -> Result<Vec<TimelineEvent>, String> {
     let cypher = format!(
         "MATCH (f:File) WHERE f.last_accessed IS NOT NULL \
+         OPTIONAL MATCH (f)-[r:FILE_PART_OF]->(p:Project) \
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL \
          RETURN f.id AS id, f.path AS path, f.app_id AS app_id, \
-                f.last_accessed AS at \
+                f.last_accessed AS at, p.name AS project \
          ORDER BY f.last_accessed DESC LIMIT {LIMIT}"
     );
     let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("read_file_accesses", e))?;
@@ -123,7 +124,9 @@ async fn read_file_accesses(
                 object: basename(&path),
                 source: text(r, "app_id").unwrap_or_default(),
                 at: seconds(r, "at")?,
-                project: None,
+                // Absent when the file sits in no project, which the OPTIONAL
+                // join reports as a null cell rather than by dropping the row.
+                project: text(r, "project"),
             })
         })
         .collect())
