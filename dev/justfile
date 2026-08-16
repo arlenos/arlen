@@ -475,9 +475,10 @@ go-live-rehearsal:
 # Covers `sdk/ui-kit` as well as `apps`, matching the sibling RTL gate: a string in
 # the shared component library is rendered by every app, so it is the most leveraged
 # place to leave one untranslatable, and it was the one place neither root reached.
-# string in the Svelte frontends that is not in the committed baseline. Advisory
-# today (run on demand / pre-commit); the blocking CI gate is flipped on once the
-# UI stabilises. Re-snapshot with `just i18n-baseline` after intentional changes.
+# string in the Svelte frontends that is not in the committed baseline. This recipe
+# is the on-demand run; the same scan BLOCKS in CI (the `i18n-lint` job), so a new
+# string fails the build. Re-snapshot with `just i18n-baseline` after intentional
+# changes - and read what it accepts, because `--update` accepts everything pending.
 i18n-lint:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv
 
@@ -622,8 +623,9 @@ viewers-decode-check:
         cargo test --manifest-path apps/viewers/host/Cargo.toml -- --ignored --test-threads=1
 
 # Born-RTL gate (I18N-R3): fail on NEW physical directional CSS, accept the existing
-# via the baseline. Like i18n-lint, run on demand today; the blocking CI gate flips
-# on once the UI stabilises. Re-snapshot with `just rtl-baseline` after intentional changes.
+# via the baseline. Like i18n-lint, this recipe is the on-demand run and the same
+# scan BLOCKS in CI. It did not until 17 August: it had these recipes and no CI step,
+# and one physical `margin-left` had grown past it. Re-snapshot with `just rtl-baseline`.
 rtl-lint:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-rtl-lint -- --root apps --root sdk/ui-kit --baseline dev/rtl-baseline.tsv
 
