@@ -158,12 +158,19 @@ export async function loadLens(ref: string, asOf: number | null = null): Promise
       relatedMocked,
     });
   } catch {
+    // Keep `asOfActive` even here, where nothing could be answered.
+    //
+    // It used to be forced false, which threw away the one fact the panel needed:
+    // that a time WAS asked for. The control kept its label - "1 week ago" - beside
+    // a sample that has no relationship to any time, and nothing on the surface
+    // said the request had gone nowhere. Screenshotting it is what showed this: the
+    // picker moved, the panel did not, and neither of them mentioned it.
     lens.set({
       ...FIXTURE,
       mocked: true,
       relatedMocked: true,
       projectUnrecorded: false,
-      asOfActive: false,
+      asOfActive: asOf !== null,
     });
   }
 }
