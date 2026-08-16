@@ -16,6 +16,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "arlen-shell:allow-theme-get",
-    "arlen-shell:allow-locale-get"
+    "arlen-shell:allow-locale-get",
+    "arlen-shell:allow-toolbar-set-breadcrumb"
   ]
 }
