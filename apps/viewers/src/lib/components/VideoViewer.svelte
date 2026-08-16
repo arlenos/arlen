@@ -56,12 +56,21 @@
     await getCurrentWindow().startDragging();
   }
 
+  // There is nowhere to go when the folder holds one file, or when it was never
+  // read. The arrows were drawn enabled regardless, so both were live on a lone
+  // file and neither did anything - a control that cannot act says so.
+  const canPrev = $derived(!!file.total && !!file.index && file.index > 1);
+  const canNext = $derived(!!file.total && !!file.index && file.index < file.total);
+
   function onKey(e: KeyboardEvent) {
     if (e.key === " ") {
       e.preventDefault();
       playing = !playing;
-    } else if (e.key === "ArrowRight") onnext?.();
-    else if (e.key === "ArrowLeft") onprev?.();
+    } else if (e.key === "ArrowRight") {
+      if (canNext) onnext?.();
+    } else if (e.key === "ArrowLeft") {
+      if (canPrev) onprev?.();
+    }
   }
 </script>
 
@@ -94,10 +103,10 @@
     </button>
   {/if}
 
-  <button class="edge left" aria-label={$t("v.prevFile")} onclick={() => onprev?.()}>
+  <button class="edge left" aria-label={$t("v.prevFile")} disabled={!canPrev} onclick={() => onprev?.()}>
     <ChevronLeft size={30} strokeWidth={2} />
   </button>
-  <button class="edge right" aria-label={$t("v.nextFile")} onclick={() => onnext?.()}>
+  <button class="edge right" aria-label={$t("v.nextFile")} disabled={!canNext} onclick={() => onnext?.()}>
     <ChevronRight size={30} strokeWidth={2} />
   </button>
 
@@ -126,7 +135,12 @@
         <span class="time">{elapsed} / {total}</span>
       {/snippet}
       {#snippet end()}
-        <span class="meta">{file.name}<span class="dot">·</span>{file.index} / {file.total}</span>
+        <!-- Only when the folder has actually been read, like the image viewer:
+             printing a position you do not have states a wrong one. -->
+        <span class="meta"
+          >{file.name}{#if file.index && file.total}<span class="dot">·</span>{file.index} /
+            {file.total}{/if}</span
+        >
         <Button variant="ghost" size="icon-sm" aria-label={$t("v.fullscreen")}>
           <Maximize class="size-[16px]" strokeWidth={2} />
         </Button>
@@ -172,6 +186,14 @@
   .viewer.chrome .edge,
   .viewer.chrome .dock {
     pointer-events: auto;
+  }
+
+  /* A disabled arrow must not look like a live one. `disabled` already stops the
+     click, but the chevron kept full contrast, so at `2 / 2` both edges read as
+     available and only one did anything - the half-fix that looks like no fix. */
+  .viewer.chrome .edge:disabled {
+    opacity: 0.25;
+    pointer-events: none;
   }
 
   .scrim {
