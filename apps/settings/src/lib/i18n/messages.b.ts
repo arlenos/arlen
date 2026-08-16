@@ -603,7 +603,12 @@ export const b: Catalogs = {
     "s.qs.saveFailedPlain": "Save failed: the settings service did not answer.",
     "s.qs.resetFailed": "Reset failed: {$error}",
     "s.qs.resetFailedPlain": "Reset failed: the settings service did not answer.",
-    "s.qs.layoutUnreadable": "Could not read your Quick Settings layout, so the editor is empty.",
+    // "the editor is empty" was contradicted by the screen: with no layout the
+    // editor still draws the CATALOGUE tiles, so a person reads a sentence
+    // saying there is nothing here above eight named tiles. What is true and
+    // worth knowing is that these are not theirs and cannot be saved over -
+    // the catch sets `readOnly`, enforced at every mutation site.
+    "s.qs.layoutUnreadable": "Could not read your Quick Settings layout, so these are the default tiles and cannot be changed.",
     "s.qs.layoutMalformedKept": "Your Quick Settings layout file is malformed. The editor is read-only and shows the last saved state. Fix the file or reset it.",
     "s.qs.layoutMalformedDefaults": "Your Quick Settings layout file is malformed. The editor is read-only. Fix the file or reset it.",
     "s.qs.desc": "Reorder, hide, and resize the tiles inside the Quick Settings panel. Drag to rearrange. Right-click a tile for size and visibility controls.",
@@ -1487,7 +1492,7 @@ export const b: Catalogs = {
     "s.qs.saveFailedPlain": "Speichern fehlgeschlagen: der Einstellungsdienst hat nicht geantwortet.",
     "s.qs.resetFailed": "Zurücksetzen fehlgeschlagen: {$error}",
     "s.qs.resetFailedPlain": "Zurücksetzen fehlgeschlagen: der Einstellungsdienst hat nicht geantwortet.",
-    "s.qs.layoutUnreadable": "Deine Quick-Settings-Anordnung konnte nicht gelesen werden, daher ist der Editor leer.",
+    "s.qs.layoutUnreadable": "Deine Quick-Settings-Anordnung konnte nicht gelesen werden, deshalb siehst du die Standardkacheln, die sich nicht ändern lassen.",
     "s.qs.layoutMalformedKept": "Deine Quick-Settings-Datei ist fehlerhaft. Der Editor ist schreibgesch\u00fctzt und zeigt den zuletzt gespeicherten Stand. Repariere die Datei oder setze sie zur\u00fcck.",
     "s.qs.layoutMalformedDefaults": "Deine Quick-Settings-Datei ist fehlerhaft. Der Editor ist schreibgesch\u00fctzt. Repariere die Datei oder setze sie zur\u00fcck.",
     "s.qs.desc": "Kacheln in den Schnelleinstellungen umsortieren, ausblenden und in der Gr\u00f6\u00dfe \u00e4ndern. Zum Umsortieren ziehen. Rechtsklick auf eine Kachel f\u00fcr Gr\u00f6\u00dfe und Sichtbarkeit.",
