@@ -8,6 +8,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { page } from "$app/state";
+  import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import AudioPlayer from "$lib/components/AudioPlayer.svelte";
   import DetailsPanel, { type Fact } from "$lib/components/DetailsPanel.svelte";
   import ImageViewer from "$lib/components/ImageViewer.svelte";
@@ -428,7 +429,16 @@
     {/if}
   </main>
 {:else if loadError}
+  <!-- With the window controls, which this branch did without until 16 August.
+       The window is frameless, so the close button lives inside whichever view is
+       rendered - and these two branches render no view. A file that failed to open
+       therefore left a bare sentence in a window with nothing to close it, which is
+       the one state where a person most wants that button. Found by opening the
+       viewer on a file it cannot read and looking at the result. -->
   <main class="fill err">
+    <div class="winctl">
+      <WindowButtons showMaximize={false} />
+    </div>
     {readsAsInternal(loadError)
       ? $t("v.couldNotOpenUnknown")
       : $t("v.couldNotOpen", { reason: loadError })}
@@ -436,7 +446,12 @@
 {:else if noFile}
   <!-- Before the demo branches on purpose: in the real shell an empty window is
        an empty window, and the sample below is for the harness and the browser. -->
-  <main class="fill err">{$t("v.nothingOpen")}</main>
+  <main class="fill err">
+    <div class="winctl">
+      <WindowButtons showMaximize={false} />
+    </div>
+    {$t("v.nothingOpen")}
+  </main>
 {:else if framed}
   <main class="frame" style="width:{w}px;height:{h}px">
     {@render face(demo)}
@@ -515,7 +530,17 @@
     /* The details panel positions against the window, so this is its root. */
     position: relative;
   }
+  /* Top-right, over the message. No auto-hide here, unlike the viewers: there is
+     no picture underneath for the chrome to be in the way of, and a control that
+     appears only on mouse movement is a poor answer to "how do I close this". */
+  .err .winctl {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+
   .err {
+    position: relative;
     display: grid;
     place-items: center;
     background: #0a0a0a;
