@@ -98,9 +98,9 @@
             {#if movementOpen}
                 <div class="zoom-popover">
                     {#each [
-                        { mode: MOVEMENT_CONTINUOUSLY, label: "Move continuously" },
-                        { mode: MOVEMENT_ON_EDGE, label: "Move on edge" },
-                        { mode: MOVEMENT_CENTERED, label: "Move centered" },
+                        { mode: MOVEMENT_CONTINUOUSLY, label: "sh.zoom.moveContinuously" },
+                        { mode: MOVEMENT_ON_EDGE, label: "sh.zoom.moveOnEdge" },
+                        { mode: MOVEMENT_CENTERED, label: "sh.zoom.moveCentered" },
                     ] as opt}
                         <button
                             class="zoom-popover-item"
@@ -110,7 +110,7 @@
                             {#if opt.mode === $zoom.movement}
                                 <span class="check"><Check size={12} strokeWidth={2} /></span>
                             {/if}
-                            {opt.label}
+                            {$t(opt.label)}
                         </button>
                     {/each}
                 </div>

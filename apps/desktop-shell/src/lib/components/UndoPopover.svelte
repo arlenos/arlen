@@ -53,7 +53,7 @@
             </span>
           {:else}
             <button class="undo-act" disabled={e.state === "enacting"} onclick={() => void enact(e.opId)}>
-              {e.inverseLabel ?? "Undo"}
+              {e.inverseLabel ?? $t("sh.undo.action")}
             </button>
           {/if}
           <span class="undo-time">{ago(e.at)}</span>

@@ -267,6 +267,8 @@ const messages: Catalogs = {
     // Window card context menu
     "sh.win.closeAll": ".input {$count :number}\n.match $count\none {{Close All ({$count})}}\n*   {{Close All ({$count})}}",
     "sh.win.minimizeAll": "Minimize All",
+    "sh.win.fullscreen": "Fullscreen",
+    "sh.win.exitFullscreen": "Exit Fullscreen",
     "sh.win.restoreAll": "Restore All",
     "sh.win.moveAllTo": "Move All to",
     "sh.win.tileSideBySide": "Tile Side by Side",
@@ -284,6 +286,8 @@ const messages: Catalogs = {
     "sh.share.unavailable": "Nothing is offering what can be shared, so there is nothing to pick.",
     "sh.share.failed": "Sharing did not start, so nothing is being sent. Try again or decline.",
     "sh.jobs.unavailable": "Nothing is reporting jobs, so none are shown.",
+    "sh.jobs.hideItems": "Hide items",
+    "sh.jobs.itemCount": ".input {$n :number}\n.match $n\none {{{$n} item}}\n*   {{{$n} items}}",
     "sh.share.screens": "Screens",
     "sh.share.windows": "Windows",
     "sh.share.region": "Region",
@@ -397,6 +401,9 @@ const messages: Catalogs = {
     "sh.zoom.in": "Zoom in",
     "sh.zoom.step": "Zoom step",
     "sh.zoom.movement": "Zoom movement",
+    "sh.zoom.moveContinuously": "Move continuously",
+    "sh.zoom.moveOnEdge": "Move on edge",
+    "sh.zoom.moveCentered": "Move centered",
     "sh.zoom.turnOff": "Turn off zoom",
 
     // Modules panel
@@ -422,6 +429,7 @@ const messages: Catalogs = {
     "sh.undo.unavailable": "Cannot show your recent actions right now.",
     "sh.undo.irreversible": "Cannot be undone",
     "sh.undo.done": "Done",
+    "sh.undo.action": "Undo",
 
     // Audio popover
     "sh.audio.title": "Sound",
@@ -500,6 +508,7 @@ const messages: Catalogs = {
     "sh.tray.title": "Background Apps",
     "sh.tray.loading": "Loading...",
     "sh.tray.empty": "No background apps",
+    "sh.tray.unknownApp": "Unknown",
     "sh.tray.stateUnknown": "Could not read the background apps.",
     "sh.tray.errActivate": "That app did not respond.",
     "sh.sni.loading": "Loading...",
@@ -701,6 +710,8 @@ const messages: Catalogs = {
     "sh.share.unavailable": "Nichts bietet an, was geteilt werden kann, es gibt also nichts zu w\u00e4hlen.",
     "sh.share.failed": "Die Freigabe hat nicht begonnen, es wird nichts gesendet. Erneut versuchen oder ablehnen.",
     "sh.jobs.unavailable": "Nichts meldet Aufgaben, daher wird keine angezeigt.",
+    "sh.jobs.hideItems": "Elemente ausblenden",
+    "sh.jobs.itemCount": ".input {$n :number}\n.match $n\none {{{$n} Element}}\n*   {{{$n} Elemente}}",
     "sh.undo.unavailable": "Deine letzten Aktionen k\u00f6nnen gerade nicht angezeigt werden.",
     "sh.print.printer": "Drucker",
     "sh.print.networkHost": "Netzwerk, {$host}",
@@ -773,6 +784,8 @@ const messages: Catalogs = {
 
     "sh.win.closeAll": ".input {$count :number}\n.match $count\none {{Alle schlie\u00dfen ({$count})}}\n*   {{Alle schlie\u00dfen ({$count})}}",
     "sh.win.minimizeAll": "Alle minimieren",
+    "sh.win.fullscreen": "Vollbild",
+    "sh.win.exitFullscreen": "Vollbild beenden",
     "sh.win.restoreAll": "Alle wiederherstellen",
     "sh.win.moveAllTo": "Alle verschieben nach",
     "sh.win.tileSideBySide": "Nebeneinander kacheln",
@@ -887,6 +900,9 @@ const messages: Catalogs = {
     "sh.zoom.in": "Vergr\u00f6\u00dfern",
     "sh.zoom.step": "Zoomschritt",
     "sh.zoom.movement": "Zoombewegung",
+    "sh.zoom.moveContinuously": "Fortlaufend bewegen",
+    "sh.zoom.moveOnEdge": "Am Rand bewegen",
+    "sh.zoom.moveCentered": "Zentriert bewegen",
     "sh.zoom.turnOff": "Zoom ausschalten",
 
     "sh.mods.title": "Erweiterungen",
@@ -908,6 +924,7 @@ const messages: Catalogs = {
     "sh.undo.empty": "Gerade nichts zur\u00fcckzunehmen.",
     "sh.undo.irreversible": "Nicht r\u00fcckg\u00e4ngig zu machen",
     "sh.undo.done": "Erledigt",
+    "sh.undo.action": "R\u00fcckg\u00e4ngig",
 
     "sh.audio.title": "Ton",
     "sh.audio.stateUnknown": "Der Audio-Status konnte nicht gelesen werden.",
@@ -977,6 +994,7 @@ const messages: Catalogs = {
     "sh.tray.title": "Hintergrund-Apps",
     "sh.tray.loading": "Wird geladen\u2026",
     "sh.tray.empty": "Keine Hintergrund-Apps",
+    "sh.tray.unknownApp": "Unbekannt",
     "sh.tray.stateUnknown": "Die Liste der Hintergrund-Apps konnte nicht gelesen werden.",
     "sh.tray.errActivate": "Die App hat nicht reagiert.",
     "sh.sni.loading": "Wird geladen\u2026",
