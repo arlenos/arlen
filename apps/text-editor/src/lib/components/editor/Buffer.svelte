@@ -17,7 +17,7 @@
   import { EditorState, type Extension } from "@codemirror/state";
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-  import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+  import { search, searchKeymap, highlightSelectionMatches } from "@codemirror/search";
   import { syntaxHighlighting, defaultHighlightStyle, StreamLanguage } from "@codemirror/language";
 
   let {
@@ -81,6 +81,18 @@
       },
       ".cm-cursor": { borderLeftColor: "var(--color-accent, #6366f1)" },
       "&.cm-focused": { outline: "none" },
+      ".cm-panels": {
+        backgroundColor: "color-mix(in srgb, #141414 92%, transparent)",
+        color: "var(--color-fg-primary, #fafafa)",
+        borderBottom: "1px solid color-mix(in srgb, var(--color-fg-primary, #fafafa) 12%, transparent)",
+      },
+      ".cm-panel input, .cm-panel button": {
+        backgroundColor: "color-mix(in srgb, var(--color-fg-primary, #fafafa) 8%, transparent)",
+        color: "inherit",
+        border: "1px solid color-mix(in srgb, var(--color-fg-primary, #fafafa) 14%, transparent)",
+        borderRadius: "6px",
+        padding: "2px 6px",
+      },
     },
     { dark: true },
   );
@@ -100,6 +112,12 @@
             history(),
             highlightActiveLine(),
             highlightSelectionMatches(),
+            // CodeMirror's own find-and-replace panel rather than a hand-built one:
+            // Ctrl+F opens it, it carries replace and replace-all, and its
+            // behaviour around selection, regex and case is the part that is
+            // tedious to get right and easy to get subtly wrong. `top` puts it
+            // under the title bar instead of over the last line of the file.
+            search({ top: true }),
             syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
             ...lang,
             // Save first in the list so Ctrl+S reaches the window rather than the
