@@ -50,6 +50,7 @@ SHOTS=(
   "settings privacy settings-privacy-unavailable"
   "settings privacy/physical settings-sentinel-unavailable"
   "settings appearance/wallpaper settings-appearance-wallpaper-unavailable"
+  "settings appearance/quicksettings settings-quicksettings-unavailable"
   "settings windows-apps settings-windows-apps-unavailable"
   "system-monitor - system-monitor-unavailable"
   "system-monitor - system-monitor-performance-unavailable #tab-performance"
