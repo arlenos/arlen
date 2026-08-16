@@ -1063,6 +1063,13 @@ def main():
         # pull the plug after all and are no worse off than before. `-no-reboot`
         # means a guest that reboots instead of halting also just exits.
         shutdown_deadline = time.monotonic() + args.shutdown_wait
+        # Whether this run ended by pulling the plug. Kept as its own fact rather
+        # than inferred later from a short journal or a thin store, because those
+        # are the SYMPTOMS and each has an innocent explanation of its own: a
+        # component that never ran writes nothing, and so does a component that was
+        # still writing when the power went. The checks below are entitled to know
+        # which of those they are looking at.
+        plug_pulled = False
         try:
             qmp(f, "system_powerdown")
             while time.monotonic() < shutdown_deadline:
@@ -1072,6 +1079,7 @@ def main():
         except (EOFError, OSError, ValueError):
             pass                            # already gone, or the socket died with it
         if proc.poll() is None:
+            plug_pulled = True
             print(f"guest did not halt within {args.shutdown_wait}s; pulling the plug "
                   "(its journal will be short)")
             try:
@@ -1266,6 +1274,19 @@ def main():
             return 1
         ok, message = ingest_verdict(store)
         if not ok:
+            # Still a failure, and still refused - but not necessarily the failure
+            # the message names. A store read out of a guest that was killed
+            # mid-write is missing whatever SQLite had not committed, so "the boot
+            # emitted it and it never arrived" and "the boot was cut short before it
+            # could arrive" produce the same empty answer. Reporting only the first
+            # would send the reader after an ingestion bug that may not exist.
+            if plug_pulled:
+                message += (
+                    ". Note the guest did not halt cleanly, so this store may be "
+                    "missing writes SQLite had not committed when the plug was "
+                    "pulled: fix the shutdown (or raise --shutdown-wait) before "
+                    "reading this as an ingestion fault"
+                )
             print(f"VERIFY FAIL: {message}")
             return 1
         print(f"event store: {message}")
@@ -1283,6 +1304,17 @@ def main():
 
         ok, message = probe_verdict(journal_text)
         if not ok:
+            # Same caveat as the store above: journald flushes on a clean stop, so a
+            # journal from a killed guest ends early and a probe that ran fine can
+            # look like a probe that never reported. The "no tally" message blames
+            # --linger by name, which is the wrong place to look if the run was
+            # killed before journald wrote anything back.
+            if plug_pulled:
+                message += (
+                    ". Note the guest did not halt cleanly, so this journal is "
+                    "truncated at whatever journald had flushed: check the shutdown "
+                    "before reading this as a probe fault"
+                )
             print(f"VERIFY FAIL: {message}")
             return 1
         print(f"knowledge probe: {message}")
