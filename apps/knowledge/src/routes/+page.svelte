@@ -182,10 +182,19 @@
 </div>
 
 <style>
+  /* A failure, coloured like one.
+   *
+   * This was 62% of the foreground - DIMMER than the body text beside it - for a
+   * line that only appears because somebody clicked Capabilities and no window
+   * opened. Rendered next to the place heading it read as a subtitle. The
+   * meetings capture screen already paints its equivalent `var(--color-error)`;
+   * one convention across the apps, and the thing the person has to notice is
+   * not the quietest text on screen. */
   .kn-open-failed {
     margin: 0;
     font-size: 0.85rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 62%, transparent);
+    font-weight: 500;
+    color: var(--color-error, #f87171);
   }
 
   .kn-app {
