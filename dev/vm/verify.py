@@ -434,11 +434,28 @@ JOURNAL_ALIASES = {
 }
 
 
-def observed_servers(text):
-    """(socket name, serving binary) pairs a run actually showed binding."""
+def observed_servers(text, also=()):
+    """(socket name, serving binary) pairs a run actually showed binding.
+
+    `also` names servers that do not look like ours. The pattern recognises
+    `arlen-*` and `event-bus`, which covered 28 of the 29 table entries and
+    silently skipped the 29th: `xdg-desktop-portal-arlen` serves portal-picker.sock
+    and is named for the freedesktop interface it implements, not for us. A wrong
+    table entry for it could never have been caught by a boot - the one daemon the
+    reality check could not see was invisible for a reason that had nothing to do
+    with it.
+
+    Callers pass the table's own values, so a daemon added to the table becomes
+    observable with it and there is no second list to keep. Foreign names stay out
+    deliberately: matching any process that binds a `/run` socket would report
+    systemd and dbus as unnamed servers on every boot.
+    """
+    names = "|".join(
+        ["arlen-[a-z0-9-]+", "event-bus", *(re.escape(n) for n in sorted(set(also)))]
+    )
     seen = set()
     for line in text.splitlines():
-        who = re.search(r"(arlen-[a-z0-9-]+|event-bus)\[\d+\]", line)
+        who = re.search(rf"({names})\[\d+\]", line)
         socks = re.findall(r"(/run[^\s\"]*\.sock)", line)
         if not who or not socks:
             continue
@@ -462,7 +479,7 @@ def socket_table_faults(text):
     if servers is None:
         return ["could not read the socket table, so the boot verified nothing about it"]
     out = []
-    for sock, who in sorted(observed_servers(text)):
+    for sock, who in sorted(observed_servers(text, servers.values())):
         expected = servers.get(sock)
         if expected is None:
             out.append(f"{sock}: bound by {who} on this boot and named by no table entry")
@@ -1611,7 +1628,7 @@ def main():
                   "wrong value sends the next reader to the wrong daemon, which is "
                   "the whole cost this table exists to avoid.")
             return 1
-        observed = len(observed_servers(identity_text))
+        observed = len(observed_servers(identity_text, (_socket_table() or {}).values()))
         print(f"sockets: {observed} bind(s) on this boot, all matching the table")
 
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
