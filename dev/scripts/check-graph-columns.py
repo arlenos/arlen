@@ -40,7 +40,13 @@ ROOT = (
 SCHEMA = ROOT / "daemons/knowledge/src/graph.rs"
 
 # Directories whose Cypher is not ours to check: vendored code and build output.
-SKIP_PARTS = {"target", "node_modules", ".git", "build"}
+SKIP_PARTS = {"target", "node_modules", ".git", "build", "mkosi.builddir"}
+# `mkosi.builddir` is the image build cache. It is gitignored, so CI never sees it,
+# but it holds a cargo checkout of an OLDER commit of this repo - 45k Rust files that
+# this walk was reading on every local run. Findings there point at source nobody can
+# edit, dated to whatever commit the image last built from, and the read cost a minute
+# of every pre-commit.
+
 
 # Aliases bound to something this checker cannot resolve to one label - a
 # variable-length path, a label-less pattern - are skipped rather than guessed.
