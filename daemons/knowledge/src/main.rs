@@ -229,8 +229,17 @@ async fn run(
         // graph, with no recovery path in the daemon.
         _ = shutdown_signal() => {
             tracing::info!("knowledge daemon shutting down");
+            // The store is closed FIRST and awaited, so the data is safe before
+            // this returns.
             closing.shutdown().await;
-            Ok(())
+            // Then leave without unwinding through the runtime's own drop, which
+            // WAITS for outstanding `spawn_blocking` work - and the best-effort
+            // event emits (daemon.rs:3215) block on a bus socket that a
+            // simultaneous stop has usually just taken away. Measured 16 August: a
+            // busy daemon sat alive 24 seconds after SIGTERM, well past the 15 this
+            // arm can possibly wait, because main had returned and the drop had
+            // not. Nothing left in flight has anywhere to deliver to.
+            std::process::exit(0);
         },
         r = writer::run(&consumer_socket, pool.clone()) => match r {
             Ok(()) => bail!("writer task exited unexpectedly"),
