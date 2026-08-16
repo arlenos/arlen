@@ -352,7 +352,9 @@ jobs:
           python3 dev/scripts/check-cypher-groups.py
           node dev/scripts/test-check-cypher-groups.mjs
           python3 dev/scripts/check-sandbox-env.py
+          python3 dev/scripts/check-unrendered-error.py
           node dev/scripts/test-check-sandbox-env.mjs
+          node dev/scripts/test-check-unrendered-error.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
