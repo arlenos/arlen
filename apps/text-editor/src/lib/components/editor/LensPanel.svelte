@@ -19,15 +19,24 @@
     <!-- Sample data, said first. Everything below - lineage, backlinks, project
          membership - is invented until the graph queries land, and unlabelled it
          reads as this file's real neighbourhood. -->
-    <p class="sample">{$t("te.lens.sample")}</p>
+    <p class="sample">
+      {$t("te.lens.sample")}
+      <!-- And when a past time was asked for, say that it went nowhere. The
+           picker keeps its own label whatever happens, so without this the window
+           shows "1 week ago" beside a sample that has no relationship to any time
+           and nothing anywhere admits the request was not answered. -->
+      {#if $lens.asOfActive}{$t("te.lens.sample.asOf")}{/if}
+    </p>
   {/if}
   <section class="sec">
     <h2 class="sec-title">
       {$t("te.lens.provenance")}
       <!-- These two sections cannot answer as-of: their edges carry no stamps, so
            they show the present even while the project section shows the past.
-           Saying so beats letting the panel read as one consistent moment. -->
-      {#if $lens.asOfActive}<span class="sec-sample">{$t("te.lens.showingNow")}</span>{/if}
+           Saying so beats letting the panel read as one consistent moment.
+           Not on the sample path: a fixture is not the present either, and the
+           caption above already says what it is. -->
+      {#if $lens.asOfActive && !$lens.mocked}<span class="sec-sample">{$t("te.lens.showingNow")}</span>{/if}
     </h2>
     <div class="prov">
       {#each $lens.provenance as step (step.relation + step.actor)}
@@ -48,7 +57,7 @@
   <section class="sec">
     <h2 class="sec-title">
       {$t("te.lens.related")}
-      {#if $lens.asOfActive}<span class="sec-sample">{$t("te.lens.showingNow")}</span>{/if}
+      {#if $lens.asOfActive && !$lens.mocked}<span class="sec-sample">{$t("te.lens.showingNow")}</span>{/if}
       {#if $lens.relatedMocked && !$lens.mocked}
         <!-- The whole-panel caption is gone once provenance and project are real,
              so this section has to say for itself that it is still a sample. -->
