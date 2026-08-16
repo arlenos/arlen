@@ -57,12 +57,18 @@
             <span class="time">{fmtTime($elapsed)}</span>
           </span>
           <span class="consent">{$t("mt.consent")}</span>
+          <!-- Inside the branch, for the reason stated above it: Stop is an offer
+               to end something, and after a refused capture there is nothing to
+               end. It sat outside this `if` while the dot and the clock were
+               moved in, so a screen saying "Nothing is being captured" still
+               carried an enabled Stop. -->
+          <Button variant="outline" size="sm" id="stop" onclick={stop}>{$t("mt.stop")}</Button>
         {/if}
         <label class="transcribe">
           <Switch value={$transcribe} size="sm" ariaLabel={$t("mt.transcribe")} onchange={(v) => transcribe.set(v)} />
           {$t("mt.transcribe")}
         </label>
-        <Button variant="outline" size="sm" id="stop" onclick={stop}>{$t("mt.stop")}</Button>
+
       </div>
     {/snippet}
     {#snippet content()}
