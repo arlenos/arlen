@@ -194,6 +194,24 @@ def main():
     exit_code = 0
     try:
         time.sleep(args.settle)
+
+        # WHICH PAGE DID THE WINDOW ACTUALLY LOAD?
+        #
+        # A debug binary loads the `devUrl` baked in AT BUILD TIME, so a binary
+        # older than a port change opens whatever now serves the old port - another
+        # app's dev server, in another app's window, with no error anywhere. On
+        # 16 August a terminal binary from 9 August loaded the screenshot app and a
+        # verification run reported a clean console for an app it never opened.
+        #
+        # The URL is one line and settles it, so it is always printed rather than
+        # asked for.
+        try:
+            loaded = rq(base, "POST", f"/session/{sid}/execute/sync",
+                        {"script": "return location.href;", "args": []})["value"]
+            print(f"loaded url: {loaded}")
+        except Exception as e:  # a driver that cannot answer must not fail the shot
+            print(f"loaded url: unknown ({e})")
+
         if args.exec_cmd:
             expect = args.expect if args.expect is not None else args.exec_cmd
             ok = run_and_assert(base, sid, args.exec_cmd, expect, args.selector)
