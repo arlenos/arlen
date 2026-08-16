@@ -167,7 +167,7 @@ async fn files(
     } else {
         format!(
             "MATCH (f:File) WHERE {} \
-             OPTIONAL MATCH (f)-[r:FILE_PART_OF]->(p:Project) WHERE {live_edge} \
+             OPTIONAL MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) WHERE {live_edge} \
              RETURN f.id AS id, f.path AS path, f.app_id AS app_id, \
                     f.last_accessed AS at, p.name AS project \
              ORDER BY f.last_accessed DESC LIMIT {RANK_LIMIT}",

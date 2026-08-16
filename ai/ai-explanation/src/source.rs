@@ -91,7 +91,7 @@ fn recent_files_query(cutoff_micros: i64) -> String {
     format!(
         "MATCH (f:File)-[:ACCESSED_BY]->(a:App) \
          WHERE f.last_accessed >= {cutoff_micros} \
-         OPTIONAL MATCH (f)-[:FILE_PART_OF]->(p:Project) \
+         OPTIONAL MATCH (f:File)-[:FILE_PART_OF]->(p:Project) \
          RETURN f.path AS path, a.name AS app, p.name AS project, \
                 f.last_accessed AS last_accessed \
          ORDER BY f.last_accessed DESC LIMIT {RECENT_FILES_LIMIT}"
@@ -106,7 +106,7 @@ fn recent_files_query(cutoff_micros: i64) -> String {
 /// the shell's Focus-Mode project.
 const ACTIVE_PROJECT_QUERY: &str =
     "MATCH (p:Project) WHERE p.promoted = true AND p.status = 'active' \
-     OPTIONAL MATCH (f:File)-[:FILE_PART_OF]->(p) \
+     OPTIONAL MATCH (f:File)-[:FILE_PART_OF]->(p:Project) \
      RETURN p.name AS name, p.last_accessed AS last_accessed, \
             count(DISTINCT f) AS file_count \
      ORDER BY last_accessed DESC LIMIT 1";

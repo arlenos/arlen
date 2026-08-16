@@ -106,7 +106,7 @@ async fn read_file_accesses(
 ) -> Result<Vec<TimelineEvent>, String> {
     let cypher = format!(
         "MATCH (f:File) WHERE f.last_accessed IS NOT NULL \
-         OPTIONAL MATCH (f)-[r:FILE_PART_OF]->(p:Project) \
+         OPTIONAL MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
          WHERE r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL \
          RETURN f.id AS id, f.path AS path, f.app_id AS app_id, \
                 f.last_accessed AS at, p.name AS project \
