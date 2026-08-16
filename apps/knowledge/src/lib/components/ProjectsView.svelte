@@ -142,6 +142,9 @@
       errorTitle={$t("k.fb.errorTitle")}
       hintUnknown={$t("k.fb.hintUnknown")}
       browserLabel={$t("k.fb.browserLabel")}
+      hintPermission={$t("k.fb.hintPermission")}
+      hintNotConnected={$t("k.fb.hintNotConnected")}
+      hintNoSuchDir={$t("k.fb.hintNoSuchDir")}
     />
   </div>
 </div>
