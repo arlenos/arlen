@@ -347,6 +347,8 @@ jobs:
           node dev/scripts/test-check-plugin-grants.mjs
           python3 dev/scripts/check-daemon-stop.py
           node dev/scripts/test-check-daemon-stop.mjs
+          python3 dev/scripts/check-cypher-groups.py
+          node dev/scripts/test-check-cypher-groups.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
