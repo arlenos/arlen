@@ -90,6 +90,11 @@ def run_and_assert(base, sid, command, expect, selector):
     assert `expect` renders. Returns True on success. The whole input->PTY->shell
     ->grid/block round-trip is exercised, so this catches a regression in the
     terminal's render pipeline that a frontend-only test cannot."""
+    # `.console` on purpose, and NOT the helper textarea the send-keys path
+    # needs: this path CLICKS to focus (which is what hands xterm the focus) and
+    # then sends key ACTIONS, which xterm receives either way. Verified working
+    # after the block-mode cutover, so leave it alone - the two paths differ in
+    # mechanism, not by oversight.
     eid = find_element(base, sid, selector or ".console")
     landed = False
     for _ in range(4):
@@ -272,12 +277,19 @@ def main():
             # Type the command via the canonical WebDriver Element Send Keys
             # endpoint, which produces real key events the framework's handlers
             # see (unlike raw Actions, where Enter does not reliably map to
-            # `event.key === "Enter"`). The re-rooted terminal has no composer
-            # input: the `.console` div is the focusable keystroke surface
-            # (tabindex + onkeydown), so try it first, then a classic text input
-            # for other apps. Click to focus the surface, then send the text plus
-            # Enter.
+            # `event.key === "Enter"`).
+            #
+            # ORDER MATTERS, and the first entry is the one this got wrong. The
+            # note here used to say the terminal's `.console` div is the focusable
+            # keystroke surface, which was true of the hand-rolled grid; after the
+            # block-mode cutover xterm.js owns the terminal and keystrokes go to
+            # its hidden helper textarea. `.console` still EXISTS as the container,
+            # so the old first guess kept matching and then failed the send with
+            # "element not interactable" - the harness's own documented use case,
+            # typing a terminal command, silently unavailable because a selector
+            # outlived the thing it described.
             candidates = [args.selector] if args.selector else [
+                ".xterm-helper-textarea",
                 ".console",
                 "#terminal-composer-input",
                 "textarea,input[type=text],input:not([type])",
