@@ -118,11 +118,14 @@ pub async fn provenance_of(r#ref: String) -> Result<Vec<LensProvenanceStep>, Str
 /// LIVE-ONLY on both stamps, so an archived project or a closed membership does
 /// not surface as the file's current home; the bitemporal edge carries both.
 #[tauri::command]
-pub async fn project_of(r#ref: String) -> Result<Option<LensProject>, String> {
+pub async fn project_of(
+    r#ref: String,
+    as_of: Option<i64>,
+) -> Result<Option<LensProject>, String> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
-        .query_rows(&project_query(&r#ref))
+        .query_rows(&project_query(&r#ref, as_of))
         .await
         .map_err(|e| e.to_string())?;
     Ok(project_from_rows(&rows))
@@ -194,6 +197,48 @@ fn backlinks_from_rows(rows: &[HashMap<String, Value>]) -> Vec<LensBacklink> {
     out
 }
 
+/// The open end of a bitemporal interval, as a literal the gate accepts.
+///
+/// `i64::MAX`, so "not closed" compares as "closes later than any question".
+const OPEN_END: i64 = i64::MAX;
+
+/// The membership predicate for one edge alias, live or as of an instant.
+///
+/// LIVE (`None`) is the form every read in this app has used: an edge with no
+/// close stamp is the open interval. AS OF an instant it becomes a containment
+/// test, and the two `coalesce` calls are what make it correct rather than merely
+/// plausible:
+///
+/// * `coalesce(valid_at, 0)` reads a MISSING start as "no known beginning". Every
+///   membership promotion wrote before 16 August carries NULL there, and treating
+///   NULL as "started at the epoch" is the honest reading - the alternative,
+///   `valid_at <= t` on a NULL, is false, which would report that a file belonged
+///   to no project at any past instant simply because nobody recorded when it
+///   began. That is a confident wrong answer about real data.
+/// * `coalesce(invalid_at, OPEN_END)` is the same convention on the close side,
+///   and matches what `IS NULL` means in the live form.
+///
+/// No parenthesised group, because the read gate reads `(` after WHERE as an
+/// unlabelled node and refuses the whole query.
+fn interval(alias: &str, as_of: Option<i64>) -> String {
+    match as_of {
+        None => format!("{alias}.invalid_at IS NULL AND {alias}.expired_at IS NULL"),
+        Some(t) => format!(
+            "coalesce({alias}.valid_at, 0) <= {t} \
+             AND coalesce({alias}.invalid_at, {OPEN_END}) > {t} \
+             AND coalesce({alias}.expired_at, {OPEN_END}) > {t}"
+        ),
+    }
+}
+
+/// A node's liveness on the same axis: live now, or not yet expired at `t`.
+fn node_live(alias: &str, as_of: Option<i64>) -> String {
+    match as_of {
+        None => format!("{alias}.expired_at IS NULL"),
+        Some(t) => format!("coalesce({alias}.expired_at, {OPEN_END}) > {t}"),
+    }
+}
+
 /// ONE predicate, chosen here rather than an `OR` group, and the reason is the
 /// daemon's read gate rather than taste.
 ///
@@ -209,7 +254,7 @@ fn backlinks_from_rows(rows: &[HashMap<String, Value>]) -> Vec<LensBacklink> {
 /// exactly, anything else as a trailing path segment. That is stricter than the
 /// OR as well - a caller who hands over a full path no longer also matches some
 /// other file whose name happens to end that way.
-fn project_query(node: &str) -> String {
+fn project_query(node: &str, as_of: Option<i64>) -> String {
     let safe = node.replace('\\', "\\\\").replace('\'', "\\'");
     let matches_file = if node.starts_with('/') {
         format!("f.path = '{safe}'")
@@ -232,12 +277,15 @@ fn project_query(node: &str) -> String {
     // bare back-reference names none, so the whole read is refused - the same
     // unlabelled-node rule as the parenthesised group, reached a different way.
     // Measured against a live daemon: `(p)` refused, `(p:Project)` answered.
+    let member_edge = interval("r", as_of);
+    let sibling_edge = interval("r2", as_of);
+    let project_live = node_live("p", as_of);
     format!(
         "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
          WHERE {matches_file} \
-           AND r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL \
+           AND {member_edge} AND {project_live} \
          OPTIONAL MATCH (p:Project)<-[r2:FILE_PART_OF]-(sib:File) \
-         WHERE r2.invalid_at IS NULL AND r2.expired_at IS NULL AND sib.path <> f.path \
+         WHERE {sibling_edge} AND sib.path <> f.path \
          RETURN p.name AS name, sib.path AS member, sib.last_accessed AS at \
          ORDER BY sib.last_accessed DESC LIMIT {MAX_MEMBERS}"
     )
@@ -387,11 +435,64 @@ mod project_tests {
     }
 
     #[test]
+    fn as_of_reads_a_missing_start_as_no_known_beginning() {
+        // The reason this needs `coalesce` rather than a plain comparison: every
+        // membership written before 16 August carries NULL `valid_at`, and
+        // `NULL <= t` is false, so the honest-looking query would report that
+        // those files belonged to no project at any past instant. Confidently
+        // wrong about real data is worse than the fixture this replaced.
+        let q = project_query("/w/a/README.md", Some(1_000));
+        assert!(q.contains("coalesce(r.valid_at, 0) <= 1000"), "{q}");
+        assert!(q.contains("coalesce(r.invalid_at,"), "{q}");
+        // The sibling hop moves with it, or the members listed beside a past
+        // project would be today's.
+        assert!(q.contains("coalesce(r2.valid_at, 0) <= 1000"), "{q}");
+        // And the project itself: one archived since `t` was still live then.
+        assert!(q.contains("coalesce(p.expired_at,"), "{q}");
+    }
+
+    #[test]
+    fn the_live_form_is_untouched_when_no_instant_is_asked_for() {
+        // `None` must be byte-for-byte the query this app has always sent, so
+        // wiring as-of cannot regress the default view.
+        let q = project_query("/w/a/README.md", None);
+        assert!(q.contains("r.invalid_at IS NULL AND r.expired_at IS NULL"), "{q}");
+        assert!(q.contains("p.expired_at IS NULL"), "{q}");
+        assert!(!q.contains("coalesce"), "no interval arithmetic in the live read: {q}");
+    }
+
+    #[test]
+    fn neither_form_carries_a_parenthesised_predicate() {
+        // The gate reads `(` after WHERE as an unlabelled node. `coalesce(` is a
+        // CALL, not a group - it is preceded by an identifier - but the predicate
+        // must still never open a bare group, so check both forms the same way.
+        for q in [
+            project_query("README.md", None),
+            project_query("README.md", Some(42)),
+        ] {
+            let mut rest = q.as_str();
+            while let Some((_, after)) = rest.split_once("WHERE ") {
+                let end = ["OPTIONAL MATCH", "RETURN", "ORDER BY"]
+                    .iter()
+                    .filter_map(|k| after.find(k))
+                    .min()
+                    .unwrap_or(after.len());
+                assert!(
+                    !after[..end].contains(" ("),
+                    "no bare group in the predicate: {}",
+                    &after[..end]
+                );
+                rest = after;
+            }
+        }
+    }
+
+    #[test]
     fn the_where_clause_carries_no_parenthesised_group() {
         // The gate reads a `(` that no identifier precedes as a NODE, so a
         // parenthesised WHERE group is an unlabelled node to it and the read is
         // refused - measured, with both real nodes labelled.
-        for q in [project_query("README.md"), project_query("/home/t/a/README.md")] {
+        for q in [project_query("README.md", None), project_query("/home/t/a/README.md", None)] {
             // Per PREDICATE, not per query: the second hop is a MATCH whose own
             // nodes are parenthesised and must be. What may never carry a `(` is
             // the text between a WHERE and the clause that ends it.
@@ -412,18 +513,18 @@ mod project_tests {
         }
         // Every node names a label, including the already-bound `p` on the second
         // hop - a bare back-reference is an unlabelled node to the gate.
-        for q in [project_query("README.md"), project_query("/x/README.md")] {
+        for q in [project_query("README.md", None), project_query("/x/README.md", None)] {
             assert!(!q.contains("(p)<-"), "the bound node repeats its label: {q}");
             assert!(q.contains("(p:Project)<-"), "second hop labels its node: {q}");
         }
         // An absolute path matches exactly; a bare name matches a trailing segment.
-        assert!(project_query("/home/t/a/README.md").contains("f.path = '/home/t/a/README.md'"));
-        assert!(project_query("README.md").contains("ENDS WITH '/README.md'"));
+        assert!(project_query("/home/t/a/README.md", None).contains("f.path = '/home/t/a/README.md'"));
+        assert!(project_query("README.md", None).contains("ENDS WITH '/README.md'"));
     }
 
     #[test]
     fn a_quote_in_the_name_cannot_end_the_literal() {
-        let q = project_query("Tim's notes.md");
+        let q = project_query("Tim's notes.md", None);
         assert!(q.contains("Tim\\'s notes.md"), "the quote is escaped: {q}");
         // Both stamps and the project's own liveness are required, so an archived
         // project cannot surface as the file's current home.
