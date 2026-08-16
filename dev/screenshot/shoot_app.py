@@ -12,6 +12,7 @@ import argparse
 import base64
 import json
 import re
+from pathlib import Path
 import sys
 import time
 import urllib.request
@@ -143,6 +144,39 @@ def warn_if_error_page(base, sid):
     return 0
 
 
+def wrong_app(binary: str, loaded: str) -> str | None:
+    """Say so when the window loaded a URL that is not this app's `devUrl`.
+
+    A debug binary carries the `devUrl` it was BUILT with, so one that predates a
+    port change opens whichever app now serves the old port - and the shot looks
+    entirely normal. On 16 August a terminal binary from a week earlier loaded the
+    screenshot app, and the run reported a clean console for an app it never
+    opened. Printing the URL was not enough; it has to be compared.
+
+    Only the dev-server case is judged: a release build serves `tauri://localhost`
+    and has no port to disagree about, and a driver that cannot answer leaves this
+    alone rather than failing a shot for the wrong reason.
+    """
+    if not loaded.startswith("http://localhost:"):
+        return None
+    root = Path(__file__).resolve().parents[2]
+    name = Path(binary).name
+    for cargo in (root / "apps").glob("*/src-tauri/Cargo.toml"):
+        if not re.search(rf'^name\s*=\s*"{re.escape(name)}"', cargo.read_text(), re.M):
+            continue
+        conf = cargo.parent / "tauri.conf.json"
+        if not conf.is_file():
+            return None
+        want = json.loads(conf.read_text()).get("build", {}).get("devUrl", "")
+        if not want or loaded.rstrip("/").startswith(want.rstrip("/")):
+            return None
+        return (
+            f"{cargo.parent.parent.name} is configured for {want} but the window "
+            f"loaded {loaded} - this binary was built against an older devUrl"
+        )
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--app", required=True, help="path to the Tauri app binary")
@@ -209,6 +243,11 @@ def main():
             loaded = rq(base, "POST", f"/session/{sid}/execute/sync",
                         {"script": "return location.href;", "args": []})["value"]
             print(f"loaded url: {loaded}")
+            wrong = wrong_app(args.app, loaded)
+            if wrong:
+                print(f"WRONG APP: {wrong}")
+                print("Rebuild the binary; a shot of the wrong app proves nothing.")
+                return 1
         except Exception as e:  # a driver that cannot answer must not fail the shot
             print(f"loaded url: unknown ({e})")
 
