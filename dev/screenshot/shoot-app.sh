@@ -100,10 +100,34 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   # the assert mode cannot drive the terminal). Best-effort: harmless if absent.
   ob=""
   if command -v openbox >/dev/null 2>&1; then openbox >/tmp/arlen-openbox.log 2>&1 & ob=$!; sleep 1.5; fi
+  # Refuse to start on top of a driver that is already there.
+  #
+  # The port is fixed, and the readiness check below is "does :4444 answer" -
+  # which the driver from a PREVIOUS run answers perfectly well while it is
+  # shutting down. Back-to-back shots are the normal way this script is used, so
+  # without this the second one can attach to the driver of the first, drive a
+  # window that is going away, and report whatever it managed to capture as a
+  # result about the app under test.
+  #
+  # No apostrophes in this block, comments included: it is the body of a
+  # single-quoted bash -c, and the outer shell ends that string at the first one
+  # it meets, comment or not. Writing "run" + "s" cost me a parse error here.
+  if curl -s "http://localhost:$SHOOT_PORT/status" >/dev/null 2>&1; then
+    # No single quotes anywhere in here: this whole block is the body of a
+    # single-quoted bash -c, so one would close it and the script would die at
+    # parse time with an unmatched-quote error pointing at the wrong line.
+    echo "a webdriver is already listening on port $SHOOT_PORT: refusing to run" >&2
+    echo "rather than attach to it. Wait for the previous shot to finish, or kill" >&2
+    echo "the leftover with: pkill -f tauri-driver" >&2
+    exit 1
+  fi
   tauri-driver --port "$SHOOT_PORT" --native-driver "$NATIVE" \
     >/tmp/arlen-tauri-driver.log 2>&1 &
   td=$!
-  trap "kill $td ${ob} 2>/dev/null || true" EXIT
+  # Kill AND wait. A trap that only signals returns while the driver is still
+  # holding the port, so the next run races the corpse of this one - which is how
+  # the check above would otherwise get to fire on a healthy machine.
+  trap "kill $td ${ob} 2>/dev/null || true; wait $td ${ob} 2>/dev/null || true" EXIT
   for _ in $(seq 1 50); do
     curl -s "http://localhost:$SHOOT_PORT/status" >/dev/null 2>&1 && break
     sleep 0.2
