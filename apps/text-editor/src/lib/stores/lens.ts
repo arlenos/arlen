@@ -97,6 +97,16 @@ export async function loadLens(ref: string): Promise<void> {
     // whole load is what used to drop the entire panel to its fixture, including
     // the part that was real.
     const provenance = await invoke<ProvenanceStep[]>("provenance_of", { ref });
+    // Backlinks, asked separately for the same reason as the project: one absent
+    // answer must not cost the others.
+    let related = FIXTURE.related;
+    let relatedMocked = true;
+    try {
+      related = await invoke<Backlink[]>("related_of", { ref });
+      relatedMocked = false;
+    } catch {
+      // Keep the labelled sample for this section only.
+    }
     let project: ProjectContext | null = FIXTURE.project;
     let projectMocked = true;
     try {
@@ -120,10 +130,10 @@ export async function loadLens(ref: string): Promise<void> {
     // caption existed to prevent.
     lens.set({
       provenance,
-      related: FIXTURE.related,
+      related,
       project,
       mocked: projectMocked,
-      relatedMocked: true,
+      relatedMocked,
     });
   } catch {
     lens.set({ ...FIXTURE, mocked: true, relatedMocked: true });

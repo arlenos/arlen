@@ -10,7 +10,10 @@
 //! apps use for theme and locale, and the file commands an editor cannot do
 //! without.
 //!
-//! What is deliberately NOT here yet: the lens's `related_of` (see `lens.rs` - the
+//! What was deliberately NOT here: the lens's `related_of`. It is answered now -
+//! promotion records `LINKS_TO` from a markdown document's own references, so the
+//! backlinks have a real edge to traverse. The old note follows for the reasoning
+//! that kept it out (see `lens.rs` - the
 //! graph holds no file-to-file edge, so "backlinks" needs a meaning before it can
 //! have a query) and the gated AI edit (`ai_edit` and its accept/reject/undo).
 //! `provenance_of` and `project_of` are answered.
@@ -132,7 +135,8 @@ pub fn run() {
             editor_save,
             initial_file,
             lens::provenance_of,
-            lens::project_of
+            lens::project_of,
+            lens::related_of
         ])
         .run(tauri::generate_context!())
         .expect("error while running the text editor");
