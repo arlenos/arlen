@@ -524,6 +524,12 @@ impl ProjectStore {
         // `graph` - the system observed this, no one asserted it - matching
         // `provenance::Provenance::Graph`.
         let stamped_at = crate::time::now().0;
+        // The enum, not the literal `'graph'`. `Provenance::from_key` fails closed
+        // on an unknown key, so a rename here would not break loudly - it would
+        // make every promoted edge's provenance unreadable, and the governance
+        // gate refuses a write driven by a fact of unknown origin. The one place
+        // that defines the key should be the one place that spells it.
+        let origin = crate::provenance::Provenance::Graph.as_key();
         // The cross-device ordering stamp (GD-R5), only when a merge clock is
         // attached. The device id is a UUID by construction (no quote or
         // backslash), safe to interpolate like the hex `merge_key`.
@@ -545,7 +551,7 @@ impl ProjectStore {
             .write(format!(
                 "MATCH (f:File {{id: '{fid}'}}), (p:Project {{id: '{pid}'}})
                  MERGE (f)-[r:FILE_PART_OF]->(p) ON CREATE SET r.merge_key = '{merge_key}', \
-                 r.valid_at = {stamped_at}, r.created_at = {stamped_at}, r.origin = 'graph'{hlc_set}"
+                 r.valid_at = {stamped_at}, r.created_at = {stamped_at}, r.origin = '{origin}'{hlc_set}"
             ))
             .await?;
         Ok(())
