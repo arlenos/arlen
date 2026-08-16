@@ -115,6 +115,18 @@
   }
 
   const now = Date.now();
+
+  /// Whether the search surface owns the content area, which it does whenever
+  /// there is a query - from anywhere - and at rest in the Searches place.
+  ///
+  /// Named once because the heading and the content have to agree. They did not:
+  /// the title read `labelKeyFor($path)` while the region under it rendered
+  /// `SearchView`, so searching from the timeline put "Timeline" above a list of
+  /// matches, and above "Nothing matches" when there were none. The app already
+  /// holds the right answer for this - `basePlaceId` resolves a `search:` location
+  /// to the Searches place for exactly this label - and typing in the titlebar was
+  /// the one route into the search surface that went around it.
+  const searchOwnsContent = $derived($searchQuery.trim().length > 0 || $path === "searches");
 </script>
 
 <div class="kn-app">
@@ -124,7 +136,7 @@
 
     <main class="kn-main">
     <header class="kn-head">
-      <h1 class="kn-h1">{$t(labelKeyFor($path))}</h1>
+      <h1 class="kn-h1">{$t(labelKeyFor(searchOwnsContent ? "searches" : $path))}</h1>
       <!-- Every designed place carries its own example-data line. -->
 
       <!-- The capability browser lives in Settings; if it would not start, say
@@ -133,7 +145,7 @@
         <p class="kn-open-failed" role="alert">{$t("k.settingsOpenFailed")}</p>
       {/if}
     </header>
-    {#if $searchQuery.trim().length > 0 || $path === "searches"}
+    {#if searchOwnsContent}
       <!-- The titlebar query owns the content area wherever you are; the
            Searches place shows the same surface at rest (the saved list). -->
       <SearchView onselect={onSearchSelect} />
