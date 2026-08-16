@@ -88,7 +88,12 @@
   title={$t("s.a11y.title")}
   description={$t("s.a11y.desc")}
 >
-  <ConfigUnavailable error={$compositor.error} />
+  <!-- Two reads back this page, and the screen filter is the one that is not in
+       compositor.toml: it comes from its own command with its own failure. The
+       first version of this line named only the compositor store, so a filter
+       read that failed left the inverted and colour-filter rows showing defaults
+       with nothing said. -->
+  <ConfigUnavailable error={$compositor.error ?? $screenFilter.error} />
   <SectionGrid>
     <Section label={$t("s.a11y.magnifier")}>
     <Row

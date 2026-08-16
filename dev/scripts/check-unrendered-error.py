@@ -18,9 +18,22 @@ data, made after failing to look at it. The flag saying otherwise was two lines
 from the code that set it. Found on 16 August by scanning for exactly this, after
 finding the same shape by hand in four other places.
 
-What this looks for: an exported `writable` in `apps/*/src` whose name reads like
-a failure (`error`, `unavailable`, `failed`), which no `.svelte` file in that app
-mentions.
+What this looks for, in two shapes:
+
+  1. An exported `writable` in `apps/*/src` whose name reads like a failure
+     (`error`, `unavailable`, `failed`), which no `.svelte` file in that app
+     mentions.
+
+  2. A store typed by a state object that CARRIES an `error` field - the
+     `{data, loading, error}` shape most of settings uses, and the one
+     `ConfigUnavailable` exists to render - where no component reads
+     `$store.error`.
+
+Shape 2 was added after shape 1 missed a live one. `keyboard/shortcuts` answered
+a failed read with `No bindings match ""`, pointing at an empty search box, while
+`keybindings.ts` held the failure in its state the whole time. Nothing about that
+store is unusual; the flag simply was not a top-level writable, so the first rule
+could not see it. Found by rendering the page, which is the expensive way.
 
 What it does NOT cover, deliberately:
 
@@ -50,6 +63,15 @@ ROOT = (
 FAILURE_STORE = re.compile(
     r"export const (\w*(?:[eE]rror|[uU]navailable|[fF]ailed)\w*)\s*=\s*writable"
 )
+
+#: A state object declaration, so its body can be searched for an `error` field.
+STATE_TYPE = re.compile(r"(?:interface|type)\s+(\w+)\s*(?:=\s*)?\{([^}]*)\}", re.S)
+
+#: `export const thing: Readable<ThingState>` - the store, named by its state.
+TYPED_STORE = re.compile(r"export const (\w+)\s*:\s*\w+<\s*(\w+)")
+
+#: An `error` field in a state body. Not `errorCount`, not a nested `onError`.
+ERROR_FIELD = re.compile(r"^\s*error\s*\??\s*:", re.M)
 
 #: Keys are `app:store`. A deliberate silence belongs here WITH its reason, so
 #: the next reader can disagree with the decision rather than rediscover the
@@ -87,8 +109,9 @@ def main() -> int:
         for p in src.rglob("*.ts"):
             for m in FAILURE_STORE.finditer(p.read_text(encoding="utf-8", errors="replace")):
                 stores[m.group(1)] = p
-        if not stores:
-            continue
+        # No early exit on an empty `stores`: the second shape below is
+        # independent of the first, and an app can have only the second. Its
+        # control caught exactly that, on the first run.
         markup = "".join(
             p.read_text(encoding="utf-8", errors="replace") for p in src.rglob("*.svelte")
         )
@@ -102,6 +125,30 @@ def main() -> int:
                 f"{rel}: `{name}` records a failure that no component reads, so the "
                 f"app knows the read failed and shows the empty-looking answer instead"
             )
+
+        # Shape 2: the failure is a field on the store's state.
+        for p in src.rglob("*.ts"):
+            text = p.read_text(encoding="utf-8", errors="replace")
+            carriers = {
+                m.group(1)
+                for m in STATE_TYPE.finditer(text)
+                if ERROR_FIELD.search(m.group(2))
+            }
+            if not carriers:
+                continue
+            for m in TYPED_STORE.finditer(text):
+                name, state = m.group(1), m.group(2)
+                if state not in carriers:
+                    continue
+                checked += 1
+                key = f"{app.name}:{name}"
+                if f"{name}.error" in markup or key in ACKNOWLEDGED:
+                    continue
+                rel = p.relative_to(ROOT)
+                findings.append(
+                    f"{rel}: `{name}` carries an error in `{state}` that no component "
+                    f"reads, so a failed read renders as an ordinary empty result"
+                )
 
     print(
         f"{checked} failure-recording store(s) checked for a reader in {len(apps)} app(s), "
