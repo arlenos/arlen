@@ -5,7 +5,12 @@
   /// reveals it over faint scrims (legible on any image): the window controls
   /// (min/close) top-right, prev/next edge arrows, and one bottom dock carrying
   /// the name, the folder position, and zoom. Scroll zooms at the cursor,
-  /// double-click toggles fit <-> 100%, and when zoomed a drag pans the image.
+  /// double-click toggles fit <-> 2.5x, and when zoomed a drag pans the image.
+  ///
+  /// It said "fit <-> 100%" until 16 August, which described a viewer this is not:
+  /// `zoom = 1` IS fit here, so 100% and fit are the same state and the toggle
+  /// would have been a no-op. There is no 1:1-with-the-file mode at all - every
+  /// figure in the dock is a multiple of the fitted size.
   /// The decoded raster is the coder's backend; here a gradient stands in.
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -87,7 +92,16 @@
 
   const MIN = 1;
   const MAX = 8;
+  // The dock's zoom face. At fit it says so in a word rather than "100%".
+  //
+  // Every figure here is a multiple of the FITTED size, not of the file, so a
+  // 1280-wide picture in a 960-wide window sits at zoom 1 and used to be labelled
+  // "100%" while occupying about three quarters of its own pixels. In every other
+  // viewer 100% means one image pixel per screen pixel, so the label was making a
+  // claim about scale that was not true - and the button's own accessible name
+  // already said "reset to fit", so the two halves of one control disagreed.
   let pct = $derived(Math.round(zoom * 100));
+  let zoomFace = $derived(zoom === 1 ? $t("v.fit") : `${pct}%`);
 
   function wake() {
     chromeVisible = true;
@@ -211,7 +225,7 @@
       <ZoomOut class="size-[16px]" strokeWidth={2} />
     </Button>
     <Button variant="ghost" size="sm" class="level" aria-label={$t("v.resetToFit")} onclick={resetFit}>
-      {pct}%
+      {zoomFace}
     </Button>
     <Button variant="ghost" size="icon-sm" aria-label={$t("v.zoomIn")} onclick={() => setZoom(zoom * 1.25)}>
       <ZoomIn class="size-[16px]" strokeWidth={2} />
