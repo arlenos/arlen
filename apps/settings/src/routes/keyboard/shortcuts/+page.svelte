@@ -364,10 +364,17 @@
   </div>
 
   {#if $keybindings.loading}
-    <div class="text-sm text-muted-foreground">Loading…</div>
+    <div class="text-sm text-muted-foreground">{$t("s.sc.loading")}</div>
+  {:else if $keybindings.error}
+    <!-- The empty list below used to be reported as "no bindings match", which
+         blames the search box for a read that never happened. With no filter
+         typed it said nothing matched "" while the store held the failure. -->
+    <div class="text-sm text-destructive" role="alert" title={$keybindings.error}>
+      {$t("s.sc.unavailable")}
+    </div>
   {:else if Object.keys(filtered).length === 0}
     <div class="text-sm text-muted-foreground">
-      No bindings match "{query}".
+      {query ? $t("s.sc.noMatch", { q: query }) : $t("s.sc.none")}
     </div>
   {/if}
   </div>
