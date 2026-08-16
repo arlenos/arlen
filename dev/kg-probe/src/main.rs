@@ -37,9 +37,19 @@ const QUESTIONS: &[(&str, &str)] = &[
         "MATCH (e:Event) WHERE e.type = 'window.focused' RETURN e.id LIMIT 500",
     ),
     // apps/knowledge/src-tauri/src/projects.rs, list_projects
+    //
+    // VERBATIM, including the aliases and the ordering. It used to be the same
+    // MATCH with `RETURN p.name` and nothing else, and on 16 August that cost an
+    // hour: the probe said 95 rows while the app's Projects pane rendered "Empty".
+    // Both were telling the truth about different queries. A probe whose whole
+    // claim is that it asks what the app asks has to carry the app's query
+    // character for character, because the part that differed is the part that
+    // broke.
     (
         "projects: live",
-        "MATCH (p:Project) WHERE p.expired_at IS NULL RETURN p.name LIMIT 500",
+        "MATCH (p:Project) WHERE p.expired_at IS NULL \
+         RETURN p.name AS name, p.created_at AS created_at \
+         ORDER BY p.created_at DESC LIMIT 500",
     ),
     // The same nodes without the liveness filter, which separates "nothing was
     // recorded" from "everything recorded is closed".
@@ -371,6 +381,35 @@ fn report_timeline() -> usize {
     }
 }
 
+/// Per column, how many rows carry nothing usable there - or an empty string if
+/// every cell of every column is populated.
+///
+/// Counts only, never values: a column NAME is the query's own text, which this
+/// file already prints, while a cell is the user's graph.
+fn blanks(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> String {
+    let mut columns: Vec<&String> = rows.first().map(|r| r.keys().collect()).unwrap_or_default();
+    columns.sort();
+    let empty: Vec<String> = columns
+        .into_iter()
+        .filter_map(|column| {
+            let n = rows
+                .iter()
+                .filter(|row| match row.get(column) {
+                    None | Some(serde_json::Value::Null) => true,
+                    Some(serde_json::Value::String(s)) => s.is_empty(),
+                    Some(_) => false,
+                })
+                .count();
+            (n > 0).then(|| format!("{column} empty in {n}"))
+        })
+        .collect();
+    if empty.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", empty.join(", "))
+    }
+}
+
 /// Ask every question once; answer how many failed.
 async fn ask_all(client: &UnixGraphClient) -> usize {
     let mut failures = 0;
@@ -378,7 +417,15 @@ async fn ask_all(client: &UnixGraphClient) -> usize {
         match client.query_rows(cypher).await {
             // The count is the answer; the rows themselves are the user's content
             // and this prints none of them.
-            Ok(rows) => println!("kg-probe: {name}: {} row(s)", rows.len()),
+            //
+            // Except for how many are EMPTY, per column, which is not content and
+            // is the difference between two findings an app renders identically.
+            // A row whose `name` cell is null still counts here, and the app drops
+            // it (`text(r, "name")?` in projects.rs), so "95 rows" and "an empty
+            // pane" can both be true at once. That is exactly what happened on
+            // 16 August. Null and empty-string are counted together because the
+            // app rejects both.
+            Ok(rows) => println!("kg-probe: {name}: {} row(s){}", rows.len(), blanks(&rows)),
             Err(e) => {
                 failures += 1;
                 // The error verbatim, because "denied" and "no such file" and
