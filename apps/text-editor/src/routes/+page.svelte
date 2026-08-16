@@ -331,7 +331,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   }
   .savestate {
     font-size: 12px;
-    margin-left: 10px;
+    margin-inline-start: 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
