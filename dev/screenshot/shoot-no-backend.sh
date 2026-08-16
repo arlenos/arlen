@@ -133,11 +133,16 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
       ob=$!
       sleep 1.5
     fi
-    open_args=""
-    if [ -n "${5:-}" ]; then open_args="--open $5"; fi
-    # shellcheck disable=SC2086 - one selector, deliberately word-split
-    python3 "$1/dev/screenshot/render-wide.py" \
-      --url "$2" --out "$3" --width "$4" --require-width "$4" $open_args
+    # A selector is one argument even when it contains spaces or a comma:
+    # `.toolbar button, header + div button` is a perfectly ordinary selector and
+    # the word-split version passed its tail to argparse, which refused the run.
+    if [ -n "${5:-}" ]; then
+      python3 "$1/dev/screenshot/render-wide.py" \
+        --url "$2" --out "$3" --width "$4" --require-width "$4" --open "$5"
+    else
+      python3 "$1/dev/screenshot/render-wide.py" \
+        --url "$2" --out "$3" --width "$4" --require-width "$4"
+    fi
     rc=$?
     # Kill AND wait: the display goes away with xvfb-run the moment this returns,
     # and a WM still shutting down against a vanishing server logs noise that

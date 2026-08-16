@@ -51,6 +51,13 @@ SHOTS=(
   "meetings - meetings-unavailable"
   "settings printers settings-printers-unavailable"
   "settings keyboard settings-keyboard-unavailable"
+  # The list under the toolbar. It used to answer a failed read with "No bindings
+  # match """, blaming a search box nobody had typed in, so this shot is of the
+  # sentence rather than of the (correctly empty) list.
+  "settings keyboard/shortcuts settings-shortcuts-unavailable"
+  # The add-binding form only exists once its dialog is open, which is why it was
+  # never in a shot and its six labels stayed English until 17 August.
+  "settings keyboard/shortcuts settings-shortcuts-dialog .sc-toolbar button, header + div button"
   "settings privacy settings-privacy-unavailable"
   "settings privacy/physical settings-sentinel-unavailable"
   "settings appearance/wallpaper settings-appearance-wallpaper-unavailable"
