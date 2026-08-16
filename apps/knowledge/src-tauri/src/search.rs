@@ -111,20 +111,23 @@ async fn files(
     if let Some(cut) = cutoff_micros(facets.within_days) {
         wheres.push(format!("f.last_accessed >= {cut}"));
     }
-    // Filtering files by project needs the membership EDGE, and the read gate
-    // requires every relationship type in a query to be in the caller's readable
-    // set - which is built by stripping `system.` from the profile's read scopes
-    // and keeping only entirely-alphanumeric names, so `FILE_PART_OF` can never
-    // be in it. This app is not system-anchored, so such a query is denied,
-    // measured against the gate rather than assumed.
+    // Filtering files by project needs the membership EDGE. This used to say the
+    // read gate refuses any query naming a relationship type, because the readable
+    // set keeps only entirely-alphanumeric names - both halves wrong:
+    // `is_safe_graph_identifier` (daemon.rs:804) allows underscores, and
+    // `raw_read_label_gate` (daemon.rs:4394) authorises a traversal by its
+    // endpoints, with an EMPTY `RESTRICTED_RELATIONS`. Measured 16 August: the
+    // traversal is answered, with rows. The refusal below is therefore about this
+    // read not being BUILT yet, not about permission - the join is now available
+    // and wiring this facet to it is a real follow-up rather than a gated one.
     //
-    // Refusing is the honest answer here, and note it differs from the unanswerable
-    // TYPE facet above, which returns empty: there the graph genuinely holds no
-    // such nodes, here it holds the answer and we cannot reach it. Returning files
+    // Until then, refusing is still the honest answer, and it differs from the
+    // unanswerable TYPE facet above: there the graph holds no such nodes, here it
+    // holds the answer and this query does not ask for it. Returning files
     // unfiltered would silently ignore the filter; returning none would claim the
     // project has no files. So the surface falls to its fixture and says so.
     if facets.project.is_some() {
-        return Err("filtering files by project needs an edge read this caller cannot make".into());
+        return Err("filtering files by project is not wired to the membership join yet".into());
     }
     let cypher = format!(
         "MATCH (f:File) WHERE {} \
