@@ -140,8 +140,8 @@
       </h2>
       <p class="mb-4 text-sm text-muted-foreground">
         {captured
-          ? "Press keys to recapture, or confirm below."
-          : "Press the keys you want to bind. Press Escape to cancel."}
+          ? $t("s.bind.captureAgain")
+          : $t("s.bind.captureHint")}
       </p>
       <div
         class="flex min-h-12 items-center justify-center rounded-[var(--radius-chip)] border border-border bg-background px-4 py-3 font-mono text-sm"

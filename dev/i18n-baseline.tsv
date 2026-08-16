@@ -177,17 +177,8 @@ apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-managemen
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Large
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Standard
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Wide
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	App
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Application or binary name
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Click to capture…
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Command
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Shell Action
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Shell command
 apps/settings/src/lib/components/settings/AddCustomBinding.svelte	pkill -USR1 waybar
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Press keys to recapture, or confirm below.
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Press the keys you want to bind. Press Escape to cancel.
 apps/settings/src/lib/components/settings/KeyCapture.svelte	Space
-apps/settings/src/lib/components/settings/KeybindingRow.svelte	Not set
 apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	Empty command
 apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	shell: needs an event name
 apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	spawn: needs a command
@@ -317,8 +308,6 @@ apps/store/src/lib/stores/catalog.ts	The next hours and days, from a single fore
 apps/store/src/lib/stores/catalog.ts	Timers and focus sessions
 apps/store/src/lib/stores/catalog.ts	Typography-first EPUB reading with margins that breathe.
 apps/store/src/lib/stores/catalog.ts	Weather at a glance
-apps/system-monitor/src/lib/components/tm/DetailPane.svelte	Force Quit
-apps/system-monitor/src/lib/components/tm/DetailPane.svelte	Force quit?
 apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} GB
 apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} MB
 apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} GB

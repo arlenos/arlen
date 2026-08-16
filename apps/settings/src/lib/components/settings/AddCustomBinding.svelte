@@ -100,7 +100,11 @@
             class:shadow-sm={mode === tab}
             onclick={() => (mode = tab)}
           >
-            {tab === "app" ? "App" : tab === "command" ? "Command" : "Shell Action"}
+            {tab === "app"
+              ? $t("s.bind.tabApp")
+              : tab === "command"
+                ? $t("s.bind.tabCommand")
+                : $t("s.bind.tabShellAction")}
           </button>
         {/each}
       </div>
@@ -108,7 +112,7 @@
       {#if mode === "app" || mode === "command"}
         <label class="mb-4 block">
           <span class="mb-1 block text-xs text-muted-foreground">
-            {mode === "app" ? "Application or binary name" : "Shell command"}
+            {mode === "app" ? $t("s.bind.appLabel") : $t("s.bind.commandLabel")}
           </span>
           <Input
             bind:value={commandInput}
@@ -137,7 +141,7 @@
           class="inline-flex min-h-10 w-full items-center justify-center rounded-[var(--radius-chip)] border border-border bg-background px-3 py-2 font-mono text-sm transition-colors hover:bg-muted"
           onclick={() => (capturing = true)}
         >
-          {binding ?? "Click to capture…"}
+          {binding ?? $t("s.bind.clickToCapture")}
         </button>
       </label>
 

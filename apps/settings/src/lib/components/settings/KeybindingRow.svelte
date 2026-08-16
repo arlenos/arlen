@@ -66,7 +66,7 @@
     onclick={() => onRebind(entry)}
     aria-label={$t("s.bind.changeFor", { name })}
   >
-    {entry.binding ?? "Not set"}
+    {entry.binding ?? $t("s.bind.notSet")}
   </Button>
 
   {#if isModified && hasDefault}
