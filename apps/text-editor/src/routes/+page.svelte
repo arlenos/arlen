@@ -199,6 +199,23 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
       ariaLabel={$t("te.openFile")}
       onchange={(v) => (fileIdx = Number(v))}
     />
+    <!-- THE SAVE STATE, RENDERED. It was computed and not shown until 16 August:
+         `dirty`, `savedAt` and `saveError` were all assigned by the save path and
+         reached no markup, so a failed write left the file unsaved in silence -
+         the exact defect this file's own comment calls worse than not saving at
+         all. Written by me an hour before it was found, which is the argument for
+         driving a surface rather than reading it. -->
+    {#if editable}
+      <span class="savestate" aria-live="polite">
+        {#if saveError}
+          <span class="ss-bad">{$t("te.save.failed", { reason: saveError })}</span>
+        {:else if dirty}
+          <span class="ss-dirty">{$t("te.save.unsaved")}</span>
+        {:else if savedAt}
+          <span class="ss-ok">{$t("te.save.saved")}</span>
+        {/if}
+      </span>
+    {/if}
     <span class="spacer"></span>
     {#if file.type === "code"}
       <button
@@ -292,6 +309,23 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     height: 100vh;
     background: var(--color-bg-app, #0f0f0f);
     color: var(--color-fg-primary, #fafafa);
+  }
+  .savestate {
+    font-size: 12px;
+    margin-left: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 40ch;
+  }
+  .ss-dirty {
+    color: color-mix(in srgb, var(--color-fg-primary, #fafafa) 55%, transparent);
+  }
+  .ss-ok {
+    color: color-mix(in srgb, var(--color-fg-primary, #fafafa) 40%, transparent);
+  }
+  .ss-bad {
+    color: var(--color-error, #ef4444);
   }
   .titlebar {
     display: flex;
