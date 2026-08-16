@@ -20,6 +20,15 @@
 #   dev/screenshot/shoot-no-backend.sh clock
 #   dev/screenshot/shoot-no-backend.sh settings privacy/physical
 #   dev/screenshot/shoot-no-backend.sh knowledge "" out/kg.png 1280 900
+#   SHOOT_OPEN='button[data-place=library]' dev/screenshot/shoot-no-backend.sh knowledge
+#
+# `SHOOT_OPEN` is a CSS selector clicked before the shot, for a view that lives
+# behind a click rather than behind a route. The knowledge app switches Timeline,
+# Projects, Searches and Library inside one route, so without this three of its
+# four panels could not be photographed at all - `sweep-no-backend.sh` said so in
+# its own header and named them as the gap. The selector must match, or
+# `render-wide` refuses and writes nothing, which is the right failure: a shot of
+# the unclicked page filed under the clicked one is worse than no shot.
 #
 # Three things this gets right that cost an hour each to learn:
 #
@@ -124,15 +133,18 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
       ob=$!
       sleep 1.5
     fi
+    open_args=""
+    if [ -n "${5:-}" ]; then open_args="--open $5"; fi
+    # shellcheck disable=SC2086 - one selector, deliberately word-split
     python3 "$1/dev/screenshot/render-wide.py" \
-      --url "$2" --out "$3" --width "$4" --require-width "$4"
+      --url "$2" --out "$3" --width "$4" --require-width "$4" $open_args
     rc=$?
     # Kill AND wait: the display goes away with xvfb-run the moment this returns,
     # and a WM still shutting down against a vanishing server logs noise that
     # reads like a failure of the shot.
     if [ -n "$ob" ]; then kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null; fi
     exit $rc
-  ' _ "$ROOT" "$URL" "$OUT" "$W" \
+  ' _ "$ROOT" "$URL" "$OUT" "$W" "${SHOOT_OPEN:-}" \
   2>&1 | grep -v "Gdk-WARNING" || true
 
 # Did we photograph the app, or the preview server's corpse? A page whose text is

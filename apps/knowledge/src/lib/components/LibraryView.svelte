@@ -39,10 +39,16 @@
 
 <div class="li">
   <div class="li-head">
+    <!-- Only the sample badge here. The unavailable case used to print the same
+         sentence in this line AND as the empty-list text below it, and the store
+         makes them inseparable: the catch sets `sources` to `[]` and
+         `libraryUnavailable` together, so both always rendered. The one below
+         stays, because it sits where the missing content would be; a reader
+         looking at an empty pane looks at the pane. Seen for the first time on
+         16 August - this view lives behind a sidebar click, and the no-backend
+         sweep could not click until then. -->
     {#if $libraryMocked}
       <span class="li-sample">{$t("k.sample")}</span>
-    {:else if $libraryUnavailable}
-      <span class="li-sample">{$t("k.library.unavailable")}</span>
     {/if}
   </div>
 

@@ -49,9 +49,15 @@
   <div class="kn-group kn-group-first">{$t("k.section.explore")}</div>
   {#each PLACES as p (p.id)}
     {@const Icon = p.icon}
+    <!-- Addressable by place, the way the clock's tabs carry `id="tab-alarms"`.
+         These four views live inside one route, so without a stable hook the
+         only way to reach Projects or Library in a headless shot is
+         `:nth-of-type`, which silently photographs the wrong panel the day
+         someone reorders the list. -->
     <button
       type="button"
       class="kn-place"
+      data-place={p.id}
       class:active={isActive(p.id)}
       aria-current={isActive(p.id) ? "page" : undefined}
       onclick={() => onnavigate(p.id)}
