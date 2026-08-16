@@ -12,6 +12,7 @@
     results,
     searchMocked,
     savedSearches,
+    savedUnavailable,
     saveSearch,
     runSaved,
     projectChoices,
@@ -210,7 +211,13 @@
       {/if}
     {:else}
       <h2 class="se-saved-head">{$t("k.se.saved")}</h2>
-      {#if $savedSearches.length === 0}
+      <!-- "none saved" and "could not read" are the same empty list, and the
+           store already knows which: the catch sets `savedSearches` to `[]` AND
+           `savedUnavailable`, and only the first was ever rendered, so a failed
+           read came out as "you have none". -->
+      {#if $savedUnavailable}
+        <p class="se-empty">{$t("k.searches.unavailable")}</p>
+      {:else if $savedSearches.length === 0}
         <p class="se-empty">{$t("k.empty.searches")}</p>
       {:else}
         <div class="se-results">
