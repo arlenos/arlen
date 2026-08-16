@@ -45,6 +45,8 @@ interface LensState {
   provenance: ProvenanceStep[];
   related: Backlink[];
   project: ProjectContext | null;
+  /// The RELATED section alone is still a sample; see `loadLens`.
+  relatedMocked: boolean;
   mocked: boolean;
 }
 
@@ -65,7 +67,7 @@ const FIXTURE = {
 // `mocked: true` because this IS the fixture. The panel renders before (and
 // without) any `loadLens`, so flagging the initial value as live claimed invented
 // provenance, backlinks and a project as the open file's real graph neighbourhood.
-export const lens = writable<LensState>({ ...FIXTURE, mocked: true });
+export const lens = writable<LensState>({ ...FIXTURE, mocked: true, relatedMocked: true });
 
 /// Load the lens for a file. Live: the three graph queries; fixture under vite.
 export async function loadLens(ref: string): Promise<void> {
@@ -95,9 +97,20 @@ export async function loadLens(ref: string): Promise<void> {
     } catch {
       // Keep the labelled sample for this section only.
     }
-    lens.set({ provenance, related: FIXTURE.related, project, mocked: projectMocked });
+    // `mocked` is the WHOLE-panel claim and is now false, because provenance and
+    // project are real. `relatedMocked` carries the one section that is still a
+    // sample - dropping the global caption without it made invented backlinks
+    // read as this file's real neighbourhood, which is the exact thing the
+    // caption existed to prevent.
+    lens.set({
+      provenance,
+      related: FIXTURE.related,
+      project,
+      mocked: projectMocked,
+      relatedMocked: true,
+    });
   } catch {
-    lens.set({ ...FIXTURE, mocked: true });
+    lens.set({ ...FIXTURE, mocked: true, relatedMocked: true });
   }
 }
 

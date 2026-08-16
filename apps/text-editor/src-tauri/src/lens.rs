@@ -96,13 +96,31 @@ pub async fn project_of(r#ref: String) -> Result<Option<String>, String> {
     Ok(project_from_rows(&rows))
 }
 
-/// Same match rule as `file_query` - exact path or basename - because the lens is
-/// handed whichever the surface has, and the same escaping for the same reason.
+/// ONE predicate, chosen here rather than an `OR` group, and the reason is the
+/// daemon's read gate rather than taste.
+///
+/// `file_query` above can write `WHERE path = x OR path ENDS WITH y` because with
+/// no `AND` beside it the clause needs no parentheses. This query has to add the
+/// liveness stamps, which forces `WHERE (a OR b) AND c` - and the gate's pattern
+/// scanner reads ANY `(` that is not preceded by an identifier as the start of a
+/// node (daemon.rs:4234), so a parenthesised WHERE group is an unlabelled node to
+/// it and the whole read is denied. Measured 16 August: "every node in the pattern
+/// must name a label", from a query whose two nodes are both labelled.
+///
+/// So the caller's shape decides the predicate: an absolute path is matched
+/// exactly, anything else as a trailing path segment. That is stricter than the
+/// OR as well - a caller who hands over a full path no longer also matches some
+/// other file whose name happens to end that way.
 fn project_query(node: &str) -> String {
     let safe = node.replace('\\', "\\\\").replace('\'', "\\'");
+    let matches_file = if node.starts_with('/') {
+        format!("f.path = '{safe}'")
+    } else {
+        format!("f.path ENDS WITH '/{safe}'")
+    };
     format!(
         "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
-         WHERE (f.path = '{safe}' OR f.path ENDS WITH '/{safe}') \
+         WHERE {matches_file} \
            AND r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL \
          RETURN p.name AS name LIMIT 1"
     )
@@ -193,6 +211,20 @@ mod project_tests {
         let mut blank = HashMap::new();
         blank.insert("name".to_string(), serde_json::json!(""));
         assert_eq!(project_from_rows(&[blank]), None);
+    }
+
+    #[test]
+    fn the_where_clause_carries_no_parenthesised_group() {
+        // The gate reads a `(` that no identifier precedes as a NODE, so a
+        // parenthesised WHERE group is an unlabelled node to it and the read is
+        // refused - measured, with both real nodes labelled.
+        for q in [project_query("README.md"), project_query("/home/t/a/README.md")] {
+            let after_where = q.split_once("WHERE").expect("a WHERE clause").1;
+            assert!(!after_where.contains('('), "no group in the predicate: {q}");
+        }
+        // An absolute path matches exactly; a bare name matches a trailing segment.
+        assert!(project_query("/home/t/a/README.md").contains("f.path = '/home/t/a/README.md'"));
+        assert!(project_query("README.md").contains("ENDS WITH '/README.md'"));
     }
 
     #[test]
