@@ -3,11 +3,14 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Control for check-cypher-groups.py. The repository passes today, so the only question worth
-// asking is whether the check can fail at all - and whether its two exclusions hold. Both are
-// load-bearing: keying on the SDK client is what keeps the daemon's own message and regression
-// test (which quote the refused shape on purpose) out of the results, and what keeps SQLite's
-// perfectly legal `WHERE (?1 IS NULL OR ...)` out of a rule about Cypher.
+// Control for check-cypher-groups.py. The repository passes today, so the questions worth asking
+// are whether the check can fail at all, and whether each exclusion holds without swallowing the
+// code around it. Every exclusion here is load-bearing and was added because its absence broke
+// something: keying on the SDK client keeps out the daemon's own refusal message and regression
+// test (which quote the refused shape on purpose) and SQLite's perfectly legal
+// `WHERE (?1 IS NULL OR ...)`; skipping `#[cfg(test)]` keeps out parser tests that feed
+// themselves unlabelled patterns deliberately. The last case is the important one - an exclusion
+// that never ends leaves the rest of the file unchecked, which reads exactly like a clean board.
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -127,6 +130,82 @@ fn unrelated() -> &'static str { "MATCH (x:X) RETURN x" }
 }
 
 {
+  // The second way to hand the gate an unlabelled node, and the one that cost the
+  // harness its whole scope picker.
+  const bare = CLEAN.replace(
+    "MATCH (f:File)-[:FILE_PART_OF]->(p:Project) WHERE p.name = 'x'",
+    "MATCH (p:Project) WHERE p.name = 'x' OPTIONAL MATCH (f:File)-[:FILE_PART_OF]->(p)",
+  );
+  const root = tree({ "apps/demo/src-tauri/src/kg.rs": bare });
+  const rc = run(root);
+  rc === 1
+    ? ok("a bare back-reference is caught")
+    : bad("a bare back-reference is caught", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  const labelled = CLEAN.replace(
+    "MATCH (f:File)-[:FILE_PART_OF]->(p:Project) WHERE p.name = 'x'",
+    "MATCH (p:Project) WHERE p.name = 'x' OPTIONAL MATCH (f:File)-[:FILE_PART_OF]->(p:Project)",
+  );
+  const root = tree({ "apps/demo/src-tauri/src/kg.rs": labelled });
+  const rc = run(root);
+  rc === 0
+    ? ok("repeating the label passes")
+    : bad("repeating the label passes", `expected 0, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // A parser test feeds itself deliberately unlabelled patterns - modulesd asserts
+  // on `MATCH (anonymous) RETURN anonymous`. Flagging those is what made the first
+  // attempt at this rule unusable, so the exclusion is load-bearing, not a nicety.
+  const withTest =
+    CLEAN +
+    `
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parses() {
+        assert_eq!(namespace("MATCH (p:shared.Person)-[:WORKS_AT]->(o)"), Some("x"));
+        assert_eq!(namespace("MATCH (anonymous) RETURN anonymous"), None);
+    }
+}
+`;
+  const root = tree({ "apps/demo/src-tauri/src/kg.rs": withTest });
+  const rc = run(root);
+  rc === 0
+    ? ok("a parser test's unlabelled pattern is not a query")
+    : bad("a parser test's unlabelled pattern is not a query", `expected 0, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // ...but the exclusion must END with the module, or everything after a test
+  // module goes unchecked - the failure mode that reads exactly like a clean board.
+  const afterTest =
+    CLEAN +
+    `
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parses() {}
+}
+
+fn later(c: &UnixGraphClient) {
+    c.query_rows("MATCH (p:Project) OPTIONAL MATCH (f:File)-[:FILE_PART_OF]->(p) RETURN p.name");
+}
+`;
+  const root = tree({ "apps/demo/src-tauri/src/kg.rs": afterTest });
+  const rc = run(root);
+  rc === 1
+    ? ok("checking resumes after the test module closes")
+    : bad("checking resumes after the test module closes", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   const rc = run(join(here, "..", ".."));
   rc === 0
     ? ok("the repository itself passes")
@@ -137,4 +216,4 @@ if (failures) {
   console.log(`\n${failures} case(s) failed`);
   process.exit(1);
 }
-console.log("a grouped predicate is caught before it reaches the gate");
+console.log("an unlabelled node is caught before it reaches the gate");
