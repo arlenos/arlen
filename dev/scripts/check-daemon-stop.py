@@ -11,9 +11,11 @@ shutdown path it wrote for `ctrl_c` never runs, because a service is not stopped
 That is not theoretical here. The knowledge daemon had no handler at all, so its ladybug
 database was never closed on a stop; a store taken down uncleanly refused to reopen, and the
 whole knowledge graph answered "ladybug thread has stopped" from then on. Fixed on 16 August,
-and the survey that followed found eight more daemons awaiting only `ctrl_c` - including
-`online-accounts`, which holds the AEAD token vault, and `transfer-daemon`, which keeps a
-dual-ledger audit. Both are exactly the state a hard stop mid-write can leave inconsistent.
+and the survey that followed found eight more daemons awaiting only `ctrl_c`. Reading how each
+one actually PERSISTS is what decides whether that matters: an atomic temp-and-rename or an
+append owned by another process survives a hard stop, an open database handle does not. Two
+that looked alarming by what they hold - the token vault and the dual-ledger audit - turned out
+safe for exactly that reason, and the baseline records the evidence rather than the worry.
 This check then found two the survey could not: `event-bus` and `wallpaper` handle no signal at
 all, so a grep that looked for daemons WITH a handler never saw them - which is the argument
 for a check over a reading.
@@ -48,10 +50,13 @@ BASELINE = {
     "file-manager-mcp": "stateless bridge",
     "knowledge-mcp": "stateless bridge",
     "notification-daemon": "SQLite, committed per notification",
-    "online-accounts": "HOLDS THE AEAD TOKEN VAULT - the one worth fixing first",
+    "online-accounts": "the vault rides on the ATOMIC account writer (config.rs: temp, "
+    "sync_all, rename) and the master secret is a one-time create, so a hard stop cannot "
+    "tear it; worst case is a leftover .tmp sibling",
     "system-monitor-mcp": "stateless bridge",
     "terminal-run-mcp": "stateless bridge",
-    "transfer-daemon": "KEEPS A DUAL-LEDGER AUDIT - fix alongside online-accounts",
+    "transfer-daemon": "writes no files itself - the dual ledger goes to the audit daemon "
+    "over a socket, and that separate process owns the durable record",
     "wallpaper": "reads the manifest and paints; the settings app owns the writes",
 }
 
