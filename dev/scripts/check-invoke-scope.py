@@ -43,7 +43,13 @@ ROOT = (
     if len(sys.argv) > 1
     else pathlib.Path(__file__).resolve().parents[2]
 )
-SKIP_PARTS = {"target", "node_modules", ".git", "build", ".svelte-kit"}
+SKIP_PARTS = {"target", "node_modules", ".git", "build", ".svelte-kit", "mkosi.builddir"}
+# `mkosi.builddir` is the image build cache. It is gitignored, so CI never sees it,
+# but it holds a cargo checkout of an OLDER commit of this repo - 45k Rust files that
+# this walk was reading on every local run. Findings there point at source nobody can
+# edit, dated to whatever commit the image last built from, and the read cost a minute
+# of every pre-commit.
+
 
 COMMAND = re.compile(r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)")
 INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*"([a-z_][a-z0-9_]*)"')
