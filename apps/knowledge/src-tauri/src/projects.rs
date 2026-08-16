@@ -229,13 +229,45 @@ async fn list_members(
     client: &os_sdk::graph::UnixGraphClient,
     project: &str,
 ) -> Result<Vec<BrowserEntry>, String> {
-    let cypher = format!(
-        "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{name: '{}'}}) \
-         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
-         RETURN f.path AS path, f.last_accessed AS last_accessed \
-         ORDER BY f.path LIMIT 2000",
-        escape_cypher_literal(project)
-    );
+    // RESOLVE THE DISPLAY NAME BACK THROUGH THE LISTING THAT PRODUCED IT.
+    //
+    // The columns compose a child path from `entry.name` (MillerColumns.svelte:78),
+    // and `disambiguate` may have made that name `foundation (Repositories)` so the
+    // listing could render at all. Matching `p.name` against it would then find
+    // nothing, so opening a disambiguated project would answer "no members" - the
+    // exact class of quiet wrongness this file keeps producing.
+    //
+    // Parsing the suffix back off would be a guess (a project may genuinely be
+    // called `foo (bar)`). Asking the listing instead is not a guess: the same
+    // function decided both strings, so the mapping is right by construction. It
+    // costs one extra read per drill-in, on a click.
+    //
+    // The members then hang off the project's ROOT PATH rather than its name,
+    // which is the identity anyway - two projects can share a name, and no two
+    // share a root.
+    let root = list_projects(client)
+        .await?
+        .into_iter()
+        .find(|e| e.name == project)
+        .and_then(|e| e.full_path);
+    let cypher = match root {
+        Some(root) => format!(
+            "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{root_path: '{}'}}) \
+             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+             RETURN f.path AS path, f.last_accessed AS last_accessed \
+             ORDER BY f.path LIMIT 2000",
+            escape_cypher_literal(&root)
+        ),
+        // No root recorded for it, or a name the listing does not carry: fall back
+        // to the name, which is what this always did.
+        None => format!(
+            "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{name: '{}'}}) \
+             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+             RETURN f.path AS path, f.last_accessed AS last_accessed \
+             ORDER BY f.path LIMIT 2000",
+            escape_cypher_literal(project)
+        ),
+    };
     let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("list_members", e))?;
     Ok(rows
         .iter()
