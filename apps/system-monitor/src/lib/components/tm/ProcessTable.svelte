@@ -424,7 +424,12 @@
     gap: 0.05rem;
   }
   .cell.access .unknown {
-    opacity: 0.45;
+    /* Not the cell's warning amber, which it would inherit: amber on a dash reads
+       as a caution about the process, and this dash is a statement about the
+       column. The muted foreground says "no answer" without saying anything about
+       the row it sits in. */
+    color: var(--color-fg-primary, #fafafa);
+    opacity: 0.4;
   }
   .h-total.unmeasured {
     /* Quieter than a number, because it is the absence of one. */
