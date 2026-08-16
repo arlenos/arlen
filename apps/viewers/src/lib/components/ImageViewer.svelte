@@ -140,9 +140,22 @@
     dragging = false;
   }
 
+  // There is nowhere to go when the folder holds one file, or when it was never
+  // read - and `index`/`total` already say which, because the position readout
+  // below refuses to print a number it does not have. The arrows were drawn
+  // enabled regardless: with `1 / 1` on screen both were live and neither did
+  // anything. A control that cannot act says so rather than accepting the click.
+  const canPrev = $derived(!!file.total && !!file.index && file.index > 1);
+  const canNext = $derived(!!file.total && !!file.index && file.index < file.total);
+
   function onKey(e: KeyboardEvent) {
-    if (e.key === "ArrowRight") onnext?.();
-    else if (e.key === "ArrowLeft") onprev?.();
+    // Same bound as the arrows: a key that silently does nothing is the same
+    // defect without the pixels.
+    if (e.key === "ArrowRight") {
+      if (canNext) onnext?.();
+    } else if (e.key === "ArrowLeft") {
+      if (canPrev) onprev?.();
+    }
   }
 </script>
 
@@ -179,10 +192,10 @@
     <WindowButtons showMaximize={false} />
   </div>
 
-  <button class="edge left" aria-label={$t("v.prevFile")} onclick={() => onprev?.()}>
+  <button class="edge left" aria-label={$t("v.prevFile")} disabled={!canPrev} onclick={() => onprev?.()}>
     <ChevronLeft size={30} strokeWidth={2} />
   </button>
-  <button class="edge right" aria-label={$t("v.nextFile")} onclick={() => onnext?.()}>
+  <button class="edge right" aria-label={$t("v.nextFile")} disabled={!canNext} onclick={() => onnext?.()}>
     <ChevronRight size={30} strokeWidth={2} />
   </button>
 
@@ -263,6 +276,14 @@
   .viewer.chrome .edge,
   .viewer.chrome .dock {
     pointer-events: auto;
+  }
+
+  /* A disabled arrow must not look like a live one. `disabled` already stops the
+     click, but the chevron kept full contrast, so at `2 / 2` both edges read as
+     available and only one did anything - the half-fix that looks like no fix. */
+  .viewer.chrome .edge:disabled {
+    opacity: 0.25;
+    pointer-events: none;
   }
 
   .scrim {
