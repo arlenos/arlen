@@ -509,6 +509,21 @@ impl ProjectStore {
         // CREATE SET` stamps only a newly-created edge (no backfill of an
         // existing one, consistent with the bitemporal stamps' no-backfill rule).
         let merge_key = content_merge_key("File", file_id, "FILE_PART_OF", "Project", &pid_str);
+        // The bitemporal stamps, which this write has been leaving NULL. The
+        // columns have existed since the KG work and the agent's write path fills
+        // them (`persist_file_part_of`), but promotion - which creates almost
+        // every membership in a real graph - set only the merge key. Measured 16
+        // August: every `FILE_PART_OF` in a live graph carried `valid_at`,
+        // `invalid_at` and `created_at` NULL, so nothing could ask what this file
+        // belonged to at a point in time; the editor's as-of control is disabled
+        // for exactly this reason.
+        //
+        // Liveness reads are unaffected: they test `invalid_at IS NULL AND
+        // expired_at IS NULL`, and those stay unset (NULL) on a fresh edge, which
+        // is the open interval. This only ADDS the start of it. `origin` is
+        // `graph` - the system observed this, no one asserted it - matching
+        // `provenance::Provenance::Graph`.
+        let stamped_at = crate::time::now().0;
         // The cross-device ordering stamp (GD-R5), only when a merge clock is
         // attached. The device id is a UUID by construction (no quote or
         // backslash), safe to interpolate like the hex `merge_key`.
@@ -529,7 +544,8 @@ impl ProjectStore {
         self.graph
             .write(format!(
                 "MATCH (f:File {{id: '{fid}'}}), (p:Project {{id: '{pid}'}})
-                 MERGE (f)-[r:FILE_PART_OF]->(p) ON CREATE SET r.merge_key = '{merge_key}'{hlc_set}"
+                 MERGE (f)-[r:FILE_PART_OF]->(p) ON CREATE SET r.merge_key = '{merge_key}', \
+                 r.valid_at = {stamped_at}, r.created_at = {stamped_at}, r.origin = 'graph'{hlc_set}"
             ))
             .await?;
         Ok(())
