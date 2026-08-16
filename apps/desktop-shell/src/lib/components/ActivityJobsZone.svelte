@@ -108,7 +108,9 @@
         {#if j.items && j.items.length > 0}
           <button class="job-expand" aria-expanded={expanded.has(j.id)} onclick={() => toggle(j.id)}>
             <ChevronRight size={13} strokeWidth={2} class={expanded.has(j.id) ? "rot" : ""} />
-            {expanded.has(j.id) ? "Hide items" : `${j.items.length} items`}
+            {expanded.has(j.id)
+              ? $t("sh.jobs.hideItems")
+              : $t("sh.jobs.itemCount", { n: j.items.length })}
           </button>
           {#if expanded.has(j.id)}
             <div class="job-items">

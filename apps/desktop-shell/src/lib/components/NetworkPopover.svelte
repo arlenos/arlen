@@ -362,7 +362,9 @@
                 {#if vpn.active}<Check size={14} strokeWidth={2} class="net-check" />{/if}
                 <span>{vpn.name}</span>
               </div>
-              <span class="vpn-status">{vpn.active ? "Connected" : "Connect"}</span>
+              <span class="vpn-status">
+                {vpn.active ? $t("sh.net.connected") : $t("sh.net.connect")}
+              </span>
             </button>
           {/each}
         </div>

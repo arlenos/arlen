@@ -1,11 +1,8 @@
-apps/desktop-shell/src/lib/components/ActivityJobsZone.svelte	Hide items
 apps/desktop-shell/src/lib/components/GlobalMenuBar.svelte	Arlen
 apps/desktop-shell/src/lib/components/Indicator.svelte	Grow
 apps/desktop-shell/src/lib/components/Indicator.svelte	Shrink
 apps/desktop-shell/src/lib/components/NetworkIndicator.svelte	Ethernet: {}
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Connect
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Connected
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Ethernet
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	WiFi
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
@@ -16,13 +13,6 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
-apps/desktop-shell/src/lib/components/TrayPopover.svelte	Unknown
-apps/desktop-shell/src/lib/components/UndoPopover.svelte	Undo
-apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	Move centered
-apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	Move continuously
-apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	Move on edge
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Exit Fullscreen
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Fullscreen
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
 apps/desktop-shell/src/lib/stores/consent.ts	move 8 files to the Trash

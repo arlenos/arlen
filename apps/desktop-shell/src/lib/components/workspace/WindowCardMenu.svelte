@@ -159,6 +159,6 @@
   <ContextMenu.Item
     onclick={() => fullscreenWindowAction(windowId, win?.fullscreen ?? false)}
   >
-    {win?.fullscreen ? "Exit Fullscreen" : "Fullscreen"}
+    {win?.fullscreen ? $t("sh.win.exitFullscreen") : $t("sh.win.fullscreen")}
   </ContextMenu.Item>
 {/if}

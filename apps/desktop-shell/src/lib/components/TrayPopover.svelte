@@ -103,7 +103,7 @@
                   {/if}
                 </div>
                 <div class="tray-item-info">
-                  <span class="tray-item-title">{item.title || item.id || "Unknown"}</span>
+                  <span class="tray-item-title">{item.title || item.id || $t("sh.tray.unknownApp")}</span>
                   {#if item.tooltip_description && item.tooltip_description !== item.title}
                     <span class="tray-item-subtitle">{item.tooltip_description}</span>
                   {/if}
