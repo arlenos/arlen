@@ -193,7 +193,17 @@
   const totalCpu = $derived(list.length ? `${formatDecimal(totals.cpu, 0, $locale)}%` : "");
   const totalMem = $derived(list.length ? mem(totals.memMB) : "");
   const totalDisk = $derived(list.length ? rate(totals.diskKBs) || "0" : "");
-  const totalNet = $derived(list.length ? rate(totals.netKBs) || "0" : "");
+  /// Whether per-process network is measured at all on this system.
+  ///
+  /// It is not, today: `/proc` carries no per-process byte counters, the backend
+  /// reports 0 and documents why, and eBPF/cgroup attribution is the piece that
+  /// would change it. Until then the column shows a dash rather than a zero,
+  /// because a zero is a claim about the process and a dash is a statement about
+  /// the column. Flip this to a real signal from the backend the day the
+  /// attribution lands, rather than deleting the column now - the plan lists
+  /// Network among the default columns.
+  const netMeasured = false;
+  const totalNet = $derived(netMeasured && list.length ? rate(totals.netKBs) || "0" : "");
 
   // `$locale` rather than the default, so the table re-renders on a language
   // switch: a template calling a function that reads the store internally has no
@@ -251,7 +261,11 @@
     </button></span>
     <span class="hcell" role="columnheader" aria-sort={ariaSort("netKBs")}><button class="h num" class:sorted={sortKey === "netKBs"} aria-label={totalNet ? $t("tm.col.withTotal", { col: $t("tm.col.network"), total: totalNet }) : $t("tm.col.network")} onclick={() => sortBy("netKBs")}>
       <span class="h-label">{$t("tm.col.network")} {#if sortKey === "netKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
-      <span class="h-total">{totalNet}</span>
+      <!-- The slot the other columns use for their live total says, for this one,
+           that there is no total to give. Same place, so the eye reads it as an
+           answer about the column rather than a stray label. -->
+      <span class="h-total" class:unmeasured={!netMeasured}
+        >{netMeasured ? totalNet : $t("tm.col.notMeasured")}</span>
     </button></span>
   </div>
 
@@ -320,7 +334,12 @@
           <div class="cell num" role="gridcell" style="--heat: {dispHeat(p)}">{formatDecimal(dispCpu(p), 1, $locale)}%</div>
           <div class="cell num" role="gridcell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
           <div class="cell num muted" role="gridcell">{rate(p.diskKBs)}</div>
-          <div class="cell num muted" role="gridcell">{rate(p.netKBs)}</div>
+          <!-- Not a zero. Per-process network is not in /proc - it needs eBPF or
+               cgroup attribution, and `procmon.rs` says so and reports 0 - so
+               printing "0" here would state that this process used no network,
+               which nobody measured. A dash says the column has no answer. -->
+          <div class="cell num muted" role="gridcell" title={$t("tm.col.networkUnavailable")}
+            >{netMeasured ? rate(p.netKBs) : "-"}</div>
         </div>
       {/if}
     {/each}
@@ -385,6 +404,11 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 0.05rem;
+  }
+  .h-total.unmeasured {
+    /* Quieter than a number, because it is the absence of one. */
+    opacity: 0.55;
+    font-style: italic;
   }
   .h-label {
     display: inline-flex;
