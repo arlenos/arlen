@@ -47,6 +47,7 @@ SHOTS=(
   "knowledge - knowledge-library-unavailable button[data-place=library]"
   "meetings - meetings-unavailable"
   "settings printers settings-printers-unavailable"
+  "settings keyboard settings-keyboard-unavailable"
   "settings privacy settings-privacy-unavailable"
   "settings privacy/physical settings-sentinel-unavailable"
   "settings appearance/wallpaper settings-appearance-wallpaper-unavailable"
