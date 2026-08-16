@@ -50,6 +50,9 @@ export interface ProjectMember {
 
 interface LensState {
   provenance: ProvenanceStep[];
+  /// The graph holds membership for this file, but only from after the instant
+  /// being asked about. Distinct from "no project": one is absence of record.
+  projectUnrecorded: boolean;
   related: Backlink[];
   project: ProjectContext | null;
   /// The RELATED section alone is still a sample; see `loadLens`.
@@ -81,10 +84,15 @@ const FIXTURE = {
 // `mocked: true` because this IS the fixture. The panel renders before (and
 // without) any `loadLens`, so flagging the initial value as live claimed invented
 // provenance, backlinks and a project as the open file's real graph neighbourhood.
-export const lens = writable<LensState>({ ...FIXTURE, mocked: true, relatedMocked: true });
+export const lens = writable<LensState>({
+  ...FIXTURE,
+  mocked: true,
+  relatedMocked: true,
+  projectUnrecorded: false,
+});
 
 /// Load the lens for a file. Live: the three graph queries; fixture under vite.
-export async function loadLens(ref: string): Promise<void> {
+export async function loadLens(ref: string, asOf: number | null = null): Promise<void> {
   try {
     // Provenance AND project are asked for; `related_of` still is not, and that
     // is a missing MEANING rather than a missing permission - the graph holds no
@@ -109,8 +117,14 @@ export async function loadLens(ref: string): Promise<void> {
     }
     let project: ProjectContext | null = FIXTURE.project;
     let projectMocked = true;
+    let projectUnrecorded = false;
     try {
-      const ctx = await invoke<ProjectContext | null>("project_of", { ref });
+      const answer = await invoke<{ project: ProjectContext | null; unrecorded: boolean }>(
+        "project_of",
+        { ref, asOf },
+      );
+      projectUnrecorded = answer.unrecorded;
+      const ctx = answer.project;
       // A file in no project is NULL, not a project with an empty name. The panel
       // guards the section with `{#if $lens.project}` and an object is truthy, so
       // the empty-name version rendered "Part of" followed by nothing - a claim
@@ -132,11 +146,12 @@ export async function loadLens(ref: string): Promise<void> {
       provenance,
       related,
       project,
+      projectUnrecorded,
       mocked: projectMocked,
       relatedMocked,
     });
   } catch {
-    lens.set({ ...FIXTURE, mocked: true, relatedMocked: true });
+    lens.set({ ...FIXTURE, mocked: true, relatedMocked: true, projectUnrecorded: false });
   }
 }
 
