@@ -104,10 +104,35 @@ rm -f "$OUT"
 # `env -u WAYLAND_DISPLAY` for the same reason `shoot-compositor.sh` does it: xvfb-run
 # sets DISPLAY only, so a WebKit that prefers Wayland would render against the real
 # session and this "headless" shot would be of the developer's compositor.
+# A window manager, because the renderer reaches its width by going FULLSCREEN
+# and fullscreen is a request that only a WM grants. Without one the window keeps
+# its unmapped default and `render-wide.py` measures a 200px surface, then refuses
+# with "needs a zoom of 0.16, outside 0.2-6.0" - correctly, since the alternative
+# is a picture of a 200px-wide layout labelled 1280.
+#
+# So this script could not produce a shot at all, which is worth stating plainly:
+# it is the ONLY one that photographs the failure path, and the reason it exists
+# is that the 8 August bugs all lived there. `shoot-app.sh` learned the same thing
+# in June ("the X11 WM was the missing piece") and starts openbox; this one was
+# never given it. Measured both ways on 16 August: no WM, 200px surface and no
+# file; with openbox, `viewport: 1280x960 css px` and a PNG.
 xvfb-run -a --server-args="-screen 0 1600x1200x24" \
-  env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
-  python3 "$ROOT/dev/screenshot/render-wide.py" \
-    --url "$URL" --out "$OUT" --width "$W" --require-width "$W" \
+  env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
+    ob=""
+    if command -v openbox >/dev/null 2>&1; then
+      openbox >/tmp/shoot-nb-openbox.log 2>&1 &
+      ob=$!
+      sleep 1.5
+    fi
+    python3 "$1/dev/screenshot/render-wide.py" \
+      --url "$2" --out "$3" --width "$4" --require-width "$4"
+    rc=$?
+    # Kill AND wait: the display goes away with xvfb-run the moment this returns,
+    # and a WM still shutting down against a vanishing server logs noise that
+    # reads like a failure of the shot.
+    if [ -n "$ob" ]; then kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null; fi
+    exit $rc
+  ' _ "$ROOT" "$URL" "$OUT" "$W" \
   2>&1 | grep -v "Gdk-WARNING" || true
 
 # Did we photograph the app, or the preview server's corpse? A page whose text is
