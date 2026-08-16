@@ -1,4 +1,9 @@
 <script lang="ts">
+  /// Whether the access block reflects the machine. It does not yet: see the
+  /// comment at its render site, and the matching flag in `ProcessTable`. Both
+  /// flip together the day the permission profile drives this.
+  const accessMeasured = false;
+
   import { t, locale } from "$lib/i18n/messages";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
   /// The per-process detail pane. Standard tabs (Statistics / Memory / Open files)
@@ -81,7 +86,17 @@
   <div class="dp-body">
     {#if tab === "Access"}
       <div class="acc-sensor" data-lit={detail.access.camera || detail.access.mic}>
-        {#if detail.access.camera || detail.access.mic}
+        <!-- MEASURED, OR SAID TO BE UNMEASURED - never a reassurance nobody checked.
+             `detail.access` comes from a hand-keyed table in `stores/detail.ts`
+             matched on process name, which the file itself calls a stand-in. For
+             any process not in that table it falls to a default that reads "Not
+             using your camera, microphone, or screen" and "It runs with limited
+             access and holds nothing sensitive" - a confident clearance, printed
+             about a process nobody looked at. Found on 16 August by opening the
+             pane on `claude` and reading what it said. -->
+        {#if !accessMeasured}
+          <span>{$t("tm.dp.accessUnknown")}</span>
+        {:else if detail.access.camera || detail.access.mic}
           {#if detail.access.camera}<Camera size={15} strokeWidth={2} />{/if}
           {#if detail.access.mic}<Mic size={15} strokeWidth={2} />{/if}
           <span>{detail.access.camera && detail.access.mic
@@ -94,7 +109,7 @@
         {/if}
       </div>
 
-      <p class="acc-reach">{detail.access.reach}</p>
+      <p class="acc-reach">{accessMeasured ? detail.access.reach : $t("tm.dp.reachUnknown")}</p>
 
       {#if detail.access.scopes.length > 0}
         <div class="acc-scopes">
