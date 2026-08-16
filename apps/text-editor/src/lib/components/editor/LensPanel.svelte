@@ -77,11 +77,13 @@
       <h2 class="sec-title">{$t("te.lens.project")}</h2>
       <p class="proj-name">{$t("te.lens.project.partOf", { name: $lens.project.name })}</p>
       <div class="proj-members">
-        {#each $lens.project.members as m (m)}
+        {#each $lens.project.members as m (m.path)}
           {#if $lens.mocked}
-            <span class="proj-chip">{m}</span>
+            <span class="proj-chip">{m.name}</span>
           {:else}
-            <button type="button" class="proj-chip" onclick={() => openRelated(m)}>{m}</button>
+            <button type="button" class="proj-chip" title={m.path} onclick={() => openRelated(m.path)}>
+              {m.name}
+            </button>
           {/if}
         {/each}
       </div>
