@@ -95,6 +95,9 @@ def run_and_assert(base, sid, command, expect, selector):
     # then sends key ACTIONS, which xterm receives either way. Verified working
     # after the block-mode cutover, so leave it alone - the two paths differ in
     # mechanism, not by oversight.
+    # `console_text` returns the grid with every run of whitespace removed, so
+    # anything compared against it has to be squashed the same way.
+    squash = lambda s: re.sub(r"\s+", "", s)
     eid = find_element(base, sid, selector or ".console")
     landed = False
     for _ in range(4):
@@ -105,7 +108,13 @@ def run_and_assert(base, sid, command, expect, selector):
         time.sleep(0.4)
         type_keys(base, sid, command)
         time.sleep(1.0)
-        if expect in console_text(base, sid):
+        # Wait for the COMMAND to appear, not for the expectation. This asked for
+        # `expect`, which is a different question and answered wrong twice over: a
+        # multi-word expectation never matches the squashed grid, so the loop
+        # timed out and reported "the command never reached the grid" about a
+        # command sitting in plain sight, and a single-word one that happens to be
+        # in the command made this the only test that ran.
+        if squash(command) in console_text(base, sid):
             landed = True
             break
     if not landed:
@@ -113,9 +122,32 @@ def run_and_assert(base, sid, command, expect, selector):
         return False
     press_enter(base, sid)
     time.sleep(5.0)
-    ok = expect in console_text(base, sid)
+    # Look for `expect` in the OUTPUT, which means not in the echoed command.
+    #
+    # This used to be `expect in console_text(...)` - the same test line 108 uses
+    # to decide the command was TYPED. Once the command is on screen that test is
+    # already satisfied, so the post-execution assertion passed on the prompt
+    # rather than on any result. Measured on 16 August:
+    # `SHOOT_EXEC='true # ZZMARKER' SHOOT_EXPECT=ZZMARKER` produces no output
+    # whatsoever and reported "EXEC PASS: rendered after execution". Every check
+    # of the form `echo foo` / expect `foo` was passing on the echo of the word
+    # `foo` in the command line, which is to say the terminal's one end-to-end
+    # verification could not fail for the reason it existed.
+    #
+    # Dropping every line that carries the command text leaves the output. A
+    # command whose own text appears in its output loses that line too, which
+    # costs a false negative and never a false pass - the direction this has to
+    # fail in.
+    # `console_text` squashes every run of whitespace away, so both sides have to
+    # be squashed too. That is the second half of this defect and it fails the
+    # other way: `SHOOT_EXPECT='No such file'` could never match, because the text
+    # being searched reads `Nosuchfile`. One check that cannot fail for
+    # single-word expectations found in the command, and cannot pass for
+    # multi-word ones. Both directions are fixed here.
+    out = console_text(base, sid).replace(squash(command), "")
+    ok = squash(expect) in out
     print(("EXEC PASS: " if ok else "EXEC FAIL: ") + repr(expect)
-          + (" rendered after execution" if ok else " not found after execution"))
+          + (" rendered after execution" if ok else " not found in the output"))
     return ok
 
 
