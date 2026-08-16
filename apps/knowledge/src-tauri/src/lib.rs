@@ -54,6 +54,7 @@ pub fn run() {
             projects::knowledge_projects_list,
             provenance::knowledge_provenance,
             search::knowledge_search,
+            search::knowledge_project_names,
             timeline::knowledge_timeline,
             export::knowledge_timeline_export,
             delete::knowledge_timeline_delete,

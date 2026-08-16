@@ -111,10 +111,34 @@ export const results = derived(
   [] as SearchResult[]
 );
 
-/// The project names the project facet offers (from the fixture; live this
-/// is a typed read).
-export function projectChoices(): string[] {
-  return ["Arlen OS", "Thesis", "Website redesign"];
+/// The project names the project facet offers: the live ones, loaded when the
+/// facet is opened.
+///
+/// This used to return three invented names. Picking one filtered for a project
+/// that does not exist, so the results came back empty and read as "this project
+/// holds nothing" - the filter looked like it worked and answered a lie.
+export const projectChoices = writable<string[]>([]);
+
+/// True when the project list could not be read, so the facet says so instead
+/// of offering an empty menu that reads like "you have no projects".
+export const projectChoicesUnavailable = writable(false);
+
+/// Load the choices. Called when the facet opens, so a project detected since
+/// the app started is offered without a restart.
+export async function loadProjectChoices(): Promise<void> {
+  try {
+    const live = await invoke<string[]>("knowledge_project_names");
+    projectChoices.set(live);
+    projectChoicesUnavailable.set(false);
+  } catch {
+    if (import.meta.env.DEV) {
+      projectChoices.set(["Arlen OS", "Thesis", "Website redesign"]);
+      projectChoicesUnavailable.set(false);
+      return;
+    }
+    projectChoices.set([]);
+    projectChoicesUnavailable.set(true);
+  }
 }
 
 /// A saved search: the query-as-folder bet. Name + the exact query state.

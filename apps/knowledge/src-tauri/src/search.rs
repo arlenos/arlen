@@ -53,6 +53,37 @@ const RESULT_LIMIT: usize = 100;
 /// The types this command can actually answer from the graph today.
 const ANSWERABLE: [&str; 2] = ["file", "project"];
 
+/// The projects the facet can filter by: exactly the live ones, newest first.
+///
+/// These are RAW `p.name` values, not the disambiguated labels the Projects
+/// browser shows, because the facet's value goes straight into the `p.name`
+/// predicate - a label like `atlas (in work)` would match nothing. Two projects
+/// sharing a name therefore collapse to one choice that selects both, which is
+/// what "the project called atlas" means when that is all the person typed.
+///
+/// The facet used to offer three invented names, so picking one filtered for a
+/// project that does not exist and the list came back empty - a filter that
+/// silently answers nothing is worse than one that is not offered.
+#[tauri::command]
+pub async fn knowledge_project_names() -> Result<Vec<String>, String> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let rows = client
+        .query_rows(
+            "MATCH (p:Project) WHERE p.expired_at IS NULL \
+             RETURN p.name AS name, p.created_at AS created_at \
+             ORDER BY p.created_at DESC LIMIT 500",
+        )
+        .await
+        .map_err(|e| crate::report::graph_call_failed("project_names", e))?;
+    let mut seen = std::collections::BTreeSet::new();
+    Ok(rows
+        .iter()
+        .filter_map(|r| text(r, "name"))
+        .filter(|n| !n.is_empty() && seen.insert(n.clone()))
+        .collect())
+}
+
 /// Search the graph. An empty query with facets set is a browse; a query with
 /// no facets is a ranked text search; both together intersect.
 #[tauri::command]
@@ -111,31 +142,38 @@ async fn files(
     if let Some(cut) = cutoff_micros(facets.within_days) {
         wheres.push(format!("f.last_accessed >= {cut}"));
     }
-    // Filtering files by project needs the membership EDGE. This used to say the
-    // read gate refuses any query naming a relationship type, because the readable
-    // set keeps only entirely-alphanumeric names - both halves wrong:
-    // `is_safe_graph_identifier` (daemon.rs:804) allows underscores, and
-    // `raw_read_label_gate` (daemon.rs:4394) authorises a traversal by its
-    // endpoints, with an EMPTY `RESTRICTED_RELATIONS`. Measured 16 August: the
-    // traversal is answered, with rows. The refusal below is therefore about this
-    // read not being BUILT yet, not about permission - the join is now available
-    // and wiring this facet to it is a real follow-up rather than a gated one.
+    // Membership rides on FILE_PART_OF. This used to refuse, on the belief that the
+    // read gate denies any query naming a relationship type - wrong twice over:
+    // `is_safe_graph_identifier` (daemon.rs:804) allows the underscore, and
+    // `raw_read_label_gate` (daemon.rs:4394) authorises a traversal by its ENDPOINTS,
+    // with an empty `RESTRICTED_RELATIONS`. Measured 16 August against a live daemon:
+    // the traversal is answered, with rows.
     //
-    // Until then, refusing is still the honest answer, and it differs from the
-    // unanswerable TYPE facet above: there the graph holds no such nodes, here it
-    // holds the answer and this query does not ask for it. Returning files
-    // unfiltered would silently ignore the filter; returning none would claim the
-    // project has no files. So the surface falls to its fixture and says so.
-    if facets.project.is_some() {
-        return Err("filtering files by project is not wired to the membership join yet".into());
-    }
-    let cypher = format!(
-        "MATCH (f:File) WHERE {} \
-         RETURN f.id AS id, f.path AS path, f.app_id AS app_id, \
-                f.last_accessed AS at \
-         ORDER BY f.last_accessed DESC LIMIT {RANK_LIMIT}",
-        wheres.join(" AND ")
-    );
+    // The facet MATCHES; without one the same edge is OPTIONAL, which is what fills
+    // the `project` column every file result has carried empty until now. Only live
+    // membership counts: a closed edge (`invalid_at`) recorded that the file left the
+    // project, and an expired project is gone.
+    let live_edge = "r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL";
+    let cypher = if let Some(name) = facets.project.as_deref() {
+        wheres.push(live_edge.to_string());
+        wheres.push(format!("p.name = '{}'", escape_cypher_literal(name)));
+        format!(
+            "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) WHERE {} \
+             RETURN f.id AS id, f.path AS path, f.app_id AS app_id, \
+                    f.last_accessed AS at, p.name AS project \
+             ORDER BY f.last_accessed DESC LIMIT {RANK_LIMIT}",
+            wheres.join(" AND ")
+        )
+    } else {
+        format!(
+            "MATCH (f:File) WHERE {} \
+             OPTIONAL MATCH (f)-[r:FILE_PART_OF]->(p:Project) WHERE {live_edge} \
+             RETURN f.id AS id, f.path AS path, f.app_id AS app_id, \
+                    f.last_accessed AS at, p.name AS project \
+             ORDER BY f.last_accessed DESC LIMIT {RANK_LIMIT}",
+            wheres.join(" AND ")
+        )
+    };
     let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("search_files", e))?;
     Ok(rows
         .iter()
@@ -147,7 +185,7 @@ async fn files(
                 title: path.rsplit('/').next().unwrap_or(&path).to_string(),
                 sub: text(r, "app_id").unwrap_or_default(),
                 at: seconds(r, "at"),
-                project: None,
+                project: text(r, "project"),
             })
         })
         .collect())
