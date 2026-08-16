@@ -71,12 +71,12 @@ pub async fn knowledge_projects_list(
 /// asked for the members of a project by that name. `list_projects` was
 /// unreachable from the interface.
 ///
-/// It failed in the way that hides: members are read over `FILE_PART_OF`, which
-/// the read gate refuses for this caller, so the call errored, and under vite an
-/// error sends the store to its fixture - whose listing for an unknown project is
-/// empty. The pane rendered "Empty" against a graph holding 95 projects, and the
-/// probe agreed there were 95, because both were answering honestly about
-/// different questions (measured 16 August).
+/// It failed in the way that hides: the root took the members branch and asked for
+/// a project literally named `projects`, the graph held none, and under vite an
+/// empty result sends the store to its fixture - whose listing for an unknown
+/// project is also empty. The pane rendered "Empty" against a graph holding 95
+/// projects, and the probe agreed there were 95, because both were answering
+/// honestly about different questions (measured 16 August).
 ///
 /// Stripping the leading segment is unambiguous rather than a guess about the
 /// word "projects": every path the browser produces carries the root as its first
@@ -208,15 +208,19 @@ fn disambiguate(entries: Vec<BrowserEntry>) -> Vec<BrowserEntry> {
 
 /// One project's live members, by the bitemporal FILE_PART_OF edge.
 ///
-/// **Denied today for this caller, and worth knowing before debugging it.** The
-/// read gate requires every relationship type in a query to be in the caller's
-/// readable set, and that set keeps only entirely-alphanumeric names, so
-/// `FILE_PART_OF` cannot be in it. Measured against the gate, this query answers
-/// "read denied: label outside the caller's read scope" for any caller that is
-/// not system-anchored - which this app is not. The column falls back to its
-/// fixture and says it is mocked, which is the honest outcome; making it real
-/// needs the scope model to admit declared relations, or this app to be
-/// first-party. Recorded for a decision rather than worked around here.
+/// **This is answered, and the comment that said otherwise was wrong.** It read:
+/// the gate refuses any query naming a relationship type, because the readable
+/// set keeps only entirely-alphanumeric names so `FILE_PART_OF` can never be in
+/// it. Both halves are false against the daemon. `is_safe_graph_identifier`
+/// (daemon.rs:804) ALLOWS underscores, and `raw_read_label_gate` (daemon.rs:4394)
+/// authorises a traversal by its ENDPOINTS - only types listed in
+/// `RESTRICTED_RELATIONS` need their own grant, and that list is empty.
+///
+/// Measured on 16 August against a live daemon rather than argued: four files
+/// promoted under a detected project, and this exact query returned four rows,
+/// which the app then rendered as the members column. The belief had been copied
+/// into five sites across three apps, each serving a fixture for a rule that does
+/// not exist.
 ///
 /// Liveness comes from the EDGE stamps alone, and that is not a shortcut: a
 /// `File` node has no `expired_at` column - only `Project` does - and this
