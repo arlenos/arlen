@@ -84,12 +84,35 @@
     unlistenChanged?.();
   });
 
+
+  /// True when the last write did not land, so the controls below are back to
+  /// what the daemon holds rather than what was just asked for.
+  let writeFailed = $state(false);
+
+  /// Send a write, and put the surface back if it did not arrive.
+  ///
+  /// Every setter here patched `cfg` first and handed the rejection to
+  /// `console.warn`, so with the daemon down the switch stayed where you left it
+  /// and night light was not on. That is the same defect as a timeline that says
+  /// recording is paused while it is running, and `check-optimistic-write.py`
+  /// says in its own summary that it cannot see this one: it is a
+  /// component-level optimistic write, not a store's.
+  function push(previous: NightLightConfig, sent: Promise<unknown>): void {
+    writeFailed = false;
+    void sent.catch((err) => {
+      console.warn("night_light write failed:", err);
+      cfg = previous;
+      writeFailed = true;
+    });
+  }
+
   function setEnabled(enabled: boolean) {
+    const previous = cfg;
     cfg = { ...cfg, enabled };
-    invoke("night_light_set", {
+    push(previous, invoke("night_light_set", {
       enabled,
       temperature: cfg.temperature,
-    }).catch((err) => console.warn("night_light_set failed:", err));
+    }));
   }
 
   // Slider drag fires onchange a lot. Debounce so we don't flood the
@@ -99,42 +122,46 @@
   function setTemperature(t: number) {
     cfg = { ...cfg, temperature: t };
     if (tempDebounce) clearTimeout(tempDebounce);
+    const previous = cfg;
     tempDebounce = setTimeout(() => {
-      invoke("night_light_set", {
+      push(previous, invoke("night_light_set", {
         enabled: cfg.enabled,
         temperature: t,
-      }).catch((err) => console.warn("night_light_set failed:", err));
+      }));
     }, 80);
   }
 
   function setSchedule(mode: string) {
     const m = mode as ScheduleMode;
+    const previous = cfg;
     cfg = { ...cfg, schedule: m };
-    invoke("night_light_set_schedule", {
+    push(previous, invoke("night_light_set_schedule", {
       schedule: m,
       customStart: cfg.custom_start,
       customEnd: cfg.custom_end,
-    }).catch((err) => console.warn("night_light_set_schedule failed:", err));
+    }));
   }
 
   function setCustomStart(hhmm: string) {
     const minutes = parseHhmm(hhmm);
+    const previous = cfg;
     cfg = { ...cfg, custom_start: minutes };
-    invoke("night_light_set_schedule", {
+    push(previous, invoke("night_light_set_schedule", {
       schedule: cfg.schedule,
       customStart: minutes,
       customEnd: cfg.custom_end,
-    }).catch((err) => console.warn("night_light_set_schedule failed:", err));
+    }));
   }
 
   function setCustomEnd(hhmm: string) {
     const minutes = parseHhmm(hhmm);
+    const previous = cfg;
     cfg = { ...cfg, custom_end: minutes };
-    invoke("night_light_set_schedule", {
+    push(previous, invoke("night_light_set_schedule", {
       schedule: cfg.schedule,
       customStart: cfg.custom_start,
       customEnd: minutes,
-    }).catch((err) => console.warn("night_light_set_schedule failed:", err));
+    }));
   }
 
   function setLatitude(lat: number) {
@@ -170,6 +197,11 @@
 </script>
 
 <Section label={$t("s.night.title")}>
+  <!-- The controls below are back to what the daemon holds, because what was
+       asked for never got there. -->
+  {#if writeFailed}
+    <div class="write-failed" role="alert">{$t("s.night.writeFailed")}</div>
+  {/if}
   <Row
     label={$t("s.night.active")}
     description={$t("s.night.active.desc")}
@@ -262,6 +294,13 @@
 </Section>
 
 <style>
+  .write-failed {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-error, #f87171);
+  }
+
   /* Slider needs more horizontal room than other controls. Row
      gives the control area a hard right-aligned width; the wrapper
      here lets the slider fill 220px instead of collapsing. */

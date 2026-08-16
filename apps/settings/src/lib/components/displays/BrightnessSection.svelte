@@ -41,12 +41,23 @@
   // app-settings.
   let applyTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /// True when the last device enumeration did not answer, so the empty list is
+  /// "we could not ask the hardware" rather than "the hardware has none".
+  ///
+  /// The empty branch below states a fact about the machine - no backlight, use
+  /// the monitor's buttons - and the catch that emptied the list is the one place
+  /// that fact was never learned. Same shape as the saved-layouts list on this
+  /// page, found the same way and fixed the same way.
+  let loadFailed = $state(false);
+
   async function reload() {
     try {
       snapshots = await invoke<BrightnessSnapshot[]>("brightness_get_devices");
+      loadFailed = false;
     } catch (err) {
       console.warn("brightness_get_devices failed:", err);
       snapshots = [];
+      loadFailed = true;
     }
     if (snapshots.length > 0 && !selected) {
       selected = snapshots[0]!.device.name;
@@ -110,7 +121,11 @@
 </script>
 
 <Section label={$t("s.bright.title")}>
-  {#if snapshots.length === 0}
+  {#if loadFailed}
+    <div class="empty">
+      {$t("s.bright.unavailable")}
+    </div>
+  {:else if snapshots.length === 0}
     <div class="empty">
       {$t("s.bright.empty")}
     </div>
