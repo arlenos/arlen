@@ -13,6 +13,7 @@
   /// Knowledge app.
 
   import { onMount } from "svelte";
+  import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import {
@@ -129,6 +130,7 @@
   title={$t("s.know.title")}
   description={$t("s.know.desc")}
 >
+  <ConfigUnavailable error={$graph.error} />
   <SectionGrid>
     <Section label={$t("s.know.status")}>
       {#if error}

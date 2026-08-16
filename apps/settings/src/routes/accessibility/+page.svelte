@@ -9,6 +9,7 @@
   /// notify-watcher applies the change within ~100 ms.
 
   import { onMount } from "svelte";
+  import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -87,6 +88,7 @@
   title={$t("s.a11y.title")}
   description={$t("s.a11y.desc")}
 >
+  <ConfigUnavailable error={$compositor.error} />
   <SectionGrid>
     <Section label={$t("s.a11y.magnifier")}>
     <Row

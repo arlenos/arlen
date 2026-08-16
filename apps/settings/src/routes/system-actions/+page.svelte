@@ -11,6 +11,7 @@
   /// compositor picks the default again. Reset-all confirms first.
 
   import { onMount } from "svelte";
+  import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
   import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
   import { mark } from "@arlen/ui-kit/i18n";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
@@ -83,6 +84,7 @@
   title={$t("s.sysact.title")}
   description={$t("s.sysact.desc")}
 >
+  <ConfigUnavailable error={$compositor.error} />
   <SectionGrid>
   {#if modifiedCount > 0}
     <div class="header-actions span-full">
