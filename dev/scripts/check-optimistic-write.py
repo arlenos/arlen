@@ -92,6 +92,22 @@ ROOT = (
 
 CATCH = re.compile(r"\}\s*catch\b[^{]*\{", re.S)
 STORE_WRITE = re.compile(r"\.(set|update)\(")
+#: The same optimistic update written as a Svelte 5 rune rather than a store: a
+#: component reassigning its own state from itself, `cfg = { ...cfg, enabled }`.
+#:
+#: This gate's summary said for its whole life that it "cannot see a component-
+#: level optimistic write", and that sentence was load-bearing: `STORE_WRITE`
+#: matched `.set(`/`.update(` only, so every rune-based surface was outside it.
+#: On 16 August the night-light section turned out to hold six of them - flip the
+#: switch with the daemon down and it stayed flipped while nothing turned on,
+#: which is the exact defect this file exists to prevent, in the one shape it
+#: could not look at. Found by clicking the switch, not by reading.
+RUNE_WRITE = re.compile(r"\b(\w+)\s*=\s*\{\s*\.\.\.\s*\1\b")
+
+
+def optimistic_update(code: str) -> bool:
+    """Whether `code` sets a surface's state ahead of the call it depends on."""
+    return bool(STORE_WRITE.search(code) or RUNE_WRITE.search(code))
 COMMENT = re.compile(r"/\*.*?\*/", re.S)
 
 # The blind spot, found by reading rather than by this check, on 9 August: the
@@ -261,7 +277,7 @@ def promise_catch_findings(text: str, rel: str):
         handler, _ = balanced(text, handler_at)
         if not only_reports_to_a_log(handler):
             continue
-        if not STORE_WRITE.search(preceding_code(text[: m.start()], m.start())):
+        if not optimistic_update(preceding_code(text[: m.start()], m.start())):
             continue
         out.append(text[: m.start()].count("\n") + 1)
     return out
@@ -307,7 +323,7 @@ def main() -> int:
             try_at = head.rfind("try")
             if try_at < 0 or "invoke(" not in text[try_at:start]:
                 continue
-            if not STORE_WRITE.search(preceding_code(head, try_at)):
+            if not optimistic_update(preceding_code(head, try_at)):
                 continue
             seen_per_file[rel] = seen_per_file.get(rel, 0) + 1
             if rel in KNOWN and seen_per_file[rel] <= KNOWN[rel][0]:
@@ -360,9 +376,12 @@ def main() -> int:
     print(
         f"{checked} catch block(s) checked for a mutation that failed silently after "
         f"an optimistic update. {known_hits} in {len(KNOWN)} known file(s) carried as "
-        f"a queue, each bounded by its recorded count. Cannot see a revert's correctness, a component-level optimistic "
-        f"write. A rejection handed to `.catch` is now read too, log-only "
-        f"handlers included."
+        f"a queue, each bounded by its recorded count. A rejection handed to "
+        f"`.catch` is read, log-only handlers included, and a component setting "
+        f"its own state (`x = {{ ...x }}`) counts as the optimistic update - it "
+        f"did not until 16 August, and six night-light setters lived in that gap. "
+        f"Still cannot see a revert's correctness, or an update written some "
+        f"third way."
     )
     if findings:
         print("\nactions that claim to have happened when they did not:\n")

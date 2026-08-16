@@ -66,6 +66,45 @@ check(
   (code, out) => code === 1 && out.includes("console"),
 );
 
+// The rune form, and the reason the gate was widened on 16 August: a component
+// setting its own state is the same optimistic update as a store's, and
+// `STORE_WRITE` matched neither `=` nor a spread. Six night-light setters sat in
+// that gap - flip the switch with the daemon down, it stays flipped, and night
+// light is off. Copied from the shape that shipped, not invented.
+check(
+  "a component setting its own state before a log-only rejection is caught",
+  {
+    "apps/demo/src/lib/Night.svelte":
+      "<script lang=\"ts\">\n" +
+      "  let cfg = $state({ enabled: false });\n" +
+      "  function setEnabled(enabled) {\n" +
+      "    cfg = { ...cfg, enabled };\n" +
+      '    invoke("night_light_set", { enabled }).catch((e) => console.warn("failed", e));\n' +
+      "  }\n" +
+      "</script>\n",
+  },
+  (code, out) => code === 1 && out.includes("console"),
+);
+
+// And the boundary for it: reverting the component's own state is the fix, so a
+// handler that puts `cfg` back must pass. Without this the widening would push
+// people from a log to a silent catch.
+check(
+  "a component that reverts its own state on failure passes",
+  {
+    "apps/demo/src/lib/Night.svelte":
+      "<script lang=\"ts\">\n" +
+      "  let cfg = $state({ enabled: false });\n" +
+      "  function setEnabled(enabled) {\n" +
+      "    const previous = cfg;\n" +
+      "    cfg = { ...cfg, enabled };\n" +
+      '    invoke("night_light_set", { enabled }).catch(() => { cfg = previous; writeFailed = true; });\n' +
+      "  }\n" +
+      "</script>\n",
+  },
+  (code) => code === 0,
+);
+
 // The boundary that keeps it honest: a handler putting the store back is the fix.
 check(
   "a rejection handler that reverts the store passes",
