@@ -646,9 +646,7 @@
 
           {#if filteredApps.length === 0}
             <div class="apps-empty">
-              {appFilter
-                ? "No rules match this filter."
-                : "No per-app rules yet. Pick an app above to override its priority, mute it, or block it entirely."}
+              {appFilter ? $t("s.notif.rulesNoMatch") : $t("s.notif.rulesEmpty")}
             </div>
           {:else}
             <div class="apps-list">

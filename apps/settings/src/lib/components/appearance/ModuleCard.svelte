@@ -133,7 +133,7 @@
         <div class="actions">
           <Button variant="destructive" size="sm" onclick={clickUninstall}>
             <Trash2 size={12} strokeWidth={2.25} />
-            {confirmingUninstall ? "Click again to confirm" : "Uninstall"}
+            {confirmingUninstall ? $t("s.mod.uninstallConfirm") : $t("s.mod.uninstall")}
           </Button>
         </div>
       {/if}
