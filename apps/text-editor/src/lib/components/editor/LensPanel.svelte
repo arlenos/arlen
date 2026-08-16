@@ -78,7 +78,14 @@
     {/if}
   </section>
 
-  {#if $lens.project}
+  {#if $lens.projectUnrecorded}
+    <!-- Absence of RECORD, not absence of membership. Rendering this as "no
+         project" would state something about the past that nobody knows. -->
+    <section class="sec">
+      <h2 class="sec-title">{$t("te.lens.project")}</h2>
+      <p class="empty">{$t("te.lens.project.unrecorded")}</p>
+    </section>
+  {:else if $lens.project}
     <section class="sec">
       <h2 class="sec-title">{$t("te.lens.project")}</h2>
       <p class="proj-name">{$t("te.lens.project.partOf", { name: $lens.project.name })}</p>

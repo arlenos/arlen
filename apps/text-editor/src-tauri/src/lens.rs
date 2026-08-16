@@ -58,6 +58,22 @@ pub struct LensProvenanceStep {
     pub fidelity: &'static str,
 }
 
+/// What the project section can say, including the state it could not say before.
+///
+/// An empty as-of answer is AMBIGUOUS and the two readings are opposite: the file
+/// was in no project then, or the graph was not recording membership yet. The
+/// second is true of every instant before 16 August, because promotion only
+/// started stamping intervals then. Rendering both as "no project" would put a
+/// confident claim about the past on screen where the truth is "nobody knows".
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LensProjectAnswer {
+    pub project: Option<LensProject>,
+    /// The graph holds membership for this file, but all of it begins AFTER the
+    /// instant asked about - so the answer is absence of record, not absence of
+    /// membership.
+    pub unrecorded: bool,
+}
+
 /// A document that references the open file: the backlink the panel lists.
 ///
 /// `snippet` is the plan's inline context (#3) and is EMPTY here: `LINKS_TO`
@@ -121,14 +137,50 @@ pub async fn provenance_of(r#ref: String) -> Result<Vec<LensProvenanceStep>, Str
 pub async fn project_of(
     r#ref: String,
     as_of: Option<i64>,
-) -> Result<Option<LensProject>, String> {
+) -> Result<LensProjectAnswer, String> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
         .query_rows(&project_query(&r#ref, as_of))
         .await
         .map_err(|e| e.to_string())?;
-    Ok(project_from_rows(&rows))
+    let project = project_from_rows(&rows);
+    if project.is_some() {
+        return Ok(LensProjectAnswer { project, unrecorded: false });
+    }
+    // Only on the empty answer, and only when a past instant was asked for: the
+    // common path keeps its single read.
+    let unrecorded = match as_of {
+        None => false,
+        Some(t) => {
+            let rows = client
+                .query_rows(&began_after_query(&r#ref, t))
+                .await
+                .map_err(|e| e.to_string())?;
+            !rows.is_empty()
+        }
+    };
+    Ok(LensProjectAnswer { project: None, unrecorded })
+}
+
+/// Does the graph hold a membership for this file that BEGAN after `t`?
+///
+/// Answering yes turns an empty as-of result from "in no project then" into "not
+/// recorded that far back". An unstamped edge is excluded on purpose: with no
+/// known start it is read as always-having-been, so it would have matched the
+/// as-of query already and we would not be here.
+fn began_after_query(node: &str, t: i64) -> String {
+    let safe = node.replace('\\', "\\\\").replace('\'', "\\'");
+    let matches_file = if node.starts_with('/') {
+        format!("f.path = '{safe}'")
+    } else {
+        format!("f.path ENDS WITH '/{safe}'")
+    };
+    format!(
+        "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
+         WHERE {matches_file} AND r.valid_at > {t} \
+         RETURN p.name AS name LIMIT 1"
+    )
 }
 
 /// The documents that reference the open file (plan #3, cross-content backlinks).

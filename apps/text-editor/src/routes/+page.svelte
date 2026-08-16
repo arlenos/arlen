@@ -40,6 +40,14 @@
     { value: "1m", label: $t("te.asOf.1m") },
   ]);
 
+  /// The selected preset as an instant in epoch MICROSECONDS, or null for "now",
+  /// which keeps the live read rather than asking for the present as a past time.
+  function asOfMicros(preset: string): number | null {
+    const DAY = 86_400_000;
+    const back = preset === "1d" ? DAY : preset === "1w" ? 7 * DAY : preset === "1m" ? 30 * DAY : 0;
+    return back === 0 ? null : (Date.now() - back) * 1000;
+  }
+
   let focusMode = $state(false);
   let lensOpen = $state(true);
   let asOf = $state("now");
@@ -157,7 +165,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   // is a confident false claim about the open file. The demo documents have no
   // path and keep their name.
   $effect(() => {
-    loadLens($openDocument?.path ?? file.name);
+    loadLens($openDocument?.path ?? file.name, asOfMicros(asOf));
   });
 
   // Window chrome: the toolbar doubles as the drag region (explicit
@@ -238,29 +246,18 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
         <Sun size={14} strokeWidth={2} /> {$t("te.focus")}
       </button>
     {/if}
-    <!-- Still inert, but the reason has CHANGED and the label with it. It was
-         "the producer writes no stamps"; promotion stamps `valid_at` now, so the
-         graph does record when a membership began - just only from today, and
-         only forward. Enabling the control against a graph whose history starts
-         this morning would answer "no project" for every earlier time, which is
-         true and useless enough to mislead.
-         What it needs next is the read, and that is unblocked: the predicate
-         `r.valid_at <= T AND coalesce(r.invalid_at, <max>) > T` is accepted by
-         the gate (no parenthesised group), and reading a NULL `valid_at` as
-         "no known start" via `coalesce(r.valid_at, 0)` makes it answer correctly
-         for the older unstamped edges too. -->
-    <!-- The tooltip rides a wrapper: the kit's select takes no `title`, and the
-         kit is not this app's to extend for one caller. -->
-    <span class="asof-wrap" title={$t("te.asOf.unavailable")}>
-      <PopoverSelect
-        value={asOf}
-        options={AS_OF_OPTIONS}
-        width="130px"
-        disabled
-        ariaLabel={$t("te.asOf.aria")}
-        onchange={(v) => (asOf = v)}
-      />
-    </span>
+    <!-- Live: picking a past instant re-reads the lens as of then. It was
+         disabled while promotion wrote no interval stamps, and again while only
+         the query existed; both halves are built now. An instant before the graph
+         began recording is answered as "not recorded", never as "no project" -
+         those are opposite claims and the panel keeps them apart. -->
+    <PopoverSelect
+      value={asOf}
+      options={AS_OF_OPTIONS}
+      width="130px"
+      ariaLabel={$t("te.asOf.aria")}
+      onchange={(v) => (asOf = v)}
+    />
     <button
       type="button"
       class="tb-btn icon"
@@ -308,14 +305,6 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
 </div>
 
 <style>
-  /* Inert, and looking it. Without this the select renders at full contrast and
-     reads as available - the same half-fix as a disabled arrow that still looks
-     bright, which this pass already corrected once in the viewer. */
-  .asof-wrap {
-    display: inline-flex;
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
   .open-failed {
     padding: 2.5rem 2rem;
