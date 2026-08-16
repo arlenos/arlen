@@ -45,6 +45,12 @@
   let extras = $state<XkbExtras>({ ...EXTRAS_DEFAULT });
   let loading = $state(true);
   let lastError = $state<string | null>(null);
+  /// Set when the initial READ did not answer, which is a different sentence
+  /// from a failed write. Both used `lastError`, so a page opened with no
+  /// backend said "Could not save the keyboard change. The previous setting
+  /// still applies." - about a change nobody had made, on a page that had not
+  /// been written to at all.
+  let loadError = $state<string | null>(null);
   let showAddLayout = $state(false);
   let extrasSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -152,9 +158,9 @@
       layouts = l.length > 0 ? l : ["us"];
       variants = v;
       extras = { ...EXTRAS_DEFAULT, ...(raw ?? {}) };
-      lastError = null;
+      loadError = null;
     } catch (e) {
-      lastError = String(e);
+      loadError = String(e);
     } finally {
       loading = false;
     }
@@ -265,6 +271,15 @@
   >
     {#snippet icon()}<KeyboardIcon size={20} strokeWidth={1.75} />{/snippet}
   </LinkCard>
+
+  {#if loadError}
+    <div
+      class="span-full rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+      title={loadError}
+    >
+      {$t("s.kbd.loadFailed")}
+    </div>
+  {/if}
 
   {#if lastError}
     <div
