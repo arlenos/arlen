@@ -10,8 +10,10 @@
 //! apps use for theme and locale, and the file commands an editor cannot do
 //! without.
 //!
-//! What is deliberately NOT here yet: the lens (`provenance_of`, `related_of`,
-//! `project_of`) and the gated AI edit (`ai_edit` and its accept/reject/undo).
+//! What is deliberately NOT here yet: the lens's `related_of` (see `lens.rs` - the
+//! graph holds no file-to-file edge, so "backlinks" needs a meaning before it can
+//! have a query) and the gated AI edit (`ai_edit` and its accept/reject/undo).
+//! `provenance_of` and `project_of` are answered.
 //! Those are reads against the knowledge daemon and the AI engine, and the
 //! frontend already renders an honest "not available" state for each, so the
 //! editor is useful before they land rather than lying about them.
@@ -129,7 +131,8 @@ pub fn run() {
             editor_open,
             editor_save,
             initial_file,
-            lens::provenance_of
+            lens::provenance_of,
+            lens::project_of
         ])
         .run(tauri::generate_context!())
         .expect("error while running the text editor");
