@@ -116,12 +116,12 @@ async fn list_projects(
     let rows = client
         .query_rows(
             "MATCH (p:Project) WHERE p.expired_at IS NULL \
-             RETURN p.name AS name, p.created_at AS created_at \
+             RETURN p.name AS name, p.root_path AS root_path, p.created_at AS created_at \
              ORDER BY p.created_at DESC LIMIT 500",
         )
         .await
         .map_err(|e| crate::report::graph_call_failed("list_projects", e))?;
-    Ok(rows
+    let entries = rows
         .iter()
         .filter_map(|r| {
             let name = text(r, "name")?;
@@ -133,10 +133,77 @@ async fn list_projects(
                 is_hidden: false,
                 readonly: true,
                 symlink_target: None,
-                full_path: None,
+                // The project's own root, which is what makes two projects that
+                // share a basename tellable apart - and what "reveal in
+                // containing folder" needs anyway.
+                full_path: text(r, "root_path"),
             })
         })
-        .collect())
+        .collect();
+    Ok(disambiguate(entries))
+}
+
+/// Give every row a name no other row in the listing carries.
+///
+/// A PROJECT NAME IS A BASENAME, and basenames repeat. The graph's projects come
+/// from detected directories anywhere in the tree, so two of them are called
+/// `coffeeshop-repo-template` on this machine (under `source/` and `public/` of the
+/// same site repo) and any tree with a `frontend/`, `docs/` or `build/` in two
+/// places will do the same. A filesystem listing cannot produce that - names are
+/// unique within one directory - so the browser kit keys its rows on
+/// `entry.name` (MillerColumns.svelte:132), which is sound for the listing it was
+/// built for and not for this one.
+///
+/// Feeding it duplicates does not render two rows badly, it renders NONE: Svelte
+/// aborts a keyed `{#each}` on a duplicate key, so the pane came up "Empty" while
+/// 95 projects sat behind it (measured 16 August, found in the webview's own
+/// console rather than in any log).
+///
+/// Disambiguating only where it is needed keeps the common case clean: a unique
+/// name stays exactly as detected, and a colliding one gains the directory that
+/// contains it, which is the part that actually differs. If even that repeats,
+/// the whole root path goes in - long, and still true.
+fn disambiguate(entries: Vec<BrowserEntry>) -> Vec<BrowserEntry> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for e in &entries {
+        *seen.entry(e.name.as_str()).or_default() += 1;
+    }
+    let duplicated: Vec<String> = seen
+        .iter()
+        .filter(|(_, n)| **n > 1)
+        .map(|(k, _)| (*k).to_string())
+        .collect();
+
+    let mut out = entries;
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for e in &mut out {
+        if !duplicated.contains(&e.name) {
+            used.insert(e.name.clone());
+            continue;
+        }
+        let root = e.full_path.clone().unwrap_or_default();
+        let parent = std::path::Path::new(&root)
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|s| s.to_string_lossy().into_owned());
+        let mut candidate = match parent {
+            Some(p) if !p.is_empty() => format!("{} ({p})", e.name),
+            _ => e.name.clone(),
+        };
+        if used.contains(&candidate) || candidate == e.name {
+            // Still not unique, or there was no parent to name it by: the full
+            // root is the last thing that cannot collide, since two projects
+            // cannot share one.
+            candidate = if root.is_empty() {
+                format!("{} ({})", e.name, used.len())
+            } else {
+                format!("{} ({root})", e.name)
+            };
+        }
+        used.insert(candidate.clone());
+        e.name = candidate;
+    }
+    out
 }
 
 /// One project's live members, by the bitemporal FILE_PART_OF edge.
@@ -212,6 +279,55 @@ pub fn escape_cypher_literal(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn project(name: &str, root: &str) -> BrowserEntry {
+        BrowserEntry {
+            name: name.to_string(),
+            kind: "directory".to_string(),
+            size: None,
+            modified_unix: None,
+            is_hidden: false,
+            readonly: true,
+            symlink_target: None,
+            full_path: Some(root.to_string()),
+        }
+    }
+
+    #[test]
+    fn two_projects_with_one_basename_do_not_collapse_the_whole_listing() {
+        // The real pair from this machine. Keyed on `name`, these two rendered
+        // zero rows rather than two.
+        let out = disambiguate(vec![
+            project("coffeeshop-repo-template", "/home/t/site/source/coffeeshop-repo-template"),
+            project("coffeeshop-repo-template", "/home/t/site/public/coffeeshop-repo-template"),
+            project("arlen", "/home/t/Repositories/arlen"),
+        ]);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "coffeeshop-repo-template (source)",
+                "coffeeshop-repo-template (public)",
+                // A name nobody else carries is left exactly as detected.
+                "arlen",
+            ]
+        );
+        let unique: std::collections::HashSet<&str> = names.iter().copied().collect();
+        assert_eq!(unique.len(), names.len());
+    }
+
+    #[test]
+    fn a_collision_the_parent_cannot_settle_falls_back_to_the_root() {
+        // Same basename AND same parent name, two different trees.
+        let out = disambiguate(vec![
+            project("build", "/a/pkg/build"),
+            project("build", "/b/pkg/build"),
+        ]);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names[0], "build (pkg)");
+        assert_eq!(names[1], "build (/b/pkg/build)");
+        assert_ne!(names[0], names[1]);
+    }
 
     #[test]
     fn the_browsers_root_lists_projects_rather_than_one_projects_members() {
