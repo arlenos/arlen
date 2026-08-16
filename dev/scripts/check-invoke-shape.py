@@ -314,11 +314,21 @@ def wrapped_calls(root: Path, known: set[str]) -> list[str]:
     is never compared, and it does not appear in the invoke count either. The
     clock app routes fifteen calls that way, which is most of its backend.
 
-    Rather than resolve them - the wrapper may rename or reshape the payload, so
-    following it could be confidently wrong - they are counted and named, so the
-    number this check reports comes with the number it could not reach. A gate
-    that reports 541 calls checked while 15 more exist is not wrong about the 541;
-    it is wrong about what its silence means.
+    That was the whole story once, and it is not any more: two wrapper shapes are
+    now RESOLVED rather than counted - a passthrough that forwards the command and
+    payload it was handed, and one that supplies a fixed payload - and calls
+    through them are compared like any other. The clock's `send` is one of them,
+    so its fifteen calls are checked, not skipped.
+
+    What this function is now is the backstop for everything neither shape covers,
+    and as of 16 August that is nothing: it returns empty against the whole tree.
+    An empty answer here is worth as much as a full one, because the alternative
+    to naming what cannot be reached is a gate whose silence reads like coverage.
+
+    Still deliberately not followed: a wrapper that RENAMES or reshapes the payload
+    on its way through. Following that could be confidently wrong, which is worse
+    than reporting it, so such a wrapper lands in this list rather than in the
+    comparison.
     """
     found: list[str] = []
     for path in (root / "apps").rglob("*"):
