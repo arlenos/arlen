@@ -163,6 +163,13 @@ def warn_if_error_page(base, sid):
     This reads the DOM rather than the pixels, so it catches the message before
     the eye has to. It does not judge whether the app rendered CORRECTLY - only
     that it is the app rather than a failure to reach it.
+
+    The probes are searched across the whole page source, so an app that legitimately
+    DISPLAYS one of these phrases is reported as an error page - a terminal showing
+    `curl: Connection refused`, most obviously, which is a plausible thing to want a
+    screenshot of. Left as it is on purpose: the cost is a re-run with different
+    text, while narrowing the search risks missing the case this exists for, and
+    this check has to fail toward refusing a shot rather than toward blessing one.
     """
     try:
         html = rq(base, "GET", f"/session/{sid}/source")["value"]
