@@ -136,6 +136,33 @@ async fn main() {
         println!("kg-probe: sweep-only run, asked the graph nothing");
         return;
     }
+
+    // One ad-hoc read, as this caller, printed verbatim.
+    //
+    // The fixed questions below answer "what does the graph hold". They cannot
+    // answer "why did THIS query fail", which is the question an app surface
+    // raises every time it falls back to its fixture - and falling back is
+    // silent, so the error never reaches anybody. Twice now the only way to see
+    // it was to add a print to an app and rebuild it.
+    //
+    // Deliberately NOT part of a normal run: it takes the query on argv, prints
+    // the rows or the refusal, and exits without the rounds.
+    if let Some(cypher) = std::env::args().nth(1) {
+        println!("kg-probe: asking one query as this caller");
+        match client.query_rows(&cypher).await {
+            Ok(rows) => {
+                println!("kg-probe: {} row(s)", rows.len());
+                for row in rows.iter().take(20) {
+                    println!("  {}", serde_json::to_string(row).unwrap_or_default());
+                }
+            }
+            Err(e) => {
+                println!("kg-probe: REFUSED: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     report_profile();
     report_proc_sweep();
     wait_until_named(&client).await;
