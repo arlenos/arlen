@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import { readsAsInternal } from "$lib/errors";
   /// Quick Settings layout customisation page.
   ///
   /// WYSIWYG editor: renders a faithful preview of the desktop-
@@ -283,7 +284,13 @@
     } catch (e) {
       if (myVersion === writeSeq) {
         entries = previous;
-        banner = { kind: "error", message: $t("s.qs.saveFailed", { error: String(e) }) };
+        banner = {
+        kind: "error",
+        // A runtime error names an internal; the service's own words are useful.
+        message: readsAsInternal(String(e))
+          ? $t("s.qs.saveFailedPlain")
+          : $t("s.qs.saveFailed", { error: String(e) }),
+      };
       }
     }
     if (myVersion === writeSeq) busy = false;
@@ -370,7 +377,13 @@
         message: "Quick Settings layout restored to defaults.",
       };
     } catch (e) {
-      banner = { kind: "error", message: $t("s.qs.resetFailed", { error: String(e) }) };
+      banner = {
+        kind: "error",
+        // A runtime error names an internal; the service's own words are useful.
+        message: readsAsInternal(String(e))
+          ? $t("s.qs.resetFailedPlain")
+          : $t("s.qs.resetFailed", { error: String(e) }),
+      };
     }
     busy = false;
     confirmResetOpen = false;

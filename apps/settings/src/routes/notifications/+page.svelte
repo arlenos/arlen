@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import { readsAsInternal } from "$lib/errors";
   import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
   import { mark } from "@arlen/ui-kit/i18n";
   /// Notifications panel.
@@ -287,8 +288,16 @@
   {#if $notifications.loading && !$notifications.data}
     <div class="status">{$t("s.notif.loading")}</div>
   {:else if $notifications.error && !$notifications.data}
+    <!-- The reason is shown when it is the backend's own words and suppressed
+         when it is a JS runtime error: with no backend this rendered
+         "TypeError: undefined is not an object (evaluating
+         'window.__TAURI_INTERNALS__.invoke')" under the heading, which is the
+         same sentence ui-kit's FileBrowser and the viewers app each had to stop
+         printing. -->
     <div class="error">
-      {$t("s.notif.loadFailed", { error: $notifications.error })}
+      {readsAsInternal($notifications.error ?? "")
+        ? $t("s.notif.loadFailedPlain")
+        : $t("s.notif.loadFailed", { error: $notifications.error })}
     </div>
   {:else}
     <div class="groups">
