@@ -26,9 +26,13 @@ excuse-list: every entry is work, and an entry disappears when the command lands
 What this does NOT cover:
 
   * The reverse direction - a registered command nobody invokes - is reported at
-    the end but never fails the check, because a shared helper in `ui-kit` can call
-    a command the app's own source never names (`frontend_log` is the obvious one),
-    and a scanner that only reads `apps/*/src` cannot see it.
+    the end but never fails the check. It used to be unreliable for a reason that
+    was only a scan path: a shared helper in `ui-kit` calls a command the app's
+    own source never names, and this read `apps/*/src` alone. It now reads
+    `sdk/ui-kit/src` too and offers those names to every app as INDIRECT calls,
+    which may relax the uncalled list and never enter the strict missing-command
+    check. What keeps it advisory is the rest: a name built at runtime, or a call
+    from somewhere neither tree covers.
   * An invoke whose name is computed (`invoke(cmd)` where `cmd` is a variable),
     including the local-wrapper shape `check-invoke-shape.py` documents - the clock
     app routes fifteen calls through one helper, which is why its commands look
@@ -436,12 +440,36 @@ def main() -> int:
     uncalled: list[str] = []
     apps = sorted(p for p in (ROOT / "apps").iterdir() if (p / "package.json").exists())
 
+    # Commands the SHARED KIT invokes, read once and offered to every app.
+    #
+    # `apps/*/src` alone was the reason the reverse direction carried a
+    # "helper-fed" bucket a person had to keep by hand: a ui-kit component calls
+    # the command, the app that mounts it never names it, and the scanner then
+    # reported a registered command nobody invokes. Two names live there today,
+    # `get_surface_tokens` and `pick_directory`.
+    #
+    # They join `indirect`, never `calls`, and that distinction is the whole
+    # safety of this: `indirect` may only RELAX the uncalled list. Put in `calls`
+    # they would enter the strict missing-command check, and an app that mounts no
+    # kit component using them would be told it is missing a command it never asked
+    # for - a gate inventing work, which is worse than the bucket it replaces.
+    kit_calls: set[str] = set()
+    kit_src = ROOT / "sdk/ui-kit/src"
+    if kit_src.exists():
+        for f in list(kit_src.rglob("*.ts")) + list(kit_src.rglob("*.svelte")):
+            text = without_template_literals(
+                f.read_text(encoding="utf-8", errors="replace")
+            )
+            kit_calls |= set(INVOKE.findall(text))
+            kit_calls |= set(IMPORTED_INVOKE.findall(text))
+
+
     for app in apps:
         calls: set[str] = set()
         # Names reaching `invoke` through a variable. Kept apart from `calls` so
         # they can relax the uncalled list without ever entering the strict
         # missing-command check.
-        indirect: set[str] = set()
+        indirect: set[str] = set(kit_calls)
         src = app / "src"
         if src.exists():
             for f in list(src.rglob("*.ts")) + list(src.rglob("*.svelte")):
