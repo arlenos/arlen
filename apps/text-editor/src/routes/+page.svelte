@@ -150,9 +150,14 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     void loadInitialFile();
   });
 
-  // The lens tracks whichever file is open.
+  // The lens tracks whichever file is open, and is given the PATH when there is
+  // one. A basename is ambiguous and the lens resolves it as a trailing segment,
+  // so two projects each holding a `README.md` make the panel name whichever the
+  // graph returned first: opening `atlas/README.md` said "Part of beacon", which
+  // is a confident false claim about the open file. The demo documents have no
+  // path and keep their name.
   $effect(() => {
-    loadLens(file.name);
+    loadLens($openDocument?.path ?? file.name);
   });
 
   // Window chrome: the toolbar doubles as the drag region (explicit

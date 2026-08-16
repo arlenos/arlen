@@ -38,7 +38,14 @@ export interface Backlink {
 /// The file's project membership + its sibling members.
 export interface ProjectContext {
   name: string;
-  members: string[];
+  members: ProjectMember[];
+}
+
+/// A sibling file. `name` is what the chip shows, `path` is what opens - a
+/// basename is not openable, and two projects can hold the same one.
+export interface ProjectMember {
+  path: string;
+  name: string;
 }
 
 interface LensState {
@@ -61,7 +68,14 @@ const FIXTURE = {
     { file: "meeting-2026-06-30.md", ref: "meeting-0630", snippet: "…agreed the KG-lens is the reason to build our own editor, not gedit…" },
     { file: "provenance.md", ref: "provenance", snippet: "…coarse lineage only, captured at semantic edges, never the syscall firehose…" },
   ],
-  project: { name: "Arlen editor", members: ["roadmap.md", "provenance.md", "lens-design.md"] },
+  project: {
+    name: "Arlen editor",
+    members: [
+      { path: "/example/arlen-editor/roadmap.md", name: "roadmap.md" },
+      { path: "/example/arlen-editor/provenance.md", name: "provenance.md" },
+      { path: "/example/arlen-editor/lens-design.md", name: "lens-design.md" },
+    ],
+  },
 };
 
 // `mocked: true` because this IS the fixture. The panel renders before (and
@@ -86,13 +100,15 @@ export async function loadLens(ref: string): Promise<void> {
     let project: ProjectContext | null = FIXTURE.project;
     let projectMocked = true;
     try {
-      const name = await invoke<string | null>("project_of", { ref });
+      const ctx = await invoke<ProjectContext | null>("project_of", { ref });
       // A file in no project is NULL, not a project with an empty name. The panel
       // guards the section with `{#if $lens.project}` and an object is truthy, so
       // the empty-name version rendered "Part of" followed by nothing - a claim
       // about a project that does not exist, which is the failure this whole
       // section was rebuilt to stop making.
-      project = name ? { name, members: [] } : null;
+      // The siblings ride the same query now (plan #4), so the section names the
+      // project AND opens into it rather than showing a heading over nothing.
+      project = ctx && ctx.name ? ctx : null;
       projectMocked = false;
     } catch {
       // Keep the labelled sample for this section only.

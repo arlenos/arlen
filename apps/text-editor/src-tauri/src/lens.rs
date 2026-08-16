@@ -58,6 +58,21 @@ pub struct LensProvenanceStep {
     pub fidelity: &'static str,
 }
 
+/// The file's project and the siblings that share it, in the shape the panel
+/// renders. Named `Lens…` for the same reason as the step above.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LensProject {
+    pub name: String,
+    pub members: Vec<LensMember>,
+}
+
+/// A sibling: what to show and what to open, which are not the same string.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LensMember {
+    pub path: String,
+    pub name: String,
+}
+
 /// Where the open file came from, as far as the graph can say.
 ///
 /// An unknown file answers with an empty list rather than a guess; an unreachable
@@ -86,7 +101,7 @@ pub async fn provenance_of(r#ref: String) -> Result<Vec<LensProvenanceStep>, Str
 /// LIVE-ONLY on both stamps, so an archived project or a closed membership does
 /// not surface as the file's current home; the bitemporal edge carries both.
 #[tauri::command]
-pub async fn project_of(r#ref: String) -> Result<Option<String>, String> {
+pub async fn project_of(r#ref: String) -> Result<Option<LensProject>, String> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
@@ -118,23 +133,71 @@ fn project_query(node: &str) -> String {
     } else {
         format!("f.path ENDS WITH '/{safe}'")
     };
+    // One query, two hops: the file's project and, back down the same edge, the
+    // project's OTHER members - plan #4, "pulling the project's other members
+    // into the backlink panel". Both hops carry their own liveness stamps,
+    // because a sibling whose membership was closed left the project and saying
+    // otherwise is the kind of quiet lie this panel keeps being rebuilt to stop.
+    //
+    // The membership hop is optional so a file that belongs to a project ALONE
+    // still answers with its project rather than nothing - the section would
+    // otherwise vanish for the first file in a new project, which is exactly
+    // when someone looks at it.
+    //
+    // `p` is already bound, and Cypher would take a bare `(p)` on the second hop.
+    // The gate would not: it demands every node in a pattern NAME a label, and a
+    // bare back-reference names none, so the whole read is refused - the same
+    // unlabelled-node rule as the parenthesised group, reached a different way.
+    // Measured against a live daemon: `(p)` refused, `(p:Project)` answered.
     format!(
         "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
          WHERE {matches_file} \
            AND r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL \
-         RETURN p.name AS name LIMIT 1"
+         OPTIONAL MATCH (p:Project)<-[r2:FILE_PART_OF]-(sib:File) \
+         WHERE r2.invalid_at IS NULL AND r2.expired_at IS NULL AND sib.path <> f.path \
+         RETURN p.name AS name, sib.path AS member, sib.last_accessed AS at \
+         ORDER BY sib.last_accessed DESC LIMIT {MAX_MEMBERS}"
     )
 }
+
+/// Enough to orient, not enough to become a file list. The panel is a lens, not
+/// a browser: a project with four hundred files should not push the provenance
+/// section off the screen.
+const MAX_MEMBERS: usize = 12;
 
 /// Pure, so the shape is tested without a daemon. An empty name is None rather
 /// than an empty chip: a project with no readable name is not a project the panel
 /// can say anything true about.
-fn project_from_rows(rows: &[HashMap<String, Value>]) -> Option<String> {
-    rows.first()?
+///
+/// The rows are one per sibling (the project name repeats), so the name comes
+/// from the first and the members are collected across all of them. A row whose
+/// `member` is null is the no-siblings case the OPTIONAL hop produces.
+fn project_from_rows(rows: &[HashMap<String, Value>]) -> Option<LensProject> {
+    let name = rows
+        .first()?
         .get("name")?
         .as_str()
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+        .filter(|s| !s.is_empty())?
+        .to_string();
+    let mut members = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for row in rows {
+        let Some(path) = row.get("member").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        if !seen.insert(path.to_string()) {
+            continue;
+        }
+        members.push(LensMember {
+            path: path.to_string(),
+            // The chip shows the basename because a lens beside the text has no
+            // room for a full path, but the click opens `path` - the name alone
+            // is not openable, and two projects can hold the same basename.
+            name: path.rsplit('/').next().unwrap_or(path).to_string(),
+        });
+    }
+    Some(LensProject { name, members })
 }
 
 /// Match by exact path or basename, since the lens is given whichever the
@@ -200,17 +263,44 @@ fn iso_day(seconds: i64) -> String {
 mod project_tests {
     use super::*;
 
+    fn row(name: &str, member: Option<&str>) -> HashMap<String, Value> {
+        let mut r = HashMap::new();
+        r.insert("name".to_string(), serde_json::json!(name));
+        r.insert(
+            "member".to_string(),
+            member.map_or(Value::Null, |m| serde_json::json!(m)),
+        );
+        r
+    }
+
     #[test]
     fn a_named_live_project_is_returned_and_a_blank_one_is_not() {
-        let mut row = HashMap::new();
-        row.insert("name".to_string(), serde_json::json!("Arlen"));
-        assert_eq!(project_from_rows(&[row]), Some("Arlen".to_string()));
+        let p = project_from_rows(&[row("Arlen", None)]).expect("named project");
+        assert_eq!(p.name, "Arlen");
+        // The OPTIONAL hop answers one row with a null member when the file is
+        // the project's only member. That is a project, not an absence.
+        assert!(p.members.is_empty());
         // No rows: the file is in no project, which the panel must show as absent
         // rather than as an empty chip.
         assert_eq!(project_from_rows(&[]), None);
-        let mut blank = HashMap::new();
-        blank.insert("name".to_string(), serde_json::json!(""));
-        assert_eq!(project_from_rows(&[blank]), None);
+        assert_eq!(project_from_rows(&[row("", None)]), None);
+    }
+
+    #[test]
+    fn siblings_are_collected_across_rows_and_shown_by_basename() {
+        let p = project_from_rows(&[
+            row("Arlen", Some("/w/arlen/notes.md")),
+            row("Arlen", Some("/w/arlen/docs/plan.md")),
+            // The same sibling twice cannot become two chips.
+            row("Arlen", Some("/w/arlen/notes.md")),
+        ])
+        .expect("project");
+        assert_eq!(p.name, "Arlen");
+        let shown: Vec<&str> = p.members.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(shown, ["notes.md", "plan.md"]);
+        // The chip opens the PATH: a basename is not openable, and the panel
+        // wires the click to this field.
+        assert_eq!(p.members[1].path, "/w/arlen/docs/plan.md");
     }
 
     #[test]
@@ -219,8 +309,29 @@ mod project_tests {
         // parenthesised WHERE group is an unlabelled node to it and the read is
         // refused - measured, with both real nodes labelled.
         for q in [project_query("README.md"), project_query("/home/t/a/README.md")] {
-            let after_where = q.split_once("WHERE").expect("a WHERE clause").1;
-            assert!(!after_where.contains('('), "no group in the predicate: {q}");
+            // Per PREDICATE, not per query: the second hop is a MATCH whose own
+            // nodes are parenthesised and must be. What may never carry a `(` is
+            // the text between a WHERE and the clause that ends it.
+            let mut rest = q.as_str();
+            let mut checked = 0;
+            while let Some((_, after)) = rest.split_once("WHERE ") {
+                let end = ["OPTIONAL MATCH", "RETURN", "ORDER BY"]
+                    .iter()
+                    .filter_map(|k| after.find(k))
+                    .min()
+                    .unwrap_or(after.len());
+                let predicate = &after[..end];
+                assert!(!predicate.contains('('), "no group in the predicate: {predicate}");
+                checked += 1;
+                rest = after;
+            }
+            assert_eq!(checked, 2, "both WHERE clauses were checked: {q}");
+        }
+        // Every node names a label, including the already-bound `p` on the second
+        // hop - a bare back-reference is an unlabelled node to the gate.
+        for q in [project_query("README.md"), project_query("/x/README.md")] {
+            assert!(!q.contains("(p)<-"), "the bound node repeats its label: {q}");
+            assert!(q.contains("(p:Project)<-"), "second hop labels its node: {q}");
         }
         // An absolute path matches exactly; a bare name matches a trailing segment.
         assert!(project_query("/home/t/a/README.md").contains("f.path = '/home/t/a/README.md'"));
