@@ -13,15 +13,19 @@
 //! the promotion pipeline stamps a `File` node with the app that opened it and
 //! when. So one hop, and it is true.
 //!
-//! **Why not more.** The lineage anyone wants - which project it belongs to, the
-//! session it was worked in, which bridge imported it - lives on the edges, and
-//! the daemon's read gate rejects any query naming a relationship type for a
-//! caller that is not system-anchored (the readable set is built by stripping
-//! `system.` from the profile's read scopes and keeping alphanumeric names, so
-//! `FILE_PART_OF` can never be in it). The timeline hit the same wall and made the
-//! same choice, with the reasoning in its own module: ask for what the caller can
-//! have, because a query carrying the join fails whole and takes the honest part
-//! down with it. This grows when that scope question is settled, not before.
+//! **Why not more, and the old reason was wrong.** This said the daemon's read
+//! gate rejects any query naming a relationship type for a caller that is not
+//! system-anchored. It does not: `raw_read_label_gate` (daemon.rs:4394) authorises
+//! a traversal by its ENDPOINTS and only `RESTRICTED_RELATIONS` needs its own
+//! grant, a list that is empty; `is_safe_graph_identifier` (daemon.rs:804) allows
+//! underscores, so `FILE_PART_OF` was never excluded by its name either. Measured
+//! 16 August against a live daemon, and the timeline's project column - removed
+//! for the same wrong reason - now renders.
+//!
+//! So the remaining hops here are UNBUILT rather than forbidden: the session and
+//! the importing bridge want their own reads, and each should be added the way the
+//! timeline's was, by asking the daemon first and keeping the join optional so a
+//! missing edge cannot cost a row.
 
 use std::collections::HashMap;
 
