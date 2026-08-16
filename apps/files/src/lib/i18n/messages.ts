@@ -255,7 +255,10 @@ const messages: Catalogs = {
     "f.sidebar.searches": "Searches",
     "f.sidebar.recent": "Recent",
     "f.sidebar.trash": "Trash",
-    "f.sidebar.placesUnavailable": "Your places could not be read, so none are listed.",
+    // "none are listed" was read as a claim about the sidebar, and Recent and
+    // Trash are listed directly under it - they need no backend, which is the
+    // whole reason this line exists. Scoped to the places themselves.
+    "f.sidebar.placesUnavailable": "Your places could not be read, so none of them are listed.",
     "f.sidebar.foldersUnsaved": "Not saved. These will be gone after a restart.",
 
     // Tabs
@@ -545,7 +548,7 @@ const messages: Catalogs = {
     "f.sidebar.searches": "Suchen",
     "f.sidebar.recent": "Zuletzt",
     "f.sidebar.trash": "Papierkorb",
-    "f.sidebar.placesUnavailable": "Deine Orte konnten nicht gelesen werden, deshalb steht hier keiner.",
+    "f.sidebar.placesUnavailable": "Deine Orte konnten nicht gelesen werden, deshalb ist keiner davon aufgeführt.",
     "f.sidebar.foldersUnsaved": "Nicht gespeichert. Nach einem Neustart sind sie weg.",
 
     "f.tab.close": "Tab schließen",
