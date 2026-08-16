@@ -74,6 +74,51 @@ pub async fn provenance_of(r#ref: String) -> Result<Vec<LensProvenanceStep>, Str
     Ok(steps_from_rows(&rows))
 }
 
+/// The project the open file belongs to, or `None` when the graph knows of none.
+///
+/// This is the section the lens has been serving a fixture for, and it was left
+/// unbuilt on a belief that turned out to be false: the modules here and in the
+/// Knowledge app all said the read gate refuses a query naming a relationship
+/// type. It does not - `raw_read_label_gate` (daemon.rs:4394) authorises a
+/// traversal by its ENDPOINTS, and its restricted list is empty. Measured against
+/// a live daemon on 16 August, with rows.
+///
+/// LIVE-ONLY on both stamps, so an archived project or a closed membership does
+/// not surface as the file's current home; the bitemporal edge carries both.
+#[tauri::command]
+pub async fn project_of(r#ref: String) -> Result<Option<String>, String> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let rows = client
+        .query_rows(&project_query(&r#ref))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(project_from_rows(&rows))
+}
+
+/// Same match rule as `file_query` - exact path or basename - because the lens is
+/// handed whichever the surface has, and the same escaping for the same reason.
+fn project_query(node: &str) -> String {
+    let safe = node.replace('\\', "\\\\").replace('\'', "\\'");
+    format!(
+        "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
+         WHERE (f.path = '{safe}' OR f.path ENDS WITH '/{safe}') \
+           AND r.invalid_at IS NULL AND r.expired_at IS NULL AND p.expired_at IS NULL \
+         RETURN p.name AS name LIMIT 1"
+    )
+}
+
+/// Pure, so the shape is tested without a daemon. An empty name is None rather
+/// than an empty chip: a project with no readable name is not a project the panel
+/// can say anything true about.
+fn project_from_rows(rows: &[HashMap<String, Value>]) -> Option<String> {
+    rows.first()?
+        .get("name")?
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 /// Match by exact path or basename, since the lens is given whichever the
 /// surface has. The name is escaped: it arrives from the frontend, and a quote in
 /// a filename would otherwise end the literal and leave the rest as Cypher.
@@ -131,6 +176,34 @@ fn iso_day(seconds: i64) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     format!("{y:04}-{m:02}-{d:02}")
+}
+
+#[cfg(test)]
+mod project_tests {
+    use super::*;
+
+    #[test]
+    fn a_named_live_project_is_returned_and_a_blank_one_is_not() {
+        let mut row = HashMap::new();
+        row.insert("name".to_string(), serde_json::json!("Arlen"));
+        assert_eq!(project_from_rows(&[row]), Some("Arlen".to_string()));
+        // No rows: the file is in no project, which the panel must show as absent
+        // rather than as an empty chip.
+        assert_eq!(project_from_rows(&[]), None);
+        let mut blank = HashMap::new();
+        blank.insert("name".to_string(), serde_json::json!(""));
+        assert_eq!(project_from_rows(&[blank]), None);
+    }
+
+    #[test]
+    fn a_quote_in_the_name_cannot_end_the_literal() {
+        let q = project_query("Tim's notes.md");
+        assert!(q.contains("Tim\\'s notes.md"), "the quote is escaped: {q}");
+        // Both stamps and the project's own liveness are required, so an archived
+        // project cannot surface as the file's current home.
+        assert!(q.contains("r.invalid_at IS NULL"));
+        assert!(q.contains("p.expired_at IS NULL"));
+    }
 }
 
 #[cfg(test)]

@@ -70,15 +70,29 @@ export const lens = writable<LensState>({ ...FIXTURE, mocked: true });
 /// Load the lens for a file. Live: the three graph queries; fixture under vite.
 export async function loadLens(ref: string): Promise<void> {
   try {
-    // Only provenance is asked for. `related_of` and `project_of` named commands
-    // that live in the FILES app's binary, so those two calls could never have
-    // succeeded from here - and the edges they want (backlinks, project
-    // membership) are refused by the knowledge daemon's read gate to a caller
-    // that is not system-anchored anyway. Asking for all three failed the whole
-    // load and dropped the panel to its fixture every time, including the part
-    // that could have been real.
+    // Provenance AND project are asked for; `related_of` still is not, and that
+    // is a missing MEANING rather than a missing permission - the graph holds no
+    // file-to-file edge, so "backlinks" has nothing to traverse yet (see
+    // `lens.rs`). The old note here blamed the read gate for the other two: wrong
+    // on both counts, since these commands live in THIS app now and the gate
+    // authorises a membership traversal by its endpoints (measured 16 August).
+    //
+    // Asked SEPARATELY so one absent answer cannot cost the other. Failing the
+    // whole load is what used to drop the entire panel to its fixture, including
+    // the part that was real.
     const provenance = await invoke<ProvenanceStep[]>("provenance_of", { ref });
-    lens.set({ provenance, related: FIXTURE.related, project: FIXTURE.project, mocked: true });
+    let project = FIXTURE.project;
+    let projectMocked = true;
+    try {
+      const name = await invoke<string | null>("project_of", { ref });
+      // A file in no project is a TRUE answer, and the panel says so with an
+      // empty section rather than by borrowing the sample's project.
+      project = name ? { name, members: [] } : { name: "", members: [] };
+      projectMocked = false;
+    } catch {
+      // Keep the labelled sample for this section only.
+    }
+    lens.set({ provenance, related: FIXTURE.related, project, mocked: projectMocked });
   } catch {
     lens.set({ ...FIXTURE, mocked: true });
   }

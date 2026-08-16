@@ -23,6 +23,13 @@ read = [
     "system.File.path",
     "system.File.app_id",
     "system.File.last_accessed",
+    # The lens names the project the open file belongs to (`lens.rs::project_of`).
+    # `name` is rendered; `expired_at` is filter-only, keeping an archived project
+    # from surfacing as the file's current home - the same filter-only grant the
+    # terminal and knowledge profiles carry, and for the same reason: a field a
+    # query touches is what a later field-level gate would deny.
+    "system.Project.name",
+    "system.Project.expired_at",
 ]
 
 # An editor is handed a path and opens it; the file lives wherever the user keeps
