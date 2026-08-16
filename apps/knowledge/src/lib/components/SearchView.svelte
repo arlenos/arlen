@@ -15,6 +15,8 @@
     saveSearch,
     runSaved,
     projectChoices,
+    projectChoicesUnavailable,
+    loadProjectChoices,
     type ResultType,
     type SearchResult,
   } from "$lib/stores/search";
@@ -37,6 +39,9 @@
   let openFacet = $state<"type" | "project" | "time" | null>(null);
   function toggleFacet(which: "type" | "project" | "time"): void {
     openFacet = openFacet === which ? null : which;
+    // Read on open, not on mount: a project detected while the app was already
+    // running is then offered without a restart.
+    if (openFacet === "project") void loadProjectChoices();
   }
   function setType(v: ResultType | null): void {
     facets.update((f) => ({ ...f, type: v }));
@@ -120,11 +125,17 @@
         {/if}
         {#if openFacet === "project"}
           <div class="se-menu" role="listbox">
-            {#each projectChoices() as p (p)}
-              <button type="button" class="se-option" role="option" aria-selected="false" onclick={() => setProject(p)}>
-                {p}
-              </button>
-            {/each}
+            {#if $projectChoicesUnavailable}
+              <p class="se-none">{$t("k.se.projectsUnavailable")}</p>
+            {:else if $projectChoices.length === 0}
+              <p class="se-none">{$t("k.se.noProjects")}</p>
+            {:else}
+              {#each $projectChoices as p (p)}
+                <button type="button" class="se-option" role="option" aria-selected="false" onclick={() => setProject(p)}>
+                  {p}
+                </button>
+              {/each}
+            {/if}
           </div>
         {/if}
       </div>
@@ -310,6 +321,15 @@
   }
   .se-option:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 7%, transparent);
+  }
+  /* Why the menu is empty, in the menu's own place. Quieter than an option
+     because there is nothing here to pick. */
+  .se-none {
+    margin: 0;
+    padding: 0.35rem 0.5rem;
+    font-size: var(--text-xs);
+    color: var(--color-fg-secondary);
+    white-space: nowrap;
   }
 
   .se-scroll {
