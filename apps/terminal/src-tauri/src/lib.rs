@@ -624,6 +624,11 @@ impl Default for TerminalConfig {
 
 /// Clamp a font size to a sane on-screen range, so a bad value can never make the
 /// terminal unreadable or break layout; a non-finite value falls back to default.
+///
+/// The range is duplicated in `apps/terminal/src/lib/zoom.ts`, which clamps the
+/// same way so the zoom shortcuts cannot offer a size this would rewrite. Both
+/// tests assert 6 and 72 as literals, so changing the range fails on whichever
+/// side is edited first and names the other.
 fn clamp_font_size(px: f32) -> f32 {
     if px.is_finite() {
         px.clamp(6.0, 72.0)
