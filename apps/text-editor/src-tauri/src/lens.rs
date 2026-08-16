@@ -12,12 +12,16 @@
 //! backend" rather than "calling the wrong app".
 //!
 //! `provenance_of` is answered here, from this app's own read of the graph. The
-//! other two are not, and that is the finding rather than an omission: backlinks
-//! and project membership are EDGES, and the knowledge daemon's read gate refuses
-//! any query naming a relationship type to a caller that is not system-anchored.
-//! The knowledge app's own timeline and provenance chain hit the same wall today.
-//! Asking anyway would fail the whole read, so the panel keeps its labelled
-//! sample for those two sections and this one is real.
+//! other two are not - but NOT because they are refused, which is what this said
+//! and what the Knowledge app's modules said too. The gate authorises a traversal
+//! by its endpoints (`raw_read_label_gate`, daemon.rs:4394) and its restricted
+//! list is empty, so a `FILE_PART_OF` query from this caller is answered; measured
+//! 16 August, with rows.
+//!
+//! Backlinks and project membership are therefore unbuilt reads, not forbidden
+//! ones, and this app already has the permission it needs. Building them means
+//! writing the two queries and keeping each join optional, so a file with no
+//! project still renders its other sections.
 
 use std::collections::HashMap;
 
