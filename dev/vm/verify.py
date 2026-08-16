@@ -1473,7 +1473,12 @@ def main():
             journal = ""
         # The dogfood one-shot prints staged markers: EMIT ok (the event reached
         # the bus), ASK ok (a completion came back), then OK; a failure prints
-        # DOGFOOD FAIL <reason>. Report the stages, gate on the terminal OK.
+        # DOGFOOD FAIL <reason>. The stages are reported here and JUDGED in
+        # `ai_verdict`, which is where the gate had to move: gating on the
+        # terminal OK alone passed a boot whose AI answered nothing, because the
+        # probe prints that line whatever happened. Split out so it can be shown
+        # failing - `dev/vm/test_ai_verdict.py` plants that exact boot.
+        from ai_verdict import ai_verdict
         emitted = "DOGFOOD EMIT ok" in journal
         asked = "DOGFOOD ASK ok" in journal
         wrote = "DOGFOOD WRITE ok" in journal
@@ -1484,11 +1489,9 @@ def main():
               f"write={'ok' if wrote else 'absent'}, "
               f"undo={'ok' if undid else 'absent'}, "
               f"complete={'ok' if done else 'absent'}")
-        if not done:
-            fail_line = next((ln.strip() for ln in journal.splitlines()
-                              if "DOGFOOD FAIL" in ln), None)
-            print("VERIFY FAIL: the in-VM KG-AI dogfood did not complete"
-                  + (f" ({fail_line})" if fail_line else " (no DOGFOOD OK marker)"))
+        ai_ok, ai_message = ai_verdict(journal)
+        if not ai_ok:
+            print(f"VERIFY FAIL: {ai_message}")
             print(f"  serial log: {serial}")
             return 1
     if args.require_consent:
