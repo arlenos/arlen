@@ -178,6 +178,33 @@ impl GraphHandle {
     ///
     /// This sends the query to the dedicated Ladybug thread and awaits
     /// the response on a tokio oneshot channel.
+    /// Ask the graph thread to CLOSE THE DATABASE and stop, and wait until it has.
+    ///
+    /// `GraphRequest::Shutdown` has existed since this thread was written and
+    /// nothing ever sent it: the daemon installed no signal handler, so a normal
+    /// `systemctl stop` or a reboot killed the process outright and the ladybug
+    /// database was never closed. On 16 August a scratch store taken down that way
+    /// refused to reopen - `Assertion failed ... hashIndexStorageInfo.
+    /// overflowHeaderPage == INVALID_PAGE_IDX` - and from then on every query
+    /// answered "ladybug thread has stopped". That is the user's whole knowledge
+    /// graph, and nothing in the daemon recovers it.
+    ///
+    /// Waiting matters as much as sending: the close happens when the thread drops
+    /// its `Database`, so a process that exits the moment the message is queued has
+    /// not waited for anything. The thread dropping its receiver is what closes the
+    /// sender, which is the observable end of the close.
+    pub async fn shutdown(&self) {
+        if self.sender.send(GraphRequest::Shutdown).await.is_err() {
+            return; // already gone
+        }
+        // Bounded: a thread wedged inside the engine must not hold the daemon up
+        // for ever, and exiting after the deadline is no worse than today's exit.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !self.sender.is_closed() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }
+
     pub async fn query(&self, cypher: String) -> Result<String> {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.sender
