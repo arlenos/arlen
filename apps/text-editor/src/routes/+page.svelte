@@ -238,14 +238,17 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
         <Sun size={14} strokeWidth={2} /> {$t("te.focus")}
       </button>
     {/if}
-    <!-- Inert, and saying so, because the data has no time in it yet. Picking a
-         past point changed `asOf` and nothing else: nothing reads it, and nothing
-         COULD - the `FILE_PART_OF` edges the lens would re-read carry
-         `valid_at`/`invalid_at`/`created_at` all NULL, because promotion creates
-         them with a raw MERGE that sets no stamps (measured 16 August against a
-         live graph). The columns exist; the producer does not fill them. Until it
-         does, an enabled control that silently keeps showing the present is a
-         worse answer than one that admits it cannot move. -->
+    <!-- Still inert, but the reason has CHANGED and the label with it. It was
+         "the producer writes no stamps"; promotion stamps `valid_at` now, so the
+         graph does record when a membership began - just only from today, and
+         only forward. Enabling the control against a graph whose history starts
+         this morning would answer "no project" for every earlier time, which is
+         true and useless enough to mislead.
+         What it needs next is the read, and that is unblocked: the predicate
+         `r.valid_at <= T AND coalesce(r.invalid_at, <max>) > T` is accepted by
+         the gate (no parenthesised group), and reading a NULL `valid_at` as
+         "no known start" via `coalesce(r.valid_at, 0)` makes it answer correctly
+         for the older unstamped edges too. -->
     <!-- The tooltip rides a wrapper: the kit's select takes no `title`, and the
          kit is not this app's to extend for one caller. -->
     <span class="asof-wrap" title={$t("te.asOf.unavailable")}>
