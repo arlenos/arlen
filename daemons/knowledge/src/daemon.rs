@@ -4362,8 +4362,18 @@ fn raw_read_label_gate(
     let scan = scan_patterns(cypher);
     match scan.unconstrained {
         Some("node") => {
+            // The parenthesis half of this message is not padding. A caller whose
+            // nodes ARE all labelled meets this refusal the moment the query needs
+            // `WHERE (a OR b) AND c`, because every `(` that no identifier precedes
+            // opens a node here - and it has to, since Cypher allows a PATTERN in
+            // WHERE (`WHERE (f)-[:REL]->(p)`), so excusing a group after WHERE
+            // would let an unlabelled pattern predicate through unscoped. The
+            // conservatism stays and the message earns it: on 16 August the text
+            // sent a caller to check labels that were already correct.
             return Some(
-                "read denied: every node in the pattern must name a label; an unlabelled node means any label",
+                "read denied: every node in the pattern must name a label; an unlabelled node \
+                 means any label. A parenthesised group counts: `WHERE (a OR b) AND c` reads as \
+                 a node here, so write the predicate without grouping",
             )
         }
         Some("relationship") => {
@@ -4678,6 +4688,38 @@ mod tests {
     #[test]
     fn read_gate_denies_label_less_query() {
         assert!(raw_read_label_gate("MATCH (n) RETURN n", &[], false).is_some());
+    }
+
+    #[test]
+    fn a_parenthesised_where_group_is_refused_on_purpose() {
+        // DO NOT "fix" this by excusing a `(` that follows WHERE. Cypher allows a
+        // PATTERN as a predicate - `WHERE (f)-[:REL]->(p)` - so a group there can
+        // hide exactly what this gate exists to scope, and excusing it would be a
+        // fail-open rather than a convenience.
+        //
+        // The cost is real and is paid in the message instead: a caller whose
+        // nodes are all labelled still meets the refusal as soon as the predicate
+        // needs `WHERE (a OR b) AND c`, so the text names the parenthesis (found
+        // the hard way on 16 August, from the text-editor's lens).
+        let grouped = "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
+                       WHERE (f.path = '/a' OR f.path ENDS WITH '/a') AND r.invalid_at IS NULL \
+                       RETURN p.name";
+        let denial = raw_read_label_gate(&grouped.replace('\n', " "), &["File".into(), "Project".into()], false);
+        assert!(denial.is_some(), "a group reads as a node and is refused");
+        assert!(
+            denial.unwrap().contains("parenthesised"),
+            "the refusal names the real objection, not the labels"
+        );
+
+        // The same query without the group passes, which is the shape a caller
+        // should write.
+        let flat = "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
+                    WHERE f.path ENDS WITH '/a' AND r.invalid_at IS NULL RETURN p.name";
+        assert!(
+            raw_read_label_gate(&flat.replace('\n', " "), &["File".into(), "Project".into()], false)
+                .is_none(),
+            "an ungrouped predicate over in-scope labels is allowed"
+        );
     }
 
     #[test]
