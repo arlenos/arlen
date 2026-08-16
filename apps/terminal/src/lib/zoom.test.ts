@@ -8,6 +8,18 @@ import {
 } from "./zoom";
 
 describe("clampFontSize", () => {
+  it("keeps the bounds the daemon actually enforces", () => {
+    // LITERALS on purpose. Every other assertion here compares against
+    // `FONT_SIZE_MIN`/`FONT_SIZE_MAX`, so editing those constants keeps this file
+    // green while the daemon goes on clamping to 6..72 - the UI would then offer
+    // a size the config silently rewrites, which is the drift this pins.
+    //
+    // The other half is `clamp_font_size` in apps/terminal/src-tauri/src/lib.rs,
+    // whose own test asserts 6.0 and 72.0 literally. Changing the range means
+    // changing both, and both tests say so.
+    expect(FONT_SIZE_MIN).toBe(6);
+    expect(FONT_SIZE_MAX).toBe(72);
+  });
   it("holds a size inside the range", () => {
     expect(clampFontSize(14)).toBe(14);
   });
