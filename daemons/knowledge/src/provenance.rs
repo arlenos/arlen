@@ -60,14 +60,26 @@ impl Provenance {
     /// must NOT silently rank it - it falls through to the HLC tiebreak or fails
     /// closed rather than guessing.
     ///
-    /// `Graph` (promotion-derived) is `None` on purpose: it is enum-defined but
-    /// is NOT set as an edge origin today (the agent path hard-codes `'agent'`,
-    /// promotion sets none), and §5.6 does not rank a system-observed origin
-    /// against the asserted ones. If a future promotion writes `origin = 'graph'`,
-    /// its rank must be decided and added HERE (the `None` forces that decision
-    /// instead of letting a system observation silently out- or under-rank a user
-    /// assertion). This is a pure comparison; it grants no authority until it is
-    /// wired into the (executor-live-gated) resolve-membership merge pass.
+    /// `Graph` (promotion-derived) is `None`, and that is now a PENDING DECISION
+    /// rather than a hypothetical. This said promotion "sets none" and named the
+    /// condition that would change it: "if a future promotion writes
+    /// `origin = 'graph'`, its rank must be decided and added HERE". As of 16
+    /// August promotion DOES write it - `project::store::link_file` stamps the
+    /// bitemporal interval and the origin - so the condition has been met and the
+    /// rank is owed.
+    ///
+    /// It is deliberately still `None`, because ranking a system observation
+    /// against the asserted origins is a trust decision and §5.6 does not make
+    /// it: whether "the filesystem was observed to contain this" out- or
+    /// under-ranks "a model asserted this" changes which side wins a real
+    /// conflict. `None` is the safe reading in the meantime - a caller must not
+    /// silently rank it, so the merge falls through to the HLC tiebreak or fails
+    /// closed rather than guessing, which is exactly what this comment was built
+    /// to force.
+    ///
+    /// This is a pure comparison; it grants no authority until it is wired into
+    /// the (executor-live-gated) resolve-membership merge pass, so nothing is
+    /// broken while the decision is open.
     pub fn trust_rank(self) -> Option<u8> {
         match self {
             Provenance::User => Some(3),
