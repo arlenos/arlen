@@ -54,12 +54,39 @@ pub async fn knowledge_projects_list(
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
 
-    let trimmed = path.trim_matches('/');
-    if trimmed.is_empty() {
-        list_projects(&client).await
-    } else {
-        list_members(&client, trimmed).await
+    match project_in(&path) {
+        None => list_projects(&client).await,
+        Some(project) => list_members(&client, project).await,
     }
+}
+
+/// The project a browser path names, or `None` for the root listing.
+///
+/// THE PLACE SEGMENT COMES OFF FIRST, and that is the whole of this function.
+/// `ProjectsView` builds its columns with `{ initial: "/projects", root:
+/// "/projects" }`, so the root listing arrives here as `/projects` and a project
+/// as `/projects/<name>`. This used to be `path.trim_matches('/')` with empty
+/// meaning root, which is the convention the doc above describes and NOT the one
+/// the only caller speaks: the root arrived as `projects`, took the `else`, and
+/// asked for the members of a project by that name. `list_projects` was
+/// unreachable from the interface.
+///
+/// It failed in the way that hides: members are read over `FILE_PART_OF`, which
+/// the read gate refuses for this caller, so the call errored, and under vite an
+/// error sends the store to its fixture - whose listing for an unknown project is
+/// empty. The pane rendered "Empty" against a graph holding 95 projects, and the
+/// probe agreed there were 95, because both were answering honestly about
+/// different questions (measured 16 August).
+///
+/// Stripping the leading segment is unambiguous rather than a guess about the
+/// word "projects": every path the browser produces carries the root as its first
+/// segment, so a project actually NAMED `projects` arrives as
+/// `/projects/projects` and still resolves.
+fn project_in(path: &str) -> Option<&str> {
+    let trimmed = path.trim_matches('/');
+    let rest = trimmed.strip_prefix("projects").unwrap_or(trimmed);
+    let rest = rest.trim_matches('/');
+    (!rest.is_empty()).then_some(rest)
 }
 
 /// The browser's place listing (the `knowledge_list` intent in `adapter.ts`):
@@ -185,6 +212,24 @@ pub fn escape_cypher_literal(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_browsers_root_lists_projects_rather_than_one_projects_members() {
+        // The exact strings `ProjectsView` builds its columns with. The first of
+        // these used to resolve to Some("projects"), which asked for the members
+        // of a project by that name and left the root listing unreachable.
+        assert_eq!(project_in("/projects"), None);
+        assert_eq!(project_in("/projects/"), None);
+        assert_eq!(project_in("/projects/arlen"), Some("arlen"));
+        // The documented convention still works, so the command is honest about
+        // both callers rather than swapping one for the other.
+        assert_eq!(project_in("/"), None);
+        assert_eq!(project_in(""), None);
+        assert_eq!(project_in("/arlen"), Some("arlen"));
+        // A project actually named `projects` arrives under the root segment and
+        // is still reachable - the reason this strips a position, not a word.
+        assert_eq!(project_in("/projects/projects"), Some("projects"));
+    }
 
     #[test]
     fn a_project_name_cannot_break_out_of_its_literal() {
