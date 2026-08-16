@@ -19,11 +19,14 @@
 # fixtures are DEV-gated and a dev-server render would show sample data and prove
 # nothing. Budget a couple of minutes per app.
 #
-# Each line is `<app> <route> <output-name>`. A route of `-` means the app's root.
-# Two shots that used to exist are not here: knowledge's Library and Projects
-# views are switched inside a single route, and this path cannot drive a click,
-# so shooting them would need the WebDriver route's `--open`. Named rather than
-# dropped quietly.
+# Each line is `<app> <route> <output-name> [click-selector]`. A route of `-` means
+# the app's root; a fourth field is a CSS selector clicked before the shot.
+#
+# That fourth field is why knowledge's Library and Projects are in the list now.
+# They switch inside a single route, so for as long as this path could not click,
+# they were named here as the gap and never photographed. The first shot of
+# Library found it printing "Cannot read your library right now" twice, once in
+# the header line and once as the empty-list text.
 set -uo pipefail
 
 WIDTH="${1:-1280}"
@@ -36,6 +39,8 @@ SHOTS=(
   "files - files-unavailable"
   "greeter - greeter-unavailable"
   "knowledge - knowledge-unavailable"
+  "knowledge - knowledge-projects-unavailable button[data-place=projects]"
+  "knowledge - knowledge-library-unavailable button[data-place=library]"
   "meetings - meetings-unavailable"
   "settings printers settings-printers-unavailable"
   "settings privacy settings-privacy-unavailable"
@@ -50,12 +55,12 @@ SHOTS=(
 
 ok=(); bad=()
 for entry in "${SHOTS[@]}"; do
-  read -r app route name <<<"$entry"
+  read -r app route name click <<<"$entry"
   [ -n "$ONLY" ] && [ "$app" != "$ONLY" ] && continue
   [ "$route" = "-" ] && route=""
   out="$here/out/${name}.png"
   echo "=== $app ${route:-/} -> $name at ${WIDTH}px"
-  if "$here/shoot-no-backend.sh" "$app" "$route" "$out" "$WIDTH"; then
+  if SHOOT_OPEN="${click:-}" "$here/shoot-no-backend.sh" "$app" "$route" "$out" "$WIDTH"; then
     ok+=("$name")
   else
     # Carry on rather than stop: one app failing to build should not cost the
