@@ -58,6 +58,23 @@ pub struct LensProvenanceStep {
     pub fidelity: &'static str,
 }
 
+/// A document that references the open file: the backlink the panel lists.
+///
+/// `snippet` is the plan's inline context (#3) and is EMPTY here: `LINKS_TO`
+/// records the link structure and deliberately never stores document content, so
+/// the graph knows that `index.md` references this file but not the sentence it
+/// did it in. Rendering an invented sentence is the exact failure this panel
+/// keeps being rebuilt to stop, so the field is carried and left blank rather
+/// than filled with something plausible.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LensBacklink {
+    /// What to show: the referencing document's basename.
+    pub file: String,
+    /// What to open, and the list key.
+    pub r#ref: String,
+    pub snippet: String,
+}
+
 /// The file's project and the siblings that share it, in the shape the panel
 /// renders. Named `Lens…` for the same reason as the step above.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -109,6 +126,72 @@ pub async fn project_of(r#ref: String) -> Result<Option<LensProject>, String> {
         .await
         .map_err(|e| e.to_string())?;
     Ok(project_from_rows(&rows))
+}
+
+/// The documents that reference the open file (plan #3, cross-content backlinks).
+///
+/// This section has shown a labelled sample since the editor had a host, on the
+/// belief that "backlinks" had nothing to traverse. That was true of file-to-file
+/// edges in general and false for this one: promotion parses a markdown
+/// document's `[text](path)` and `[[wikilink]]` references and records a
+/// `LINKS_TO` edge per target it has already observed (`promotion.rs::
+/// link_markdown_document`), storing the link STRUCTURE and never the content.
+/// Measured 16 August: a document with two links produced exactly two edges.
+///
+/// Backlinks run against the arrow - the interesting question is who points HERE
+/// - so the pattern is `(other)-[:LINKS_TO]->(this)`. Both nodes name their label
+/// because the read gate refuses an unlabelled one, bare back-reference included.
+#[tauri::command]
+pub async fn related_of(r#ref: String) -> Result<Vec<LensBacklink>, String> {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let rows = client
+        .query_rows(&backlinks_query(&r#ref))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(backlinks_from_rows(&rows))
+}
+
+/// The same caller-shape rule as `project_query`: an absolute path is matched
+/// exactly, a bare name as a trailing segment.
+fn backlinks_query(node: &str) -> String {
+    let safe = node.replace('\\', "\\\\").replace('\'', "\\'");
+    let matches_file = if node.starts_with('/') {
+        format!("f.path = '{safe}'")
+    } else {
+        format!("f.path ENDS WITH '/{safe}'")
+    };
+    format!(
+        "MATCH (other:File)-[:LINKS_TO]->(f:File) \
+         WHERE {matches_file} AND other.path <> f.path \
+         RETURN other.path AS path \
+         ORDER BY other.last_accessed DESC LIMIT {MAX_BACKLINKS}"
+    )
+}
+
+/// Enough to orient without turning the lens into a list; the same bound and the
+/// same reason as the project members above.
+const MAX_BACKLINKS: usize = 12;
+
+/// Pure, so the shape is tested without a daemon. Deduped on path, because two
+/// links from one document to this file are one backlink.
+fn backlinks_from_rows(rows: &[HashMap<String, Value>]) -> Vec<LensBacklink> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for row in rows {
+        let Some(path) = row.get("path").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        if !seen.insert(path.to_string()) {
+            continue;
+        }
+        out.push(LensBacklink {
+            file: path.rsplit('/').next().unwrap_or(path).to_string(),
+            r#ref: path.to_string(),
+            snippet: String::new(),
+        });
+    }
+    out
 }
 
 /// ONE predicate, chosen here rather than an `OR` group, and the reason is the

@@ -60,9 +60,15 @@
               <span class="rel-snippet">{link.snippet}</span>
             </div>
           {:else}
-            <button type="button" class="rel-item" onclick={() => openRelated(link.file)}>
+            <!-- `ref` is the path, `file` is the basename. Opening the basename
+                 is the same non-openable-name bug the project chips had. -->
+            <button type="button" class="rel-item" title={link.ref} onclick={() => openRelated(link.ref)}>
               <span class="rel-file"><FileText size={13} strokeWidth={2} /> {link.file}</span>
-              <span class="rel-snippet">{link.snippet}</span>
+              <!-- Only when there IS one. A live backlink has no snippet, because
+                   `LINKS_TO` records that the document references this file and
+                   never what it said; an empty line is honest where invented
+                   context would not be. -->
+              {#if link.snippet}<span class="rel-snippet">{link.snippet}</span>{/if}
             </button>
           {/if}
         {/each}
