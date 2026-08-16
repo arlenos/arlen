@@ -33,6 +33,9 @@ const messages: Catalogs = {
     "te.lens.project": "Project",
     "te.lens.project.partOf": "Part of {$name}",
     "te.lens.sample": "Example context - not this file's real graph neighbourhood.",
+    // Said on the ONE section that is still a sample once the rest is real, so a
+    // reader is never left inferring which parts came from the graph.
+    "te.lens.sampleSection": "example",
     "te.review.undone": "Undone",
     "te.review.sample": "Example proposal - the assistant has not actually edited this file.",
     "te.review.unavailable": "The assistant could not be reached, so there is nothing to review.",
@@ -72,6 +75,7 @@ const messages: Catalogs = {
     "te.lens.project": "Projekt",
     "te.lens.project.partOf": "Teil von {$name}",
     "te.lens.sample": "Beispielkontext - nicht die echte Graph-Nachbarschaft dieser Datei.",
+    "te.lens.sampleSection": "Beispiel",
     "te.review.undone": "Rückgängig gemacht",
     "te.review.sample": "Beispielvorschlag - die Assistenz hat diese Datei nicht wirklich bearbeitet.",
     "te.review.unavailable": "Der Assistent war nicht erreichbar, es gibt also nichts zu pr\u00fcfen.",

@@ -40,7 +40,14 @@
   </section>
 
   <section class="sec">
-    <h2 class="sec-title">{$t("te.lens.related")}</h2>
+    <h2 class="sec-title">
+      {$t("te.lens.related")}
+      {#if $lens.relatedMocked && !$lens.mocked}
+        <!-- The whole-panel caption is gone once provenance and project are real,
+             so this section has to say for itself that it is still a sample. -->
+        <span class="sec-sample">{$t("te.lens.sampleSection")}</span>
+      {/if}
+    </h2>
     {#if $lens.related.length > 0}
       <div class="rel">
         <!-- A sample link must not look clickable: these names are not files on
@@ -101,6 +108,14 @@
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
     padding-bottom: 0.5rem;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+  }
+  .sec-sample {
+    margin-inline-start: 0.4rem;
+    font-size: var(--text-2xs);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
   .sec-title {
     margin: 0 0 0.7rem;
