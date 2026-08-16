@@ -10,7 +10,7 @@ use std::sync::Arc;
 use arlen_ai_proxy::allowlist::Allowlist;
 use arlen_ai_proxy::audit::{AuditSink, LedgerAuditSink};
 use arlen_ai_proxy::catalog::ProviderCatalog;
-use arlen_ai_proxy::forward::{EchoForwarder, Forwarder, ReqwestForwarder};
+use arlen_ai_proxy::forward::{EchoForwarder, Forwarder, ReqwestForwarder, ScriptedForwarder};
 use arlen_ai_proxy::peer_auth::{self, PeerAuthError, PeerAuthMap};
 use arlen_ai_proxy::service::{
     CallerAllowlist, ForwardRequest, ProxyError, ProxyService,
@@ -45,7 +45,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // announced at WARN when taken, and the answer says what it is in its own
     // text, because a control that could be mistaken for the real thing is worse
     // than no control.
-    let forwarder: Arc<dyn Forwarder> = if std::env::var_os("ARLEN_AI_ECHO").is_some() {
+    //
+    // `ARLEN_AI_REPLAY=<path>` is the same idea for a chain that has to carry more
+    // than one answer: a scripted session, in order, so a run loop can be exercised
+    // against a fixed sequence and a change to it either reproduces the behaviour or
+    // does not. It is checked FIRST because it is the more specific request - a
+    // developer who set both meant the script.
+    //
+    // A bad script is fatal rather than a fallback to echo or to the real provider.
+    // Both fallbacks answer, so the run continues and the answers come from
+    // somewhere other than the file that was named, which is the failure this whole
+    // family of aids exists to avoid.
+    let forwarder: Arc<dyn Forwarder> = if let Some(path) = std::env::var_os("ARLEN_AI_REPLAY") {
+        let path = std::path::PathBuf::from(path);
+        let scripted = ScriptedForwarder::from_path(&path).map_err(std::io::Error::other)?;
+        tracing::warn!(
+            path = %path.display(),
+            answers = scripted.len(),
+            "ARLEN_AI_REPLAY is set: completions are answered from a script and no model is \
+             contacted"
+        );
+        Arc::new(scripted)
+    } else if std::env::var_os("ARLEN_AI_ECHO").is_some() {
         tracing::warn!(
             "ARLEN_AI_ECHO is set: completions are answered by the echo provider and \
              no model is contacted"

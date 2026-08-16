@@ -422,6 +422,26 @@ mod tests {
 /// launcher pane with no idea what a forwarder is.
 pub const ECHO_MARKER: &str = "[echo provider - no model was asked]";
 
+/// The OpenAI-shaped completion body both local forwarders answer with.
+///
+/// One function rather than one per forwarder. A wire shape written out twice is
+/// two shapes, and they drift - which is the whole reason the settings index has
+/// a shared key file and the rename preview has shared vectors. `tag` names the
+/// pretend model, and it is the only thing that differs between them.
+fn completion_json(tag: &str, content: &str) -> String {
+    serde_json::json!({
+        "id": tag,
+        "object": "chat.completion",
+        "model": tag,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": content},
+            "finish_reason": "stop",
+        }],
+    })
+    .to_string()
+}
+
 /// A forwarder that answers locally instead of dialling a model.
 ///
 /// **Why this exists.** The AI path is the largest thing in this tree with no
@@ -481,17 +501,7 @@ impl EchoForwarder {
         } else {
             format!("{ECHO_MARKER} {} It was handed: {echoed}", self.answer)
         };
-        serde_json::json!({
-            "id": "echo",
-            "object": "chat.completion",
-            "model": "echo",
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": content},
-                "finish_reason": "stop",
-            }],
-        })
-        .to_string()
+        completion_json("echo", &content)
     }
 
     /// The last user message in an OpenAI-shaped request, if the body carries one.
@@ -510,6 +520,124 @@ impl EchoForwarder {
             .chars()
             .take(200)
             .collect()
+    }
+}
+
+/// A forwarder that answers from a script, one answer per call, in order.
+///
+/// **What the echo provider cannot do.** It returns the same sentence every time,
+/// so it proves the chain carries A answer and nothing about a chain that has to
+/// carry SEVERAL. An agent loop that proposes, reads a result and proposes again
+/// walks through states, and against a fixed string every state looks alike. This
+/// is that one step further: a scripted session, so a run loop has a deterministic
+/// oracle and a change to it either reproduces the recorded behaviour or does not.
+///
+/// **Scripts are written, not captured.** The obvious other half - record a real
+/// session and replay it - is deliberately absent, and its absence is a decision
+/// rather than an omission. A recorder in this position writes user prompts and
+/// whatever graph context was assembled for them into a file, which is a new store
+/// of exactly the material the rest of this system spends its effort bounding. That
+/// is a judgement about user data, not a coding convenience, so it waits for one.
+/// A hand-written script costs a little more to author and can be read in review.
+///
+/// **It cannot pass for a model either.** Every answer carries [`ECHO_MARKER`] for
+/// the same reason the echo provider does: wherever a replayed answer is rendered,
+/// quoted or pasted, it says what produced it. Running out of script is answered,
+/// loudly and in the content, rather than by falling back to the last answer - a
+/// loop that asked more times than the script expected is exactly the defect this
+/// exists to catch, and repeating the final answer would hide it.
+pub struct ScriptedForwarder {
+    /// The answers, in the order they will be handed out.
+    answers: Vec<String>,
+    /// How many have been handed out. Shared behind `&self` like any forwarder, so
+    /// it is atomic rather than a lock.
+    next: std::sync::atomic::AtomicUsize,
+}
+
+impl ScriptedForwarder {
+    /// Parse a script: `{"answers": ["first", "second"]}`.
+    ///
+    /// An empty list is refused. A script that answers nothing is indistinguishable
+    /// at the call site from one that was never loaded, and the failure would show
+    /// up as a strange answer several components away.
+    pub fn from_json(text: &str) -> Result<Self, String> {
+        let v: serde_json::Value =
+            serde_json::from_str(text).map_err(|e| format!("replay script is not JSON: {e}"))?;
+        let answers: Vec<String> = v
+            .get("answers")
+            .and_then(|a| a.as_array())
+            .ok_or_else(|| "replay script has no `answers` array".to_string())?
+            .iter()
+            .map(|a| a.as_str().unwrap_or_default().to_string())
+            .collect();
+        if answers.is_empty() {
+            return Err("replay script has no answers in it".to_string());
+        }
+        Ok(Self {
+            answers,
+            next: std::sync::atomic::AtomicUsize::new(0),
+        })
+    }
+
+    /// Load a script from disk.
+    pub fn from_path(path: &std::path::Path) -> Result<Self, String> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| format!("replay script {}: {e}", path.display()))?;
+        Self::from_json(&text)
+    }
+
+    /// How many answers the script holds.
+    pub fn len(&self) -> usize {
+        self.answers.len()
+    }
+
+    /// Whether the script holds no answers. Never true for a loaded one, since
+    /// [`Self::from_json`] refuses an empty script; present because clippy asks for
+    /// it beside `len`.
+    pub fn is_empty(&self) -> bool {
+        self.answers.is_empty()
+    }
+
+    /// The next answer, or the exhausted notice once the script has run out.
+    fn take_next(&self) -> String {
+        let i = self
+            .next
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        match self.answers.get(i) {
+            Some(a) => format!("{ECHO_MARKER} {a}"),
+            None => format!(
+                "{ECHO_MARKER} the replay script ran out: {} answer(s) were scripted and this is \
+                 request {}",
+                self.answers.len(),
+                i + 1
+            ),
+        }
+    }
+}
+
+#[async_trait]
+impl Forwarder for ScriptedForwarder {
+    async fn post(
+        &self,
+        _endpoint_url: &str,
+        _body_json: &str,
+        _auth: AuthHeader<'_>,
+    ) -> Result<ForwardResult, ForwardError> {
+        Ok(ForwardResult {
+            status: 200,
+            body: completion_json("replay", &self.take_next()),
+        })
+    }
+
+    async fn get(
+        &self,
+        _endpoint_url: &str,
+        _auth: AuthHeader<'_>,
+    ) -> Result<ForwardResult, ForwardError> {
+        Ok(ForwardResult {
+            status: 200,
+            body: serde_json::json!({"data": [{"id": "replay", "object": "model"}]}).to_string(),
+        })
     }
 }
 
@@ -539,6 +667,72 @@ impl Forwarder for EchoForwarder {
             status: 200,
             body: serde_json::json!({"data": [{"id": "echo", "object": "model"}]}).to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod replay_tests {
+    use super::*;
+
+    fn content_of(body: &str) -> String {
+        serde_json::from_str::<serde_json::Value>(body).unwrap()["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    const SCRIPT: &str = r#"{"answers": ["first thing", "second thing"]}"#;
+
+    #[tokio::test]
+    async fn it_answers_in_order() {
+        let f = ScriptedForwarder::from_json(SCRIPT).unwrap();
+        assert_eq!(f.len(), 2);
+        let a = content_of(&f.post("http://never", "{}", None).await.unwrap().body);
+        let b = content_of(&f.post("http://never", "{}", None).await.unwrap().body);
+        assert!(a.contains("first thing"), "{a}");
+        assert!(b.contains("second thing"), "{b}");
+        // The order is the point: a fixed string would satisfy any assertion about
+        // "an answer came back", and prove nothing about a loop that runs twice.
+        assert_ne!(a, b);
+    }
+
+    /// Every answer says what produced it, exactly as the echo provider does.
+    #[tokio::test]
+    async fn a_replayed_answer_cannot_pass_for_a_model() {
+        let f = ScriptedForwarder::from_json(SCRIPT).unwrap();
+        let a = content_of(&f.post("http://never", "{}", None).await.unwrap().body);
+        assert!(a.starts_with(ECHO_MARKER), "{a}");
+    }
+
+    /// The case this shape exists for. A loop that asks a third time has done
+    /// something the script did not expect, and the answer has to say so rather
+    /// than repeat the last one, which would read as a loop behaving itself.
+    #[tokio::test]
+    async fn running_out_of_script_is_said_out_loud() {
+        let f = ScriptedForwarder::from_json(SCRIPT).unwrap();
+        for _ in 0..2 {
+            let _ = f.post("http://never", "{}", None).await.unwrap();
+        }
+        let third = content_of(&f.post("http://never", "{}", None).await.unwrap().body);
+        assert!(third.contains("ran out"), "{third}");
+        assert!(third.contains("request 3"), "{third}");
+        assert!(!third.contains("second thing"), "it must not repeat the last: {third}");
+    }
+
+    #[test]
+    fn a_script_that_answers_nothing_is_refused() {
+        // Loaded-but-empty and never-loaded look identical at the call site, and
+        // the difference would surface as a strange answer components away.
+        assert!(ScriptedForwarder::from_json(r#"{"answers": []}"#).is_err());
+        assert!(ScriptedForwarder::from_json(r#"{"nope": 1}"#).is_err());
+        assert!(ScriptedForwarder::from_json("not json").is_err());
+    }
+
+    #[tokio::test]
+    async fn the_model_list_names_the_replay_provider() {
+        let f = ScriptedForwarder::from_json(SCRIPT).unwrap();
+        let body = f.get("http://never", None).await.unwrap().body;
+        assert!(body.contains("replay"), "{body}");
     }
 }
 
