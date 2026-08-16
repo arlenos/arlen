@@ -41,6 +41,8 @@ SHOTS=(
   "clock - clock-stopwatch-unavailable #tab-stopwatch"
   "clock - clock-world-unavailable #tab-world"
   "files - files-unavailable"
+  "files - files-recent-unavailable [data-place=recent]"
+  "files - files-trash-unavailable [data-place=trash]"
   "greeter - greeter-unavailable"
   "knowledge - knowledge-unavailable"
   "knowledge - knowledge-projects-unavailable button[data-place=projects]"
