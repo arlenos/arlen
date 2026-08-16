@@ -519,9 +519,20 @@
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   /* Fixed verb column so the objects form one scannable column down the whole
-     spine (each row is its own grid; a shared width is what aligns them). */
+     spine (each row is its own grid; a shared width is what aligns them).
+
+     Being shared, the width has to fit the longest verb in EVERY locale, not
+     just the source language. At 4.5rem it fit English and German's
+     "verschlagwortet" ran straight over the object next to it - visible the
+     first time the timeline was rendered with `?locale=de`. CSS cannot measure
+     a catalogue, so the clip is the floor: a locale this is still too narrow
+     for loses the tail of a word, which reads as truncation rather than as two
+     sentences on top of each other. */
   .tl-verb {
-    width: 4.5rem;
+    width: 6.75rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     text-align: end;
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
