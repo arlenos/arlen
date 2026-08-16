@@ -6,7 +6,7 @@
 //! Usage:
 //!   arlen-rtl-lint [--root <dir>]... [--baseline <file>] [--update]
 //!     --root      a directory tree to scan (repeatable; default `apps`)
-//!     --baseline  the accepted-usages file (default `dev/rtl-baseline.tsvv`)
+//!     --baseline  the accepted-usages file (default `dev/rtl-baseline.tsv`)
 //!     --update    rewrite the baseline from the current findings (then exit 0)
 //!     --prune     drop baseline entries this scan can no longer reproduce, and
 //!                 ONLY those (then exit 0). The safe counterpart to `--update`
@@ -60,9 +60,18 @@ struct Args {
     prune: bool,
 }
 
+/// The baseline a bare run compares against, relative to the repo root.
+///
+/// It was `dev/rtl-baseline.tsvv` - a filename with no file behind it, in the doc AND in the
+/// default. A bare run then reported every accepted usage as new, and a bare
+/// `--update` would have written that junk name and left the real baseline
+/// untouched, both without saying anything. The test below is the whole point:
+/// a default that names a missing file is a default nobody ran.
+const DEFAULT_BASELINE: &str = "dev/rtl-baseline.tsv";
+
 fn parse_args() -> Result<Args, String> {
     let mut roots = Vec::new();
-    let mut baseline = PathBuf::from("dev/rtl-baseline.tsvv");
+    let mut baseline = PathBuf::from(DEFAULT_BASELINE);
     let mut update = false;
     let mut prune = false;
     let mut it = std::env::args().skip(1);
@@ -180,4 +189,17 @@ fn main() -> ExitCode {
         eprintln!("  {rel}:{line}  {found}  ->  {suggestion}");
     }
     ExitCode::from(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DEFAULT_BASELINE;
+    use std::path::Path;
+
+    #[test]
+    fn the_default_baseline_names_a_file_that_exists() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let p = repo.join(DEFAULT_BASELINE);
+        assert!(p.exists(), "{} does not exist", p.display());
+    }
 }

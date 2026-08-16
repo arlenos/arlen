@@ -444,6 +444,19 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$out"
+      - name: born-RTL lint
+        # Same shape, same baseline discipline, and it had never run anywhere:
+        # not in this file, not in the pre-commit hook. A gate that is built,
+        # baselined and unwired accepts whatever grows past it, which is what
+        # happened - one physical `margin-left` had appeared in the text editor.
+        run: |
+          if ! out=$(cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-rtl-lint -- \
+                       --root apps --root sdk/ui-kit --baseline dev/rtl-baseline.tsv 2>&1); then
+            printf '%s\n' "$out"
+            printf '::error title=born-RTL lint::%s\n' "$(printf '%s' "$out" | head -3 | tr '\n' ' ')"
+            exit 1
+          fi
+          printf '%s\n' "$out"
 
   integration:
     name: integration (EphemeralStack backend smoke)

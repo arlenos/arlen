@@ -25,7 +25,7 @@
 //! Usage:
 //!   arlen-i18n-lint [--root <dir>]... [--baseline <file>] [--update]
 //!     --root      a directory tree to scan (repeatable; default `apps`)
-//!     --baseline  the accepted-strings file (default `dev/i18n-baseline.tsvv`)
+//!     --baseline  the accepted-strings file (default `dev/i18n-baseline.tsv`)
 //!     --update    rewrite the baseline from the current findings (then exit 0)
 //!     --prune     drop baseline entries this scan can no longer reproduce, and
 //!                 ONLY those (then exit 0). Unlike `--update` it never accepts a
@@ -992,9 +992,18 @@ struct Args {
     prune: bool,
 }
 
+/// The baseline a bare run compares against, relative to the repo root.
+///
+/// It was `dev/i18n-baseline.tsvv` - a filename with no file behind it, in the doc AND in the
+/// default. A bare run then reported every accepted usage as new, and a bare
+/// `--update` would have written that junk name and left the real baseline
+/// untouched, both without saying anything. The test below is the whole point:
+/// a default that names a missing file is a default nobody ran.
+const DEFAULT_BASELINE: &str = "dev/i18n-baseline.tsv";
+
 fn parse_args() -> Result<Args, String> {
     let mut roots = Vec::new();
-    let mut baseline = PathBuf::from("dev/i18n-baseline.tsvv");
+    let mut baseline = PathBuf::from(DEFAULT_BASELINE);
     let mut update = false;
     let mut prune = false;
     let mut it = std::env::args().skip(1);
@@ -1291,6 +1300,16 @@ mod tests {
         // components take, so every component's accessible name was invisible.
         let attr = scan_svelte("<X ariaLabel=\"Interface font\" />");
         assert_eq!(attr.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(), vec!["Interface font"]);
+    }
+
+    #[test]
+    fn the_default_baseline_names_a_file_that_exists() {
+        // Same trap as the rtl lint: the default was `dev/i18n-baseline.tsvv`,
+        // so a bare run compared against nothing and called all 353 accepted
+        // strings new. I read that as a regression before spotting the typo.
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let p = repo.join(super::DEFAULT_BASELINE);
+        assert!(p.exists(), "{} does not exist", p.display());
     }
 
     #[test]
