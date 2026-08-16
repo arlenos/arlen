@@ -410,6 +410,20 @@ def identity_faults(journal_text):
     return out
 
 
+# Where the knowledge daemon's event store lands in the guest, most likely first.
+#
+# `pick_data_path` (daemons/knowledge/src/utils.rs) prefers `ARLEN_DB_PATH`, then
+# the per-user directory when HOME is set, then the system default - and the
+# desktop runs the daemon as a user service, so the per-user path is the one a
+# boot actually produces. Both are searched because the system path is still what
+# a root-run daemon would write, and a check that guessed one and reported "no
+# store" for the other would be a false alarm about the most fundamental thing.
+EVENT_STORE_PATHS = (
+    "/home/*/.local/share/arlen/events.db",
+    "/var/lib/arlen/knowledge/events.db",
+)
+
+
 # What the journal calls a daemon, where that differs from the binary the socket
 # table names. These are the `systemd-cat --identifier=` tags the session chooses
 # for the children it spawns, so they are ours and short by design.
@@ -1217,6 +1231,45 @@ def main():
                   f"({journal_text.count(chr(10))} lines)")
 
     if require_probe:
+        # Before grading anything the guest SAID, read what the guest WROTE.
+        #
+        # Every assertion below this point is a self-report: the probe queries the
+        # graph, prints its findings, and `probe_verdict` grades the printed lines.
+        # That chain agrees with a probe that asks the wrong question or prints a
+        # number it did not measure, because there is nothing in it but the probe's
+        # own account of itself. So the event store comes out of the image and the
+        # question gets asked again in SQL, on this side, where the guest has no
+        # vote.
+        #
+        # Its own guestfish call rather than the journal's: a glob that matches
+        # nothing makes guestfish exit non-zero, and folding this into the journal
+        # script would let a moved store discard the journal too.
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from ingest_verdict import ingest_verdict
+
+        sdir = os.path.join(tmp, "store")
+        store = None
+        for i, guest_path in enumerate(EVENT_STORE_PATHS):
+            dest = os.path.join(sdir, str(i))
+            os.makedirs(dest, exist_ok=True)
+            script = f"run\nmount-ro /dev/sda2 /\nglob copy-out {guest_path} {dest}/\n"
+            r = subprocess.run(["guestfish", "--ro", "-a", overlay],
+                               input=script, capture_output=True, text=True)
+            candidate = os.path.join(dest, "events.db")
+            if r.returncode == 0 and os.path.exists(candidate):
+                store = candidate
+                break
+
+        if store is None:
+            searched = ", ".join(EVENT_STORE_PATHS)
+            print(f"VERIFY FAIL: the guest wrote no event store. Looked in {searched}")
+            return 1
+        ok, message = ingest_verdict(store)
+        if not ok:
+            print(f"VERIFY FAIL: {message}")
+            return 1
+        print(f"event store: {message}")
+
         # The verdict itself lives in `probe_verdict.py` so it can be shown
         # failing: inline, the only way to exercise it was to boot an image whose
         # graph does not ingest, and there is no such image. Its control plants
