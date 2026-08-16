@@ -96,7 +96,13 @@ const messages: Catalogs = {
     "k.se.type.mail": "Mail",
     "k.se.type.note": "Note",
     "k.se.type.session": "Session",
-    "k.se.byName": "Matching by name",
+    // NOT "by name". The rows are exactly the ids the graph's ranker returned
+    // (search.rs:109 pins `f.id IN [...]`), and that ranker fuses keyword hits over
+    // an item's synthesized text - path, basename, parent, project name - with the
+    // items LINKED to those hits. Searching README on 16 August returned README.md,
+    // the project it sits in and a sibling Cargo.lock: two of the three carry no
+    // "README" anywhere, so the old caption was refuted by its own result list.
+    "k.se.byName": "Matching by name, path and what they link to",
     "k.se.save": "Save this search",
     "k.se.saveConfirm": "Save",
     "k.se.saveNamePlaceholder": "Name this search",
@@ -197,7 +203,7 @@ const messages: Catalogs = {
     "k.se.type.mail": "Mail",
     "k.se.type.note": "Notiz",
     "k.se.type.session": "Sitzung",
-    "k.se.byName": "Treffer nach Name",
+    "k.se.byName": "Treffer nach Name, Pfad und Verknüpftem",
     "k.se.save": "Diese Suche speichern",
     "k.se.saveConfirm": "Speichern",
     "k.se.saveNamePlaceholder": "Suche benennen",
