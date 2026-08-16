@@ -1850,6 +1850,60 @@ async fn files_recent() -> ReadOutcome<RecentFile> {
 /// files are scattered, not under one dir), and `modified_unix` carries the
 /// last-accessed time (micros → secs) so the location's "Last accessed" column reads
 /// it. Pure, so the shaping is unit-tested without a daemon.
+/// Make every row's name unique within one virtual listing.
+///
+/// A DIRECTORY listing cannot produce two rows with one name; a VIRTUAL one does
+/// it routinely. Recent names its rows by basename across the whole tree
+/// (`recent_from_rows`), trash by the basename of the original path, and project
+/// members and search hits the same - so two `README.md`, two `Cargo.toml`, two
+/// trashed `notes.txt` are the ordinary case rather than the exotic one.
+///
+/// It matters because the browser kit keys its rows on `entry.name`
+/// (MillerColumns.svelte:132), and Svelte aborts a keyed `{#each}` on a duplicate
+/// key - so the listing renders NOT two bad rows but ZERO. The Knowledge app's
+/// Projects pane did exactly that on 16 August: 95 projects behind an "Empty"
+/// pane, because two of them shared a basename. Recent and trash are the same
+/// shape, in a shipped app, and a person with two README files open is not an
+/// edge case.
+///
+/// Only collisions are touched: a unique name stays exactly as it is, a colliding
+/// one gains the directory that contains it (the part that actually differs), and
+/// a pair that still ties takes the full path. The row's IDENTITY is untouched -
+/// `full_path` and `restore_token` carry it, and every action on these rows uses
+/// those rather than the label.
+fn disambiguate_entries(rows: &mut [FileEntry]) {
+    let mut count: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for r in rows.iter() {
+        *count.entry(r.name.clone()).or_default() += 1;
+    }
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for r in rows.iter_mut() {
+        if count.get(&r.name).copied().unwrap_or(0) < 2 {
+            used.insert(r.name.clone());
+            continue;
+        }
+        let full = r.full_path.clone().unwrap_or_default();
+        let parent = std::path::Path::new(&full)
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|s| s.to_string_lossy().into_owned())
+            .filter(|s| !s.is_empty());
+        let mut candidate = match parent {
+            Some(p) => format!("{} ({p})", r.name),
+            None => r.name.clone(),
+        };
+        if candidate == r.name || used.contains(&candidate) {
+            candidate = if full.is_empty() {
+                format!("{} ({})", r.name, used.len())
+            } else {
+                format!("{} ({full})", r.name)
+            };
+        }
+        used.insert(candidate.clone());
+        r.name = candidate;
+    }
+}
+
 fn recent_to_entry(rf: &RecentFile) -> FileEntry {
     FileEntry {
         is_hidden: rf.name.starts_with('.'),
@@ -2036,6 +2090,12 @@ async fn files_list_location(location: String) -> Result<ReadOutcome<FileEntry>,
             }
         }
     };
+    // Every branch above names its rows by basename out of a flat set, so this is
+    // the one place all of them pass through. See `disambiguate_entries`.
+    let mut out = out;
+    if let Ok(ReadOutcome::Rows { rows }) = &mut out {
+        disambiguate_entries(rows);
+    }
     match &out {
         Ok(o) => log::info!("files_list_location: {location:?} -> {}", o.describe()),
         Err(e) => log::warn!("files_list_location: {location:?} -> error: {e}"),
@@ -2055,22 +2115,28 @@ async fn files_list_location_as_of(
     location: String,
     as_of_micros: Option<i64>,
 ) -> Result<ReadOutcome<FileEntry>, String> {
-    if let Some(id) = location.strip_prefix("project:") {
-        return Ok(project_members_as_of(id, as_of_micros).await);
-    }
-    match location.as_str() {
-        "recent" => Ok(files_recent().await.map(recent_to_entry)),
-        "trash" => files_trash_list().map(|items| ReadOutcome::Rows {
-            rows: items.iter().map(trash_to_entry).collect(),
-        }),
-        other => {
-            if let Some(query) = other.strip_prefix("search:") {
-                Ok(search_location(query).await)
-            } else {
-                Err(format!("unknown virtual location: {other}"))
+    let mut out = if let Some(id) = location.strip_prefix("project:") {
+        Ok(project_members_as_of(id, as_of_micros).await)
+    } else {
+        match location.as_str() {
+            "recent" => Ok(files_recent().await.map(recent_to_entry)),
+            "trash" => files_trash_list().map(|items| ReadOutcome::Rows {
+                rows: items.iter().map(trash_to_entry).collect(),
+            }),
+            other => {
+                if let Some(query) = other.strip_prefix("search:") {
+                    Ok(search_location(query).await)
+                } else {
+                    Err(format!("unknown virtual location: {other}"))
+                }
             }
         }
+    };
+    // The same flat-set naming as the live listing, so the same uniqueness.
+    if let Ok(ReadOutcome::Rows { rows }) = &mut out {
+        disambiguate_entries(rows);
     }
+    out
 }
 
 /// A file's project membership AS OF a point in time (the temporal `verwandt`
@@ -2292,7 +2358,8 @@ pub fn run() {
 mod tests {
     use super::{
         abs, coarse_when, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops,
-        projects_from_rows, provenance_to_woher, recent_from_rows, recent_to_entry,
+        disambiguate_entries, projects_from_rows, provenance_to_woher, recent_from_rows,
+        recent_to_entry,
         stitch_file_provenance, touched_apps_from_rows, trash_to_entry, verwandt_from_rows,
         EntryKind, Fidelity, FilesConfig, HaloOrigin, Horizon, ProjectMembership, RecentFile,
         SmartFolder,
@@ -2322,6 +2389,53 @@ mod tests {
         assert_eq!(back.smart_folders.len(), 1);
         assert_eq!(back.smart_folders[0].name, "Documents");
         assert_eq!(back.smart_folders[0].location, "facet:type=document");
+    }
+
+    #[test]
+    fn two_recently_opened_readmes_do_not_blank_the_recent_list() {
+        // The ordinary case: two projects, each with a README, both opened. Keyed
+        // on name, these rendered zero rows.
+        let mut rows = vec![
+            recent_to_entry(&RecentFile {
+                path: "/home/t/one/README.md".into(),
+                name: "README.md".into(),
+                accessed: 2_000_000,
+            }),
+            recent_to_entry(&RecentFile {
+                path: "/home/t/two/README.md".into(),
+                name: "README.md".into(),
+                accessed: 1_000_000,
+            }),
+            recent_to_entry(&RecentFile {
+                path: "/home/t/one/notes.md".into(),
+                name: "notes.md".into(),
+                accessed: 3_000_000,
+            }),
+        ];
+        disambiguate_entries(&mut rows);
+        let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["README.md (one)", "README.md (two)", "notes.md"]);
+        // The identity every action uses is untouched by the relabelling.
+        assert_eq!(rows[0].full_path.as_deref(), Some("/home/t/one/README.md"));
+    }
+
+    #[test]
+    fn a_hidden_name_stays_hidden_when_it_is_disambiguated() {
+        let mut rows = vec![
+            recent_to_entry(&RecentFile {
+                path: "/home/t/a/.env".into(),
+                name: ".env".into(),
+                accessed: 1,
+            }),
+            recent_to_entry(&RecentFile {
+                path: "/home/t/b/.env".into(),
+                name: ".env".into(),
+                accessed: 2,
+            }),
+        ];
+        disambiguate_entries(&mut rows);
+        assert_eq!(rows[0].name, ".env (a)");
+        assert!(rows[0].is_hidden, "a dotfile is still a dotfile after relabelling");
     }
 
     #[test]
