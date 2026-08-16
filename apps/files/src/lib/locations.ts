@@ -71,6 +71,20 @@ export function columnsFor(path: string): ColumnSpec {
 /// The i18n key for the message a location shows when it has no items. A virtual
 /// location speaks for itself rather than the generic folder phrasing. The caller
 /// resolves the key through the catalog, so the label follows the locale.
+/// The failure title for a location, keyed the same way as its empty label.
+///
+/// "Can't open this folder" is true of a directory and false of Recent, which is
+/// a list the knowledge graph answers with and has no folder anywhere. Seen on
+/// 16 August, the first time Recent was shot with no backend behind it - it lives
+/// behind a sidebar click, so nothing had ever photographed it failing.
+export function errorTitleFor(path: string): string {
+  if (path === "trash" || path === "recent") return "f.fb.errorTitleLocation";
+  if (path.startsWith("project:") || path.startsWith("search:") || path.startsWith("facet:")) {
+    return "f.fb.errorTitleLocation";
+  }
+  return "f.fb.errorTitle";
+}
+
 export function emptyLabelFor(path: string): string {
   if (path === "trash") return "f.empty.trash";
   if (path === "recent") return "f.empty.recent";

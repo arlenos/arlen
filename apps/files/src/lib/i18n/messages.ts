@@ -73,6 +73,11 @@ const messages: Catalogs = {
     "f.empty.search": "No matches",
     "f.empty.facet": "No files match this filter",
     "f.fb.errorTitle": "Can't open this folder",
+    "f.fb.errorTitleLocation": "Can't open this",
+    // Passed explicitly because the kit's default is English and says
+    // "folder"; neither is right for Recent, and the first was reaching
+    // every locale.
+    "f.fb.hintUnknown": "Something went wrong reading it.",
     "f.fb.hintPermission": "You don't have permission to see what's inside.",
     "f.fb.hintNotConnected": "This place is not connected right now.",
     "f.fb.hintNoSuchDir": "This folder does not exist anymore.",
@@ -387,6 +392,8 @@ const messages: Catalogs = {
     "f.empty.search": "Keine Treffer",
     "f.empty.facet": "Keine Dateien passen zu diesem Filter",
     "f.fb.errorTitle": "Ordner kann nicht geöffnet werden",
+    "f.fb.errorTitleLocation": "Kann nicht geöffnet werden",
+    "f.fb.hintUnknown": "Beim Lesen ist etwas schiefgegangen.",
     "f.fb.hintPermission": "Du hast keine Berechtigung, den Inhalt zu sehen.",
     "f.fb.hintNotConnected": "Dieser Ort ist gerade nicht verbunden.",
     "f.fb.hintNoSuchDir": "Dieser Ordner existiert nicht mehr.",

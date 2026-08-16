@@ -152,12 +152,16 @@
     {/if}
 
     <!-- Recent + Trash sit at the foot of the sidebar; both are navigation
-         locations (the KG recent files / the trash), highlighted when active. -->
+         locations (the KG recent files / the trash), highlighted when active.
+         `data-place` so a headless shot can reach them: they are views behind a
+         click, which is where the no-backend sweep was blind until the knowledge
+         sidebar got the same hook. -->
     <SidebarGroup class="group-data-[collapsible=icon]:hidden">
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip={$t("f.sidebar.recent")}
+            data-place="recent"
             isActive={activePath === "recent"}
             onclick={() => goLocation("recent")}
           >
@@ -168,6 +172,7 @@
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip={$t("f.sidebar.trash")}
+            data-place="trash"
             isActive={activePath === "trash"}
             onclick={() => goLocation("trash")}
           >

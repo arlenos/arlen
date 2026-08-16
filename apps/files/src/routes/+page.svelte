@@ -52,7 +52,7 @@
   } from "$lib/stores/facets";
   import { duplicatesOpen } from "$lib/stores/duplicates";
   import { askDraft, runAsk, applyDraft, clearAsk, loadAskCapability } from "$lib/stores/ask";
-  import { columnsFor, emptyLabelFor } from "$lib/locations";
+  import { columnsFor, emptyLabelFor, errorTitleFor } from "$lib/locations";
 
   let renamingName = $state<string | null>(null);
   let batchRenaming = $state(false);
@@ -65,22 +65,26 @@
   // turn the keys into text via `$t`, so the headers follow both path and locale.
   let aColumns = $state(columnsFor("/"));
   let aEmpty = $state("f.empty.folder");
+  let aError = $state("f.fb.errorTitle");
   $effect(() => {
     const c = $activeController;
     if (!c) return;
     return c.path.subscribe((p) => {
       aColumns = columnsFor(p);
       aEmpty = emptyLabelFor(p);
+      aError = errorTitleFor(p);
     });
   });
   let bColumns = $state(columnsFor("/"));
   let bEmpty = $state("f.empty.folder");
+  let bError = $state("f.fb.errorTitle");
   $effect(() => {
     const c = $paneB;
     if (!c) return;
     return c.path.subscribe((p) => {
       bColumns = columnsFor(p);
       bEmpty = emptyLabelFor(p);
+      bError = errorTitleFor(p);
     });
   });
   const aCols = $derived({ ...aColumns, middleLabel: $t(aColumns.middleLabel), timeLabel: $t(aColumns.timeLabel) });
@@ -548,7 +552,8 @@
               columns={aCols}
               nameLabel={$t("f.col.name")}
               emptyLabel={$t(aEmpty)}
-              errorTitle={$t("f.fb.errorTitle")}
+              errorTitle={$t(aError)}
+              hintUnknown={$t("f.fb.hintUnknown")}
               hintPermission={$t("f.fb.hintPermission")}
               hintNotConnected={$t("f.fb.hintNotConnected")}
               hintNoSuchDir={$t("f.fb.hintNoSuchDir")}
@@ -577,7 +582,8 @@
                 columns={bCols}
                 nameLabel={$t("f.col.name")}
                 emptyLabel={$t(bEmpty)}
-                errorTitle={$t("f.fb.errorTitle")}
+                errorTitle={$t(bError)}
+                hintUnknown={$t("f.fb.hintUnknown")}
                 hintPermission={$t("f.fb.hintPermission")}
                 hintNotConnected={$t("f.fb.hintNotConnected")}
                 hintNoSuchDir={$t("f.fb.hintNoSuchDir")}
