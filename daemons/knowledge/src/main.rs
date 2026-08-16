@@ -207,7 +207,22 @@ async fn run(
     // `try_join!` — so a failing task is attributed by name instead
     // of leaving the operator with an anonymous "Error: Permission
     // denied (os error 13)" and no way to tell which task emitted it.
+    // A clone kept back from the listener, so the shutdown arm can still reach the
+    // graph thread after `graph` is moved into `daemon::listen`.
+    let closing = graph.clone();
+
     tokio::select! {
+        // CLOSE THE DATABASE BEFORE EXITING. Without this arm the daemon had no
+        // signal handling at all: `systemctl stop`, a reboot or a plain SIGTERM
+        // killed it mid-write and the ladybug store was never closed. A scratch
+        // store taken down that way on 16 August refused to reopen, and every
+        // query after it answered "ladybug thread has stopped" - the user's whole
+        // graph, with no recovery path in the daemon.
+        _ = shutdown_signal() => {
+            tracing::info!("knowledge daemon shutting down");
+            closing.shutdown().await;
+            Ok(())
+        },
         r = writer::run(&consumer_socket, pool.clone()) => match r {
             Ok(()) => bail!("writer task exited unexpectedly"),
             Err(e) => bail!("writer ({consumer_socket}): {e}"),
@@ -232,5 +247,26 @@ async fn run(
             Ok(()) => bail!("daemon listener exited unexpectedly"),
             Err(e) => bail!("daemon listen ({daemon_socket}): {e}"),
         },
+    }
+}
+
+/// Resolve when the service is asked to stop: SIGINT from a terminal, SIGTERM
+/// from systemd. The same shape the capsule and undo-signer daemons use, so all
+/// three stop the same way.
+async fn shutdown_signal() {
+    let ctrl_c = tokio::signal::ctrl_c();
+    let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        Ok(s) => s,
+        Err(e) => {
+            // Without SIGTERM the daemon still stops on SIGINT; saying so beats a
+            // silent downgrade to the behaviour this arm exists to replace.
+            tracing::error!("cannot install the SIGTERM handler, stop will not close the graph: {e}");
+            let _ = ctrl_c.await;
+            return;
+        }
+    };
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = term.recv() => {}
     }
 }

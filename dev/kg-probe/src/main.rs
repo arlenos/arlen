@@ -55,6 +55,20 @@ const QUESTIONS: &[(&str, &str)] = &[
     // recorded" from "everything recorded is closed".
     ("projects: any", "MATCH (p:Project) RETURN p.name LIMIT 500"),
     ("files: any", "MATCH (f:File) RETURN f.id LIMIT 500"),
+    // apps/knowledge/src-tauri/src/projects.rs, list_members - the TRAVERSAL.
+    //
+    // Five surfaces across three apps carry a comment saying a query naming a
+    // relationship type is refused for a caller that is not system-anchored, and
+    // each falls back to a fixture rather than asking. The gate says otherwise
+    // (daemon.rs:4394): a traversal is authorised by its ENDPOINTS, and only types
+    // on `RESTRICTED_RELATIONS` need their own grant - a list that is currently
+    // empty. This asks, so the answer is measured rather than assumed.
+    (
+        "traversal: project members",
+        "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+         RETURN f.path AS path LIMIT 50",
+    ),
     ("events: any", "MATCH (e:Event) RETURN e.id LIMIT 500"),
     // The one question about something THIS RUN produced.
     //
