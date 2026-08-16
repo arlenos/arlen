@@ -115,9 +115,16 @@ pub async fn capsule_scope_options() -> Result<Vec<ScopeOption>, String> {
     let client = graph_client();
     // One aggregation: each live project with the count of its live member files.
     // Non-aggregated return keys are the implicit group keys (Kuzu grouping).
+    //
+    // `p` is already bound and Cypher would take a bare `(p)` on the second hop.
+    // The read gate would not: it refuses any node in a pattern that names no
+    // label, and the harness tiers ThirdParty, so the gate applies. This query
+    // was refused in full - the scope picker could offer nothing to share.
+    // Measured 16 August: `(p)` denied, `(p:Project)` answered with both fixture
+    // projects and their file counts.
     let cypher = format!(
         "MATCH (p:Project) WHERE p.expired_at IS NULL \
-         OPTIONAL MATCH (f:File)-[r:FILE_PART_OF]->(p) \
+         OPTIONAL MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) \
          WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
          RETURN p.id AS id, p.name AS name, p.description AS description, \
          count(f) AS files ORDER BY files DESC LIMIT {MAX_SCOPE_OPTIONS}"
