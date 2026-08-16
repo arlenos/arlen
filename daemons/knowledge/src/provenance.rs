@@ -141,9 +141,22 @@ mod tests {
 
     #[test]
     fn graph_origin_is_unranked_so_it_is_never_silently_ranked() {
-        // Graph is enum-defined but not an edge origin today; §5.6 does not
-        // place it. `None` forces an explicit decision rather than a silent
-        // guess if promotion ever stamps origin='graph'.
+        // This guarded a hypothetical - "not an edge origin today ... if
+        // promotion ever stamps origin='graph'" - and since 16 August promotion
+        // DOES stamp it (`project::store::link_file`). So the assertion now
+        // covers LIVE data rather than an unused variant, which makes it
+        // stronger, not weaker: real edges carry this origin and nothing may
+        // rank them by guessing.
+        //
+        // §5.6 orders the ASSERTED origins (user > agent > model > external) and
+        // does not place a system observation among them. Whether being observed
+        // out- or under-ranks being asserted decides who wins a real conflict
+        // over where a file belongs, so it is a trust decision rather than a
+        // coding one. Until it is made, `None` is the honest answer and callers
+        // fall through to the HLC tiebreak or fail closed.
+        //
+        // When somebody DOES decide it, this test is the thing that will fail,
+        // which is the point: the rank cannot change quietly.
         assert_eq!(Provenance::Graph.trust_rank(), None);
     }
 }
