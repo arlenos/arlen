@@ -12,7 +12,7 @@
   import DetailsPanel, { type Fact } from "$lib/components/DetailsPanel.svelte";
   import ImageViewer from "$lib/components/ImageViewer.svelte";
   import VideoViewer from "$lib/components/VideoViewer.svelte";
-  import { audioMock, imageMock, videoMock, mockPeaks, type AudioMock, type ImageMock } from "$lib/mock";
+  import { audioMock, imageMock, videoMock, type AudioMock, type ImageMock } from "$lib/mock";
   import { tauriAvailable } from "$lib/tauri";
 
   let demo = $derived(page.url.searchParams.get("demo") ?? "audio");
@@ -200,7 +200,18 @@
             // height, and a 17-second speech recording drew as one solid block -
             // while the demo looked perfect, because `mockPeaks` was already
             // 0..1. A surface that had only ever been seen with fixture data.
-            peaks: info.peaks.length ? info.peaks.map((p) => p / 255) : mockPeaks(),
+            // No peaks means NO peaks. The fallback here used to be `mockPeaks()`,
+            // which drew an invented silhouette for a real file whose decode pass
+            // returned nothing - and a waveform is not decoration, it is a claim
+            // about what is in the audio, made on the same surface that shows the
+            // file's own name. The demo faces above are acknowledged fixtures
+            // reachable with no host or an explicit `?demo=`; this is the real path
+            // with a real file, where a sample is not the answer.
+            //
+            // `Waveform` returns early on an empty array, so this draws nothing at
+            // all - not a flat line, which would be its own false claim, that the
+            // file is silent. The transport, the times and the seek target stay.
+            peaks: info.peaks.length ? info.peaks.map((p) => p / 255) : [],
             index: at?.[0],
             total: at?.[1],
           },
