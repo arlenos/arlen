@@ -238,13 +238,26 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
         <Sun size={14} strokeWidth={2} /> {$t("te.focus")}
       </button>
     {/if}
-    <PopoverSelect
-      value={asOf}
-      options={AS_OF_OPTIONS}
-      width="130px"
-      ariaLabel={$t("te.asOf.aria")}
-      onchange={(v) => (asOf = v)}
-    />
+    <!-- Inert, and saying so, because the data has no time in it yet. Picking a
+         past point changed `asOf` and nothing else: nothing reads it, and nothing
+         COULD - the `FILE_PART_OF` edges the lens would re-read carry
+         `valid_at`/`invalid_at`/`created_at` all NULL, because promotion creates
+         them with a raw MERGE that sets no stamps (measured 16 August against a
+         live graph). The columns exist; the producer does not fill them. Until it
+         does, an enabled control that silently keeps showing the present is a
+         worse answer than one that admits it cannot move. -->
+    <!-- The tooltip rides a wrapper: the kit's select takes no `title`, and the
+         kit is not this app's to extend for one caller. -->
+    <span class="asof-wrap" title={$t("te.asOf.unavailable")}>
+      <PopoverSelect
+        value={asOf}
+        options={AS_OF_OPTIONS}
+        width="130px"
+        disabled
+        ariaLabel={$t("te.asOf.aria")}
+        onchange={(v) => (asOf = v)}
+      />
+    </span>
     <button
       type="button"
       class="tb-btn icon"
@@ -292,6 +305,15 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
 </div>
 
 <style>
+  /* Inert, and looking it. Without this the select renders at full contrast and
+     reads as available - the same half-fix as a disabled arrow that still looks
+     bright, which this pass already corrected once in the viewer. */
+  .asof-wrap {
+    display: inline-flex;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .open-failed {
     padding: 2.5rem 2rem;
     max-width: 34rem;
