@@ -95,8 +95,17 @@
     let path: string | null = null;
     try {
       path = await invoke<string | null>("initial_file");
-    } catch {
-      return; // no managed state / not the real shell - stay on the mock path
+    } catch (e) {
+      // Past the `tauriAvailable` guard above, this IS the real viewer window:
+      // `__TAURI_INTERNALS__` is there from the moment the webview loads, so a
+      // throw here is the backend failing to say which file was opened, not the
+      // browser preview the mock exists for. Returning to the mock path put
+      // "Nightswim" and a playhead at 1:13 of 3:40 into a shipped window - the
+      // same defect the `noFile` comment above records, one branch over, and it
+      // survived that fix because only the `!path` case was covered.
+      // `readsAsInternal` keeps a runtime error from being quoted at a person.
+      loadError = String(e);
+      return;
     }
     if (!path) {
       noFile = true;
