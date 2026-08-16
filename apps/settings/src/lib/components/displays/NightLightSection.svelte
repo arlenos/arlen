@@ -165,19 +165,21 @@
   }
 
   function setLatitude(lat: number) {
+    const previous = cfg;
     cfg = { ...cfg, latitude: lat };
-    invoke("night_light_set_location", {
+    push(previous, invoke("night_light_set_location", {
       latitude: lat,
       longitude: cfg.longitude,
-    }).catch((err) => console.warn("night_light_set_location failed:", err));
+    }));
   }
 
   function setLongitude(lon: number) {
+    const previous = cfg;
     cfg = { ...cfg, longitude: lon };
-    invoke("night_light_set_location", {
+    push(previous, invoke("night_light_set_location", {
       latitude: cfg.latitude,
       longitude: lon,
-    }).catch((err) => console.warn("night_light_set_location failed:", err));
+    }));
   }
 
   function parseHhmm(hhmm: string): number {
