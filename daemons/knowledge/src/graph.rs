@@ -194,8 +194,21 @@ impl GraphHandle {
     /// not waited for anything. The thread dropping its receiver is what closes the
     /// sender, which is the observable end of the close.
     pub async fn shutdown(&self) {
-        if self.sender.send(GraphRequest::Shutdown).await.is_err() {
-            return; // already gone
+        // BOUNDED SEND. This channel is bounded, so `send` waits for capacity - and
+        // the thread it is waiting on may be halfway through a long query, which is
+        // exactly the moment a stop arrives. Awaiting it plainly hung the daemon:
+        // measured 16 August, a TERM'd daemon sat alive indefinitely because the
+        // stop was queued behind a promotion pass rather than because the close was
+        // slow. Giving up and exiting is no worse than the behaviour this replaced.
+        let queued = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            self.sender.send(GraphRequest::Shutdown),
+        )
+        .await;
+        match queued {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) => return, // thread already gone
+            Err(_) => return,     // could not even queue it; exit rather than hang
         }
         // Bounded: a thread wedged inside the engine must not hold the daemon up
         // for ever, and exiting after the deadline is no worse than today's exit.
