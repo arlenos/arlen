@@ -85,6 +85,14 @@
   {#if $clockMocked}
     <p class="sample">{$t("c.sample")}</p>
   {:else if $clockUnavailable}
+    <!-- This line sits above the tab switch, so it shows on WHICHEVER tab is
+         open. It used to say "Cannot read your alarms and timers", which is a
+         true sentence in the wrong place: on Stopwatch it described a feature the
+         person was not looking at, over a pane that was empty for a reason it
+         never gave. Every tab here reads the same daemon state - the stopwatch is
+         persisted too, which is why its view is gated on it - so one sentence can
+         cover them all, as long as it names what is actually missing rather than
+         one tab's worth of it. -->
     <p class="sample">{$t("c.unavailable")}</p>
   {/if}
   <!-- The alarm or timer below is back to what the daemon holds, because what
