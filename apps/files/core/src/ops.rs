@@ -2425,6 +2425,74 @@ mod tests {
         assert_eq!(empty_trash(&trash_dir).unwrap(), 0);
     }
 
+    /// Emptying the trash must UNLINK a directory symlink, never walk into it.
+    ///
+    /// Every other delete path here has this test; the two permanent ones did not,
+    /// which is the wrong way round - they are the irreversible pair. The branch
+    /// they share reads `symlink_metadata`, and swapping that for `metadata` (the
+    /// obvious simplification, since the name is longer for no visible reason)
+    /// makes a dir-symlink take the recursive arm and take its TARGET with it.
+    /// Every test that existed before this one passes either way.
+    #[test]
+    fn empty_trash_unlinks_a_dir_symlink_and_spares_its_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trash_dir = make_trash(tmp.path());
+        // The target lives outside the trash, as a real one would: the user
+        // trashed a shortcut, not the directory it points at.
+        fs::create_dir(tmp.path().join("targetdir")).unwrap();
+        fs::write(tmp.path().join("targetdir/keep.txt"), b"k").unwrap();
+        std::os::unix::fs::symlink(
+            tmp.path().join("targetdir"),
+            tmp.path().join("Trash/files/dirlink"),
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("Trash/info/dirlink.trashinfo"),
+            b"[Trash Info]\nPath=/home/u/dirlink\nDeletionDate=2026-01-02T03:04:05\n",
+        )
+        .unwrap();
+
+        assert_eq!(empty_trash(&trash_dir).unwrap(), 1);
+        assert!(
+            !tmp.path().join("Trash/files/dirlink").symlink_metadata().is_ok(),
+            "the link itself is gone"
+        );
+        assert!(
+            tmp.path().join("targetdir/keep.txt").exists(),
+            "the directory the link pointed at is untouched"
+        );
+    }
+
+    /// The per-item half of the same rule. See the note above: this is the path a
+    /// person reaches by deleting one thing out of the trash, and it is final.
+    #[test]
+    fn delete_trashed_item_unlinks_a_dir_symlink_and_spares_its_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trash_dir = make_trash(tmp.path());
+        fs::create_dir(tmp.path().join("targetdir")).unwrap();
+        fs::write(tmp.path().join("targetdir/keep.txt"), b"k").unwrap();
+        std::os::unix::fs::symlink(
+            tmp.path().join("targetdir"),
+            tmp.path().join("Trash/files/dirlink"),
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("Trash/info/dirlink.trashinfo"),
+            b"[Trash Info]\nPath=/home/u/dirlink\nDeletionDate=2026-01-02T03:04:05\n",
+        )
+        .unwrap();
+
+        delete_trashed_item(&trash_dir, "dirlink").unwrap();
+        assert!(
+            !tmp.path().join("Trash/files/dirlink").symlink_metadata().is_ok(),
+            "the link itself is gone"
+        );
+        assert!(
+            tmp.path().join("targetdir/keep.txt").exists(),
+            "the directory the link pointed at is untouched"
+        );
+    }
+
     #[test]
     fn delete_trashed_item_removes_only_the_named_entry() {
         let tmp = tempfile::tempdir().unwrap();
