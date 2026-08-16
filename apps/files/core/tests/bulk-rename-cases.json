@@ -1,0 +1,78 @@
+{
+  "why": [
+    "The bulk-rename preview is computed TWICE: once in apps/files/core/src/bulk_rename.rs,",
+    "which performs the rename, and once in apps/files/src/lib/bulk-rename.ts, which draws the",
+    "dialog without a round-trip per keystroke. Nothing pinned them together, so a divergence",
+    "would show one name in the preview and write another - a wrong answer the person already",
+    "approved, on an operation that renames their files.",
+    "",
+    "These vectors are the contract. The Rust test and the vitest test both run them, so the two",
+    "implementations cannot drift apart silently. The CORE is authoritative: if a case here",
+    "disagrees with it, the fixture is what was wrong, unless the core itself is."
+  ],
+  "cases": [
+    {
+      "name": "find and replace every occurrence",
+      "names": ["draft-a-draft.md", "notes.md"],
+      "rule": { "find": "draft", "replace": "final" },
+      "expect": [
+        { "from": "draft-a-draft.md", "to": "final-a-final.md", "conflict": "none" },
+        { "from": "notes.md", "to": "notes.md", "conflict": "unchanged" }
+      ]
+    },
+    {
+      "name": "case insensitive find keeps the replacement verbatim",
+      "names": ["Draft.md"],
+      "rule": { "find": "draft", "replace": "FINAL", "find_case_insensitive": true },
+      "expect": [{ "from": "Draft.md", "to": "FINAL.md", "conflict": "none" }]
+    },
+    {
+      "name": "case transform applies to the whole name",
+      "names": ["Mixed Case.TXT"],
+      "rule": { "case": "lower" },
+      "expect": [{ "from": "Mixed Case.TXT", "to": "mixed case.txt", "conflict": "none" }]
+    },
+    {
+      "name": "upper case",
+      "names": ["quiet.md"],
+      "rule": { "case": "upper" },
+      "expect": [{ "from": "quiet.md", "to": "QUIET.MD", "conflict": "none" }]
+    },
+    {
+      "name": "numbering pads and substitutes both placeholders",
+      "names": ["a.md", "b.md", "c.md"],
+      "rule": {
+        "numbering": { "template": "{name}-{n}", "start": 1, "step": 1, "pad": 3 }
+      },
+      "expect": [
+        { "from": "a.md", "to": "a.md-001", "conflict": "none" },
+        { "from": "b.md", "to": "b.md-002", "conflict": "none" },
+        { "from": "c.md", "to": "c.md-003", "conflict": "none" }
+      ]
+    },
+    {
+      "name": "a template without the number placeholder appends it",
+      "names": ["x.md", "y.md"],
+      "rule": { "numbering": { "template": "photo", "start": 5, "step": 5, "pad": 2 } },
+      "expect": [
+        { "from": "x.md", "to": "photo05", "conflict": "none" },
+        { "from": "y.md", "to": "photo10", "conflict": "none" }
+      ]
+    },
+    {
+      "name": "two names collapsing to one is a duplicate, not a silent overwrite",
+      "names": ["one.md", "two.md"],
+      "rule": { "find": "one", "replace": "two" },
+      "expect": [
+        { "from": "one.md", "to": "two.md", "conflict": "duplicate" },
+        { "from": "two.md", "to": "two.md", "conflict": "duplicate" }
+      ]
+    },
+    {
+      "name": "a separator in the result is refused rather than written",
+      "names": ["a.md"],
+      "rule": { "find": "a", "replace": "b/c" },
+      "expect": [{ "from": "a.md", "to": "b/c.md", "conflict": "invalid" }]
+    }
+  ]
+}
