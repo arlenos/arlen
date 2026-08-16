@@ -636,7 +636,10 @@ def main():
                          "serial) must show the llama engine + the AI session daemons started")
     ap.add_argument("--require-dogfood", action="store_true",
                     help="fail unless the in-VM KG-AI dogfood completed: the serial "
-                         "journal must show 'DOGFOOD OK' (event injected + AI completion). "
+                         "journal must show an injected event and a terminal marker. "
+                         "The AI completion leg is best-effort and is REPORTED, not "
+                         "required - it said 'event injected + AI completion' here "
+                         "for weeks while gating on neither. "
                          "Implies the AI layer; use a longer --wait (the loop waits a "
                          "promotion pass then asks, with retry for model-load latency)")
     ap.add_argument("--require-consent", action="store_true",

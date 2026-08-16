@@ -3,11 +3,19 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Controls for `ai_verdict`, each a boot that must not pass as an AI boot.
+"""Controls for `ai_verdict`: the boots it must refuse, and one it must not.
 
-The first case is not hypothetical. It is what `--require-ai` accepted until 16
-August: every stage line absent except the terminal marker, which the dogfood
-prints whatever happened.
+The no-event case is not hypothetical. `--require-dogfood` accepted it until 16
+August, because it gated on the terminal marker alone and the dogfood prints that
+whatever happened.
+
+The last case is the other half of the same lesson, and it is a real captured
+boot rather than a constructed one - `dev/vm/serial-consent-check.log`, emit ok,
+ask skipped, terminal marker printed. My first cut refused it, which reads right
+from the flag's help text and is wrong: that ask is best-effort by design and is
+currently refused by an admission decision nobody has made, so a gate on it would
+turn every boot red over an open question rather than a defect. It must PASS, and
+it must still say the completion did not come back.
 
 Run: python3 dev/vm/test_ai_verdict.py
 """
@@ -25,17 +33,16 @@ GOOD = """
 [  10.121004] arlen-dogfood[612]: DOGFOOD OK
 """
 
+# A real captured boot: emit ok, the ask refused, terminal marker printed. Copied
+# from `dev/vm/serial-consent-check.log` rather than invented, so it stays a boot
+# that actually happened.
+ASK_SKIPPED_BOOT = """
+[   4.512331] arlen-dogfood[632]: DOGFOOD EMIT ok path=/var/lib/arlen-work/notes.md
+[  73.190133] arlen-dogfood[632]: DOGFOOD ASK skipped (best-effort, 1B model): explain_system: org.freedesktop.DBus.Error.UnknownMethod: Unknown method 'explain_system'
+[  73.900021] arlen-dogfood[632]: DOGFOOD OK
+"""
+
 CASES = [
-    (
-        "the ask was skipped and the terminal marker printed anyway",
-        """
-[   4.512331] arlen-dogfood[612]: DOGFOOD EMIT ok path=/var/lib/arlen-work/notes.md
-[   9.884120] arlen-dogfood[612]: DOGFOOD ASK skipped (best-effort): the call succeeded and returned an empty answer
-[  10.121004] arlen-dogfood[612]: DOGFOOD OK
-""",
-        # The exact false green. The old gate saw DOGFOOD OK and passed a boot
-        # whose AI layer answered nothing at all.
-    ),
     (
         "no event was injected, so the completion is not about this boot",
         """
@@ -75,18 +82,21 @@ def main() -> int:
         elif not message.strip():
             failures.append(f"refused {name!r} with an empty message")
 
-    # The skip case must name the probe's own reason rather than a summary of it.
-    # The last summary in this area named the wrong cause for weeks, which is why
-    # the dogfood prints the reason verbatim; a verdict that drops it undoes that.
-    _, skip_message = ai_verdict(CASES[0][1])
-    if "empty answer" not in skip_message:
-        failures.append("the skip verdict dropped the probe's stated reason")
+    # A boot whose ask was skipped PASSES, and must still report that it was: the
+    # gate not refusing is not the same as the verdict going quiet. The reason is
+    # quoted verbatim because the last summary written in this area named the
+    # wrong cause for weeks.
+    ok, skip_message = ai_verdict(ASK_SKIPPED_BOOT)
+    if not ok:
+        failures.append(f"refused a boot whose ask was best-effort skipped: {skip_message}")
+    if "best-effort" not in skip_message or "UnknownMethod" not in skip_message:
+        failures.append(f"the skip verdict dropped the probe's stated reason: {skip_message}")
 
     for f in failures:
         print(f"FAIL: {f}", file=sys.stderr)
     if failures:
         return 1
-    print(f"ok: a good boot passes and {len(CASES)} bad ones are refused")
+    print(f"ok: a good boot and a best-effort skip pass, {len(CASES)} bad ones are refused")
     return 0
 
 
