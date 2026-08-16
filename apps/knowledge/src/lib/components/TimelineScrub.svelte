@@ -59,6 +59,18 @@
       onjump(activeIndex - 1);
     }
   }
+
+  /// The active day's labels, derived here rather than called inline in the markup.
+  ///
+  /// Not only tidier: with the call written out in the attribute, Tailwind's source
+  /// scanner picked `locale` out of `dayLabel(days[activeIndex].date, $locale)` and
+  /// tried to compile it as an arbitrary CSS property, which failed the dev server
+  /// with `Invalid declaration: locale` and covered the whole app in an error
+  /// overlay. Production builds were unaffected, which is why it survived - it broke
+  /// the screenshot loop rather than the product. Plain identifiers in the markup
+  /// give the scanner nothing to misread.
+  const activeLabel = $derived(days.length ? dayLabel(days[activeIndex].date, $locale) : "");
+  const activeLabelShort = $derived(days.length ? dayLabelShort(days[activeIndex].date, $locale) : "");
 </script>
 
 {#if count > 1}
@@ -71,7 +83,7 @@
     aria-valuemin={0}
     aria-valuemax={count - 1}
     aria-valuenow={count - 1 - activeIndex}
-    aria-valuetext={dayLabel(days[activeIndex].date, $locale)}
+    aria-valuetext={activeLabel}
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
     onpointerup={onPointerUp}
@@ -82,7 +94,7 @@
       <span class="tick" style={`left:${count > 1 ? ((count - 1 - i) / (count - 1)) * 100 : 100}%`} class:active={i === activeIndex}></span>
     {/each}
     <span class="grip" class:dragging style={`left:clamp(2.25rem, ${pos * 100}%, calc(100% - 2.25rem))`}>
-      <span class="grip-label">{dayLabelShort(days[activeIndex].date, $locale)}</span>
+      <span class="grip-label">{activeLabelShort}</span>
     </span>
   </div>
 {/if}
