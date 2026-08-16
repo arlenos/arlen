@@ -72,7 +72,7 @@
       onclick={forceQuit}
       onblur={() => (confirmQuit = false)}
     >
-      {confirmQuit ? "Force quit?" : "Force Quit"}
+      {confirmQuit ? $t("tm.dp.forceQuitConfirm") : $t("tm.dp.forceQuit")}
     </button>
     <button type="button" class="dp-close" aria-label={$t("tm.dp.close")} onclick={onClose}><X size={15} strokeWidth={2} /></button>
   </header>

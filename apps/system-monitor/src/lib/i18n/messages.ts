@@ -16,6 +16,8 @@ const messages: Catalogs = {
     "tm.app.title": "Task manager",
     "tm.dp.pid": "PID {$pid}",
     "tm.dp.close": "Close",
+    "tm.dp.forceQuit": "Force Quit",
+    "tm.dp.forceQuitConfirm": "Force quit?",
     "tm.dp.usingCamera": "Using your camera right now.",
     "tm.dp.usingMic": "Using your microphone right now.",
     "tm.dp.usingBoth": "Using your camera and microphone right now.",
@@ -83,6 +85,8 @@ const messages: Catalogs = {
 
     "tm.dp.pid": "PID {$pid}",
     "tm.dp.close": "Schlie\u00dfen",
+    "tm.dp.forceQuit": "Beenden erzwingen",
+    "tm.dp.forceQuitConfirm": "Wirklich erzwingen?",
     "tm.dp.usingCamera": "Nutzt gerade deine Kamera.",
     "tm.dp.usingMic": "Nutzt gerade dein Mikrofon.",
     "tm.dp.usingBoth": "Nutzt gerade deine Kamera und dein Mikrofon.",
