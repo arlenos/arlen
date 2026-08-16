@@ -350,6 +350,8 @@ jobs:
           node dev/scripts/test-check-daemon-stop.mjs
           python3 dev/scripts/check-cypher-groups.py
           node dev/scripts/test-check-cypher-groups.mjs
+          python3 dev/scripts/check-sandbox-env.py
+          node dev/scripts/test-check-sandbox-env.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
