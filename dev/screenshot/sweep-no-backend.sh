@@ -36,6 +36,10 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SHOTS=(
   "clock - clock-unavailable"
+  "clock - clock-timers-unavailable #tab-timers"
+  "clock - clock-focus-unavailable #tab-focus"
+  "clock - clock-stopwatch-unavailable #tab-stopwatch"
+  "clock - clock-world-unavailable #tab-world"
   "files - files-unavailable"
   "greeter - greeter-unavailable"
   "knowledge - knowledge-unavailable"
