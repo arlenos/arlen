@@ -169,12 +169,6 @@ class Render:
                       f" {self.args.require_width}px and got {css_w}px."
                       f" No screenshot written.", 4)
             return
-        if self.args.probe:
-            self.run_probe()
-            return
-        if self.args.axe and not self.args.type and not self.args.open:
-            self.run_axe()
-            return
         if self.args.type:
             self.type_into()
             return
@@ -182,7 +176,32 @@ class Render:
             self.pending = list(self.args.open)
             self.click_open()
             return
-        self.snapshot()
+        self.finish()
+
+    def finish(self):
+        """The last step, whatever the run was for: probe, or audit, or shoot.
+
+        This is a function rather than three branches at the load-finished point
+        because `--probe` used to be the FIRST of them, and returned before the
+        click chain ever started. A probe combined with `--open` therefore
+        reported the page as it was BEFORE the click, printed it without a word
+        about that, and exited 0.
+
+        Measured on 16 August against the knowledge app with no backend: clicking
+        Pause and asking for the alert text answered "no alert", which reads as a
+        control that fails silently. The alert is there; the question was asked
+        one step too early. A tool that answers a different question than the one
+        typed, and looks right doing it, is worse than one that refuses - the
+        report it produces is a bug that does not exist, and the fix for it lands
+        in an app that was already correct.
+        """
+        if self.args.probe:
+            self.run_probe()
+        elif self.args.axe:
+            self.run_axe()
+        else:
+            self.snapshot()
+        return False
 
     def run_probe(self):
         """Print one expression's value from the rendered page, and shoot nothing.
@@ -335,7 +354,7 @@ class Render:
             GLib.timeout_add(int(self.args.settle * 1000),
                              lambda: (self.click_open(), False)[1])
             return
-        GLib.timeout_add(int(self.args.settle * 1000), self.snapshot)
+        GLib.timeout_add(int(self.args.settle * 1000), self.finish)
 
     def click_open(self):
         """Click the next element in the queue, then let it animate.
@@ -379,7 +398,7 @@ class Render:
         if self.pending:
             GLib.timeout_add(300, lambda: (self.click_open(), False)[1])
             return
-        after = self.run_axe if self.args.axe else self.snapshot
+        after = self.finish
         GLib.timeout_add(int(self.args.settle * 1000), lambda: (after(), False)[1])
 
     def snapshot(self):
