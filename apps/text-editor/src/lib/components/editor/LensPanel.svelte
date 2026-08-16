@@ -22,7 +22,13 @@
     <p class="sample">{$t("te.lens.sample")}</p>
   {/if}
   <section class="sec">
-    <h2 class="sec-title">{$t("te.lens.provenance")}</h2>
+    <h2 class="sec-title">
+      {$t("te.lens.provenance")}
+      <!-- These two sections cannot answer as-of: their edges carry no stamps, so
+           they show the present even while the project section shows the past.
+           Saying so beats letting the panel read as one consistent moment. -->
+      {#if $lens.asOfActive}<span class="sec-sample">{$t("te.lens.showingNow")}</span>{/if}
+    </h2>
     <div class="prov">
       {#each $lens.provenance as step (step.relation + step.actor)}
         <div class="prov-step">
@@ -42,6 +48,7 @@
   <section class="sec">
     <h2 class="sec-title">
       {$t("te.lens.related")}
+      {#if $lens.asOfActive}<span class="sec-sample">{$t("te.lens.showingNow")}</span>{/if}
       {#if $lens.relatedMocked && !$lens.mocked}
         <!-- The whole-panel caption is gone once provenance and project are real,
              so this section has to say for itself that it is still a sample. -->
