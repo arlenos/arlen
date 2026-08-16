@@ -44,8 +44,11 @@
     if (e.key === " ") {
       e.preventDefault();
       playing = !playing;
-    } else if (e.key === "ArrowRight") onnext?.();
-    else if (e.key === "ArrowLeft") onprev?.();
+    } else if (e.key === "ArrowRight") {
+      if (file.total && file.index && file.index < file.total) onnext?.();
+    } else if (e.key === "ArrowLeft") {
+      if (file.total && file.index && file.index > 1) onprev?.();
+    }
   }
 </script>
 
@@ -70,9 +73,15 @@
     </div>
 
     <div class="transport">
+      <!-- `canPrev`/`canNext` default to true in the kit, so leaving them out
+           drew both arrows live on a lone file and each click did nothing. The
+           kit already wires them to `disabled`; the position the header prints
+           is the same fact, so it decides here too. -->
       <MediaTransport
         size="lg"
         {playing}
+        canPrev={!!file.total && !!file.index && file.index > 1}
+        canNext={!!file.total && !!file.index && file.index < file.total}
         onprev={() => onprev?.()}
         onplaypause={() => (playing = !playing)}
         onnext={() => onnext?.()}
