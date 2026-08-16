@@ -383,7 +383,14 @@ terminal-smoke:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ROOT}}/apps/terminal" && cargo tauri build --debug --no-bundle
-    SHOOT_EXEC='sleep 1; echo ARLEN_TERMINAL_SMOKE' SHOOT_EXPECT='ARLEN_TERMINAL_SMOKE' \
+    # The marker is ASSEMBLED by the shell, so the string being asserted never
+    # appears in the command line the terminal echoes. That is not decoration:
+    # until 16 August the harness searched the whole grid, so this assertion was
+    # answered by its own echo and passed without the terminal producing anything
+    # (`true # MARKER` reported "rendered after execution"). The harness is fixed
+    # to search the output, and this shape means the test cannot go back to
+    # passing on the prompt even if that fix is ever undone.
+    SHOOT_EXEC='sleep 1; echo ARLEN_TERMINAL_$(echo SMOKE)' SHOOT_EXPECT='ARLEN_TERMINAL_SMOKE' \
         "{{ROOT}}/dev/screenshot/shoot-app.sh" \
         "{{ROOT}}/target/debug/arlen-terminal" "" "" 12
 
