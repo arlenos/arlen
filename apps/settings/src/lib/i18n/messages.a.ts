@@ -804,6 +804,10 @@ export const a: Catalogs = {
     "s.revert.keep": "Keep these display changes?",
     "s.monitor.noDisplays": "No displays detected. Are you running under a Wayland compositor that implements {$proto}?",
     "s.profile.empty": "No saved layouts yet. Save your current arrangement below to restore it automatically when you re-attach the same monitors.",
+    // Distinct from the line above: that one says you have none, this one says
+    // we could not ask. Inviting a save while the list is unreadable is how a
+    // person ends up with a duplicate of a layout they already had.
+    "s.profile.unavailable": "Cannot read your saved layouts right now, so none are shown.",
     "s.profile.active": "Active",
     "s.profile.apply": "Apply",
     "s.profile.alreadyActive": "This layout is already active",
@@ -1606,6 +1610,7 @@ export const a: Catalogs = {
 "s.revert.keep": "Diese Display-Änderungen behalten?",
     "s.monitor.noDisplays": "Keine Displays erkannt. Läufst du unter einem Wayland-Compositor, der {$proto} implementiert?",
     "s.profile.empty": "Noch keine gespeicherten Layouts. Speichere deine aktuelle Anordnung unten, damit sie beim erneuten Anschließen derselben Monitore automatisch wiederhergestellt wird.",
+    "s.profile.unavailable": "Deine gespeicherten Anordnungen sind gerade nicht lesbar, deshalb wird keine angezeigt.",
     "s.profile.active": "Aktiv",
     "s.profile.apply": "Anwenden",
     "s.profile.alreadyActive": "Dieses Layout ist bereits aktiv",
