@@ -15,17 +15,23 @@ deliberately best-effort: when no completion comes back it prints `DOGFOOD ASK
 skipped (best-effort)` and falls through to `DOGFOOD OK` anyway, by design, so
 the same binary can run where no model is provisioned.
 
-So the flag asserted a completion it never checked. A boot where the AI layer
-answered nothing passed `--require-dogfood`, and the stage lines that would have
-said so were printed for a human to read and not gated on. This is deepseek's rule 1
-in our own tree: the harness trusted the agent's summary of itself instead of
-the thing the summary is about.
+So the flag asserted a completion it never checked, and it asserted an EVENT it
+never checked either. The second half is the one that had to become a refusal:
+a boot that injected nothing and printed the terminal marker passed. This is
+deepseek's rule 1 in our own tree - the harness trusted the agent's summary of
+itself instead of the thing the summary is about.
+
+The completion half resolved the other way, and the reasoning is in `ai_verdict`
+beside the branch: the ask leg is best-effort by design and is currently refused
+by an admission decision nobody has made, so requiring it would paint every boot
+red over an open question. The false claim in the help text is what gets fixed
+there, not the gate.
 
 The stages are separate facts and are kept separate here - the same reason their
 rule 2 asks for `timedOut`, `signal` and `exitCode` side by side. An umbrella
 marker that outlives its stages is not a verdict about them.
 
-Three refusals:
+Two refusals:
 
     never finished   no terminal marker at all: the run died, or ended before the
                      probe did. The probe's own `DOGFOOD FAIL` line is quoted when
@@ -33,9 +39,9 @@ Three refusals:
     no event         `DOGFOOD EMIT ok` absent. The first half of what the flag
                      claims: nothing was injected, so whatever else happened was
                      not about this boot.
-    no completion    `DOGFOOD OK` is there and `DOGFOOD ASK ok` is not. The false
-                     green this exists for. The probe's skip line carries the
-                     reason verbatim, so it is quoted rather than summarised.
+Not a refusal, deliberately: a missing `DOGFOOD ASK ok`. It is reported in the
+message with the probe's own reason, and the reasoning for leaving it ungated is
+at that branch.
 
 Run directly against a rendered journal to see the verdict for a captured boot:
 
@@ -83,13 +89,25 @@ def ai_verdict(journal_text: str) -> tuple[bool, str]:
             f"'{EMIT_OK}'. --require-dogfood asserts an event reached the bus, and "
             "a completion about no event is not evidence for this boot."
         )
+    # The ask is NOT gated, and the first version of this file got that wrong.
+    #
+    # It refused a boot with no `DOGFOOD ASK ok`, which reads right from the flag's
+    # help text and is wrong against the probe: the ask leg is best-effort by
+    # design, and it is currently refused for a reason nobody has decided yet -
+    # `ai1_iface.rs` gates `explain_system` on `user_surface_admitted` and the
+    # dogfood is not a user surface. Gating on it would paint every boot red over
+    # an open admission decision, which is manufacturing a red board rather than
+    # finding one. The probe's own note says it plainly: a failure there is not a
+    # dogfood failure, the executor write is the deterministic proof.
+    #
+    # So the claim gets corrected rather than the gate tightened - the flag no
+    # longer promises a completion it deliberately does not require, and the stage
+    # line beside this verdict says whether one came back.
     if not asked:
         skip = _quoted(journal_text, ASK_SKIPPED)
-        return False, (
-            "the dogfood finished without an AI completion: no "
-            f"'{ASK_OK}'. The terminal marker is printed whatever happened - the "
-            "ask is best-effort by design - so a run that answered nothing "
-            "reaches here looking finished." + (f" The probe's reason:{skip}" if skip else "")
+        return True, (
+            "the dogfood injected an event and finished; the AI completion leg is "
+            "best-effort and did not answer this boot." + (f" Its reason:{skip}" if skip else "")
         )
     return True, "the dogfood injected an event and got a completion back"
 
