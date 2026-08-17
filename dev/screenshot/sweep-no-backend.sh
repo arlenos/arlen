@@ -62,6 +62,15 @@ SHOTS=(
   # and then a stop that failed, which no single no-backend session produces, so
   # it is reachable only through the dev-only pin the viewers app also carries:
   #   npx vite dev -C apps/meetings   then   /capture?state=stop-failed
+  # The five pages that gained `ConfigUnavailable` on 16 August, none of which
+  # had a shot: the fix says the controls below are defaults rather than your
+  # settings, and that sentence is the whole repair, so it is the thing to keep
+  # a picture of.
+  "settings focus settings-focus-unavailable"
+  "settings accessibility settings-accessibility-unavailable"
+  "settings workspaces settings-workspaces-unavailable"
+  "settings system-actions settings-system-actions-unavailable"
+  "settings knowledge settings-knowledge-unavailable"
   "settings printers settings-printers-unavailable"
   "settings keyboard settings-keyboard-unavailable"
   # The list under the toolbar. It used to answer a failed read with "No bindings
