@@ -372,7 +372,18 @@
   .row,
   .grouprow {
     display: grid;
-    grid-template-columns: minmax(12rem, 1fr) 8.5rem 4rem 5rem 6rem 6rem 6.5rem;
+    /* Every column but the name was a fixed rem width, and each of those numbers
+       is a measurement of its ENGLISH header. In German the row falls apart:
+       "SPEICHER" and "DATENTRÄGER" run together with no gap between two separate
+       columns, and the "nicht gemessen" note under ZUGRIFF and NETZWERK wraps
+       into its neighbour. `minmax(<the old width>, max-content)` keeps English
+       pixel-identical and lets a longer word take the room it needs. Third one
+       of these found on 17 August, after the timeline's verb column and
+       ModuleCard's 84px - a fixed width around a translated word is the shape. */
+    grid-template-columns:
+      minmax(12rem, 1fr) minmax(8.5rem, max-content) minmax(4rem, max-content)
+      minmax(5rem, max-content) minmax(6rem, max-content) minmax(6rem, max-content)
+      minmax(6.5rem, max-content);
     align-items: center;
   }
   .head {
