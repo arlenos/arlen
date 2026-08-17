@@ -25,6 +25,70 @@ use std::process::Command;
 
 use arlen_confiner::{app_runtime_profile, Bind, Confinement, ConfinerError, NetworkPolicy};
 
+/// Where the document portal is mounted, read from `/proc/self/mountinfo`.
+///
+/// Asked of the mount table rather than of D-Bus because this runs on the launch
+/// path, which is synchronous and has no bus connection; the kernel's answer is
+/// the same one `GetMountPoint` reports, since that is the directory the service
+/// mounted. `uid` selects our own mount: the fuse superblock records `user_id=`,
+/// and another user's portal mount is not ours to hand an app.
+///
+/// A mount point containing a space, tab, newline or backslash appears
+/// octal-escaped in mountinfo, so those four are decoded back.
+pub fn document_portal_mount(mountinfo: &str, uid: u32) -> Option<PathBuf> {
+    for line in mountinfo.lines() {
+        // `id parent maj:min root MOUNTPOINT opts... - FSTYPE source SUPEROPTS`.
+        // A line without the separator is skipped, NOT returned on: `?` here would
+        // abandon the scan at the first odd line and miss a portal mount below it.
+        let Some((left, right)) = line.split_once(" - ") else {
+            continue;
+        };
+        let mut r = right.split_whitespace();
+        if r.next() != Some("fuse.portal") {
+            continue;
+        }
+        let super_opts = r.nth(1).unwrap_or_default();
+        if !super_opts.split(',').any(|o| {
+            o.strip_prefix("user_id=")
+                .is_some_and(|v| v == uid.to_string())
+        }) {
+            continue;
+        }
+        if let Some(field) = left.split_whitespace().nth(4) {
+            return Some(PathBuf::from(unescape_mountinfo(field)));
+        }
+    }
+    None
+}
+
+/// Decode the four characters mountinfo escapes as octal.
+fn unescape_mountinfo(field: &str) -> String {
+    let mut out = String::with_capacity(field.len());
+    let mut rest = field;
+    while let Some(i) = rest.find('\\') {
+        out.push_str(&rest[..i]);
+        let esc = rest.get(i + 1..i + 4).and_then(|o| match o {
+            "040" => Some(' '),
+            "011" => Some('\t'),
+            "012" => Some('\n'),
+            "134" => Some('\\'),
+            _ => None,
+        });
+        match esc {
+            Some(c) => {
+                out.push(c);
+                rest = &rest[i + 4..];
+            }
+            None => {
+                out.push('\\');
+                rest = &rest[i + 1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// The universal plumbing a GUI app needs that is not on the security axis: the
 /// Wayland and PipeWire sockets, the session D-Bus, and the Arlen runtime
 /// directory, all bound read-write (they are sockets). Only paths that actually
@@ -55,11 +119,13 @@ use arlen_confiner::{app_runtime_profile, Bind, Confinement, ConfinerError, Netw
 /// does not already have outside the sandbox.
 ///
 /// `wayland_display` is `$WAYLAND_DISPLAY`: an absolute path is taken verbatim,
-/// a bare name is resolved under `runtime_dir`. `app_id` selects the app's own
-/// view of the document portal (see below).
+/// a bare name is resolved under `runtime_dir`. `doc_mount` is where the document
+/// portal is mounted ([`document_portal_mount`]) and `app_id` selects the app's
+/// own view of it (see below).
 pub fn plumbing_binds(
     runtime_dir: &Path,
     wayland_display: Option<&str>,
+    doc_mount: Option<&Path>,
     app_id: &str,
     exists: impl Fn(&Path) -> bool,
 ) -> Vec<Bind> {
@@ -103,10 +169,18 @@ pub fn plumbing_binds(
     // The subdirectory is synthesised on lookup - `by-app/dev.arlen.madeup` stats
     // fine on a host that has never heard of it - so there is no ordering problem
     // with binding it before the app's first export.
-    if !app_id.is_empty() {
-        let per_app = runtime_dir.join("doc/by-app").join(app_id);
-        let at = runtime_dir.join("doc");
-        if let (true, Some(src), Some(dst)) = (exists(&per_app), per_app.to_str(), at.to_str()) {
+    //
+    // `doc_mount` is READ from the mount table, not assumed to be
+    // `$XDG_RUNTIME_DIR/doc`. The first version of this did assume it, and the
+    // assumption is wrong twice over: `document_portal.rs` builds the URI it hands
+    // the app from the portal's own `GetMountPoint`, and this machine's
+    // xdg-desktop-portal 1.22 carries `/run/flatpak/doc/` as a second location it
+    // knows about. Binding one path while the app is told another is the same
+    // unopenable-path defect in a new place, so both sides now come from the
+    // portal rather than from a convention.
+    if let (false, Some(mount)) = (app_id.is_empty(), doc_mount) {
+        let per_app = mount.join("by-app").join(app_id);
+        if let (true, Some(src), Some(dst)) = (exists(&per_app), per_app.to_str(), mount.to_str()) {
             binds.push(Bind::ReadWrite(src.to_string(), dst.to_string()));
         }
     }
@@ -548,7 +622,7 @@ mod tests {
             PathBuf::from("/run/user/1000/wayland-0"),
             PathBuf::from("/run/user/1000/bus"),
         ];
-        let binds = plumbing_binds(rt, Some("wayland-0"), "", |p| {
+        let binds = plumbing_binds(rt, Some("wayland-0"), None, "", |p| {
             present.contains(&p.to_path_buf())
         });
         assert!(binds.contains(&Bind::ReadWrite(
@@ -574,7 +648,7 @@ mod tests {
     fn the_arlen_runtime_directory_is_bound() {
         let rt = Path::new("/run/user/1000");
         let present = [PathBuf::from("/run/user/1000/arlen")];
-        let binds = plumbing_binds(rt, None, "", |p| present.contains(&p.to_path_buf()));
+        let binds = plumbing_binds(rt, None, None, "", |p| present.contains(&p.to_path_buf()));
         assert_eq!(
             binds,
             vec![Bind::ReadWrite(
@@ -591,11 +665,88 @@ mod tests {
     fn font_configuration_is_bound_read_only() {
         let rt = Path::new("/run/user/1000");
         let present = [PathBuf::from("/etc/fonts")];
-        let binds = plumbing_binds(rt, None, "", |p| present.contains(&p.to_path_buf()));
+        let binds = plumbing_binds(rt, None, None, "", |p| present.contains(&p.to_path_buf()));
         assert_eq!(
             binds,
             vec![Bind::ReadOnly("/etc/fonts".into(), "/etc/fonts".into())],
             "without it a confined app renders in a different font from an unconfined one"
+        );
+    }
+
+    /// The line this host actually has, copied out of `/proc/self/mountinfo`.
+    const REAL: &str = "1014 222 0:88 / /run/user/1000/doc rw,nosuid,nodev,relatime \
+                        shared:862 - fuse.portal portal rw,user_id=1000,group_id=1000";
+
+    #[test]
+    fn the_portal_mount_is_read_from_the_mount_table() {
+        assert_eq!(
+            document_portal_mount(REAL, 1000),
+            Some(PathBuf::from("/run/user/1000/doc"))
+        );
+    }
+
+    /// Not `$XDG_RUNTIME_DIR/doc` by convention: xdg-desktop-portal 1.22 on this
+    /// machine carries `/run/flatpak/doc/` as a second location it knows, and the
+    /// URI the app is handed comes from the portal's own `GetMountPoint`. Reading
+    /// the table is what keeps the bind and the URI naming one directory.
+    #[test]
+    fn a_portal_mounted_somewhere_else_is_still_found() {
+        let line = "22 1 0:9 / /run/flatpak/doc rw,relatime - fuse.portal \
+                    portal rw,user_id=1000,group_id=1000";
+        assert_eq!(
+            document_portal_mount(line, 1000),
+            Some(PathBuf::from("/run/flatpak/doc"))
+        );
+    }
+
+    /// Another user's portal mount is visible in our table and is not ours to hand
+    /// an app, so the uid in the superblock options has to match.
+    #[test]
+    fn another_users_portal_mount_is_not_taken() {
+        let line = "1014 222 0:88 / /run/user/1001/doc rw - fuse.portal \
+                    portal rw,user_id=1001,group_id=1001";
+        assert_eq!(document_portal_mount(line, 1000), None);
+    }
+
+    /// A `group_id=1000` line must not pass the `user_id` test by substring.
+    #[test]
+    fn the_uid_match_is_on_the_whole_option() {
+        let line = "1014 222 0:88 / /run/user/1001/doc rw - fuse.portal \
+                    portal rw,user_id=11000,group_id=1000";
+        assert_eq!(document_portal_mount(line, 1000), None);
+    }
+
+    /// mountinfo escapes four characters as octal; a home-shaped path with a space
+    /// in it would otherwise be truncated at the space and bind the wrong tree.
+    #[test]
+    fn an_escaped_mount_point_is_decoded() {
+        let line = "1 1 0:1 / /run/my\\040docs rw - fuse.portal portal rw,user_id=1000";
+        assert_eq!(
+            document_portal_mount(line, 1000),
+            Some(PathBuf::from("/run/my docs"))
+        );
+    }
+
+    /// A host with no portal running gets no bind rather than a guess. The early
+    /// lines here are ordinary mounts, so this also checks the scan does not stop
+    /// at the first line it cannot split.
+    #[test]
+    fn no_portal_mount_means_no_answer() {
+        let table = "25 30 0:24 / /proc rw - proc proc rw\n\
+                     26 30 0:25 / /sys rw - sysfs sysfs rw\n";
+        assert_eq!(document_portal_mount(table, 1000), None);
+    }
+
+    /// The first draft used `?` on the separator split, so one line the parser did
+    /// not understand ended the scan and the portal below it was never seen - a
+    /// silent no-bind, which is the failure this whole change exists to remove. My
+    /// own tests missed it because every line I wrote happened to be well formed.
+    #[test]
+    fn a_line_the_parser_cannot_split_does_not_end_the_scan() {
+        let table = format!("garbage with no separator\n{REAL}\n");
+        assert_eq!(
+            document_portal_mount(&table, 1000),
+            Some(PathBuf::from("/run/user/1000/doc"))
         );
     }
 
@@ -607,7 +758,8 @@ mod tests {
     fn the_document_portal_mount_reaches_the_app() {
         let rt = Path::new("/run/user/1000");
         let present = [PathBuf::from("/run/user/1000/doc/by-app/dev.arlen.files")];
-        let binds = plumbing_binds(rt, None, "dev.arlen.files", |p| {
+        let doc = PathBuf::from("/run/user/1000/doc");
+        let binds = plumbing_binds(rt, None, Some(&doc), "dev.arlen.files", |p| {
             present.contains(&p.to_path_buf())
         });
         assert_eq!(
@@ -626,7 +778,8 @@ mod tests {
     #[test]
     fn no_app_is_bound_the_whole_document_root() {
         let rt = Path::new("/run/user/1000");
-        let binds = plumbing_binds(rt, None, "dev.arlen.files", |_| true);
+        let doc = PathBuf::from("/run/user/1000/doc");
+        let binds = plumbing_binds(rt, None, Some(&doc), "dev.arlen.files", |_| true);
         let doc: Vec<_> = binds
             .iter()
             .filter(|b| match b {
@@ -647,7 +800,8 @@ mod tests {
     /// not resolve `by-app/` itself, which is the directory holding every app.
     #[test]
     fn an_empty_app_id_binds_no_document_view() {
-        let binds = plumbing_binds(Path::new("/run/user/1000"), None, "", |_| true);
+        let doc = PathBuf::from("/run/user/1000/doc");
+        let binds = plumbing_binds(Path::new("/run/user/1000"), None, Some(&doc), "", |_| true);
         assert!(
             !binds.iter().any(|b| match b {
                 Bind::ReadOnly(s, _) | Bind::ReadWrite(s, _) => s.contains("/doc"),
@@ -659,7 +813,7 @@ mod tests {
     #[test]
     fn plumbing_binds_takes_an_absolute_wayland_display_verbatim() {
         let rt = Path::new("/run/user/1000");
-        let binds = plumbing_binds(rt, Some("/tmp/wl.sock"), "", |_| true);
+        let binds = plumbing_binds(rt, Some("/tmp/wl.sock"), None, "", |_| true);
         assert!(binds.contains(&Bind::ReadWrite(
             "/tmp/wl.sock".into(),
             "/tmp/wl.sock".into()
@@ -671,6 +825,7 @@ mod tests {
         let binds = plumbing_binds(
             Path::new("/run/user/1000"),
             Some("wayland-1"),
+            None,
             "dev.arlen.x",
             |_| false,
         );
