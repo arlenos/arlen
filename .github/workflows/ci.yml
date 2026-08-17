@@ -363,6 +363,8 @@ jobs:
           node dev/scripts/test-check-profile-case.mjs
           python3 dev/scripts/check-profile-agreement.py
           node dev/scripts/test-check-profile-agreement.mjs
+          python3 dev/scripts/check-help-citations.py
+          node dev/scripts/test-check-help-citations.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
