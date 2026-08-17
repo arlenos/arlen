@@ -7,17 +7,20 @@
   /// answering. That used to render as a definite "WiFi is off" with a switch
   /// beside it, about a radio nobody had managed to ask.
   ///
-  /// `?state=ok|wifi-off|unknown`, `?panel=bluetooth|audio|tray|battery`,
+  /// `?state=ok|wifi-off|unknown|refuse-write`, `?panel=bluetooth|audio|tray|battery`,
   /// `?locale=de`. Not in any nav.
   ///
-  /// A refused-WRITE state belongs here too - it is the only way to look at what
-  /// a rejected power mode says - and the obvious spelling did not work: adding
-  /// `if (pinned === "refuse-write" && cmd.startsWith("set_")) throw` left the
-  /// battery panel rendering an empty box, reproducibly, while the same panel
-  /// without it draws fine. Withdrawn rather than left in place, because a dev
-  /// state that renders nothing is the same lie as a surface that renders a
-  /// default: it looks like an answer. Worth another attempt with the cause
-  /// understood rather than guessed at.
+  /// `refuse-write` answers every read and refuses the writes a PERSON makes, so
+  /// a panel is fully drawn and only the pressed control fails - the one state
+  /// nothing else can produce, since these panels need Tauri to open at all.
+  ///
+  /// It refuses a NAMED list rather than everything starting with `set_`, and
+  /// that is the whole lesson of building it. The obvious spelling blanked the
+  /// panel completely, and recording what the mock actually saw said why: the
+  /// first command through is `set_popover_input_region`, the shell reshaping
+  /// its own compositor input region as the popover opens. Refusing that refuses
+  /// the popover. `set_` names both a user's intent and the window plumbing
+  /// underneath it, so only the intents belong here.
   import { onMount } from "svelte";
   import NetworkPopover from "$lib/components/NetworkPopover.svelte";
   import BluetoothPopover from "$lib/components/BluetoothPopover.svelte";
@@ -42,6 +45,17 @@
             ? "battery"
             : "network";
 
+  /// The commands a person's press sends, as opposed to the ones the shell sends
+  /// itself. Add to this when a panel grows a control worth watching refuse.
+  const USER_WRITES = [
+    "set_power_profile",
+    "set_wifi_enabled",
+    "set_airplane_mode",
+    "set_bluetooth_powered",
+    "set_volume",
+    "set_muted",
+  ];
+
   let ready = $state(false);
 
   onMount(async () => {
@@ -51,6 +65,8 @@
       // NetworkManager looks like from here. The other two answer normally so
       // the honest states can be compared against the definite ones.
       if (pinned === "unknown") throw new Error("the service is not running");
+      if (pinned === "refuse-write" && USER_WRITES.includes(cmd as string))
+        throw new Error("the service refused that");
       if (cmd === "get_battery_status")
         return {
           percentage: 62,
