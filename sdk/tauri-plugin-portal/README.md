@@ -69,7 +69,7 @@ try {
 
 ## Direct Rust API
 
-Downstream Rust callers (e.g. `app-settings/picker.rs`) can call
+Downstream Rust callers (e.g. `apps/settings/src-tauri/src/commands/picker.rs`) can call
 `tauri_plugin_arlen_portal::api::*` directly without going
 through Tauri's invoke machinery. Same connection-per-call cost
 as the Tauri-command path; saves the JSON serialisation hop.

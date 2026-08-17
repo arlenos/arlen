@@ -87,7 +87,7 @@ priority = "high"
 
 The daemon communicates with the desktop shell via a Unix socket at `/run/user/{uid}/arlen/notification.sock`. Messages use length-prefixed protobuf framing (4-byte BE length + protobuf body).
 
-See `proto/notification.proto` for the full schema.
+See `contracts/notification-proto/proto/notification.proto` for the full schema.
 
 ## Architecture
 
