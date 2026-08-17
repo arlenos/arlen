@@ -310,10 +310,21 @@ apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} GB
 apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} MB
 apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} GB
 apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} MB
+apps/system-monitor/src/lib/stores/detail.ts	It answers your questions from the graph.
+apps/system-monitor/src/lib/stores/detail.ts	It can reach the folders you open in it.
+apps/system-monitor/src/lib/stores/detail.ts	It can use the network and your Downloads folder.
+apps/system-monitor/src/lib/stores/detail.ts	It can use the network, the microphone and the camera.
+apps/system-monitor/src/lib/stores/detail.ts	It maintains the knowledge graph.
+apps/system-monitor/src/lib/stores/detail.ts	It reads from the knowledge graph within its granted scope and writes nothing without your say.
+apps/system-monitor/src/lib/stores/detail.ts	It runs with limited access and holds nothing sensitive.
+apps/system-monitor/src/lib/stores/detail.ts	files you opened this week
+apps/system-monitor/src/lib/stores/detail.ts	notes and their tags
 apps/system-monitor/src/lib/stores/detail.ts	read and write the graph
 apps/system-monitor/src/lib/stores/detail.ts	read recent files
 apps/system-monitor/src/lib/stores/detail.ts	read the knowledge graph
 apps/system-monitor/src/lib/stores/detail.ts	read your notes
+apps/system-monitor/src/lib/stores/detail.ts	the query tier you set
+apps/system-monitor/src/lib/stores/detail.ts	the whole graph
 apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
