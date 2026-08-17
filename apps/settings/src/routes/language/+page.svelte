@@ -43,7 +43,17 @@
     }
   });
 
+  /// The choice is on screen but not on disk.
+  ///
+  /// Keeping the choice visible after a failed write is deliberate (see below),
+  /// and it is only half honest on its own: the desktop changes language, the
+  /// person believes it is set, and a restart speaks the old one with nothing
+  /// having said why. The write failure used to reach `console.error` alone, and
+  /// a webview in the Arlen shell has no console anybody reads.
+  let writeFailed = $state(false);
+
   async function choose(tag: string): Promise<void> {
+    writeFailed = false;
     chosen = tag;
     // Set first, write second. The UI answers immediately and a failed write
     // leaves the choice visible rather than silently reverting to the old file.
@@ -52,6 +62,7 @@
       await invoke("config_set", { file: "locale", key: "locale.ui", value: tag });
     } catch (e) {
       console.error("[language] could not save:", e);
+      writeFailed = true;
     }
   }
 </script>
@@ -59,6 +70,9 @@
 <Page title={$t("s.lang.title")} description={$t("s.lang.desc")}>
   <SectionGrid>
     <Section label={$t("s.lang.section")}>
+      {#if writeFailed}
+        <p class="write-failed" role="alert">{$t("s.lang.writeFailed")}</p>
+      {/if}
       <Row label={$t("s.lang.ui")} description={$t("s.lang.uiDesc")} id="language-ui">
         {#snippet control()}
           <PopoverSelect
@@ -72,3 +86,12 @@
     </Section>
   </SectionGrid>
 </Page>
+
+<style>
+  .write-failed {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-error, #f87171);
+  }
+</style>
