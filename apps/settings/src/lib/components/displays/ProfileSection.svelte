@@ -79,6 +79,16 @@
   /// store tells you which. This one is a false claim.
   let loadFailed = $state(false);
 
+  /// What was asked for did not happen. Four gestures here - save, apply,
+  /// rename, delete - each caught its failure into `console.warn` and nothing
+  /// else, and a webview in the Arlen shell has no console anybody reads. The
+  /// list simply did not change, which is what a no-op looks like too.
+  ///
+  /// Cleared at the start of each attempt so it is about this press, never the
+  /// last one. Same shape and wording register as `NightLightSection` one file
+  /// over, since they fail for the same reason.
+  let writeFailed = $state(false);
+
   async function reload() {
     try {
       profiles = await invoke<ProfileSummary[]>("display_profiles_list");
@@ -105,12 +115,14 @@
     const label = saveLabel.trim();
     if (!label || saving) return;
     saving = true;
+    writeFailed = false;
     try {
       await invoke<ProfileSummary>("display_profile_save", { label });
       saveLabel = "";
       await reload();
     } catch (err) {
       console.warn("display_profile_save failed:", err);
+      writeFailed = true;
     } finally {
       saving = false;
     }
@@ -122,6 +134,7 @@
   }
 
   async function onApply(profile: ProfileSummary) {
+    writeFailed = false;
     try {
       const handle = await invoke<{
         requestId: string;
@@ -131,6 +144,7 @@
       await reload();
     } catch (err) {
       console.warn("display_profile_apply failed:", err);
+      writeFailed = true;
     }
   }
 
@@ -146,6 +160,7 @@
       renamingId = null;
       return;
     }
+    writeFailed = false;
     try {
       await invoke("display_profile_rename", {
         id: renamingId,
@@ -153,6 +168,7 @@
       });
     } catch (err) {
       console.warn("display_profile_rename failed:", err);
+      writeFailed = true;
     }
     renamingId = null;
     await reload();
@@ -166,10 +182,12 @@
     if (!deleteCandidate) return;
     const id = deleteCandidate.id;
     deleteCandidate = null;
+    writeFailed = false;
     try {
       await invoke("display_profile_delete", { id });
     } catch (err) {
       console.warn("display_profile_delete failed:", err);
+      writeFailed = true;
     }
     await reload();
   }
@@ -188,6 +206,9 @@
 </script>
 
 <Section label={$t("s.profile.title")}>
+  {#if writeFailed}
+    <div class="write-failed" role="alert">{$t("s.profile.writeFailed")}</div>
+  {/if}
   {#if loadFailed}
     <div class="empty">{$t("s.profile.unavailable")}</div>
   {:else if profiles.length === 0}
@@ -283,6 +304,13 @@
 />
 
 <style>
+  .write-failed {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-error, #f87171);
+  }
+
   .empty {
     padding: 16px;
     font-size: 0.85rem;
