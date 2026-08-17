@@ -371,6 +371,8 @@ jobs:
           node dev/scripts/test-check-network-scope-marked.mjs
           python3 dev/scripts/check-profile-claims.py
           node dev/scripts/test-check-profile-claims.mjs
+          python3 dev/scripts/check-dependency-direction.py
+          node dev/scripts/test-check-dependency-direction.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
