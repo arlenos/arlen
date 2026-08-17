@@ -16,8 +16,11 @@ export interface Toolkit {
   id: string;
   name: string;
   coverage: Coverage;
-  /// A one-line fidelity note.
-  note: string;
+  /// Catalogue key for the one-line fidelity note. A key rather than the
+  /// sentence, because this list is a module constant: prose written here is
+  /// resolved once at import and would keep the startup language for the life
+  /// of the process. `coverageBadge` below already does it this way.
+  noteKey: string;
   /// The honest prerequisite/status, or null.
   prereq: string | null;
   /// The native surface (always on; no off toggle, no override).
@@ -26,12 +29,12 @@ export interface Toolkit {
 
 /// The toolkits and their honest fidelity ceiling (theming-system-plan.md §1).
 export const TOOLKITS: Toolkit[] = [
-  { id: "arlen", name: "Arlen apps + compositor", coverage: "full", note: "Colour, shape, and every radius.", prereq: null, native: true },
-  { id: "gtk3", name: "GTK3", coverage: "full", note: "Full shape via adw-gtk3 and a colour override.", prereq: "adw-gtk3 detected" },
-  { id: "gtk4", name: "GTK4 / libadwaita", coverage: "colours", note: "Colours and the exact accent; the frame is the compositor's.", prereq: null },
-  { id: "qt", name: "Qt5 / Qt6", coverage: "colours", note: "Colour, Fusion-shaped through qt6ct.", prereq: "Set Qt apps to use qt6ct" },
-  { id: "terminal", name: "Terminal", coverage: "full", note: "The 16-colour ANSI projection.", prereq: "Include the colour file in your terminal config" },
-  { id: "wine", name: "Wine", coverage: "best-effort", note: "Windows apps via a colour bridge; native shapes stay.", prereq: "Experimental" },
+  { id: "arlen", name: "Arlen apps + compositor", coverage: "full", noteKey: "s.toolkit.note.arlen", prereq: null, native: true },
+  { id: "gtk3", name: "GTK3", coverage: "full", noteKey: "s.toolkit.note.gtk3", prereq: "adw-gtk3 detected" },
+  { id: "gtk4", name: "GTK4 / libadwaita", coverage: "colours", noteKey: "s.toolkit.note.gtk4", prereq: null },
+  { id: "qt", name: "Qt5 / Qt6", coverage: "colours", noteKey: "s.toolkit.note.qt", prereq: "Set Qt apps to use qt6ct" },
+  { id: "terminal", name: "Terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereq: "Include the colour file in your terminal config" },
+  { id: "wine", name: "Wine", coverage: "best-effort", noteKey: "s.toolkit.note.wine", prereq: "Experimental" },
 ];
 
 /// Coverage tier → the badge label + tone.
