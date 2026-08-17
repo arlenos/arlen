@@ -210,7 +210,16 @@ lint-licenses:
     # This repo has no single root workspace, so each `[workspace]` root is checked
     # against the one root deny.toml via --config (discovered, so a new workspace is
     # covered automatically). Needs cargo-deny + reuse installed (CI installs them).
-    roots=$(grep -rl '^\[workspace\]' --include=Cargo.toml . | grep -v '/target/' | grep -v '/mkosi.builddir/' | grep -v '/mkosi.tools/' | xargs -n1 dirname | sort -u)
+    #
+    # Tracked files only. This walked the working tree until 17 August, with an
+    # exclusion list that had already grown twice - `/target/`, then
+    # `mkosi.builddir`, then `mkosi.tools` - because discovery that is automatic
+    # for new workspaces is equally automatic for new build directories. Asking
+    # git ends that: everything a build produces is gitignored by definition, so
+    # there is no list left to forget. Same scan as `notices` below, which is
+    # where the cost of the old shape showed up (it walked into a pinned
+    # toolchain's rustlib source and died there).
+    roots=$(git ls-files '*Cargo.toml' | xargs grep -l '^\[workspace\]' | xargs -n1 dirname | sort -u)
     for ws in $roots; do
         echo "== cargo-deny licenses: $ws =="
         cargo deny --manifest-path "$ws/Cargo.toml" --config "{{ROOT}}/deny.toml" check licenses
