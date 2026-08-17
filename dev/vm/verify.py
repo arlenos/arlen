@@ -1697,6 +1697,13 @@ def main():
             return 1
         observed = len(observed_servers(identity_text, (_socket_table() or {}).values()))
         print(f"sockets: {observed} bind(s) on this boot, all matching the table")
+    else:
+        # Say so. The guard above is right - a check cannot read a console it
+        # never got - but skipping in silence makes an unread serial look the same
+        # as a clean identity chain, which is the failure the comment above
+        # describes: the check absent on the boot that needed it.
+        print("identity: NOT MEASURED - the serial log was empty or unreadable, "
+              "so nothing here says the identity chain or the socket table agree")
 
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
                            if bar_present else "the compositor rendered a frame"))
