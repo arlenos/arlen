@@ -20,10 +20,17 @@
  * **THAT LAST PART IS THE WHOLE POINT, and the obvious fix gets it wrong.** The
  * shell carried a private plugin that answered those ids from an
  * `enforce: "pre"` `load` hook with an empty string. It does stop the crash, and
- * it also silently drops every scoped style in dev: a pre-load returning a value
- * is the first answer, so vite-plugin-svelte's own load for that module never
- * runs. Measured cold, clean tree, same component - `.ph-trigger` present
- * without it, absent with it. The shell has been rendering unstyled in dev.
+ * it also empties the style module: a pre-load returning a value is the first
+ * answer, so vite-plugin-svelte's own load for that module never runs. Measured
+ * cold, clean tree, same component - `.ph-trigger` present without it, absent
+ * with it.
+ *
+ * How much that SHOWS depends on the component. Rendering the shell's `_qstest`
+ * both ways puts the difference at a few pixels of vertical offset, not missing
+ * styling, even though both components on it carry `<style>` blocks - so "the
+ * shell rendered unstyled" would be more than was measured. What is measured is
+ * that the rules do not arrive, which is not a state to leave standing whether
+ * or not a given surface happens to survive it.
  *
  * Two other things measured on the way, since both cost an hour:
  *
