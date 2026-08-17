@@ -555,7 +555,25 @@ jobs:
             echo "$c -> $tc"
             rustup component add clippy rustfmt --toolchain "$tc"
           done
-      # Format + lint the SDK and AI layer as representative; widen later.
+      # Lint the SDK and AI layer as representative; widen later.
+      #
+      # The rustfmt check below is ADVISORY, and the count is written down for the
+      # same reason the clippy step below writes its own down: an unmeasured
+      # `|| true` is not advisory, it is decoration.
+      #
+      # Measured 17 August: 171 files, 1001 hunks. Two things about that number
+      # that the loop's shape hides:
+      #   * The four entries are not four scopes. `cargo fmt --all` here reaches
+      #     past the named workspace into its path dependencies, so the `sdk` pass
+      #     alone reports 584 hunks under sdk/, 304 under ai/, 78 under contracts/
+      #     and 35 under daemons/. `sdk` and `ai` report an IDENTICAL file set.
+      #     Three of the four iterations are near-duplicates of each other.
+      #   * `Diff in` is emitted per HUNK, not per file, so the raw line count
+      #     overstates the spread by about six times.
+      #
+      # Not swept here: 171 files across four areas is a mechanical diff over
+      # reviewed security code, and it belongs in a commit of its own that does
+      # nothing else. Gating it before that sweep would just paint CI red.
       - name: rustfmt check
         run: |
           for c in sdk ai daemons/event-bus contracts/audit-proto; do
