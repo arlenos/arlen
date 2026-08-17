@@ -21,6 +21,7 @@
     startCapture,
     stopCapture,
     captureUnavailable,
+    stopFailed,
   } from "$lib/stores/meeting";
 
   onMount(() => void startCapture());
@@ -45,7 +46,9 @@
         <!-- The red dot and the clock are a claim that a microphone is on. They
              render only when one is, which is why this branch exists at all: a
              refused capture used to show both, ticking, over silence. -->
-        {#if $captureUnavailable}
+        {#if $stopFailed}
+          <span class="rec-failed" role="alert">{$t("mt.stopFailed")}</span>
+        {:else if $captureUnavailable}
           <span class="rec-failed" role="alert">{$t("mt.captureUnavailable")}</span>
           <Button variant="outline" size="sm" onclick={() => void startCapture()}>
             {$t("mt.captureRetry")}

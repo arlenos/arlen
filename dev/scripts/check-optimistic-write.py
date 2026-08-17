@@ -105,9 +105,27 @@ STORE_WRITE = re.compile(r"\.(set|update)\(")
 RUNE_WRITE = re.compile(r"\b(\w+)\s*=\s*\{\s*\.\.\.\s*\1\b")
 
 
-def optimistic_update(code: str) -> bool:
+#: A function declared in this file whose own body writes a store. The clock keeps
+#: one called `patch`, and every alarm and timer mutation goes through it, so the
+#: two patterns above saw nothing in that entire app. That one happens to revert
+#: correctly - but this check could not have said so either way, which is the
+#: point: a gate matches the shape its author last happened to write.
+LOCAL_WRITER = re.compile(
+    r"function\s+(\w+)\s*\([^)]*\)[^{]*\{(?:[^{}]|\{[^{}]*\})*?\.(?:set|update)\(",
+    re.S,
+)
+
+
+def local_writers(text: str) -> set[str]:
+    """Names of same-file helpers that write a store when called."""
+    return {m.group(1) for m in LOCAL_WRITER.finditer(text)}
+
+
+def optimistic_update(code: str, writers: set[str] | None = None) -> bool:
     """Whether `code` sets a surface's state ahead of the call it depends on."""
-    return bool(STORE_WRITE.search(code) or RUNE_WRITE.search(code))
+    if STORE_WRITE.search(code) or RUNE_WRITE.search(code):
+        return True
+    return any(re.search(rf"\b{re.escape(w)}\s*\(", code) for w in (writers or ()))
 COMMENT = re.compile(r"/\*.*?\*/", re.S)
 
 # The blind spot, found by reading rather than by this check, on 9 August: the
@@ -264,9 +282,42 @@ def only_reports_to_a_log(handler: str) -> bool:
     return not re.sub(r"[\s{};,]", "", code)
 
 
+def blank_comments(text: str) -> str:
+    """`text` with comment CONTENT replaced by spaces, offsets and lines intact.
+
+    The promise-catch scan used to read the raw file, so a comment quoting the
+    shape it looks for was a finding. That is not hypothetical: the fix to
+    meetings' `stopCapture` documents what it replaced - `invoke(...).catch(() =>
+    {})` - and the gate reported the sentence describing the repair as the defect.
+    A checker that cannot tell code from prose about code teaches people not to
+    write the prose.
+    """
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            for k in range(i, j):
+                out[k] = " "
+            i = j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            for k in range(i, j):
+                if out[k] != "\n":
+                    out[k] = " "
+            i = j
+        else:
+            i += 1
+    return "".join(out)
+
+
 def promise_catch_findings(text: str, rel: str):
     """Optimistic store write, then `invoke(...).catch(<only logs>)`."""
     out = []
+    writers = local_writers(text)
+    text = blank_comments(text)
     for m in PROMISE_CATCH.finditer(text):
         _, after = balanced(text, m.end() - 1)
         tail = text[after : after + 12]
@@ -277,7 +328,7 @@ def promise_catch_findings(text: str, rel: str):
         handler, _ = balanced(text, handler_at)
         if not only_reports_to_a_log(handler):
             continue
-        if not optimistic_update(preceding_code(text[: m.start()], m.start())):
+        if not optimistic_update(preceding_code(text[: m.start()], m.start()), writers):
             continue
         out.append(text[: m.start()].count("\n") + 1)
     return out
@@ -301,6 +352,7 @@ def main() -> int:
         if "invoke(" not in text:
             continue
         rel = str(path.relative_to(ROOT))
+        writers = local_writers(text)
         for line in promise_catch_findings(text, rel):
             checked += 1
             seen_per_file[rel] = seen_per_file.get(rel, 0) + 1
@@ -323,7 +375,7 @@ def main() -> int:
             try_at = head.rfind("try")
             if try_at < 0 or "invoke(" not in text[try_at:start]:
                 continue
-            if not optimistic_update(preceding_code(head, try_at)):
+            if not optimistic_update(preceding_code(head, try_at), writers):
                 continue
             seen_per_file[rel] = seen_per_file.get(rel, 0) + 1
             if rel in KNOWN and seen_per_file[rel] <= KNOWN[rel][0]:

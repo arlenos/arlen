@@ -202,6 +202,35 @@ check(
   if (!ok) failures.push({ name, ...got });
 }
 
+// The two widenings this gate got on 17 August, each with the shape that got past
+// it: a write through a same-file helper, and a comment quoting the defect.
+check(
+  "a write through a local helper counts as the optimistic update",
+  {
+    "apps/demo/src/lib/stores/x.ts":
+      'import { invoke } from "@tauri-apps/api/core";\n' +
+      "function patch(fn) { inner.update(fn); }\n" +
+      "export async function go() {\n" +
+      "  patch((s) => ({ ...s, on: true }));\n" +
+      "  try { await invoke('do_it'); } catch {}\n" +
+      "}\n",
+  },
+  (code, out) => code === 1 && out.includes("stores/x.ts"),
+);
+
+check(
+  "a comment quoting the defect is not the defect",
+  {
+    "apps/demo/src/lib/stores/y.ts":
+      'import { invoke } from "@tauri-apps/api/core";\n' +
+      "export async function go() {\n" +
+      "  // was inner.update(...) then invoke('do_it').catch(() => {})\n" +
+      "  await invoke('do_it');\n" +
+      "}\n",
+  },
+  (code) => code === 0,
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);

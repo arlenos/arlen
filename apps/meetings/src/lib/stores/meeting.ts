@@ -188,6 +188,10 @@ export async function openMeeting(id: string): Promise<void> {
 /// app cannot absorb behind a caveat.
 export const editFailed = writable(false);
 
+/// Set when the stop command is refused, so the capture surface can say the
+/// microphone may still be on instead of leaving for a note.
+export const stopFailed = writable(false);
+
 /// Save the user's edited notes.
 export async function saveNotes(text: string): Promise<void> {
   const before = get(meeting)?.humanNotes;
@@ -371,7 +375,24 @@ export async function startCapture(): Promise<void> {
 /// fixture. The caller navigates to the note route after.
 export async function stopCapture(): Promise<boolean> {
   clearTimers();
-  invoke("meeting_stop_capture").catch(() => {});
+  // AWAITED, for the same reason the start one door up is. This was
+  // `invoke(...).catch(() => {})`: the single discarded rejection in this file,
+  // and the worst one to discard. A refused stop leaves the daemon capturing
+  // while the app clears the timers, summarises and walks to the note - so the
+  // only thing that actually changed is that the person believes it stopped.
+  stopFailed.set(false);
+  try {
+    await invoke("meeting_stop_capture");
+  } catch {
+    // Under vite no command has a host, so a rejection here says nothing about
+    // capture; the dev stream is a fixture either way. In a real session it
+    // means the microphone may still be live, so stay on this surface and say
+    // so rather than navigate to a note.
+    if (!import.meta.env.DEV) {
+      stopFailed.set(true);
+      return false;
+    }
+  }
   const notes = get(liveNotes);
   currentId.set("live");
   speakerNames.set({});
