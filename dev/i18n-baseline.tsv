@@ -50,11 +50,6 @@ apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} GB
 apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} KB
 apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} MB
 apps/desktop-shell/src/lib/workspace/format.ts	Workspace {}
-apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb to open the mini-player.
-apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
-apps/desktop-shell/src/routes/_nettest/+page.svelte	Vesktop
-apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
-apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
@@ -326,11 +321,6 @@ apps/system-monitor/src/lib/stores/detail.ts	read your notes
 apps/system-monitor/src/lib/stores/detail.ts	the query tier you set
 apps/system-monitor/src/lib/stores/detail.ts	the whole graph
 apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
-apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
-apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
-apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic
-apps/terminal/src/routes/_chrometest/+page.svelte	Shell prints prompt + command + output; chrome only on hover / focus.
-apps/terminal/src/routes/_chrometest/+page.svelte	recommended
 apps/viewers/src/lib/mock.ts	Nightswim
 apps/viewers/src/routes/+page.svelte	TypeError: undefined is not an object (evaluating 'window.__TAURI_INTERNALS__.invoke')
 apps/viewers/src/routes/+page.svelte	decode-image: unsupported JPEG progressive scan

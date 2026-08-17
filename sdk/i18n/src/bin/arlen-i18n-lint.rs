@@ -821,7 +821,11 @@ fn collect_svelte(root: &Path, out: &mut Vec<PathBuf>) {
                 continue;
             }
             collect_svelte(&path, out);
-        } else if is_scannable(&name) && !is_kit_dev_surface(&path) && !is_guarded_fixture(&path) {
+        } else if is_scannable(&name)
+            && !is_kit_dev_surface(&path)
+            && !is_dev_route(&path)
+            && !is_guarded_fixture(&path)
+        {
             out.push(path);
         }
     }
@@ -864,6 +868,29 @@ const KIT_DEV_SURFACES: &[&str] = &[
 fn is_kit_dev_surface(path: &Path) -> bool {
     let p = path.to_string_lossy().replace('\\', "/");
     KIT_DEV_SURFACES.iter().any(|s| p.contains(s))
+}
+
+/// Whether the file sits under a `_`-prefixed route.
+///
+/// Those are the dev harness surfaces - `_rendertest`, `_qstest`, `_toasttest` -
+/// and they cannot reach a user: `dev/build/release-routes.js` keeps them out of
+/// a release build and a check proves it. A string on a route nobody can open
+/// does not need a catalog entry, and asking for one buys nothing while teaching
+/// people to skim the lint. `?anim=fade` is not a sentence anybody translates.
+///
+/// This is one exclusion rather than seven baseline acknowledgements, and it
+/// leans on a guarantee that already exists instead of adding another. If such a
+/// route ever stops being dev-only, the release-build check fails first, so
+/// nothing can ship untranslated by hiding behind an underscore.
+/// Scoped to a segment AFTER `routes/`, not to any underscore in the path: a
+/// `src/lib/_internal/` helper is product code whatever it is called, and the
+/// guarantee this leans on is about routes.
+fn is_dev_route(path: &Path) -> bool {
+    let p = path.to_string_lossy().replace('\\', "/");
+    let Some((_, after)) = p.split_once("/routes/") else {
+        return false;
+    };
+    after.split('/').any(|seg| seg.starts_with('_'))
 }
 
 /// What an app would have to write to reach one of the skipped surfaces. The kit is
@@ -1749,5 +1776,36 @@ const SECOND = [
             script_texts(r#"return `Active task: ${name}.`;"#),
             vec!["Active task: {}."]
         );
+    }
+
+    #[test]
+    fn a_dev_route_is_skipped_and_a_real_one_is_not() {
+        // `_toasttest` is where this came from: seven strings, `?anim=fade`
+        // among them, on a route no user can open.
+        assert!(is_dev_route(Path::new(
+            "apps/desktop-shell/src/routes/_toasttest/+page.svelte"
+        )));
+        assert!(!is_dev_route(Path::new(
+            "apps/settings/src/routes/notifications/+page.svelte"
+        )));
+    }
+
+    #[test]
+    fn an_underscore_outside_routes_is_still_product_code() {
+        // The exclusion leans on a guarantee about ROUTES. A helper directory
+        // that happens to start with an underscore ships like any other file, so
+        // reading the name alone would quietly stop scanning real copy.
+        assert!(!is_dev_route(Path::new(
+            "apps/files/src/lib/_internal/banner.svelte"
+        )));
+        assert!(!is_dev_route(Path::new("apps/files/src/lib/_helpers.ts")));
+    }
+
+    #[test]
+    fn a_dev_route_deeper_in_the_tree_is_skipped_too() {
+        // Nested pages under a dev route are the same surface.
+        assert!(is_dev_route(Path::new(
+            "apps/files/src/routes/_facettest/panel/+page.svelte"
+        )));
     }
 }
