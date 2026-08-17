@@ -1,14 +1,14 @@
-/// Wire protocol between desktop-shell and `arlen-modulesd`.
-///
-/// JSON over a Unix socket. Each frame is `[u32 BE length][JSON body]`.
-/// JSON instead of protobuf because the consumers are predominantly
-/// TypeScript (desktop-shell, Settings) and the per-frame cost of a
-/// search round-trip is negligible compared to a Wasmtime call.
-///
-/// Three top-level message kinds:
-///   * `Request`  — shell → daemon, expects exactly one `Response`.
-///   * `Response` — daemon → shell, replies to a Request by id.
-///   * `Event`    — daemon → shell, unsolicited (lifecycle, broadcasts).
+//! Wire protocol between desktop-shell and `arlen-modulesd`.
+//!
+//! JSON over a Unix socket. Each frame is `[u32 BE length][JSON body]`.
+//! JSON instead of protobuf because the consumers are predominantly
+//! TypeScript (desktop-shell, Settings) and the per-frame cost of a
+//! search round-trip is negligible compared to a Wasmtime call.
+//!
+//! Three top-level message kinds:
+//!   * `Request`  — shell → daemon, expects exactly one `Response`.
+//!   * `Response` — daemon → shell, replies to a Request by id.
+//!   * `Event`    — daemon → shell, unsolicited (lifecycle, broadcasts).
 
 pub mod client;
 
