@@ -24,8 +24,18 @@
 {/if}
 
 <style>
+  /* The same centred column `Page` gives its header and `SectionGrid` gives the
+     cards. A child dropped straight into `Page` gets neither, so this line sat
+     against the page padding while every other thing on the page began 120px
+     further right - measured at 1280px: heading and section labels at x=401,
+     this at x=281, hard against the sidebar.
+
+     Invisible until this week, because the screenshot harness rendered at 640px
+     where the column is the whole width and nothing can be out of it. */
   .config-unavailable {
-    margin: 0 0 0.75rem;
+    width: 100%;
+    max-width: var(--width-section-body, 46rem);
+    margin: 0 auto 0.75rem;
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--color-error, #f87171);
