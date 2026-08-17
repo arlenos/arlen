@@ -1,9 +1,10 @@
-# Starting permission profile for Halftone (applies a halftone effect to an image).
-# It reads a picture and writes the result; pictures, no network, no Knowledge
-# Graph access.
+# Starting permission profile for Halftone (an image dithering tool). It opens and
+# saves images through the file portal, so it needs no standing grant: no network,
+# no user files and no Knowledge Graph access.
+#
+# This granted Pictures while `io.github.tfuxu.Halftone` had already settled on the
+# portal for the same program. Opening the image the user chose and writing the
+# result back are both per-file grants; Pictures added reach beyond them.
 [info]
 app_id = "page.kramo.Halftone"
 tier = "third-party"
-
-[filesystem]
-pictures = true
