@@ -624,9 +624,31 @@ jobs:
         run: |
           if [ -f package.json ]; then
             npm ci || npm install
-            npm run check || true
+            # svelte-check is GATING, with a named exception list rather than a
+            # blanket `|| true`. It was advisory until 17 August, which made it a
+            # check that could not fail: on that date every entry below was
+            # measured and the whole tree was clean except the two defects the
+            # measurement itself found (a test importing `node:fs` with no
+            # @types/node, and a deprecated `<slot>`), both since fixed. An
+            # advisory type check is worth roughly nothing, so it gates now.
+            #
+            # An entry belongs in TYPECHECK_ADVISORY only WITH its reason, and
+            # comes out when the reason expires.
+            TYPECHECK_ADVISORY="sdk/ui-kit"
+            #   sdk/ui-kit: 5 errors in src/lib/imports.test.ts, all one cause -
+            #   the package has no @types/node and the test imports node:fs and
+            #   node:path. It is arlen-ui's lane, so it is reported in
+            #   coder-reports.md rather than edited here. Same defect that was
+            #   just fixed in apps/files; the fix is a devDependency plus two
+            #   parameter annotations.
+            APP="${{ matrix.app }}"
+            if printf ' %s ' "$TYPECHECK_ADVISORY" | grep -qF " $APP "; then
+              npm run check || echo "advisory (listed): $APP"
+            else
+              npm run check
+            fi
             # The unit tests are gating where a package declares them, so logic
-            # regressions fail the build (svelte-check stays advisory above).
+            # regressions fail the build (svelte-check stays gating above).
             # `--passWithNoTests` is a VITEST flag: a package running `node --test`
             # takes it as a file path and exits 1, so only pass it to the runner
             # that understands it.
