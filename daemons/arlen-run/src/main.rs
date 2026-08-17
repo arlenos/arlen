@@ -32,6 +32,11 @@ mod landlock_apply;
 #[cfg(target_os = "linux")]
 mod landlock_exec;
 mod netns;
+// Built and tested, called by nothing yet: presenting a `.flatpak-info` changes
+// how every app that reads one behaves, so which apps should say it is a decision
+// rather than a commit. See the module doc.
+#[allow(dead_code)]
+mod portal_identity;
 mod profile;
 // The Tier-1 identity-stamp helpers. The pure format-critical pieces land first;
 // the spawn-path wiring that calls them is a following slice, so allow dead_code

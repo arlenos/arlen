@@ -1420,6 +1420,15 @@ mod module_reachability {
         // helpers. It only started failing this test when the module was renamed
         // off `dbus`, a name common enough that another crate's `dbus::` had
         // been standing in as its caller.
+        // The `.flatpak-info` an arlen-confined app presents so the portal knows
+        // which app is calling. Measured against the running portal - it is what
+        // makes an exported document land under the app's own `by-app/<id>`, the
+        // directory `plumbing_binds` binds - so the format is settled and the
+        // trigger is not: presenting one tells GTK, Qt and anything else that
+        // looks that the app is a Flatpak. Whether every confined app should say
+        // that, or only the apps whose file grant we narrow to portal-only, is
+        // Tim's call. Waiting on the answer, not on more work.
+        "daemons/arlen-run/portal_identity",
         "daemons/transfer-daemon/request_socket",
         "daemons/knowledge/backup",
         "daemons/knowledge/lifecycle",
