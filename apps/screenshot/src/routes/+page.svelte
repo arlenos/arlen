@@ -195,6 +195,14 @@
     textEdit = null;
   }
 
+  /// What to say when the host refused, and nothing else on this surface can.
+  ///
+  /// A failed save used to reach `frontendLog` alone, which is the app's stdout:
+  /// the button did its animation, the file was never written, and the person
+  /// kept the only copy on a canvas they were about to close. The log line is
+  /// still there for the path and the reason; this is the half a person sees.
+  let actionFailed = $state<"save" | "copy" | null>(null);
+
   // Copy / save operate on a given canvas - the annotate canvas for the surface,
   // the untouched base for the thumbnail's quick actions.
   async function copyCanvas(c: HTMLCanvasElement) {
@@ -202,8 +210,10 @@
       // Live: the coder's clipboard command over the annotated PNG.
       try {
         await copyPng(canvasPngBase64(c));
+        actionFailed = null;
       } catch (e) {
         frontendLog(`copy failed: ${e}`);
+        actionFailed = "copy";
       }
       return;
     }
@@ -221,8 +231,14 @@
     if (isTauri()) {
       // Live: write the annotated PNG to the screenshots dir via the coder's command.
       saveScreenshot(canvasPngBase64(c))
-        .then((path) => frontendLog(`saved ${path}`))
-        .catch((e) => frontendLog(`save failed: ${e}`));
+        .then((path) => {
+          frontendLog(`saved ${path}`);
+          actionFailed = null;
+        })
+        .catch((e) => {
+          frontendLog(`save failed: ${e}`);
+          actionFailed = "save";
+        });
       return;
     }
     // Under vite, download the composed PNG so the flow is verifiable.
@@ -325,6 +341,14 @@
 <!-- The annotate surface stays mounted (its canvas is set up on load); the phase
      only shows it once the user opens the capture from the floating thumbnail. -->
 <div class="tool" class:hidden={phase !== "annotate"}>
+  {#if actionFailed}
+    <!-- Above the stage rather than over it: the canvas is what the person is
+         deciding about, and a refusal that covers the picture is its own
+         problem. It stays until the next attempt settles it. -->
+    <p class="action-failed" role="alert">
+      {actionFailed === "save" ? $t("s.saveFailed") : $t("s.copyFailed")}
+    </p>
+  {/if}
   <div class="stage">
     <div class="canvas-wrap">
       <canvas
@@ -441,6 +465,13 @@
     border-radius: var(--radius-card, 12px);
     overflow: hidden;
   }
+  .action-failed {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-error, #f87171);
+  }
+
   .board {
     display: block;
     max-width: 100%;
