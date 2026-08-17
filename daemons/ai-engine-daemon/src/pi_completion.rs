@@ -341,21 +341,8 @@ async fn handle_connection(
     // A request the recording never saw is a 502 carrying the reason, NOT a
     // fallthrough to the live provider - a replay that quietly goes upstream is
     // no longer deterministic and stops being evidence.
-    if let Some(tape) = std::env::var_os("ARLEN_AI_REPLAY") {
-        let answer = crate::replay::Replayer::load(std::path::Path::new(&tape))
-            .and_then(|r| r.answer(&body_str).map(str::to_string));
-        match answer {
-            Ok(recorded) => {
-                let _ = stream
-                    .write_all(&completion_response(streamed, 200, &recorded))
-                    .await;
-            }
-            Err(e) => {
-                warn!(pid, error = %e, "completion replay could not answer");
-                let msg = serde_json::json!({"error": e.to_string()}).to_string();
-                let _ = stream.write_all(&http_response(502, "Bad Gateway", msg.as_bytes())).await;
-            }
-        }
+    if let Some(frames) = replayed_response(&body_str, streamed) {
+        let _ = stream.write_all(&frames).await;
         return;
     }
 
@@ -382,6 +369,31 @@ async fn handle_connection(
             let _ = stream
                 .write_all(&http_response(502, "Bad Gateway", b"{\"error\":\"upstream unavailable\"}"))
                 .await;
+        }
+    }
+}
+
+/// The bytes to answer with when a tape is pinned, or `None` to go upstream.
+///
+/// A named function rather than an inline branch so it can be driven in a test:
+/// the socket around it needs a live bus (the proxy client is built from a real
+/// D-Bus connection), so this is the largest piece of the replay path that can be
+/// exercised without one - env read, tape load, request match, and the HTTP
+/// framing that the answer actually reaches pi through.
+///
+/// Deliberately NOT falling through on a miss: an unmatched request answers 502
+/// with the reason. A replay that quietly reaches the provider is not
+/// deterministic, and a run made against it is not evidence of anything.
+fn replayed_response(body: &str, streamed: bool) -> Option<Vec<u8>> {
+    let tape = std::env::var_os("ARLEN_AI_REPLAY")?;
+    match crate::replay::Replayer::load(std::path::Path::new(&tape))
+        .and_then(|r| r.answer(body).map(str::to_string))
+    {
+        Ok(recorded) => Some(completion_response(streamed, 200, &recorded)),
+        Err(e) => {
+            warn!(error = %e, "completion replay could not answer");
+            let msg = serde_json::json!({"error": e.to_string()}).to_string();
+            Some(http_response(502, "Bad Gateway", msg.as_bytes()))
         }
     }
 }
@@ -444,6 +456,59 @@ pub async fn serve_completion(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Record a turn, pin the tape, and read back the bytes pi would receive.
+    ///
+    /// The end-to-end piece that does not need a bus: the answer travels the same
+    /// `completion_response` framing as a live one, so a recorded session is
+    /// delivered in the shape pi's parser expects rather than as a bare body.
+    ///
+    /// Serialised with the miss test below through one `#[serial]`-style guard:
+    /// both set the same process-wide env var, and a parallel runner would
+    /// otherwise let one test's tape answer the other's request.
+    #[test]
+    fn a_pinned_tape_answers_in_the_framing_pi_expects() {
+        let _guard = REPLAY_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("arlen-replay-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let tape = dir.join("t.jsonl");
+        let request = r#"{"model":"pi","messages":[{"role":"user","content":"two plus two"}]}"#;
+        crate::replay::Recorder::new(&tape)
+            .record(&crate::replay::Turn {
+                request: request.to_string(),
+                response: a_completion("four"),
+            })
+            .expect("record");
+
+        std::env::set_var("ARLEN_AI_REPLAY", &tape);
+        let framed = replayed_response(request, false).expect("a tape is pinned");
+        let miss = replayed_response(r#"{"messages":[{"role":"user","content":"something else"}]}"#, false)
+            .expect("a miss still answers");
+        std::env::remove_var("ARLEN_AI_REPLAY");
+
+        let s = String::from_utf8(framed).unwrap();
+        assert!(s.starts_with("HTTP/1.1 200 OK\r\n"), "{s}");
+        assert!(s.contains("four"), "{s}");
+
+        // The miss: refused, with the reason, and not the recorded answer.
+        let m = String::from_utf8(miss).unwrap();
+        assert!(m.starts_with("HTTP/1.1 502 "), "{m}");
+        assert!(m.contains("no recorded response"), "{m}");
+        assert!(!m.contains("four"), "a miss must not be handed the recorded answer: {m}");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// No tape pinned means no opinion: the caller goes upstream as before.
+    #[test]
+    fn without_a_tape_the_forward_path_is_untouched() {
+        let _guard = REPLAY_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("ARLEN_AI_REPLAY");
+        assert!(replayed_response("{}", false).is_none());
+    }
+
+    /// One process, one `ARLEN_AI_REPLAY`.
+    static REPLAY_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn parse_head_extracts_bearer_and_length() {
