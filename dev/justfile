@@ -237,14 +237,28 @@ notices:
     cd "{{ROOT}}"
     # Bundle every dependency's license per workspace into THIRD-PARTY-NOTICES/ (a
     # build/release artifact, not committed). Needs `cargo-bundle-licenses` installed.
-    outdir="THIRD-PARTY-NOTICES"
+    #
+    # cargo-bundle-licenses takes NO path argument - it reads the manifest of the
+    # directory it runs in. This said `--manifest-path` until 17 August, which the
+    # tool rejects outright ("unexpected argument"), so the recipe died on the
+    # first workspace and produced nothing, ever. Nothing noticed because the CI
+    # step carries `continue-on-error: true` and the upload carries
+    # `if-no-files-found: ignore`: the run reported success on every layer with a
+    # `##[error]` in its own log and zero artifacts attached.
+    #
+    # `$outdir` is absolute because the subshell changes directory.
+    outdir="$PWD/THIRD-PARTY-NOTICES"
     rm -rf "$outdir"; mkdir -p "$outdir"
     roots=$(grep -rl '^\[workspace\]' --include=Cargo.toml . | grep -v '/target/' | xargs -n1 dirname | sort -u)
     for ws in $roots; do
         slug=$(echo "${ws#./}" | tr '/' '-')
         echo "== notices: $ws =="
-        cargo bundle-licenses --manifest-path "$ws/Cargo.toml" --format yaml --output "$outdir/$slug.yaml"
+        ( cd "$ws" && cargo bundle-licenses --format yaml --output "$outdir/$slug.yaml" )
     done
+    # A silent empty run is the failure this recipe just spent months in.
+    count=$(find "$outdir" -name '*.yaml' | wc -l)
+    echo "notices: wrote $count file(s) to $outdir"
+    test "$count" -gt 0
 
 # Seed the deterministic dev KG corpus (knowledge::seed) into the dev-stack
 # graph store so arlen-ui can verify the file manager's KG surfaces
