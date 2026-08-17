@@ -146,7 +146,7 @@
       </label>
 
       {#if error}
-        <p class="mb-3 text-xs text-destructive">{error}</p>
+        <p class="mb-3 text-xs text-destructive" role="alert">{error}</p>
       {/if}
 
       <div class="flex justify-end gap-2">
