@@ -1,0 +1,12 @@
+# Starting permission profile for the IPython REPL. A developer's shell: it reads
+# and writes code and data across the home tree and its `%pip`/package use fetches
+# over the network, so both are granted by function. No Knowledge Graph access.
+[info]
+app_id = "ipython"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
