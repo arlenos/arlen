@@ -406,6 +406,14 @@ const USER_FACING_PROPS: &[&str] = &[
     "statusText",
 ];
 
+/// Name endings that carry prose when assigned: `loadError`, `emptyMessage`.
+///
+/// Suffixes rather than whole names, and only these two, because they are the two
+/// that hold a sentence written for a person. `errorCount` is a number and never
+/// matches a string literal; `title`/`label` are deliberately NOT here, since
+/// `columnLabel = "id"` and similar identifiers would flood the list.
+const USER_FACING_SUFFIXES: &[&str] = &["error", "message"];
+
 /// Deliberately absent: `name`, `text` and `body`.
 ///
 /// `{ value: "#6366f1", name: "Indigo" }` is a swatch's accessible name and was a
@@ -724,6 +732,15 @@ fn position_is_user_facing(prefix: &str) -> bool {
         }
         let name = trailing_name(head);
         if USER_FACING_PROPS.iter().any(|p| p.eq_ignore_ascii_case(name)) {
+            return true;
+        }
+        // `loadError = "..."`, `lastError`, `emptyMessage`: the same position under
+        // a qualified name, which the exact-match list cannot see. The greeter's
+        // failed-sign-in fallback lived here - `error = message ?? "That did not
+        // work. Try again."` - English on the login screen in every locale, and
+        // absent from the baseline because nothing had ever looked at this shape.
+        let lower = name.to_ascii_lowercase();
+        if USER_FACING_SUFFIXES.iter().any(|s| lower.ends_with(s)) {
             return true;
         }
     }

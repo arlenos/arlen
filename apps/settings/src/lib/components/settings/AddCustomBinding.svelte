@@ -58,11 +58,11 @@
     error = null;
     const action = composeAction();
     if (!action) {
-      error = "Please enter a command";
+      error = $t("s.bind.needCommand");
       return;
     }
     if (!binding) {
-      error = "Please capture a key combination";
+      error = $t("s.bind.needBinding");
       return;
     }
     onAdd(binding, action);

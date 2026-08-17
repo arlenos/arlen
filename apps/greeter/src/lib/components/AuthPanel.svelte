@@ -42,7 +42,12 @@
   }
 
   async function fail(message: string | undefined) {
-    error = message ?? "That did not work. Try again.";
+    // PAM decides the wording when it has one; this is the fallback for when it
+    // does not, and it was English in every locale. The lint could not see it:
+    // a literal assigned to a local `error` is not one of the positions it
+    // checks, and this is the login screen, where a first-run reader has no
+    // other surface to judge the system by.
+    error = message ?? $t("g.authFailed");
     secret = "";
     errored = false;
     await tick();

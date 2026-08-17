@@ -223,7 +223,7 @@
       } else if (kind === "modules") {
         const removed = await resetModuleFragments();
         if (removed === 0) {
-          lastError = "No module fragments were present.";
+          lastError = $t("s.sc.noModuleFragments");
         }
       }
     } catch (e) {
