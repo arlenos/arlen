@@ -1,7 +1,7 @@
 # Starting permission profile for a chat/IM/IRC/Matrix/XMPP client. Needs network
 # to message; saves attachments to Downloads. No Knowledge Graph access.
 [info]
-app_id = "cinny"
+app_id = "Cinny"
 tier = "third-party"
 
 [filesystem]

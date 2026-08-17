@@ -23,3 +23,4 @@ probe-served-objects.sh	guest	each daemon serves the objects its interface claim
 smoke-daemons.sh	guest	every daemon starts and binds its socket
 smoke-apps.sh	guest	every app starts and opens a window
 smoke-shell.sh	guest	the shell comes up with its bar
+check-profile-case.sh	guest	no shipped profile is unreachable because the desktop-id it is looked up by carries different case
