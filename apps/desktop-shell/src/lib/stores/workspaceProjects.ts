@@ -91,6 +91,10 @@ export const projectPerWorkspace: Readable<Map<string, ProjectInfo | null>> =
                 // Kick off any missing cache entries. Cache resolution
                 // is async; the next `cacheVersion` tick will bring us
                 // back here with fresh data.
+                // The window's own app_id, deliberately, not the resolved
+                // permission id the top-bar surfaces use: `App` nodes are
+                // promoted from compositor events, which name an app the way its
+                // window does. See `activeApp.ts`.
                 for (const w of wsWindows) ensureProjectForApp(w.app_id);
 
                 // Tally project votes across windows on this workspace.
