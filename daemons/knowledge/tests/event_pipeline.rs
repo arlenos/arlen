@@ -1,15 +1,15 @@
-/// Integration test: event emitted by a producer lands in SQLite via the Event Bus.
-///
-/// This test starts real event-bus and knowledge daemon processes,
-/// sends a synthetic event over the producer socket, waits for the
-/// batch timer to fire, and verifies the event exists in SQLite.
-///
-/// Both binaries must be built before running this test:
-///   cargo build --manifest-path ../event-bus/Cargo.toml
-///   cargo build --manifest-path ../knowledge/Cargo.toml
-///
-/// The test uses temporary socket paths and a temporary database to
-/// avoid interfering with a running system.
+//! Integration test: event emitted by a producer lands in SQLite via the Event Bus.
+//!
+//! This test starts real event-bus and knowledge daemon processes,
+//! sends a synthetic event over the producer socket, waits for the
+//! batch timer to fire, and verifies the event exists in SQLite.
+//!
+//! Both binaries must be built before running this test:
+//!   cargo build --manifest-path ../event-bus/Cargo.toml
+//!   cargo build --manifest-path ../knowledge/Cargo.toml
+//!
+//! The test uses temporary socket paths and a temporary database to
+//! avoid interfering with a running system.
 use prost::Message;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::io::Write;

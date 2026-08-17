@@ -1,14 +1,14 @@
-/// Graph-scale benchmarks for the Arlen knowledge daemon.
-///
-/// These benchmarks measure the performance of the two-layer write architecture
-/// (SQLite Write Store + Ladybug Query Store) at different data volumes.
-///
-/// Run with:
-///   cargo bench --manifest-path knowledge/Cargo.toml
-///
-/// Results are stored in target/criterion/ and compared against the previous
-/// run automatically. A regression of >10% in any benchmark is a signal to
-/// investigate before merging.
+//! Graph-scale benchmarks for the Arlen knowledge daemon.
+//!
+//! These benchmarks measure the performance of the two-layer write architecture
+//! (SQLite Write Store + Ladybug Query Store) at different data volumes.
+//!
+//! Run with:
+//!   cargo bench --manifest-path knowledge/Cargo.toml
+//!
+//! Results are stored in target/criterion/ and compared against the previous
+//! run automatically. A regression of >10% in any benchmark is a signal to
+//! investigate before merging.
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use knowledge::db;

@@ -1,4 +1,4 @@
-/// Migration runner: executes migration files with checkpoint support.
+//! Migration runner: executes migration files with checkpoint support.
 
 use std::path::Path;
 

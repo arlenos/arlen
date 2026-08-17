@@ -1,4 +1,4 @@
-/// Background cleanup: expired trash, orphan references, cascade deletes.
+//! Background cleanup: expired trash, orphan references, cascade deletes.
 
 use chrono::Duration;
 

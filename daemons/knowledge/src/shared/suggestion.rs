@@ -1,4 +1,4 @@
-/// Merge suggestions for duplicate shared entities.
+//! Merge suggestions for duplicate shared entities.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

@@ -1,7 +1,7 @@
-/// .project file parser with validation.
-///
-/// Reads TOML, deserializes into `ProjectConfig`, and validates
-/// all fields against the allowed value sets.
+//! .project file parser with validation.
+//!
+//! Reads TOML, deserializes into `ProjectConfig`, and validates
+//! all fields against the allowed value sets.
 
 use std::path::Path;
 use thiserror::Error;

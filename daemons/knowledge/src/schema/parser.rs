@@ -1,7 +1,7 @@
-/// Schema file parser for `entities.toml` files.
-///
-/// Parses the TOML schema format defined in ENTITY-SCHEMA-SYSTEM.md
-/// into structured Rust types.
+//! Schema file parser for `entities.toml` files.
+//!
+//! Parses the TOML schema format defined in ENTITY-SCHEMA-SYSTEM.md
+//! into structured Rust types.
 
 use std::collections::HashMap;
 use std::path::Path;

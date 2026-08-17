@@ -1,4 +1,4 @@
-/// Quota tracker: monitors per-app entity count and storage usage.
+//! Quota tracker: monitors per-app entity count and storage usage.
 
 use std::collections::HashMap;
 

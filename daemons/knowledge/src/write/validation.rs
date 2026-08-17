@@ -1,4 +1,4 @@
-/// Field validation against the Schema Registry.
+//! Field validation against the Schema Registry.
 
 use std::collections::HashMap;
 

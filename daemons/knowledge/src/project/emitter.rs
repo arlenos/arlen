@@ -1,7 +1,7 @@
-/// Event Bus producer for project lifecycle events.
-///
-/// Connects to the producer socket and sends length-prefixed protobuf
-/// Event messages when projects are created, updated, or archived.
+//! Event Bus producer for project lifecycle events.
+//!
+//! Connects to the producer socket and sends length-prefixed protobuf
+//! Event messages when projects are created, updated, or archived.
 
 use anyhow::Result;
 use prost::Message;

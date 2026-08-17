@@ -1,4 +1,4 @@
-/// Entity creation with token scope enforcement and reserved field injection.
+//! Entity creation with token scope enforcement and reserved field injection.
 
 use std::collections::HashMap;
 

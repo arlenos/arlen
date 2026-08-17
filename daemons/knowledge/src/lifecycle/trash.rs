@@ -1,4 +1,4 @@
-/// Trash query helpers: filter deleted entities in Cypher queries.
+//! Trash query helpers: filter deleted entities in Cypher queries.
 
 use std::collections::HashMap;
 

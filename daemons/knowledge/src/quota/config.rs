@@ -1,4 +1,4 @@
-/// Quota configuration: tier definitions, per-app overrides.
+//! Quota configuration: tier definitions, per-app overrides.
 
 use std::collections::HashMap;
 use std::path::Path;

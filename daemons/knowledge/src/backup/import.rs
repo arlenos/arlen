@@ -1,4 +1,4 @@
-/// Graph data import from JSON-LD ZIP with conflict resolution.
+//! Graph data import from JSON-LD ZIP with conflict resolution.
 
 use std::io::Read;
 use std::path::Path;

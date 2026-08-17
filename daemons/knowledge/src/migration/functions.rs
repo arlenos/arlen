@@ -1,4 +1,4 @@
-/// Built-in transform functions for schema migrations.
+//! Built-in transform functions for schema migrations.
 
 use chrono::DateTime;
 use serde_json::Value;

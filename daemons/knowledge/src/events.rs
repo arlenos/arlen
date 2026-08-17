@@ -1,7 +1,7 @@
-/// Event Bus subscription for the Graph Daemon.
-///
-/// Subscribes to `permission.*`, `ai.*`, and `schema.*` events to
-/// invalidate token caches and reload schemas in real time.
+//! Event Bus subscription for the Graph Daemon.
+//!
+//! Subscribes to `permission.*`, `ai.*`, and `schema.*` events to
+//! invalidate token caches and reload schemas in real time.
 
 use crate::proto::Event;
 use anyhow::Result;

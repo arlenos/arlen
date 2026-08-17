@@ -1,7 +1,7 @@
-/// .project TOML file structure.
-///
-/// All sections except `[project]` are optional. Missing sections
-/// get sensible defaults via `#[serde(default)]`.
+//! .project TOML file structure.
+//!
+//! All sections except `[project]` are optional. Missing sections
+//! get sensible defaults via `#[serde(default)]`.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

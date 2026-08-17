@@ -1,8 +1,8 @@
-/// Filesystem watcher for project detection.
-///
-/// Runs an initial scan of configured directories, then watches for
-/// filesystem changes (new `.project` files, `git init`, etc.) and
-/// creates/updates/archives projects in the graph.
+//! Filesystem watcher for project detection.
+//!
+//! Runs an initial scan of configured directories, then watches for
+//! filesystem changes (new `.project` files, `git init`, etc.) and
+//! creates/updates/archives projects in the graph.
 
 use std::path::Path;
 use std::sync::Arc;

@@ -1,4 +1,4 @@
-/// Access control for shared entities.
+//! Access control for shared entities.
 
 use crate::token::CapabilityToken;
 

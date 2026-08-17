@@ -1,4 +1,4 @@
-/// Integrity checks for SQLite and graph data.
+//! Integrity checks for SQLite and graph data.
 
 use std::path::PathBuf;
 

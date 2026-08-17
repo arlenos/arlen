@@ -1,4 +1,4 @@
-/// Restore soft-deleted entities from trash.
+//! Restore soft-deleted entities from trash.
 
 use chrono::Utc;
 use thiserror::Error;

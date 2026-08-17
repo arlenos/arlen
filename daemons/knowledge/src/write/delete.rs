@@ -1,4 +1,4 @@
-/// Entity deletion (soft and permanent) with scope and ownership enforcement.
+//! Entity deletion (soft and permanent) with scope and ownership enforcement.
 
 use chrono::Utc;
 use thiserror::Error;

@@ -1,4 +1,4 @@
-/// Entity update with optimistic locking, ownership checks, and scope enforcement.
+//! Entity update with optimistic locking, ownership checks, and scope enforcement.
 
 use std::collections::HashMap;
 

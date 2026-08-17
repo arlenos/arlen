@@ -1,4 +1,4 @@
-/// Duplicate detection for shared entities.
+//! Duplicate detection for shared entities.
 
 use std::collections::HashSet;
 

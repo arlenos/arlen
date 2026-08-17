@@ -1,4 +1,4 @@
-/// Migration checkpoint for resumable migrations.
+//! Migration checkpoint for resumable migrations.
 
 use std::path::PathBuf;
 

@@ -1,7 +1,7 @@
-/// Schema validation for entity definitions.
-///
-/// Ensures schemas follow naming conventions, don't use reserved names,
-/// respect namespace boundaries, and have valid relation targets.
+//! Schema validation for entity definitions.
+//!
+//! Ensures schemas follow naming conventions, don't use reserved names,
+//! respect namespace boundaries, and have valid relation targets.
 
 use super::SchemaFile;
 

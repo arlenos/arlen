@@ -1,15 +1,15 @@
-/// Graph Daemon: Unix socket server for Cypher queries with token auth.
-///
-/// Phase 1A: Read-only queries, no authentication.
-/// Phase 3.2: Token-based authentication added. Clients receive a
-///   CapabilityToken at connection time; each query must pass token
-///   verification and scope checks.
-///
-/// Protocol:
-///   Client sends:  4-byte BE length + UTF-8 Cypher string
-///   Server replies: 4-byte BE length + UTF-8 result string
-///
-/// See `docs/architecture/DAEMON-COMMUNICATION.md` Section 8.
+//! Graph Daemon: Unix socket server for Cypher queries with token auth.
+//!
+//! Phase 1A: Read-only queries, no authentication.
+//! Phase 3.2: Token-based authentication added. Clients receive a
+//!   CapabilityToken at connection time; each query must pass token
+//!   verification and scope checks.
+//!
+//! Protocol:
+//!   Client sends:  4-byte BE length + UTF-8 Cypher string
+//!   Server replies: 4-byte BE length + UTF-8 result string
+//!
+//! See `docs/architecture/DAEMON-COMMUNICATION.md` Section 8.
 
 use std::collections::HashMap;
 use std::os::unix::io::AsRawFd;
