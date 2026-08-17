@@ -76,7 +76,6 @@ ryujinx	org.ryujinx.Ryujinx ryujinx
 scribus	net.scribus.Scribus org.scribus.Scribus scribus
 shotcut	org.shotcut.Shotcut shotcut
 showtime	org.gnome.Showtime showtime
-snapshot	com.spotify.Client.snapshot org.chromium.Chromium.snapshot org.gnome.Snapshot org.mozilla.Thunderbird.snapshot snapshot
 snes9x	com.snes9x.Snes9x snes9x
 solfege	org.gnome.Solfege solfege
 soundux	io.github.Soundux io.github.Soundux.Soundux io.github.Soundux.soundux

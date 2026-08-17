@@ -58,9 +58,20 @@ SUFFIX = re.compile(r"-(desktop|ce|bin|git|gtk|qt|kde|gnome|nightly|beta)$")
 VENDOR = re.compile(r"^(gnome|kde|xfce|mate|deepin|elementary)-")
 
 
+#: Release-channel segments that trail an id without naming the program.
+#: `org.chromium.Chromium.snapshot` is Chromium, and `com.spotify.Client.snapshot`
+#: is Spotify - taking the last segment made them, Thunderbird and GNOME Snapshot
+#: one program, which is a group that would tell somebody to give four unrelated
+#: applications the same grants.
+CHANNEL = {"snapshot", "nightly", "beta", "devel", "unstable", "daily"}
+
+
 def core(stem: str) -> str | None:
     """The program a profile id names, or None if the id says only a category."""
-    tail = stem.split(".")[-1].lower()
+    parts = stem.split(".")
+    if len(parts) >= 3 and parts[-1].lower() in CHANNEL:
+        parts = parts[:-1]
+    tail = parts[-1].lower()
     name = VENDOR.sub("", SUFFIX.sub("", tail)).replace("_", "-")
     # The category check comes AFTER stripping, not before. `gnome-terminal` is
     # not in GENERIC as written, but it becomes `terminal` once the prefix is
