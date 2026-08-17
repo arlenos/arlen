@@ -1,0 +1,12 @@
+# Starting permission profile for alot (a terminal email client over notmuch). Needs
+# network for mail and saves attachments to Downloads. Its notmuch database sits in
+# the mail store, which is a grant to add rather than assume.
+[info]
+app_id = "alot"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

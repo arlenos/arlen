@@ -1,0 +1,12 @@
+# Starting permission profile for a game-development editor (maps, levels or
+# models). Edits its project files under Documents; no network by default (asset
+# downloads need an explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "org.godotengine.Godot-mono"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+# Same app as `org.godotengine.Godot`, under the desktop-id this packaging installs. An app is
+# only reachable under the id it is actually launched by.

@@ -1,0 +1,11 @@
+# Starting permission profile for a voice-chat client. Needs network to talk; saves
+# received files to Downloads. No Knowledge Graph access.
+[info]
+app_id = "teamspeak3"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

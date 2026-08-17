@@ -1,0 +1,12 @@
+# Starting permission profile for aerc (a terminal email client). Needs network for
+# mail and saves attachments to Downloads, like the graphical clients. Home is NOT
+# granted: a maildir outside these dirs is a refinement, not a default.
+[info]
+app_id = "aerc"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
