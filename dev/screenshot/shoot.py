@@ -55,8 +55,12 @@ def main():
     # whole screenshot loop down rather than fix anything. A caller that is
     # actually checking a desktop layout passes this and gets a refusal instead of
     # a phone-width PNG that looks like a render of the thing it asked for.
+    # DEFAULTS TO THE REQUESTED WIDTH, because a shot narrower than asked for is
+    # always a lie about what was rendered, and for a week nothing refused one.
+    # A caller who genuinely wants whatever the display gives passes 0.
     ap.add_argument("--require-width", type=int, default=None,
-                    help="fail unless the achieved CSS viewport is at least this wide")
+                    help="fail unless the achieved CSS viewport is at least this"
+                         " wide; defaults to --width, pass 0 to accept anything")
     ap.add_argument("--settle", type=float, default=1.5, help="seconds to wait after load")
     # An injection that drives the page - stubbing an IPC shim and re-navigating so a
     # data-bearing view re-mounts through it - needs longer than a repaint. Without
@@ -116,8 +120,9 @@ def main():
         # Refuse before capturing, and write nothing. A PNG left behind by a failed
         # run is the shape every script in this directory warns about: it outlives
         # the error message and the next reader takes it for a result.
-        if args.require_width is not None and css_w < args.require_width:
-            print(f"refusing: needed a viewport of at least {args.require_width}px"
+        floor = args.width if args.require_width is None else args.require_width
+        if floor and css_w < floor:
+            print(f"refusing: needed a viewport of at least {floor}px"
                   f" and got {css_w}px, so this would be the narrow layout."
                   f" No screenshot written.", file=sys.stderr)
             sys.exit(4)
