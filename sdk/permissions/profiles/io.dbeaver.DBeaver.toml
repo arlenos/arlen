@@ -1,0 +1,15 @@
+# Starting permission profile for a database client. Connects to database servers
+# over the network and opens local scripts/exports under Documents. No Knowledge
+# Graph access.
+[info]
+app_id = "io.dbeaver.DBeaver"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
+
+# Same app as `dbeaver`, under the desktop-id this packaging installs. An app is
+# only reachable under the id it is actually launched by.

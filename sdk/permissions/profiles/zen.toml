@@ -1,0 +1,15 @@
+# Starting permission profile for a web browser. A browser's function is the open
+# web, so it gets broad network; it saves to Downloads. No Knowledge Graph
+# access. Observe-mode refines it.
+[info]
+app_id = "zen"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
+
+# Same app as `zen-browser`, under the desktop-id this packaging installs. An app is
+# only reachable under the id it is actually launched by.
