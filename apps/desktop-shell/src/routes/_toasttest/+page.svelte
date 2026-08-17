@@ -10,9 +10,14 @@
   /// at that picture once and read it as the default, because I had no way to
   /// render either setting on purpose.
   ///
-  /// `?anim=slide|fade|none` picks the flavour, `?n=3` how many, `?duration=`
-  /// how long they hold (default: until the page is closed). `?locale=de`
-  /// renders the copy in German.
+  /// `?anim=slide|fade|none` picks the flavour, `?pos=top-right|bottom-left|...`
+  /// the corner, `?n=3` how many, `?duration=` how long they hold (default:
+  /// until the page is closed). `?locale=de` renders the copy in German.
+  ///
+  /// Position is here because the layout hands the Toaster a fixed
+  /// `offset={{ top, right }}` while the corner itself is a setting - so any
+  /// corner other than the default gets an offset written for a different one,
+  /// and nothing rendered the others to show what that looks like.
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
   import { locale } from "@arlen/ui-kit/i18n";
@@ -28,6 +33,9 @@
   onMount(() => {
     const p = new URLSearchParams(window.location.search);
     if (p.get("locale")) locale.set(p.get("locale") as string);
+
+    const pos = p.get("pos");
+    if (pos) toastConfig.update((c) => ({ ...c, position: pos as typeof c.position }));
 
     const anim = p.get("anim");
     if (anim === "slide" || anim === "fade" || anim === "none") {
