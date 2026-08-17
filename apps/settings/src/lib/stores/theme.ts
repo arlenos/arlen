@@ -20,13 +20,62 @@ export interface ThemeSection {
   mode?: ThemeMode;
 }
 
+/// A CSS length as a pixel number: `"15px"` reads back as `15`.
+///
+/// Returns `undefined` for an absent or unparseable value so the caller falls
+/// through to its next source rather than applying a `NaN` font size.
+export function cssLengthToPx(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/// The interface font, mono font and base size this app should render at.
+///
+/// The typography override wins where the user set one, and `[fonts]` stays as
+/// the fallback. Two fields carried each of these: the Appearance page writes
+/// `overrides.typography.*`, which `sdk/theme` emits cross-app, while this app
+/// applied `[fonts]` to its own root and nothing else read it. So moving a
+/// typography row changed every other app and left Settings at its old size -
+/// the one surface the user is looking at while dragging the slider.
+///
+/// `[fonts]` is kept reading rather than deleted because it is what existing
+/// `appearance.toml` files carry; retiring the field is a migration, not a
+/// precedence change.
+export function resolveTypography(config: AppearanceConfig | null | undefined): {
+  fontInterface: string;
+  fontMono: string;
+  fontSize: number;
+} {
+  const typo = config?.overrides?.typography;
+  return {
+    fontInterface: typo?.font_sans ?? config?.fonts?.interface ?? DEFAULT_FONT_INTERFACE,
+    fontMono: typo?.font_mono ?? config?.fonts?.monospace ?? DEFAULT_FONT_MONO,
+    fontSize: cssLengthToPx(typo?.size_base) ?? config?.fonts?.size ?? DEFAULT_FONT_SIZE,
+  };
+}
+
 /// `[overrides]` section in the shell's appearance schema. This is where
 /// the accent override and the user's radius-intensity multiplier
 /// live (the latter replaces the now-removed `[window].corner_radius`
 /// integer-px slider — see docs/architecture/theme-system.md).
+/// The typography metrics the Appearance page writes through
+/// `theme_set_metric`, which persists them as `overrides.typography.*` in this
+/// same file. Values are CSS lengths and family names as the theme carries
+/// them, so `size_base` is `"15px"` rather than `15`.
+export interface TypographyOverrides {
+  font_sans?: string;
+  font_mono?: string;
+  size_base?: string;
+}
+
 export interface OverridesSection {
   accent?: string;
   font_scale?: number;
+  /// Written by the Appearance page's typography rows. These are the canonical
+  /// fields: `[fonts]` below is the older settings-app-local pair that predates
+  /// them and is kept only as a fallback.
+  typography?: TypographyOverrides;
   /// Radius intensity multiplier `0.0..=2.0`. `1.0` = theme defaults,
   /// `0.0` = sharp brutalist, `2.0` = max round. Applied at emit
   /// time to all semantic radius tokens (chip/button/input/card/
@@ -210,10 +259,7 @@ export function applyAppearance(config: AppearanceConfig | null): void {
   );
   root.style.setProperty("--radius-full", `${RADIUS_DEFAULTS.full}px`);
 
-  const fontInterface =
-    config?.fonts?.interface ?? DEFAULT_FONT_INTERFACE;
-  const fontMono = config?.fonts?.monospace ?? DEFAULT_FONT_MONO;
-  const fontSize = config?.fonts?.size ?? DEFAULT_FONT_SIZE;
+  const { fontInterface, fontMono, fontSize } = resolveTypography(config);
   root.style.setProperty(
     "--font-sans",
     `"${fontInterface}", ui-sans-serif, system-ui, sans-serif`
