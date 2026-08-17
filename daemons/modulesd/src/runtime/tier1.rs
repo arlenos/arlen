@@ -1,18 +1,18 @@
-/// Tier 1 (WASM Component) runtime.
-///
-/// Hosts third-party `waypointer.search`, `waypointer.action`,
-/// `mcp.server`, and `keybinding.profile` modules as Wasmtime
-/// components. Each module gets its own `Store` (isolated linear
-/// memory) and its own `CapabilityContext` (read at link time, immutable
-/// for the module's lifetime).
-///
-/// Resource limits:
-///   * memory: 64 MB per instance (cap, not reservation)
-///   * fuel: 1 M instructions per host call (search/execute)
-///
-/// Crash containment: WASM traps are caught and converted to typed
-/// `DaemonError::WasmTrap` errors; the manager's crash state machine
-/// decides whether to restart the module.
+//! Tier 1 (WASM Component) runtime.
+//!
+//! Hosts third-party `waypointer.search`, `waypointer.action`,
+//! `mcp.server`, and `keybinding.profile` modules as Wasmtime
+//! components. Each module gets its own `Store` (isolated linear
+//! memory) and its own `CapabilityContext` (read at link time, immutable
+//! for the module's lifetime).
+//!
+//! Resource limits:
+//!   * memory: 64 MB per instance (cap, not reservation)
+//!   * fuel: 1 M instructions per host call (search/execute)
+//!
+//! Crash containment: WASM traps are caught and converted to typed
+//! `DaemonError::WasmTrap` errors; the manager's crash state machine
+//! decides whether to restart the module.
 
 use std::path::Path;
 use std::sync::Arc;

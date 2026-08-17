@@ -1,11 +1,11 @@
-/// Per-module runtime context held by the host imports.
-///
-/// One `CapabilityContext` is created per loaded WASM module instance
-/// and stored in its Wasmtime `Store`. Every host import consults it
-/// before performing the underlying operation. Denials are returned as
-/// typed errors over the WIT boundary; modules that need a capability
-/// they did not declare always observe a structured failure rather
-/// than a panic, so they can fall back gracefully.
+//! Per-module runtime context held by the host imports.
+//!
+//! One `CapabilityContext` is created per loaded WASM module instance
+//! and stored in its Wasmtime `Store`. Every host import consults it
+//! before performing the underlying operation. Denials are returned as
+//! typed errors over the WIT boundary; modules that need a capability
+//! they did not declare always observe a structured failure rather
+//! than a panic, so they can fall back gracefully.
 
 use arlen_modules::ModuleCapabilities;
 

@@ -1,10 +1,10 @@
-/// End-to-end test for the real HTTP path through `host::network`.
-///
-/// Spins up a wiremock server, registers a module whose
-/// `network.allow` matches the wiremock host, and verifies that
-/// `Request::HostCall::NetworkFetch` returns the body wiremock
-/// served. Also verifies that a non-allowlisted host gets denied
-/// before reqwest tries.
+//! End-to-end test for the real HTTP path through `host::network`.
+//!
+//! Spins up a wiremock server, registers a module whose
+//! `network.allow` matches the wiremock host, and verifies that
+//! `Request::HostCall::NetworkFetch` returns the body wiremock
+//! served. Also verifies that a non-allowlisted host gets denied
+//! before reqwest tries.
 
 use std::path::PathBuf;
 use std::sync::Arc;

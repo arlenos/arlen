@@ -1,7 +1,7 @@
-/// End-to-end smoke test for the Unix socket framing + manager
-/// dispatch. Spawns the daemon's socket server in-process, connects a
-/// raw client, sends a `Hello`, expects a `Hello` back. This covers
-/// the protocol layer without any WASM dependency.
+//! End-to-end smoke test for the Unix socket framing + manager
+//! dispatch. Spawns the daemon's socket server in-process, connects a
+//! raw client, sends a `Hello`, expects a `Hello` back. This covers
+//! the protocol layer without any WASM dependency.
 
 use std::sync::Arc;
 

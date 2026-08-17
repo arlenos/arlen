@@ -1,13 +1,13 @@
-/// Crash recovery state machine per Foundation §07 Table 08.
-///
-/// Each module instance carries a `CrashState` that the daemon updates
-/// on every clean run and every crash. The state alone determines what
-/// happens next: immediate restart, delayed restart, or permanent
-/// failure that requires a manual retry.
-///
-/// The 60 second window resets on a clean run, so a module that has
-/// been alive for several minutes and crashes once gets its immediate
-/// restart even if it crashed three times last week.
+//! Crash recovery state machine per Foundation §07 Table 08.
+//!
+//! Each module instance carries a `CrashState` that the daemon updates
+//! on every clean run and every crash. The state alone determines what
+//! happens next: immediate restart, delayed restart, or permanent
+//! failure that requires a manual retry.
+//!
+//! The 60 second window resets on a clean run, so a module that has
+//! been alive for several minutes and crashes once gets its immediate
+//! restart even if it crashed three times last week.
 
 use std::time::{Duration, Instant};
 

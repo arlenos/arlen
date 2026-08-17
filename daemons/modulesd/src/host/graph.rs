@@ -1,13 +1,13 @@
-/// `arlen:host/graph` import implementation.
-///
-/// Graph access policy: every Cypher query is scoped to a namespace
-/// that the daemon extracts at parse time and matches against the
-/// module's `graph.read` / `graph.write` allowlists. Cross-namespace
-/// queries are split into per-namespace fragments and fail closed if
-/// any fragment is not allowed.
-///
-/// The wire-level Cypher round trip happens through `os-sdk`'s
-/// `UnixGraphClient`. This module is the policy layer.
+//! `arlen:host/graph` import implementation.
+//!
+//! Graph access policy: every Cypher query is scoped to a namespace
+//! that the daemon extracts at parse time and matches against the
+//! module's `graph.read` / `graph.write` allowlists. Cross-namespace
+//! queries are split into per-namespace fragments and fail closed if
+//! any fragment is not allowed.
+//!
+//! The wire-level Cypher round trip happens through `os-sdk`'s
+//! `UnixGraphClient`. This module is the policy layer.
 
 use crate::error::{DaemonError, Result};
 use crate::host::CapabilityContext;

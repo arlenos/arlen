@@ -1,28 +1,28 @@
-/// `arlen:host/network` import implementation.
-///
-/// Network access is the most-watched capability for Arlen modules.
-/// Foundation §07 mandates that modules cannot reach hosts outside
-/// their declared `network.allow` list and that denial returns a typed
-/// error rather than a panic. This module is the choke point.
-///
-/// Hardening rules (per ds#77 plan):
-///   * **HTTPS only.** `http://` URLs are rejected even if the host
-///     is in the allowlist. Modules that genuinely need plaintext
-///     would need a future explicit `network.allow_http` capability;
-///     until then, fail closed.
-///   * **Re-check on every redirect.** Reqwest's default redirect
-///     policy follows up to 10 hops without revisiting the original
-///     allowlist. We override it with a custom policy that consults
-///     `CapabilityContext` per hop and stops at the first denial.
-///   * **Body size cap (10 MB) and total timeout (30 s).** Defends
-///     against malicious or accidentally-pathological servers that
-///     would otherwise flood RAM or wedge the daemon.
-///   * **User-Agent.** Set to `Arlen-modulesd/<version> <module-id>`
-///     so server-side logs can attribute requests and rate-limiters
-///     have something to grip on.
-///   * **Per-module concurrency cap.** A `Semaphore` of 4 concurrent
-///     fetches per module, surfaced via the manager so a runaway
-///     module cannot saturate the host's outbound socket pool.
+//! `arlen:host/network` import implementation.
+//!
+//! Network access is the most-watched capability for Arlen modules.
+//! Foundation §07 mandates that modules cannot reach hosts outside
+//! their declared `network.allow` list and that denial returns a typed
+//! error rather than a panic. This module is the choke point.
+//!
+//! Hardening rules (per ds#77 plan):
+//!   * **HTTPS only.** `http://` URLs are rejected even if the host
+//!     is in the allowlist. Modules that genuinely need plaintext
+//!     would need a future explicit `network.allow_http` capability;
+//!     until then, fail closed.
+//!   * **Re-check on every redirect.** Reqwest's default redirect
+//!     policy follows up to 10 hops without revisiting the original
+//!     allowlist. We override it with a custom policy that consults
+//!     `CapabilityContext` per hop and stops at the first denial.
+//!   * **Body size cap (10 MB) and total timeout (30 s).** Defends
+//!     against malicious or accidentally-pathological servers that
+//!     would otherwise flood RAM or wedge the daemon.
+//!   * **User-Agent.** Set to `Arlen-modulesd/<version> <module-id>`
+//!     so server-side logs can attribute requests and rate-limiters
+//!     have something to grip on.
+//!   * **Per-module concurrency cap.** A `Semaphore` of 4 concurrent
+//!     fetches per module, surfaced via the manager so a runaway
+//!     module cannot saturate the host's outbound socket pool.
 
 use std::sync::Arc;
 use std::time::Duration;

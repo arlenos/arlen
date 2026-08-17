@@ -1,13 +1,13 @@
-/// Unix-socket server.
-///
-/// Accepts connections at `/run/user/{uid}/arlen/modulesd.sock`,
-/// frames JSON requests as `[u32 BE length][body]`, dispatches each
-/// request to the manager, and broadcasts events to subscribed
-/// connections.
-///
-/// Multi-client capable: each connection runs in its own task with a
-/// per-connection writer half. The manager owns the source of truth;
-/// the server is a thin transport layer.
+//! Unix-socket server.
+//!
+//! Accepts connections at `/run/user/{uid}/arlen/modulesd.sock`,
+//! frames JSON requests as `[u32 BE length][body]`, dispatches each
+//! request to the manager, and broadcasts events to subscribed
+//! connections.
+//!
+//! Multi-client capable: each connection runs in its own task with a
+//! per-connection writer half. The manager owns the source of truth;
+//! the server is a thin transport layer.
 
 use std::path::PathBuf;
 use std::sync::Arc;
