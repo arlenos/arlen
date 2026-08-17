@@ -70,15 +70,42 @@ $out"
 # 4. A page that never loaded is refused, and leaves no PNG. The failure this
 #    guards cost a retracted finding on 17 August: a dev server had exited, the
 #    webview showed its own connection-refused page, and the run reported a
-#    render. Port 9 is the discard service - nothing serves it anywhere.
+#    render.
+#
+#    Port 9 is the discard service, and browsers refuse to navigate to it at all
+#    - it is on the blocked-port list. That makes this the WEAK half of the pair:
+#    the navigation is rejected before a socket is opened, which is not what a
+#    dev server exiting looks like. Case 5 is the one that matters. Keep this one
+#    anyway; it costs a few seconds and covers the other refusal path.
 rm -f /tmp/shoot-width-d.png
 out=$("$here/shoot.sh" 'http://localhost:9/never-served' /tmp/shoot-width-d.png 2>&1)
 rc=$?
-check "a page that never loaded is refused" \
+check "a page on a blocked port is refused" \
   "$([ "$rc" != 0 ] && [ ! -e /tmp/shoot-width-d.png ] && echo 1 || echo 0)" \
   "exit=$rc png=$([ -e /tmp/shoot-width-d.png ] && echo written || echo absent)
 $out"
 
-rm -f /tmp/shoot-width-a.png /tmp/shoot-width-b.png /tmp/shoot-width-c.png /tmp/shoot-width-d.png
+# 5. An ORDINARY port with nothing behind it - a dev server that has exited. This
+#    is the case that actually happens, and case 4 could not see it.
+#
+#    Because port 9 is blocked outright, WebKitWebDriver leaves the session at
+#    `about:blank` and answers `GET /url` with it, so a guard reading the driver
+#    passed case 4 while sleeping through the real thing: on an ordinary port the
+#    navigation IS attempted, fails with connection refused, and the driver then
+#    reports the requested URL back as if it had loaded. A dead vite on 1467 went
+#    straight past the guard into a screenshot that way. The fix reads
+#    `location.href` from inside the document, which says `about:blank` in both
+#    cases. The port is claimed and released here so nothing can be listening on
+#    it.
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+rm -f /tmp/shoot-width-e.png
+out=$("$here/shoot.sh" "http://localhost:$port/_nettest?panel=audio" /tmp/shoot-width-e.png 2>&1)
+rc=$?
+check "a dev server that is not running is refused" \
+  "$([ "$rc" != 0 ] && [ ! -e /tmp/shoot-width-e.png ] && echo 1 || echo 0)" \
+  "exit=$rc port=$port png=$([ -e /tmp/shoot-width-e.png ] && echo written || echo absent)
+$out"
+
+rm -f /tmp/shoot-width-a.png /tmp/shoot-width-b.png /tmp/shoot-width-c.png /tmp/shoot-width-d.png /tmp/shoot-width-e.png
 [ "$fail" = 0 ] && echo "neither a clamped viewport nor an unreachable page can pass for a render"
 exit "$fail"
