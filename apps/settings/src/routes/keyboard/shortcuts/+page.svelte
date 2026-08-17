@@ -251,14 +251,19 @@
         class="ps-9"
       />
     </div>
-    <Button variant="outline" onclick={() => (addOpen = true)}>
+    <!-- `data-action` is the harness hook, the same shape as the file manager's
+         `data-place` and the clock's tab ids: a surface that only exists after a
+         click cannot be photographed without one, and a Tailwind class chain is
+         not a selector anybody can rely on. -->
+    <Button variant="outline" data-action="add-custom" onclick={() => (addOpen = true)}>
       <Plus class="me-1 h-4 w-4" /> {$t("s.sc.addCustom")}
     </Button>
-    <Button variant="ghost" onclick={() => (pendingReset = "all")}>
+    <Button variant="ghost" data-action="reset-all" onclick={() => (pendingReset = "all")}>
       {$t("s.sc.resetAll")}
     </Button>
     <Button
       variant="ghost"
+      data-action="use-defaults"
       onclick={() => (pendingReset = "builtin")}
       title={$t("s.sc.useDefaultsHint")}
     >
