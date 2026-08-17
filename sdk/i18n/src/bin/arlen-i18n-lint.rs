@@ -404,6 +404,14 @@ const USER_FACING_PROPS: &[&str] = &[
     // measured miss: every quick-settings tile said its state through this prop
     // and the gate called the directory clean.
     "statusText",
+    // What a process may reach, on system-monitor's detail pane. Added on a
+    // measured miss: `stores/detail.ts` holds thirteen sentences under this name
+    // ("It reads from the knowledge graph within its granted scope and writes
+    // nothing without your say.") and the gate saw only the `label:` entries
+    // beside them, so four of a table's strings were findings and thirteen were
+    // invisible. A privacy surface is the last place to explain a daemon's reach
+    // in a language the reader did not choose.
+    "reach",
 ];
 
 /// Name endings that carry prose when assigned: `loadError`, `emptyMessage`.
