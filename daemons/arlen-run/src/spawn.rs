@@ -55,10 +55,12 @@ use arlen_confiner::{app_runtime_profile, Bind, Confinement, ConfinerError, Netw
 /// does not already have outside the sandbox.
 ///
 /// `wayland_display` is `$WAYLAND_DISPLAY`: an absolute path is taken verbatim,
-/// a bare name is resolved under `runtime_dir`.
+/// a bare name is resolved under `runtime_dir`. `app_id` selects the app's own
+/// view of the document portal (see below).
 pub fn plumbing_binds(
     runtime_dir: &Path,
     wayland_display: Option<&str>,
+    app_id: &str,
     exists: impl Fn(&Path) -> bool,
 ) -> Vec<Bind> {
     let mut candidates: Vec<PathBuf> = Vec::new();
@@ -83,6 +85,31 @@ pub fn plumbing_binds(
     candidates.push(PathBuf::from("/run/arlen"));
 
     let mut binds = Vec::new();
+    // The document portal's FUSE mount, WITHOUT which the portal is a picker that
+    // returns unopenable paths. `document_portal.rs` exports a picked file and
+    // hands the app `<runtime>/doc/<doc-id>/<name>`; its own doc comment says
+    // "sandboxed callers have that mount bind-mounted into their bubblewrap
+    // namespace", and in this launcher they did not. Measured under bwrap with
+    // exactly the binds above: `ls /run/user/1000/doc` answers `No such file or
+    // directory`. So an app narrowed to portal-only access could pick a file and
+    // then fail to open it, which is the shape that makes people re-widen a grant.
+    //
+    // `by-app/<app_id>` rather than `doc` itself, mounted AT `doc` so the URI the
+    // portal returns resolves unchanged. The root lists every app's exports; the
+    // per-app subdirectory is the portal's own filtered view of one app's. Binding
+    // the root would hand each app every other app's picked files, which is a
+    // wider grant than the `home = true` this is meant to replace.
+    //
+    // The subdirectory is synthesised on lookup - `by-app/dev.arlen.madeup` stats
+    // fine on a host that has never heard of it - so there is no ordering problem
+    // with binding it before the app's first export.
+    if !app_id.is_empty() {
+        let per_app = runtime_dir.join("doc/by-app").join(app_id);
+        let at = runtime_dir.join("doc");
+        if let (true, Some(src), Some(dst)) = (exists(&per_app), per_app.to_str(), at.to_str()) {
+            binds.push(Bind::ReadWrite(src.to_string(), dst.to_string()));
+        }
+    }
     for p in candidates {
         if !exists(&p) {
             continue;
@@ -346,7 +373,11 @@ unsafe fn child_pre_exec(
     // pipe (an fd >= 3) survives to report a failure, while every launcher fd is
     // closed atomically on a successful exec. Needs kernel >= 5.11, below the
     // Landlock >= 5.13 floor this launcher already requires.
-    let rc = libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int);
+    let rc = libc::close_range(
+        3,
+        libc::c_uint::MAX,
+        libc::CLOSE_RANGE_CLOEXEC as libc::c_int,
+    );
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
     }
@@ -420,7 +451,10 @@ pub fn spawn_filtered_and_wait(
         .path()
         .to_str()
         .ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "non-utf8 seccomp temp path")
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "non-utf8 seccomp temp path",
+            )
         })?
         .to_string();
 
@@ -514,7 +548,9 @@ mod tests {
             PathBuf::from("/run/user/1000/wayland-0"),
             PathBuf::from("/run/user/1000/bus"),
         ];
-        let binds = plumbing_binds(rt, Some("wayland-0"), |p| present.contains(&p.to_path_buf()));
+        let binds = plumbing_binds(rt, Some("wayland-0"), "", |p| {
+            present.contains(&p.to_path_buf())
+        });
         assert!(binds.contains(&Bind::ReadWrite(
             "/run/user/1000/wayland-0".into(),
             "/run/user/1000/wayland-0".into()
@@ -538,7 +574,7 @@ mod tests {
     fn the_arlen_runtime_directory_is_bound() {
         let rt = Path::new("/run/user/1000");
         let present = [PathBuf::from("/run/user/1000/arlen")];
-        let binds = plumbing_binds(rt, None, |p| present.contains(&p.to_path_buf()));
+        let binds = plumbing_binds(rt, None, "", |p| present.contains(&p.to_path_buf()));
         assert_eq!(
             binds,
             vec![Bind::ReadWrite(
@@ -555,7 +591,7 @@ mod tests {
     fn font_configuration_is_bound_read_only() {
         let rt = Path::new("/run/user/1000");
         let present = [PathBuf::from("/etc/fonts")];
-        let binds = plumbing_binds(rt, None, |p| present.contains(&p.to_path_buf()));
+        let binds = plumbing_binds(rt, None, "", |p| present.contains(&p.to_path_buf()));
         assert_eq!(
             binds,
             vec![Bind::ReadOnly("/etc/fonts".into(), "/etc/fonts".into())],
@@ -563,16 +599,81 @@ mod tests {
         );
     }
 
+    /// The portal picks a file and hands back `<runtime>/doc/<id>/<name>`. If that
+    /// mount is not in the app's namespace the path does not exist, so the pick
+    /// succeeds and the open fails - and an app that cannot open what the user
+    /// just chose gets its wide grant put back.
+    #[test]
+    fn the_document_portal_mount_reaches_the_app() {
+        let rt = Path::new("/run/user/1000");
+        let present = [PathBuf::from("/run/user/1000/doc/by-app/dev.arlen.files")];
+        let binds = plumbing_binds(rt, None, "dev.arlen.files", |p| {
+            present.contains(&p.to_path_buf())
+        });
+        assert_eq!(
+            binds,
+            vec![Bind::ReadWrite(
+                "/run/user/1000/doc/by-app/dev.arlen.files".into(),
+                "/run/user/1000/doc".into()
+            )],
+            "the app's own view has to land at the path the portal's URI names"
+        );
+    }
+
+    /// The bind source is the per-app view, never the root. The root holds every
+    /// app's exported documents, so binding it would give each app the files every
+    /// other app was handed - wider than the whole-home grant this replaces.
+    #[test]
+    fn no_app_is_bound_the_whole_document_root() {
+        let rt = Path::new("/run/user/1000");
+        let binds = plumbing_binds(rt, None, "dev.arlen.files", |_| true);
+        let doc: Vec<_> = binds
+            .iter()
+            .filter(|b| match b {
+                Bind::ReadOnly(s, _) | Bind::ReadWrite(s, _) => s.contains("/doc"),
+            })
+            .collect();
+        assert_eq!(
+            doc,
+            vec![&Bind::ReadWrite(
+                "/run/user/1000/doc/by-app/dev.arlen.files".into(),
+                "/run/user/1000/doc".into()
+            )],
+            "the root lists other apps' documents, the per-app view lists only ours"
+        );
+    }
+
+    /// A launch with no app id (the direct-launch fence re-invoking itself) must
+    /// not resolve `by-app/` itself, which is the directory holding every app.
+    #[test]
+    fn an_empty_app_id_binds_no_document_view() {
+        let binds = plumbing_binds(Path::new("/run/user/1000"), None, "", |_| true);
+        assert!(
+            !binds.iter().any(|b| match b {
+                Bind::ReadOnly(s, _) | Bind::ReadWrite(s, _) => s.contains("/doc"),
+            }),
+            "an empty id would name the by-app directory itself"
+        );
+    }
+
     #[test]
     fn plumbing_binds_takes_an_absolute_wayland_display_verbatim() {
         let rt = Path::new("/run/user/1000");
-        let binds = plumbing_binds(rt, Some("/tmp/wl.sock"), |_| true);
-        assert!(binds.contains(&Bind::ReadWrite("/tmp/wl.sock".into(), "/tmp/wl.sock".into())));
+        let binds = plumbing_binds(rt, Some("/tmp/wl.sock"), "", |_| true);
+        assert!(binds.contains(&Bind::ReadWrite(
+            "/tmp/wl.sock".into(),
+            "/tmp/wl.sock".into()
+        )));
     }
 
     #[test]
     fn plumbing_binds_empty_when_nothing_exists() {
-        let binds = plumbing_binds(Path::new("/run/user/1000"), Some("wayland-1"), |_| false);
+        let binds = plumbing_binds(
+            Path::new("/run/user/1000"),
+            Some("wayland-1"),
+            "dev.arlen.x",
+            |_| false,
+        );
         assert!(binds.is_empty());
     }
 
@@ -589,8 +690,14 @@ mod tests {
         )
         .unwrap();
         let argv = bwrap_argv(&conf, &["/usr/bin/echo".into(), "hi".into()]);
-        let sep = argv.iter().position(|a| a == "--").expect("separator present");
-        assert_eq!(&argv[sep + 1..], &["/usr/bin/echo".to_string(), "hi".to_string()]);
+        let sep = argv
+            .iter()
+            .position(|a| a == "--")
+            .expect("separator present");
+        assert_eq!(
+            &argv[sep + 1..],
+            &["/usr/bin/echo".to_string(), "hi".to_string()]
+        );
         // The flags before the separator are the confinement's own.
         assert!(argv[..sep].contains(&"--unshare-pid".to_string()));
         assert!(argv[..sep].contains(&"--unshare-net".to_string()));
@@ -762,7 +869,9 @@ mod tests {
         let guard = ProxyEgressEnforcer
             .install(&["allowed.invalid:443".to_string()])
             .expect("bind the egress proxy");
-        let port = guard.proxy_port().expect("a filtered guard exposes its proxy port");
+        let port = guard
+            .proxy_port()
+            .expect("a filtered guard exposes its proxy port");
 
         // The confined probe: dial the proxy at the mapped gateway and CONNECT to
         // a NON-allowlisted host; the proxy refuses it (403) before dialing out.
@@ -798,7 +907,8 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
         let bpf = crate::seccomp::app_filter_bytes().expect("filter compiles");
-        let code = spawn_filtered_and_wait(&argv, &[], None, bpf).expect("the filtered launch spawns");
+        let code =
+            spawn_filtered_and_wait(&argv, &[], None, bpf).expect("the filtered launch spawns");
         assert_eq!(
             code, 0,
             "the proxy must refuse the non-allowlisted CONNECT (403) through the full \
@@ -822,15 +932,16 @@ mod tests {
         let guard = ProxyEgressEnforcer
             .install(&["allowed.invalid:443".to_string()])
             .expect("bind the egress proxy");
-        let _port = guard.proxy_port().expect("a filtered guard exposes its proxy port");
+        let _port = guard
+            .proxy_port()
+            .expect("a filtered guard exposes its proxy port");
 
         // The confined probe: dial a raw external IP DIRECTLY (not the proxy
         // gateway), bypassing the `*_proxy` env. With the default route deleted the
         // connect has no route and fails, so exit 0; a successful connect (a bypass)
         // exits 30. 1.1.1.1 is a real routable address, so this proves route-absence
         // blocks a would-otherwise-be-reachable host, not merely an unroutable one.
-        let probe =
-            "exec 3<>/dev/tcp/1.1.1.1/443 2>/dev/null || exit 0; exit 30".to_string();
+        let probe = "exec 3<>/dev/tcp/1.1.1.1/443 2>/dev/null || exit 0; exit 30".to_string();
         let argv: Vec<String> = [
             "--unshare-user",
             "--unshare-pid",
@@ -850,7 +961,8 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
         let bpf = crate::seccomp::app_filter_bytes().expect("filter compiles");
-        let code = spawn_filtered_and_wait(&argv, &[], None, bpf).expect("the filtered launch spawns");
+        let code =
+            spawn_filtered_and_wait(&argv, &[], None, bpf).expect("the filtered launch spawns");
         assert_eq!(
             code, 0,
             "a raw external-IP dial must find no route (route-absence); \
@@ -1011,7 +1123,11 @@ mod tests {
         // The arlen-run binary sits beside the test binary's target/debug/deps dir.
         let exe = std::env::current_exe().unwrap();
         let arlen_run = exe.parent().unwrap().parent().unwrap().join("arlen-run");
-        assert!(arlen_run.exists(), "arlen-run built at {}", arlen_run.display());
+        assert!(
+            arlen_run.exists(),
+            "arlen-run built at {}",
+            arlen_run.display()
+        );
 
         // A host dir under /var/tmp (an existing path NOT in the fence's standard-
         // writable list, unlike /tmp), with granted/ + ungranted/ subdirs, bound
@@ -1040,8 +1156,19 @@ mod tests {
             &["/bin/sh".to_string(), "-c".to_string(), script],
         );
         let mut argv: Vec<String> = [
-            "--unshare-user", "--unshare-pid", "--ro-bind", "/", "/", "--proc", "/proc",
-            "--dev", "/dev", "--bind", &base_path, &base_path, "--",
+            "--unshare-user",
+            "--unshare-pid",
+            "--ro-bind",
+            "/",
+            "/",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--bind",
+            &base_path,
+            &base_path,
+            "--",
         ]
         .iter()
         .map(|s| s.to_string())
