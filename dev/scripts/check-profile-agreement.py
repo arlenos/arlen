@@ -118,9 +118,18 @@ def main() -> int:
         return 0
 
     fresh = {n: m for n, m in disagree.items() if n not in known}
+    # A row for a group that now agrees is a claim about the tree that stopped
+    # being true. Reported, not failed: the fix is a `--update`, and nobody
+    # should be blocked because they resolved one.
+    stale = sorted(known - set(disagree))
+    if stale:
+        print(
+            f"\n{len(stale)} recorded group(s) now agree and can leave the baseline "
+            f"(`--update`): {', '.join(stale)}"
+        )
     print(
         f"{read} profile(s) in {len(groups)} app group(s); "
-        f"{len(disagree)} disagree, {len(known)} of them recorded. "
+        f"{len(disagree)} disagree, {len(known)} recorded. "
         f"A group is several packaging ids for ONE program, so a difference here means "
         f"the app's grants depend on where it was installed from."
     )

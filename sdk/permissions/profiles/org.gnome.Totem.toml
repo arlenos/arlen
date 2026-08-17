@@ -1,8 +1,11 @@
-# Starting permission profile for GNOME Videos (Totem). Videos, no network, no
-# graph.
+# Starting permission profile for GNOME Videos (Totem). Plays the user's local
+# video AND music - it opens audio files too, which is why `totem` beside it and
+# every other media player in this corpus grant both. No network (streaming is
+# refined later) and no Knowledge Graph.
 [info]
 app_id = "org.gnome.Totem"
 tier = "third-party"
 
 [filesystem]
 videos = true
+music = true

@@ -1,6 +1,6 @@
-# Starting permission profile for a media player. Plays the user's local video
-# and music; no network by default (its server streaming is refined later). No
-# Knowledge Graph.
+# Starting permission profile for Jellyfin Media Player.
+# Streams media from a Jellyfin server over the network; plays local media from
+# Videos and Music. No Knowledge Graph access.
 [info]
 app_id = "jellyfin-media-player"
 tier = "third-party"
@@ -8,3 +8,10 @@ tier = "third-party"
 [filesystem]
 videos = true
 music = true
+
+[network]
+allow_all = true
+
+# This said "no network by default (its server streaming is refined later)",
+# copied from the generic media-player template - for a client whose entire
+# function is talking to a Jellyfin server. Both dotted ids already granted it.
