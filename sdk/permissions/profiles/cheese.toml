@@ -1,8 +1,14 @@
-# Starting permission profile for a webcam/drawing app. Works with Pictures; no
-# network and no Knowledge Graph.
+# Starting permission profile for Cheese (webcam photo/video booth). Saves
+# captures to Pictures and Videos; no network, no graph. Camera access is a
+# launcher/portal grant, not a filesystem one.
+#
+# Videos was missing here while `org.gnome.Cheese` had it, so what the app could
+# save depended on where it was installed from. It records video by function, so
+# the answer with Videos is the one that matches the program.
 [info]
 app_id = "cheese"
 tier = "third-party"
 
 [filesystem]
 pictures = true
+videos = true
