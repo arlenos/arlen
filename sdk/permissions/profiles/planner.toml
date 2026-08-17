@@ -1,9 +1,10 @@
-# Starting permission profile for a notes/PKM/finance/project/task tool. Works
-# with Documents (notes, ledgers, project files); no network and no Knowledge
-# Graph by default.
+# Starting permission profile for a notes/PKM/finance/project/task tool. Works with the files the user
+# picks; no network and no Knowledge Graph by default.
+#
+# It stores tasks locally and reaches any file through the portal on use, so it
+# needs no standing filesystem grant.
+# `io.github.alainm23.planner` had already settled this for the same program.
 [info]
 app_id = "planner"
 tier = "third-party"
 
-[filesystem]
-documents = true

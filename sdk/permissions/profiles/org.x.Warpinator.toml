@@ -1,11 +1,12 @@
 # Starting permission profile for Warpinator (local-network file transfer).
-# It sends and receives files across the local network by function. It gets network and Downloads. No Knowledge Graph access.
+# It sends and receives files across the local network by function. It gets network. No Knowledge Graph access.
+#
+# Transfers land through the file portal, so it needs no standing filesystem grant.
+# `org.x.warpinator` had already settled this for the same program.
 [info]
 app_id = "org.x.Warpinator"
 tier = "third-party"
 
-[filesystem]
-downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because the scoped form
 # cannot be enforced yet - `arlen-run` refuses a FilteredHosts policy without an

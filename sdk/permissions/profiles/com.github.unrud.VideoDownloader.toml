@@ -1,11 +1,13 @@
 # Starting permission profile for Video Downloader. Fetching is its function, so
-# it gets network; results save to Downloads. No graph.
+# it gets network; results save where the user points it. No graph.
+#
+# The download location is chosen through the file portal, so it needs no standing
+# filesystem grant.
+# `io.github.unrud.VideoDownloader` had already settled this for the same program.
 [info]
 app_id = "com.github.unrud.VideoDownloader"
 tier = "third-party"
 
-[filesystem]
-downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because the scoped form
 # cannot be enforced yet - `arlen-run` refuses a FilteredHosts policy without an

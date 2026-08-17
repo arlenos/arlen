@@ -1,8 +1,10 @@
-# Starting permission profile for a 3D model viewer. Opens model files from
-# Documents; no network and no Knowledge Graph by default.
+# Starting permission profile for a 3D model viewer. Opens model files the user picks; no
+# network and no Knowledge Graph by default.
+#
+# It opens model files the user picks through the file portal, so it needs no
+# standing filesystem grant.
+# `io.github.nokse22.Exhibit` had already settled this for the same program.
 [info]
 app_id = "exhibit"
 tier = "third-party"
 
-[filesystem]
-documents = true
