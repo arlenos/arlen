@@ -188,7 +188,76 @@ async fn main() {
         failures += ask_all(&client).await;
     }
     failures += report_timeline();
+    failures += report_event_store();
     println!("kg-probe: done, {failures} question(s) failed");
+}
+
+/// The path the dogfood emits and the graph question asks about.
+///
+/// Named once so the store read below and the Cypher above cannot drift apart;
+/// the test at the bottom fails if the question stops mentioning it.
+const INGESTED_PATH: &str = "/var/lib/arlen-work/notes.md";
+
+/// Where the writer's event store lives, resolved the way the daemon resolves it.
+///
+/// A SECOND COPY OF A RESOLVER, which is how `ARLEN_KNOWLEDGE_SOCKET` and
+/// `ARLEN_DAEMON_SOCKET` came to name one socket by two rules. Source of truth is
+/// `daemons/knowledge/src/utils.rs::resolve_data_path`; this prints what it
+/// resolved so a divergence shows up as a line in the journal rather than as a
+/// silent pass on an empty file that was never the daemon's.
+fn events_db_path() -> String {
+    let pinned = std::env::var("ARLEN_DB_PATH").ok().filter(|s| !s.is_empty());
+    if let Some(p) = pinned {
+        return p;
+    }
+    if let Some(dir) = std::env::var("XDG_DATA_HOME").ok().filter(|s| !s.is_empty()) {
+        return format!("{dir}/arlen/events.db");
+    }
+    if let Some(h) = std::env::var("HOME").ok().filter(|s| !s.is_empty()) {
+        return format!("{h}/.local/share/arlen/events.db");
+    }
+    "/var/lib/arlen/knowledge/events.db".to_string()
+}
+
+/// How many stored events name `needle`, read from the file rather than asked of
+/// the daemon.
+///
+/// The payload is protobuf, so the path sits in it as bytes; `instr` over a blob
+/// is enough to answer "did this event reach the store", which is the only
+/// question here. Read-only, and a missing or unreadable file is an error rather
+/// than a zero - "no store" and "a store holding nothing" are the two answers
+/// this exists to tell apart.
+fn store_rows_for(db: &str, needle: &str) -> Result<i64, String> {
+    use rusqlite::OpenFlags;
+    let conn = rusqlite::Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("{e}"))?;
+    conn.query_row(
+        "SELECT COUNT(*) FROM events WHERE instr(payload, ?1) > 0",
+        rusqlite::params![needle.as_bytes()],
+        |r| r.get::<_, i64>(0),
+    )
+    .map_err(|e| format!("{e}"))
+}
+
+/// Ask the store the question the graph was asked, and print both answers.
+///
+/// Every other line this probe prints comes from the daemon: it answers about
+/// itself, and nothing checks it. A graph returning a File node for a path whose
+/// event never reached the store is exactly the shape of a broken writer, and the
+/// verdict could not tell that from a healthy run. Two independent reads can.
+fn report_event_store() -> usize {
+    let db = events_db_path();
+    println!("kg-probe: store path {db}");
+    match store_rows_for(&db, INGESTED_PATH) {
+        Ok(n) => {
+            println!("kg-probe: store: {n} event row(s) naming this run's file");
+            0
+        }
+        Err(e) => {
+            println!("kg-probe: store: UNREADABLE: {e}");
+            1
+        }
+    }
 }
 
 /// Can ANY same-uid process on this image read another's `/proc/<pid>/exe`?
@@ -477,4 +546,62 @@ async fn ask_all(client: &UnixGraphClient) -> usize {
         }
     }
     failures
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{store_rows_for, INGESTED_PATH, QUESTIONS};
+
+    /// The store read and the graph question must name the same file.
+    ///
+    /// They are two independent observations of one claim, which is the whole
+    /// point of the second reader - and worth nothing if they drift onto
+    /// different paths, because then they always agree by never disagreeing.
+    #[test]
+    fn the_graph_question_asks_about_the_path_the_store_is_asked_for() {
+        let asked = QUESTIONS
+            .iter()
+            .any(|(_, cypher)| cypher.contains(INGESTED_PATH));
+        assert!(asked, "no question mentions {INGESTED_PATH}");
+    }
+
+    fn seed(dir: &std::path::Path, payloads: &[&str]) -> String {
+        let db = dir.join("events.db");
+        let conn = rusqlite::Connection::open(&db).expect("create");
+        conn.execute_batch(
+            "CREATE TABLE events (id TEXT PRIMARY KEY, type TEXT NOT NULL,
+             timestamp INTEGER NOT NULL, source TEXT NOT NULL, pid INTEGER NOT NULL,
+             origin TEXT NOT NULL, payload BLOB)",
+        )
+        .expect("schema");
+        for (i, p) in payloads.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO events VALUES (?1, 'file.opened', 0, 'test', 1, 'system:test', ?2)",
+                rusqlite::params![format!("e{i}"), p.as_bytes()],
+            )
+            .expect("insert");
+        }
+        db.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn an_event_naming_the_path_is_counted() {
+        let dir = std::env::temp_dir().join(format!("kgprobe-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let db = seed(&dir, &[INGESTED_PATH, "/var/lib/arlen-work/other.md"]);
+        assert_eq!(store_rows_for(&db, INGESTED_PATH), Ok(1));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The distinction the probe exists to draw: a store that holds nothing is a
+    /// finding, and a store that is not there at all is a different one.
+    #[test]
+    fn an_empty_store_reads_zero_and_a_missing_one_errs() {
+        let dir = std::env::temp_dir().join(format!("kgprobe-empty-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let db = seed(&dir, &[]);
+        assert_eq!(store_rows_for(&db, INGESTED_PATH), Ok(0));
+        assert!(store_rows_for("/nonexistent/events.db", INGESTED_PATH).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

@@ -44,9 +44,15 @@ const ROUND = (n, rows, own = rows) =>
     .concat(`kg-probe: ingestion: this run's file: ${own} row(s)`)
     .join("\n");
 
-// A good boot: asked twice, answered, and the graph held this run's own file.
+// What the second reader prints: the event store, opened directly rather than
+// asked of the daemon. The verdict now requires it, so every passing fixture
+// carries it and the refusals below vary it on purpose.
+const STORE = (n) => `kg-probe: store: ${n} event row(s) naming this run's file`;
+
+// A good boot: asked twice, answered, the graph held this run's own file, and the
+// store agrees that the event behind it arrived.
 {
-  const j = `${ROUND(1, 0)}\n${ROUND(2, 1)}\nkg-probe: done, 0 question(s) failed\n`;
+  const j = `${ROUND(1, 0)}\n${ROUND(2, 1)}\n${STORE(1)}\nkg-probe: done, 0 question(s) failed\n`;
   const r = verdict(j);
   check("a boot whose graph ingested passes", r.code === 0);
   check("and it says how many questions found rows", r.out.includes("returned rows"));
@@ -80,7 +86,7 @@ const ROUND = (n, rows, own = rows) =>
 {
   const j =
     "kg-probe: grants: none recorded for this caller yet.\n" +
-    `${ROUND(1, 3)}\n${ROUND(2, 3)}\n` +
+    `${ROUND(1, 3)}\n${ROUND(2, 3)}\n${STORE(1)}\n` +
     "kg-probe: done, 0 question(s) failed\n";
   const r = verdict(j);
   check("no grants plus real answers is a pass", r.code === 0);
@@ -157,6 +163,30 @@ const ROUND = (n, rows, own = rows) =>
     "a release image without the unit is not held to a probe it does not ship",
     !armed("[    4.5] systemd[1]: Starting arlen-graph.service\n"),
   );
+}
+
+// The three refusals the second reader makes possible. Each one is a boot the old
+// verdict passed: the graph answered, the tally was clean, and nothing had looked
+// at whether the event behind the node ever reached the store.
+{
+  const j = `${ROUND(1, 1)}\nkg-probe: done, 0 question(s) failed\n`;
+  const r = verdict(j);
+  check("a graph claim with no store reading is refused", r.code === 1);
+  check("and it says the claim rests on the daemon alone", r.out.includes("about itself"));
+}
+
+{
+  const j = `${ROUND(1, 1)}\nkg-probe: store: UNREADABLE: unable to open database file\nkg-probe: done, 0 question(s) failed\n`;
+  const r = verdict(j);
+  check("an unreadable store is refused", r.code === 1);
+  check("and the reason is quoted", r.out.includes("UNREADABLE"));
+}
+
+{
+  const j = `${ROUND(1, 1)}\n${STORE(0)}\nkg-probe: done, 0 question(s) failed\n`;
+  const r = verdict(j);
+  check("two readers disagreeing is refused", r.code === 1);
+  check("and the message says they disagree", r.out.includes("disagree"));
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");
