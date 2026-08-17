@@ -13,9 +13,24 @@ export function fmtDuration(ms: number): string {
 }
 
 /// Stopwatch form with centiseconds: "mm:ss.cc" (hours prepend when reached).
+///
+/// The seconds are FLOORED here, which `fmtDuration` does not do on its own: it
+/// rounds, which is right for a countdown ("3:00" while 2:59.7 remains) and
+/// wrong beside a centisecond field. Rounding the seconds while flooring the
+/// hundredths put the display up to a second ahead of the truth for half of all
+/// inputs, and made it jump BACKWARD across every minute:
+///
+///     500ms   -> 00:01.50   (0.50s elapsed)
+///     999ms   -> 00:01.99   (1.00s elapsed)
+///     59999ms -> 01:00.99   then
+///     60000ms -> 01:00.00   - a stopwatch running backwards
+///
+/// Flooring to the second before formatting keeps `fmtDuration` doing the one
+/// thing it does for everything else.
 export function fmtStopwatch(ms: number): string {
-  const cs = Math.floor((Math.max(0, ms) % 1000) / 10);
-  return `${fmtDuration(ms)}.${String(cs).padStart(2, "0")}`;
+  const safe = Math.max(0, ms);
+  const cs = Math.floor((safe % 1000) / 10);
+  return `${fmtDuration(Math.floor(safe / 1000) * 1000)}.${String(cs).padStart(2, "0")}`;
 }
 
 /// A short relative form for "rings in": "in 7 h 12 min", "in 3 min".
