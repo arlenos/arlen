@@ -36,6 +36,9 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SHOTS=(
   "clock - clock-unavailable"
+  # The alarm editor, which the chrome "+" opens. Both the new-alarm form and
+  # the editor for an existing one, and until it was shot it said neither.
+  "clock - clock-alarm-editor #chrome-add"
   "clock - clock-timers-unavailable #tab-timers"
   "clock - clock-focus-unavailable #tab-focus"
   "clock - clock-stopwatch-unavailable #tab-stopwatch"
