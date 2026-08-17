@@ -1,11 +1,11 @@
-/// `arlen-modulesd` entry point.
-///
-/// Bring-up sequence:
-///   1. Init tracing.
-///   2. Create the manager (Tier 1 runtime + Tier 2 broker).
-///   3. Run discovery against the system + user module directories.
-///   4. Bind the Unix socket.
-///   5. Accept connections forever, broadcast lifecycle events.
+//! `arlen-modulesd` entry point.
+//!
+//! Bring-up sequence:
+//!   1. Init tracing.
+//!   2. Create the manager (Tier 1 runtime + Tier 2 broker).
+//!   3. Run discovery against the system + user module directories.
+//!   4. Bind the Unix socket.
+//!   5. Accept connections forever, broadcast lifecycle events.
 
 use std::sync::Arc;
 

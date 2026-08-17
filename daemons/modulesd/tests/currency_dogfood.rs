@@ -1,16 +1,16 @@
-/// End-to-end test against the ds#77 dogfood module:
-/// `examples/modules/com.example.currency`.
-///
-/// Runs the full lifecycle on a temp module dir:
-///   1. Copy the example bundle into a temp `ARLEN_USER_MODULES_DIR`.
-///   2. Boot the manager and run discovery.
-///   3. Mint a Tier 2 iframe URL.
-///   4. Look up the resulting nonce; confirm CSP and root path.
-///   5. Issue an allowed and a denied network host call; confirm the
-///      gate matches the manifest.
-///
-/// This is the contract test that ties manifest, discovery,
-/// permission profile, iframe broker, and host gate together.
+//! End-to-end test against the ds#77 dogfood module:
+//! `examples/modules/com.example.currency`.
+//!
+//! Runs the full lifecycle on a temp module dir:
+//!   1. Copy the example bundle into a temp `ARLEN_USER_MODULES_DIR`.
+//!   2. Boot the manager and run discovery.
+//!   3. Mint a Tier 2 iframe URL.
+//!   4. Look up the resulting nonce; confirm CSP and root path.
+//!   5. Issue an allowed and a denied network host call; confirm the
+//!      gate matches the manifest.
+//!
+//! This is the contract test that ties manifest, discovery,
+//! permission profile, iframe broker, and host gate together.
 
 use std::path::Path;
 use std::sync::Arc;

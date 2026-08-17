@@ -1,10 +1,10 @@
-/// `arlen:host/events` import implementation.
-///
-/// Modules call `events::emit(event_type, payload)` to send events to
-/// the system Event Bus. The host gates by event-type prefix
-/// (`focus.`, `module.com.example.`, etc.) declared in
-/// `event_bus.publish`. Cross-module observation is gated by
-/// `event_bus.subscribe` symmetrically.
+//! `arlen:host/events` import implementation.
+//!
+//! Modules call `events::emit(event_type, payload)` to send events to
+//! the system Event Bus. The host gates by event-type prefix
+//! (`focus.`, `module.com.example.`, etc.) declared in
+//! `event_bus.publish`. Cross-module observation is gated by
+//! `event_bus.subscribe` symmetrically.
 
 use crate::error::{DaemonError, Result};
 use crate::host::CapabilityContext;

@@ -1,15 +1,15 @@
-/// Manager: central coordinator.
-///
-/// Holds the discovered module records, their per-instance crash
-/// state, and the live Tier 1 / Tier 2 runtimes. Every request from
-/// the socket server flows through here. Every event broadcast also
-/// originates here.
-///
-/// Concurrency model: the manager is `Arc<Manager>` shared between
-/// the socket server and any background tasks. State is partitioned
-/// behind a single async `RwLock` so requests do not serialise
-/// trivially against each other; the bulk of the work (Wasmtime
-/// calls) happens with the lock released.
+//! Manager: central coordinator.
+//!
+//! Holds the discovered module records, their per-instance crash
+//! state, and the live Tier 1 / Tier 2 runtimes. Every request from
+//! the socket server flows through here. Every event broadcast also
+//! originates here.
+//!
+//! Concurrency model: the manager is `Arc<Manager>` shared between
+//! the socket server and any background tasks. State is partitioned
+//! behind a single async `RwLock` so requests do not serialise
+//! trivially against each other; the bulk of the work (Wasmtime
+//! calls) happens with the lock released.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

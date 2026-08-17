@@ -1,14 +1,14 @@
-/// Errors surfaced by the module runtime daemon.
-///
-/// Distinguishes between the three failure modes documented in
-/// `docs/architecture/module-system.md` "Error Handling":
-///
-///  1. **Load** failures (manifest invalid, link error). Permanent.
-///     The module is marked failed without retry.
-///  2. **Runtime** crashes (WASM trap, fuel exhaustion). Counted toward
-///     crash recovery and retried per Foundation Table 08.
-///  3. **Capability** denials. Surface a typed error to the caller; not
-///     a crash.
+//! Errors surfaced by the module runtime daemon.
+//!
+//! Distinguishes between the three failure modes documented in
+//! `docs/architecture/module-system.md` "Error Handling":
+//!
+//!  1. **Load** failures (manifest invalid, link error). Permanent.
+//!     The module is marked failed without retry.
+//!  2. **Runtime** crashes (WASM trap, fuel exhaustion). Counted toward
+//!     crash recovery and retried per Foundation Table 08.
+//!  3. **Capability** denials. Surface a typed error to the caller; not
+//!     a crash.
 
 use thiserror::Error;
 

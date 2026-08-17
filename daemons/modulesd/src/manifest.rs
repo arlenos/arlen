@@ -1,8 +1,8 @@
-/// Module discovery and tier classification.
-///
-/// Reads `manifest.toml` files from the system and user module
-/// directories using `arlen-modules`, then classifies each module by
-/// tier so the runtime knows which sandbox to apply.
+//! Module discovery and tier classification.
+//!
+//! Reads `manifest.toml` files from the system and user module
+//! directories using `arlen-modules`, then classifies each module by
+//! tier so the runtime knows which sandbox to apply.
 
 use std::path::{Path, PathBuf};
 

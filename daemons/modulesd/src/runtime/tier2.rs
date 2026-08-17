@@ -1,16 +1,16 @@
-/// Tier 2 (iframe) broker.
-///
-/// The iframe DOM lives inside the desktop-shell webview; the daemon
-/// owns the *policy* around it. Concretely the daemon:
-///   * mints a per-instance nonce when the shell asks for an iframe
-///   * tracks live nonces so the `module://` Tauri scheme handler can
-///     reject stale requests
-///   * gates every postMessage host call against the module's
-///     `CapabilityContext`
-///   * dispatches lifecycle events on crash / shutdown
-///
-/// S2 ships the policy data structures and the nonce store. The
-/// scheme handler and postMessage proxy are wired up in S3.
+//! Tier 2 (iframe) broker.
+//!
+//! The iframe DOM lives inside the desktop-shell webview; the daemon
+//! owns the *policy* around it. Concretely the daemon:
+//!   * mints a per-instance nonce when the shell asks for an iframe
+//!   * tracks live nonces so the `module://` Tauri scheme handler can
+//!     reject stale requests
+//!   * gates every postMessage host call against the module's
+//!     `CapabilityContext`
+//!   * dispatches lifecycle events on crash / shutdown
+//!
+//! S2 ships the policy data structures and the nonce store. The
+//! scheme handler and postMessage proxy are wired up in S3.
 
 use std::collections::HashMap;
 use std::sync::Arc;

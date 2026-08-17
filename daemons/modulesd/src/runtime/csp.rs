@@ -1,29 +1,29 @@
-/// Content-Security-Policy header generator for Tier 2 iframe modules.
-///
-/// The shell's `module://` Tauri scheme handler asks the daemon for
-/// the CSP string when serving an iframe asset; the daemon derives it
-/// from the module's manifest. Putting the generator here keeps the
-/// rule in one place and lets the shell-side handler stay a thin
-/// pass-through.
-///
-/// Policy:
-///   * `default-src 'self' module://{module_id}` — assets only from
-///     the module's own bundle. No inline scripts, no remote images.
-///   * `connect-src` — union of the manifest `network.allow` domains.
-///     `'self'` is included so postMessage round trips do not error
-///     out (postMessage is not gated by `connect-src` but we keep the
-///     allowlist tight to avoid surprises).
-///   * `script-src 'self'` — only the module's own JS bundle. We do
-///     not allow `'unsafe-inline'` because every modern bundler emits
-///     external scripts; iframe authors who ship inline JS were doing
-///     it wrong already.
-///   * `frame-ancestors 'self'` — only the desktop-shell webview can
-///     embed the module. Prevents another module from inlining a
-///     competitor's iframe.
-///   * `style-src 'self' 'unsafe-inline'` — Svelte and Tailwind both
-///     emit inline style attributes; without `'unsafe-inline'` here,
-///     standard component libraries refuse to render. This is the one
-///     concession we make.
+//! Content-Security-Policy header generator for Tier 2 iframe modules.
+//!
+//! The shell's `module://` Tauri scheme handler asks the daemon for
+//! the CSP string when serving an iframe asset; the daemon derives it
+//! from the module's manifest. Putting the generator here keeps the
+//! rule in one place and lets the shell-side handler stay a thin
+//! pass-through.
+//!
+//! Policy:
+//!   * `default-src 'self' module://{module_id}` — assets only from
+//!     the module's own bundle. No inline scripts, no remote images.
+//!   * `connect-src` — union of the manifest `network.allow` domains.
+//!     `'self'` is included so postMessage round trips do not error
+//!     out (postMessage is not gated by `connect-src` but we keep the
+//!     allowlist tight to avoid surprises).
+//!   * `script-src 'self'` — only the module's own JS bundle. We do
+//!     not allow `'unsafe-inline'` because every modern bundler emits
+//!     external scripts; iframe authors who ship inline JS were doing
+//!     it wrong already.
+//!   * `frame-ancestors 'self'` — only the desktop-shell webview can
+//!     embed the module. Prevents another module from inlining a
+//!     competitor's iframe.
+//!   * `style-src 'self' 'unsafe-inline'` — Svelte and Tailwind both
+//!     emit inline style attributes; without `'unsafe-inline'` here,
+//!     standard component libraries refuse to render. This is the one
+//!     concession we make.
 
 use arlen_modules::ModuleCapabilities;
 
