@@ -2,8 +2,14 @@
   /// The provenance halo (provenance-halo.md, PH-R4): a pull-only, dismissable
   /// micro-surface summoned by a calm gesture, answering where a file came from in
   /// plain language. Model-free, offline, never steals focus. The honesty lives in
-  /// the store's phrasing (unsigned trust-on-assertion, never "verified" unless a
-  /// content credential backs it); this just renders the sentences calmly, no icons.
+  /// how the store phrases it (unsigned means trust-on-assertion, and it never says
+  /// verified unless a content credential backs that); this renders the sentences
+  /// calmly, no icons.
+  ///
+  /// NB the wording above avoids an apostrophe and quote marks on purpose. The
+  /// Tailwind Vite plugin parses this script block as CSS, so `the store's phrasing`
+  /// read as an unterminated string and put a full-screen error overlay over the
+  /// running app - dev server only, the built app was fine, which is why it survived.
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { writable } from "svelte/store";
   import {
