@@ -7,12 +7,20 @@
   /// answering. That used to render as a definite "WiFi is off" with a switch
   /// beside it, about a radio nobody had managed to ask.
   ///
-  /// `?state=ok|wifi-off|unknown`, `?panel=bluetooth`, `?locale=de`. Not in any nav.
+  /// `?state=ok|wifi-off|unknown|refuse-write`, `?panel=bluetooth|audio|tray|battery`,
+  /// `?locale=de`. Not in any nav.
+  ///
+  /// `battery` + `refuse-write` is the pair that made a refused power mode
+  /// visible at all: the reads answer, so the panel is fully drawn, and only
+  /// `set_power_profile` says no. Nothing else could produce that state on
+  /// purpose - the popover lives behind a top-bar trigger that needs Tauri, and
+  /// a machine whose profile daemon refuses is not something to arrange.
   import { onMount } from "svelte";
   import NetworkPopover from "$lib/components/NetworkPopover.svelte";
   import BluetoothPopover from "$lib/components/BluetoothPopover.svelte";
   import AudioPopover from "$lib/components/AudioPopover.svelte";
   import TrayPopover from "$lib/components/TrayPopover.svelte";
+  import BatteryPopover from "$lib/components/BatteryPopover.svelte";
   import { openPopover } from "$lib/stores/activePopover.js";
   import { locale } from "@arlen/ui-kit/i18n";
 
@@ -27,7 +35,9 @@
         ? "audio"
         : requested === "tray"
           ? "tray"
-          : "network";
+          : requested === "battery"
+            ? "battery"
+            : "network";
 
   let ready = $state(false);
 
@@ -38,6 +48,19 @@
       // NetworkManager looks like from here. The other two answer normally so
       // the honest states can be compared against the definite ones.
       if (pinned === "unknown") throw new Error("the service is not running");
+      // Reads answer, writes do not. A panel that cannot read is a different
+      // state (`unknown` above) and hides most of what a refused write is
+      // about, so the two are kept apart.
+      if (pinned === "refuse-write" && cmd.startsWith("set_"))
+        throw new Error("the service refused that");
+      if (cmd === "get_battery_status")
+        return {
+          percentage: 62,
+          state: "discharging",
+          time_remaining: 8100,
+          icon_name: "battery-good",
+        };
+      if (cmd === "get_power_profile") return "balanced";
       if (cmd === "get_sni_items")
         // A tray item's title is the APP's own name, reported by that app over
         // StatusNotifierItem - never ours to translate. The fixture uses a real
@@ -105,6 +128,8 @@
       <AudioPopover />
     {:else if panel === "tray"}
       <TrayPopover />
+    {:else if panel === "battery"}
+      <BatteryPopover />
     {:else}
       <NetworkPopover />
     {/if}
