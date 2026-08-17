@@ -52,6 +52,10 @@ SHOTS=(
   "knowledge - knowledge-library-unavailable button[data-place=library]"
   "knowledge - knowledge-searches-unavailable button[data-place=searches]"
   "meetings - meetings-unavailable"
+  # NB not in this list: the refused-STOP line. It needs a capture that started
+  # and then a stop that failed, which no single no-backend session produces, so
+  # it is reachable only through the dev-only pin the viewers app also carries:
+  #   npx vite dev -C apps/meetings   then   /capture?state=stop-failed
   "settings printers settings-printers-unavailable"
   "settings keyboard settings-keyboard-unavailable"
   # The list under the toolbar. It used to answer a failed read with "No bindings
