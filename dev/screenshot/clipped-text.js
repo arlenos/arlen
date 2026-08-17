@@ -1,0 +1,43 @@
+// SPDX-FileCopyrightText: 2026 Tim Kicker
+//
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Text a box is too small to hold, as a list rather than an impression.
+//
+// Pass it as the inject argument to `shoot.sh` and read the `inject result:`
+// line; the screenshot is still written, so a hit can be looked at as well as
+// counted:
+//
+//   dev/screenshot/shoot.sh "http://localhost:1421/topbar?locale=de" \
+//     /tmp/x.png dev/screenshot/clipped-text.js
+//
+// WHY THIS AND NOT THE EYE. The defects it is looking for are the ones a fixed
+// pixel width takes when a longer language goes through it - `Vertrauensstufe`
+// past a column sized for `Trust level` - and they are easy to miss in a
+// screenshot because a clipped label still looks like a label. German is where
+// they surface; the harness renders any locale via `?locale=de`.
+//
+// It reports LEAF elements only. A container legitimately scrolls its children,
+// so counting it would bury the real hits under every scroll region on the page.
+//
+// CONTROL, because a probe that returns nothing is indistinguishable from a
+// probe that does not work - and mine returned nothing on three pages before I
+// checked it. Against a data: URL with a 60px box holding a long German word it
+// answers:
+//
+//   ['div.: "Vertrauensstufe verschlagwortet" 60<246']
+//
+// So an empty result means the page is clean, not that the probe is asleep.
+const out = [];
+for (const el of document.querySelectorAll("body *")) {
+  const s = getComputedStyle(el);
+  if (s.display === "none" || s.visibility === "hidden") continue;
+  if (el.children.length > 0) continue;
+  const t = (el.textContent || "").trim();
+  if (!t) continue;
+  if (el.scrollWidth > el.clientWidth + 1) {
+    const cls = (el.className || "").toString().split(" ")[0];
+    out.push(`${el.tagName.toLowerCase()}.${cls}: "${t.slice(0, 40)}" ${el.clientWidth}<${el.scrollWidth}`);
+  }
+}
+return out.slice(0, 12);
