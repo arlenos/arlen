@@ -47,13 +47,24 @@
 
   /// The commands a person's press sends, as opposed to the ones the shell sends
   /// itself. Add to this when a panel grows a control worth watching refuse.
+  /// Named per command rather than by prefix, and the audio ones are why the
+  /// list is worth keeping honest: `toggle_audio_mute` does not start with
+  /// `set_`, so a first version of this quietly let the mute press SUCCEED and
+  /// the panel had nothing to report. I read that as a missing refusal in the
+  /// sound panel until I looked at its code, where every failure sets an error.
+  /// A gap in the harness reads exactly like a gap in the app.
   const USER_WRITES = [
     "set_power_profile",
     "set_wifi_enabled",
     "set_airplane_mode",
     "set_bluetooth_powered",
-    "set_volume",
-    "set_muted",
+    "toggle_audio_mute",
+    "toggle_input_mute",
+    "set_audio_volume",
+    "set_input_volume",
+    "set_audio_output",
+    "set_audio_input",
+    "set_app_volume",
   ];
 
   let ready = $state(false);
