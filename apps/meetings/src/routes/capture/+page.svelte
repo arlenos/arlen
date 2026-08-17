@@ -6,6 +6,7 @@
   /// lands on its route.
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
@@ -24,7 +25,21 @@
     stopFailed,
   } from "$lib/stores/meeting";
 
-  onMount(() => void startCapture());
+  // DEV only, and refused in a build: the refused-stop line cannot be reached by
+  // hand. Reaching it needs a capture that started (so a backend) and then a stop
+  // that failed (so no backend), which no single session gives you. Pinning it is
+  // how it gets looked at - the same affordance the viewers app already carries,
+  // and for the same reason. A shipped app must not be talkable into claiming a
+  // microphone is on.
+  const pinned = import.meta.env.DEV ? page.url.searchParams.get("state") : null;
+
+  onMount(() => {
+    if (pinned === "stop-failed") {
+      stopFailed.set(true);
+      return;
+    }
+    void startCapture();
+  });
 
   let notesEl = $state<HTMLTextAreaElement | null>(null);
   $effect(() => {
@@ -47,7 +62,15 @@
              render only when one is, which is why this branch exists at all: a
              refused capture used to show both, ticking, over silence. -->
         {#if $stopFailed}
+          <!-- The retry matters more here than in the branch below it. A refused
+               START leaves nothing running and the user can walk away; a refused
+               STOP may leave the microphone live, so the one thing this surface
+               owes them is another way to turn it off. Without it the honest
+               sentence was a dead end. -->
           <span class="rec-failed" role="alert">{$t("mt.stopFailed")}</span>
+          <Button variant="outline" size="sm" onclick={() => void stop()}>
+            {$t("mt.captureRetry")}
+          </Button>
         {:else if $captureUnavailable}
           <span class="rec-failed" role="alert">{$t("mt.captureUnavailable")}</span>
           <Button variant="outline" size="sm" onclick={() => void startCapture()}>
