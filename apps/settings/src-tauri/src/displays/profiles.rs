@@ -1,29 +1,29 @@
-/// Hot-plug profile management for the Display panel.
-///
-/// Two files cooperate:
-///
-/// 1. `~/.config/arlen/compositor.d/displays.toml` — owned by the
-///    compositor, written via `cosmic_comp_config::output::displays_toml`.
-///    Holds the per-output configuration arrays under
-///    `[[profile]]` records keyed by `output_set`.
-/// 2. `~/.config/arlen/compositor.d/displays.profiles.toml` —
-///    owned by app-settings, this module. Holds user-facing
-///    metadata: label, `last_used` timestamp.
-///
-/// Splitting the two stores avoids a fight over schema ownership.
-/// The compositor's `to_toml_string` regenerates profile names on
-/// every write, so user labels would not survive a round-trip if
-/// we put them in displays.toml. The sidecar lives next to the
-/// canonical file, joins on the canonical sort order
-/// (alphabetical by `connector`), and never has to be touched by
-/// the compositor.
-///
-/// The two files can drift if a profile is added by one side and
-/// the other side hasn't observed it yet. We tolerate drift:
-/// `list_profiles` returns profiles from displays.toml even when
-/// the sidecar lacks an entry (label falls back to a derived
-/// "DP-1 + HDMI-A-1" string), and stale sidecar entries (no
-/// matching profile in displays.toml) are pruned on every save.
+//! Hot-plug profile management for the Display panel.
+//!
+//! Two files cooperate:
+//!
+//! 1. `~/.config/arlen/compositor.d/displays.toml` — owned by the
+//!    compositor, written via `cosmic_comp_config::output::displays_toml`.
+//!    Holds the per-output configuration arrays under
+//!    `[[profile]]` records keyed by `output_set`.
+//! 2. `~/.config/arlen/compositor.d/displays.profiles.toml` —
+//!    owned by app-settings, this module. Holds user-facing
+//!    metadata: label, `last_used` timestamp.
+//!
+//! Splitting the two stores avoids a fight over schema ownership.
+//! The compositor's `to_toml_string` regenerates profile names on
+//! every write, so user labels would not survive a round-trip if
+//! we put them in displays.toml. The sidecar lives next to the
+//! canonical file, joins on the canonical sort order
+//! (alphabetical by `connector`), and never has to be touched by
+//! the compositor.
+//!
+//! The two files can drift if a profile is added by one side and
+//! the other side hasn't observed it yet. We tolerate drift:
+//! `list_profiles` returns profiles from displays.toml even when
+//! the sidecar lacks an entry (label falls back to a derived
+//! "DP-1 + HDMI-A-1" string), and stale sidecar entries (no
+//! matching profile in displays.toml) are pruned on every save.
 
 use std::fs;
 use std::path::PathBuf;

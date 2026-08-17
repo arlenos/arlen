@@ -1,18 +1,18 @@
-/// Tauri commands for the Display panel.
-///
-/// Handlers go through `WaylandHandle` (managed Tauri state set up
-/// in `lib.rs::run`). The wayland thread owns the live state; we
-/// snapshot it for read commands and post commands for writes.
-///
-/// Apply pattern (mirrors `display-system.md` §A4):
-///   1. Frontend calls `display_apply_config(new_config)`. We
-///      build a snapshot of the current state, send the new config
-///      to the compositor, and return the request id + snapshot.
-///   2. Compositor replies with succeeded / failed / cancelled,
-///      emitted to the frontend as `displays:apply-result`.
-///   3. Frontend's revert modal counts down 15 s. On confirm:
-///      `display_save_current()` persists. On timeout / cancel:
-///      `display_apply_config(snapshot)` with the saved old state.
+//! Tauri commands for the Display panel.
+//!
+//! Handlers go through `WaylandHandle` (managed Tauri state set up
+//! in `lib.rs::run`). The wayland thread owns the live state; we
+//! snapshot it for read commands and post commands for writes.
+//!
+//! Apply pattern (mirrors `display-system.md` §A4):
+//!   1. Frontend calls `display_apply_config(new_config)`. We
+//!      build a snapshot of the current state, send the new config
+//!      to the compositor, and return the request id + snapshot.
+//!   2. Compositor replies with succeeded / failed / cancelled,
+//!      emitted to the frontend as `displays:apply-result`.
+//!   3. Frontend's revert modal counts down 15 s. On confirm:
+//!      `display_save_current()` persists. On timeout / cancel:
+//!      `display_apply_config(snapshot)` with the saved old state.
 
 use std::sync::Arc;
 
