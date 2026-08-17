@@ -1,9 +1,14 @@
-# Starting permission profile for a screen recorder. It captures the screen via the
-# ScreenCast portal and writes the recording to the user's files (Home); no network
+# Starting permission profile for Kooha (a screen recorder). It captures the
+# screen via the ScreenCast portal and writes the recording to Videos; no network
 # of its own and no Knowledge Graph.
+#
+# This granted the whole of Home while `io.github.seadve.Kooha` granted Videos,
+# so the same recorder reached the entire home tree or one directory depending on
+# where it came from. Videos is where a recording goes, and the capture itself is
+# a portal grant rather than a filesystem one, so nothing here needs the rest.
 [info]
 app_id = "kooha"
 tier = "third-party"
 
 [filesystem]
-home = true
+videos = true
