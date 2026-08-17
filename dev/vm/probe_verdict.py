@@ -120,9 +120,41 @@ def probe_verdict(journal_text: str) -> tuple[bool, str]:
             f"writer or the promotion pass did not carry it - the desktop came up "
             f"and did not do its job."
         )
+    # The corroboration, and the only line here that does not come from the graph
+    # daemon. Everything above is the daemon answering about itself: it says the
+    # File node exists, and nothing has asked whether the event that should have
+    # produced it ever reached the store. Those are two different claims, and a
+    # writer that dropped the event while the graph held an older node would pass
+    # every check above.
+    #
+    # Read as: the store line is REQUIRED once the graph has claimed the file. A
+    # missing line is a probe too old to have looked; an unreadable store or a
+    # zero count is a disagreement between two independent readers, which is a
+    # louder finding than either could make alone.
+    store = [l for l in lines if "store:" in l]
+    if not store:
+        return False, (
+            "the graph claimed this run's file but nothing read the event store. "
+            "That claim rests on the daemon answering about itself; the probe on "
+            "this image is too old to corroborate it."
+        )
+    last = store[-1]
+    if "UNREADABLE" in last:
+        return False, (
+            f"the graph claimed this run's file and the event store could not be "
+            f"read to confirm it: {last.strip()}"
+        )
+    if not re.search(r"store: [1-9][0-9]* event row\(s\)", last):
+        return False, (
+            "the graph holds a File node for this run's path, but the event store "
+            "holds no event naming it. Two readers disagree: the node cannot have "
+            "come from this boot's ingestion, so either the writer dropped the "
+            "event or the node predates the run."
+        )
     return True, (
         f"{tally[-1].split('kg-probe:')[-1].strip()}, "
-        f"{len(rows)} question(s) returned rows, including this run's own file"
+        f"{len(rows)} question(s) returned rows, including this run's own file, "
+        f"corroborated by the event store"
     )
 
 

@@ -15,5 +15,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 libc = "0.2"
 # The typed-row cells are `serde_json::Value`, which the null-count reads.
 serde_json = "1"
+# The SECOND reader. Everything else in this probe asks the graph daemon, so
+# every claim rests on one path answering about itself; this opens the event
+# store the writer fills and asks it the same question independently.
+# `bundled` because the image cannot be assumed to carry libsqlite3, and this
+# exact version is already a dependency of `apps/settings/src-tauri`.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [workspace]
