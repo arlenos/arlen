@@ -1,4 +1,4 @@
-/// Window switcher plugin: find and activate open windows.
+//! Window switcher plugin: find and activate open windows.
 
 use crate::wayland_client;
 use crate::waypointer_system::plugin::*;

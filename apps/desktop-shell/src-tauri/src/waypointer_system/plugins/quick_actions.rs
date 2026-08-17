@@ -1,20 +1,20 @@
-/// Quick Actions plugin for the Waypointer.
-///
-/// One-shot toggles, theme switches, and Settings-launchers. Mirrors
-/// the `power.rs` pattern but with a critical difference: the
-/// dispatch path goes through a dedicated Tauri command
-/// (`quick_action_run`) rather than this plugin's `execute()`. The
-/// reason is process-boundary: `WaypointerPlugin::execute()` is sync
-/// with no `AppHandle`, so it can't call into Tauri-managed state
-/// (`night_light_set`, …). The frontend's
-/// dispatch path mirrors the `waypointerPower.ts` pattern: a
-/// dedicated store + invoke pair.
-///
-/// `execute()` here is therefore a no-op success — the action has
-/// already been performed by the time the manager calls it. The
-/// catalog (id, title, description, icon, keywords) is the only
-/// source of truth for what's available; dispatch logic lives in
-/// `lib.rs::quick_action_run`.
+//! Quick Actions plugin for the Waypointer.
+//!
+//! One-shot toggles, theme switches, and Settings-launchers. Mirrors
+//! the `power.rs` pattern but with a critical difference: the
+//! dispatch path goes through a dedicated Tauri command
+//! (`quick_action_run`) rather than this plugin's `execute()`. The
+//! reason is process-boundary: `WaypointerPlugin::execute()` is sync
+//! with no `AppHandle`, so it can't call into Tauri-managed state
+//! (`night_light_set`, …). The frontend's
+//! dispatch path mirrors the `waypointerPower.ts` pattern: a
+//! dedicated store + invoke pair.
+//!
+//! `execute()` here is therefore a no-op success — the action has
+//! already been performed by the time the manager calls it. The
+//! catalog (id, title, description, icon, keywords) is the only
+//! source of truth for what's available; dispatch logic lives in
+//! `lib.rs::quick_action_run`.
 
 use crate::waypointer_system::plugin::*;
 

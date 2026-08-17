@@ -1,14 +1,14 @@
-/// Projects plugin: searches the Knowledge Graph for active projects
-/// and activates Focus Mode via a custom action.
-///
-/// Query prefix: `p:`. Without query, returns the most-recently-accessed
-/// projects. With a filter after `p:`, matches against name or root path
-/// (case-insensitive substring).
-///
-/// The `execute()` path only returns a signal for the frontend; the
-/// actual focus activation happens via the existing `activate_focus`
-/// Tauri command so `shell.toml` persistence and Event Bus emission
-/// stay in one place (projects.rs).
+//! Projects plugin: searches the Knowledge Graph for active projects
+//! and activates Focus Mode via a custom action.
+//!
+//! Query prefix: `p:`. Without query, returns the most-recently-accessed
+//! projects. With a filter after `p:`, matches against name or root path
+//! (case-insensitive substring).
+//!
+//! The `execute()` path only returns a signal for the frontend; the
+//! actual focus activation happens via the existing `activate_focus`
+//! Tauri command so `shell.toml` persistence and Event Bus emission
+//! stay in one place (projects.rs).
 
 use serde_json::json;
 

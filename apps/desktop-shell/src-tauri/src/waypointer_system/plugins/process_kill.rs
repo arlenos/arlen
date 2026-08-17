@@ -1,4 +1,4 @@
-/// Process kill plugin: list and kill processes (prefix "kill").
+//! Process kill plugin: list and kill processes (prefix "kill").
 
 use crate::waypointer_system::plugin::*;
 

@@ -1,8 +1,8 @@
-/// Bluetooth management via BlueZ D-Bus API.
-///
-/// Communicates with `bluetoothd` over the system bus (`org.bluez`). Reads
-/// adapter state and paired/discovered devices via the ObjectManager pattern,
-/// and controls power/scan/connect via Adapter1 and Device1 interfaces.
+//! Bluetooth management via BlueZ D-Bus API.
+//!
+//! Communicates with `bluetoothd` over the system bus (`org.bluez`). Reads
+//! adapter state and paired/discovered devices via the ObjectManager pattern,
+//! and controls power/scan/connect via Adapter1 and Device1 interfaces.
 
 use std::collections::HashMap;
 

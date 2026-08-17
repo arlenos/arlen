@@ -1,7 +1,7 @@
-/// Notification system: socket client to the arlen-notifyd daemon.
-///
-/// Replaces the old in-process D-Bus server. The daemon handles
-/// persistence, DND, rate limiting; the shell handles display.
+//! Notification system: socket client to the arlen-notifyd daemon.
+//!
+//! Replaces the old in-process D-Bus server. The daemon handles
+//! persistence, DND, rate limiting; the shell handles display.
 
 pub mod client;
 

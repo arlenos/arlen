@@ -1,22 +1,22 @@
-/// Shell state persistence via `~/.config/arlen/shell.toml`.
-///
-/// Stores Quick Settings state (night light, brightness, layout mode) so they
-/// survive across reboots.
-///
-/// Concurrency model
-/// ─────────────────
-/// `shell.toml` has multiple writers in-process (the night-light Tauri
-/// commands, the hardware brightness-key path, the Quick-Settings
-/// `save_shell_config` Tauri command from the frontend). Each writer
-/// does a logical read-modify-write; if two of them interleave, the
-/// last writer wins and silently drops the other's changes.
-///
-/// We serialise every write through `WRITE_LOCK` and prefer the
-/// `update_shell_config(|cfg| …)` helper, which loads the freshest
-/// on-disk state under the lock, lets the caller patch only the
-/// fields it cares about, and writes the result atomically (tmp file
-/// + rename) so a crashed process can never leave a half-written
-/// TOML on disk.
+//! Shell state persistence via `~/.config/arlen/shell.toml`.
+//!
+//! Stores Quick Settings state (night light, brightness, layout mode) so they
+//! survive across reboots.
+//!
+//! Concurrency model
+//! ─────────────────
+//! `shell.toml` has multiple writers in-process (the night-light Tauri
+//! commands, the hardware brightness-key path, the Quick-Settings
+//! `save_shell_config` Tauri command from the frontend). Each writer
+//! does a logical read-modify-write; if two of them interleave, the
+//! last writer wins and silently drops the other's changes.
+//!
+//! We serialise every write through `WRITE_LOCK` and prefer the
+//! `update_shell_config(|cfg| …)` helper, which loads the freshest
+//! on-disk state under the lock, lets the caller patch only the
+//! fields it cares about, and writes the result atomically (tmp file
+//! + rename) so a crashed process can never leave a half-written
+//! TOML on disk.
 
 use std::fs;
 use std::path::{Path, PathBuf};

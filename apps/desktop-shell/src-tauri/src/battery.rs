@@ -1,7 +1,7 @@
-/// Battery status via UPower D-Bus.
-///
-/// Queries `org.freedesktop.UPower` for the display device's battery
-/// state. Returns `None` on desktop PCs without a battery.
+//! Battery status via UPower D-Bus.
+//!
+//! Queries `org.freedesktop.UPower` for the display device's battery
+//! state. Returns `None` on desktop PCs without a battery.
 
 use std::sync::{Mutex, OnceLock};
 

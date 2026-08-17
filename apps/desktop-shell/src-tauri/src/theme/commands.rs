@@ -1,9 +1,9 @@
-/// Tauri commands for the theme system.
-///
-/// Provides `ThemeState` (managed Tauri state) and commands for reading,
-/// switching, and customizing themes. All commands that change the active
-/// appearance emit a `arlen://theme-v2-changed` event with the resolved
-/// `CssVariables` so the frontend can update in real time.
+//! Tauri commands for the theme system.
+//!
+//! Provides `ThemeState` (managed Tauri state) and commands for reading,
+//! switching, and customizing themes. All commands that change the active
+//! appearance emit a `arlen://theme-v2-changed` event with the resolved
+//! `CssVariables` so the frontend can update in real time.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

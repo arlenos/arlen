@@ -1,9 +1,9 @@
-/// DateTime / timezone plugin.
-///
-/// Handles queries like `time`, `date`, `time in Tokyo`, `in 3 hours`,
-/// `next friday`, `yesterday`, `tomorrow`. Public helper `try_evaluate`
-/// is used by the `evaluate_waypointer_input` Tauri command so the shell
-/// keeps a single inline-result flow across math, units, and datetime.
+//! DateTime / timezone plugin.
+//!
+//! Handles queries like `time`, `date`, `time in Tokyo`, `in 3 hours`,
+//! `next friday`, `yesterday`, `tomorrow`. Public helper `try_evaluate`
+//! is used by the `evaluate_waypointer_input` Tauri command so the shell
+//! keeps a single inline-result flow across math, units, and datetime.
 
 use chrono::{Datelike, Duration, Local, Timelike};
 use chrono_tz::Tz;

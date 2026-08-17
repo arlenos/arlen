@@ -1,22 +1,22 @@
-/// Backlight brightness control for the laptop's internal panel.
-///
-/// Linux exposes the backlight at `/sys/class/backlight/<dev>/{...}`
-/// where `brightness` is a u32 in `[0, max_brightness]`. Direct
-/// writes need root, so we route through logind's
-/// `org.freedesktop.login1.Session.SetBrightness` D-Bus method,
-/// which is the cross-distro session-scoped path GNOME / KDE /
-/// elementary all use. No udev rule, no `video` group membership
-/// required — works in any active session out of the box.
-///
-/// Display panels are perceived logarithmically; a linear slider
-/// would bunch all the visual change in the top 20 %. We map the
-/// slider's `[0.0, 1.0]` to the hardware range with a `^2.2` curve
-/// (sRGB gamma) so 50 % on the slider feels like 50 % brightness.
-///
-/// External monitors (DisplayPort, HDMI) typically don't expose a
-/// backlight — DDC/CI exists but is optional and patchy. D3 covers
-/// internal panels only; DDC/CI is a separate sprint if we ever
-/// need it.
+//! Backlight brightness control for the laptop's internal panel.
+//!
+//! Linux exposes the backlight at `/sys/class/backlight/<dev>/{...}`
+//! where `brightness` is a u32 in `[0, max_brightness]`. Direct
+//! writes need root, so we route through logind's
+//! `org.freedesktop.login1.Session.SetBrightness` D-Bus method,
+//! which is the cross-distro session-scoped path GNOME / KDE /
+//! elementary all use. No udev rule, no `video` group membership
+//! required — works in any active session out of the box.
+//!
+//! Display panels are perceived logarithmically; a linear slider
+//! would bunch all the visual change in the top 20 %. We map the
+//! slider's `[0.0, 1.0]` to the hardware range with a `^2.2` curve
+//! (sRGB gamma) so 50 % on the slider feels like 50 % brightness.
+//!
+//! External monitors (DisplayPort, HDMI) typically don't expose a
+//! backlight — DDC/CI exists but is optional and patchy. D3 covers
+//! internal panels only; DDC/CI is a separate sprint if we ever
+//! need it.
 
 use std::fs;
 use std::path::PathBuf;

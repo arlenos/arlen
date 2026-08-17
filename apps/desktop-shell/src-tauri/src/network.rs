@@ -1,6 +1,6 @@
-/// Network status via nmcli (NetworkManager).
-///
-/// Reads the active connection type, name, and signal strength.
+//! Network status via nmcli (NetworkManager).
+//!
+//! Reads the active connection type, name, and signal strength.
 
 use serde::{Deserialize, Serialize};
 

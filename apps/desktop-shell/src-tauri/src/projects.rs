@@ -1,7 +1,7 @@
-/// Project system: Focus Mode state, graph queries, and Tauri commands.
-///
-/// Projects are detected by the Knowledge Daemon. The shell queries them
-/// via the graph daemon socket and manages Focus Mode state locally.
+//! Project system: Focus Mode state, graph queries, and Tauri commands.
+//!
+//! Projects are detected by the Knowledge Daemon. The shell queries them
+//! via the graph daemon socket and manages Focus Mode state locally.
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;

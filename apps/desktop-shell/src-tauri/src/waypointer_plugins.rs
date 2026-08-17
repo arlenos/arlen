@@ -1,11 +1,11 @@
-/// Inline-result entry point for the Waypointer.
-///
-/// Kept as a Tauri command so the existing frontend inline-result UX
-/// (a single rich row above the list for math / unit / datetime)
-/// continues to work without a rewrite. All actual evaluation lives
-/// in the plugin modules under `waypointer_system::plugins`; this file
-/// is a thin dispatcher with a sandbox thread, timeout, and panic
-/// catch so malformed input can neither hang the shell nor crash it.
+//! Inline-result entry point for the Waypointer.
+//!
+//! Kept as a Tauri command so the existing frontend inline-result UX
+//! (a single rich row above the list for math / unit / datetime)
+//! continues to work without a rewrite. All actual evaluation lives
+//! in the plugin modules under `waypointer_system::plugins`; this file
+//! is a thin dispatcher with a sandbox thread, timeout, and panic
+//! catch so malformed input can neither hang the shell nor crash it.
 
 use serde::Serialize;
 

@@ -1,4 +1,4 @@
-/// App Search plugin: searches .desktop files by name/description.
+//! App Search plugin: searches .desktop files by name/description.
 
 use std::sync::{Arc, Mutex};
 

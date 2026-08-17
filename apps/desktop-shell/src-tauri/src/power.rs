@@ -1,11 +1,11 @@
-/// Power profile control.
-///
-/// The read prefers Arlen's own power daemon (`org.arlen.Power1`), which already
-/// tracks the active profile for the battery indicator, and falls back to
-/// `powerprofilesctl` when that daemon is not running. The write still shells
-/// out: the daemon's `SetProfile` is gated on a `[system.power] set_profile`
-/// grant no shell permission profile carries yet, so routing it there today
-/// would deny every profile change.
+//! Power profile control.
+//!
+//! The read prefers Arlen's own power daemon (`org.arlen.Power1`), which already
+//! tracks the active profile for the battery indicator, and falls back to
+//! `powerprofilesctl` when that daemon is not running. The write still shells
+//! out: the daemon's `SetProfile` is gated on a `[system.power] set_profile`
+//! grant no shell permission profile carries yet, so routing it there today
+//! would deny every profile change.
 
 /// The power daemon's well-known name, object and interface (all three coincide).
 const POWER_DAEMON: &str = "org.arlen.Power1";

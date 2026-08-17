@@ -1,24 +1,24 @@
-/// Recent-files list sourced from the Knowledge Graph.
-///
-/// Arlen tracks every `file.opened` event system-wide via eBPF →
-/// Event Bus → Knowledge daemon (`file.opened` events are promoted to
-/// `File` nodes with a `last_accessed` timestamp). The Waypointer's
-/// "Recent Files" section reads the top-N by that timestamp.
-///
-/// Sourcing this from the graph instead of a local JSON file has two
-/// concrete advantages:
-///
-///   1. **Cross-app:** captures file opens from any application, not
-///      just Arlen-shell-initiated launches. A file touched in the
-///      terminal or via another app shows up here.
-///   2. **Single source of truth:** aligns with Arlen' "Knowledge
-///      Graph as first-class infrastructure" principle — no
-///      parallel mini-database for what the graph already tracks.
-///
-/// Graceful degradation: if the Knowledge daemon is down, the socket
-/// is missing, or the query times out, we return an empty list. The
-/// Waypointer frontend renders nothing (no "Recent Files" section),
-/// which is the honest presentation of "we don't know right now".
+//! Recent-files list sourced from the Knowledge Graph.
+//!
+//! Arlen tracks every `file.opened` event system-wide via eBPF →
+//! Event Bus → Knowledge daemon (`file.opened` events are promoted to
+//! `File` nodes with a `last_accessed` timestamp). The Waypointer's
+//! "Recent Files" section reads the top-N by that timestamp.
+//!
+//! Sourcing this from the graph instead of a local JSON file has two
+//! concrete advantages:
+//!
+//!   1. **Cross-app:** captures file opens from any application, not
+//!      just Arlen-shell-initiated launches. A file touched in the
+//!      terminal or via another app shows up here.
+//!   2. **Single source of truth:** aligns with Arlen' "Knowledge
+//!      Graph as first-class infrastructure" principle — no
+//!      parallel mini-database for what the graph already tracks.
+//!
+//! Graceful degradation: if the Knowledge daemon is down, the socket
+//! is missing, or the query times out, we return an empty list. The
+//! Waypointer frontend renders nothing (no "Recent Files" section),
+//! which is the honest presentation of "we don't know right now".
 
 use serde::{Deserialize, Serialize};
 

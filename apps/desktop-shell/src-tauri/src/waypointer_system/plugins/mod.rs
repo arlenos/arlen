@@ -1,4 +1,4 @@
-/// Built-in Waypointer plugins (Phase 2: compiled into shell).
+//! Built-in Waypointer plugins (Phase 2: compiled into shell).
 
 pub mod app_search;
 pub mod app_shortcuts;

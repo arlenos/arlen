@@ -1,7 +1,7 @@
-/// Global menu bar store.
-///
-/// Apps register their menu structure via `register_menu`. The frontend
-/// subscribes to changes and renders the active app's menu in the top bar.
+//! Global menu bar store.
+//!
+//! Apps register their menu structure via `register_menu`. The frontend
+//! subscribes to changes and renders the active app's menu in the top bar.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

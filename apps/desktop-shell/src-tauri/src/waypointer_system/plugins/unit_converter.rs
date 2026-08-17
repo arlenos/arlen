@@ -1,9 +1,9 @@
-/// Unit conversion plugin.
-///
-/// Recognises patterns like `30 F in C`, `5 km to miles`, `200 cm` (implicit
-/// targets) and offers one inline result. All value-and-table knowledge lives
-/// here; the Tauri-facing `evaluate_waypointer_input` command delegates to
-/// `try_convert` to preserve the inline-result UX on the frontend.
+//! Unit conversion plugin.
+//!
+//! Recognises patterns like `30 F in C`, `5 km to miles`, `200 cm` (implicit
+//! targets) and offers one inline result. All value-and-table knowledge lives
+//! here; the Tauri-facing `evaluate_waypointer_input` command delegates to
+//! `try_convert` to preserve the inline-result UX on the frontend.
 
 use crate::waypointer_plugins::WaypointerResult;
 use crate::waypointer_system::plugin::*;

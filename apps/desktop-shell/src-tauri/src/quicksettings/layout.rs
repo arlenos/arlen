@@ -1,13 +1,13 @@
-/// Quick Settings layout state at `~/.config/arlen/quicksettings.toml`.
-///
-/// The layout is *user intent* — which tiles are visible, in which order,
-/// at what size. The shell composes the rendered grid by merging this
-/// file with the manifest-declared catalogue (`defaults.rs` for system-
-/// tier tiles, `arlen-modules` manifests for module tiles).
-///
-/// Same concurrency story as `shell_config`: every write goes through
-/// `WRITE_LOCK` and the `update(|file| …)` helper. Atomic tmp+rename so
-/// a crash mid-write can never tear the TOML.
+//! Quick Settings layout state at `~/.config/arlen/quicksettings.toml`.
+//!
+//! The layout is *user intent* — which tiles are visible, in which order,
+//! at what size. The shell composes the rendered grid by merging this
+//! file with the manifest-declared catalogue (`defaults.rs` for system-
+//! tier tiles, `arlen-modules` manifests for module tiles).
+//!
+//! Same concurrency story as `shell_config`: every write goes through
+//! `WRITE_LOCK` and the `update(|file| …)` helper. Atomic tmp+rename so
+//! a crash mid-write can never tear the TOML.
 
 use std::fs;
 use std::path::PathBuf;

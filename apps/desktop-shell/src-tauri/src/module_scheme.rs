@@ -1,20 +1,20 @@
-/// Tauri custom URI scheme handler for `module://`.
-///
-/// Every Tier 2 iframe loads through this handler. The flow per
-/// asset request:
-///
-///   1. Parse the URL into `(module_id, asset_path, nonce)`.
-///   2. Ask `arlen-modulesd` for the iframe meta (`IframeLookup`).
-///      If the daemon does not know the nonce, the iframe was either
-///      revoked or never minted; return 404.
-///   3. Load the asset from the daemon-supplied root path. Reject any
-///      `..` segment so a malicious module cannot escape its bundle.
-///   4. Attach the per-module CSP header derived from the manifest's
-///      `[capabilities]` block.
-///
-/// Capability checks happen on host calls (in `arlen-modulesd` over
-/// the postMessage proxy). Asset serving here is purely about iframe
-/// origin isolation, not about gating data access.
+//! Tauri custom URI scheme handler for `module://`.
+//!
+//! Every Tier 2 iframe loads through this handler. The flow per
+//! asset request:
+//!
+//!   1. Parse the URL into `(module_id, asset_path, nonce)`.
+//!   2. Ask `arlen-modulesd` for the iframe meta (`IframeLookup`).
+//!      If the daemon does not know the nonce, the iframe was either
+//!      revoked or never minted; return 404.
+//!   3. Load the asset from the daemon-supplied root path. Reject any
+//!      `..` segment so a malicious module cannot escape its bundle.
+//!   4. Attach the per-module CSP header derived from the manifest's
+//!      `[capabilities]` block.
+//!
+//! Capability checks happen on host calls (in `arlen-modulesd` over
+//! the postMessage proxy). Asset serving here is purely about iframe
+//! origin isolation, not about gating data access.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

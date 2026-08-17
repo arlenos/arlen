@@ -1,4 +1,4 @@
-/// Man page plugin: open man pages (prefix "#").
+//! Man page plugin: open man pages (prefix "#").
 
 use crate::waypointer_system::plugin::*;
 

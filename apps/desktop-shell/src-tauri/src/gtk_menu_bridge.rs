@@ -1,8 +1,8 @@
-/// GTK D-Bus Menu Bridge.
-///
-/// When the focused app changes, queries `org.gtk.Menus` and converts the
-/// menu structure into the `MenuGroup` format used by the global menu bar.
-/// Only works for GTK apps that expose menus via GApplication's D-Bus API.
+//! GTK D-Bus Menu Bridge.
+//!
+//! When the focused app changes, queries `org.gtk.Menus` and converts the
+//! menu structure into the `MenuGroup` format used by the global menu bar.
+//! Only works for GTK apps that expose menus via GApplication's D-Bus API.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, mpsc};

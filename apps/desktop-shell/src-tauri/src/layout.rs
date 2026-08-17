@@ -1,8 +1,8 @@
-/// Tauri commands for layout applet communication.
-///
-/// Reads layout state and writes changes to the compositor TOML config.
-/// The current mode is tracked in a shared AtomicU8 that gets updated
-/// by the shell_overlay_client when `layout_mode_changed` events arrive.
+//! Tauri commands for layout applet communication.
+//!
+//! Reads layout state and writes changes to the compositor TOML config.
+//! The current mode is tracked in a shared AtomicU8 that gets updated
+//! by the shell_overlay_client when `layout_mode_changed` events arrive.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

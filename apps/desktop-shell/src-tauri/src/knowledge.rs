@@ -1,13 +1,13 @@
-/// Knowledge Graph daemon client for the Quick Settings KG tile.
-///
-/// Queries the read-only daemon socket for the last 7 days of event
-/// timestamps and buckets them into per-day counts client-side. The
-/// per-day buckets feed the tile's inline sparkline; the total of
-/// today's bucket is shown as the headline number.
-///
-/// Failure modes (daemon down, parse error, timeout) all degrade to
-/// `available = false` + zero counts so the tile renders an offline
-/// state rather than crashing.
+//! Knowledge Graph daemon client for the Quick Settings KG tile.
+//!
+//! Queries the read-only daemon socket for the last 7 days of event
+//! timestamps and buckets them into per-day counts client-side. The
+//! per-day buckets feed the tile's inline sparkline; the total of
+//! today's bucket is shown as the headline number.
+//!
+//! Failure modes (daemon down, parse error, timeout) all degrade to
+//! `available = false` + zero counts so the tile renders an offline
+//! state rather than crashing.
 
 use serde::Serialize;
 

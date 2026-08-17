@@ -1,18 +1,18 @@
-/// Tauri commands that bridge the desktop-shell frontend to
-/// `arlen-modulesd`.
-///
-/// All real module work happens in the daemon. This file is a thin
-/// translation layer: take a Tauri command, build the corresponding
-/// `modulesd_proto::Request`, send it over the socket via
-/// `ModulesdClient::call`, and return the deserialised payload that
-/// the frontend can use directly.
-///
-/// Two reasons for putting this between the frontend and the client:
-///   1. The frontend should never see protocol envelopes. It calls
-///      `mint_iframe(...)` and gets a typed object back, not a
-///      `Response::IframeIssued`.
-///   2. We can centralise the "daemon not connected" fallback in one
-///      place and surface a uniform `ClientError` to the frontend.
+//! Tauri commands that bridge the desktop-shell frontend to
+//! `arlen-modulesd`.
+//!
+//! All real module work happens in the daemon. This file is a thin
+//! translation layer: take a Tauri command, build the corresponding
+//! `modulesd_proto::Request`, send it over the socket via
+//! `ModulesdClient::call`, and return the deserialised payload that
+//! the frontend can use directly.
+//!
+//! Two reasons for putting this between the frontend and the client:
+//!   1. The frontend should never see protocol envelopes. It calls
+//!      `mint_iframe(...)` and gets a typed object back, not a
+//!      `Response::IframeIssued`.
+//!   2. We can centralise the "daemon not connected" fallback in one
+//!      place and surface a uniform `ClientError` to the frontend.
 
 use std::sync::Arc;
 

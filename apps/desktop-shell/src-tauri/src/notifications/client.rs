@@ -1,7 +1,7 @@
-/// Unix socket client for the notification daemon.
-///
-/// Connects to the daemon, sends a ClientHello, then runs a read loop
-/// that emits Tauri events for each ServerMessage received.
+//! Unix socket client for the notification daemon.
+//!
+//! Connects to the daemon, sends a ClientHello, then runs a read loop
+//! that emits Tauri events for each ServerMessage received.
 
 use std::path::PathBuf;
 use std::sync::Arc;

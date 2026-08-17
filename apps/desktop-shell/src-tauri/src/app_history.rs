@@ -1,22 +1,22 @@
-/// Most-Recently-Used app history for the Waypointer "Recent Apps"
-/// section. Persists a rolling buffer of `exec` strings to
-/// `~/.local/share/arlen/app-history.json`.
-///
-/// Design rationale — why file-based and not the Knowledge Graph:
-///
-///   1. **Source:** App launches through the Waypointer are 100%
-///      shell-initiated; no third party needs to consume this data.
-///      A local file is the narrowest scope.
-///   2. **Latency:** the Waypointer renders Recents synchronously on
-///      open; a graph round-trip (even cached) adds tens of ms and a
-///      failure mode. JSON at 50 entries is ~1 KB and loads in <1 ms.
-///   3. **Availability:** file-based works when the Knowledge daemon
-///      is down (common during dev, or on a user's first boot).
-///
-/// Cross-app file opens are a different story — those live in the
-/// graph via eBPF tracking (`recent_files.rs`). Keep the two paths
-/// separate: local-origin history → file, cross-app/global history →
-/// graph.
+//! Most-Recently-Used app history for the Waypointer "Recent Apps"
+//! section. Persists a rolling buffer of `exec` strings to
+//! `~/.local/share/arlen/app-history.json`.
+//!
+//! Design rationale — why file-based and not the Knowledge Graph:
+//!
+//!   1. **Source:** App launches through the Waypointer are 100%
+//!      shell-initiated; no third party needs to consume this data.
+//!      A local file is the narrowest scope.
+//!   2. **Latency:** the Waypointer renders Recents synchronously on
+//!      open; a graph round-trip (even cached) adds tens of ms and a
+//!      failure mode. JSON at 50 entries is ~1 KB and loads in <1 ms.
+//!   3. **Availability:** file-based works when the Knowledge daemon
+//!      is down (common during dev, or on a user's first boot).
+//!
+//! Cross-app file opens are a different story — those live in the
+//! graph via eBPF tracking (`recent_files.rs`). Keep the two paths
+//! separate: local-origin history → file, cross-app/global history →
+//! graph.
 
 use std::fs;
 use std::path::PathBuf;

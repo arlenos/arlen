@@ -1,4 +1,4 @@
-/// Unicode search plugin: find characters by name (prefix "u:").
+//! Unicode search plugin: find characters by name (prefix "u:").
 
 use crate::waypointer_system::plugin::*;
 

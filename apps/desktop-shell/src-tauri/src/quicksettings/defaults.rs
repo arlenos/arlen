@@ -1,8 +1,8 @@
-/// Bundled tile-default catalogue.
-///
-/// First-run fallback when `quicksettings.toml` is missing or empty.
-/// Order matches the spec in `docs/architecture/quicksettings-system.md`
-/// §"Phase-1 tile inventory".
+//! Bundled tile-default catalogue.
+//!
+//! First-run fallback when `quicksettings.toml` is missing or empty.
+//! Order matches the spec in `docs/architecture/quicksettings-system.md`
+//! §"Phase-1 tile inventory".
 
 use arlen_modules::TileSize;
 use serde::Serialize;
