@@ -557,8 +557,31 @@ fn value_to_cell(v: Value) -> CellValue {
 /// Create the Knowledge Graph node and relationship tables.
 ///
 /// Uses `CREATE ... IF NOT EXISTS` so this is safe to call on every startup.
-/// Schema changes require a migration strategy; for Phase 1A we keep the
-/// schema minimal and stable.
+///
+/// # Never ALTER a node table
+///
+/// A new column on a NODE table is declared in its `CREATE`, never added with
+/// `ALTER TABLE ... ADD`. An add that really adds a column (a no-op `ADD IF NOT
+/// EXISTS` is harmless) leaves a store the engine cannot open again:
+///
+/// ```text
+/// hash_index.cpp:483: hashIndexStorageInfo.overflowHeaderPage == INVALID_PAGE_IDX
+/// ```
+///
+/// The table's primary-key index is what breaks, so this is a node-table rule;
+/// the `FILE_PART_OF` and `HAS_VERSION` adds below are on REL tables, which have
+/// no such index and reopen cleanly.
+///
+/// This cost the graph its memory for as long as it was true. Seven real adds ran
+/// here on every start, so a store was unreopenable from its first boot, and each
+/// restart found its own graph unreadable while `spawn` still returned Ok - the
+/// daemon came up, bound its sockets, and failed every graph request. Nothing
+/// noticed because nothing ever reopened a store and looked: the VM boots a fresh
+/// image and the dev stack starts fresh. `a_store_reads_back_after_the_writer_has_gone`
+/// is the regression test.
+///
+/// Declaring the column instead is also what the no-legacy rule asks for: this is
+/// pre-production, so a schema change is a schema change and not a migration.
 fn create_schema(conn: &Connection) -> Result<()> {
     // Node tables
     conn.query(
@@ -598,6 +621,9 @@ fn create_schema(conn: &Connection) -> Result<()> {
             timestamp  INT64,
             source     STRING,
             title      STRING,
+            app_id     STRING,
+            service    STRING,
+            kind       STRING,
             PRIMARY KEY(id)
         )",
     )
@@ -618,9 +644,9 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // Reserved git node types. The foundation reserves Commit and Branch from the
     // start so a future git-ingestion tier can add rows without a schema
     // migration (Arlen's no-migration promise). No producer writes them yet;
-    // fields beyond these conventional ones are added additively via
-    // `ALTER TABLE ... ADD IF NOT EXISTS` when the ingestion lands, the same way
-    // the other tables evolve.
+    // fields beyond these conventional ones are declared HERE when the ingestion
+    // lands. Not by ALTER: see the note on `create_schema` - an add that really
+    // adds a column to a node table leaves a store the engine cannot reopen.
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS Commit(
             id           STRING,
@@ -684,8 +710,8 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // command node") persists here so `⌃R` history search spans sessions and
     // survives a restart. Reserved from the start (no producer writes it yet, the
     // no-migration promise); `ran_at` carries the wall-clock start the in-memory
-    // `Block` lacks, so the graph-backed history can order newest-first. Fields
-    // evolve additively via `ALTER TABLE ... ADD IF NOT EXISTS`.
+    // `Block` lacks, so the graph-backed history can order newest-first. New
+    // fields are declared here, never added by ALTER (see `create_schema`).
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS Command(
             id          STRING,
@@ -705,9 +731,9 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // avoid): the summary is AI-derived and grounded, `participants` a
     // denormalized JSON-encoded list for the recent-meetings home, `started_at`
     // the recording start. Action items hang off it as structured `ActionItem`
-    // nodes via HAS_ACTION_ITEM so they can be answered and later linked. Fields
-    // evolve additively via `ALTER TABLE ... ADD IF NOT EXISTS`; the imminent
-    // producer is the meetings app's note-filing seam.
+    // nodes via HAS_ACTION_ITEM so they can be answered and later linked. New
+    // fields are declared here, never added by ALTER (see `create_schema`); the
+    // imminent producer is the meetings app's note-filing seam.
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS Meeting(
             id           STRING,
@@ -851,17 +877,15 @@ fn create_schema(conn: &Connection) -> Result<()> {
             confidence     INT64,
             promoted       BOOL,
             archived_at    INT64,
+            expired_at     INT64,
             PRIMARY KEY(id)
         )",
     )
     .map_err(|e| anyhow!("create Project table: {e}"))?;
-    // Transaction-time close stamp for the node lifecycle (§4.9): archiving a
-    // project is "the system stopped believing it is active", which is
-    // `expired_at`. A live project is `expired_at IS NULL`; `status`/`archived_at`
-    // stay as denormalised read filters. Convergent ADD IF NOT EXISTS, as for the
-    // edge temporal columns.
-    conn.query("ALTER TABLE Project ADD IF NOT EXISTS expired_at INT64")
-        .map_err(|e| anyhow!("ensure Project.expired_at column: {e}"))?;
+    // `expired_at` is the transaction-time close stamp for the node lifecycle
+    // (§4.9): archiving a project is the system ceasing to believe it active. A
+    // live project is `expired_at IS NULL`; `status` and `archived_at` stay as
+    // denormalised read filters.
 
     // The repo=project grouping edge: a commit belongs to the Project whose
     // root_path is its repository. A git repo is a project (the `.git` signal
@@ -872,43 +896,32 @@ fn create_schema(conn: &Connection) -> Result<()> {
     conn.query("CREATE REL TABLE IF NOT EXISTS COMMITTED_IN(FROM Commit TO Project)")
         .map_err(|e| anyhow!("create COMMITTED_IN rel: {e}"))?;
 
-    // The window/event title carried on a promoted Event (e.g. window.focused
-    // records the focused window's title). Without this column the window.focused
-    // promotion's `SET e.title` is a binder error that stalls the whole promotion
-    // batch. Convergent ADD IF NOT EXISTS for already-initialized DBs.
-    conn.query("ALTER TABLE Event ADD IF NOT EXISTS title STRING")
-        .map_err(|e| anyhow!("ensure Event.title column: {e}"))?;
-
-    // Coarse system-service transitions (journald Tier-2, `system.service`) promote
-    // to Event nodes carrying the normalized service ("network"|"bluetooth"|
-    // "session") + the transition kind ("device-up"|"connected"|"session-opened"|
-    // ...). Convergent ADD IF NOT EXISTS for already-initialized DBs.
+    // Event.title, .app_id, .service and .kind, and File.last_cgroup_id, were
+    // added here as convergent `ALTER TABLE ... ADD IF NOT EXISTS` and are now
+    // declared in their CREATE above. See the note on `create_schema` for why no
+    // node table may be ALTERed: an add that really adds a column leaves a store
+    // the engine cannot reopen.
     //
-    // This said "now on the timeline" and that is not true: the knowledge app reads
-    // exactly two things, file accesses and window focus, so these columns are
-    // written on every transition and displayed nowhere. They are queryable, which
-    // is worth something to the AI layer, but a comment claiming a surface shows
-    // them is how a gap stops being looked for. The reader is a separate piece of
-    // work and needs display copy for each transition, which is a product call.
-    // The app a `window.focused` Event belongs to. The `App` node already carries
-    // it, but only through an ACTIVE_IN edge to the Session - there is no Event to
-    // App edge - so a reader of Events alone could not say WHICH app was focused.
-    // That is why a focus onto a surface with no title rendered as a row saying
-    // "focused" and nothing else: the one thing known about it was unreachable.
-    // Recorded rather than derived at read time, because it is measured here.
-    conn.query("ALTER TABLE Event ADD IF NOT EXISTS app_id STRING")
-        .map_err(|e| anyhow!("ensure Event.app_id column: {e}"))?;
-
-    conn.query("ALTER TABLE Event ADD IF NOT EXISTS service STRING")
-        .map_err(|e| anyhow!("ensure Event.service column: {e}"))?;
-    conn.query("ALTER TABLE Event ADD IF NOT EXISTS kind STRING")
-        .map_err(|e| anyhow!("ensure Event.kind column: {e}"))?;
-
-    // The cgroup v2 id of the most recent open (Strand 4 attribution). A File node
-    // is path-keyed, so this is the LATEST cgroup, not a history; NULL/0 means no
-    // eBPF attribution. Convergent ADD IF NOT EXISTS for already-initialized DBs.
-    conn.query("ALTER TABLE File ADD IF NOT EXISTS last_cgroup_id INT64")
-        .map_err(|e| anyhow!("ensure File.last_cgroup_id column: {e}"))?;
+    // What they carry, kept because it is the reason the columns exist:
+    //
+    //  * `title` is the focused window's title on a promoted `window.focused`.
+    //    Without the column the promotion's `SET e.title` is a binder error that
+    //    stalls the whole batch.
+    //  * `app_id` is the app that Event belongs to. The `App` node has it, but
+    //    only through an ACTIVE_IN edge to the Session - there is no Event to App
+    //    edge - so a reader of Events alone could not say WHICH app was focused.
+    //    That is why a focus onto a titleless surface rendered as a row saying
+    //    "focused" and nothing else.
+    //  * `service` and `kind` carry coarse system transitions (journald Tier-2):
+    //    a normalized service ("network"|"bluetooth"|"session") and a transition
+    //    ("device-up"|"connected"|"session-opened"|...). NB nothing displays them:
+    //    the knowledge app reads file accesses and window focus only, so these are
+    //    written on every transition and shown nowhere. They are queryable, which
+    //    is worth something to the AI layer, but the reader is separate work that
+    //    needs display copy per transition, which is a product call.
+    //  * `last_cgroup_id` is the cgroup v2 id of the most recent open (Strand 4
+    //    attribution). A File node is path-keyed, so it is the LATEST cgroup and
+    //    not a history; NULL/0 means no eBPF attribution.
 
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS Directory(
@@ -1115,30 +1128,23 @@ fn create_schema(conn: &Connection) -> Result<()> {
             last_exercised_at INT64,
             use_count         INT64,
             reissued_at       INT64,
+            source            STRING,
+            consent_class     STRING,
+            consent_scope     STRING,
             PRIMARY KEY(id)
         )",
     )
     .map_err(|e| anyhow!("create Grant table: {e}"))?;
-
-    // The most recent mint that resolved to this same (app, pid, ceiling) node.
-    // `issued_at` stays the FIRST time the process held this reach, so the pair
-    // reads as the interval it held it for rather than only its latest moment.
-    // Convergent ADD IF NOT EXISTS for already-initialized DBs.
-    conn.query("ALTER TABLE Grant ADD IF NOT EXISTS reissued_at INT64")
-        .map_err(|e| anyhow!("ensure Grant.reissued_at column: {e}"))?;
-
-    // Consent grants share the LCG Grant node (system-dialog-plan.md, decided
-    // Option A): one see+revoke surface for capability-token and consent grants
-    // alike. `source` discriminates ("capability-token" vs "consent"); a consent
-    // grant carries its class + concrete scope and leaves the token-shaped fields
-    // (pid / issued_at / expires_at / declared_ceiling) null/0. Additive ALTERs
-    // (reserved-from-start, no migration) so an existing store converges.
-    conn.query("ALTER TABLE Grant ADD IF NOT EXISTS source STRING")
-        .map_err(|e| anyhow!("alter Grant add source: {e}"))?;
-    conn.query("ALTER TABLE Grant ADD IF NOT EXISTS consent_class STRING")
-        .map_err(|e| anyhow!("alter Grant add consent_class: {e}"))?;
-    conn.query("ALTER TABLE Grant ADD IF NOT EXISTS consent_scope STRING")
-        .map_err(|e| anyhow!("alter Grant add consent_scope: {e}"))?;
+    // `reissued_at` is the most recent mint that resolved to this same (app, pid,
+    // ceiling) node. `issued_at` stays the FIRST time the process held this reach,
+    // so the pair reads as the interval it held it for rather than only its latest
+    // moment.
+    //
+    // `source`, `consent_class` and `consent_scope` are here because consent grants
+    // share this node (system-dialog-plan.md, decided Option A): one see+revoke
+    // surface for capability-token and consent grants alike. `source` discriminates
+    // the two; a consent grant carries its class + concrete scope and leaves the
+    // token-shaped fields (pid / issued_at / expires_at / declared_ceiling) empty.
 
     conn.query(
         "CREATE NODE TABLE IF NOT EXISTS CapabilityUse(
@@ -1827,6 +1833,62 @@ mod tests {
         assert_eq!(involving[1].name, "R_BA");
         assert_eq!(involving[1].source, "B");
         assert_eq!(involving[1].dest, "A");
+    }
+
+
+    /// The graph survives the process that wrote it.
+    ///
+    /// Written on 17 August, where it immediately failed. A store this daemon
+    /// created and closed cleanly could not be opened again - by a second open in
+    /// the same process, by a later process, on tmpfs or on disk - and the engine
+    /// refused it with an assertion inside its primary-key index:
+    ///
+    /// ```text
+    /// hash_index.cpp:483: hashIndexStorageInfo.overflowHeaderPage == INVALID_PAGE_IDX
+    /// ```
+    ///
+    /// Every start after the first therefore found its own graph unreadable. The
+    /// thread logs and exits while `spawn` still returns Ok, so the daemon comes
+    /// up, binds its sockets and answers every graph request with an error: alive
+    /// from outside, amnesiac within.
+    ///
+    /// The cause was ours, not the engine's. A raw store reopens; `create_schema`
+    /// leaves one that does not, because `ALTER TABLE ... ADD` on a NODE table
+    /// that really adds a column corrupts that table's key index. Seven such adds
+    /// ran on every start, so a store was unreopenable from its first boot. The
+    /// columns are declared in their CREATE now and no node table is ALTERed. A
+    /// no-op add is harmless and a rel-table add is harmless; only this shape
+    /// bites.
+    ///
+    /// It hid because nothing ever reopened a store and looked. The VM boots from
+    /// a fresh image, the dev stack starts fresh, and the boot check grades what
+    /// the guest said about itself rather than reading what it wrote.
+    #[tokio::test]
+    async fn a_store_reads_back_after_the_writer_has_gone() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("g");
+        let path = path.to_str().unwrap();
+
+        let writer = spawn(path).unwrap();
+        writer
+            .write("CREATE (:File {id: '/w/verified.rs', path: '/w/verified.rs'})".into())
+            .await
+            .expect("the write lands");
+        writer.shutdown().await;
+
+        // A second open, holding nothing from the first but the bytes on disk.
+        let reader = spawn(path).unwrap();
+        let rows = reader
+            .query_rows("MATCH (f:File {id: '/w/verified.rs'}) RETURN f.path".into())
+            .await
+            .expect("the reopened store answers");
+        assert_eq!(rows.rows.len(), 1, "the node the first open wrote is still there");
+
+        let absent = reader
+            .query_rows("MATCH (f:File {id: '/w/never-written.rs'}) RETURN f.path".into())
+            .await
+            .expect("the reopened store answers about an absent node too");
+        assert!(absent.rows.is_empty(), "a node nobody wrote is not found");
     }
 }
 
