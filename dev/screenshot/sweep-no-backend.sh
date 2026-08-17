@@ -52,6 +52,12 @@ SHOTS=(
   "knowledge - knowledge-library-unavailable button[data-place=library]"
   "knowledge - knowledge-searches-unavailable button[data-place=searches]"
   "meetings - meetings-unavailable"
+  # Two of this app's three routes had never been shot. The capture surface is
+  # where the red dot and Stop live; the note route is where a stale link lands,
+  # and it is the one that says "this meeting" rather than repeating the list's
+  # sentence - worth keeping photographed so it stays that way.
+  "meetings capture meetings-capture-unavailable"
+  "meetings meeting/abc meetings-note-missing"
   # NB not in this list: the refused-STOP line. It needs a capture that started
   # and then a stop that failed, which no single no-backend session produces, so
   # it is reachable only through the dev-only pin the viewers app also carries:
