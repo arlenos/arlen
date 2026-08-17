@@ -1983,6 +1983,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn delete_permanent_does_not_descend_through_a_nested_link() {
+        // The test above names the link as the operand, which the caller lstats.
+        // This is the other half and the one that loses data: a link INSIDE the
+        // tree being removed, pointing somewhere the user never named. A
+        // recursive delete that followed it would empty the target and still
+        // report success.
+        //
+        // Worth its own test rather than an assumption: this path goes through
+        // cap-std's `remove_dir_all`, a different implementation from the one
+        // `apps/trash-rm` relies on, so the guarantee has to be shown here too.
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(tmp.path().join("precious")).unwrap();
+        fs::write(tmp.path().join("precious/keep.txt"), b"keep").unwrap();
+        fs::create_dir(tmp.path().join("doomed")).unwrap();
+        fs::write(tmp.path().join("doomed/gone.txt"), b"gone").unwrap();
+        std::os::unix::fs::symlink("../precious", tmp.path().join("doomed/dir-link")).unwrap();
+        std::os::unix::fs::symlink(
+            "../precious/keep.txt",
+            tmp.path().join("doomed/file-link"),
+        )
+        .unwrap();
+        let dir = cap(tmp.path());
+
+        delete_permanent(&dir, "doomed").unwrap();
+
+        assert!(!tmp.path().join("doomed").exists(), "the named tree is gone");
+        assert!(
+            tmp.path().join("precious/keep.txt").exists(),
+            "the file behind the nested link survives"
+        );
+    }
+
     // ---- trash_entry ------------------------------------------------------
 
     /// Build a trash capability with `files/` and `info/` pre-created (the host's
