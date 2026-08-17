@@ -18,7 +18,7 @@
 //
 // Run: node dev/scripts/test-check-image-contents.mjs
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -137,6 +137,21 @@ check(
   [],
   (code) => code === 0,
 );
+
+// A SOURCE-level case, and labelled as one because the image-level version needs
+// a built image with a shell in it. It pins the thing that made this check report
+// a false orphan: it read only `mkosi.extra` for what the image stages, so a unit
+// a BUILD PHASE installs - which is what a conditional unit must do - looked
+// staged nowhere. The kernel sensor was called an orphan on the day it stopped
+// being one. If someone drops the build.d source again, the false finding comes
+// back and nothing else here would notice.
+{
+  const src = readFileSync(GATE, "utf8");
+  const staged = src.slice(src.indexOf("staged=$("), src.indexOf("orphans=\"\""));
+  const ok = staged.includes("mkosi.extra") && staged.includes("mkosi.build.d");
+  console.log(`  ${ok ? "ok  " : "FAIL"} both ways a unit reaches the image count as staged`);
+  if (!ok) failures.push({ name: "staged sources", code: 1, out: staged });
+}
 
 rmSync(dir, { recursive: true, force: true });
 
