@@ -3,7 +3,7 @@
 # files it exposes to the guest are an explicit grant, never a default. No
 # Knowledge Graph.
 [info]
-app_id = "waydroid"
+app_id = "Waydroid"
 tier = "third-party"
 
 [network]

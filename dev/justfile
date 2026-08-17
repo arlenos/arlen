@@ -239,6 +239,14 @@ lint-licenses:
 check-units:
     cd "{{ROOT}}" && bash dev/scripts/check-packaged-units.sh
 
+# Report permission profiles a real .desktop entry cannot reach because only
+# their CASE differs. Needs a machine with software installed, which is why it
+# is here and not in CI: a foreign app's id is its desktop-id verbatim, so
+# `cinny.toml` is invisible to `Cinny.desktop` and the launcher refuses the
+# launch with "profile not found" once confinement is on.
+profile-case:
+    cd "{{ROOT}}" && bash dev/scripts/check-profile-case.sh
+
 # Generate the THIRD-PARTY-NOTICES dependency-license artifact (gitignored).
 notices:
     #!/usr/bin/env bash

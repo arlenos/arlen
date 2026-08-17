@@ -360,6 +360,7 @@ jobs:
           node dev/scripts/test-check-locale-adopted.mjs
           node dev/scripts/test-check-kit-defaults.mjs
           node dev/scripts/test-typecheck-gating.mjs
+          node dev/scripts/test-check-profile-case.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"

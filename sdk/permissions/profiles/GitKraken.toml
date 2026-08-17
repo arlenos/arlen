@@ -2,7 +2,7 @@
 # Documents; no network by default (remote push/pull and account sign-in need an
 # explicit grant) and no Knowledge Graph. Observe-mode refines it.
 [info]
-app_id = "gitkraken"
+app_id = "GitKraken"
 tier = "third-party"
 
 [filesystem]
