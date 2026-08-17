@@ -302,6 +302,7 @@
 
   {#if lastError}
     <div
+      role="alert"
       class="rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
     >
       {lastError}

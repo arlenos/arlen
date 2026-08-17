@@ -294,10 +294,10 @@
         <p class="tl-statement">{$t("k.tl.statement")}</p>
         <p class="tl-statement-menu">{$t("k.tl.menuHint")}</p>
         {#if deleteFailed}
-          <p class="tl-fail">{$t("k.tl.deleteFail")}</p>
+          <p class="tl-fail" role="alert">{$t("k.tl.deleteFail")}</p>
         {/if}
         {#if exportFailed}
-          <p class="tl-fail">{$t("k.tl.exportFail")}</p>
+          <p class="tl-fail" role="alert">{$t("k.tl.exportFail")}</p>
         {:else if exportedTo}
           <!-- The path, not just "done": the file is the point of the export. -->
           <p class="tl-statement">{$t("k.tl.exportedTo", { path: exportedTo })}</p>

@@ -164,7 +164,7 @@
         />
         <div class="action-row">
           {#if applyError}
-            <p class="apply-error" title={applyError}>{$t("s.display.applyError")}</p>
+            <p class="apply-error" role="alert" title={applyError}>{$t("s.display.applyError")}</p>
           {/if}
           <Button variant="outline" onclick={onApply} disabled={!dirty}>
             {$t("s.display.apply")}

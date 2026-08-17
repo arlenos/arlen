@@ -125,12 +125,20 @@
 
       <div class="field">
         <label for="rule-app-id">{$t("s.wrule.appIdPattern")}</label>
+        <!-- The message is tied to the field rather than announced. It is
+             validation that re-runs on every keystroke, so an assertive alert
+             would interrupt on each one; `aria-invalid` marks the field and
+             `aria-describedby` puts the reason where a reader looks for it.
+             Without this the field reads as fine and Add stays disabled with
+             nothing said about why. -->
         <Input
           id="rule-app-id"
           bind:value={appIdPattern}
           placeholder={$t("s.wrule.appIdHint")}
+          aria-invalid={appIdError !== null}
+          aria-describedby={appIdError !== null ? "rule-app-id-error" : undefined}
         />
-        {#if appIdError}<div class="field-error">{appIdError}</div>{/if}
+        {#if appIdError}<div class="field-error" id="rule-app-id-error">{appIdError}</div>{/if}
       </div>
 
       <div class="field">
@@ -139,8 +147,10 @@
           id="rule-title"
           bind:value={titlePattern}
           placeholder={$t("s.wrule.titleHint")}
+          aria-invalid={titleError !== null}
+          aria-describedby={titleError !== null ? "rule-title-error" : undefined}
         />
-        {#if titleError}<div class="field-error">{titleError}</div>{/if}
+        {#if titleError}<div class="field-error" id="rule-title-error">{titleError}</div>{/if}
       </div>
 
       <div class="field-toggle">

@@ -314,7 +314,7 @@
             />
             <div class="raw-foot">
               {#if rawError}
-                <span class="err">{rawError}</span>
+                <span class="err" role="alert">{rawError}</span>
               {/if}
               <Button variant="outline" size="sm" disabled={!rawDirty} onclick={applyRaw}>
                 {$t("s.apps.rawApply")}
@@ -323,16 +323,16 @@
           </div>
         {/if}
         {#if error}
-          <p class="err">{error}</p>
+          <p class="err" role="alert">{error}</p>
         {/if}
         {#if enumBlocked}
           <p class="note">{unavailableReason ?? $t("s.apps.optionsFail")}</p>
         {/if}
         {#if handoffFailed}
-          <p class="note">{$t("s.apps.handoffFail")}</p>
+          <p class="note" role="alert">{$t("s.apps.handoffFail")}</p>
         {/if}
         {#if pickFailed}
-          <p class="note">{$t("s.apps.pickFail")}</p>
+          <p class="note" role="alert">{$t("s.apps.pickFail")}</p>
         {/if}
         {#if item.deprecated_message}
           <p class="note">{item.deprecated_message}</p>

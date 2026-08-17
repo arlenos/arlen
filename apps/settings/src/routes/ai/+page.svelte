@@ -441,7 +441,7 @@
         {/snippet}
         {#snippet below()}
           {#if explainError}
-            <p class="explain-error" title={explainError}>{$t("s.ai.explain.failed")}</p>
+            <p class="explain-error" role="alert" title={explainError}>{$t("s.ai.explain.failed")}</p>
           {:else if explanation}
             <p class="explain-text">{explanation}</p>
           {/if}
