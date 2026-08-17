@@ -1,0 +1,12 @@
+# Starting permission profile for an emulator front-end. Manages its ROM and
+# configuration library under Documents and fetches configurations over the network.
+# Home is not granted: a library elsewhere is an explicit grant.
+[info]
+app_id = "fs-uae-launcher"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
