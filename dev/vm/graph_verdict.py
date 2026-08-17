@@ -117,7 +117,16 @@ def copy_out(overlay: str, dest_root: str) -> tuple[str | None, str | None]:
     for i, guest_path in enumerate(GRAPH_STORE_PATHS):
         dest = os.path.join(dest_root, str(i))
         os.makedirs(dest, exist_ok=True)
-        script = f"run\nmount-ro /dev/sda2 /\nglob copy-out {guest_path} {dest}/\n"
+        # `{path}*`, so the write-ahead log comes with the store.
+        #
+        # Measured on the 17 August boot: the guest left `graph` at 4096 bytes and
+        # `graph.wal` at 63071 - every table this boot created was in the log, not
+        # the store file. Copying `graph` alone yielded a valid but EMPTY database,
+        # and the verdict said "the table is not in this store", which was true of
+        # what it had been given and would have read as an accusation about the
+        # guest. The engine finds the log by name beside the store, so both land in
+        # one directory and the reopen replays it.
+        script = f"run\nmount-ro /dev/sda2 /\nglob copy-out {guest_path}* {dest}/\n"
         r = subprocess.run(
             ["guestfish", "--ro", "-a", overlay],
             input=script,
