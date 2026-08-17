@@ -78,7 +78,7 @@
     const r = $lastApplyResult;
     if (!r || r.requestId !== requestId) return;
     if (r.outcome === "failed" || r.outcome === "cancelled") {
-      error = `Compositor ${r.outcome === "failed" ? "rejected" : "cancelled"} the change.`;
+      error = $t("s.revert.outcome", { outcome: r.outcome });
       // Slight delay so the user notices the message before the
       // modal closes itself.
       setTimeout(() => onClose(), 1500);
@@ -98,7 +98,7 @@
       busy = false;
       onClose();
     } else {
-      error = "The revert did not go through. Try again.";
+      error = $t("s.revert.failed");
       pendingRevertId = null;
       busy = false;
     }
