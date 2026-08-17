@@ -1,6 +1,7 @@
 //! Parse a `rm`-compatible argument vector.
 //!
 //! Accepts the POSIX + common GNU `rm` flags so the trash-first delete is a drop-in:
+//! `--help` and `--version` short-circuit everything else, as they do in `rm`.
 //! `-r`/`-R`/`--recursive`, `-f`/`--force`, `-i` (interactive), `-d`/`--dir` (remove
 //! empty directories), `-v`/`--verbose`, `--one-file-system`, `--preserve-root`
 //! (default) / `--no-preserve-root`, and `--` (end of options). A lone `-` and any
@@ -31,6 +32,14 @@ pub struct RmInvocation {
     /// `--purge`: an explicit hard-delete escape hatch (Arlen extension) - unlink,
     /// never trash. The routing layer also hard-deletes non-interactively.
     pub purge: bool,
+    /// `--help`: print usage and exit successfully, without deleting anything.
+    ///
+    /// `rm` has had one since forever and this did not, so the only way to learn
+    /// that `--purge` exists - the one flag here that destroys rather than
+    /// trashes - was to read the source.
+    pub help: bool,
+    /// `--version`: print the version and exit successfully.
+    pub version: bool,
 }
 
 /// Why an argument vector could not be parsed.
@@ -75,6 +84,8 @@ pub fn parse_rm_args(args: &[String]) -> Result<RmInvocation, RmError> {
                 "preserve-root" => inv.no_preserve_root = false,
                 "no-preserve-root" => inv.no_preserve_root = true,
                 "purge" => inv.purge = true,
+                "help" => inv.help = true,
+                "version" => inv.version = true,
                 _ => return Err(RmError::UnknownFlag(arg.clone())),
             }
             continue;
@@ -92,6 +103,13 @@ pub fn parse_rm_args(args: &[String]) -> Result<RmInvocation, RmError> {
         }
     }
 
+    // `--help` and `--version` are questions, not deletions: they take no operands
+    // and must answer before the missing-operand refusal, exactly as `rm --help`
+    // does. Checked here rather than in the caller because this function refuses
+    // first, so a caller could never see the flag.
+    if inv.help || inv.version {
+        return Ok(inv);
+    }
     if inv.paths.is_empty() && !inv.force {
         return Err(RmError::MissingOperand);
     }
@@ -140,6 +158,17 @@ mod tests {
             parse_rm_args(&args(&["--frobnicate"])),
             Err(RmError::UnknownFlag("--frobnicate".into()))
         );
+    }
+
+    /// The refusal above must not swallow a question. `trash-rm --help` has no
+    /// operands by definition, and answering it with "missing operand" is how it
+    /// behaved until 17 August.
+    #[test]
+    fn help_and_version_answer_without_operands() {
+        let h = parse_rm_args(&args(&["--help"])).expect("--help parses with no operands");
+        assert!(h.help && !h.version);
+        let v = parse_rm_args(&args(&["--version"])).expect("--version parses with no operands");
+        assert!(v.version && !v.help);
     }
 
     #[test]

@@ -18,6 +18,33 @@ use std::path::Path;
 
 mod trash;
 
+/// What `--help` prints.
+///
+/// Ordered so the two things a person needs first come first: this deletes to the
+/// trash rather than destroying, and `--purge` is the flag that does destroy. The
+/// rest mirrors `rm`, which is the point of the tool.
+const USAGE: &str = "\
+Usage: trash-rm [OPTION]... [FILE]...
+
+Move each FILE to the trash, where it can be restored. This is a drop-in for
+`rm`: the same options mean the same things.
+
+  -r, -R, --recursive   delete directories and their contents
+  -d, --dir             delete empty directories
+  -f, --force           ignore files that do not exist, never prompt
+  -i                    prompt before each delete
+  -v, --verbose         say what is being deleted
+      --one-file-system stay on one filesystem when recursing
+      --no-preserve-root  do not refuse to act on `/` (the default refuses)
+      --purge           DESTROY instead of trashing: unlink, no restore
+      --help            show this and exit
+      --version         show the version and exit
+  --                    end of options; everything after is a filename
+
+Without --purge nothing is destroyed, so a mistake is recoverable from the
+trash. With it, nothing is.
+";
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -28,6 +55,18 @@ async fn main() {
             std::process::exit(2);
         }
     };
+
+    // Before anything else, and before the missing-operand refusal: `rm --help`
+    // works with no operands and so must this. Printed to stdout and exit 0,
+    // which is what a `--help` is for and what a caller piping it expects.
+    if inv.help {
+        print!("{USAGE}");
+        std::process::exit(0);
+    }
+    if inv.version {
+        println!("trash-rm {}", env!("CARGO_PKG_VERSION"));
+        std::process::exit(0);
+    }
 
     // `-i`: confirm each operand before deleting. A declined operand is dropped from
     // the effective set. With no answer available (EOF / non-tty), treat as "no".
