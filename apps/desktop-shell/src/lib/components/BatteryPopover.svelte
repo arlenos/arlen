@@ -31,6 +31,17 @@
   /// the hardware from a question nobody got an answer to.
   let unreadable = $state(false);
 
+  /// The mode was pressed and the machine said no.
+  ///
+  /// The press is optimistic and the poll that follows re-reads the truth, so
+  /// the pill flips back on its own - which is a signal without being an
+  /// explanation, and looks identical to a mis-click. The refusal used to reach
+  /// `console.warn` alone, and this webview has no console anybody reads.
+  ///
+  /// It names what still holds rather than only what failed, because the pill
+  /// the poll restored is the answer to the question the person is now asking.
+  let profileRefused = $state(false);
+
   async function poll() {
     unreadable = false;
     try {
@@ -59,10 +70,12 @@
     // drain; previously this stayed stale until the next upstream
     // battery event).
     powerProfile = p;
+    profileRefused = false;
     try {
       await invoke("set_power_profile", { profile: p });
     } catch (e) {
       console.warn("[battery] set_power_profile failed:", e);
+      profileRefused = true;
     }
     await poll();
   }
@@ -111,6 +124,9 @@
 
   <div class="bat-section">
     <span class="bat-heading">{$t("sh.bat.powerMode")}</span>
+    {#if profileRefused}
+      <p class="bat-refused" role="alert">{$t("sh.bat.profileRefused")}</p>
+    {/if}
     <div class="bat-profiles">
       {#each PROFILES as p (p.id)}
         <Tooltip.Root>
@@ -143,6 +159,13 @@
 
   .bat-section { display: flex; flex-direction: column; gap: 8px; }
   .bat-heading { font-size: var(--text-2xs); font-weight: 600; opacity: 0.5; }
+  .bat-refused {
+    margin: 0 0 0.35rem;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: var(--color-error, #f87171);
+  }
+
   .bat-profiles { display: flex; gap: 4px; }
 
   .bat-pill {

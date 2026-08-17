@@ -344,6 +344,7 @@ const messages: Catalogs = {
     "sh.bat.onBattery": "On battery",
     "sh.bat.noBattery": "No battery found",
     "sh.bat.stateUnknown": "Could not read the battery state.",
+    "sh.bat.profileRefused": "That power mode was refused, so the one below still holds.",
     "sh.bat.powerMode": "Power Mode",
 
     // Layout popover
@@ -852,6 +853,7 @@ const messages: Catalogs = {
     "sh.bat.onBattery": "Im Akkubetrieb",
     "sh.bat.noBattery": "Kein Akku gefunden",
     "sh.bat.stateUnknown": "Der Akkustatus konnte nicht gelesen werden.",
+    "sh.bat.profileRefused": "Dieser Energiemodus wurde abgelehnt, es gilt weiter der unten markierte.",
     "sh.bat.powerMode": "Energiemodus",
 
     "sh.layout.title": "Anordnung",
