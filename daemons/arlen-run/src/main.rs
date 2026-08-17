@@ -422,7 +422,18 @@ fn main() -> ExitCode {
     let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
     let mut plumbing = match &runtime_dir {
         Some(rt) => {
-            spawn::plumbing_binds(rt, wayland_display.as_deref(), &args.app_id, |p| p.exists())
+            // Read once, from the kernel: see `document_portal_mount`.
+            let uid = unsafe { libc::getuid() };
+            let doc = std::fs::read_to_string("/proc/self/mountinfo")
+                .ok()
+                .and_then(|m| spawn::document_portal_mount(&m, uid));
+            spawn::plumbing_binds(
+                rt,
+                wayland_display.as_deref(),
+                doc.as_deref(),
+                &args.app_id,
+                |p| p.exists(),
+            )
         }
         None => Vec::new(),
     };
