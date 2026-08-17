@@ -12,12 +12,18 @@
  * apps' state stays in the store invisibly until they regain
  * focus.
  *
+ * Keyed by the permission id, which is what these events are
+ * published under. The focused window announces a different
+ * name for the same app, so the focus side is resolved first -
+ * see `activeApp.ts`. Keying on the window's own id, as this
+ * did, left all three surfaces permanently empty.
+ *
  * See `docs/architecture/{shortcuts,badges,ambient}-api.md`.
  */
 
 import { derived, writable, type Readable } from "svelte/store";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { activeWindow } from "./windows";
+import { activeAppId } from "./activeApp";
 
 // ── Shortcuts ───────────────────────────────────────────────────
 
@@ -120,9 +126,9 @@ function applyShortcutCleared(e: ShortcutClearedEvent) {
  * or no registered shortcuts.
  */
 export const focusedShortcuts: Readable<ShortcutEntry[]> = derived(
-  [shortcutsInternal, activeWindow],
-  ([$internal, $active]) => {
-    const appId = $active?.app_id;
+  [shortcutsInternal, activeAppId],
+  ([$internal, $appId]) => {
+    const appId = $appId;
     if (!appId) return [] as ShortcutEntry[];
     return $internal.byApp.get(appId) ?? [];
   },
@@ -219,9 +225,9 @@ function applyBadgeCleared(e: BadgeClearedEvent) {
 }
 
 export const focusedBadge: Readable<BadgeRender> = derived(
-  [badgesInternal, activeWindow],
-  ([$internal, $active]) => {
-    const appId = $active?.app_id;
+  [badgesInternal, activeAppId],
+  ([$internal, $appId]) => {
+    const appId = $appId;
     if (!appId) return null;
     return $internal.byApp.get(appId) ?? null;
   },
@@ -318,9 +324,9 @@ function applyAmbientCleared(e: AmbientClearedEvent) {
 }
 
 export const focusedAmbient: Readable<AmbientRender | null> = derived(
-  [ambientInternal, activeWindow],
-  ([$internal, $active]) => {
-    const appId = $active?.app_id;
+  [ambientInternal, activeAppId],
+  ([$internal, $appId]) => {
+    const appId = $appId;
     if (!appId) return null;
     const slot = $internal.byApp.get(appId);
     if (!slot) return null;
