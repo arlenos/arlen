@@ -8,7 +8,7 @@ The full architecture is written up in the technical report (its own repo, also 
 
 ## Layout
 
-This is a monorepo for the tightly-coupled first-party code. A few things live in their own repos where independence matters, the Wayland compositor (a cosmic-comp fork that tracks upstream) and the published foundation paper.
+This is a monorepo for the tightly-coupled first-party code. A few things live in their own repos where independence matters: the Wayland compositor (a cosmic-comp fork that tracks upstream), the published foundation paper and the architecture specs, which are private and are cloned into `docs/` for local work.
 
 ```
 arlen/
@@ -21,7 +21,6 @@ arlen/
   store-backend/  app store backend
   themes/      GTK theme generator
   dev/         build, test and dev tooling (justfile, process-compose, vm)
-  docs/        architecture specs (shared across the tree)
 ```
 
 The daemons are the spine of the system:
