@@ -97,6 +97,8 @@
   /// even when the panel keeps growing. Falls back to
   /// `offsetHeight` (transform-independent) so the popover's
   /// scale-in animation doesn't briefly under-measure.
+  let { children } = $props();
+
   let panelHeight = $state(0);
 
   $effect(() => {
@@ -207,7 +209,7 @@
 {#if !isConsentWindow}
   <AmbientOverlay />
 {/if}
-<slot />
+{@render children?.()}
 {#if !isConsentWindow}
   <ContextMenu />
   <TabBar />
