@@ -88,6 +88,35 @@ export async function load(): Promise<void> {
     // Keep the defaults; a theme that cannot be read is not a reason to blank
     // the page, and the write path reports its own failures.
   }
+  await loadOverrides();
+}
+
+/// Read back the overrides already in the config.
+///
+/// Without this the rows showed the THEME's value and the system rendered the
+/// override: set the text size to 22px, reopen Settings, and the row says 14 -
+/// measured on 17 August by rendering the page against two seeded configs. The
+/// page that writes the field was the one place not reading it, so it reported a
+/// size the machine was not using and the reset button had nothing to clear.
+async function loadOverrides(): Promise<void> {
+  try {
+    const stored = await invoke<Record<string, string> | null>("config_get", {
+      file: "appearance",
+      key: "overrides.typography",
+    });
+    if (!stored || typeof stored !== "object") return;
+    const next: Record<string, string | number> = {};
+    for (const [field, key] of Object.entries(METRIC_KEY)) {
+      // `METRIC_KEY` holds the full dotted path; this table is already scoped to
+      // `typography`, so only the leaf names it.
+      const raw = stored[key.replace("typography.", "")];
+      if (typeof raw === "string") next[field] = toNumberIfSized(field, raw);
+    }
+    overrides.set(next);
+  } catch {
+    // No overrides table, or a config that cannot be read. The rows then show
+    // the theme's values, which is what an unoverridden field looks like.
+  }
 }
 
 /// Set a field; setting it back to the theme's value clears the override.
