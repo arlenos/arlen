@@ -103,18 +103,46 @@
 
   $effect(() => {
     const id = $activePopover;
-    if (id !== "quick-settings" && id !== "notifications") {
+    if (id === null) {
       panelHeight = 0;
       return;
     }
 
-    const sel = id === "quick-settings" ? ".qs-panel" : ".np-popover";
+    // ANY open panel, not just those two. The list used to be
+    // quick-settings and notifications, and every other applet
+    // panel measured as zero - so the toast stack started at 44px
+    // while the panel starts at 40, and a toast arriving while the
+    // sound or network panel was open landed squarely on top of it.
+    // The first thing it covers is the strip along the panel's top
+    // edge, which is exactly where those panels put "That change
+    // did not reach the audio service." Quick settings keeps its own
+    // selector; everything else is a ShellPopover and wears
+    // `.pop-panel`.
+    //
+    // This also revives the notifications case, which had stopped
+    // working silently: it looked for `.np-popover`, a class that no
+    // longer exists anywhere in the tree since that panel moved onto
+    // ShellPopover. The selector matched nothing, so `attach` spun on
+    // requestAnimationFrame for as long as the panel stayed open and
+    // the offset never moved off its base.
+    const sel = id === "quick-settings" ? ".qs-panel" : ".pop-panel";
     let observer: ResizeObserver | null = null;
     let raf: number | null = null;
 
+    // A panel takes a frame or two to mount; a selector that has been
+    // renamed away takes forever. Bounded so the second case says so
+    // once instead of retrying in silence for as long as the panel is
+    // open, which is how `.np-popover` went unnoticed.
+    let tries = 0;
     function attach() {
       const el = document.querySelector<HTMLElement>(sel);
       if (!el) {
+        if (++tries > 30) {
+          console.warn(
+            `[shell] no element matches ${sel}; toasts will overlap the ${id} panel`,
+          );
+          return;
+        }
         // Panel not yet in DOM — try again next frame.
         raf = requestAnimationFrame(attach);
         return;
