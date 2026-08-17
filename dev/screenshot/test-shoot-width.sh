@@ -67,6 +67,18 @@ check "a screen too small for the request is refused" \
   "exit=$rc png=$([ -e /tmp/shoot-width-c.png ] && echo written || echo absent)
 $out"
 
-rm -f /tmp/shoot-width-a.png /tmp/shoot-width-b.png /tmp/shoot-width-c.png
-[ "$fail" = 0 ] && echo "a clamped viewport cannot pass for a desktop render any more"
+# 4. A page that never loaded is refused, and leaves no PNG. The failure this
+#    guards cost a retracted finding on 17 August: a dev server had exited, the
+#    webview showed its own connection-refused page, and the run reported a
+#    render. Port 9 is the discard service - nothing serves it anywhere.
+rm -f /tmp/shoot-width-d.png
+out=$("$here/shoot.sh" 'http://localhost:9/never-served' /tmp/shoot-width-d.png 2>&1)
+rc=$?
+check "a page that never loaded is refused" \
+  "$([ "$rc" != 0 ] && [ ! -e /tmp/shoot-width-d.png ] && echo 1 || echo 0)" \
+  "exit=$rc png=$([ -e /tmp/shoot-width-d.png ] && echo written || echo absent)
+$out"
+
+rm -f /tmp/shoot-width-a.png /tmp/shoot-width-b.png /tmp/shoot-width-c.png /tmp/shoot-width-d.png
+[ "$fail" = 0 ] && echo "neither a clamped viewport nor an unreachable page can pass for a render"
 exit "$fail"

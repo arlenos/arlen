@@ -82,6 +82,29 @@ def main():
            {"width": args.width, "height": args.height, "x": 0, "y": 0})
         rq(base, "POST", f"/session/{sid}/url", {"url": args.url})
         time.sleep(args.settle)
+        # WHAT THE PAGE ACTUALLY IS, before anything is asked of it.
+        #
+        # A dev server that has exited leaves the webview on its own failure page
+        # - "Could not connect to localhost: Connection refused" - and the run
+        # continues happily: injections execute, the viewport measures, a valid
+        # PNG is written, exit 0. On 17 August I read that page as evidence about
+        # a component and wrote a confident structural conclusion on top of it,
+        # then had to retract the lot.
+        #
+        # The check is the LOADED URL rather than the sibling's page-text probes
+        # (`shoot_app.py::warn_if_error_page`), and deliberately so: this tree is
+        # full of honest refusal sentences, and one of them is the tray's "That
+        # app did not respond." - a phrase in that probe list, on a surface
+        # somebody would legitimately want to photograph. A failed load leaves
+        # the document at `about:blank` whatever the page would have said, so
+        # this cannot refuse a shot for its content.
+        loaded = rq(base, "GET", f"/session/{sid}/url")["value"]
+        if loaded.startswith("about:") and not args.url.startswith("about:"):
+            print(f"nothing loaded: asked for {args.url}, the view is at {loaded}."
+                  f" A dev server that is not running looks exactly like a render"
+                  f" otherwise. No screenshot written.", file=sys.stderr)
+            sys.exit(5)
+
         if args.open_selector:
             clicked = rq(base, "POST", f"/session/{sid}/execute/sync", {
                 "script": "const el = document.querySelector(arguments[0]);"
