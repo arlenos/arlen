@@ -57,7 +57,10 @@ SHOTS=(
   "settings keyboard/shortcuts settings-shortcuts-unavailable"
   # The add-binding form only exists once its dialog is open, which is why it was
   # never in a shot and its six labels stayed English until 17 August.
-  "settings keyboard/shortcuts settings-shortcuts-dialog .sc-toolbar button, header + div button"
+  "settings keyboard/shortcuts settings-shortcuts-dialog [data-action=add-custom]"
+  # A destructive confirm nobody had looked at: it offers to reset every binding
+  # on a page that has just said it cannot read them.
+  "settings keyboard/shortcuts settings-shortcuts-reset [data-action=reset-all]"
   "settings privacy settings-privacy-unavailable"
   "settings privacy/physical settings-sentinel-unavailable"
   "settings appearance/wallpaper settings-appearance-wallpaper-unavailable"
