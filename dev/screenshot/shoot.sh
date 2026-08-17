@@ -25,6 +25,10 @@ export SHOOT_INJECT="${3:-}"
 # A CSS selector clicked after load and before the injection, for anything the
 # page only shows once something is opened.
 export SHOOT_OPEN="${SHOOT_OPEN:-}"
+# A JS file run after that click, for a gesture a click cannot express: the
+# text editor saves on Ctrl+S through a CodeMirror keymap and has no save
+# button, so nothing else reaches the path that produces a save failure.
+export SHOOT_DRIVE="${SHOOT_DRIVE:-}"
 # The viewport. Every run prints the size it actually rendered at; set
 # SHOOT_REQUIRE_WIDTH to refuse rather than hand back a narrow-layout shot.
 export SHOOT_WIDTH="${4:-1280}"
@@ -87,6 +91,7 @@ xvfb-run -a --server-args="-screen 0 ${SHOOT_SCREEN_W}x${SHOOT_SCREEN_H}x24" bas
   args=(--url "$SHOOT_URL" --out "$SHOOT_OUT" --port "$SHOOT_PORT" --width "$SHOOT_WIDTH" --height "$SHOOT_HEIGHT")
   [ -n "$SHOOT_INJECT" ] && args+=(--inject "$SHOOT_INJECT")
   [ -n "${SHOOT_OPEN:-}" ] && args+=(--open "$SHOOT_OPEN")
+  [ -n "${SHOOT_DRIVE:-}" ] && args+=(--drive "$SHOOT_DRIVE")
   [ -n "${SHOOT_REQUIRE_WIDTH:-}" ] && args+=(--require-width "$SHOOT_REQUIRE_WIDTH")
   python3 "$SHOOT_HERE/shoot.py" "${args[@]}"
 '

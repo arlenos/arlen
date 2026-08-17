@@ -3,15 +3,18 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# Control for the one thing `shoot.sh` must never do again: hand back a shot
-# narrower than the caller asked for and say nothing.
+# Controls for the things `shoot.sh` must never do again, each one a shot that
+# went into the record as evidence and was not.
 #
-# The bug it guards was live for a week. `xvfb-run -a` with no server args gives
-# a 640x480 screen, so every request for 1280 came back clamped, `--require-width`
-# was opt-in and nobody passed it, and the PNGs went into the record as if they
-# were desktop renders. Both halves are checked here, because fixing the screen
-# without arming the refusal would leave the next screen-size regression just as
-# quiet.
+# Cases 1-3, the width. The bug was live for a week: `xvfb-run -a` with no server
+# args gives a 640x480 screen, so every request for 1280 came back clamped,
+# `--require-width` was opt-in and nobody passed it, and the PNGs read as desktop
+# renders. Both halves are checked, because fixing the screen without arming the
+# refusal would leave the next screen-size regression just as quiet.
+#
+# Cases 4-5, the page that never loaded. Cases 6-7, that `--drive` does what it
+# says: a seam that quietly did nothing would leave every gesture-driven run
+# reporting on a page nobody touched.
 #
 # Run: dev/screenshot/test-shoot-width.sh
 set -uo pipefail
@@ -106,6 +109,38 @@ check "a dev server that is not running is refused" \
   "exit=$rc port=$port png=$([ -e /tmp/shoot-width-e.png ] && echo written || echo absent)
 $out"
 
-rm -f /tmp/shoot-width-a.png /tmp/shoot-width-b.png /tmp/shoot-width-c.png /tmp/shoot-width-d.png /tmp/shoot-width-e.png
+# 6. `--drive` reaches a gesture a click cannot express. The text editor saves on
+#    a CodeMirror Mod-s keymap and has no save button, so `--open` cannot reach
+#    the one path that produces a save failure. The page here answers ONLY to a
+#    dispatched keydown, so a seam that quietly did nothing would leave the
+#    marker unchanged and this would fail.
+cat > /tmp/shoot-drive.js <<'JS'
+document.body.dispatchEvent(new KeyboardEvent("keydown", {
+  key: "s", ctrlKey: true, bubbles: true, cancelable: true,
+}));
+return "dispatched";
+JS
+cat > /tmp/shoot-read.js <<'JS'
+return document.title;
+JS
+page='data:text/html,<title>untouched</title><script>document.addEventListener("keydown",function(e){if(e.ctrlKey%26%26e.key==="s"){document.title="saved"}})</script><p>x</p>'
+out=$(SHOOT_DRIVE=/tmp/shoot-drive.js "$here/shoot.sh" "$page" /tmp/shoot-width-f.png /tmp/shoot-read.js 2>&1)
+rc=$?
+check "--drive reaches a key the page only answers to as a key" \
+  "$([ "$rc" = 0 ] && printf '%s' "$out" | grep -q "inject result: saved" && echo 1 || echo 0)" \
+  "exit=$rc
+$out"
+
+# 7. And without it the same page stays untouched, so case 6 is measuring the
+#    drive rather than something the page does on its own.
+out=$("$here/shoot.sh" "$page" /tmp/shoot-width-g.png /tmp/shoot-read.js 2>&1)
+rc=$?
+check "the same page is untouched when nothing drives it" \
+  "$([ "$rc" = 0 ] && printf '%s' "$out" | grep -q "inject result: untouched" && echo 1 || echo 0)" \
+  "exit=$rc
+$out"
+
+rm -f /tmp/shoot-drive.js /tmp/shoot-read.js
+rm -f /tmp/shoot-width-a.png /tmp/shoot-width-b.png /tmp/shoot-width-c.png /tmp/shoot-width-d.png /tmp/shoot-width-e.png /tmp/shoot-width-f.png /tmp/shoot-width-g.png
 [ "$fail" = 0 ] && echo "neither a clamped viewport nor an unreachable page can pass for a render"
 exit "$fail"
