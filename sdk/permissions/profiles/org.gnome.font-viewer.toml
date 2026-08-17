@@ -1,8 +1,10 @@
-# Starting permission profile for GNOME Fonts (font viewer). Opens a font file
-# the user picks from Documents; system fonts are world-readable. No network.
+# Starting permission profile for GNOME Fonts (font viewer). It opens a font file
+# the user picks, which is a per-file portal grant, and system fonts are
+# world-readable - so it needs no standing scope. No network, no Knowledge Graph.
+#
+# This granted Documents on the reasoning that the user picks a font "from
+# Documents". Picking is what the portal does, and a font can be anywhere; the
+# standing grant added reach without adding the ability to open the file chosen.
 [info]
 app_id = "org.gnome.font-viewer"
 tier = "third-party"
-
-[filesystem]
-documents = true

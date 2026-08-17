@@ -25,7 +25,6 @@ firmware	gnome-firmware org.gnome.Firmware
 flare	de.schmidhuberj.Flare flare
 fluffychat	fluffychat im.fluffychat.Fluffychat
 flycast	flycast org.flycast.Flycast
-font-viewer	gnome-font-viewer org.gnome.font-viewer
 freetube	FreeTube io.freetubeapp.FreeTube
 gfeeds	gfeeds org.gabmus.gfeeds
 ghostty	com.ghostty.Ghostty com.mitchellh.ghostty ghostty

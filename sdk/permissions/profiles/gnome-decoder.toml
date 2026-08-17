@@ -1,10 +1,10 @@
 # Starting permission profile for a QR-code scanner/generator (Decoder). Camera
 # capture is granted through the portal, not a profile category, and a generated
-# code is saved through the file picker, which is a per-file grant. It reads and
-# writes image files, so Pictures is the standing scope. No network.
+# code is saved through the file picker, which is a per-file grant. So it needs no
+# standing scope: no network, no user files and no Knowledge Graph access.
+#
+# This granted Pictures, having already reasoned that both its camera and its save
+# go through a portal. Both sibling ids grant nothing for the same program.
 [info]
 app_id = "gnome-decoder"
 tier = "third-party"
-
-[filesystem]
-pictures = true
