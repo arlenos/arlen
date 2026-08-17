@@ -16,6 +16,11 @@ pub mod execution_proof;
 
 pub mod wire;
 
+/// Record a completion session and replay it as a deterministic oracle for
+/// the run loop, so a change can be shown to produce the same conversation
+/// without a live model.
+pub mod replay;
+
 #[cfg(test)]
 pub mod placeholder;
 

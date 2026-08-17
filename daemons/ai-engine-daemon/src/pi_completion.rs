@@ -332,8 +332,47 @@ async fn handle_connection(
     // SSRF-pinned dial live in ai-proxy). The daemon is the trusted egress caller.
     let body_str = String::from_utf8_lossy(&body);
     let streamed = wants_stream(&body_str);
+
+    // A pinned tape answers instead of the network, so a change to the run loop
+    // can be shown to produce the same conversation without a model and without
+    // egress. Loaded per request: a tape is a handful of turns, and re-reading it
+    // keeps this branch stateless next to a forward path that is.
+    //
+    // A request the recording never saw is a 502 carrying the reason, NOT a
+    // fallthrough to the live provider - a replay that quietly goes upstream is
+    // no longer deterministic and stops being evidence.
+    if let Some(tape) = std::env::var_os("ARLEN_AI_REPLAY") {
+        let answer = crate::replay::Replayer::load(std::path::Path::new(&tape))
+            .and_then(|r| r.answer(&body_str).map(str::to_string));
+        match answer {
+            Ok(recorded) => {
+                let _ = stream
+                    .write_all(&completion_response(streamed, 200, &recorded))
+                    .await;
+            }
+            Err(e) => {
+                warn!(pid, error = %e, "completion replay could not answer");
+                let msg = serde_json::json!({"error": e.to_string()}).to_string();
+                let _ = stream.write_all(&http_response(502, "Bad Gateway", msg.as_bytes())).await;
+            }
+        }
+        return;
+    }
+
     match proxy.forward(PROVIDER_NAME, &body_str, audit_token).await {
         Ok(resp) => {
+            // Recording is best-effort and never fails the request: a session the
+            // operator asked to keep is worth less than the answer they are
+            // waiting for, and a failed write says so in the log.
+            if let Some(tape) = std::env::var_os("ARLEN_AI_RECORD") {
+                let turn = crate::replay::Turn {
+                    request: body_str.to_string(),
+                    response: resp.body.clone(),
+                };
+                if let Err(e) = crate::replay::Recorder::new(std::path::PathBuf::from(&tape)).record(&turn) {
+                    warn!(error = %e, "could not record this completion turn");
+                }
+            }
             let _ = stream
                 .write_all(&completion_response(streamed, resp.upstream_status, &resp.body))
                 .await;
