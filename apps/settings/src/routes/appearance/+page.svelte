@@ -64,6 +64,7 @@
     isOverridden as isTypoOv,
     setTypo,
     resetTypo,
+    load as loadTypography,
   } from "$lib/stores/themeTypography";
   import { overrideSummary, resetAll } from "$lib/stores/themeOverrides";
 
@@ -72,6 +73,9 @@
     // The preview swatches are the active theme's real roles, not a house
     // palette that happens to look plausible.
     void loadPalette();
+    // Same reason for the text-size row: it shows the resolved theme's size, not
+    // a default that happens to match.
+    void loadTypography();
   });
 
   const CUSTOMISE = [

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { t } from "$lib/i18n/messages";
   import { sysOptions } from "$lib/stores/themeSystem";
   /// Typography: the theme's fonts, size, line height, and weights. The everyday
@@ -31,7 +32,13 @@
     isOverridden,
     setTypo,
     resetTypo,
+    load as loadTypography,
   } from "$lib/stores/themeTypography";
+
+  onMount(() => {
+    // The rows show the resolved theme's typography, so they have to read it.
+    void loadTypography();
+  });
 
   const sans = $derived(String($effective.fontSans));
   const mono = $derived(String($effective.fontMono));
