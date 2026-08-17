@@ -7,6 +7,22 @@ this drives the ACTUAL app - the Rust backend and the webview together - so it
 verifies the whole thing (IPC + render), e.g. that terminal command output shows.
 
 shoot-app.sh starts tauri-driver under Xvfb. Stdlib only, no venv.
+
+**Two things this cannot see, both of which look like a defect if you forget.**
+
+Titlebar controls are NOT in the webview. An app declares them and the compositor
+renders and handles them (`arlen-titlebar-v1`), so under this harness - which has
+no compositor - a declared button appears as inert text in a `header` and no
+selector will find anything clickable. `Focus Now` in the text editor cost three
+probes and an accessibility scare on 17 August before that was the answer. A
+driven-UI check that finds no button in the titlebar has found nothing, not a bug.
+
+A label may be split across adjacent text nodes, so `Focus` and `Now` live in
+separate nodes and `textContent` is what joins them. Match against an element's
+`textContent`, never per text node, and never against `innerText` - that one is
+layout-derived, so whether the split shows as `Focus Now` or `Focus\\nNow` changes
+between renders of the same page. All three of my failed probes that day were one
+of these two.
 """
 import argparse
 import base64
