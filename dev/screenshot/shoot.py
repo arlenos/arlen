@@ -98,11 +98,26 @@ def main():
         # somebody would legitimately want to photograph. A failed load leaves
         # the document at `about:blank` whatever the page would have said, so
         # this cannot refuse a shot for its content.
-        loaded = rq(base, "GET", f"/session/{sid}/url")["value"]
-        if loaded.startswith("about:") and not args.url.startswith("about:"):
-            print(f"nothing loaded: asked for {args.url}, the view is at {loaded}."
-                  f" A dev server that is not running looks exactly like a render"
-                  f" otherwise. No screenshot written.", file=sys.stderr)
+        #
+        # Read it from INSIDE the document, not from `GET /session/{id}/url`.
+        # The driver answers that endpoint inconsistently, and the inconsistency
+        # runs the wrong way: for `http://localhost:9/never-served` it says
+        # `about:blank`, but for `http://localhost:1467/_nettest?panel=audio`
+        # against a dead server it hands my own argument back. So the first
+        # version of this guard passed on exactly the URL shape the work uses -
+        # a real route with a query string - while refusing the toy one its own
+        # control fired. `location.href` is the document's answer about itself,
+        # and on that connection-refused page it reads `about:blank` either way.
+        # Both are reported below, because when they disagree the driver's is
+        # the one that is lying.
+        loaded = rq(base, "POST", f"/session/{sid}/execute/sync",
+                    {"script": "return location.href", "args": []})["value"]
+        driver_said = rq(base, "GET", f"/session/{sid}/url")["value"]
+        if str(loaded).startswith("about:") and not args.url.startswith("about:"):
+            print(f"nothing loaded: asked for {args.url}, the document says it is"
+                  f" at {loaded} (the driver claims {driver_said}). A dev server"
+                  f" that is not running looks exactly like a render otherwise."
+                  f" No screenshot written.", file=sys.stderr)
             sys.exit(5)
 
         if args.open_selector:
