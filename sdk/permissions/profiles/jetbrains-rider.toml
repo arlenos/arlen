@@ -1,0 +1,15 @@
+# Starting permission profile for Rider (a .NET IDE). Projects live in Documents; the IDE
+# fetches packages, plugins and language servers over the network (its function,
+# matching the PyCharm sibling). No graph, no media dirs.
+[info]
+app_id = "jetbrains-rider"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
+
+# Same app as `com.jetbrains.Rider`, under the desktop-id this packaging installs. An app is
+# only reachable under the id it is actually launched by.

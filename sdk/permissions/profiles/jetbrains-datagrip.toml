@@ -1,0 +1,15 @@
+# Starting permission profile for DataGrip (a database IDE). Connects to
+# databases over the network (its function); SQL scripts and dumps live in
+# Documents. No graph, no media dirs.
+[info]
+app_id = "jetbrains-datagrip"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
+
+# Same app as `com.jetbrains.DataGrip`, under the desktop-id this packaging installs. An app is
+# only reachable under the id it is actually launched by.

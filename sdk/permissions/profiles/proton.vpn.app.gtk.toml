@@ -1,0 +1,12 @@
+# Starting permission profile for a VPN client. Needs network to reach its
+# gateways; the tunnel setup itself is privileged and elevates via polkit rather
+# than through this profile. No file access and no Knowledge Graph.
+[info]
+app_id = "proton.vpn.app.gtk"
+tier = "third-party"
+
+[network]
+allow_all = true
+
+# Same app as `protonvpn`, under the desktop-id this packaging installs. An app is
+# only reachable under the id it is actually launched by.

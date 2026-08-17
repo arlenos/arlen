@@ -1,0 +1,14 @@
+# Starting permission profile for an email client. Needs network for mail; saves
+# attachments to Downloads. No Knowledge Graph access. Observe-mode refines it.
+[info]
+app_id = "proton-mail"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
+
+# Same app as `protonmail`, under the desktop-id this packaging installs. An app is
+# only reachable under the id it is actually launched by.
