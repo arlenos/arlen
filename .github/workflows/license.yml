@@ -46,8 +46,19 @@ jobs:
           tool: just
       - name: install cargo-bundle-licenses
         run: cargo install cargo-bundle-licenses --locked
-      # Non-gating: the NOTICES artifact is informational, and the exact
-      # bundle-licenses invocation reconciles on a host with the tool.
+      # The invocation HAS now been reconciled on a host with the tool (17
+      # August): cargo-bundle-licenses takes no path argument, and the recipe
+      # had been passing `--manifest-path`, which it rejects outright. So this
+      # produced nothing from the day it was written, and said success anyway -
+      # `continue-on-error` here plus `if-no-files-found: ignore` below meant a
+      # green run with `##[error] exit code 2` in its own log and zero
+      # artifacts attached.
+      #
+      # Still non-gating, for a reason that is now about cost rather than doubt:
+      # the recipe walks 118 workspace roots and resolves each one's dependency
+      # graph, so a transient registry hiccup anywhere in that walk would fail a
+      # workflow whose output is an informational artifact. The recipe itself
+      # now refuses to finish empty, so a silent nothing cannot come back.
       - name: generate notices
         continue-on-error: true
         run: just --justfile dev/justfile notices
@@ -55,4 +66,4 @@ jobs:
         with:
           name: third-party-notices
           path: THIRD-PARTY-NOTICES/
-          if-no-files-found: ignore
+          if-no-files-found: warn
