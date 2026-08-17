@@ -42,7 +42,15 @@ function crumbItems(path: string): BreadcrumbItem[] {
   let crumbs = breadcrumb(path);
   if (home && (path === home || path.startsWith(home + "/"))) {
     const homeCrumbs = breadcrumb(home);
-    crumbs = [{ name: "Home", path: home }, ...crumbs.slice(homeCrumbs.length)];
+    // `get(t)` three lines up already had the catalogue in hand, and
+    // `f.place.home` was translated and read by nobody. This is the crumb the
+    // SHELL topbar shows; the windowed path builds its own in the kit
+    // `Breadcrumb`, which hardcodes "Home" at line 43 - arlen-ui's to fix, and
+    // the reason the rendered header stayed English after this change.
+    crumbs = [
+      { name: get(t)("f.place.home"), path: home },
+      ...crumbs.slice(homeCrumbs.length),
+    ];
   }
   return crumbs.map((c) => ({ label: c.name, action: NAV_PREFIX + c.path }));
 }
