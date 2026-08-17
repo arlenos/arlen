@@ -75,6 +75,15 @@
 //! refusal above: this route can name a unit that IS shipped, because nothing
 //! consults the unit registry. The name in a user-slice cgroup path is
 //! user-writable text, and no rule over its shape can change that.
+//!
+//! **The half that IS trusted is anchored, checked rather than assumed.** Since
+//! the forgery works by naming a shipped unit, it would reach the system slice too
+//! if the resolver took a unit name out of the cgroup line without requiring the
+//! path shape. It does not: [`crate::unit_identity::unit_from_cgroup`] rejects
+//! anything starting with the user slice or containing `/user@`, and then takes
+//! the unit only via `strip_prefix("/system.slice/")` - anchored at the START of
+//! the path, not matched anywhere in it. A process in its own delegated subtree is
+//! at `/user.slice/...`, which fails both tests however it names the leaf.
 
 use crate::connection_auth::AuthError;
 use crate::identity::{exe_ino_dev, exe_path_openat, path_to_app_id};
