@@ -1,11 +1,11 @@
-/// Typed structs shared between Rust and TypeScript via the Tauri IPC bridge.
-///
-/// All types here derive `ts_rs::TS` which generates TypeScript type definitions
-/// in `os-sdk/bindings/` when `cargo test` runs. The generated files are
-/// committed to the repo and consumed by ui-kit and desktop-shell.
-///
-/// If you add or change a type here, run `cargo test -p os-sdk` to regenerate
-/// the bindings, then commit the updated `.ts` files.
+//! Typed structs shared between Rust and TypeScript via the Tauri IPC bridge.
+//!
+//! All types here derive `ts_rs::TS` which generates TypeScript type definitions
+//! in `os-sdk/bindings/` when `cargo test` runs. The generated files are
+//! committed to the repo and consumed by ui-kit and desktop-shell.
+//!
+//! If you add or change a type here, run `cargo test -p os-sdk` to regenerate
+//! the bindings, then commit the updated `.ts` files.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

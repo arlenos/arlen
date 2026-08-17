@@ -66,15 +66,6 @@ use tokio::net::UnixListener;
 /// debug build.
 const AI_ENGINE_APP_ID: &str = "ai-agent";
 
-/// Whether a peer that resolved to `app_id` may open MCP connections
-/// to a first-party app's server.
-///
-/// There is one MCP client, the AI engine daemon, so only it is
-/// admitted. In debug builds every component runs straight from a
-/// cargo target directory and resolves to a `dev.*` id (the engine
-/// included), so those are admitted too for local development; the
-/// branch compiles out of release builds.
-
 /// A debug-only test affordance, mirroring the audit daemon's: a test sets
 /// `ARLEN_MCP_EXTRA_ADMIT` to ONE extra dev id (its own cargo-run `dev.<test>` id, which is
 /// hash-suffixed and so cannot be a static entry) to exercise this path as
@@ -84,6 +75,14 @@ fn dev_extra_admits(app_id: &str) -> bool {
     std::env::var("ARLEN_MCP_EXTRA_ADMIT").is_ok_and(|v| v == app_id)
 }
 
+/// Whether a peer that resolved to `app_id` may open MCP connections
+/// to a first-party app's server.
+///
+/// There is one MCP client, the AI engine daemon, so only it is
+/// admitted. In debug builds every component runs straight from a
+/// cargo target directory and resolves to a `dev.*` id (the engine
+/// included), so those are admitted too for local development; the
+/// branch compiles out of release builds.
 fn caller_is_admitted(app_id: &str) -> bool {
     if app_id == AI_ENGINE_APP_ID {
         return true;

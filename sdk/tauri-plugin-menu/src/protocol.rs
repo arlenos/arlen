@@ -1,6 +1,6 @@
-/// Client-side bindings for the `arlen-titlebar-v1` Wayland protocol.
-///
-/// Generated from `protocols/arlen-titlebar-v1.xml` via `wayland-scanner`.
+//! Client-side bindings for the `arlen-titlebar-v1` Wayland protocol.
+//!
+//! Generated from `protocols/arlen-titlebar-v1.xml` via `wayland-scanner`.
 
 #[allow(non_snake_case, non_upper_case_globals, non_camel_case_types)]
 pub mod generated {

@@ -1,23 +1,23 @@
-/// `shell.presence` — first-party app surface for declaring the user's
-/// current ephemeral activity.
-///
-/// Foundation §354 spec: apps describe what the user is *currently* doing
-/// (editing, reading, building) so the Knowledge Graph gets semantically
-/// precise UserAction nodes without relying on eBPF inference. Presence is
-/// ephemeral: when the app loses focus or the user moves on, presence is
-/// cleared. This is distinct from `shell.timeline.record`, which writes
-/// completed (persistent) events.
-///
-/// The implementation routes through the Event Bus: `set` emits
-/// `app.presence.set`, `clear` emits `app.presence.clear`. The Knowledge
-/// Daemon's promotion task picks them up and creates UserAction graph nodes.
-/// Apps never write to the graph directly — that path is reserved for the
-/// daemon and requires capability tokens.
-///
-/// For Tauri apps that want auto-clear-on-blur semantics (per spec), the
-/// recommended pattern is to wire the auto-clear path in the TypeScript
-/// layer using Tauri's window-blur event. The Rust API only emits the
-/// events; orchestration of *when* to clear is the consumer's choice.
+//! `shell.presence` — first-party app surface for declaring the user's
+//! current ephemeral activity.
+//!
+//! Foundation §354 spec: apps describe what the user is *currently* doing
+//! (editing, reading, building) so the Knowledge Graph gets semantically
+//! precise UserAction nodes without relying on eBPF inference. Presence is
+//! ephemeral: when the app loses focus or the user moves on, presence is
+//! cleared. This is distinct from `shell.timeline.record`, which writes
+//! completed (persistent) events.
+//!
+//! The implementation routes through the Event Bus: `set` emits
+//! `app.presence.set`, `clear` emits `app.presence.clear`. The Knowledge
+//! Daemon's promotion task picks them up and creates UserAction graph nodes.
+//! Apps never write to the graph directly — that path is reserved for the
+//! daemon and requires capability tokens.
+//!
+//! For Tauri apps that want auto-clear-on-blur semantics (per spec), the
+//! recommended pattern is to wire the auto-clear path in the TypeScript
+//! layer using Tauri's window-blur event. The Rust API only emits the
+//! events; orchestration of *when* to clear is the consumer's choice.
 
 use std::collections::HashMap;
 use std::future::Future;

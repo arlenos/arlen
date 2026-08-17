@@ -1,22 +1,22 @@
-/// `shell.clipboard` — first-party app surface for the Arlen
-/// clipboard with explicit sensitivity labels.
-///
-/// Apps connect to the shell-side IPC socket at
-/// `$XDG_RUNTIME_DIR/arlen/clipboard.sock`. The shell is the
-/// broker for all clipboard operations; this client never touches
-/// Wayland directly. See `docs/architecture/clipboard-api.md` for
-/// the full architecture.
-///
-/// The Rust API mirrors the foundation §6.4 spec:
-/// - [`UnixClipboardClient::write`] places content with a
-///   sensitivity label.
-/// - [`UnixClipboardClient::read`] returns the current entry, with
-///   content elided for `Sensitive` entries when the caller lacks
-///   the `clipboard.read.sensitive` permission.
-/// - [`UnixClipboardClient::subscribe`] streams future clipboard
-///   changes.
-/// - [`UnixClipboardClient::history`] returns the recorded ring
-///   buffer (requires `clipboard.history`).
+//! `shell.clipboard` — first-party app surface for the Arlen
+//! clipboard with explicit sensitivity labels.
+//!
+//! Apps connect to the shell-side IPC socket at
+//! `$XDG_RUNTIME_DIR/arlen/clipboard.sock`. The shell is the
+//! broker for all clipboard operations; this client never touches
+//! Wayland directly. See `docs/architecture/clipboard-api.md` for
+//! the full architecture.
+//!
+//! The Rust API mirrors the foundation §6.4 spec:
+//! - [`UnixClipboardClient::write`] places content with a
+//!   sensitivity label.
+//! - [`UnixClipboardClient::read`] returns the current entry, with
+//!   content elided for `Sensitive` entries when the caller lacks
+//!   the `clipboard.read.sensitive` permission.
+//! - [`UnixClipboardClient::subscribe`] streams future clipboard
+//!   changes.
+//! - [`UnixClipboardClient::history`] returns the recorded ring
+//!   buffer (requires `clipboard.history`).
 
 use std::path::PathBuf;
 

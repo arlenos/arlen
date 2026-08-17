@@ -1,44 +1,44 @@
-/// Tauri plugin exposing the Arlen OS `shell.*` API to Tauri apps.
-///
-/// First-party Tauri apps include this plugin once and immediately have
-/// `shell.presence`, `shell.timeline`, and `shell.spatial` available
-/// from the TypeScript frontend. The plugin owns the long-lived
-/// `UnixEventEmitter` connection to the Event Bus and turns each
-/// invocation from the frontend into a typed `os-sdk` call.
-///
-/// `shell.menu` is **not** exposed by this plugin — that surface lives
-/// in `desktop-shell` directly because menus are global state owned by
-/// the shell, not per-app state proxied through the Event Bus.
-///
-/// # Usage (Rust)
-///
-/// ```rust,ignore
-/// fn main() {
-///     tauri::Builder::default()
-///         .plugin(tauri_plugin_arlen_shell::init())
-///         .run(tauri::generate_context!())
-///         .expect("error running app");
-/// }
-/// ```
-///
-/// # Usage (TypeScript)
-///
-/// ```typescript
-/// import { shell } from "@arlen/tauri-plugin-shell";
-///
-/// await shell.presence.set({
-///   activity: "editing",
-///   subject: "report.md",
-/// });
-/// ```
-///
-/// # Configuration
-///
-/// The plugin reads `ARLEN_APP_ID` and the producer-socket env
-/// (`ARLEN_PRODUCER_SOCKET`, default
-/// `/run/arlen/event-bus-producer.sock`) at init time. Apps that
-/// need to override the socket path can do so by setting the env
-/// variable before constructing the Tauri builder.
+//! Tauri plugin exposing the Arlen OS `shell.*` API to Tauri apps.
+//!
+//! First-party Tauri apps include this plugin once and immediately have
+//! `shell.presence`, `shell.timeline`, and `shell.spatial` available
+//! from the TypeScript frontend. The plugin owns the long-lived
+//! `UnixEventEmitter` connection to the Event Bus and turns each
+//! invocation from the frontend into a typed `os-sdk` call.
+//!
+//! `shell.menu` is **not** exposed by this plugin — that surface lives
+//! in `desktop-shell` directly because menus are global state owned by
+//! the shell, not per-app state proxied through the Event Bus.
+//!
+//! # Usage (Rust)
+//!
+//! ```rust,ignore
+//! fn main() {
+//!     tauri::Builder::default()
+//!         .plugin(tauri_plugin_arlen_shell::init())
+//!         .run(tauri::generate_context!())
+//!         .expect("error running app");
+//! }
+//! ```
+//!
+//! # Usage (TypeScript)
+//!
+//! ```typescript
+//! import { shell } from "@arlen/tauri-plugin-shell";
+//!
+//! await shell.presence.set({
+//!   activity: "editing",
+//!   subject: "report.md",
+//! });
+//! ```
+//!
+//! # Configuration
+//!
+//! The plugin reads `ARLEN_APP_ID` and the producer-socket env
+//! (`ARLEN_PRODUCER_SOCKET`, default
+//! `/run/arlen/event-bus-producer.sock`) at init time. Apps that
+//! need to override the socket path can do so by setting the env
+//! variable before constructing the Tauri builder.
 
 mod commands;
 pub mod locale;

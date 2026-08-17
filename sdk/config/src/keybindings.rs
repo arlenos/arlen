@@ -1,19 +1,19 @@
-/// Keybinding config parser with scoped bindings.
-///
-/// Format: `~/.config/arlen/keybindings.toml`
-/// ```toml
-/// [compositor]
-/// "Super+Return" = "app:launch:terminal"
-/// "Super+Q" = "window:close"
-///
-/// [shell]
-/// "Super+Space" = "waypointer:toggle"
-///
-/// [titlebar]
-/// "Ctrl+Tab" = "tab:next"
-/// ```
-///
-/// See `docs/architecture/config-system.md` (Keybindings section).
+//! Keybinding config parser with scoped bindings.
+//!
+//! Format: `~/.config/arlen/keybindings.toml`
+//! ```toml
+//! [compositor]
+//! "Super+Return" = "app:launch:terminal"
+//! "Super+Q" = "window:close"
+//!
+//! [shell]
+//! "Super+Space" = "waypointer:toggle"
+//!
+//! [titlebar]
+//! "Ctrl+Tab" = "tab:next"
+//! ```
+//!
+//! See `docs/architecture/config-system.md` (Keybindings section).
 
 use std::collections::HashMap;
 use std::fmt;

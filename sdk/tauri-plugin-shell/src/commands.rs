@@ -1,10 +1,10 @@
-/// Tauri command handlers for the Arlen shell plugin.
-///
-/// Each command is a thin wrapper that takes typed parameters from the
-/// Tauri frontend (deserialised by Tauri's command machinery) and
-/// forwards them to the matching `os-sdk` shell surface. Errors from
-/// the SDK are stringified for the Tauri error channel because Tauri
-/// commands cannot return arbitrary Rust error types.
+//! Tauri command handlers for the Arlen shell plugin.
+//!
+//! Each command is a thin wrapper that takes typed parameters from the
+//! Tauri frontend (deserialised by Tauri's command machinery) and
+//! forwards them to the matching `os-sdk` shell surface. Errors from
+//! the SDK are stringified for the Tauri error channel because Tauri
+//! commands cannot return arbitrary Rust error types.
 
 use os_sdk::{
     AmbientParams, AnnotationLookup, AnnotationRecord, AnnotationSetParams,

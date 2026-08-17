@@ -1,17 +1,17 @@
-/// `shell.timeline` — first-party app surface for writing persistent
-/// semantic events to the Knowledge Graph timeline.
-///
-/// Foundation §468 spec: apps write completed actions (export finished,
-/// build succeeded, document saved) so the timeline reflects user-meaningful
-/// moments rather than raw eBPF noise. Timeline differs from Presence in
-/// two ways: (1) timeline events are persistent, presence is ephemeral,
-/// (2) timeline supports point-in-time *and* duration events via
-/// `started_at` / `ended_at`.
-///
-/// Routes through the Event Bus: `record` emits `app.timeline.record`.
-/// The Knowledge Daemon promotes the event into a UserAction node with
-/// category `"timeline"`, action `<type>`, subject `<label>`. Metadata
-/// stays in the SQLite event log so the graph stays lightweight.
+//! `shell.timeline` — first-party app surface for writing persistent
+//! semantic events to the Knowledge Graph timeline.
+//!
+//! Foundation §468 spec: apps write completed actions (export finished,
+//! build succeeded, document saved) so the timeline reflects user-meaningful
+//! moments rather than raw eBPF noise. Timeline differs from Presence in
+//! two ways: (1) timeline events are persistent, presence is ephemeral,
+//! (2) timeline supports point-in-time *and* duration events via
+//! `started_at` / `ended_at`.
+//!
+//! Routes through the Event Bus: `record` emits `app.timeline.record`.
+//! The Knowledge Daemon promotes the event into a UserAction node with
+//! category `"timeline"`, action `<type>`, subject `<label>`. Metadata
+//! stays in the SQLite event log so the graph stays lightweight.
 
 use std::collections::HashMap;
 use std::future::Future;

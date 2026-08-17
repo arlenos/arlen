@@ -1,16 +1,16 @@
-/// WaypointerPlugin trait and supporting types.
-///
-/// Defines the contract that Waypointer plugins implement to participate
-/// in the launcher's search-and-execute pipeline. Foundation §6 describes
-/// the shell.search surface the plugins back; `docs/architecture/
-/// waypointer-migration.md` traces the migration from in-binary plugins
-/// (Phase 2) to extracted system modules (Phase 3) and eventually
-/// third-party modules (Phase 4).
-///
-/// **Where the trait lives:** here, in module-sdk, so first-party and
-/// third-party modules implement against the same definition. The
-/// desktop-shell crate re-exports it to keep its existing module path
-/// (`crate::waypointer_system::plugin::*`) stable for in-shell consumers.
+//! WaypointerPlugin trait and supporting types.
+//!
+//! Defines the contract that Waypointer plugins implement to participate
+//! in the launcher's search-and-execute pipeline. Foundation §6 describes
+//! the shell.search surface the plugins back; `docs/architecture/
+//! waypointer-migration.md` traces the migration from in-binary plugins
+//! (Phase 2) to extracted system modules (Phase 3) and eventually
+//! third-party modules (Phase 4).
+//!
+//! **Where the trait lives:** here, in module-sdk, so first-party and
+//! third-party modules implement against the same definition. The
+//! desktop-shell crate re-exports it to keep its existing module path
+//! (`crate::waypointer_system::plugin::*`) stable for in-shell consumers.
 
 use std::path::PathBuf;
 
