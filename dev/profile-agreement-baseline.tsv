@@ -14,16 +14,18 @@ clion	clion com.jetbrains.CLion
 collision	collision dev.geopjr.Collision
 czkawka	com.github.qarmin.czkawka czkawka
 datagrip	com.jetbrains.DataGrip datagrip
-decoder	com.belmoussaoui.Decoder com.vixalien.decoder
+decoder	com.belmoussaoui.Decoder com.vixalien.decoder gnome-decoder
 dolphin-emu	dolphin-emu org.DolphinEmu.dolphin-emu
 drawing	com.github.maoschanz.drawing drawing io.github.maoschanz.drawing
 duckstation	duckstation org.duckstation.DuckStation
 exhibit	exhibit io.github.nokse22.Exhibit
 eyedropper	com.github.finefindus.eyedropper eyedropper io.github.finefindus.eyedropper
 filezilla	filezilla org.filezillaproject.Filezilla
+firmware	gnome-firmware org.gnome.Firmware
 flare	de.schmidhuberj.Flare flare
 fluffychat	fluffychat im.fluffychat.Fluffychat
 flycast	flycast org.flycast.Flycast
+font-viewer	gnome-font-viewer org.gnome.font-viewer
 freetube	FreeTube io.freetubeapp.FreeTube
 gfeeds	gfeeds org.gabmus.gfeeds
 ghostty	com.ghostty.Ghostty com.mitchellh.ghostty ghostty
@@ -63,6 +65,7 @@ peek	com.uploadedlobster.peek peek
 pencil2d	org.pencil2d.Pencil2D pencil2d
 pidgin	im.pidgin.Pidgin pidgin
 planner	io.github.alainm23.planner planner
+podcasts	gnome-podcasts org.gnome.Podcasts
 postman	com.getpostman.Postman postman
 prusaslicer	com.prusa3d.PrusaSlicer org.prusa3d.PrusaSlicer
 pycharm-community	com.jetbrains.PyCharm-Community pycharm-community

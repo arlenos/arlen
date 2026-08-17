@@ -51,13 +51,24 @@ GENERIC = {
 #: Packaging suffixes that decorate a name without changing the program.
 SUFFIX = re.compile(r"-(desktop|ce|bin|git|gtk|qt|kde|gnome|nightly|beta)$")
 
+#: Desktop-environment prefixes a distro build carries and the upstream id does
+#: not: `gnome-obfuscate` is `com.belmoussaoui.Obfuscate`. Without this the two
+#: are never compared, which is how Obfuscate held the whole home tree under one
+#: id and Pictures under the other for as long as both existed.
+VENDOR = re.compile(r"^(gnome|kde|xfce|mate|deepin|elementary)-")
+
 
 def core(stem: str) -> str | None:
     """The program a profile id names, or None if the id says only a category."""
     tail = stem.split(".")[-1].lower()
-    if tail in GENERIC:
+    name = VENDOR.sub("", SUFFIX.sub("", tail)).replace("_", "-")
+    # The category check comes AFTER stripping, not before. `gnome-terminal` is
+    # not in GENERIC as written, but it becomes `terminal` once the prefix is
+    # gone, and grouping every terminal emulator as one program would report a
+    # dozen unrelated apps as disagreeing with each other.
+    if name in GENERIC:
         return None
-    return SUFFIX.sub("", tail).replace("_", "-")
+    return name
 
 
 def grants(doc: dict) -> tuple:
