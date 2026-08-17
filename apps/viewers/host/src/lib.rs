@@ -22,7 +22,9 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use arlen_confiner::{app_runtime_profile, Bind, Confinement, ConfinerError, NetworkPolicy};
@@ -181,8 +183,19 @@ pub fn run_confined_worker(
     // worker is hung/slow, so SIGKILL it (pid not yet reaped - `wait()` is below
     // - so there is no pid-reuse window).
     let (done_tx, done_rx) = mpsc::channel::<()>();
+    // Whether the watchdog is what ended this worker, recorded BEFORE the signal.
+    //
+    // A timeout and a signal are two facts, and only one of them survived here: a
+    // killed worker cannot exit 0, so the status check below caught it, but it
+    // reported `worker exited with signal: 9` - the same sentence a worker that
+    // segfaulted on a malformed file produces. "It took too long" and "it crashed"
+    // are different findings about a decoder, and the one this drops is the one
+    // that says the timeout is too tight or the file is pathological.
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let watchdog_flag = Arc::clone(&timed_out);
     let watchdog = std::thread::spawn(move || {
         if done_rx.recv_timeout(DECODE_TIMEOUT).is_err() {
+            watchdog_flag.store(true, Ordering::SeqCst);
             // SAFETY: SIGKILL by pid; benign (ESRCH) if the worker already exited.
             unsafe { libc::kill(pid, libc::SIGKILL) };
         }
@@ -205,6 +218,15 @@ pub fn run_confined_worker(
     read_result?;
     if out.len() as u64 > MAX_OUTPUT_BYTES {
         return Err("worker output exceeded the frame bound".to_string());
+    }
+    // Asked before the status, because the status cannot tell these apart: the
+    // watchdog's SIGKILL and a worker that died on its own both arrive as a
+    // signal, and only this flag knows which one this was.
+    if timed_out.load(Ordering::SeqCst) {
+        return Err(format!(
+            "worker timed out after {}s and was killed",
+            DECODE_TIMEOUT.as_secs()
+        ));
     }
     if !status.success() {
         return Err(format!("worker exited with {status}"));
