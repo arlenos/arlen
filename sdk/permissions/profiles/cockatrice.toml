@@ -1,0 +1,8 @@
+# Starting permission profile for an online card game. Needs network to play; its
+# decks and card data live in its own app dir. No file grants, no Knowledge Graph.
+[info]
+app_id = "cockatrice"
+tier = "third-party"
+
+[network]
+allow_all = true

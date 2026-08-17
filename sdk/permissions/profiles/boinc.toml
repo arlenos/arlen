@@ -1,0 +1,9 @@
+# Starting permission profile for a distributed-computing client. Fetches and returns
+# work units over the network; the units themselves live in its own app dir. No file
+# grants, no Knowledge Graph.
+[info]
+app_id = "boinc"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,12 @@
+# Starting permission profile for a cryptocurrency wallet. Needs network for the peer
+# protocol; Documents is for the wallet backups it exports. The chain data lives in
+# its own app dir. No Knowledge Graph access.
+[info]
+app_id = "bitcoin-qt"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
