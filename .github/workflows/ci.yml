@@ -249,6 +249,7 @@ jobs:
           node dev/scripts/test-check-fixtures.mjs
           node dev/scripts/test-check-knowledge-socket.mjs
           python3 dev/vm/test_ingest_verdict.py
+          python3 dev/vm/test_kernel_verdict.py
           python3 dev/vm/test_ai_verdict.py
           node dev/scripts/test-check-window-capability.mjs
           node dev/scripts/test-check-units.mjs

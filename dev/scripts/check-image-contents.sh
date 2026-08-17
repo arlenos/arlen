@@ -147,9 +147,18 @@ missing=$(echo "$out" | sed -n '/=== units naming a missing binary/,/^=== /p' \
 # present and can never run.
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 img_bins=$(echo "$out" | sed -n '/=== arlen binaries shipped/,/^=== /p' | sed 's|.*/||' | grep -E '^arlen' || true)
-staged=$(ls "$repo_root"/dev/mkosi/mkosi.extra/usr/lib/systemd/system \
-            "$repo_root"/dev/mkosi/mkosi.extra/usr/lib/systemd/user \
-            "$repo_root"/dev/mkosi/mkosi.extra/usr/share/dbus-1/services 2>/dev/null | sort -u)
+# `mkosi.extra` is one of the two ways a unit reaches the image; the other is a
+# build phase installing it itself, which is what a CONDITIONAL unit has to do -
+# a symlink checked into the extra tree for a unit that only exists behind a flag
+# would dangle on every plain build. Reading only the extra tree called the
+# kernel sensor an orphan on the day it stopped being one, which is this check's
+# own failure mode pointed at itself. `check-shipped-units` has counted both
+# sources since it was written; this now agrees with it.
+staged=$( { ls "$repo_root"/dev/mkosi/mkosi.extra/usr/lib/systemd/system \
+               "$repo_root"/dev/mkosi/mkosi.extra/usr/lib/systemd/user \
+               "$repo_root"/dev/mkosi/mkosi.extra/usr/share/dbus-1/services 2>/dev/null
+            grep -rhoE '[A-Za-z0-9._-]+\.service' \
+                 "$repo_root"/dev/mkosi/mkosi.build.d/ 2>/dev/null; } | sort -u)
 
 orphans=""
 while read -r unit; do

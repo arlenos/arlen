@@ -1,0 +1,25 @@
+[Unit]
+Description=Arlen kernel layer (eBPF sensor)
+Documentation=https://github.com/arlenos/arlen
+# It produces into the bus, so the bus should be there first. Not a hard
+# dependency: the emitter reconnects, and a sensor that refuses to start because
+# the bus was slow would lose the events it exists to capture.
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/arlen-kernel-layer
+Restart=on-failure
+RestartSec=2
+# CAP_BPF and CAP_PERFMON to load the program and attach the tracepoints;
+# CAP_SYS_RESOURCE for the ring buffer's memlock accounting on older kernels.
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
+NoNewPrivileges=yes
+# No mount-namespace hardening, and that is a decision rather than an omission.
+# It produces events instead of serving callers, so it resolves nobody's
+# identity, and the directives that would matter here - ProtectSystem above all -
+# were measured on 15 August to take away the `/proc` reads the normalizer needs
+# to turn a file descriptor back into a path.
+
+[Install]
+WantedBy=multi-user.target

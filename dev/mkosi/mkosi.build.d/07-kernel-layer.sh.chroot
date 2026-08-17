@@ -85,37 +85,31 @@ cargo build --release --manifest-path "$SRC/Cargo.toml" -p kernel-layer
 install -Dm755 "$CARGO_TARGET_DIR/release/kernel-layer" \
         "$DESTDIR/usr/bin/arlen-kernel-layer"
 
-# The unit. It runs as root under the SYSTEM manager, and both are load-bearing:
+# The unit, from the crate's own `dist/` like every other daemon's. It was a
+# heredoc here until 18 August, which kept it out of `check-shipped-units`
+# entirely: that gate takes its subjects from `daemons/*/dist/**`, so a unit
+# written inline was not a subject and could not be checked against the image.
+# The sensor whose absence the gate was written to catch was the one unit it
+# could not see.
+#
+# It runs as root under the SYSTEM manager, and both halves are load-bearing:
 # loading a BPF program and attaching a tracepoint need CAP_BPF and CAP_PERFMON,
 # and the sensor observes the whole machine rather than one session.
+install -Dm644 "$SRC/dist/arlen-kernel-layer.service" \
+        "$DESTDIR/usr/lib/systemd/system/arlen-kernel-layer.service"
+
+# The enable, HERE rather than in `mkosi.extra`, because the unit only exists
+# when this phase ran. Every other system unit on the image is enabled by a
+# symlink checked into `mkosi.extra/etc/systemd/system/multi-user.target.wants/`,
+# and one for a conditional unit would dangle on every plain build.
 #
-# It carries no mount-namespace hardening. That is not an oversight - it produces
-# events rather than serving callers, so it resolves nobody's identity, and the
-# directives that would matter here (ProtectSystem) are the ones measured on
-# 15 Aug to take away `/proc` reads. Nothing it does needs them.
-mkdir -p "$DESTDIR/usr/lib/systemd/system"
-cat > "$DESTDIR/usr/lib/systemd/system/arlen-kernel-layer.service" <<'UNIT'
-[Unit]
-Description=Arlen kernel layer (eBPF sensor)
-Documentation=https://github.com/arlenos/arlen
-# It produces into the bus, so the bus should be there first. Not a hard
-# dependency: the emitter reconnects, and a sensor that refuses to start because
-# the bus was slow would lose the events it exists to capture.
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/arlen-kernel-layer
-Restart=on-failure
-RestartSec=2
-# CAP_BPF and CAP_PERFMON to load the program and attach the tracepoints;
-# CAP_SYS_RESOURCE for the ring buffer's memlock accounting on older kernels.
-AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
-NoNewPrivileges=yes
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-kernel-layer.service"
+# It is needed at all - `[Install] WantedBy=` on its own enables nothing. The
+# unit shipped without this and `check-image-contents` said so the moment the
+# unit became visible to it: a binary on the image and nothing that starts it,
+# which is the sensor present and silent, indistinguishable on a running desktop
+# from the sensor absent.
+mkdir -p "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants"
+ln -sf ../arlen-kernel-layer.service \
+       "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kernel-layer.service"
 
 echo ">> staged the kernel layer into the image"
