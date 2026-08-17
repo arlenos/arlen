@@ -1,10 +1,12 @@
-# Starting permission profile for a Flatpak manager GUI. It inspects and manages
-# installed app data under the user's files (Home); it drives the system package
-# tooling rather than the network directly, so no network of its own and no
-# Knowledge Graph.
+# Starting permission profile for Warehouse (a Flatpak manager). It manages
+# Flatpak apps and their data through its own data and the system package tooling,
+# so it needs no broad filesystem grant, no network of its own and no Knowledge
+# Graph access.
+#
+# This granted the whole home tree to inspect installed app data, while
+# `io.github.flattool.Warehouse` had already settled on the narrow answer for the
+# same program. The app data it manages lives under `~/.var/app`, which it reaches
+# by driving `flatpak` - the profile says so itself - not by holding Home.
 [info]
 app_id = "warehouse"
 tier = "third-party"
-
-[filesystem]
-home = true

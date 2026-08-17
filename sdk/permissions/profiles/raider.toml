@@ -1,8 +1,11 @@
-# Starting permission profile for Raider (a file shredder). Securely deletes files
-# under home; no network and no Knowledge Graph.
+# Starting permission profile for Raider (a secure file-shredder). It overwrites
+# the files the user picks, granted per-file through the portal on use, so it
+# needs no broad filesystem grant, no network and no Knowledge Graph access.
+#
+# This granted the whole home tree to a tool whose entire function is irreversible
+# destruction, while `com.github.ADBeveridge.Raider` had already settled on the
+# per-file grant for the same program. Shredding acts on a file the user chose;
+# standing reach over everything else buys nothing and risks the rest.
 [info]
 app_id = "raider"
 tier = "third-party"
-
-[filesystem]
-home = true

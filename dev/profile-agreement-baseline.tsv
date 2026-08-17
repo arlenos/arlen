@@ -66,7 +66,6 @@ podcasts	gnome-podcasts org.gnome.Podcasts
 postman	com.getpostman.Postman postman
 prusaslicer	com.prusa3d.PrusaSlicer org.prusa3d.PrusaSlicer
 pycharm-community	com.jetbrains.PyCharm-Community pycharm-community
-raider	com.github.ADBeveridge.Raider raider
 retroarch	org.libretro.RetroArch retroarch
 rider	com.jetbrains.Rider rider
 rpcs3	net.rpcs3.RPCS3 rpcs3
@@ -85,7 +84,6 @@ torbrowser-launcher	com.github.micahflee.torbrowser-launcher org.torproject.torb
 videodownloader	com.github.unrud.VideoDownloader io.github.unrud.VideoDownloader
 vorta	com.borgbase.Vorta vorta
 wardrobe	com.github.swordpuffin.wardrobe io.github.swordpuffin.wardrobe
-warehouse	io.github.flattool.Warehouse warehouse
 warpinator	org.x.Warpinator org.x.warpinator
 wesnoth	org.wesnoth.Wesnoth wesnoth
 wireshark	org.wireshark.Wireshark wireshark
