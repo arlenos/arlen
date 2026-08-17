@@ -1,7 +1,7 @@
-/// Event Bus consumer for the Arlen desktop shell.
-///
-/// Subscribes to window and config events from the Event Bus and forwards
-/// them to the TypeScript frontend via Tauri events.
+//! Event Bus consumer for the Arlen desktop shell.
+//!
+//! Subscribes to window and config events from the Event Bus and forwards
+//! them to the TypeScript frontend via Tauri events.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;

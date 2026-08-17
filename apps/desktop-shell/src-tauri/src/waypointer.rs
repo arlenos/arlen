@@ -1,8 +1,8 @@
-/// Waypointer launcher overlay.
-///
-/// A second Tauri WebviewWindow configured as a fullscreen layer-shell
-/// surface on the Overlay layer. Hidden by default; toggled open by the
-/// Super key (via `waypointer_open` protocol event) or Tauri command.
+//! Waypointer launcher overlay.
+//!
+//! A second Tauri WebviewWindow configured as a fullscreen layer-shell
+//! surface on the Overlay layer. Hidden by default; toggled open by the
+//! Super key (via `waypointer_open` protocol event) or Tauri command.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;

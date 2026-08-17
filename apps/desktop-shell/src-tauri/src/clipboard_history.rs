@@ -1,25 +1,25 @@
-/// Clipboard history: in-memory ring buffer fed by `wl-paste --watch`.
-///
-/// Privacy-first design: opt-in via `~/.config/arlen/shell.toml`,
-/// text-only (no images, no passwords), no disk persistence. When the
-/// shell process exits, the history is gone. This matches the threat
-/// model Arlen targets: "don't leak what the user just copied" wins
-/// over "preserve history across reboots".
-///
-/// Filter chain (applied in order; any miss drops the entry):
-///
-/// 1. Non-empty after trim
-/// 2. Not identical to the current head (dedup)
-/// 3. Source app not in the blocklist (keepassxc, bitwarden, 1password)
-/// 4. Shannon entropy < 4.5 bits/char OR length >= 64 chars (not a password)
-/// 5. Length capped at 10 KB (truncate with marker, still store)
-///
-/// Source-app attribution: we don't correlate with `clipboard.copy`
-/// Event Bus events because the compositor currently ships them with
-/// empty payloads (mime-type only, no app id). Instead we read the
-/// currently-focused window from `WindowList` at the instant
-/// `wl-paste --watch` fires. That's a reasonable proxy — the focused
-/// window at copy-time is typically the app that initiated the copy.
+//! Clipboard history: in-memory ring buffer fed by `wl-paste --watch`.
+//!
+//! Privacy-first design: opt-in via `~/.config/arlen/shell.toml`,
+//! text-only (no images, no passwords), no disk persistence. When the
+//! shell process exits, the history is gone. This matches the threat
+//! model Arlen targets: "don't leak what the user just copied" wins
+//! over "preserve history across reboots".
+//!
+//! Filter chain (applied in order; any miss drops the entry):
+//!
+//! 1. Non-empty after trim
+//! 2. Not identical to the current head (dedup)
+//! 3. Source app not in the blocklist (keepassxc, bitwarden, 1password)
+//! 4. Shannon entropy < 4.5 bits/char OR length >= 64 chars (not a password)
+//! 5. Length capped at 10 KB (truncate with marker, still store)
+//!
+//! Source-app attribution: we don't correlate with `clipboard.copy`
+//! Event Bus events because the compositor currently ships them with
+//! empty payloads (mime-type only, no app id). Instead we read the
+//! currently-focused window from `WindowList` at the instant
+//! `wl-paste --watch` fires. That's a reasonable proxy — the focused
+//! window at copy-time is typically the app that initiated the copy.
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};

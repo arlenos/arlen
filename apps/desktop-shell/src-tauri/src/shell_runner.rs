@@ -1,6 +1,6 @@
-/// Shell command execution for Waypointer.
-///
-/// Runs commands via `sh -c` or inside a terminal emulator.
+//! Shell command execution for Waypointer.
+//!
+//! Runs commands via `sh -c` or inside a terminal emulator.
 
 use crate::app_index::AppIndex;
 

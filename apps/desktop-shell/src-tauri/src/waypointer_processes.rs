@@ -1,7 +1,7 @@
-/// Waypointer process listing and killing.
-///
-/// Reads /proc to list user processes. Filters out kernel threads,
-/// zombies, and other users' processes.
+//! Waypointer process listing and killing.
+//!
+//! Reads /proc to list user processes. Filters out kernel threads,
+//! zombies, and other users' processes.
 
 use serde::Serialize;
 use std::fs;

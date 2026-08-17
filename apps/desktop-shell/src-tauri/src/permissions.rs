@@ -1,7 +1,7 @@
-/// Permission profile reader for the Settings UI.
-///
-/// Reads profiles from `/var/lib/arlen/permissions/{uid}/` and exposes
-/// them as Tauri commands for the frontend.
+//! Permission profile reader for the Settings UI.
+//!
+//! Reads profiles from `/var/lib/arlen/permissions/{uid}/` and exposes
+//! them as Tauri commands for the frontend.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

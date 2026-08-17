@@ -1,4 +1,4 @@
-/// Shell command plugin: executes shell commands (prefix ">").
+//! Shell command plugin: executes shell commands (prefix ">").
 
 use crate::waypointer_system::plugin::*;
 

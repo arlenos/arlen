@@ -1,4 +1,4 @@
-/// URL detection plugin: detects URLs and offers to open them.
+//! URL detection plugin: detects URLs and offers to open them.
 
 use crate::waypointer_system::plugin::*;
 

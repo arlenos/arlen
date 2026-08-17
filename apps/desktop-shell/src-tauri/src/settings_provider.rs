@@ -1,9 +1,9 @@
-/// Settings search provider for the Waypointer.
-///
-/// Reads `~/.local/share/arlen/settings-index.json` (exported by the
-/// Settings app on startup), searches it by query, and provides generic
-/// config read/write commands so inline actions can toggle settings
-/// without opening the Settings app.
+//! Settings search provider for the Waypointer.
+//!
+//! Reads `~/.local/share/arlen/settings-index.json` (exported by the
+//! Settings app on startup), searches it by query, and provides generic
+//! config read/write commands so inline actions can toggle settings
+//! without opening the Settings app.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

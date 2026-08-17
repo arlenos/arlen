@@ -1,26 +1,26 @@
-/// Minimized-windows UI backend.
-///
-/// Arlen shows minimized windows as per-workspace icon rows under
-/// the WorkspaceIndicator pills. The live state comes from the
-/// existing cosmic-toplevel-info subscription in
-/// `wayland_client.rs`, which already carries a `minimized: bool`
-/// per toplevel. This module exposes three Tauri commands that the
-/// frontend calls to read the filtered list and to restore / move
-/// individual minimized windows back to a workspace.
-///
-/// Restore mechanics:
-///
-/// - **Restore**: `unset_minimized` + `activate` on the cosmic
-///   toplevel manager. The compositor then focuses the window on its
-///   current workspace, no side effect on the active workspace.
-/// - **Restore-to-workspace**: `move_to_ext_workspace` first, then
-///   `unset_minimized` + `activate`. The compositor moves the surface
-///   to the new workspace and raises it there; the frontend also
-///   switches the active workspace so the user sees the restored
-///   window immediately.
-///
-/// Both paths go through the existing `ToplevelSender` helpers — no
-/// new Wayland globals are bound here.
+//! Minimized-windows UI backend.
+//!
+//! Arlen shows minimized windows as per-workspace icon rows under
+//! the WorkspaceIndicator pills. The live state comes from the
+//! existing cosmic-toplevel-info subscription in
+//! `wayland_client.rs`, which already carries a `minimized: bool`
+//! per toplevel. This module exposes three Tauri commands that the
+//! frontend calls to read the filtered list and to restore / move
+//! individual minimized windows back to a workspace.
+//!
+//! Restore mechanics:
+//!
+//! - **Restore**: `unset_minimized` + `activate` on the cosmic
+//!   toplevel manager. The compositor then focuses the window on its
+//!   current workspace, no side effect on the active workspace.
+//! - **Restore-to-workspace**: `move_to_ext_workspace` first, then
+//!   `unset_minimized` + `activate`. The compositor moves the surface
+//!   to the new workspace and raises it there; the frontend also
+//!   switches the active workspace so the user sees the restored
+//!   window immediately.
+//!
+//! Both paths go through the existing `ToplevelSender` helpers — no
+//! new Wayland globals are bound here.
 
 use std::sync::Arc;
 

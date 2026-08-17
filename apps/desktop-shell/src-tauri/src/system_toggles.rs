@@ -1,4 +1,4 @@
-/// System toggle commands: Caffeine (idle inhibit) and Screen Recording.
+//! System toggle commands: Caffeine (idle inhibit) and Screen Recording.
 
 use std::process::{Child, Command};
 use std::sync::Mutex;

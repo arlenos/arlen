@@ -1,28 +1,28 @@
-/// Dictionary plugin: offline English definitions via Princeton WordNet.
-///
-/// Loads the `data.*` / `index.*` WordNet files lazily on a background
-/// thread the first time the plugin is queried. Until the background
-/// load finishes (typically ~500ms for the full English dump) the
-/// plugin returns no results; subsequent queries complete in
-/// microseconds because `wordnet-db` memory-maps the files.
-///
-/// Data source fallback chain:
-///
-/// 1. `ARLEN_WORDNET_DIR` env var (explicit override, primarily for
-///    tests and packaging).
-/// 2. `~/.local/share/arlen/dictionaries/wordnet-en/`
-/// 3. `/usr/share/wordnet/` and `/usr/share/wordnet/en/` (system
-///    packages on Debian/Arch/Fedora drop it at slightly different
-///    paths).
-///
-/// If none of the above hold a WordNet dump, the plugin silently
-/// returns zero results. No toast, no log spam — the dictionary is an
-/// optional capability, not a failure mode. Install it via forage
-/// (`forage install arlen.dict-en` once that package exists) or
-/// manually symlink a system dump to the expected path.
-///
-/// German (or any non-English) support is intentionally deferred. The
-/// MVP only wires WordNet-EN; Phase 2 will add a parallel DE source.
+//! Dictionary plugin: offline English definitions via Princeton WordNet.
+//!
+//! Loads the `data.*` / `index.*` WordNet files lazily on a background
+//! thread the first time the plugin is queried. Until the background
+//! load finishes (typically ~500ms for the full English dump) the
+//! plugin returns no results; subsequent queries complete in
+//! microseconds because `wordnet-db` memory-maps the files.
+//!
+//! Data source fallback chain:
+//!
+//! 1. `ARLEN_WORDNET_DIR` env var (explicit override, primarily for
+//!    tests and packaging).
+//! 2. `~/.local/share/arlen/dictionaries/wordnet-en/`
+//! 3. `/usr/share/wordnet/` and `/usr/share/wordnet/en/` (system
+//!    packages on Debian/Arch/Fedora drop it at slightly different
+//!    paths).
+//!
+//! If none of the above hold a WordNet dump, the plugin silently
+//! returns zero results. No toast, no log spam — the dictionary is an
+//! optional capability, not a failure mode. Install it via forage
+//! (`forage install arlen.dict-en` once that package exists) or
+//! manually symlink a system dump to the expected path.
+//!
+//! German (or any non-English) support is intentionally deferred. The
+//! MVP only wires WordNet-EN; Phase 2 will add a parallel DE source.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};

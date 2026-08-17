@@ -1,33 +1,33 @@
-/// File search plugin: surfaces files from the Knowledge Graph.
-///
-/// The Arlen graph tracks every `file.opened` event system-wide via
-/// eBPF -> Event Bus -> Knowledge daemon, promoting them to `File`
-/// nodes with `path`, `app_id`, and `last_accessed`. This plugin turns
-/// that graph into a Waypointer section that Baloo/Spotlight cannot
-/// replicate: queries like `project:arlen` or `app:cursor` are free
-/// because the graph already knows FILE_PART_OF and ACCESSED_BY
-/// edges.
-///
-/// Design choices:
-///
-/// - **Sync `search` with `graph_query`**: matches `ProjectsPlugin`'s
-///   pattern. The PluginManager's `search_plugin` is itself sync; the
-///   frontend wraps it in `invoke()` so it lands on a Tauri worker
-///   thread. A 200ms timeout is enforced via the socket read timeout
-///   so a hung daemon can't stall the UI.
-/// - **Query modes parsed in the plugin**: `project:<filter>`,
-///   `app:<filter>`, or plain substring. No frontend-side prefix
-///   dispatch; the frontend always routes every keystroke to this
-///   plugin via the `search_plugin` bridge and lets Rust decide how to
-///   interpret it.
-/// - **Fetch-then-filter**: the Cypher pulls the top 200 recently-
-///   accessed files (joined with their project) and scoring / filtering
-///   happens in Rust. Keeps the daemon query simple and portable
-///   between Ladybug / Kuzu versions without relying on `LOWER()` /
-///   `CONTAINS` which have inconsistent availability.
-/// - **5s TTL cache**: one round-trip per query-mode per 5s window,
-///   identical pattern to `recent_files.rs`. Graph promotion runs on
-///   a 30s cycle, so 5s is imperceptible staleness.
+//! File search plugin: surfaces files from the Knowledge Graph.
+//!
+//! The Arlen graph tracks every `file.opened` event system-wide via
+//! eBPF -> Event Bus -> Knowledge daemon, promoting them to `File`
+//! nodes with `path`, `app_id`, and `last_accessed`. This plugin turns
+//! that graph into a Waypointer section that Baloo/Spotlight cannot
+//! replicate: queries like `project:arlen` or `app:cursor` are free
+//! because the graph already knows FILE_PART_OF and ACCESSED_BY
+//! edges.
+//!
+//! Design choices:
+//!
+//! - **Sync `search` with `graph_query`**: matches `ProjectsPlugin`'s
+//!   pattern. The PluginManager's `search_plugin` is itself sync; the
+//!   frontend wraps it in `invoke()` so it lands on a Tauri worker
+//!   thread. A 200ms timeout is enforced via the socket read timeout
+//!   so a hung daemon can't stall the UI.
+//! - **Query modes parsed in the plugin**: `project:<filter>`,
+//!   `app:<filter>`, or plain substring. No frontend-side prefix
+//!   dispatch; the frontend always routes every keystroke to this
+//!   plugin via the `search_plugin` bridge and lets Rust decide how to
+//!   interpret it.
+//! - **Fetch-then-filter**: the Cypher pulls the top 200 recently-
+//!   accessed files (joined with their project) and scoring / filtering
+//!   happens in Rust. Keeps the daemon query simple and portable
+//!   between Ladybug / Kuzu versions without relying on `LOWER()` /
+//!   `CONTAINS` which have inconsistent availability.
+//! - **5s TTL cache**: one round-trip per query-mode per 5s window,
+//!   identical pattern to `recent_files.rs`. Graph promotion runs on
+//!   a 30s cycle, so 5s is imperceptible staleness.
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;

@@ -1,4 +1,4 @@
-/// Plugin manager: aggregates search results from all registered plugins.
+//! Plugin manager: aggregates search results from all registered plugins.
 
 use super::plugin::{PluginDescriptor, PluginError, SearchResult, WaypointerPlugin};
 

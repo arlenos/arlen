@@ -1,18 +1,18 @@
-/// Per-output top bars.
-///
-/// The default `main` window in `tauri.conf.json` covers the
-/// primary monitor. This module discovers additional monitors via
-/// GDK's `Display::n_monitors()` / `monitor(i)` and spawns one
-/// extra WebviewWindow per secondary output, bound via
-/// `gtk-layer-shell`'s `set_monitor`. Hot-plug is observed via the
-/// `monitor-added` / `monitor-removed` signals on the Display.
-///
-/// We're on GTK 3 (gtk-rs 0.18) so the `gdk::Monitor::connector()`
-/// API isn't available. We use the GDK monitor index as the bar's
-/// identifier — stable for the lifetime of one boot. The
-/// frontend's per-output workspace filtering goes through cosmic
-/// protocols (`workspace_groups`), not GDK, so the index here is
-/// only for bar-window-management.
+//! Per-output top bars.
+//!
+//! The default `main` window in `tauri.conf.json` covers the
+//! primary monitor. This module discovers additional monitors via
+//! GDK's `Display::n_monitors()` / `monitor(i)` and spawns one
+//! extra WebviewWindow per secondary output, bound via
+//! `gtk-layer-shell`'s `set_monitor`. Hot-plug is observed via the
+//! `monitor-added` / `monitor-removed` signals on the Display.
+//!
+//! We're on GTK 3 (gtk-rs 0.18) so the `gdk::Monitor::connector()`
+//! API isn't available. We use the GDK monitor index as the bar's
+//! identifier — stable for the lifetime of one boot. The
+//! frontend's per-output workspace filtering goes through cosmic
+//! protocols (`workspace_groups`), not GDK, so the index here is
+//! only for bar-window-management.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

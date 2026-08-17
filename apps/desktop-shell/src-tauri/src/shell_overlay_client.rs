@@ -1,8 +1,8 @@
-/// Wayland client for the `arlen-shell-overlay-v1` protocol.
-///
-/// Binds the compositor's overlay global, accumulates context menu events, and
-/// emits Tauri events to Svelte. Also exposes Tauri commands so Svelte can send
-/// `activate` / `dismiss` requests back to the compositor.
+//! Wayland client for the `arlen-shell-overlay-v1` protocol.
+//!
+//! Binds the compositor's overlay global, accumulates context menu events, and
+//! emits Tauri events to Svelte. Also exposes Tauri commands so Svelte can send
+//! `activate` / `dismiss` requests back to the compositor.
 
 // Protocol bindings following the pattern documented in wayland-scanner's lib.rs.
 //

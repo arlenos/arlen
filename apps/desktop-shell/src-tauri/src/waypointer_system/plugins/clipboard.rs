@@ -1,16 +1,16 @@
-/// Clipboard-history plugin: surfaces the in-memory ring buffer from
-/// `clipboard_history.rs` as a Waypointer search section.
-///
-/// The ring buffer itself (wl-paste watcher, filters, ring storage) is
-/// owned by `clipboard_history`. This plugin is the read-only facade
-/// that the PluginManager exposes: it takes an `Arc<ClipboardHistory>`
-/// reference, runs substring filtering on the current snapshot, and
-/// dispatches `execute` back to `wl-copy` via the same helper.
-///
-/// Prefixes `c:`, `clip:`, and `clipboard` all route exclusively to
-/// this plugin. Without a prefix the plugin stays silent: the
-/// clipboard section is valuable when explicitly asked for but would
-/// pollute every general search with stale text otherwise.
+//! Clipboard-history plugin: surfaces the in-memory ring buffer from
+//! `clipboard_history.rs` as a Waypointer search section.
+//!
+//! The ring buffer itself (wl-paste watcher, filters, ring storage) is
+//! owned by `clipboard_history`. This plugin is the read-only facade
+//! that the PluginManager exposes: it takes an `Arc<ClipboardHistory>`
+//! reference, runs substring filtering on the current snapshot, and
+//! dispatches `execute` back to `wl-copy` via the same helper.
+//!
+//! Prefixes `c:`, `clip:`, and `clipboard` all route exclusively to
+//! this plugin. Without a prefix the plugin stays silent: the
+//! clipboard section is valuable when explicitly asked for but would
+//! pollute every general search with stale text otherwise.
 
 use serde_json::json;
 

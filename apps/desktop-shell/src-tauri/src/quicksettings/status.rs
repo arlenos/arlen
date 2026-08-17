@@ -1,17 +1,17 @@
-/// Quick-Settings tile status channels.
-///
-/// Tiles render an `active` indicator + a `status_text` subtitle. The
-/// underlying truth lives in the indicator backends (`network`,
-/// `bluetooth`, `audio`, `system_toggles`, `night_light`, …). Instead
-/// of plumbing one bespoke event per tile, the QS panel listens on a
-/// single namespaced Tauri event-bus channel and the backends publish
-/// updates onto it as they happen.
-///
-/// Wire format: Tauri event named `arlen://qs/status/<channel>`
-/// carrying `StatusUpdate { active, status_text, since_ms? }`. The
-/// `<channel>` segment matches the manifest's
-/// `quicksettings.tile.status_channel` field — system-tier tile names
-/// use a `system.<id>` convention.
+//! Quick-Settings tile status channels.
+//!
+//! Tiles render an `active` indicator + a `status_text` subtitle. The
+//! underlying truth lives in the indicator backends (`network`,
+//! `bluetooth`, `audio`, `system_toggles`, `night_light`, …). Instead
+//! of plumbing one bespoke event per tile, the QS panel listens on a
+//! single namespaced Tauri event-bus channel and the backends publish
+//! updates onto it as they happen.
+//!
+//! Wire format: Tauri event named `arlen://qs/status/<channel>`
+//! carrying `StatusUpdate { active, status_text, since_ms? }`. The
+//! `<channel>` segment matches the manifest's
+//! `quicksettings.tile.status_channel` field — system-tier tile names
+//! use a `system.<id>` convention.
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};

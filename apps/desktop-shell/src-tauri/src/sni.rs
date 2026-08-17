@@ -1,9 +1,9 @@
-/// StatusNotifierItem (SNI) system tray watcher.
-///
-/// Implements `org.kde.StatusNotifierWatcher` on the session D-Bus. Tray-capable
-/// applications (Discord, nm-applet, blueman, etc.) register themselves via
-/// `RegisterStatusNotifierItem`. The watcher tracks registered items, fetches
-/// their properties, and notifies the frontend via Tauri events.
+//! StatusNotifierItem (SNI) system tray watcher.
+//!
+//! Implements `org.kde.StatusNotifierWatcher` on the session D-Bus. Tray-capable
+//! applications (Discord, nm-applet, blueman, etc.) register themselves via
+//! `RegisterStatusNotifierItem`. The watcher tracks registered items, fetches
+//! their properties, and notifies the frontend via Tauri events.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

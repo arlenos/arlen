@@ -1,13 +1,13 @@
-/// Power-action plugin: sleep / lock / restart / shutdown / logout.
-///
-/// Activated by any of the keyword aliases below (fuzzy-matched on
-/// prefix). One action per result — hitting Enter executes immediately;
-/// there is deliberately no confirmation step. Rationale: if the user
-/// typed `shutdown` and pressed Enter, they meant shutdown. Adding a
-/// confirmation dialog would either be a modal (fights with the
-/// Waypointer's "Escape to cancel" muscle memory) or a description
-/// warning (ignored after the first use). macOS and GNOME ship the
-/// same no-confirmation model for Spotlight / GNOME Shell search.
+//! Power-action plugin: sleep / lock / restart / shutdown / logout.
+//!
+//! Activated by any of the keyword aliases below (fuzzy-matched on
+//! prefix). One action per result — hitting Enter executes immediately;
+//! there is deliberately no confirmation step. Rationale: if the user
+//! typed `shutdown` and pressed Enter, they meant shutdown. Adding a
+//! confirmation dialog would either be a modal (fights with the
+//! Waypointer's "Escape to cancel" muscle memory) or a description
+//! warning (ignored after the first use). macOS and GNOME ship the
+//! same no-confirmation model for Spotlight / GNOME Shell search.
 use std::process::{Command, Stdio};
 
 use crate::waypointer_system::plugin::*;

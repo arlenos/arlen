@@ -1,10 +1,10 @@
-/// Calculator plugin.
-///
-/// Activated either via the explicit `=` prefix (user intends math) or
-/// eagerly detected by `try_math` when the input looks like an
-/// expression. The Tauri-facing `evaluate_waypointer_input` command
-/// calls `try_math` so the inline-result flow still works without a
-/// prefix (typing `2+2` shows `= 4` even without the `=`).
+//! Calculator plugin.
+//!
+//! Activated either via the explicit `=` prefix (user intends math) or
+//! eagerly detected by `try_math` when the input looks like an
+//! expression. The Tauri-facing `evaluate_waypointer_input` command
+//! calls `try_math` so the inline-result flow still works without a
+//! prefix (typing `2+2` shows `= 4` even without the `=`).
 
 use crate::waypointer_plugins::WaypointerResult;
 use crate::waypointer_system::plugin::*;

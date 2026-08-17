@@ -1,7 +1,7 @@
-/// .desktop file parser and app index.
-///
-/// Scans standard freedesktop application directories on startup, parses
-/// `.desktop` files, resolves icons, and exposes the results via Tauri commands.
+//! .desktop file parser and app index.
+//!
+//! Scans standard freedesktop application directories on startup, parses
+//! `.desktop` files, resolves icons, and exposes the results via Tauri commands.
 
 use std::os::fd::AsFd;
 use std::collections::HashMap;

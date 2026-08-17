@@ -1,7 +1,7 @@
-/// Waypointer Unicode character search.
-///
-/// Searches by codepoint (U+XXXX) or by name substring using the
-/// unicode_names2 crate for the full Unicode character database.
+//! Waypointer Unicode character search.
+//!
+//! Searches by codepoint (U+XXXX) or by name substring using the
+//! unicode_names2 crate for the full Unicode character database.
 
 use serde::Serialize;
 
