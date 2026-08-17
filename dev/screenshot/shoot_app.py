@@ -311,6 +311,18 @@ def main():
         except Exception as e:  # a driver that cannot answer must not fail the shot
             print(f"loaded url: unknown ({e})")
 
+        # BEFORE the capture, not after it. This used to run once the PNG was
+        # already written and "wrote <path>" already printed, so a run against a
+        # dead dev server left a connection-refused image on disk - the exact
+        # thing this function's own note calls out, "it looked like a screenshot
+        # until somebody opened it". A nonzero exit does not delete a file, and
+        # the file is what the next reader finds.
+        if args.out:
+            err = warn_if_error_page(base, sid)
+            if err:
+                print("No screenshot written.", file=sys.stderr)
+                return err
+
         if args.exec_cmd:
             expect = args.expect if args.expect is not None else args.exec_cmd
             ok = run_and_assert(base, sid, args.exec_cmd, expect, args.selector)
@@ -383,8 +395,6 @@ def main():
             with open(args.out, "wb") as f:
                 f.write(base64.b64decode(shot))
             print("wrote", args.out)
-        if args.out:
-            exit_code = warn_if_error_page(base, sid) or exit_code
         return exit_code
     finally:
         try:
