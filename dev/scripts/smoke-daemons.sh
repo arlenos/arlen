@@ -64,6 +64,7 @@ DAEMONS=(
 # name|reason - every daemon binary that is deliberately not started here. The
 # coverage check reads this, so adding a daemon means classifying it.
 SKIPPED=(
+    "arlen-graph-verdict|not a daemon: a host-side reader that opens a graph store copied out of a halted image, prints what is in it and exits. Its own controls are dev/knowledge tests/graph_verdict.rs"
     "arlen-powerd|needs the system bus (UPower, logind)"
     "arlen-accountsd|needs the session bus"
     "arlen-notifyd|needs the session bus (org.freedesktop.Notifications)"

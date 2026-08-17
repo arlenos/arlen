@@ -24,6 +24,15 @@ path = "src/main.rs"
 name = "arlen-timeline"
 path = "src/bin/arlen-timeline.rs"
 
+[[bin]]
+# Reads a graph store copied out of a halted image and says what is IN it, so a
+# boot assertion about the KG stops being the guest's account of itself. Dev
+# tooling: not installed into the image, called by the boot-verify run on the
+# host. Lives in this crate to reuse its compiled engine rather than build the
+# vendored C++ a second time.
+name = "arlen-graph-verdict"
+path = "src/bin/arlen-graph-verdict.rs"
+
 [dependencies]
 os-sdk = { path = "../../sdk/os-sdk" }
 tokio = { version = "1", features = ["full"] }

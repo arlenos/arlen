@@ -657,6 +657,13 @@ def main():
                     help="with the consent dialog up, click 'Allow once' via the "
                          "absolute pointer and confirm the dialog dismisses (the "
                          "shell -> broker Resolve leg). Implies --require-consent")
+    ap.add_argument("--require-graph", action="store_true",
+                    help="fail unless the GRAPH STORE itself, read on the host with "
+                         "our own engine, holds this boot's file and its project "
+                         "link. Off by default because the graph leg needs promotion "
+                         "to have run and a project to link to, so a sound boot can "
+                         "lack it; the answer is printed either way. Everything else "
+                         "about the KG grades what the guest said about itself")
     ap.add_argument("--journal-out", default=None, metavar="PATH",
                     help="write the guest's own journal here, read out of the "
                          "overlay after it halts. Unlike the serial log this covers "
@@ -1314,6 +1321,35 @@ def main():
             print(f"VERIFY FAIL: {message}")
             return 1
         print(f"event store: {message}")
+
+        # One hop further, and the same discipline: the graph store comes out of
+        # the image too, and the host opens it with our own engine and asks. The
+        # event store answers "the event arrived"; this answers "it became a File
+        # node and the agent's write really linked it", which until now was only
+        # ever the agent's own account of itself relayed through the journal.
+        #
+        # REPORTED, not required. The graph leg depends on promotion having run
+        # and on the agent having a project to link to, so a boot can be sound
+        # and still not have it; making it a gate today would fail runs for the
+        # wrong reason. It is printed on every run so the answer is visible, and
+        # `--require-graph` is the switch for a run that means to hold it.
+        from graph_verdict import copy_out as copy_graph_out, run as graph_run
+
+        gdir = os.path.join(tmp, "graph")
+        os.makedirs(gdir, exist_ok=True)
+        gstore = copy_graph_out(overlay, gdir)
+        if gstore is None:
+            gcode, gmessage = 2, "GRAPH UNREADABLE: the guest wrote no graph store"
+        else:
+            repo_root = os.path.abspath(
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+            )
+            gcode, gmessage = graph_run(gstore, repo_root)
+        for line in gmessage.splitlines():
+            print(f"graph store: {line}")
+        if args.require_graph and gcode != 0:
+            print("VERIFY FAIL: the graph store does not confirm this boot's write")
+            return 1
 
         # The verdict itself lives in `probe_verdict.py` so it can be shown
         # failing: inline, the only way to exercise it was to boot an image whose
