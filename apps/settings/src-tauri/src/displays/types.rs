@@ -1,8 +1,8 @@
-/// Frontend-facing display types.
-///
-/// Mirrors the structure of the wlr-output-management head/mode
-/// data, but in a JSON-friendly camelCase form that the Tauri
-/// frontend can consume without knowing about Wayland.
+//! Frontend-facing display types.
+//!
+//! Mirrors the structure of the wlr-output-management head/mode
+//! data, but in a JSON-friendly camelCase form that the Tauri
+//! frontend can consume without knowing about Wayland.
 
 use serde::{Deserialize, Serialize};
 

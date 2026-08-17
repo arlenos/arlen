@@ -1,17 +1,17 @@
-/// Night-light Tauri commands for the Settings panel.
-///
-/// Settings runs in its own Tauri process and can't reach
-/// desktop-shell's `night_light_*` commands directly. Instead we
-/// surgically write the `[night_light]` section of
-/// `~/.config/arlen/shell.toml` and let desktop-shell's existing
-/// shell-config watcher pick up the change and replay the state to
-/// the compositor via the `arlen-shell-overlay` protocol. Same
-/// pattern the rest of the cross-app config uses.
-///
-/// We deliberately do NOT deserialize the full `ShellConfig`
-/// struct on read so app-settings doesn't have to track the
-/// desktop-shell schema. We work on `toml::Table` and only touch
-/// fields the user changed.
+//! Night-light Tauri commands for the Settings panel.
+//!
+//! Settings runs in its own Tauri process and can't reach
+//! desktop-shell's `night_light_*` commands directly. Instead we
+//! surgically write the `[night_light]` section of
+//! `~/.config/arlen/shell.toml` and let desktop-shell's existing
+//! shell-config watcher pick up the change and replay the state to
+//! the compositor via the `arlen-shell-overlay` protocol. Same
+//! pattern the rest of the cross-app config uses.
+//!
+//! We deliberately do NOT deserialize the full `ShellConfig`
+//! struct on read so app-settings doesn't have to track the
+//! desktop-shell schema. We work on `toml::Table` and only touch
+//! fields the user changed.
 
 use std::fs;
 use std::path::PathBuf;

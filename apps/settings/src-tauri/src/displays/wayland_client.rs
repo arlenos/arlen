@@ -1,22 +1,22 @@
-/// `wlr-output-management-unstable-v1` client.
-///
-/// Owns one `wayland_client::Connection` on a dedicated
-/// `std::thread`. Outgoing requests come in via an `mpsc::Sender`;
-/// each tick of the dispatch loop folds head/mode events into a
-/// `Snapshot` of the live monitor topology and pushes it to the
-/// frontend through a Tauri event.
-///
-/// We talk wlr-output-management (not the cosmic extension) because:
-///   * The compositor implements both server sides.
-///   * wlr is the cross-compositor standard, so the Settings app
-///     keeps working under labwc / sway / wayfire if a user runs
-///     it outside the Arlen compositor.
-///
-/// The Wayland event model is asynchronous: heads, modes, and
-/// per-head fields each arrive as separate events that batch on a
-/// `manager.done` boundary. We accumulate them into `staging_*`
-/// hash maps and only publish a snapshot when `manager.done`
-/// fires, mirroring the protocol's transactional semantics.
+//! `wlr-output-management-unstable-v1` client.
+//!
+//! Owns one `wayland_client::Connection` on a dedicated
+//! `std::thread`. Outgoing requests come in via an `mpsc::Sender`;
+//! each tick of the dispatch loop folds head/mode events into a
+//! `Snapshot` of the live monitor topology and pushes it to the
+//! frontend through a Tauri event.
+//!
+//! We talk wlr-output-management (not the cosmic extension) because:
+//!   * The compositor implements both server sides.
+//!   * wlr is the cross-compositor standard, so the Settings app
+//!     keeps working under labwc / sway / wayfire if a user runs
+//!     it outside the Arlen compositor.
+//!
+//! The Wayland event model is asynchronous: heads, modes, and
+//! per-head fields each arrive as separate events that batch on a
+//! `manager.done` boundary. We accumulate them into `staging_*`
+//! hash maps and only publish a snapshot when `manager.done`
+//! fires, mirroring the protocol's transactional semantics.
 
 use std::{
     collections::HashMap,
