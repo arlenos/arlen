@@ -154,4 +154,39 @@ mod tests {
         assert!(!link.exists(), "the link is gone");
         assert!(target.exists(), "the target is untouched");
     }
+
+    #[test]
+    fn a_recursive_remove_does_not_descend_through_a_link() {
+        // The operand case above is the easy half: the caller lstats it. This is
+        // the half that eats data - a link sitting INSIDE the tree being removed,
+        // pointing somewhere the user never named. A recursive delete that
+        // followed it would empty the target and report success on the operand.
+        //
+        // `remove_dir_all` is relied on for this, so the reliance is tested here
+        // rather than assumed from the standard library's documentation.
+        let d = tmp();
+
+        let precious = d.join("precious");
+        std::fs::create_dir(&precious).unwrap();
+        std::fs::write(precious.join("keep.txt"), b"keep me").unwrap();
+
+        let doomed = d.join("doomed");
+        std::fs::create_dir(&doomed).unwrap();
+        std::fs::write(doomed.join("gone.txt"), b"remove me").unwrap();
+        // A link to the directory, and a link to a single file in it.
+        std::os::unix::fs::symlink(&precious, doomed.join("dir-link")).unwrap();
+        std::os::unix::fs::symlink(precious.join("keep.txt"), doomed.join("file-link")).unwrap();
+
+        let mut i = inv(&[doomed.to_str().unwrap()]);
+        i.recursive = true;
+        let r = execute_unlink(&i);
+
+        assert_eq!(r.exit_code(), 0, "errors: {:?}", r.errors);
+        assert!(!doomed.exists(), "the named directory is gone");
+        assert!(precious.is_dir(), "the linked-to directory survives");
+        assert!(
+            precious.join("keep.txt").exists(),
+            "the file behind the link survives"
+        );
+    }
 }
