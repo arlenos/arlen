@@ -173,8 +173,8 @@ fn parse_args(args: &[String]) -> Result<Args, u8> {
                 if program.is_empty() {
                     return Err(bad_args("nothing to run after `--`"));
                 }
-                let app_id =
-                    app_id.ok_or_else(|| bad_args("no --app-id, so there is no profile to scope by"))?;
+                let app_id = app_id
+                    .ok_or_else(|| bad_args("no --app-id, so there is no profile to scope by"))?;
                 if !valid_app_id(&app_id) {
                     return Err(bad_args(&format!("not a usable app id: {app_id}")));
                 }
@@ -233,8 +233,7 @@ fn run_ephemeral(app_id: &str, file: &std::path::Path, program: &[String]) -> Ex
     // list missing entirely, which is how `run_command` came to be unable to run
     // any dynamically linked program.
     let compat_owned = arlen_confiner::merged_usr_compat_roots();
-    let compat: Vec<&std::path::Path> =
-        compat_owned.iter().map(std::path::Path::new).collect();
+    let compat: Vec<&std::path::Path> = compat_owned.iter().map(std::path::Path::new).collect();
     let confinement = match arlen_confiner::ephemeral_profile(
         std::path::Path::new("/usr"),
         file,
@@ -401,8 +400,12 @@ fn main() -> ExitCode {
     // proxy the enforcer binds. Capture the flag before `inputs.network` moves
     // into the confinement, and hold the guard for the whole launch - its Drop
     // stops the proxy. None/Unrestricted never reach the enforcer.
-    let filtered = matches!(&inputs.network, arlen_confiner::NetworkPolicy::FilteredHosts(_));
-    let egress_guard = if let arlen_confiner::NetworkPolicy::FilteredHosts(hosts) = &inputs.network {
+    let filtered = matches!(
+        &inputs.network,
+        arlen_confiner::NetworkPolicy::FilteredHosts(_)
+    );
+    let egress_guard = if let arlen_confiner::NetworkPolicy::FilteredHosts(hosts) = &inputs.network
+    {
         match egress::ProxyEgressEnforcer.install(hosts) {
             Ok(guard) => Some(guard),
             Err(e) => {
@@ -418,7 +421,9 @@ fn main() -> ExitCode {
     let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
     let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
     let mut plumbing = match &runtime_dir {
-        Some(rt) => spawn::plumbing_binds(rt, wayland_display.as_deref(), |p| p.exists()),
+        Some(rt) => {
+            spawn::plumbing_binds(rt, wayland_display.as_deref(), &args.app_id, |p| p.exists())
+        }
         None => Vec::new(),
     };
     // Bind arlen-run itself read-only into the sandbox so the direct-launch fence
@@ -445,7 +450,14 @@ fn main() -> ExitCode {
     // route-absence, so this is the cooperative path, not the boundary.
     if let Some(port) = proxy_port {
         let url = netns::proxy_env_url(port);
-        for key in ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"] {
+        for key in [
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+        ] {
             env.insert(key.to_string(), url.clone());
         }
     }
@@ -558,7 +570,13 @@ fn main() -> ExitCode {
         // syscalls, and pasta's netns is orthogonal to the filesystem fence.
         spawn::spawn_filtered_and_wait(&argv, &inputs.app_dirs, cgroup_procs, seccomp_bpf)
     } else {
-        spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs, Some(seccomp_bpf), &args.app_id)
+        spawn::spawn_and_wait(
+            &argv,
+            &inputs.app_dirs,
+            cgroup_procs,
+            Some(seccomp_bpf),
+            &args.app_id,
+        )
     };
 
     // Reap the subtree (kills any process the app left behind), then the leaf is
@@ -698,7 +716,12 @@ mod tests {
     fn a_refusal_line_is_one_the_shell_will_show() {
         let line = super::bad_args_line("not a usable app id: x");
         assert!(line.starts_with("arlen-run"), "{line}");
-        assert!(!line["arlen-run".len()..].trim_start().starts_with(": warning:"), "{line}");
+        assert!(
+            !line["arlen-run".len()..]
+                .trim_start()
+                .starts_with(": warning:"),
+            "{line}"
+        );
         assert!(line.contains("not a usable app id"), "{line}");
     }
     use super::*;
@@ -811,12 +834,12 @@ mod tests {
     fn invalid_app_ids() {
         for bad in [
             "",
-            ".leading",          // leading dot
-            "trailing.",         // trailing dot
-            "a..b",              // double dot
-            "a/b.c",             // separator
-            "a b.c",             // space
-            "café.app",          // non-ascii
+            ".leading",  // leading dot
+            "trailing.", // trailing dot
+            "a..b",      // double dot
+            "a/b.c",     // separator
+            "a b.c",     // space
+            "café.app",  // non-ascii
         ] {
             assert!(!valid_app_id(bad), "{bad:?} must be invalid");
         }
@@ -907,7 +930,9 @@ mod tests {
     #[test]
     fn rejects_an_unknown_flag() {
         assert_eq!(
-            parse_args(&args(&["--bogus", "x", "--app-id", "com.a.b", "--", "prog"])),
+            parse_args(&args(&[
+                "--bogus", "x", "--app-id", "com.a.b", "--", "prog"
+            ])),
             Err(exit::BAD_ARGS)
         );
     }
@@ -923,8 +948,16 @@ mod tests {
     /// saying "turn off the dangerous thing".
     #[test]
     fn the_inner_webkit_sandbox_is_declined_through_the_apps_own_switch() {
-        let env = launch_env(std::path::Path::new("/home/u"), "dev.arlen.files", None, None);
-        assert_eq!(env.get("WEBKIT_FORCE_SANDBOX").map(String::as_str), Some("0"));
+        let env = launch_env(
+            std::path::Path::new("/home/u"),
+            "dev.arlen.files",
+            None,
+            None,
+        );
+        assert_eq!(
+            env.get("WEBKIT_FORCE_SANDBOX").map(String::as_str),
+            Some("0")
+        );
         assert!(
             !env.contains_key("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"),
             "the same effect, but this name would be read as an override rather than a handover"
