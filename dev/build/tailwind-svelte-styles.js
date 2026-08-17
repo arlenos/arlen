@@ -40,18 +40,22 @@
  * - Tailwind's documented plugin order (`tailwindcss()` first) does not fix it.
  */
 
-import tailwindcss from "@tailwindcss/vite";
-
 /** Svelte's compiled `<style>` modules, which Tailwind has no business reading. */
 const SVELTE_STYLE_QUERY = /[?&]svelte&type=style/;
 
 /**
- * Drop-in for `tailwindcss()` in an app's `plugins` array.
+ * Wrap an app's own `tailwindcss()` call: `withoutSvelteStyles(tailwindcss())`.
  *
- * @returns {import("vite").Plugin[]}
+ * The app passes its plugins in rather than this module importing the package,
+ * because `dev/build/` has no `node_modules` of its own and the root workspace
+ * does not carry `@tailwindcss/vite` - so an import here resolves at runtime
+ * through vite's own resolver and fails under every app's type check. Two errors
+ * in `apps/knowledge` said so within minutes of it landing.
+ *
+ * @param {any[]} plugins the array `tailwindcss()` returns
+ * @returns {any[]} the same array, with the svelte style ids excluded
  */
-export function tailwindcssForSvelte() {
-  const plugins = tailwindcss();
+export function withoutSvelteStyles(plugins) {
   for (const plugin of plugins) {
     const filter = plugin.transform?.filter?.id;
     if (filter?.exclude) {

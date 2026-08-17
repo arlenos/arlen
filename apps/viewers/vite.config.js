@@ -1,12 +1,13 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
-import { tailwindcssForSvelte } from "../../dev/build/tailwind-svelte-styles.js";
+import tailwindcss from "@tailwindcss/vite";
+import { withoutSvelteStyles } from "../../dev/build/tailwind-svelte-styles.js";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
-  plugins: [sveltekit(), tailwindcssForSvelte()],
+  plugins: [sveltekit(), withoutSvelteStyles(tailwindcss())],
   clearScreen: false,
   server: {
     // Distinct port from the other apps (shell 1420, settings 1421,

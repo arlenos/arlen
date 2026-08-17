@@ -10,7 +10,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-const invoke = vi.fn(() => Promise.resolve(null));
+const invoke = vi.fn((..._args: unknown[]) => Promise.resolve(null));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 
 const handlers: Record<string, (e: { payload: unknown }) => void> = {};
@@ -30,7 +30,8 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 /// The groups the app handed the shell, from the registration call it made.
 function registered(): Array<{ items: Array<{ action: string; type: string }> }> {
   const call = invoke.mock.calls.find((c) => c[0] === "plugin:arlen-shell|menu_register");
-  return (call?.[1] as { groups: never[] })?.groups ?? [];
+  const body = call?.[1] as { groups?: Array<{ items: Array<{ action: string; type: string }> }> };
+  return body?.groups ?? [];
 }
 
 describe("initAppMenu", () => {
