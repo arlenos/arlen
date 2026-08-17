@@ -18,6 +18,19 @@
  *
  * `resolve_app_id` answers from the app index, where the `.desktop` file's
  * `X-Arlen-AppId=` states which permission id an app's windows belong to.
+ *
+ * **Do not reach for this everywhere an app_id appears.** Which id is right
+ * depends on who produced the thing being looked up:
+ *
+ * - An app published it through the shell plugin (menu, toolbar, shortcuts,
+ *   badge, ambient): permission id. Resolve the focused window first.
+ * - The compositor or kernel layer observed it about a window or process
+ *   (`window.focused`, `file.opened`, and so the Knowledge Graph's `App` nodes
+ *   promoted from them): window id. Pass the window's app_id straight through -
+ *   `workspaceProjects.ts` queries `MATCH (a:App {id})` and is correct as it is.
+ *
+ * Resolving the second kind would break it exactly as not resolving the first
+ * kind broke the top bar.
  */
 
 import { invoke } from "@tauri-apps/api/core";
