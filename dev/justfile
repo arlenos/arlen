@@ -249,7 +249,14 @@ notices:
     # `$outdir` is absolute because the subshell changes directory.
     outdir="$PWD/THIRD-PARTY-NOTICES"
     rm -rf "$outdir"; mkdir -p "$outdir"
-    roots=$(grep -rl '^\[workspace\]' --include=Cargo.toml . | grep -v '/target/' | xargs -n1 dirname | sort -u)
+    # TRACKED files only. A working-tree walk also finds the 34 workspace roots
+    # inside `dev/mkosi/mkosi.builddir` - vendored git checkouts and the rustlib
+    # source tree that ships with a pinned toolchain - and bundling licences for
+    # the Rust standard library fails, since it wants nightly features. That
+    # killed the whole run at root 118 of 118 the first time it was ever
+    # executed end to end. Asking git is not a filter that has to be maintained:
+    # the build directory is gitignored, so it cannot come back under a new name.
+    roots=$(git ls-files '*Cargo.toml' | xargs grep -l '^\[workspace\]' | xargs -n1 dirname | sort -u)
     for ws in $roots; do
         slug=$(echo "${ws#./}" | tr '/' '-')
         echo "== notices: $ws =="
