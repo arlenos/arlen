@@ -1,29 +1,29 @@
-/// Tauri plugin for the Arlen titlebar protocol.
-///
-/// Connects to the compositor as a Wayland client, binds the
-/// `arlen-titlebar-v1` protocol, and exposes titlebar management
-/// (tabs, buttons, breadcrumbs, search) to the Tauri frontend via
-/// commands and events.
-///
-/// # Usage (Rust)
-///
-/// ```rust,ignore
-/// fn main() {
-///     tauri::Builder::default()
-///         .plugin(tauri_plugin_arlen_menu::init())
-///         .run(tauri::generate_context!())
-///         .expect("error running app");
-/// }
-/// ```
-///
-/// # Usage (TypeScript)
-///
-/// ```typescript
-/// import { addTab, onTabActivated } from '@arlen/tauri-plugin-menu';
-///
-/// addTab({ id: "1", title: "main.rs", status: "modified" });
-/// onTabActivated((id) => console.log("activated:", id));
-/// ```
+//! Tauri plugin for the Arlen titlebar protocol.
+//!
+//! Connects to the compositor as a Wayland client, binds the
+//! `arlen-titlebar-v1` protocol, and exposes titlebar management
+//! (tabs, buttons, breadcrumbs, search) to the Tauri frontend via
+//! commands and events.
+//!
+//! # Usage (Rust)
+//!
+//! ```rust,ignore
+//! fn main() {
+//!     tauri::Builder::default()
+//!         .plugin(tauri_plugin_arlen_menu::init())
+//!         .run(tauri::generate_context!())
+//!         .expect("error running app");
+//! }
+//! ```
+//!
+//! # Usage (TypeScript)
+//!
+//! ```typescript
+//! import { addTab, onTabActivated } from '@arlen/tauri-plugin-menu';
+//!
+//! addTab({ id: "1", title: "main.rs", status: "modified" });
+//! onTabActivated((id) => console.log("activated:", id));
+//! ```
 
 mod commands;
 mod protocol;

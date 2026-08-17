@@ -1,10 +1,10 @@
-/// Module manifest parser and validation for Arlen OS.
-///
-/// Modules extend the shell via well-defined extension points (Waypointer
-/// search, top bar indicators, settings panels, etc.). Each module has a
-/// `manifest.toml` describing its metadata, extensions, and capabilities.
-///
-/// See `docs/architecture/module-system.md`.
+//! Module manifest parser and validation for Arlen OS.
+//!
+//! Modules extend the shell via well-defined extension points (Waypointer
+//! search, top bar indicators, settings panels, etc.). Each module has a
+//! `manifest.toml` describing its metadata, extensions, and capabilities.
+//!
+//! See `docs/architecture/module-system.md`.
 
 use std::path::Path;
 

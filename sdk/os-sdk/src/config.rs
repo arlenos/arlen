@@ -1,14 +1,14 @@
-/// TOML-based configuration system for Arlen applications.
-///
-/// Each application has its own config file at `~/.config/arlen/<app_id>.toml`.
-/// The system-wide theme lives at `~/.config/arlen/theme.toml`.
-///
-/// # Example
-///
-/// ```text
-/// let config = Config::load("shell").unwrap();
-/// let position: String = config.get("panel.position").unwrap_or("bottom".to_string());
-/// ```
+//! TOML-based configuration system for Arlen applications.
+//!
+//! Each application has its own config file at `~/.config/arlen/<app_id>.toml`.
+//! The system-wide theme lives at `~/.config/arlen/theme.toml`.
+//!
+//! # Example
+//!
+//! ```text
+//! let config = Config::load("shell").unwrap();
+//! let position: String = config.get("panel.position").unwrap_or("bottom".to_string());
+//! ```
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};

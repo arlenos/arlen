@@ -1,25 +1,25 @@
-/// `shell.spatial` — placement-hint surface for first-party apps.
-///
-/// Foundation §634 spec: applications provide window placement hints to
-/// the compositor (preferred output, position, size). Hints are *not*
-/// commands — the compositor applies them when the current layout
-/// permits, and the user's manual moves always win.
-///
-/// # Status
-///
-/// Full spatial-hint support requires a compositor-side extension of
-/// the cosmic-comp fork that has not landed yet. The foundation paper
-/// is explicit: "Until then, `shell.spatial` calls are accepted and
-/// silently ignored."
-///
-/// This module exists so applications can declare hints today without
-/// needing source changes when compositor support lands. The methods
-/// take fully-typed parameters and return `Ok(())` so call-sites read
-/// like the production behaviour.
-///
-/// When the compositor extension lands, swap the body of [`Spatial::hint`]
-/// for an Event Bus emit (likely `app.spatial.hint`) and add the
-/// matching protobuf payload type. No app-facing API change.
+//! `shell.spatial` — placement-hint surface for first-party apps.
+//!
+//! Foundation §634 spec: applications provide window placement hints to
+//! the compositor (preferred output, position, size). Hints are *not*
+//! commands — the compositor applies them when the current layout
+//! permits, and the user's manual moves always win.
+//!
+//! # Status
+//!
+//! Full spatial-hint support requires a compositor-side extension of
+//! the cosmic-comp fork that has not landed yet. The foundation paper
+//! is explicit: "Until then, `shell.spatial` calls are accepted and
+//! silently ignored."
+//!
+//! This module exists so applications can declare hints today without
+//! needing source changes when compositor support lands. The methods
+//! take fully-typed parameters and return `Ok(())` so call-sites read
+//! like the production behaviour.
+//!
+//! When the compositor extension lands, swap the body of [`Spatial::hint`]
+//! for an Event Bus emit (likely `app.spatial.hint`) and add the
+//! matching protobuf payload type. No app-facing API change.
 
 use std::future::Future;
 

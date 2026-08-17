@@ -1,8 +1,8 @@
-/// Tauri commands for the titlebar protocol.
-///
-/// Each command writes a request to the Wayland titlebar object and
-/// flushes the connection. The commands are registered by the plugin
-/// and callable from the TypeScript frontend.
+//! Tauri commands for the titlebar protocol.
+//!
+//! Each command writes a request to the Wayland titlebar object and
+//! flushes the connection. The commands are registered by the plugin
+//! and callable from the TypeScript frontend.
 
 use serde::Deserialize;
 use tauri::{command, State};

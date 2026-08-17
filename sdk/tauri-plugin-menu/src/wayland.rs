@@ -1,8 +1,8 @@
-/// Wayland client connection for the titlebar protocol.
-///
-/// Connects to the compositor, binds `arlen_titlebar_manager_v1`,
-/// obtains a per-surface `arlen_titlebar_v1` object, and dispatches
-/// incoming events (mode_changed, tab_activated, etc.) as Tauri events.
+//! Wayland client connection for the titlebar protocol.
+//!
+//! Connects to the compositor, binds `arlen_titlebar_manager_v1`,
+//! obtains a per-surface `arlen_titlebar_v1` object, and dispatches
+//! incoming events (mode_changed, tab_activated, etc.) as Tauri events.
 
 use std::sync::{Arc, Mutex};
 

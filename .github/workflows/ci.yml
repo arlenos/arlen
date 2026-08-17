@@ -582,10 +582,19 @@ jobs:
           done
       - name: clippy (sdk, ai)
         run: |
-          # The sdk workspace carries 39 warnings today - 20 of them one mechanical
-          # class - so it stays advisory until someone sweeps it. `|| true` is
-          # honest here only because the number is written down; a check nobody
-          # can fail and nobody has counted is not advisory, it is decoration.
+          # The sdk workspace carries 26 warnings today, so it stays advisory
+          # until someone sweeps the rest. `|| true` is honest here only because
+          # the number is written down; a check nobody can fail and nobody has
+          # counted is not advisory, it is decoration.
+          #
+          # It said 39 until 17 August and was 47 by the time anyone re-read it,
+          # which is what an unchecked count does. The 20 it attributed to "one
+          # mechanical class" turned out not to be mechanical at all: they were
+          # module docs written with `///` instead of `//!`, so rustdoc attached
+          # each one to whatever item happened to follow. `arlen-config` listed
+          # its `events` module as "TOML configuration loader for Arlen OS." All
+          # 20 fixed; the remaining 26 are genuinely cosmetic (async-fn sugar,
+          # derivable impls, enum prefixes).
           cargo clippy --manifest-path sdk/Cargo.toml --workspace || true
           # The ai workspace is clean, so this one FAILS. It went advisory when it
           # had warnings and stayed that way after they were fixed, which meant the

@@ -1,23 +1,23 @@
-/// `shell.annotations` — first-party app surface for attaching
-/// structured per-app metadata to existing Knowledge Graph nodes.
-///
-/// Foundation §395: applications attach data within their own
-/// namespace. Re-setting on the same `(target, namespace)` triple
-/// replaces the previous value. The Knowledge Daemon promotes
-/// `app.annotation.set` and `app.annotation.cleared` Event Bus
-/// events into Annotation graph nodes keyed by a deterministic
-/// UUIDv5 derived from the triple.
-///
-/// Reads (`get`) go through the [`GraphClient`] using a Cypher
-/// match keyed on the same triple. Cross-namespace reads are
-/// permitted by this SDK layer today; the daemon-side enforcement
-/// follows the capability-token Phase 3.2 milestone. First-party
-/// apps that read other apps' namespaces should declare the
-/// permission in their manifest so the future hardening is not a
-/// breaking change.
-///
-/// Subscriptions (`onChanged` per spec) are deferred — they need an
-/// Event Bus consumer in os-sdk which only has a producer today.
+//! `shell.annotations` — first-party app surface for attaching
+//! structured per-app metadata to existing Knowledge Graph nodes.
+//!
+//! Foundation §395: applications attach data within their own
+//! namespace. Re-setting on the same `(target, namespace)` triple
+//! replaces the previous value. The Knowledge Daemon promotes
+//! `app.annotation.set` and `app.annotation.cleared` Event Bus
+//! events into Annotation graph nodes keyed by a deterministic
+//! UUIDv5 derived from the triple.
+//!
+//! Reads (`get`) go through the [`GraphClient`] using a Cypher
+//! match keyed on the same triple. Cross-namespace reads are
+//! permitted by this SDK layer today; the daemon-side enforcement
+//! follows the capability-token Phase 3.2 milestone. First-party
+//! apps that read other apps' namespaces should declare the
+//! permission in their manifest so the future hardening is not a
+//! breaking change.
+//!
+//! Subscriptions (`onChanged` per spec) are deferred — they need an
+//! Event Bus consumer in os-sdk which only has a producer today.
 
 use std::collections::HashMap;
 use std::future::Future;

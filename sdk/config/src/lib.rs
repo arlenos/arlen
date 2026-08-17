@@ -1,12 +1,12 @@
-/// TOML configuration loader for Arlen OS.
-///
-/// Loads component configs from two locations:
-/// 1. System defaults: `/usr/share/arlen/defaults/{component}.toml`
-/// 2. User overrides: `~/.config/arlen/{component}.toml`
-///
-/// User values override system defaults via deep merge on nested tables.
-///
-/// See `docs/architecture/config-system.md`.
+//! TOML configuration loader for Arlen OS.
+//!
+//! Loads component configs from two locations:
+//! 1. System defaults: `/usr/share/arlen/defaults/{component}.toml`
+//! 2. User overrides: `~/.config/arlen/{component}.toml`
+//!
+//! User values override system defaults via deep merge on nested tables.
+//!
+//! See `docs/architecture/config-system.md`.
 
 pub mod events;
 pub mod keybindings;

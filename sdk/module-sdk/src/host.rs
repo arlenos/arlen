@@ -1,16 +1,16 @@
-/// Host imports surfaced to module authors.
-///
-/// On the WASM side these functions are linked at component-load time
-/// against the `arlen:host/*` interfaces defined in `wit/host.wit`;
-/// on the native side (running tests in a host crate, no WASM) they
-/// route through a thread-local mock that lets tests pre-program
-/// answers. The signatures match between both paths so the same
-/// module source compiles natively for unit tests and to WASM for
-/// production.
-///
-/// The capability gating happens in `arlen-modulesd`. Every host
-/// import returns a typed `HostError` on denial; modules are expected
-/// to handle that gracefully.
+//! Host imports surfaced to module authors.
+//!
+//! On the WASM side these functions are linked at component-load time
+//! against the `arlen:host/*` interfaces defined in `wit/host.wit`;
+//! on the native side (running tests in a host crate, no WASM) they
+//! route through a thread-local mock that lets tests pre-program
+//! answers. The signatures match between both paths so the same
+//! module source compiles natively for unit tests and to WASM for
+//! production.
+//!
+//! The capability gating happens in `arlen-modulesd`. Every host
+//! import returns a typed `HostError` on denial; modules are expected
+//! to handle that gracefully.
 
 use thiserror::Error;
 

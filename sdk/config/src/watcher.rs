@@ -1,9 +1,9 @@
-/// File watcher for live config reload.
-///
-/// Watches the parent directories of config files (to catch atomic
-/// rename-writes from editors) and debounces rapid changes at 100ms.
-///
-/// See `docs/architecture/config-system.md` (live reload section).
+//! File watcher for live config reload.
+//!
+//! Watches the parent directories of config files (to catch atomic
+//! rename-writes from editors) and debounces rapid changes at 100ms.
+//!
+//! See `docs/architecture/config-system.md` (live reload section).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
