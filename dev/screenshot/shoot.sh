@@ -25,11 +25,28 @@ export SHOOT_INJECT="${3:-}"
 # A CSS selector clicked after load and before the injection, for anything the
 # page only shows once something is opened.
 export SHOOT_OPEN="${SHOOT_OPEN:-}"
-# A REQUEST, and one this browser answers with a yes and ignores - see the note at
-# the top of shoot.py. Every run now prints the viewport it actually rendered at.
-# Set SHOOT_REQUIRE_WIDTH to refuse rather than hand back a narrow-layout shot.
+# The viewport. Every run prints the size it actually rendered at; set
+# SHOOT_REQUIRE_WIDTH to refuse rather than hand back a narrow-layout shot.
 export SHOOT_WIDTH="${4:-1280}"
 export SHOOT_HEIGHT="${5:-800}"
+
+# The Xvfb screen, which has to be at least the viewport - a window cannot be
+# wider than the display it is on.
+#
+# THIS WAS THE WHOLE BUG, and it was blamed on the wrong component for a week.
+# `xvfb-run -a` with no server args gives a **640x480** screen, so every request
+# for 1280x800 came back clamped, and the note at the top of shoot.py concluded
+# the browser "answers with a yes and ignores" the resize. It does not. Measured
+# side by side, same probe, same driver:
+#
+#   xvfb-run -a                          window/rect 1280 -> innerWidth 640
+#   xvfb-run -a -s "-screen 0 1920x1200" window/rect 1280 -> innerWidth 1280
+#
+# `shoot-app.sh` had passed a screen size all along, which is why full-app shots
+# looked right and these did not. Sized from the request with room for window
+# furniture, so a caller asking for 1700px gets a screen that can hold it.
+export SHOOT_SCREEN_W=$(( SHOOT_WIDTH + 200 ))
+export SHOOT_SCREEN_H=$(( SHOOT_HEIGHT + 200 ))
 export SHOOT_PORT=4477
 export SHOOT_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -56,7 +73,7 @@ require_xvfb xvfb-run
 # developer's real session instead of this Xvfb. On 15 August that let an app driven
 # through the sibling app-harness capture the real desktop; nothing here captures, but
 # a shot that silently came from the wrong display is not a shot of anything.
-xvfb-run -a bash -c '
+xvfb-run -a --server-args="-screen 0 ${SHOOT_SCREEN_W}x${SHOOT_SCREEN_H}x24" bash -c '
   unset WAYLAND_DISPLAY
   export GDK_BACKEND=x11
   set -euo pipefail

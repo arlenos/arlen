@@ -5,20 +5,24 @@ WebKitWebDriver, optionally run an injection script, and save a screenshot.
 Assumes a WebKitWebDriver is listening on --port (shoot.sh starts one under
 Xvfb). Kept dependency-free (stdlib only) so the harness needs no venv.
 
-**--width and --height are a request, and on this machine the browser refuses
-it silently.** Measured 9 August: `POST /session/{id}/window/rect` answers 200
-and echoes back the rectangle asked for, `/window/maximize` and
-`/window/fullscreen` do the same, and `window.innerWidth` stays 372 through all
-of them - with or without openbox running, on a 1920x1200 Xvfb screen, at any
-requested size. Two runs of the same page at 1100 and at 1700 produced
-byte-identical PNGs, which is what turned a suspicion into a fact.
+**--width and --height work, and for a week they did not.** The cause was never
+the browser: `shoot.sh` ran `xvfb-run -a` with no server args, which gives a
+**640x480 screen**, and a window cannot be wider than its display. Every request
+for 1280 came back clamped, and the note that used to stand here blamed
+WebKitWebDriver for answering with a yes and ignoring the resize. Measured side
+by side on 17 August, same probe, same driver, only the screen differing:
 
-372 CSS px is a phone. Every shot this client has taken has been of the narrow
-layout, so a desktop-only alignment problem has never been visible in one, and
-no reader of the PNGs was told. That is why the achieved viewport is now
-measured and printed on every run, and why --require-width exists for a caller
-that needs a desktop-width render and would rather be refused than handed a
-phone.
+    xvfb-run -a                             window/rect 1280 -> innerWidth 640
+    xvfb-run -a -s "-screen 0 1920x1200x24" window/rect 1280 -> innerWidth 1280
+
+`shoot.sh` now sizes the screen from the request. `shoot-app.sh` always passed
+one, which is why full-app shots looked right while these were phone-width and
+nobody connected the two.
+
+The achieved viewport is still measured and printed on every run, because a
+screenshot carries no record of the width it was taken at, and --require-width
+still exists for a caller that would rather be refused than handed a narrow
+layout.
 """
 import argparse
 import base64
