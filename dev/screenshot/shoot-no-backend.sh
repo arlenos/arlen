@@ -60,6 +60,27 @@ ROUTE="${2:-}"
 OUT="${3:-dev/screenshot/out/${APP}-no-backend.png}"
 W="${4:-1280}"
 
+# A DEV-gated query in the route is a picture that lies. This script builds for
+# PRODUCTION (below), so `import.meta.env.DEV` is false and every hook behind it
+# is inert: `applyDevLocale` returns without touching the locale, `?state=` pins
+# nothing. The render still succeeds and still looks plausible - it is simply the
+# default state under a URL that asks for another one, which is how a German
+# check comes back English and gets read as a pass.
+#
+# The kit's own note on `applyDevLocale` calls this out ("a hook only half the
+# apps honour is a screenshot that lies about the other half"). Refusing here is
+# the same rule applied to the renderer.
+case "$2" in
+  *locale=*|*state=*|*btmock=*)
+    echo "refusing: '$2' carries a DEV-gated query and this script builds for production," >&2
+    echo "so the hook is inert and the shot would show the default state under a URL that" >&2
+    echo "asks for another one. Use a dev server instead:" >&2
+    echo "    (cd apps/$1 && npx vite dev --port 5199) &" >&2
+    echo "    python3 dev/screenshot/render-wide.py --url 'http://localhost:5199/$2' --out shot.png --width 1280" >&2
+    exit 2
+    ;;
+esac
+
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 DIR="$ROOT/apps/$APP"
 [ -f "$DIR/package.json" ] || { echo "no such app: apps/$APP" >&2; exit 2; }
