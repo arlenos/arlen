@@ -353,10 +353,12 @@ jobs:
           node dev/scripts/test-check-cypher-groups.mjs
           python3 dev/scripts/check-sandbox-env.py
           python3 dev/scripts/check-unrendered-error.py
+          python3 dev/scripts/check-announced-refusal.py
           python3 dev/scripts/check-locale-adopted.py
           python3 dev/scripts/check-kit-defaults.py
           node dev/scripts/test-check-sandbox-env.mjs
           node dev/scripts/test-check-unrendered-error.mjs
+          node dev/scripts/test-check-announced-refusal.mjs
           node dev/scripts/test-check-locale-adopted.mjs
           node dev/scripts/test-check-kit-defaults.mjs
           node dev/scripts/test-typecheck-gating.mjs

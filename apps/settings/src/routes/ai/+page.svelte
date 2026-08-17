@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { LiveRegion } from "@arlen/ui-kit/components/a11y";
   /// AI settings, the trust + control home for the AI layer: enable it, set how
   /// freely it acts (the decided action_mode + executor_live model), how much it
   /// can see, what it does on its own, plus links out to the Providers and
@@ -393,6 +394,10 @@
 
     <Section label={$t("s.ai.health")}>
       {#if statusError}
+        <!-- The Row draws the sentence; this speaks it. Refresh is a button, so
+             a failure here is an answer to a press, and `Row` takes fixed props
+             with no place to put `role="alert"`. -->
+        <LiveRegion message={$t("s.ai.statusUnavailable")} assertive />
         <Row label={$t("s.ai.statusUnavailable")} description={$t("s.ai.statusUnavailable.desc")} id="ai-status-error">
           {#snippet control()}
             <span title={statusError}><AlertCircle size={16} class="ai-error-icon" /></span>

@@ -413,7 +413,7 @@
           {/if}
         {/if}
         {#if permError}
-          <span class="err">{$t("f.info.permError")}</span>
+          <span class="err" role="alert">{$t("f.info.permError")}</span>
         {/if}
       </section>
     {/if}

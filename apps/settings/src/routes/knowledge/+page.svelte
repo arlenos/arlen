@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { LiveRegion } from "@arlen/ui-kit/components/a11y";
   /// Knowledge Graph settings page.
   ///
   /// Built on the Arlen Design System canon (docs/architecture/design-system.md):
@@ -134,6 +135,9 @@
   <SectionGrid>
     <Section label={$t("s.know.status")}>
       {#if error}
+        <!-- Same as the AI page: Refresh is a button, and the Row it draws into
+             has no attribute to carry the announcement. -->
+        <LiveRegion message={$t("s.know.statsUnavail")} assertive />
         <Row label={$t("s.know.statsUnavail")} description={$t("s.know.statsUnavail.desc")} id="kg-error">
           {#snippet control()}
             <span title={error}><AlertCircle size={16} class="kg-error-icon" /></span>
