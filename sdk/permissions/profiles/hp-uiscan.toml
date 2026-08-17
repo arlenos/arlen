@@ -1,0 +1,13 @@
+# Starting permission profile for HP's scan front-end. Writes scans to Documents and
+# Pictures, and needs the network because HP all-in-ones are usually reached over it
+# rather than USB. No Knowledge Graph access.
+[info]
+app_id = "hp-uiscan"
+tier = "third-party"
+
+[filesystem]
+documents = true
+pictures = true
+
+[network]
+allow_all = true

@@ -1,0 +1,9 @@
+# Starting permission profile for the Arch mirror ranker. Times mirrors over the
+# network and writes only the mirrorlist, which is a system path rather than one of
+# these user dirs. No file grants, no Knowledge Graph access.
+[info]
+app_id = "reflector-simple"
+tier = "third-party"
+
+[network]
+allow_all = true

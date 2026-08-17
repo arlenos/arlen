@@ -1,0 +1,13 @@
+# Starting permission profile for KDE Connect (phone integration). Connects to the paired device over the network (its function); received files land in Downloads. Clipboard/notification/input bridging are separate capability grants out of band.
+[info]
+app_id = "org.kde.kdeconnect.sms"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
+
+# The same KDE Connect install, under the desktop-id this component ships as.
+# An app is only reachable under the id it is actually launched by.

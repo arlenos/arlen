@@ -1,0 +1,6 @@
+# Starting permission profile for the hardware-topology viewer. Reads the machine's
+# own topology out of the kernel, which is not one of these user dirs, so it needs no
+# file access, no network and no Knowledge Graph.
+[info]
+app_id = "lstopo"
+tier = "third-party"
