@@ -41,6 +41,24 @@ pub struct AppEntry {
     pub description: String,
     /// Semicolon-separated categories (Categories= key).
     pub categories: Vec<String>,
+    /// The identifiers this app DECLARES its windows by, lowercased:
+    /// `StartupWMClass=` and the `.desktop` basename.
+    ///
+    /// A window's Wayland app_id and the id the permission system keys on are
+    /// two different names for one app, and the gap between them is not an
+    /// oversight to be renamed away: a third-party window announces whatever its
+    /// toolkit sets, which will never be one of our reverse-DNS ids. So the
+    /// shell has to be able to go from the one to the other, and this field is
+    /// the side of that mapping the `.desktop` file supplies.
+    #[serde(skip)]
+    pub window_ids: Vec<String>,
+    /// The Exec binary's name, lowercased: the guess for an app that declares
+    /// neither of the above and names its window after its command. Held apart
+    /// from `window_ids` so a declaration always outranks it, which position in
+    /// one list could not express - the two are the same string for most of our
+    /// own apps, and deduplicating them would have collapsed the distinction.
+    #[serde(skip)]
+    pub exec_window_id: String,
     /// Precomputed lowercase of `name`. Not serialised to the frontend.
     #[serde(skip)]
     pub name_lower: String,
@@ -188,12 +206,17 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         .unwrap_or_default();
 
     let app_id = derive_app_id(fields.get("X-Arlen-AppId").map(String::as_str), path);
+    let exec = strip_exec_placeholders(&exec);
+    let window_ids = derive_window_ids(fields.get("StartupWMClass").map(String::as_str), path);
+    let exec_window_id = derive_exec_window_id(&exec);
     let name_lower = name.to_lowercase();
     let description_lower = description.to_lowercase();
     Some(AppEntry {
         name,
-        exec: strip_exec_placeholders(&exec),
+        exec,
         app_id,
+        window_ids,
+        exec_window_id,
         icon_name,
         icon_data: None,
         description,
@@ -218,6 +241,69 @@ fn derive_app_id(explicit: Option<&str>, path: &Path) -> String {
         .to_string()
 }
 
+/// The lowercased identifiers this app declares its windows by.
+///
+/// `StartupWMClass=` is the freedesktop key that exists for precisely this
+/// question, and is what an app sets when its window name differs from its file
+/// name. The `.desktop` basename is what a toolkit announces by default, and
+/// covers every app that never needed the key.
+fn derive_window_ids(wm_class: Option<&str>, path: &Path) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    let mut push = |s: &str| {
+        let s = s.trim().to_lowercase();
+        if !s.is_empty() && !ids.contains(&s) {
+            ids.push(s);
+        }
+    };
+    if let Some(c) = wm_class {
+        push(c);
+    }
+    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+        push(stem);
+    }
+    ids
+}
+
+/// The Exec binary's name, lowercased: `/usr/bin/arlen-files %U` -> `arlen-files`.
+fn derive_exec_window_id(exec: &str) -> String {
+    exec.split_whitespace()
+        .next()
+        .map(|bin| {
+            Path::new(bin)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(bin)
+                .to_lowercase()
+        })
+        .unwrap_or_default()
+}
+
+/// The permission id of the app that owns a window announcing `window_app_id`.
+///
+/// The shell knows an app by two names and has to hold both: a window arrives
+/// carrying its Wayland app_id, while a menu, a permission profile and an audit
+/// entry all say the reverse-DNS one. Nothing bridged them, so the topbar looked
+/// up `dev.arlen.knowledge`'s menu under the key `arlen-knowledge` and found
+/// nothing - every app registered a menu correctly and no app ever showed one.
+///
+/// Exact declarations (`StartupWMClass=`, the `.desktop` basename) are tried
+/// across the whole index before any Exec-name guess, so an app that states its
+/// window class is never beaten by another whose binary happens to match.
+///
+/// `None` when no entry claims the window: the caller keeps the id it has, which
+/// is the behaviour for an app with no `.desktop` file at all.
+pub fn resolve_window_app_id(entries: &[AppEntry], window_app_id: &str) -> Option<String> {
+    let needle = window_app_id.trim().to_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+    entries
+        .iter()
+        .find(|e| e.window_ids.iter().any(|id| *id == needle))
+        .or_else(|| entries.iter().find(|e| e.exec_window_id == needle))
+        .map(|e| e.app_id.clone())
+}
+
 /// Strips freedesktop Exec placeholders (%u, %U, %f, %F, %i, %c, %k, etc.).
 fn strip_exec_placeholders(exec: &str) -> String {
     let mut result = String::with_capacity(exec.len());
@@ -236,6 +322,17 @@ fn strip_exec_placeholders(exec: &str) -> String {
 #[tauri::command]
 pub fn get_apps(index: tauri::State<AppIndex>) -> Vec<AppEntry> {
     index.lock().unwrap().clone()
+}
+
+/// The permission id for a focused window's Wayland app_id.
+///
+/// Returns the id unchanged when no installed app claims the window, so a
+/// caller can key on the result either way: an app with no `.desktop` file
+/// still gets a stable key, it is simply the one the window announced.
+#[tauri::command]
+pub fn resolve_app_id(index: tauri::State<AppIndex>, window_app_id: String) -> String {
+    let index = index.lock().unwrap();
+    resolve_window_app_id(&index, &window_app_id).unwrap_or(window_app_id)
 }
 
 /// Searches the app index by query string. Returns max 20 results.
@@ -509,6 +606,62 @@ mod tests {
             Path::new("/usr/share/applications/example.desktop"),
         );
         assert_eq!(id, "com.example.app");
+    }
+
+    /// An entry as the parser would build it, for the resolver's tests.
+    fn entry(app_id: &str, wm_class: Option<&str>, desktop: &str, exec: &str) -> AppEntry {
+        AppEntry {
+            name: app_id.to_string(),
+            exec: exec.to_string(),
+            app_id: app_id.to_string(),
+            window_ids: derive_window_ids(wm_class, Path::new(desktop)),
+            exec_window_id: derive_exec_window_id(exec),
+            icon_name: String::new(),
+            icon_data: None,
+            description: String::new(),
+            categories: Vec::new(),
+            name_lower: String::new(),
+            description_lower: String::new(),
+        }
+    }
+
+    /// The case measured on the 17 August boot: the window announced
+    /// `arlen-knowledge`, the menu arrived under `dev.arlen.knowledge`, and the
+    /// topbar looked the second up by the first and found nothing.
+    #[test]
+    fn a_window_resolves_to_the_permission_id_its_desktop_file_declares() {
+        let index = vec![entry(
+            "dev.arlen.knowledge",
+            None,
+            "/usr/share/applications/arlen-knowledge.desktop",
+            "arlen-knowledge",
+        )];
+        assert_eq!(
+            resolve_window_app_id(&index, "arlen-knowledge").as_deref(),
+            Some("dev.arlen.knowledge"),
+        );
+    }
+
+    /// The reason `exec_window_id` is a field of its own: here the two apps
+    /// would tie on one list, and the one that SAYS the window is its own has
+    /// to win over the one that merely runs a binary of that name.
+    #[test]
+    fn a_declared_window_class_outranks_another_apps_exec_name() {
+        let index = vec![
+            entry("com.example.Runner", None, "/x/other.desktop", "gimp"),
+            entry("org.gimp.GIMP", Some("gimp"), "/x/org.gimp.GIMP.desktop", "gimp-2.10"),
+        ];
+        assert_eq!(
+            resolve_window_app_id(&index, "gimp").as_deref(),
+            Some("org.gimp.GIMP"),
+        );
+    }
+
+    #[test]
+    fn an_unclaimed_window_resolves_to_nothing() {
+        let index = vec![entry("dev.arlen.files", None, "/x/arlen-files.desktop", "arlen-files")];
+        assert_eq!(resolve_window_app_id(&index, "org.mozilla.firefox"), None);
+        assert_eq!(resolve_window_app_id(&index, "  "), None);
     }
 
     #[test]

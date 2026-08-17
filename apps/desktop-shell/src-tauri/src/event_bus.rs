@@ -6,7 +6,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use arlen_desktop_shell_core::retry::Backoff;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 const CONSUMER_ID: &str = "desktop-shell";
 /// Subscribe to window, config, project, and the app.* state
@@ -295,6 +295,29 @@ fn forward_menu_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
     log::info!(
         "MENU-DIAG: {event_type} published for app_id={menu_app_id:?} ({group_count} groups)"
     );
+    // Keep the shell-side store in step with the event, so `get_menu` really is
+    // the authority its callers treat it as. Only the in-shell `register_menu`
+    // command and the GTK bridge wrote here, and no app can call the former from
+    // its own process - so for every app that registers the normal way, over the
+    // bus, the store stayed empty and `get_menu` answered null. The frontend's
+    // re-fetch on focus is built on that answer: it exists to bring a menu back
+    // when the one-shot registration event fired before the listener was there.
+    // It could never do so.
+    if let Some(store) = app.try_state::<crate::menu_store::AppMenuStore>() {
+        if let Ok(mut menus) = store.lock() {
+            match event_type {
+                "app.menu.registered" => {
+                    if let Some(items) = value.get("items") {
+                        menus.insert(menu_app_id.to_string(), items.clone());
+                    }
+                }
+                "app.menu.unregistered" => {
+                    menus.remove(menu_app_id);
+                }
+                _ => {}
+            }
+        }
+    }
     let tauri_event = match event_type {
         "app.menu.registered" => "arlen://menu-registered",
         "app.menu.unregistered" => "arlen://menu-unregistered",

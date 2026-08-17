@@ -509,6 +509,7 @@ pub fn run() {
             shell_runner::execute_shell_command,
             shell_runner::open_url,
             app_index::get_apps,
+            app_index::resolve_app_id,
             app_index::search_apps,
             session_user::session_user,
             app_index::launch_app,
