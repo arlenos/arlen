@@ -85,7 +85,6 @@ stellarium	org.stellarium.Stellarium stellarium
 supertuxkart	org.supertuxkart.SuperTuxKart supertuxkart
 synfigstudio	org.synfig.SynfigStudio synfigstudio
 torbrowser-launcher	com.github.micahflee.torbrowser-launcher org.torproject.torbrowser-launcher
-totem	org.gnome.Totem totem
 videodownloader	com.github.unrud.VideoDownloader io.github.unrud.VideoDownloader
 vorta	com.borgbase.Vorta vorta
 wardrobe	com.github.swordpuffin.wardrobe io.github.swordpuffin.wardrobe
