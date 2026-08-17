@@ -1,4 +1,4 @@
-/// Built-in shared entity schemas: Person, Organization, Event, Location, Tag.
+//! Built-in shared entity schemas: Person, Organization, Event, Location, Tag.
 
 use std::collections::HashMap;
 

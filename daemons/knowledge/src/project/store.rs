@@ -1,4 +1,4 @@
-/// Project CRUD and PART_OF edge operations against the Ladybug graph.
+//! Project CRUD and PART_OF edge operations against the Ladybug graph.
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};

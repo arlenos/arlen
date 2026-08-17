@@ -1,8 +1,8 @@
-/// Staged uninstall: mark entities for pending deletion with a grace period.
-///
-/// When an app is uninstalled, its entities are marked `_pending_delete = true`
-/// with a timestamp. If the app is reinstalled within the grace period (30 days),
-/// the mark is removed. After the grace period, entities are permanently deleted.
+//! Staged uninstall: mark entities for pending deletion with a grace period.
+//!
+//! When an app is uninstalled, its entities are marked `_pending_delete = true`
+//! with a timestamp. If the app is reinstalled within the grace period (30 days),
+//! the mark is removed. After the grace period, entities are permanently deleted.
 
 use chrono::Utc;
 

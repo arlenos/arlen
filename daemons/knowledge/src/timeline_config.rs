@@ -1,17 +1,17 @@
-/// Recording pause, read from `~/.config/arlen/graph.toml` `[timeline]`.
-///
-/// The Knowledge app's timeline has a Pause switch, and its own copy says what
-/// that has to mean: "Recording is paused. Nothing is added until you resume."
-/// So this is not a display filter - while it is on, the writer must not admit
-/// events into the store at all. Anything less would be the shape this tree has
-/// spent two days removing: a surface asserting a state nobody enforces.
-///
-/// Watched, not just read once. The switch is a privacy control, and a pause
-/// that only takes effect after a restart is the same lie in slower motion: the
-/// user asks for collection to stop, the file says it stopped, and the daemon
-/// keeps writing until something else happens to restart it. `watch_paused`
-/// below keeps a shared flag current so the writer sees a change within a
-/// moment of the file being saved.
+//! Recording pause, read from `~/.config/arlen/graph.toml` `[timeline]`.
+//!
+//! The Knowledge app's timeline has a Pause switch, and its own copy says what
+//! that has to mean: "Recording is paused. Nothing is added until you resume."
+//! So this is not a display filter - while it is on, the writer must not admit
+//! events into the store at all. Anything less would be the shape this tree has
+//! spent two days removing: a surface asserting a state nobody enforces.
+//!
+//! Watched, not just read once. The switch is a privacy control, and a pause
+//! that only takes effect after a restart is the same lie in slower motion: the
+//! user asks for collection to stop, the file says it stopped, and the daemon
+//! keeps writing until something else happens to restart it. `watch_paused`
+//! below keeps a shared flag current so the writer sees a change within a
+//! moment of the file being saved.
 use serde::Deserialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

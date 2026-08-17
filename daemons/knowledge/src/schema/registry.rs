@@ -1,8 +1,8 @@
-/// Schema Registry: loads, stores, and queries entity schemas.
-///
-/// Schemas are loaded from `/var/lib/arlen/schemas/` (overridable via
-/// `ARLEN_SCHEMA_DIR`) at startup and reloaded when `schema.registered`
-/// events arrive from the Event Bus.
+//! Schema Registry: loads, stores, and queries entity schemas.
+//!
+//! Schemas are loaded from `/var/lib/arlen/schemas/` (overridable via
+//! `ARLEN_SCHEMA_DIR`) at startup and reloaded when `schema.registered`
+//! events arrive from the Event Bus.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

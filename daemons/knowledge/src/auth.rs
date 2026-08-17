@@ -1,9 +1,9 @@
-/// Authentication handler for the Graph Daemon.
-///
-/// Issues capability tokens to connecting applications based on their
-/// permission profiles, and verifies tokens on every subsequent request.
-///
-/// See `docs/architecture/CAPABILITY-TOKENS.md` Sections 7-8.
+//! Authentication handler for the Graph Daemon.
+//!
+//! Issues capability tokens to connecting applications based on their
+//! permission profiles, and verifies tokens on every subsequent request.
+//!
+//! See `docs/architecture/CAPABILITY-TOKENS.md` Sections 7-8.
 
 use crate::identity::{process_alive, IdentityError};
 use arlen_permissions::{load_profile_for_user, PermissionError, PermissionProfile};

@@ -1,10 +1,10 @@
-/// Capability Token System for Knowledge Graph access.
-///
-/// Tokens are HMAC-SHA256 signed structs that encode an application's
-/// permitted scopes (read, write, relation, instance). The Graph Daemon
-/// issues tokens at connection time and verifies them on every request.
-///
-/// See `docs/architecture/CAPABILITY-TOKENS.md` for the full specification.
+//! Capability Token System for Knowledge Graph access.
+//!
+//! Tokens are HMAC-SHA256 signed structs that encode an application's
+//! permitted scopes (read, write, relation, instance). The Graph Daemon
+//! issues tokens at connection time and verifies them on every request.
+//!
+//! See `docs/architecture/CAPABILITY-TOKENS.md` for the full specification.
 
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};

@@ -1,8 +1,8 @@
-/// Project signal detection.
-///
-/// Scans a directory for files/directories that indicate it is a
-/// project root (`.project`, `.git`, `Cargo.toml`, etc.) and returns
-/// the highest-confidence match.
+//! Project signal detection.
+//!
+//! Scans a directory for files/directories that indicate it is a
+//! project root (`.project`, `.git`, `Cargo.toml`, etc.) and returns
+//! the highest-confidence match.
 
 use std::path::Path;
 use std::process::Command;

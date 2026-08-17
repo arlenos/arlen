@@ -1,4 +1,4 @@
-/// Graph data export to JSON-LD + ZIP.
+//! Graph data export to JSON-LD + ZIP.
 
 use std::collections::HashMap;
 use std::io::Write;

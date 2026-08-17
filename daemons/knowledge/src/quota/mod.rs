@@ -1,9 +1,9 @@
-/// Quotas and rate limiting for Knowledge Graph access.
-///
-/// Resource limits are tier-based (System/FirstParty/ThirdParty) with
-/// per-app overrides. Rate limiting uses a token bucket algorithm.
-///
-/// See `docs/architecture/GRAPH-OPERATIONS.md` Section 2.
+//! Quotas and rate limiting for Knowledge Graph access.
+//!
+//! Resource limits are tier-based (System/FirstParty/ThirdParty) with
+//! per-app overrides. Rate limiting uses a token bucket algorithm.
+//!
+//! See `docs/architecture/GRAPH-OPERATIONS.md` Section 2.
 
 mod config;
 mod rate_limit;

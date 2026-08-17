@@ -1,4 +1,4 @@
-/// Token bucket rate limiter for query and write operations.
+//! Token bucket rate limiter for query and write operations.
 
 use std::collections::HashMap;
 use std::time::Instant;

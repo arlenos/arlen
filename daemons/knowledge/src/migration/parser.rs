@@ -1,4 +1,4 @@
-/// Migration file parser and version chain resolver.
+//! Migration file parser and version chain resolver.
 
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;

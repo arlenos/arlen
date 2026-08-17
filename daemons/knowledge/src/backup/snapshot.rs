@@ -1,4 +1,4 @@
-/// Snapper (Btrfs) snapshot integration for backup.
+//! Snapper (Btrfs) snapshot integration for backup.
 
 use std::path::PathBuf;
 

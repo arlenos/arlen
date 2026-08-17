@@ -1,7 +1,7 @@
-/// Watch configuration for project detection.
-///
-/// Loaded from `~/.config/arlen/graph.toml` `[projects]` section.
-/// Falls back to defaults if the file is missing or unparseable.
+//! Watch configuration for project detection.
+//!
+//! Loaded from `~/.config/arlen/graph.toml` `[projects]` section.
+//! Falls back to defaults if the file is missing or unparseable.
 
 use serde::Deserialize;
 use std::path::PathBuf;

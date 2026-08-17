@@ -1,10 +1,10 @@
-/// Shared entities: cross-app entity types in the `shared.*` namespace.
-///
-/// First-party apps create them, third-party apps read (with permission)
-/// and create relations to them. Includes duplicate detection and merge
-/// suggestions.
-///
-/// See `docs/architecture/SHARED-ENTITIES.md`.
+//! Shared entities: cross-app entity types in the `shared.*` namespace.
+//!
+//! First-party apps create them, third-party apps read (with permission)
+//! and create relations to them. Includes duplicate detection and merge
+//! suggestions.
+//!
+//! See `docs/architecture/SHARED-ENTITIES.md`.
 
 mod access;
 mod duplicate;

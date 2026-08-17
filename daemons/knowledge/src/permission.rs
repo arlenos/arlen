@@ -1,9 +1,9 @@
-/// Permission Profile parser for Knowledge Graph access.
-///
-/// Reads `~/.config/permissions/{app_id}.toml` and converts the `[graph]`
-/// section into token scopes. No `[graph]` section means no graph access.
-///
-/// See `docs/architecture/CAPABILITY-TOKENS.md` Section 6.
+//! Permission Profile parser for Knowledge Graph access.
+//!
+//! Reads `~/.config/permissions/{app_id}.toml` and converts the `[graph]`
+//! section into token scopes. No `[graph]` section means no graph access.
+//!
+//! See `docs/architecture/CAPABILITY-TOKENS.md` Section 6.
 
 use std::collections::HashMap;
 
