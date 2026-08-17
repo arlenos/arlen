@@ -1,11 +1,14 @@
-# Starting permission profile for an antivirus front-end. Scans files across Home by
-# function and fetches signature updates over the network. No Knowledge Graph access.
+# Starting permission profile for ClamTk (a ClamAV antivirus GUI). It updates virus
+# definitions over the network; the paths it scans are portal-selected on use, so it
+# needs no broad filesystem grant and no Knowledge Graph access.
 [info]
 app_id = "clamtk"
 tier = "third-party"
 
-[filesystem]
-home = true
-
 [network]
 allow_all = true
+
+# Same app as `com.gitlab.davem.ClamTk`, under the desktop-id this packaging
+# installs. Deliberately identical: this file first said `home = true`, which
+# would have meant the same scanner holding your whole home tree or nothing
+# depending on which package you installed.
