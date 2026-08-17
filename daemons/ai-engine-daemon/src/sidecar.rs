@@ -665,6 +665,24 @@ mod tests {
     }
 
     #[test]
+    fn pi_starts_from_an_empty_environment() {
+        // pi is a Node process reached through `Command::new("bwrap")`, so what it
+        // inherits is whatever this daemon happens to carry - which includes
+        // provider keys. The environment it gets must be the `--setenv` list and
+        // nothing else.
+        //
+        // `check-sandbox-env.py` guards this class for the ai-sandbox workers, but
+        // it matches on a binary NAMED sandbox and this one is named bwrap, so the
+        // guarantee here rests on the confiner emitting `--clearenv` in every
+        // argv. That is a different file's invariant, which is exactly the kind
+        // that goes quiet, so it is asserted at the point of use as well.
+        assert!(
+            args().contains(&"--clearenv".to_string()),
+            "the pi sidecar must start from an empty environment",
+        );
+    }
+
+    #[test]
     fn home_is_pinned_to_the_state_dir_not_the_host_home() {
         assert_eq!(dest_of(&args(), "--setenv", "HOME"), Some("/home/u/.local/state/arlen/pi".to_string()));
         // The plugins read the in-sandbox socket path, not the host one.
