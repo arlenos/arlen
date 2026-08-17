@@ -231,6 +231,15 @@
   }
 
   let confirmingClear = $state(false);
+
+  /// The confirmed deletion did not happen.
+  ///
+  /// Pressing Clear twice is a deliberate gesture, and its failure used to reach
+  /// `console.error` alone. The list not emptying reads as "nothing was
+  /// cleared", which is also what a no-op looks like - so the person is left to
+  /// infer from an absence whether the machine refused or simply had nothing to
+  /// do. Cleared when the next attempt starts.
+  let clearFailed = $state(false);
   async function clearHistory() {
     if (!confirmingClear) {
       confirmingClear = true;
@@ -238,11 +247,13 @@
       return;
     }
     confirmingClear = false;
+    clearFailed = false;
     try {
       await invoke("notifications_clear_history");
       await refreshKnownApps();
     } catch (e) {
       console.error("[notifications] clear_history failed", e);
+      clearFailed = true;
     }
   }
 
@@ -621,6 +632,9 @@
             />
           {/snippet}
         </Row>
+        {#if clearFailed}
+          <p class="write-failed" role="alert">{$t("s.notif.clearFailed")}</p>
+        {/if}
         <Row label={$t("s.notif.clearHistory")}>
           {#snippet control()}
             <Button variant="destructive" size="sm" onclick={clearHistory}>
@@ -669,6 +683,13 @@
 </Page>
 
 <style>
+  .write-failed {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-error, #f87171);
+  }
+
   .notif-column {
     display: flex;
     flex-direction: column;
