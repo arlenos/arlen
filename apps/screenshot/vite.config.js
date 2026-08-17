@@ -1,12 +1,12 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
-import tailwindcss from "@tailwindcss/vite";
+import { tailwindcssForSvelte } from "../../dev/build/tailwind-svelte-styles.js";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
-  plugins: [sveltekit(), tailwindcss()],
+  plugins: [sveltekit(), tailwindcssForSvelte()],
   // `@arlen/tauri-plugin-menu` is a file: dependency, so a bundler resolves its
   // imports from the plugin's own location (sdk/), not this app's node_modules.
   // The plugin declares `@tauri-apps/api` as a peer dependency, which is only
