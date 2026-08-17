@@ -1,10 +1,10 @@
-/// Arlen Permission Helper -- root D-Bus service.
-///
-/// Provides `org.arlen.PermissionHelper1` for writing permission profiles
-/// to `/var/lib/arlen/permissions/`. Only authorized callers (installd,
-/// settings) may invoke methods.
-///
-/// See `docs/architecture/permission-system.md`.
+//! Arlen Permission Helper -- root D-Bus service.
+//!
+//! Provides `org.arlen.PermissionHelper1` for writing permission profiles
+//! to `/var/lib/arlen/permissions/`. Only authorized callers (installd,
+//! settings) may invoke methods.
+//!
+//! See `docs/architecture/permission-system.md`.
 
 mod apt_enroll;
 mod apt_hook;

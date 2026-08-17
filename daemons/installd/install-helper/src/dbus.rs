@@ -1,10 +1,10 @@
-/// D-Bus interface for the install helper.
-///
-/// Interface: org.arlen.InstallHelper1
-/// Object path: /org/arlen/InstallHelper1
-///
-/// Only arlen-installd may invoke methods. Caller identity is verified
-/// via /proc/{pid}/exe.
+//! D-Bus interface for the install helper.
+//!
+//! Interface: org.arlen.InstallHelper1
+//! Object path: /org/arlen/InstallHelper1
+//!
+//! Only arlen-installd may invoke methods. Caller identity is verified
+//! via /proc/{pid}/exe.
 
 use zbus::{interface, Connection};
 

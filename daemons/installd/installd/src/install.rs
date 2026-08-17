@@ -1,7 +1,7 @@
-/// Install and uninstall logic for user-level apps.
-///
-/// Handles .lunpkg extraction, manifest parsing, file installation to
-/// `~/.local/share/arlen/apps/{app_id}/`, and desktop entry creation.
+//! Install and uninstall logic for user-level apps.
+//!
+//! Handles .lunpkg extraction, manifest parsing, file installation to
+//! `~/.local/share/arlen/apps/{app_id}/`, and desktop entry creation.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;

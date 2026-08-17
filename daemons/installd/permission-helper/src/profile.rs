@@ -1,6 +1,6 @@
-/// Profile writing and validation logic.
-///
-/// Writes permission profiles to `/var/lib/arlen/permissions/{uid}/{app_id}.toml`.
+//! Profile writing and validation logic.
+//!
+//! Writes permission profiles to `/var/lib/arlen/permissions/{uid}/{app_id}.toml`.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;

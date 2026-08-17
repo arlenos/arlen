@@ -1,21 +1,21 @@
-/// Module permission profile generation.
-///
-/// When `installd` installs a sandboxed module (Tier 1 WASM or
-/// Tier 2 iframe), it derives the runtime `PermissionProfile`
-/// (`sdk/permissions`) from the manifest's `[capabilities]` block
-/// and writes it to `~/.config/permissions/{module_id}.toml` (per
-/// `AUTH-CANONICAL.md` §2; no `arlen/` sub-dir).
-/// `arlen-modulesd` reads that profile when loading the module so
-/// the runtime gating matches what the user agreed to at install
-/// time.
-///
-/// The translation is deliberate. The manifest is the *request*
-/// (what the module asks for); the permission profile is the
-/// *grant* (what the user actually allowed). For the first ship the
-/// installer grants whatever the manifest declares, because the
-/// `.lunpkg` consent UI is not yet wired up. When that lands the
-/// installer can edit the profile before writing it (e.g. strip a
-/// `network.allow` entry the user disabled in the consent screen).
+//! Module permission profile generation.
+//!
+//! When `installd` installs a sandboxed module (Tier 1 WASM or
+//! Tier 2 iframe), it derives the runtime `PermissionProfile`
+//! (`sdk/permissions`) from the manifest's `[capabilities]` block
+//! and writes it to `~/.config/permissions/{module_id}.toml` (per
+//! `AUTH-CANONICAL.md` §2; no `arlen/` sub-dir).
+//! `arlen-modulesd` reads that profile when loading the module so
+//! the runtime gating matches what the user agreed to at install
+//! time.
+//!
+//! The translation is deliberate. The manifest is the *request*
+//! (what the module asks for); the permission profile is the
+//! *grant* (what the user actually allowed). For the first ship the
+//! installer grants whatever the manifest declares, because the
+//! `.lunpkg` consent UI is not yet wired up. When that lands the
+//! installer can edit the profile before writing it (e.g. strip a
+//! `network.allow` entry the user disabled in the consent screen).
 
 use std::fs;
 use std::path::PathBuf;

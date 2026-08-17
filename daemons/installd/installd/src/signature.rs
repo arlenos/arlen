@@ -1,19 +1,19 @@
-/// Ed25519 signature verification for .lunpkg packages.
-///
-/// The signature covers a SHA-256 hash computed over all package files
-/// (excluding `signature.sig` itself) in deterministic sorted order.
-/// Verification tries all trusted public keys and succeeds if any one
-/// matches.
-///
-/// Key storage:
-/// - System keys: `/etc/arlen/trusted-keys/*.pub`
-/// - User keys:   `~/.config/arlen/trusted-keys/*.pub`
-///
-/// Key format: 32 bytes raw Ed25519 public key, or 44 characters
-/// base64-encoded (one key per `.pub` file).
-///
-/// Hard fail: invalid or missing signature blocks the install. There
-/// is no "Install Anyway" bypass.
+//! Ed25519 signature verification for .lunpkg packages.
+//!
+//! The signature covers a SHA-256 hash computed over all package files
+//! (excluding `signature.sig` itself) in deterministic sorted order.
+//! Verification tries all trusted public keys and succeeds if any one
+//! matches.
+//!
+//! Key storage:
+//! - System keys: `/etc/arlen/trusted-keys/*.pub`
+//! - User keys:   `~/.config/arlen/trusted-keys/*.pub`
+//!
+//! Key format: 32 bytes raw Ed25519 public key, or 44 characters
+//! base64-encoded (one key per `.pub` file).
+//!
+//! Hard fail: invalid or missing signature blocks the install. There
+//! is no "Install Anyway" bypass.
 
 use std::collections::BTreeSet;
 use std::fs;

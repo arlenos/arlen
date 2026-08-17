@@ -1,11 +1,11 @@
-/// Arlen Install Daemon -- user-level D-Bus service.
-///
-/// Provides `org.arlen.InstallDaemon1` on the session bus. Handles
-/// `.lunpkg` installation, uninstallation, and app listing. Delegates
-/// privileged operations (system-wide installs) to `install-helper`
-/// via the system bus.
-///
-/// See `docs/architecture/install-daemon.md`.
+//! Arlen Install Daemon -- user-level D-Bus service.
+//!
+//! Provides `org.arlen.InstallDaemon1` on the session bus. Handles
+//! `.lunpkg` installation, uninstallation, and app listing. Delegates
+//! privileged operations (system-wide installs) to `install-helper`
+//! via the system bus.
+//!
+//! See `docs/architecture/install-daemon.md`.
 
 mod audit;
 mod consent;

@@ -1,8 +1,8 @@
-/// Job queue for serialized install/uninstall operations.
-///
-/// Each method on the D-Bus interface creates a Job and enqueues it.
-/// A single worker task processes jobs sequentially to avoid
-/// concurrent filesystem mutations.
+//! Job queue for serialized install/uninstall operations.
+//!
+//! Each method on the D-Bus interface creates a Job and enqueues it.
+//! A single worker task processes jobs sequentially to avoid
+//! concurrent filesystem mutations.
 
 use std::collections::HashMap;
 use std::sync::Mutex;

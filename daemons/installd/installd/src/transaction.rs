@@ -1,10 +1,10 @@
-/// Transactional install with automatic rollback on failure.
-///
-/// Wraps the multi-step install process. Each step registers what it
-/// created. If any subsequent step fails, `Drop` triggers a rollback
-/// that undoes all completed steps in reverse order.
-///
-/// Call `commit()` after all steps succeed to prevent rollback.
+//! Transactional install with automatic rollback on failure.
+//!
+//! Wraps the multi-step install process. Each step registers what it
+//! created. If any subsequent step fails, `Drop` triggers a rollback
+//! that undoes all completed steps in reverse order.
+//!
+//! Call `commit()` after all steps succeed to prevent rollback.
 
 use std::fs;
 use std::path::{Path, PathBuf};
