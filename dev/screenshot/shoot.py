@@ -72,6 +72,9 @@ def main():
     # before the inject is the cheapest thing that reaches that half of the UI.
     ap.add_argument("--open", dest="open_selector", default=None,
                     help="CSS selector to click after load, before the injection")
+    ap.add_argument("--drive", default=None,
+                    help="path to a JS file run after the click, for gestures a"
+                         " click cannot express (a key, a focus, typing)")
     args = ap.parse_args()
 
     base = f"http://localhost:{args.port}"
@@ -132,6 +135,21 @@ def main():
             if not clicked:
                 print(f"open selector matched nothing: {args.open_selector}", file=sys.stderr)
                 sys.exit(3)
+            time.sleep(args.after)
+        if args.drive:
+            # Some surfaces answer to something a click cannot express. The text
+            # editor saves on Ctrl+S through a CodeMirror keymap and has no save
+            # button at all, so `--open` cannot reach the one path that produces
+            # a save failure. This runs a snippet in the page before the probe,
+            # for exactly that: dispatch a key, focus a field, type into it.
+            #
+            # Anything it returns is printed, so a snippet can report whether the
+            # thing it tried actually took. A snippet that lies about that is the
+            # same false green as a selector matching nothing, so prefer returning
+            # a fact over returning true.
+            res = rq(base, "POST", f"/session/{sid}/execute/sync",
+                     {"script": open(args.drive).read(), "args": []})
+            print("drive result:", res.get("value"), file=sys.stderr)
             time.sleep(args.after)
         if args.inject:
             script = open(args.inject).read()
