@@ -17,7 +17,6 @@ datagrip	com.jetbrains.DataGrip datagrip
 decoder	com.belmoussaoui.Decoder com.vixalien.decoder gnome-decoder
 dolphin-emu	dolphin-emu org.DolphinEmu.dolphin-emu
 duckstation	duckstation org.duckstation.DuckStation
-exhibit	exhibit io.github.nokse22.Exhibit
 eyedropper	com.github.finefindus.eyedropper eyedropper io.github.finefindus.eyedropper
 filezilla	filezilla org.filezillaproject.Filezilla
 firmware	gnome-firmware org.gnome.Firmware
@@ -61,7 +60,6 @@ pcsx2	net.pcsx2.PCSX2 pcsx2
 peek	com.uploadedlobster.peek peek
 pencil2d	org.pencil2d.Pencil2D pencil2d
 pidgin	im.pidgin.Pidgin pidgin
-planner	io.github.alainm23.planner planner
 podcasts	gnome-podcasts org.gnome.Podcasts
 postman	com.getpostman.Postman postman
 prusaslicer	com.prusa3d.PrusaSlicer org.prusa3d.PrusaSlicer
@@ -75,16 +73,13 @@ shotcut	org.shotcut.Shotcut shotcut
 showtime	org.gnome.Showtime showtime
 snes9x	com.snes9x.Snes9x snes9x
 solfege	org.gnome.Solfege solfege
-soundux	io.github.Soundux io.github.Soundux.Soundux io.github.Soundux.soundux
 standardnotes	org.standardnotes.standardnotes standardnotes
 stellarium	org.stellarium.Stellarium stellarium
 supertuxkart	org.supertuxkart.SuperTuxKart supertuxkart
 synfigstudio	org.synfig.SynfigStudio synfigstudio
 torbrowser-launcher	com.github.micahflee.torbrowser-launcher org.torproject.torbrowser-launcher
-videodownloader	com.github.unrud.VideoDownloader io.github.unrud.VideoDownloader
 vorta	com.borgbase.Vorta vorta
 wardrobe	com.github.swordpuffin.wardrobe io.github.swordpuffin.wardrobe
-warpinator	org.x.Warpinator org.x.warpinator
 wesnoth	org.wesnoth.Wesnoth wesnoth
 wireshark	org.wireshark.Wireshark wireshark
 xemu	app.xemu.xemu xemu

@@ -1,10 +1,12 @@
 # Starting permission profile for Soundux (a soundboard).
-# Plays the user's local sound clips, so it gets the Music directory; audio
+# Plays the sound clips the user picks; audio
 # output is granted out-of-band, not through this schema. No network by
 # function, no Knowledge Graph access.
+#
+# It requests access to sound files through the portal on use, so it needs no
+# standing filesystem grant.
+# `io.github.Soundux.soundux` had already settled this for the same program.
 [info]
 app_id = "io.github.Soundux.Soundux"
 tier = "third-party"
 
-[filesystem]
-music = true
