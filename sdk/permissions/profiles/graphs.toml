@@ -1,9 +1,11 @@
-# Starting permission profile for a plotting/graphing app. It opens and exports
-# data files over the user's files (Home); its work is offline, so no network and
-# no Knowledge Graph.
+# Starting permission profile for Graphs (a data-plotting app). It opens data
+# files and saves figures through the file portal, so it needs no standing grant:
+# no network, no user files and no Knowledge Graph access.
+#
+# This held the whole home tree on the reasoning that it opens and exports data
+# files "so it gets home filesystem access". Plot data is not an XDG directory -
+# it is wherever the user keeps it - which is the case the portal exists for, and
+# a standing grant over all of Home is the widest possible answer to it.
 [info]
 app_id = "graphs"
 tier = "third-party"
-
-[filesystem]
-home = true

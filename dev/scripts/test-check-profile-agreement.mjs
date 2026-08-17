@@ -93,6 +93,37 @@ check(
 );
 rmSync(dir, { recursive: true, force: true });
 
+// A distro build carries a desktop-environment prefix the upstream id does not.
+// Obfuscate held the whole home tree as `gnome-obfuscate` and Pictures as
+// `com.belmoussaoui.Obfuscate` for as long as both existed, because nothing ever
+// compared them.
+dir = tree({
+  "gnome-obfuscate": prof("gnome-obfuscate", ["home"], false),
+  "com.belmoussaoui.Obfuscate": prof("com.belmoussaoui.Obfuscate", ["pictures"], false),
+});
+r = run(dir);
+check(
+  "a vendor-prefixed distro id is compared with its upstream sibling",
+  r.code === 1 && /obfuscate/i.test(r.out),
+  `exit=${r.code} out=${r.out}`,
+);
+rmSync(dir, { recursive: true, force: true });
+
+// But stripping that prefix must not turn every terminal into one program:
+// `gnome-terminal` becomes `terminal`, which is a category, not an app.
+dir = tree({
+  "gnome-terminal": prof("gnome-terminal", ["home"], false),
+  "xfce4-terminal": prof("xfce4-terminal", [], true),
+  kitty: prof("kitty", ["home"], false),
+});
+r = run(dir);
+check(
+  "a vendor prefix over a category word does not group unrelated apps",
+  r.code === 0 && !/terminal/.test(r.out),
+  `exit=${r.code} out=${r.out}`,
+);
+rmSync(dir, { recursive: true, force: true });
+
 // Reading nothing is not passing.
 dir = mkdtempSync(join(tmpdir(), "arlen-agree-empty-"));
 r = run(dir);
