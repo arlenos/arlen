@@ -57,6 +57,24 @@
 //! starting. `daemons/xdg-portal` reached for the same idea twice and reverted it
 //! both times for an unrelated reason (the sender pid is `xdg-dbus-proxy`, whose
 //! cgroup is the session scope), so this is the second independent way it fails.
+//!
+//! Measured again 17 Aug, and the forgery needs no systemd at all - which matters,
+//! because both routes above go through systemd and so read like something a
+//! systemd-side rule might narrow. The user's subtree under `user@1000.service` is
+//! DELEGATED and owned by the user, and `app.slice` already exists inside it:
+//!
+//! ```text
+//! $ mkdir .../user@1000.service/app.slice/arlen-ai-engine-daemon.service
+//! $ echo $pid > .../arlen-ai-engine-daemon.service/cgroup.procs
+//! $ cat /proc/$pid/cgroup
+//! 0::/user.slice/user-1000.slice/user@1000.service/app.slice/arlen-ai-engine-daemon.service
+//! ```
+//!
+//! One `mkdir` and one write, no unit file and no `systemd-run`, and the kernel
+//! reports that name for an ordinary process. It also sidesteps the fragment-file
+//! refusal above: this route can name a unit that IS shipped, because nothing
+//! consults the unit registry. The name in a user-slice cgroup path is
+//! user-writable text, and no rule over its shape can change that.
 
 use crate::connection_auth::AuthError;
 use crate::identity::{exe_ino_dev, exe_path_openat, path_to_app_id};
