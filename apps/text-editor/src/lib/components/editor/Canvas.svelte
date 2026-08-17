@@ -119,6 +119,11 @@
         {/each}
       </div>
     {/if}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <!-- A scrollable region must be reachable by keyboard or its overflow is
+         unreadable without a mouse (WCAG 2.1.1), which is exactly what
+         role="region" + aria-label + tabindex="0" is for. The rule does not
+         model the scrollable-region case, so it fires on the correct code. -->
     <pre class="cf-code" tabindex="0" role="region" aria-label={$t("te.code.region")}><code>{#each codeLines as line, i (i)}<span class="cf-line">{@html highlight(line) || "&nbsp;"}</span>{#if i < codeLines.length - 1}{"\n"}{/if}{/each}</code></pre>
   </div>
 {:else}
@@ -149,6 +154,8 @@
               <span class="ln">{i + 1}</span>
             {/each}
           </div>
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <!-- Same scrollable region, per segment. See the note above. -->
           <pre class="code" tabindex="0" role="region" aria-label={$t("te.code.region")}><code>{#each seg.lines as line, i (i)}<span class="code-line">{@html highlight(line) || "&nbsp;"}</span>{#if i < seg.lines.length - 1}{"\n"}{/if}{/each}</code></pre>
         </div>
       </div>
