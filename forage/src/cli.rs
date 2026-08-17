@@ -71,7 +71,10 @@ pub enum Commands {
         #[command(subcommand)]
         action: RecipeAction,
     },
-    /// Build a recipe into a `.lunpkg` (build pipeline, forage-recipes.md R1).
+    // Design: forage-recipes.md R1 (build pipeline). Kept out of the `///`
+    // below because clap prints that to whoever runs `forage --help`, and the
+    // docs repo is private - a citation they cannot follow is noise at best.
+    /// Build a recipe into an installable `.lunpkg`.
     Build {
         /// Path to the recipe or a directory containing `recipe.toml`
         /// (defaults to the current directory).
@@ -89,17 +92,20 @@ pub enum Commands {
         #[arg(long)]
         install: bool,
     },
-    /// Manage cookbooks (recipe indexes / taps, forage-recipes.md section 7).
+    // Design: forage-recipes.md section 7.
+    /// Manage cookbooks: the recipe indexes you install from.
     Cookbook {
         #[command(subcommand)]
         action: CookbookAction,
     },
-    /// Challenge a build's reproducibility (forage-recipes.md section 8a).
+    // Design: forage-recipes.md section 8a.
+    /// Rebuild a package independently and check it comes out byte-identical.
     Challenge {
         /// App ID or recipe id to challenge.
         target: String,
     },
-    /// Install community bridges for a foreign app (foreign-app-bridges.md section 4).
+    // Design: foreign-app-bridges.md section 4.
+    /// Install a community bridge so a foreign app can feed your knowledge graph.
     Bridge {
         #[command(subcommand)]
         action: BridgeAction,
