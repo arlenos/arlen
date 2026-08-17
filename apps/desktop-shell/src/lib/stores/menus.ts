@@ -1,8 +1,13 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { writable, derived } from "svelte/store";
-import { activeWindow } from "./windows.js";
+
+import { activeAppId } from "./activeApp.js";
 import { makeDisposer } from "./_disposer.js";
+
+/// Re-exported: this was defined here before the toolbar, shortcuts, badges and
+/// ambient surfaces turned out to need the same resolution.
+export { activeAppId };
 
 export interface MenuItem {
     label: string;
@@ -22,58 +27,14 @@ export interface MenuGroup {
 /// All registered app menus, keyed by app_id.
 const appMenus = writable<Map<string, MenuGroup[]>>(new Map());
 
-/// The permission id of the currently active window's app, or null.
-///
-/// Not the window's own app_id. A window announces the id its toolkit sets -
-/// `arlen-knowledge`, matching the `.desktop` file - while a menu is registered
-/// under the reverse-DNS id the permission system keys on, `dev.arlen.knowledge`.
-/// Keying the lookup on the window's id therefore missed every menu ever
-/// registered, and the topbar stayed empty for apps that had published one
-/// correctly. `resolve_app_id` reads the app index, where the `.desktop` file's
-/// `X-Arlen-AppId=` states which permission id the window belongs to.
-///
-/// Resolution is a backend round trip, so this is a writable the focus
-/// subscription fills rather than a derived store. Results are cached per window
-/// id, and a reply that arrives after focus has moved on is discarded.
-export const activeAppId = writable<string | null>(null);
-
 /// The menu for the currently active app, or null if none registered.
+///
+/// Keyed on the permission id, which is what a menu is registered under, not on
+/// the focused window's own app_id: see `activeApp.ts` for why those differ and
+/// why looking one up by the other found nothing for every app.
 export const activeMenu = derived([appMenus, activeAppId], ([$menus, $id]) =>
     $id ? ($menus.get($id) ?? null) : null,
 );
-
-const resolvedIds = new Map<string, string>();
-let resolveSeq = 0;
-
-/// Keep `activeAppId` on the focused window's resolved permission id.
-function trackActiveAppId(): () => void {
-    return activeWindow.subscribe(($w) => {
-        const windowId = $w?.app_id ?? null;
-        if (!windowId) {
-            resolveSeq++;
-            activeAppId.set(null);
-            return;
-        }
-        const cached = resolvedIds.get(windowId);
-        if (cached !== undefined) {
-            resolveSeq++;
-            activeAppId.set(cached);
-            return;
-        }
-        const seq = ++resolveSeq;
-        void invoke<string>("resolve_app_id", { windowAppId: windowId })
-            .then((resolved) => {
-                resolvedIds.set(windowId, resolved);
-                if (seq === resolveSeq) activeAppId.set(resolved);
-            })
-            .catch(() => {
-                // The index could not answer. The window's own id is the honest
-                // fallback: it is what an app with no `.desktop` file resolves
-                // to anyway, so the menu is missing rather than misattributed.
-                if (seq === resolveSeq) activeAppId.set(windowId);
-            });
-    });
-}
 
 let started = false;
 let teardown: (() => void) | null = null;
@@ -116,14 +77,12 @@ export function initMenuListeners(): () => void {
     // store, which holds the menu for the app's whole lifetime, so
     // re-fetching on focus makes the menu reappear whenever a
     // registered app is focused, not only the first time.
-    const unsubTrack = trackActiveAppId();
     const unsubActive = activeAppId.subscribe((id) => {
         if (id) void fetchMenu(id);
     });
 
     teardown = () => {
         unsubActive();
-        unsubTrack();
         disposer();
         started = false;
         teardown = null;

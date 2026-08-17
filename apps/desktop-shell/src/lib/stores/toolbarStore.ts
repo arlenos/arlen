@@ -16,6 +16,7 @@
 import { derived, writable, type Readable } from "svelte/store";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { activeWindow } from "./windows";
+import { activeAppId } from "./activeApp";
 
 export interface ToolbarQuickAction {
   icon: string;
@@ -166,12 +167,16 @@ export function initToolbarStore(): () => void {
  * currently rendering for. Useful for the action-dispatch
  * command which needs to send the window_id back to the
  * source app.
+ *
+ * `appId` is the permission id, since that is what a toolbar state is published
+ * under; the window's own app_id is a different name for the same app and keying
+ * on it matched nothing. See `activeApp.ts`.
  */
 export const focusedToolbarKey: Readable<ToolbarKey | null> = derived(
-  activeWindow,
-  ($active) => {
-    const appId = $active?.app_id;
-    if (!appId) return null;
+  [activeAppId, activeWindow],
+  ([$appId, $active]) => {
+    const appId = $appId;
+    if (!appId || !$active) return null;
     // Tauri exposes the *cosmic-toplevel* id rather than a webview
     // label here — for cross-process toolbar matching we use the
     // `id` field which is stable per top-level. This must match
