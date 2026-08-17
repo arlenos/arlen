@@ -1,0 +1,108 @@
+// SPDX-FileCopyrightText: 2026 Tim Kicker
+//
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Controls for check-profile-agreement.
+//
+// The planted defect is the real one: two packaging ids for one program that
+// hand out different things, which is how `ghostty` ended up with no network
+// while `com.ghostty.Ghostty` had it, and how `clamtk` briefly held the whole
+// home tree while `com.gitlab.davem.ClamTk` held nothing.
+//
+// Run: node dev/scripts/test-check-profile-agreement.mjs
+
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+
+const ROOT = new URL("../..", import.meta.url).pathname;
+const GATE = join(ROOT, "dev/scripts/check-profile-agreement.py");
+const failures = [];
+
+function tree(files) {
+  const dir = mkdtempSync(join(tmpdir(), "arlen-agree-"));
+  mkdirSync(join(dir, "sdk/permissions/profiles"), { recursive: true });
+  mkdirSync(join(dir, "dev"), { recursive: true });
+  for (const [name, body] of Object.entries(files)) {
+    writeFileSync(join(dir, "sdk/permissions/profiles", `${name}.toml`), body);
+  }
+  return dir;
+}
+
+const prof = (id, fs, net) =>
+  `# test\n[info]\napp_id = "${id}"\ntier = "third-party"\n` +
+  (fs.length ? `\n[filesystem]\n${fs.map((k) => `${k} = true\n`).join("")}` : "") +
+  (net ? `\n[network]\nallow_all = true\n` : "");
+
+function run(dir, extra = []) {
+  const r = spawnSync("python3", [GATE, dir, ...extra], { encoding: "utf8" });
+  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+}
+
+function check(name, ok, detail) {
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures.push({ name, detail });
+}
+
+console.log("check-profile-agreement:");
+
+// Two ids, one program, different grants.
+let dir = tree({
+  ghostty: prof("ghostty", ["home"], false),
+  "com.ghostty.Ghostty": prof("com.ghostty.Ghostty", ["home"], true),
+});
+let r = run(dir);
+check(
+  "two packaging ids that grant different things are reported",
+  r.code === 1 && /ghostty/.test(r.out) && /net=True/.test(r.out),
+  `exit=${r.code} out=${r.out}`,
+);
+
+// Recording it is how the pre-existing ones stay out of the way.
+run(dir, ["--update"]);
+r = run(dir);
+check("a recorded disagreement no longer fails", r.code === 0, `exit=${r.code} out=${r.out}`);
+rmSync(dir, { recursive: true, force: true });
+
+// Agreement is the passing case.
+dir = tree({
+  konsole: prof("konsole", ["home"], false),
+  "org.kde.konsole": prof("org.kde.konsole", ["home"], false),
+});
+r = run(dir);
+check("ids that agree are not reported", r.code === 0, `exit=${r.code} out=${r.out}`);
+rmSync(dir, { recursive: true, force: true });
+
+// A category word is not an app name. Without this the three `*.Client` ids
+// (Dropbox, Skype, Spotify) read as one program disagreeing with itself.
+// `kitty` is here so the tree has something readable: a fixture of ONLY
+// generic-named ids reads nothing at all, and the gate is right to refuse that
+// rather than call it a pass. (This test first asserted exit 0 on such a tree
+// and failed, which is the gate catching the test.)
+dir = tree({
+  "com.dropbox.Client": prof("com.dropbox.Client", ["documents"], true),
+  "com.spotify.Client": prof("com.spotify.Client", [], true),
+  kitty: prof("kitty", ["home"], false),
+});
+r = run(dir);
+check(
+  "unrelated apps sharing a generic last segment are not grouped",
+  r.code === 0 && !/Client/.test(r.out),
+  `exit=${r.code} out=${r.out}`,
+);
+rmSync(dir, { recursive: true, force: true });
+
+// Reading nothing is not passing.
+dir = mkdtempSync(join(tmpdir(), "arlen-agree-empty-"));
+r = run(dir);
+check(
+  "a tree with no profiles refuses rather than passing",
+  r.code === 2 && /NOTHING WAS READ/.test(r.out),
+  `exit=${r.code} out=${r.out}`,
+);
+rmSync(dir, { recursive: true, force: true });
+
+for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
+if (failures.length) process.exit(1);
+console.log("a disagreement is found, a recorded one is not, and an empty read refuses");
