@@ -76,23 +76,40 @@ export const current = writable<PendingWindowsFile | null>(null);
 /// stays open: closing it is how it says "started", and nothing did.
 export const launchFailed = writable(false);
 
-let mockIndex = 0;
 // `?wfmock=<n>` (DEV only) pins which fixture renders, so the screenshot loop
-// can address every state by URL - the `?consentmock` pattern.
-if (import.meta.env.DEV && typeof location !== "undefined") {
-  const pinned = Number(new URLSearchParams(location.search).get("wfmock"));
-  if (Number.isInteger(pinned) && pinned >= 0) mockIndex = pinned;
-}
+// can address every state by URL - the `?menumock` pattern.
+//
+// ASKED FOR, not merely allowed. The fixture used to show on any failed request
+// under vite, and since vite never has a bottle daemon that meant every dev route
+// in the shell wore a modal "Open Paint.NET Setup?" over it, with a full-screen
+// overlay at z-490 underneath. The sound panel's own refusal strip was behind it
+// in a photograph I took of the sound panel. A fixture that appears where nobody
+// invited it is indistinguishable from the app doing something wrong, and it
+// hides whatever was actually being looked at.
+const wanted = (() => {
+  if (!import.meta.env.DEV || typeof location === "undefined") return null;
+  const raw = new URLSearchParams(location.search).get("wfmock");
+  if (raw === null) return null;
+  const pinned = Number(raw);
+  return Number.isInteger(pinned) && pinned >= 0 ? pinned : 0;
+})();
+let mockIndex = wanted ?? 0;
 
 /// Fetch the pending open request. Live: `windows_file_request`. The fixture is
-/// served ONLY under vite (dev) so the surface renders for screenshots; on a real
-/// boot a failed request shows nothing rather than covering the desktop with a
-/// demo "Open Paint.NET Setup?" modal every session.
+/// served ONLY under vite (dev) and only when the URL asks for it; on a real boot
+/// a failed request shows nothing rather than covering the desktop with a demo
+/// modal every session.
 export async function openWindowsFile(): Promise<void> {
   try {
     current.set(await invoke<PendingWindowsFile | null>("windows_file_request"));
   } catch {
-    current.set(import.meta.env.DEV ? MOCK[mockIndex % MOCK.length] : null);
+    // `import.meta.env.DEV` is spelled out here rather than left inside
+    // `wanted` so `check-fixture-on-failure` can see the guard it is looking
+    // for; both halves are real, and the second one is what keeps the fixture
+    // off every dev route that did not ask for it.
+    current.set(
+      import.meta.env.DEV && wanted !== null ? MOCK[mockIndex % MOCK.length] : null,
+    );
   }
 }
 
