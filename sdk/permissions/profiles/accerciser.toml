@@ -1,0 +1,6 @@
+# Starting permission profile for the AT-SPI inspector. It reads the accessibility
+# tree of OTHER running apps, which is not a filesystem or network grant at all, so
+# none is given here: the accessibility bus is the boundary that governs it.
+[info]
+app_id = "accerciser"
+tier = "third-party"

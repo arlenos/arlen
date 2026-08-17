@@ -1,0 +1,11 @@
+# Starting permission profile for an antivirus front-end. Scans files across Home by
+# function and fetches signature updates over the network. No Knowledge Graph access.
+[info]
+app_id = "clamtk"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true

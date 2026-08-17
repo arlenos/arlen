@@ -1,0 +1,6 @@
+# Starting permission profile for a desktop dock. Launches other applications and
+# draws its own panel; it needs no file access, no network and no Knowledge Graph of
+# its own.
+[info]
+app_id = "cairo-dock"
+tier = "third-party"

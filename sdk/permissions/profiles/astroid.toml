@@ -1,0 +1,12 @@
+# Starting permission profile for a notmuch-backed email client. Needs network for
+# mail and saves attachments to Downloads. Its mail store is a grant to add rather
+# than assume.
+[info]
+app_id = "astroid"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

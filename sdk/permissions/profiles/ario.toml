@@ -1,0 +1,12 @@
+# Starting permission profile for an MPD client. Talks to the music daemon over the
+# network (which is how MPD works, local or not) and reads the music library. No
+# Knowledge Graph access.
+[info]
+app_id = "ario"
+tier = "third-party"
+
+[filesystem]
+music = true
+
+[network]
+allow_all = true

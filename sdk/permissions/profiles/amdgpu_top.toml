@@ -1,0 +1,6 @@
+# Starting permission profile for a GPU monitor. Reads the driver's own counters out
+# of the kernel, which is not one of these user dirs, so no file access, no network
+# and no Knowledge Graph.
+[info]
+app_id = "amdgpu_top"
+tier = "third-party"

@@ -1,0 +1,9 @@
+# Starting permission profile for a bulk file renamer. Renaming is its whole function
+# and the user points it at any folder, so Home is granted by function. No network
+# and no Knowledge Graph.
+[info]
+app_id = "bulky"
+tier = "third-party"
+
+[filesystem]
+home = true

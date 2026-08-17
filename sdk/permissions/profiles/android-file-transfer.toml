@@ -1,0 +1,10 @@
+# Starting permission profile for an MTP file-transfer tool. Moves files between the
+# phone and the user's Documents and Downloads; the device is USB, so no network.
+# No Knowledge Graph access.
+[info]
+app_id = "android-file-transfer"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
