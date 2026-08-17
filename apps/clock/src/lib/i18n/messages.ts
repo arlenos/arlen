@@ -19,6 +19,7 @@ const messages: Catalogs = {
     "c.actionFailed": "That did not reach the clock service, so nothing was set.",
 
     "c.al.add": "Add alarm",
+    "c.al.edit": "Edit alarm",
     "c.al.empty": "No alarms. Add one and it rings even with this window closed.",
     "c.al.noWake": "Alarms ring while this machine is awake. It won't be woken from sleep for them.",
     "c.al.ringsIn": "Rings {$in}",
@@ -92,6 +93,7 @@ const messages: Catalogs = {
     "c.actionFailed": "Das hat den Uhrendienst nicht erreicht, es wurde nichts gestellt.",
 
     "c.al.add": "Wecker hinzufügen",
+    "c.al.edit": "Wecker bearbeiten",
     "c.al.empty": "Keine Wecker. Leg einen an, er klingelt auch bei geschlossenem Fenster.",
     "c.al.noWake": "Wecker klingeln, solange diese Maschine wach ist. Aus dem Schlaf geweckt wird sie dafür nicht.",
     "c.al.ringsIn": "Klingelt {$in}",

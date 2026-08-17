@@ -91,8 +91,20 @@
   {/if}
 </div>
 
-<Dialog open={editing !== null} onClose={() => (editing = null)} ariaLabel={$t("c.al.add")} size="md">
+<!-- Titled rather than aria-labelled: the kit prefers `labelledby`, and this one
+     dialog is both the new-alarm form and the editor for an existing one. Opened
+     from the chrome "+" it showed a bare Time / Label / Repeat form that never
+     said which of the two it was. -->
+<Dialog
+  open={editing !== null}
+  onClose={() => (editing = null)}
+  labelledby="al-editor-title"
+  size="md"
+>
   <div class="al-dialog">
+    <h2 id="al-editor-title" class="al-dialog-title">
+      {editing === "new" ? $t("c.al.add") : $t("c.al.edit")}
+    </h2>
     <div class="al-grid">
       <span class="al-field-label">{$t("c.al.time")}</span>
       <TimeInput value={draft.time} onchange={(v) => (draft.time = v)} ariaLabel={$t("c.al.time")} />
@@ -219,6 +231,11 @@
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
 
+  .al-dialog-title {
+    margin: 0 0 0.75rem;
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
   .al-dialog {
     display: flex;
     flex-direction: column;
