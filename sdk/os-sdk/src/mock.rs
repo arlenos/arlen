@@ -1,8 +1,8 @@
-/// Mock implementations of the `os-sdk` traits for use in tests.
-///
-/// Import with `use os_sdk::mock::*` in test modules.
-/// The mocks are compile-time verified against the real implementations:
-/// any interface change that breaks a mock will fail compilation.
+//! Mock implementations of the `os-sdk` traits for use in tests.
+//!
+//! Import with `use os_sdk::mock::*` in test modules.
+//! The mocks are compile-time verified against the real implementations:
+//! any interface change that breaks a mock will fail compilation.
 use crate::event::{EmitError, EventEmitter};
 use crate::graph::{GraphClient, QueryError};
 use std::collections::HashMap;

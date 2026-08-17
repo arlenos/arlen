@@ -1,22 +1,22 @@
-/// `shell.intents.dispatch` — first-party app surface for typed
-/// cross-process action dispatch.
-///
-/// Apps connect to the shell-side IPC socket at
-/// `$XDG_RUNTIME_DIR/arlen/intents.sock`, send a single
-/// `DispatchRequest`, receive `DispatchResponse` (or
-/// `IntentError`), and the connection drops. No persistent state,
-/// no subscribe channel — the intent broker is intentionally
-/// single-shot, mirroring `shell.search.open`.
-///
-/// Permission: profile must declare `[intents] dispatch = true`.
-/// Default is deny (foundation §7.3 explicit-grant).
-///
-/// Long-lived "register as intent handler" is a separate surface
-/// that ships through `arlen-modulesd` as a Tier-1 WASM module
-/// (Phase 7). See `docs/architecture/module-system.md` for that
-/// path. This SDK module covers only the Phase-6 dispatch case.
-///
-/// Foundation reference: §6.4 Listing 11 (`shell.intents`).
+//! `shell.intents.dispatch` — first-party app surface for typed
+//! cross-process action dispatch.
+//!
+//! Apps connect to the shell-side IPC socket at
+//! `$XDG_RUNTIME_DIR/arlen/intents.sock`, send a single
+//! `DispatchRequest`, receive `DispatchResponse` (or
+//! `IntentError`), and the connection drops. No persistent state,
+//! no subscribe channel — the intent broker is intentionally
+//! single-shot, mirroring `shell.search.open`.
+//!
+//! Permission: profile must declare `[intents] dispatch = true`.
+//! Default is deny (foundation §7.3 explicit-grant).
+//!
+//! Long-lived "register as intent handler" is a separate surface
+//! that ships through `arlen-modulesd` as a Tier-1 WASM module
+//! (Phase 7). See `docs/architecture/module-system.md` for that
+//! path. This SDK module covers only the Phase-6 dispatch case.
+//!
+//! Foundation reference: §6.4 Listing 11 (`shell.intents`).
 use std::path::PathBuf;
 
 use prost::Message;

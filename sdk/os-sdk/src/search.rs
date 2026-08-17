@@ -1,23 +1,23 @@
-/// `shell.search.open` — first-party app surface for opening
-/// the Waypointer launcher with a prefilled query and optional
-/// routing hint.
-///
-/// Apps connect to the shell-side IPC socket at
-/// `$XDG_RUNTIME_DIR/arlen/search.sock`, send a single
-/// `OpenRequest`, receive `OpenResponse` (or `SearchError`), and
-/// the connection drops. No persistent state, no subscribe
-/// channel — the search broker is intentionally single-shot.
-///
-/// Permission: profile must declare `[search] open = true`. Default
-/// is deny (foundation §7.3 explicit-grant).
-///
-/// Long-lived "register as a search-result provider" is a separate
-/// surface that ships through `arlen-modulesd` as a Tier-1 WASM
-/// module (Phase 7). See `docs/architecture/module-system.md` for
-/// that path. This SDK module covers only the open-and-prefill
-/// case.
-///
-/// Foundation reference: §6.4 Listing 9 (`shell.search.open`).
+//! `shell.search.open` — first-party app surface for opening
+//! the Waypointer launcher with a prefilled query and optional
+//! routing hint.
+//!
+//! Apps connect to the shell-side IPC socket at
+//! `$XDG_RUNTIME_DIR/arlen/search.sock`, send a single
+//! `OpenRequest`, receive `OpenResponse` (or `SearchError`), and
+//! the connection drops. No persistent state, no subscribe
+//! channel — the search broker is intentionally single-shot.
+//!
+//! Permission: profile must declare `[search] open = true`. Default
+//! is deny (foundation §7.3 explicit-grant).
+//!
+//! Long-lived "register as a search-result provider" is a separate
+//! surface that ships through `arlen-modulesd` as a Tier-1 WASM
+//! module (Phase 7). See `docs/architecture/module-system.md` for
+//! that path. This SDK module covers only the open-and-prefill
+//! case.
+//!
+//! Foundation reference: §6.4 Listing 9 (`shell.search.open`).
 use std::path::PathBuf;
 
 use prost::Message;

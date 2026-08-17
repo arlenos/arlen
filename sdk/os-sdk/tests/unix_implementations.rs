@@ -1,9 +1,9 @@
-/// Integration tests for the real UnixEventEmitter and UnixGraphClient implementations.
-///
-/// These tests spin up minimal Unix socket servers in-process rather than
-/// starting real daemons. This keeps the tests fast and self-contained while
-/// still testing the actual socket I/O, length-prefixed protocol, and
-/// reconnect logic.
+//! Integration tests for the real UnixEventEmitter and UnixGraphClient implementations.
+//!
+//! These tests spin up minimal Unix socket servers in-process rather than
+//! starting real daemons. This keeps the tests fast and self-contained while
+//! still testing the actual socket I/O, length-prefixed protocol, and
+//! reconnect logic.
 
 use os_sdk::event::{EmitError, EventEmitter, UnixEventEmitter};
 use os_sdk::graph::{GraphClient, QueryError, UnixGraphClient};
