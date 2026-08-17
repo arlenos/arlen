@@ -1,8 +1,8 @@
-/// DND state machine and suppression logic.
-///
-/// Evaluates whether a notification should be shown, suppressed, or
-/// queued based on DND mode, schedule, per-app overrides, and
-/// fullscreen state.
+//! DND state machine and suppression logic.
+//!
+//! Evaluates whether a notification should be shown, suppressed, or
+//! queued based on DND mode, schedule, per-app overrides, and
+//! fullscreen state.
 
 use chrono::{DateTime, Datelike, Local, NaiveTime, Utc, Weekday};
 

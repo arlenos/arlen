@@ -1,7 +1,7 @@
-/// Unix socket server for shell clients.
-///
-/// Listens on a Unix socket, accepts multiple clients, broadcasts
-/// server messages to all, and routes client messages to handlers.
+//! Unix socket server for shell clients.
+//!
+//! Listens on a Unix socket, accepts multiple clients, broadcasts
+//! server messages to all, and routes client messages to handlers.
 
 use std::path::PathBuf;
 use std::sync::Arc;

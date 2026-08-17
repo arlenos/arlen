@@ -1,8 +1,8 @@
-/// Per-app and global rate limiting for notifications.
-///
-/// Prevents notification spam by enforcing:
-/// - Per-app: max 10 notifications per second
-/// - Global: max 50 notifications per second
+//! Per-app and global rate limiting for notifications.
+//!
+//! Prevents notification spam by enforcing:
+//! - Per-app: max 10 notifications per second
+//! - Global: max 50 notifications per second
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};

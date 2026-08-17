@@ -1,7 +1,7 @@
-/// Central notification manager.
-///
-/// Coordinates between D-Bus input, DND evaluation, rate limiting,
-/// storage, and client broadcasting.
+//! Central notification manager.
+//!
+//! Coordinates between D-Bus input, DND evaluation, rate limiting,
+//! storage, and client broadcasting.
 
 use std::path::PathBuf;
 use std::sync::Arc;

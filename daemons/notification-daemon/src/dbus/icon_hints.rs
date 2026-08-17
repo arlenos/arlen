@@ -1,24 +1,24 @@
-/// Icon hint extraction for `org.freedesktop.Notifications`.
-///
-/// The FDO spec defines three ways an app can send an icon:
-///
-/// 1. `image-data` hint — raw pixel buffer
-///    `(width, height, rowstride, has_alpha, bits_per_sample, channels, data)`.
-///    Chromium, Firefox, Electron apps (Discord / Slack / VS Code)
-///    use this for per-notification icons (tab favicons, message avatars).
-/// 2. `image-path` hint — absolute filesystem path to an image.
-///    Also commonly populated by chromium-based apps.
-/// 3. `app_icon` positional argument — freedesktop icon name (e.g. `firefox`).
-///    The oldest / weakest signal.
-///
-/// Priority per spec 1.2: `image-data` > `image-path` > `app_icon`.
-/// We additionally fall back to the legacy `image_data` / `image_path`
-/// (with underscore) names that older apps still ship.
-///
-/// The output is normalised to a single string that downstream code
-/// (shell's `resolve_icon` in `notifications/client.rs`) already
-/// understands: a `data:image/png;base64,…` URI for raw pixel hints,
-/// an absolute path for file hints, or the bare icon name as fallback.
+//! Icon hint extraction for `org.freedesktop.Notifications`.
+//!
+//! The FDO spec defines three ways an app can send an icon:
+//!
+//! 1. `image-data` hint — raw pixel buffer
+//!    `(width, height, rowstride, has_alpha, bits_per_sample, channels, data)`.
+//!    Chromium, Firefox, Electron apps (Discord / Slack / VS Code)
+//!    use this for per-notification icons (tab favicons, message avatars).
+//! 2. `image-path` hint — absolute filesystem path to an image.
+//!    Also commonly populated by chromium-based apps.
+//! 3. `app_icon` positional argument — freedesktop icon name (e.g. `firefox`).
+//!    The oldest / weakest signal.
+//!
+//! Priority per spec 1.2: `image-data` > `image-path` > `app_icon`.
+//! We additionally fall back to the legacy `image_data` / `image_path`
+//! (with underscore) names that older apps still ship.
+//!
+//! The output is normalised to a single string that downstream code
+//! (shell's `resolve_icon` in `notifications/client.rs`) already
+//! understands: a `data:image/png;base64,…` URI for raw pixel hints,
+//! an absolute path for file hints, or the bare icon name as fallback.
 
 use std::collections::HashMap;
 use std::io::Cursor;

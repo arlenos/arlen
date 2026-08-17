@@ -1,8 +1,8 @@
-/// Focus Mode suppression state.
-///
-/// When Focus Mode is active for a project, notifications from
-/// specified apps are demoted to `Suppress` (stored but no toast).
-/// Critical notifications always pass through.
+//! Focus Mode suppression state.
+//!
+//! When Focus Mode is active for a project, notifications from
+//! specified apps are demoted to `Suppress` (stored but no toast).
+//! Critical notifications always pass through.
 
 use std::collections::HashSet;
 

@@ -1,8 +1,8 @@
-/// Arlen Notification Daemon.
-///
-/// Owns `org.freedesktop.Notifications` on the session D-Bus. Stores
-/// notifications in SQLite, enforces DND rules, and broadcasts to
-/// connected shell clients via a Unix socket.
+//! Arlen Notification Daemon.
+//!
+//! Owns `org.freedesktop.Notifications` on the session D-Bus. Stores
+//! notifications in SQLite, enforces DND rules, and broadcasts to
+//! connected shell clients via a Unix socket.
 
 use std::sync::Arc;
 

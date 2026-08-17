@@ -1,7 +1,7 @@
-/// Arlen notification daemon library.
-///
-/// Implements the `org.freedesktop.Notifications` D-Bus interface with
-/// priority determination, notification storage, and event broadcasting.
+//! Arlen notification daemon library.
+//!
+//! Implements the `org.freedesktop.Notifications` D-Bus interface with
+//! priority determination, notification storage, and event broadcasting.
 
 pub mod audit;
 pub mod config;

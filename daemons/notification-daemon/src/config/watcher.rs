@@ -1,11 +1,11 @@
-/// File watcher for config hot-reload.
-///
-/// Watches the parent directory of the config file (editors do atomic
-/// rename, not in-place write). On change, re-loads the config and
-/// sends the new value through a broadcast channel. The theme-emitted
-/// `sounds.toml` lives in the same directory and feeds the same
-/// [`load_config`] (it merges the theme's per-event cue names), so a theme
-/// switch that rewrites it also triggers a reload.
+//! File watcher for config hot-reload.
+//!
+//! Watches the parent directory of the config file (editors do atomic
+//! rename, not in-place write). On change, re-loads the config and
+//! sends the new value through a broadcast channel. The theme-emitted
+//! `sounds.toml` lives in the same directory and feeds the same
+//! [`load_config`] (it merges the theme's per-event cue names), so a theme
+//! switch that rewrites it also triggers a reload.
 
 use std::path::{Path, PathBuf};
 

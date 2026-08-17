@@ -1,4 +1,4 @@
-/// Configuration loading and hot-reload.
+//! Configuration loading and hot-reload.
 
 pub mod types;
 pub mod watcher;

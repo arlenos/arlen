@@ -1,7 +1,7 @@
-/// Length-prefixed protobuf framing.
-///
-/// Wire format: 4-byte big-endian length + protobuf body.
-/// Maximum message size: 1 MB.
+//! Length-prefixed protobuf framing.
+//!
+//! Wire format: 4-byte big-endian length + protobuf body.
+//! Maximum message size: 1 MB.
 
 use bytes::BufMut;
 use prost::Message;

@@ -1,4 +1,4 @@
-/// Error types for the notification daemon.
+//! Error types for the notification daemon.
 
 use thiserror::Error;
 

@@ -1,7 +1,7 @@
-/// Notification grouping by app and category.
-///
-/// Generates a group key used to visually group related notifications
-/// in the shell panel.
+//! Notification grouping by app and category.
+//!
+//! Generates a group key used to visually group related notifications
+//! in the shell panel.
 
 use crate::dbus::server::Notification;
 

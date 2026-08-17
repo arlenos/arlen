@@ -1,16 +1,16 @@
-/// Event Bus consumer.
-///
-/// Connects to the Arlen Event Bus consumer socket, subscribes to
-/// `focus.*` (desktop-shell emits these when the user enters/leaves
-/// Focus Mode for a project) and `window.fullscreen_*` (compositor
-/// will emit these once the wiring in `compositor/src/event_bus.rs`
-/// is plumbed through the shell::Workspace fullscreen transitions),
-/// decodes the protobuf payloads, and drives the corresponding state
-/// changes on the `NotificationManager`.
-///
-/// Failures never abort the daemon: connection errors log and retry
-/// every 2s, malformed messages log and are skipped. The notification
-/// daemon must keep functioning even when the event bus is down.
+//! Event Bus consumer.
+//!
+//! Connects to the Arlen Event Bus consumer socket, subscribes to
+//! `focus.*` (desktop-shell emits these when the user enters/leaves
+//! Focus Mode for a project) and `window.fullscreen_*` (compositor
+//! will emit these once the wiring in `compositor/src/event_bus.rs`
+//! is plumbed through the shell::Workspace fullscreen transitions),
+//! decodes the protobuf payloads, and drives the corresponding state
+//! changes on the `NotificationManager`.
+//!
+//! Failures never abort the daemon: connection errors log and retry
+//! every 2s, malformed messages log and are skipped. The notification
+//! daemon must keep functioning even when the event bus is down.
 
 use std::sync::Arc;
 use std::time::Duration;
