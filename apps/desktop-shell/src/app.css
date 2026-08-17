@@ -368,16 +368,31 @@
    [data-swipe-out=false][data-expanded=true]  → (0,5,0),
    injected after this file. The `:not(#_)` pair lifts these class
    rules to (2,1,0): above anything the library ships, still plain
-   author CSS, no !important. `#_` matches nothing by design. */
+   author CSS, no !important. `#_` matches nothing by design.
+
+   AND THAT LIFT MUST NOT TOUCH `transform`, which is the trap these two
+   rules fell into. sonner's slide is a TRANSITION over a resting
+   `transform: var(--y)` on `[data-sonner-toast]` (0,1,0), and that same
+   property carries the collapsed stack: `--y` becomes
+   `translateY(...) scale(...)` for every toast behind the front one. So
+   `transform: none` at (2,1,0) stopped the slide and flattened the stack
+   with it - three toasts landing at one spot, full size, text drawn over
+   text. Measured against the real specificities on a page holding both
+   rules verbatim: `slide` keeps matrix(0.9,0,0,0.9,0,28), `fade` got
+   `none`.
+
+   Turning off the TRANSITION stops the slide and leaves the resting
+   transform alone, which is what these want. Same page, after: the fade
+   rule keeps the stack transform, its transition reads `none`, and the
+   keyframes still run. */
 .arlen-toast-anim-fade:not(#_):not(#_) {
   /* Fade in/out instead of svelte-sonner's default slide. */
   animation-name: arlen-toast-fade;
-  transform: none;
+  transition: none;
 }
 .arlen-toast-anim-none:not(#_):not(#_) {
   /* Skip animation entirely. */
   animation: none;
-  transform: none;
   transition: none;
 }
 @keyframes arlen-toast-fade {
