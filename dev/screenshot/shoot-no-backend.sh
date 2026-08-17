@@ -72,6 +72,28 @@ echo "building $APP for production (the fixtures are DEV-gated, so this matters)
   echo "build failed:" >&2; tail -20 /tmp/shoot-nb-build-$APP.log >&2; exit 1
 }
 
+# Stop the preview and WAIT for it to be gone, rather than asking and moving on.
+#
+# `pkill` returns as soon as the signal is delivered, so the script could exit
+# with the port still held; the next row of a sweep then races its own readiness
+# poll against a dying server. The startup path above already waits this way -
+# this makes the exit path do the same, so a run leaves nothing behind for the
+# next one to trip over. Escalates to SIGKILL if the polite signal is ignored,
+# and says so if even that does not settle.
+stop_preview() {
+  pkill -f "vite preview --port $PORT" 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    curl -sf -o /dev/null "http://localhost:$PORT/" || return 0
+    sleep 0.25
+  done
+  pkill -9 -f "vite preview --port $PORT" 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    curl -sf -o /dev/null "http://localhost:$PORT/" || return 0
+    sleep 0.25
+  done
+  echo "warning: a preview still answers on $PORT after SIGKILL" >&2
+}
+
 # Clear the port before claiming it. `--strictPort` means our server LOSES this
 # race silently: a preview left behind by an earlier run keeps answering, the
 # readiness poll below is satisfied by it, and the screenshot is of that server's
@@ -166,7 +188,7 @@ BODY=$(curl -s "$URL")
 BODY=${BODY:0:4000}
 # All of them: `npx vite preview` is an npm wrapper plus the node process that
 # actually holds the socket, so killing one of the two left the port occupied.
-pkill -f "vite preview --port $PORT" 2>/dev/null || true
+stop_preview
 
 case "$BODY" in
   *"Connection refused"* | *"ERR_CONNECTION"* )
