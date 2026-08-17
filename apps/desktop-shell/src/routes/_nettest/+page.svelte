@@ -7,14 +7,17 @@
   /// answering. That used to render as a definite "WiFi is off" with a switch
   /// beside it, about a radio nobody had managed to ask.
   ///
-  /// `?state=ok|wifi-off|unknown|refuse-write`, `?panel=bluetooth|audio|tray|battery`,
+  /// `?state=ok|wifi-off|unknown`, `?panel=bluetooth|audio|tray|battery`,
   /// `?locale=de`. Not in any nav.
   ///
-  /// `battery` + `refuse-write` is the pair that made a refused power mode
-  /// visible at all: the reads answer, so the panel is fully drawn, and only
-  /// `set_power_profile` says no. Nothing else could produce that state on
-  /// purpose - the popover lives behind a top-bar trigger that needs Tauri, and
-  /// a machine whose profile daemon refuses is not something to arrange.
+  /// A refused-WRITE state belongs here too - it is the only way to look at what
+  /// a rejected power mode says - and the obvious spelling did not work: adding
+  /// `if (pinned === "refuse-write" && cmd.startsWith("set_")) throw` left the
+  /// battery panel rendering an empty box, reproducibly, while the same panel
+  /// without it draws fine. Withdrawn rather than left in place, because a dev
+  /// state that renders nothing is the same lie as a surface that renders a
+  /// default: it looks like an answer. Worth another attempt with the cause
+  /// understood rather than guessed at.
   import { onMount } from "svelte";
   import NetworkPopover from "$lib/components/NetworkPopover.svelte";
   import BluetoothPopover from "$lib/components/BluetoothPopover.svelte";
@@ -48,11 +51,6 @@
       // NetworkManager looks like from here. The other two answer normally so
       // the honest states can be compared against the definite ones.
       if (pinned === "unknown") throw new Error("the service is not running");
-      // Reads answer, writes do not. A panel that cannot read is a different
-      // state (`unknown` above) and hides most of what a refused write is
-      // about, so the two are kept apart.
-      if (pinned === "refuse-write" && cmd.startsWith("set_"))
-        throw new Error("the service refused that");
       if (cmd === "get_battery_status")
         return {
           percentage: 62,
