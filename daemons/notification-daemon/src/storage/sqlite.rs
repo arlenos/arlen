@@ -1,7 +1,7 @@
-/// SQLite storage backend for notifications.
-///
-/// Uses sqlx with an async connection pool. Supports in-memory databases
-/// for testing and file-based databases for production.
+//! SQLite storage backend for notifications.
+//!
+//! Uses sqlx with an async connection pool. Supports in-memory databases
+//! for testing and file-based databases for production.
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use sqlx::Row;

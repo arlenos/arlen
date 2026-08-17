@@ -1,4 +1,4 @@
-/// Database row model for notifications.
+//! Database row model for notifications.
 
 use serde::{Deserialize, Serialize};
 

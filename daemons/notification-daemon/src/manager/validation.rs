@@ -1,10 +1,10 @@
-/// Input validation and sanitization for incoming notifications.
-///
-/// Truncates oversized fields, strips HTML markup, and enforces limits
-/// to prevent abuse. The shell renders every text field as plain text
-/// (Svelte auto-escapes interpolated values), so any `<b>`, `<i>`,
-/// `<a>` etc. that apps like Thunderbird or Evolution send would
-/// otherwise appear as literal tag text. See `strip_markup` below.
+//! Input validation and sanitization for incoming notifications.
+//!
+//! Truncates oversized fields, strips HTML markup, and enforces limits
+//! to prevent abuse. The shell renders every text field as plain text
+//! (Svelte auto-escapes interpolated values), so any `<b>`, `<i>`,
+//! `<a>` etc. that apps like Thunderbird or Evolution send would
+//! otherwise appear as literal tag text. See `strip_markup` below.
 
 /// Maximum lengths.
 const MAX_APP_NAME: usize = 50;

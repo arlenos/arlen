@@ -1,4 +1,4 @@
-/// Notification manager: central coordinator for the daemon.
+//! Notification manager: central coordinator for the daemon.
 
 pub mod grouping;
 pub mod notification;

@@ -1,4 +1,4 @@
-/// Do Not Disturb logic.
+//! Do Not Disturb logic.
 
 pub mod focus;
 pub mod state;

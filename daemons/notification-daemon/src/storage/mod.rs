@@ -1,4 +1,4 @@
-/// Persistent notification storage via SQLite.
+//! Persistent notification storage via SQLite.
 
 pub mod models;
 pub mod sqlite;

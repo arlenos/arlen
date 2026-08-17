@@ -1,8 +1,8 @@
-/// D-Bus server implementing `org.freedesktop.Notifications` (spec 1.2).
-///
-/// Receives notifications from applications, assigns IDs, determines
-/// priority, and stores them in an in-memory list. Emits
-/// `NotificationClosed` and `ActionInvoked` signals as required.
+//! D-Bus server implementing `org.freedesktop.Notifications` (spec 1.2).
+//!
+//! Receives notifications from applications, assigns IDs, determines
+//! priority, and stores them in an in-memory list. Emits
+//! `NotificationClosed` and `ActionInvoked` signals as required.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
