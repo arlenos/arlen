@@ -16,7 +16,6 @@ czkawka	com.github.qarmin.czkawka czkawka
 datagrip	com.jetbrains.DataGrip datagrip
 decoder	com.belmoussaoui.Decoder com.vixalien.decoder gnome-decoder
 dolphin-emu	dolphin-emu org.DolphinEmu.dolphin-emu
-drawing	com.github.maoschanz.drawing drawing io.github.maoschanz.drawing
 duckstation	duckstation org.duckstation.DuckStation
 exhibit	exhibit io.github.nokse22.Exhibit
 eyedropper	com.github.finefindus.eyedropper eyedropper io.github.finefindus.eyedropper
@@ -29,7 +28,6 @@ freetube	FreeTube io.freetubeapp.FreeTube
 gfeeds	gfeeds org.gabmus.gfeeds
 ghostty	com.ghostty.Ghostty com.mitchellh.ghostty ghostty
 gtimelog	gtimelog io.github.nokse22.gtimelog
-halftone	halftone io.github.tfuxu.Halftone page.kramo.Halftone
 highscore	highscore io.github.nokse22.HighScore
 hydrapaper	com.github.maoschanz.HydraPaper org.gabmus.hydrapaper
 insomnia	insomnia rest.insomnia.Insomnia

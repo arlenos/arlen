@@ -1,8 +1,10 @@
-# Starting permission profile for a webcam/drawing app. Works with Pictures; no
-# network and no Knowledge Graph.
+# Starting permission profile for Drawing (a raster image editor). It opens and
+# saves images through the file portal, so it needs no standing grant: no network,
+# no user files and no Knowledge Graph access.
+#
+# This granted Pictures while `io.github.maoschanz.drawing` had already settled on
+# the portal for the same program. The picker covers the open and the save, which
+# is the whole of what a paint app does to the user's files.
 [info]
 app_id = "drawing"
 tier = "third-party"
-
-[filesystem]
-pictures = true
