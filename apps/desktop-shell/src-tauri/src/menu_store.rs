@@ -89,10 +89,12 @@ pub fn dispatch_menu_action(app: AppHandle, app_id: String, action: String) {
         // GTK app: activate via D-Bus on a background thread.
         let aid = app_id.clone();
         let act = action.clone();
-        std::thread::spawn(move || {
-            if let Err(e) = crate::gtk_menu_bridge::activate_gtk_action(&aid, &act) {
-                log::warn!("dispatch_menu_action: D-Bus activate failed: {e}");
-            }
+        std::thread::spawn(move || match crate::gtk_menu_bridge::activate_gtk_action(&aid, &act) {
+            Ok(true) => {}
+            // An Arlen app owns no such bus name and takes its actions off the
+            // Event Bus below, so this is the normal path for one of ours.
+            Ok(false) => log::debug!("dispatch_menu_action: {aid} is not a GTK app"),
+            Err(e) => log::warn!("dispatch_menu_action: D-Bus activate failed: {e}"),
         });
     }
     // Record the menu interaction on the Event Bus (GAP-10) so it reaches the

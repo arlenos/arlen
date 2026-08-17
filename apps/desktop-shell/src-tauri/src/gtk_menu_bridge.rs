@@ -193,17 +193,25 @@ struct ActionInfo {
 /// or `win.close`). The `app.` or `win.` prefix is stripped before calling
 /// D-Bus because `org.gtk.Actions.Activate` expects the bare action name.
 ///
-/// This is called from `dispatch_menu_action` when the app_id looks like
-/// a reverse-domain GTK application.
+/// This is called from `dispatch_menu_action` for any reverse-domain app_id.
+///
+/// `Ok(false)` means no app owns that bus name, so this is not a GTK app and
+/// there was nothing to activate; `Ok(true)` means the action was activated.
 pub fn activate_gtk_action(
     app_id: &str,
     action: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     let conn = Connection::session()?;
 
     let dbus = zbus::blocking::fdo::DBusProxy::new(&conn)?;
     if !dbus.name_has_owner(app_id.try_into()?)? {
-        return Err(format!("{app_id} not on session bus").into());
+        // Not a GTK app: nobody owns that bus name. This is the ordinary answer
+        // for an Arlen app, whose actions travel over the Event Bus instead, so
+        // it is a "no" rather than a failure. It used to be an error, which the
+        // caller logged - harmless while our own ids had no dot and never took
+        // this branch, and one warning per menu click once they resolve to the
+        // reverse-DNS id the permission system uses.
+        return Ok(false);
     }
 
     let obj_path: zbus::zvariant::ObjectPath =
@@ -230,7 +238,7 @@ pub fn activate_gtk_action(
     )?;
 
     log::debug!("gtk_menu_bridge: activated {bare_action} on {app_id}");
-    Ok(())
+    Ok(true)
 }
 
 /// Collects all subscription group IDs referenced by :submenu and :section.
