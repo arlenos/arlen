@@ -77,6 +77,20 @@ def ai_verdict(journal_text: str) -> tuple[bool, str]:
     asked = any(ASK_OK in l for l in lines)
     finished = any(l.endswith(TERMINAL_OK) for l in lines)
 
+    # A journal with no DOGFOOD line at all did not measure the dogfood - it is
+    # either a probe that never started or, more often, output that never reached
+    # this side. The caller reads its serial log with `except OSError: journal =
+    # ""`, so an unreadable log arrives here as the empty string, and saying "the
+    # dogfood did not complete" about it is a claim about the guest drawn from a
+    # file this machine could not read. Same shape as the copy-out that reported
+    # a failed guestfish as "the guest wrote no store".
+    if not any("DOGFOOD" in l for l in lines):
+        return False, (
+            "the dogfood left no trace in the journal, so this run measured nothing "
+            "about the AI path - check that the serial log was captured before "
+            "reading this as a dogfood failure"
+        )
+
     if not finished:
         fail = _quoted(journal_text, FAIL_MARKER)
         return False, (

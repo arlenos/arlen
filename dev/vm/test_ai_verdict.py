@@ -92,11 +92,24 @@ def main() -> int:
     if "best-effort" not in skip_message or "UnknownMethod" not in skip_message:
         failures.append(f"the skip verdict dropped the probe's stated reason: {skip_message}")
 
+    # A journal that never reached this side must not be read as a dogfood that
+    # failed. `verify.py` turns an unreadable serial log into the empty string,
+    # so this is the shape that actually arrives, not a hypothetical one.
+    for empty, what in (("", "an empty journal"), ("some unrelated line\n", "a journal with no DOGFOOD line")):
+        ok, message = ai_verdict(empty)
+        if ok:
+            failures.append(f"{what} passed")
+        elif "measured nothing" not in message:
+            failures.append(f"{what} was blamed on the dogfood: {message}")
+
     for f in failures:
         print(f"FAIL: {f}", file=sys.stderr)
     if failures:
         return 1
-    print(f"ok: a good boot and a best-effort skip pass, {len(CASES)} bad ones are refused")
+    print(
+        f"ok: a good boot and a best-effort skip pass, {len(CASES)} bad ones are refused, "
+        "and a journal that never arrived is not called a failure"
+    )
     return 0
 
 
