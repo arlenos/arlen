@@ -1,11 +1,11 @@
-/// 30-day staged deletion for uninstalled apps.
-///
-/// Instead of permanently deleting app data, `stage_for_deletion` moves
-/// the app directory to `~/.local/share/arlen/.trash/{app_id}/` with
-/// a metadata file recording when it was deleted. After 30 days,
-/// `cleanup_trash` permanently removes expired entries.
-///
-/// `restore_app` moves a trashed app back and recreates the desktop entry.
+//! 30-day staged deletion for uninstalled apps.
+//!
+//! Instead of permanently deleting app data, `stage_for_deletion` moves
+//! the app directory to `~/.local/share/arlen/.trash/{app_id}/` with
+//! a metadata file recording when it was deleted. After 30 days,
+//! `cleanup_trash` permanently removes expired entries.
+//!
+//! `restore_app` moves a trashed app back and recreates the desktop entry.
 
 use std::fs;
 use std::path::PathBuf;

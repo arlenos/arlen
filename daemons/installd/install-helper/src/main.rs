@@ -1,14 +1,14 @@
-/// Arlen Install Helper -- root D-Bus service.
-///
-/// Provides `org.arlen.InstallHelper1` for privileged install operations
-/// that require root access: copying apps to `/usr/lib/arlen/apps/`,
-/// writing desktop entries to `/usr/share/applications/`, and removing
-/// system-wide installations.
-///
-/// Only authorized callers (arlen-installd) may invoke methods.
-/// Caller identity is verified via `/proc/{pid}/exe`.
-///
-/// See `docs/architecture/install-daemon.md`.
+//! Arlen Install Helper -- root D-Bus service.
+//!
+//! Provides `org.arlen.InstallHelper1` for privileged install operations
+//! that require root access: copying apps to `/usr/lib/arlen/apps/`,
+//! writing desktop entries to `/usr/share/applications/`, and removing
+//! system-wide installations.
+//!
+//! Only authorized callers (arlen-installd) may invoke methods.
+//! Caller identity is verified via `/proc/{pid}/exe`.
+//!
+//! See `docs/architecture/install-daemon.md`.
 
 /// Serialises tests that override the `ARLEN_*_DIR` path env vars.
 ///

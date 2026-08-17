@@ -1,8 +1,8 @@
-/// D-Bus interface for the install daemon.
-///
-/// Interface: org.arlen.InstallDaemon1
-/// Object path: /org/arlen/InstallDaemon1
-/// Bus: Session Bus
+//! D-Bus interface for the install daemon.
+//!
+//! Interface: org.arlen.InstallDaemon1
+//! Object path: /org/arlen/InstallDaemon1
+//! Bus: Session Bus
 
 use std::sync::Arc;
 

@@ -1,9 +1,9 @@
-/// Flatpak integration for the install daemon.
-///
-/// Installs, uninstalls, and lists Flatpak applications via the `flatpak`
-/// CLI. After installation, a default Arlen permission profile is created
-/// so the app participates in the Knowledge Graph and Event Bus permission
-/// system alongside native .lunpkg apps.
+//! Flatpak integration for the install daemon.
+//!
+//! Installs, uninstalls, and lists Flatpak applications via the `flatpak`
+//! CLI. After installation, a default Arlen permission profile is created
+//! so the app participates in the Knowledge Graph and Event Bus permission
+//! system alongside native .lunpkg apps.
 
 use std::process::Command;
 

@@ -1,8 +1,8 @@
-/// File system operations for system-wide app installation.
-///
-/// All operations target root-owned directories:
-/// - `/usr/lib/arlen/apps/{app_id}/` for app binaries and libraries
-/// - `/usr/share/applications/` for desktop entries
+//! File system operations for system-wide app installation.
+//!
+//! All operations target root-owned directories:
+//! - `/usr/lib/arlen/apps/{app_id}/` for app binaries and libraries
+//! - `/usr/share/applications/` for desktop entries
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;

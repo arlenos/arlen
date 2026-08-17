@@ -1,9 +1,9 @@
-/// D-Bus interface for the permission helper.
-///
-/// Interface: org.arlen.PermissionHelper1
-/// Object path: /org/arlen/PermissionHelper1
-///
-/// Only authorized callers (installd, settings) may invoke methods.
+//! D-Bus interface for the permission helper.
+//!
+//! Interface: org.arlen.PermissionHelper1
+//! Object path: /org/arlen/PermissionHelper1
+//!
+//! Only authorized callers (installd, settings) may invoke methods.
 
 use zbus::{interface, Connection};
 
