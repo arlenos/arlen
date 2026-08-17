@@ -4,25 +4,33 @@
   /// never drifts (the ClockIndicator pattern from the desktop shell).
   import { onMount } from "svelte";
 
-  const locale = typeof navigator !== "undefined" ? navigator.language || "en" : "en";
-  const timeFmt = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" });
-  const dateFmt = new Intl.DateTimeFormat(locale, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  // The app's language, not the webview's: the layout seeds the store from the
+  // environment when nothing else answers, so these agree by construction. They
+  // did not before - the date stayed English under a German greeting.
+  import { locale as uiLocale } from "@arlen/ui-kit/i18n";
+  // Derived, not const: the layout sets the language after this mounts, and a
+  // formatter built once would keep whichever locale happened to be current at
+  // module time - which is the same class of bug as reading a catalog once.
+  const timeFmt = $derived(
+    new Intl.DateTimeFormat($uiLocale, { hour: "2-digit", minute: "2-digit" }),
+  );
+  const dateFmt = $derived(
+    new Intl.DateTimeFormat($uiLocale, { weekday: "long", day: "numeric", month: "long" }),
+  );
 
   // A fixed clock for stable screenshots: the mock can pin the time by
   // passing `now`. Live otherwise.
   let { now = null }: { now?: Date | null } = $props();
 
-  let time = $state("");
-  let date = $state("");
 
   function render(d: Date) {
-    time = timeFmt.format(d);
-    date = dateFmt.format(d);
+    shown = d;
   }
+
+  // Re-formats when the language arrives, without waiting for the next minute.
+  let shown = $state<Date | null>(null);
+  const time = $derived(shown ? timeFmt.format(shown) : "");
+  const date = $derived(shown ? dateFmt.format(shown) : "");
 
   onMount(() => {
     if (now) {
