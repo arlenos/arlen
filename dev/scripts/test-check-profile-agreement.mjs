@@ -124,6 +124,37 @@ check(
 );
 rmSync(dir, { recursive: true, force: true });
 
+// A release channel is not an app name. Taking the last segment made Spotify,
+// Chromium, Thunderbird and GNOME Snapshot one program, because all four ids end
+// in `.snapshot` - a group that would have told somebody to give four unrelated
+// applications the same grants.
+dir = tree({
+  "org.chromium.Chromium.snapshot": prof("org.chromium.Chromium.snapshot", ["downloads"], true),
+  "com.spotify.Client.snapshot": prof("com.spotify.Client.snapshot", ["music"], true),
+  "org.gnome.Snapshot": prof("org.gnome.Snapshot", ["pictures"], false),
+});
+r = run(dir);
+check(
+  "a release-channel segment does not make unrelated apps one program",
+  r.code === 0,
+  `exit=${r.code} out=${r.out}`,
+);
+rmSync(dir, { recursive: true, force: true });
+
+// The channel still resolves to its own program, so a real disagreement between
+// a stable id and its snapshot channel is still found.
+dir = tree({
+  "org.chromium.Chromium": prof("org.chromium.Chromium", ["downloads"], true),
+  "org.chromium.Chromium.snapshot": prof("org.chromium.Chromium.snapshot", ["home"], true),
+});
+r = run(dir);
+check(
+  "a channel id still groups with its own stable id",
+  r.code === 1 && /chromium/i.test(r.out),
+  `exit=${r.code} out=${r.out}`,
+);
+rmSync(dir, { recursive: true, force: true });
+
 // Reading nothing is not passing.
 dir = mkdtempSync(join(tmpdir(), "arlen-agree-empty-"));
 r = run(dir);
