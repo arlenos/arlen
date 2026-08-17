@@ -1288,6 +1288,12 @@ def main():
 
         sdir = os.path.join(tmp, "store")
         store = None
+        # A glob that matched nothing and an appliance that would not start both
+        # exit non-zero here, so the reason is kept: without it the failure below
+        # says "the guest wrote no event store", which is a claim about the guest
+        # drawn from a fact about this machine. The appliance did fail to start
+        # here tonight, under load.
+        copy_problems = []
         for i, guest_path in enumerate(EVENT_STORE_PATHS):
             dest = os.path.join(sdir, str(i))
             os.makedirs(dest, exist_ok=True)
@@ -1298,10 +1304,21 @@ def main():
             if r.returncode == 0 and os.path.exists(candidate):
                 store = candidate
                 break
+            err = (r.stderr or "").strip()
+            if r.returncode != 0 and "is not a file or directory" not in err:
+                copy_problems.append(
+                    f"{guest_path}: {err.splitlines()[-1] if err else 'guestfish failed'}"
+                )
 
         if store is None:
             searched = ", ".join(EVENT_STORE_PATHS)
-            print(f"VERIFY FAIL: the guest wrote no event store. Looked in {searched}")
+            if copy_problems:
+                print(
+                    "VERIFY FAIL: the event store could not be read out of the image, so "
+                    "this run says nothing about ingestion: " + "; ".join(copy_problems)
+                )
+            else:
+                print(f"VERIFY FAIL: the guest wrote no event store. Looked in {searched}")
             return 1
         ok, message = ingest_verdict(store)
         if not ok:
@@ -1337,8 +1354,12 @@ def main():
 
         gdir = os.path.join(tmp, "graph")
         os.makedirs(gdir, exist_ok=True)
-        gstore = copy_graph_out(overlay, gdir)
-        if gstore is None:
+        gstore, gunreadable = copy_graph_out(overlay, gdir)
+        if gunreadable is not None:
+            # The tooling failed, which is not the same as the guest having no
+            # store, and must not be reported as one.
+            gcode, gmessage = 2, f"GRAPH UNREADABLE: {gunreadable}"
+        elif gstore is None:
             gcode, gmessage = 2, "GRAPH UNREADABLE: the guest wrote no graph store"
         else:
             repo_root = os.path.abspath(

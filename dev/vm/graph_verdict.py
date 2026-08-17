@@ -89,13 +89,31 @@ def graph_verdict(store: str, repo: str, path: str = DOGFOOD_PATH) -> tuple[bool
     return code == 0, out
 
 
-def copy_out(overlay: str, dest_root: str) -> str | None:
-    """Copy the guest's graph store to the host, or None if it has none.
+#: What guestfish says when the glob matched nothing. Any OTHER failure is the
+#: tooling not working, which is a different fact from the guest not having a
+#: store - see `copy_out`.
+NOT_THERE = "is not a file or directory"
+
+
+def copy_out(overlay: str, dest_root: str) -> tuple[str | None, str | None]:
+    """(store path, unreadable reason) for the guest's graph store.
 
     Its own guestfish call per candidate path, like the event store's: a glob that
     matches nothing makes guestfish exit non-zero, so folding several into one
     script would let a moved store discard the others.
+
+    The two-value return exists because a glob that matches nothing and a
+    libguestfs appliance that will not start BOTH exit non-zero. The first cut
+    returned None for either, and the caller says "the guest wrote no graph
+    store" - a claim about the guest drawn from a fact about the host. That is
+    not hypothetical: the appliance failed to launch on this machine tonight,
+    under load, in the pre-commit hook.
+
+    So absence is only concluded when every candidate failed with the not-found
+    message; anything else is reported as unreadable and the run does not get to
+    call it an answer.
     """
+    problems: list[str] = []
     for i, guest_path in enumerate(GRAPH_STORE_PATHS):
         dest = os.path.join(dest_root, str(i))
         os.makedirs(dest, exist_ok=True)
@@ -107,11 +125,16 @@ def copy_out(overlay: str, dest_root: str) -> str | None:
             text=True,
         )
         if r.returncode != 0:
+            err = (r.stderr or "").strip()
+            if NOT_THERE not in err:
+                problems.append(f"{guest_path}: {err.splitlines()[-1] if err else 'guestfish failed'}")
             continue
         found = glob.glob(os.path.join(dest, "graph"))
         if found:
-            return found[0]
-    return None
+            return found[0], None
+    if problems:
+        return None, "the graph store could not be read out of the image: " + "; ".join(problems)
+    return None, None
 
 
 if __name__ == "__main__":
