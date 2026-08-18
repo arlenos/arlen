@@ -66,15 +66,20 @@ picker=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/xdg-desktop-portal-ar
 [ -n "$picker" ] || { echo "!! the portal picker was not built; FileChooser would be a dead promise" >&2; exit 1; }
 install -Dm755 "$picker" "$DESTDIR/usr/lib/arlen/libexec/xdg-desktop-portal-arlen-picker"
 
-# The three declarations, installed from the daemon's own `dist/` rather than
+# The four declarations, installed from the daemon's own `dist/` rather than
 # copied into mkosi.extra, so there is one source for each and no second copy to
 # drift. `arlen.portal` is what makes the frontend route here at all; the D-Bus
 # service file is what starts us on demand; the unit is what systemd runs.
 install -Dm644 "$src/dist/xdg-desktop-portal/portals/arlen.portal" \
         "$DESTDIR/usr/share/xdg-desktop-portal/portals/arlen.portal"
+# The routing itself. `UseIn=` in the .portal is deprecated since 1.18 and the
+# image's frontend is 1.20.3, so the supported mechanism is this file; the path
+# is the one the frontend actually searches, read off its own verbose log.
+install -Dm644 "$src/dist/xdg-desktop-portal/arlen-portals.conf" \
+        "$DESTDIR/usr/share/xdg-desktop-portal/arlen-portals.conf"
 install -Dm644 "$src/dist/dbus/org.freedesktop.impl.portal.desktop.arlen.service" \
         "$DESTDIR/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.arlen.service"
 install -Dm644 "$src/dist/systemd/xdg-desktop-portal-arlen.service" \
         "$DESTDIR/usr/lib/systemd/user/xdg-desktop-portal-arlen.service"
 
-echo ">> staged the portal backend, its picker and its three declarations"
+echo ">> staged the portal backend, its picker and its four declarations"
