@@ -57,7 +57,17 @@ export type SystemTick = {
   /// exposes none. Null is "not measured", NOT "fine" - see the meter's own
   /// strings, which say so rather than showing a green light.
   memPressure: { some10: number; full10: number; level: "ok" | "warn" | "critical" } | null;
+  /// One entry per logical core, in `cpuN` order. Empty on the first tick, when
+  /// there is nothing to difference against.
+  cores: CoreUsage[];
 };
+
+/// One core's share of its own last interval, in percent.
+///
+/// `iowait` is carried apart from the other two on purpose: the core was IDLE
+/// and something on it was blocked on a disk, so adding it to a busy reading
+/// would diagnose a slow disk as a CPU shortage.
+export type CoreUsage = { user: number; system: number; iowait: number };
 
 /// How many points the graphs hold.
 const CAP = 60;

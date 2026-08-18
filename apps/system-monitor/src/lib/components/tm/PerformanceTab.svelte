@@ -4,6 +4,7 @@
   /// (name + current value + a mini live sparkline), the selected device's big live
   /// graph + its current figures on the right.
   import Graph from "./Graph.svelte";
+  import CoreGrid from "./CoreGrid.svelte";
   import { series, tick, perfError, axisMax, DEVICES, type Device } from "$lib/stores/perf";
 
   let selected = $state<Device>("cpu");
@@ -121,11 +122,24 @@
     <div class="main-graph">
       <Graph series={$series[selected]} max={axisMax($series[selected], sel.max)} variant="big" />
     </div>
+    {#if selected === "cpu" && ($tick?.cores.length ?? 0) > 0}
+      <!-- Under the rolling total rather than instead of it: the line says how
+           hard the machine is working, the grid says whether that work is spread
+           or stuck on one core, and neither answers the other. -->
+      <div class="core-grid">
+        <CoreGrid cores={$tick?.cores ?? []} />
+      </div>
+    {/if}
     <div class="main-detail">{detail(selected)}</div>
   </div>
 </div>
 
 <style>
+  .core-grid {
+    height: 64px;
+    margin: 8px 0 0;
+  }
+
   .perf-sample {
     margin: 0;
     padding: 8px 12px 0;
