@@ -70,13 +70,6 @@ NOT_YET_DEPLOYED: dict[str, str] = {
     "arlen-file-manager-mcp.service": "MCP servers are not staged into the image yet (15 Aug)",
     "arlen-knowledge-mcp.service": "MCP servers are not staged into the image yet (15 Aug)",
     "arlen-system-monitor-mcp.service": "MCP servers are not staged into the image yet (15 Aug)",
-    "installd.service": (
-        "the install path is not exercised on the appliance image (15 Aug). "
-        "Settings dials it and says removing apps is unavailable when nothing "
-        "answers; the store is arlen-ui's and is sequenced after this"
-    ),
-    "install-helper.service": "the install path is not exercised on the appliance image (15 Aug, reached only by installd)",
-    "permission-helper.service": "the install path is not exercised on the appliance image (15 Aug, reached only by installd)",
 }
 
 
@@ -101,6 +94,25 @@ def shipped_units() -> dict[str, pathlib.Path]:
     return out
 
 
+def installs_unit(script: str, unit: str) -> bool:
+    """Does this build-step text actually PLACE `unit`, rather than mention it?
+
+    Split out so it can be tested on its own: the gate around it reads the real
+    tree and carries hand-kept lists, so a synthetic fixture cannot exercise it
+    without dragging those along.
+
+    A line counts when it copies or installs. Comments never count, which is the
+    whole point - see `installed_units`.
+    """
+    for line in script.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue
+        if ("install " in stripped or stripped.startswith("cp ")) and unit in stripped:
+            return True
+    return False
+
+
 def installed_units() -> set[str]:
     """Units the image actually places, whether by mkosi.extra or a build step."""
     placed = {
@@ -109,10 +121,23 @@ def installed_units() -> set[str]:
         for p in (EXTRA / sub).glob("*.service")
     }
     # A build step may install one itself rather than dropping it in mkosi.extra.
-    scripts = "\n".join(
-        p.read_text() for p in BUILD_STEPS.glob("*") if p.is_file()
-    )
-    return placed | {name for name in shipped_units() if name in scripts}
+    #
+    # PER LINE, AND ONLY LINES THAT PLACE A FILE. This used to substring-match the
+    # whole script text, which meant a unit MENTIONED anywhere counted as
+    # installed - including in a comment. On 19 Aug the install-path phase said in
+    # prose that it deliberately does NOT ship `arlen-trash-cleanup.service`, and
+    # the gate read its own name in that sentence and reported the unit as
+    # deployed. Documenting a deliberate omission is exactly the behaviour this
+    # file asks for elsewhere, so the checker had to stop punishing it.
+    #
+    # A line counts when it copies or installs: `install -D...`, `cp ...`. That is
+    # narrow enough to ignore prose and wide enough for how these phases are
+    # written; a phase that placed a unit some other way would be missed, and the
+    # honest cost of the narrower rule is that it can now under-report rather than
+    # over-report. Under-reporting fails LOUDLY here - the unit stays listed as
+    # waiting while it is on the image - which is the direction to err in.
+    texts = [p.read_text() for p in BUILD_STEPS.glob("*") if p.is_file()]
+    return placed | {n for n in shipped_units() if any(installs_unit(t, n) for t in texts)}
 
 
 
