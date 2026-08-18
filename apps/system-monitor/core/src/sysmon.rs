@@ -59,6 +59,8 @@ pub struct Counters {
     pub load: Option<LoadAverage>,
     /// Per-whole-disk sector counters, for the device breakdown.
     pub devices: Vec<DeviceCounters>,
+    /// Per-physical-interface byte counters.
+    pub links: Vec<LinkCounters>,
     /// Sectors read across the physical block devices.
     pub disk_read_sectors: u64,
     /// Sectors written across the physical block devices.
@@ -110,6 +112,8 @@ pub struct SystemTick {
     /// Per-whole-disk rates. Empty on the first tick, and empty for any device
     /// that was not present in the previous sample.
     pub devices: Vec<DeviceRate>,
+    /// Per-physical-interface rates, same rules as `devices`.
+    pub links: Vec<LinkRate>,
 }
 
 /// A `/proc` and `/sys` reader, rooted so tests can point it at a fixture.
@@ -161,7 +165,8 @@ impl SysProbe {
         // breakdown can never disagree with the figure above it.
         let devices = parse_diskstats_devices(&diskstats, &|name| self.is_whole_disk(name));
         let netdev = std::fs::read_to_string(self.proc_root.join("net/dev")).unwrap_or_default();
-        let (net_rx_bytes, net_tx_bytes) = parse_netdev(&netdev);
+        let (net_rx_bytes, net_tx_bytes) = parse_netdev(&netdev, &|n| self.is_real_link(n));
+        let links = parse_netdev_links(&netdev, &|n| self.is_real_link(n));
         // Absent on a kernel without CONFIG_PSI. `unwrap_or_default()` like the
         // others would turn that into an empty string and then into 0.00 - a
         // green meter over a machine nobody measured - so this one keeps the
@@ -182,6 +187,7 @@ impl SysProbe {
             cores,
             load,
             devices,
+            links,
         }
     }
 
@@ -223,6 +229,22 @@ impl SysProbe {
             .read_dir()
             .map(|mut d| d.next().is_some())
             .unwrap_or(false)
+    }
+
+    /// Whether an interface is real hardware rather than a virtual one.
+    ///
+    /// `/sys/class/net/<name>/device` is a link to the backing PCI or USB device
+    /// and exists only for a physical NIC. Loopback, bridges, `docker0`, tun/tap
+    /// and every `veth` lack it.
+    ///
+    /// This matters for the same reason the disk mapper did, and was found the
+    /// same way. The total summed every interface that was not `lo`, and on this
+    /// machine that is `wlan0` plus three bridges and three veths - where a
+    /// bridge and its veth carry the SAME packets `wlan0` already counted, so a
+    /// container pulling a gigabyte made the graph read several. A physical
+    /// interface is where bytes actually enter and leave the machine.
+    fn is_real_link(&self, name: &str) -> bool {
+        self.sys_root.join("class/net").join(name).join("device").exists()
     }
 }
 
@@ -454,6 +476,64 @@ pub fn device_rates(now: &[DeviceCounters], prev: &[DeviceCounters], secs: f64) 
         .collect()
 }
 
+/// One network interface's byte counters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkCounters {
+    pub name: String,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+}
+
+/// One interface's rates over the last interval.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkRate {
+    pub name: String,
+    pub rx_mbs: f64,
+    pub tx_mbs: f64,
+}
+
+/// Per-interface byte counters for the interfaces `keep` accepts.
+pub fn parse_netdev_links(text: &str, keep: &dyn Fn(&str) -> bool) -> Vec<LinkCounters> {
+    text.lines()
+        .filter_map(|line| {
+            let (name, rest) = line.split_once(':')?;
+            let name = name.trim();
+            if name.is_empty() || !keep(name) {
+                return None;
+            }
+            let f: Vec<&str> = rest.split_whitespace().collect();
+            if f.len() < 9 {
+                return None;
+            }
+            Some(LinkCounters {
+                name: name.to_string(),
+                rx_bytes: f[0].parse().unwrap_or(0),
+                tx_bytes: f[8].parse().unwrap_or(0),
+            })
+        })
+        .collect()
+}
+
+/// Per-interface rates, matched by name for the same reason the disks are: an
+/// interface appearing or going away shifts every later line.
+pub fn link_rates(now: &[LinkCounters], prev: &[LinkCounters], secs: f64) -> Vec<LinkRate> {
+    if secs <= 0.0 {
+        return Vec::new();
+    }
+    const BYTE_MB: f64 = 1.0 / (1024.0 * 1024.0);
+    now.iter()
+        .filter_map(|n| {
+            let p = prev.iter().find(|p| p.name == n.name)?;
+            Some(LinkRate {
+                name: n.name.clone(),
+                rx_mbs: n.rx_bytes.saturating_sub(p.rx_bytes) as f64 * BYTE_MB / secs,
+                tx_mbs: n.tx_bytes.saturating_sub(p.tx_bytes) as f64 * BYTE_MB / secs,
+            })
+        })
+        .collect()
+}
+
 /// The memory-pressure meter the plan asks for, backed by real PSI.
 ///
 /// `/proc/pressure/memory` is the kernel telling you how much time tasks spent
@@ -554,13 +634,15 @@ fn parse_diskstats(text: &str, keep: &dyn Fn(&str) -> bool) -> (u64, u64) {
 ///
 /// Loopback is excluded: traffic a machine sends to itself is not network use, and
 /// including it makes any local IPC look like bandwidth.
-fn parse_netdev(text: &str) -> (u64, u64) {
+fn parse_netdev(text: &str, keep: &dyn Fn(&str) -> bool) -> (u64, u64) {
     let mut rx = 0u64;
     let mut tx = 0u64;
     for line in text.lines() {
         let Some((name, rest)) = line.split_once(':') else { continue };
         let name = name.trim();
-        if name.is_empty() || name == "lo" {
+        // The same predicate the breakdown uses, so the two can never disagree
+        // about which interfaces this machine has.
+        if name.is_empty() || !keep(name) {
             continue;
         }
         let f: Vec<&str> = rest.split_whitespace().collect();
@@ -632,6 +714,7 @@ impl SystemMonitor {
                 cores: Vec::new(),
                 load: now_counters.load,
                 devices: Vec::new(),
+                links: Vec::new(),
                 disk_read_mbs: 0.0,
                 disk_write_mbs: 0.0,
                 net_rx_mbs: 0.0,
@@ -673,6 +756,7 @@ impl SystemMonitor {
             cores: core_percentages(&now_counters.cores, &prev.cores),
             load: now_counters.load,
             devices: device_rates(&now_counters.devices, &prev.devices, secs),
+            links: link_rates(&now_counters.links, &prev.links, secs),
         }
     }
 }
@@ -711,6 +795,12 @@ mod tests {
         for d in whole_disks {
             std::fs::create_dir_all(dir.join("sys/block").join(d)).unwrap();
         }
+        // `eth0` is the fixture's NIC, so it needs the `device` link a real one
+        // has - the same way each whole disk needs its `/sys/block` entry. Added
+        // when the interface rule landed: without it every fixture's network
+        // counters read zero, which looked like a broken rate rather than a
+        // fixture that had not kept up.
+        std::fs::create_dir_all(dir.join("sys/class/net/eth0/device")).unwrap();
         SysProbe::with_roots(dir.join("proc"), dir.join("sys"))
     }
 
@@ -738,9 +828,50 @@ mod tests {
     }
 
     #[test]
-    fn loopback_is_not_network_traffic() {
-        let (rx, tx) = parse_netdev(NETDEV);
-        assert_eq!((rx, tx), (1048576, 524288), "lo's 5000 bytes must not appear");
+    fn only_real_interfaces_count_as_network_traffic() {
+        // `eth0` is the hardware; `lo`, a bridge and a veth are not. The bridge
+        // and veth carry packets the NIC already counted, so summing them
+        // multiplies a container's download into the graph several times over.
+        let text = concat!(
+            "    lo: 5000 10 0 0 0 0 0 0 5000 10 0 0 0 0 0 0\n",
+            "  eth0: 1048576 100 0 0 0 0 0 0 524288 50 0 0 0 0 0 0\n",
+            "docker0: 900000 90 0 0 0 0 0 0 400000 40 0 0 0 0 0 0\n",
+            "veth42: 900000 90 0 0 0 0 0 0 400000 40 0 0 0 0 0 0\n",
+        );
+        let (rx, tx) = parse_netdev(text, &|n| n == "eth0");
+        assert_eq!((rx, tx), (1048576, 524288), "the NIC's bytes, once");
+    }
+
+    #[test]
+    fn a_virtual_interface_is_not_real_hardware() {
+        let dir = tmp("links");
+        let probe = fixture(&dir, &["sda"]);
+        // `/sys/class/net/<name>/device` exists only for a physical NIC.
+        std::fs::create_dir_all(dir.join("sys/class/net/eth0/device")).unwrap();
+        std::fs::create_dir_all(dir.join("sys/class/net/docker0")).unwrap();
+        std::fs::write(
+            dir.join("proc/net/dev"),
+            "  eth0: 100 1 0 0 0 0 0 0 200 1 0 0 0 0 0 0\n             docker0: 999 1 0 0 0 0 0 0 999 1 0 0 0 0 0 0\n",
+        )
+        .unwrap();
+        let c = probe.read();
+        assert_eq!(c.links.len(), 1);
+        assert_eq!(c.links[0].name, "eth0");
+        assert_eq!(c.net_rx_bytes, 100, "and the total agrees with the breakdown");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn interface_rates_are_matched_by_name() {
+        let prev = vec![LinkCounters { name: "eth0".into(), rx_bytes: 0, tx_bytes: 0 }];
+        let now = vec![
+            LinkCounters { name: "wlan0".into(), rx_bytes: 9_999_999, tx_bytes: 0 },
+            LinkCounters { name: "eth0".into(), rx_bytes: 1_048_576, tx_bytes: 0 },
+        ];
+        let r = link_rates(&now, &prev, 1.0);
+        assert_eq!(r.len(), 1, "the newcomer has no interval yet");
+        assert_eq!(r[0].name, "eth0");
+        assert_eq!(r[0].rx_mbs, 1.0);
     }
 
     #[test]

@@ -101,10 +101,17 @@
           .join("  ");
         return `${total} - ${per}`;
       }
-      case "network":
-        return s.ratesReady
-          ? $t("tm.perf.net.detail", { down: n(s.netRxMbs, 1), up: n(s.netTxMbs, 1) })
-          : $t("tm.perf.waiting");
+      case "network": {
+        if (!s.ratesReady) return $t("tm.perf.waiting");
+        const total = $t("tm.perf.net.detail", { down: n(s.netRxMbs, 1), up: n(s.netTxMbs, 1) });
+        // Same rule as the disks: only worth breaking out above one interface,
+        // since on a single-NIC machine it would repeat the total back.
+        if (s.links.length < 2) return total;
+        const per = s.links
+          .map((l) => $t("tm.perf.net.link", { name: l.name, down: n(l.rxMbs, 1), up: n(l.txMbs, 1) }))
+          .join("  ");
+        return `${total} - ${per}`;
+      }
     }
   }
 </script>

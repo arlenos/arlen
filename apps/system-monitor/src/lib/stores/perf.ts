@@ -66,6 +66,10 @@ export type SystemTick = {
   /// One entry per whole disk. Empty on the first tick, and empty for a device
   /// that was not present in the previous sample.
   devices: { name: string; readMbs: number; writeMbs: number }[];
+  /// One entry per PHYSICAL interface. Bridges, `docker0` and every `veth` are
+  /// excluded: they carry packets the NIC already counted, so including them
+  /// multiplies a container's download into the figure several times.
+  links: { name: string; rxMbs: number; txMbs: number }[];
 };
 
 /// One core's share of its own last interval, in percent.
