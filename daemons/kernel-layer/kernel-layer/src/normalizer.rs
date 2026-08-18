@@ -192,6 +192,11 @@ fn handle_process_exec(
         ppid: 0,
         comm,
         exit_code: 0,
+        // The executable paths, which is what promotion resolves an app FROM. No
+        // argument vector: argv carries passwords, tokens and paths, and the
+        // executable identity is the whole payload (provenance-halo.md §7).
+        exe_path: filename.clone(),
+        parent_exe_path: parent_exe(event.pid),
     };
     encode_envelope("process.started", event.pid, event.uid, event.timestamp_ns, session_id, payload.encode_to_vec())
 }
@@ -371,6 +376,39 @@ impl Tally {
 /// How often the tallies are printed. Long enough not to be noise in a journal,
 /// short enough that a 90-second verify boot gets at least one.
 const TALLY_INTERVAL: Duration = Duration::from_secs(30);
+
+
+/// The parent pid out of a `/proc/<pid>/stat` line.
+///
+/// Parsed from the LAST `)` rather than by splitting on whitespace, because
+/// field 2 is the executable's `comm` and it is not sanitised: a process named
+/// `foo bar) 1 2 3` shifts every later field, and `stat` is the one file in
+/// `/proc` where that is a documented hazard rather than a theoretical one. After
+/// the final `)` the fields are state, ppid, ... so the parent is the second.
+pub(crate) fn ppid_from_stat(stat: &str) -> Option<u32> {
+    let tail = &stat[stat.rfind(')')? + 1..];
+    tail.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// The parent's executable, or None when it cannot be read.
+///
+/// None is the answer to every failure here - the process exited before we
+/// looked, `/proc` is not readable, the link is gone - and they all mean the same
+/// downstream: an exec that does not resolve to two apps is not recorded
+/// (provenance-halo.md §7). The race is real for a short-lived parent and it
+/// resolves in the safe direction, so it is left as a read rather than made into
+/// something the kernel probe has to carry.
+fn parent_exe(pid: u32) -> String {
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+        return String::new();
+    };
+    let Some(ppid) = ppid_from_stat(&stat) else {
+        return String::new();
+    };
+    std::fs::read_link(format!("/proc/{ppid}/exe"))
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
 
 fn extract_string(buf: &[u8]) -> Option<String> {
     let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
