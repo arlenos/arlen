@@ -18,7 +18,9 @@
 set -eu
 
 if [ "${ARLEN_VERIFY_IMAGE:-0}" != "1" ]; then
-    echo ">> not a verify image; no probes staged"
+    # Same reason as the kernel layer's line: the variable is set from the flag by
+    # `build-image.sh`, and setting it on the host does not reach here.
+    echo ">> not a verify image; no probes staged (build with: dev/mkosi/build-image.sh --verify)"
     exit 0
 fi
 
