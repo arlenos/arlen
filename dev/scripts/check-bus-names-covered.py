@@ -126,10 +126,14 @@ CARRIED = {
         "entry waits for the subsystem to be finished, not for a gate."
     ),
     "org.arlen.Connections1": (
-        "the ai-proxy carries a full client proxy for the Connections egress-delivery "
-        "surface (`connections_client.rs`, default_service set), and the connections "
-        "daemon does not ship. Same adjudication; the cost here is that the proxy's "
-        "delivery path cannot complete on the image."
+        "DECIDED 13 Aug, the same sitting as Accounts1 above: the ai-proxy carries a "
+        "full client proxy for the Connections egress-delivery surface "
+        "(`connections_client.rs`, default_service set), and the connections daemon "
+        "does not ship. The cost here is that the proxy's delivery path cannot "
+        "complete on the image. Dated explicitly rather than inheriting 'same "
+        "adjudication' from its neighbour: an exception whose date is a pointer at "
+        "another entry stops having one the moment that entry is edited, and the "
+        "rule these are kept under is that each names its own."
     ),
 }
 
