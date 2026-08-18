@@ -10,6 +10,16 @@
 //! restore). A failed move drops the orphaned sidecar, so a failure leaves no
 //! partial state. Every candidate's canonical paths are validated before its move,
 //! so a returned [`TrashSlot`] always yields a constructible inverse.
+//!
+//! HOME trash only, and that is a real limit rather than a naming choice.
+//! The move is a rename, so an entity on another filesystem - a USB stick, a
+//! second disk, anything under /tmp - cannot go into `$HOME`'s trash at all;
+//! the kernel answers EXDEV. The spec's answer is a `.Trash-$uid` at the top of
+//! THAT filesystem, with its own sticky-bit rules, and that is not implemented
+//! here. Until it is, [`TrashError::CrossDevice`] names the case, so that every
+//! caller (the viewer, the file manager, the executor's `fs.trash`, the
+//! trash-first `rm`) can say which thing went wrong instead of showing a kernel
+//! string.
 
 use arlen_ai_undo_core::effect_model::CanonicalPath;
 use std::ffi::CString;
@@ -23,7 +33,10 @@ pub enum RenameError {
     /// The kernel or filesystem does not support `RENAME_NOREPLACE`. Refuse the
     /// move rather than fall back to a clobbering rename.
     Unsupported,
-    /// Any other rename failure (`EXDEV`, permissions, a NUL in the path, ...).
+    /// The source is on a different filesystem from the home trash (`EXDEV`), so
+    /// a rename cannot move it there at all.
+    CrossDevice,
+    /// Any other rename failure (permissions, a NUL in the path, ...).
     Other(String),
 }
 
@@ -56,6 +69,14 @@ pub fn rename_noreplace(from: &str, to: &str) -> Result<(), RenameError> {
         Some(libc::EEXIST) => Err(RenameError::DestinationExists),
         // The flag or the syscall is unavailable (old kernel / exotic fs).
         Some(libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP) => Err(RenameError::Unsupported),
+        // Named rather than folded into `Other`, because it is the one failure
+        // here that is about WHERE the file is rather than about a fault: a
+        // picture on a USB stick or under /tmp is on another filesystem, and a
+        // rename into the home trash cannot cross it. The caller can say that in
+        // words; it could not say anything useful about `Io("Invalid
+        // cross-device link")`, which is what a person deleting a photo used to
+        // be shown.
+        Some(libc::EXDEV) => Err(RenameError::CrossDevice),
         _ => Err(RenameError::Other(err.to_string())),
     }
 }
@@ -99,6 +120,12 @@ pub enum TrashError {
     /// A resolved trash path was not canonical-absolute (fail-closed; the inverse
     /// relies on canonical paths).
     NonCanonical,
+    /// The entity is not on the same filesystem as the home trash, so this
+    /// primitive cannot take it. Implementing the spec's per-device
+    /// `.Trash-$uid` is the fix and is not in this crate's scope today - see the
+    /// module doc - so the caller is told which case it is instead of being
+    /// handed a kernel string.
+    CrossDevice,
     /// Any other IO failure.
     Io(String),
 }
@@ -172,6 +199,10 @@ pub fn trash_into(
             Err(RenameError::Unsupported) => {
                 let _ = std::fs::remove_file(&info_path);
                 return Err(TrashError::Unsupported);
+            }
+            Err(RenameError::CrossDevice) => {
+                let _ = std::fs::remove_file(&info_path);
+                return Err(TrashError::CrossDevice);
             }
             Err(RenameError::Other(m)) => {
                 let _ = std::fs::remove_file(&info_path);

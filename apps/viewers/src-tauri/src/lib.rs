@@ -300,8 +300,24 @@ fn trash_file(path: String) -> Result<TrashedDto, String> {
         .and_then(|n| n.to_str())
         .ok_or_else(|| "the file has no readable name".to_string())?;
 
-    let slot = arlen_freedesktop_trash::trash_into(&files, &info, name, &path)
-        .map_err(|e| format!("could not move the file to the trash: {e:?}"))?;
+    // A sentence per case, not the error's Debug. Deleting a picture that lives on
+    // a USB stick used to report `Io("Invalid cross-device link")` to somebody
+    // looking at a photo - true, and useless. The cross-device case is the one
+    // that actually happens to people, and it is now named rather than folded
+    // into a kernel string.
+    let slot = arlen_freedesktop_trash::trash_into(&files, &info, name, &path).map_err(|e| {
+        use arlen_freedesktop_trash::TrashError as T;
+        match e {
+            T::CrossDevice => "this file is not on the same drive as your trash, \
+                               so it cannot be moved there"
+                .to_string(),
+            T::NotFound => "the file is no longer there".to_string(),
+            T::Unsupported => "this drive cannot move a file safely enough to undo it".to_string(),
+            T::NoSlot => "the trash already holds too many files by that name".to_string(),
+            T::NonCanonical => "the trash path could not be resolved".to_string(),
+            T::Io(m) => format!("the move failed: {m}"),
+        }
+    })?;
     let (trashed, trash_info) = slot.into_parts();
     Ok(TrashedDto {
         trashed: trashed.as_str().to_string(),
