@@ -67,6 +67,50 @@ async fn the_store_confirms_a_file_that_was_promoted_and_linked() {
     assert!(out.contains("GRAPH OK"), "{out}");
 }
 
+/// The sensor question is the one that says the machine-wide eBPF layer reaches
+/// the graph and not merely the event store. It is asked in Cypher, so this test
+/// is also what settles that the predicate RUNS: `ask` folds any query error into
+/// "the table is not in this store", so a mistyped function would report a missing
+/// table on a store that has one, and the line would read as an honest no.
+#[tokio::test]
+async fn the_store_reports_an_app_node_minted_by_the_kernel_sensor() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with(
+        dir.path(),
+        &[
+            "CREATE (:App {id: 'ebpf:cgroup:4242', name: 'ebpf:cgroup:4242'})".to_string(),
+        ],
+    )
+    .await;
+    let (_, out) = verdict(&store);
+    assert!(
+        out.contains("GRAPH sensor: yes"),
+        "an App node minted by the sensor is seen: {out}"
+    );
+    assert!(
+        !out.contains("not measured"),
+        "the predicate ran rather than erroring into the not-measured branch: {out}"
+    );
+}
+
+/// The other half, and the one that matters more: a store carrying only desktop
+/// nodes must say no. Without this the line above could be printed by a predicate
+/// that matches everything.
+#[tokio::test]
+async fn a_store_with_only_desktop_apps_reports_no_sensor() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with(
+        dir.path(),
+        &["CREATE (:App {id: 'org.arlen.Files', name: 'Files'})".to_string()],
+    )
+    .await;
+    let (_, out) = verdict(&store);
+    assert!(
+        out.contains("GRAPH sensor: no"),
+        "a desktop-only store does not pass for a sensor-carrying one: {out}"
+    );
+}
+
 #[tokio::test]
 async fn a_promoted_file_with_no_edge_is_refused() {
     // The self-report case: the agent would have said it wrote. The store says
