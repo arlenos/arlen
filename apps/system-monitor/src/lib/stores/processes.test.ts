@@ -15,8 +15,12 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
+// Say there IS a runtime. The store tells a mock (no backend at all - keep the
+// optimistic fixture) apart from a real refusal by this flag, so a test about
+// what happens when the backend REFUSES has to be on the runtime side of it.
+vi.mock("$lib/tauri", () => ({ tauriAvailable: true }));
 
-const { processes, unavailable, mocked, load, pidsOf } = await import("./processes");
+const { processes, unavailable, mocked, load, pidsOf, pauseRow, limitRow } = await import("./processes");
 const { get } = await import("svelte/store");
 
 const ONE = [
@@ -107,5 +111,52 @@ describe("pidsOf", () => {
       netKBs: 0,
     };
     expect(pidsOf(lone)).toEqual([7]);
+  });
+});
+
+describe("row levers", () => {
+  const row = {
+    id: 100,
+    name: "chrome",
+    group: "app" as const,
+    status: "running" as const,
+    cpu: 0,
+    memMB: 0,
+    diskKBs: 0,
+    netKBs: 0,
+    children: [
+      { id: 101, name: "chrome", group: "app" as const, status: "running" as const, cpu: 0, memMB: 0, diskKBs: 0, netKBs: 0 },
+      { id: 102, name: "chrome", group: "app" as const, status: "running" as const, cpu: 0, memMB: 0, diskKBs: 0, netKBs: 0 },
+    ],
+  };
+
+  /// Pause on an app row must reach every member. Freezing only the eldest left
+  /// the app running under a row that said "suspended".
+  it("pause reaches every process the row stands for", async () => {
+    invoke.mockResolvedValue(undefined);
+    processes.set([row]);
+    await pauseRow(row);
+    expect(invoke.mock.calls.map((c) => c[1])).toEqual([
+      { id: 100, paused: true },
+      { id: 101, paused: true },
+      { id: 102, paused: true },
+    ]);
+    expect(get(processes)[0].paused).toBe(true);
+  });
+
+  /// A group that is half-frozen is not paused, so the label comes back off.
+  it("a refused member takes the flag back off the row", async () => {
+    invoke.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("EPERM"));
+    processes.set([row]);
+    await pauseRow(row);
+    expect(get(processes)[0].paused).toBe(false);
+  });
+
+  it("limit reaches every member too", async () => {
+    invoke.mockResolvedValue(undefined);
+    processes.set([row]);
+    await limitRow(row);
+    expect(invoke.mock.calls).toHaveLength(3);
+    expect(get(processes)[0].limited).toBe(true);
   });
 });

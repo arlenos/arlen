@@ -248,6 +248,68 @@ async function setFlagChecked(
   }
 }
 
+/// Apply a lever to every process a row stands for.
+///
+/// The same hole `stopRow` closes, and worse in effect. Stop at least ended
+/// something a person could see go; `pause(row.id)` froze ONE of fifteen chrome
+/// processes and set the row to "suspended", so the app carried on running under
+/// a label saying it was frozen. The plan calls Pause "freezes the app group
+/// atomically" and it is the lever meant to be reached for FIRST, since it is
+/// the reversible one.
+///
+/// The flag goes on the row optimistically and comes back off if any member
+/// refused - a group that is half-frozen is not paused, and saying so is the
+/// point. The message names how many took it.
+async function rowLever(
+  row: Process,
+  patch: Partial<Process>,
+  revert: Partial<Process>,
+  cmd: string,
+  argsFor: (id: number) => Record<string, unknown>,
+  failure: string,
+): Promise<void> {
+  const ids = pidsOf(row);
+  setFlag(row.id, patch);
+  const failures: string[] = [];
+  for (const id of ids) {
+    try {
+      await invoke(cmd, argsFor(id));
+    } catch (e) {
+      failures.push(String(e));
+    }
+  }
+  if (failures.length && tauriAvailable) {
+    setFlag(row.id, revert);
+    lastError.set(
+      `${failure} (${ids.length - failures.length} of ${ids.length}): ${failures[0]}`,
+    );
+  }
+}
+
+/// Freeze every process the row stands for. Live: `freeze_process`.
+export async function pauseRow(row: Process): Promise<void> {
+  await rowLever(row, { paused: true }, { paused: false }, "freeze_process",
+    (id) => ({ id, paused: true }), "Could not pause that app");
+}
+
+/// Thaw every process the row stands for.
+export async function resumeRow(row: Process): Promise<void> {
+  await rowLever(row, { paused: false }, { paused: true }, "freeze_process",
+    (id) => ({ id, paused: false }), "Could not resume that app");
+}
+
+/// Throttle every process the row stands for.
+export async function limitRow(row: Process): Promise<void> {
+  await rowLever(row, { limited: true }, { limited: false }, "limit_process",
+    (id) => ({ id, limited: true }), "Could not limit that app");
+}
+
+/// Remove the throttle from every process the row stands for.
+export async function unlimitRow(row: Process): Promise<void> {
+  await rowLever(row, { limited: false }, { limited: true }, "limit_process",
+    (id) => ({ id, limited: false }), "Could not unlimit that app");
+}
+
 /// Freeze a process (cgroup.freeze) - the non-destructive pause. Live: `freeze_process`.
 export async function pause(id: number): Promise<void> {
   await setFlagChecked(

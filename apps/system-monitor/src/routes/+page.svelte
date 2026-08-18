@@ -7,7 +7,7 @@
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
   import DetailPane from "$lib/components/tm/DetailPane.svelte";
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
-  import { processes, mocked, unavailable, lastError, load, startProcessPolling, stopProcessPolling, stop, stopRow, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
+  import { processes, mocked, unavailable, lastError, load, startProcessPolling, stopProcessPolling, stop, stopRow, pause, resume, limit, unlimit, pauseRow, resumeRow, limitRow, unlimitRow, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers } from "lucide-svelte";
@@ -24,6 +24,20 @@
   let flatten = $state(false);
   let selected = $state<Process | null>(null);
   let menu = $state<{ proc: Process; x: number; y: number } | null>(null);
+
+  /// A lever pressed on a row applies to the whole row.
+  ///
+  /// The menu hands back a pid because that is what a row carries; an app row's
+  /// pid is only its eldest member, so acting on it alone leaves the rest of the
+  /// app running under a label that says otherwise.
+  function byRow(
+    id: number,
+    onRow: (p: Process) => Promise<void>,
+    onPid: (id: number) => Promise<void>,
+  ): Promise<void> {
+    const row = $processes.find((p) => p.id === id);
+    return row ? onRow(row) : onPid(id);
+  }
 
   onMount(load);
 
@@ -182,10 +196,10 @@
       if (selected?.id === id) selected = null;
     }}
     onDetails={(p) => (selected = p)}
-    onPause={pause}
-    onResume={resume}
-    onLimit={limit}
-    onUnlimit={unlimit}
+    onPause={(id) => byRow(id, pauseRow, pause)}
+    onResume={(id) => byRow(id, resumeRow, resume)}
+    onLimit={(id) => byRow(id, limitRow, limit)}
+    onUnlimit={(id) => byRow(id, unlimitRow, unlimit)}
     onClose={() => {
       const pid = menu?.proc.id;
       menu = null;
