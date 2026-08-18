@@ -382,21 +382,6 @@ async fn promote_file_opened(
         file_payload.path.clone()
     };
 
-    // Prefer the app_id from the payload; fall back to source:pid.
-    //
-    // No warning here, deliberately: unlike the two above, this substitutes
-    // MEASURED values - the event's own source and pid - rather than a placeholder,
-    // so the result still names something real. Warning on it would add noise to
-    // the ordinary case and teach people to scroll past the two that matter.
-    let app_id = if file_payload.app_id.is_empty() {
-        format!("{source}:{pid}")
-    } else {
-        file_payload.app_id.clone()
-    };
-
-    let path_esc = escape_cypher(&path);
-    let app_id_esc = escape_cypher(&app_id);
-    let source_esc = escape_cypher(source);
     // The cgroup v2 id of the opening task (0 when the open was not eBPF-sourced, so
     // carries no attribution). Kernel-sourced and a bare integer, so it is
     // interpolated unquoted (Kuzu stores INT64). A File node is path-keyed and opens
@@ -404,6 +389,36 @@ async fn promote_file_opened(
     // history with its cgroup lives in the SQLite event log, which the TOUCHED join
     // reads from, not this merged node.
     let cgroup_id = file_payload.cgroup_id;
+
+    // Prefer the app_id from the payload. Failing that, the CGROUP, and only then
+    // the pid.
+    //
+    // The pid alone is not an identity over time. Linux hands pids back out, so
+    // `ebpf:1234` names whatever holds 1234 at the moment of the event, and the
+    // MERGE below is happy to file this week's process and last week's under the
+    // same App node - every file either touched then hanging off one node, which
+    // is the same manufactured relationship the window-focus path was fixed for
+    // in `8dbf2e074`, arrived at from a different direction. It stayed harmless
+    // only because the kernel sensor was on no image; that changed today, and it
+    // is the sensor that produces the file events with no app id in them, so this
+    // was about to become the ordinary case rather than the rare one.
+    //
+    // A cgroup v2 id is allocated by the kernel from a counter and is not handed
+    // out again within a boot, so it separates what a pid conflates. It is also
+    // the better GROUPING: under systemd an app's processes share its scope, so a
+    // browser and its helpers land on one node, which is what an App node is for.
+    // Neither is invented - both are measured off the event - so neither warns.
+    let app_id = if !file_payload.app_id.is_empty() {
+        file_payload.app_id.clone()
+    } else if cgroup_id != 0 {
+        format!("{source}:cgroup:{cgroup_id}")
+    } else {
+        format!("{source}:{pid}")
+    };
+
+    let path_esc = escape_cypher(&path);
+    let app_id_esc = escape_cypher(&app_id);
+    let source_esc = escape_cypher(source);
 
     graph
         .write(format!(
@@ -1436,6 +1451,78 @@ mod shell_event_tests {
             .and_then(|r| r.first())
             .map(|v| v.as_i64())
             .unwrap_or(0)
+    }
+
+    #[tokio::test]
+    async fn two_processes_reusing_a_pid_do_not_become_one_app() {
+        // The defect this guards, from the kernel sensor's own feed. Its file
+        // events carry no app id, so the App node is keyed off whatever the
+        // fallback picks - and Linux hands pids back out, so keying on the pid
+        // files two unrelated programs under one node and says every file both
+        // touched belongs to the same application.
+        //
+        // Same pid, different cgroups: two apps, not one.
+        let (graph, _tmp) = setup().await;
+        for (i, (path, cgroup)) in [("/a/one.rs", 111u64), ("/b/two.rs", 222u64)]
+            .into_iter()
+            .enumerate()
+        {
+            let payload = FileOpenedPayload {
+                path: path.into(),
+                app_id: String::new(),
+                flags: 0,
+                cgroup_id: cgroup,
+            };
+            let mut buf = Vec::new();
+            payload.encode(&mut buf).unwrap();
+            promote_file_opened(&graph, &format!("ev{i}"), &100, "ebpf", &1234, "sess", &buf)
+                .await
+                .unwrap();
+        }
+
+        let rs = graph
+            .query_rows("MATCH (a:App) RETURN a.id AS id ORDER BY a.id".into())
+            .await
+            .unwrap();
+        let ids: Vec<String> = rs
+            .rows
+            .iter()
+            .filter_map(|r| r.first())
+            .map(|v| v.as_str().to_string())
+            .collect();
+        assert_eq!(ids, vec!["ebpf:cgroup:111", "ebpf:cgroup:222"], "{ids:?}");
+    }
+
+    #[tokio::test]
+    async fn an_open_with_no_cgroup_still_falls_back_to_the_pid() {
+        // Not every producer is the kernel. An event with no attribution at all
+        // keeps the old key rather than losing its subject entirely - `cgroup 0`
+        // is the proto's own "no attribution", so keying on it would pool every
+        // unattributed open across every producer into one node, which is the
+        // thing being fixed.
+        let (graph, _tmp) = setup().await;
+        let payload = FileOpenedPayload {
+            path: "/c/three.rs".into(),
+            app_id: String::new(),
+            flags: 0,
+            cgroup_id: 0,
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_file_opened(&graph, "ev9", &100, "shell", &77, "sess", &buf)
+            .await
+            .unwrap();
+        let rs = graph
+            .query_rows("MATCH (a:App) RETURN a.id AS id".into())
+            .await
+            .unwrap();
+        let ids: Vec<String> = rs
+            .rows
+            .iter()
+            .filter_map(|r| r.first())
+            .map(|v| v.as_str().to_string())
+            .collect();
+        assert_eq!(ids, vec!["shell:77"], "{ids:?}");
     }
 
     #[tokio::test]
