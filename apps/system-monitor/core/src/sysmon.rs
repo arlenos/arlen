@@ -33,7 +33,11 @@ use serde::Serialize;
 
 /// A raw counter snapshot: the numbers as the kernel reports them, before any
 /// rate is derived.
-#[derive(Debug, Clone, Copy, PartialEq)]
+///
+/// Clone rather than Copy since the per-core vector arrived: the alternative was
+/// keeping the cores in a second field of the sampler, which would make one read
+/// of `/proc/stat` the source of two states that could disagree.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Counters {
     /// Jiffies spent doing anything other than idling.
     pub cpu_busy: u64,
@@ -49,6 +53,8 @@ pub struct Counters {
     /// Memory pressure, or `None` where the kernel exposes no PSI file. Carried
     /// as-read rather than as a number, so the absence survives to the surface.
     pub mem_pressure: Option<MemoryPressure>,
+    /// Per-logical-core jiffies, in `cpuN` order, for the grid.
+    pub cores: Vec<CoreTimes>,
     /// Sectors read across the physical block devices.
     pub disk_read_sectors: u64,
     /// Sectors written across the physical block devices.
@@ -62,7 +68,7 @@ pub struct Counters {
 /// One tick of the Performance tab: levels and rates, as numbers. Formatting and
 /// wording belong to the frontend, which has the catalogue; a backend that
 /// returned `"8 cores, 16 threads"` would be shipping untranslatable English.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemTick {
     /// Share of total CPU capacity used since the previous sample, 0 to 100.
@@ -91,6 +97,9 @@ pub struct SystemTick {
     /// "not measured" and must render as such: a green meter over an absent
     /// reading is the surface inventing a verdict.
     pub mem_pressure: Option<MemoryPressure>,
+    /// Per-core shares since the previous sample, in `cpuN` order. Empty on the
+    /// first tick, when there is nothing to difference against.
+    pub cores: Vec<CoreUsage>,
 }
 
 /// A `/proc` and `/sys` reader, rooted so tests can point it at a fixture.
@@ -123,6 +132,9 @@ impl SysProbe {
     pub fn read(&self) -> Counters {
         let stat = std::fs::read_to_string(self.proc_root.join("stat")).unwrap_or_default();
         let (cpu_busy, cpu_total) = parse_cpu(&stat).unwrap_or((0, 0));
+        // The same read, so the grid and the aggregate can never disagree about
+        // which instant they describe.
+        let cores = parse_cpu_cores(&stat);
         let meminfo = std::fs::read_to_string(self.proc_root.join("meminfo")).unwrap_or_default();
         let (mem_total_kb, mem_available_kb) = parse_meminfo(&meminfo);
         let diskstats =
@@ -148,6 +160,7 @@ impl SysProbe {
             net_rx_bytes,
             net_tx_bytes,
             mem_pressure,
+            cores,
         }
     }
 
@@ -184,6 +197,106 @@ fn parse_cpu(stat: &str) -> Option<(u64, u64)> {
     let total: u64 = v.iter().sum();
     let idle = v[3] + v[4];
     Some((total.saturating_sub(idle), total))
+}
+
+/// One logical CPU's jiffy counters, split the way htop splits them.
+///
+/// The plan asks for "the user/system/iowait color split (htop)" rather than one
+/// bar per core, and the reason is diagnostic: a core pinned at 100% user is a
+/// program working, a core at 100% system is the kernel thrashing on its behalf,
+/// and a core deep in iowait is not busy at all - it is waiting for a disk. One
+/// number cannot tell those apart and all three are the same height.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CoreTimes {
+    /// user + nice.
+    pub user: u64,
+    /// system + irq + softirq: time the kernel spent on this core.
+    pub system: u64,
+    /// iowait. NOT idle, and NOT busy either - see `busy()`.
+    pub iowait: u64,
+    /// idle.
+    pub idle: u64,
+}
+
+impl CoreTimes {
+    /// Everything the kernel accounted for on this core.
+    pub fn total(&self) -> u64 {
+        self.user + self.system + self.iowait + self.idle
+    }
+
+    /// The part that counts as busy.
+    ///
+    /// iowait is EXCLUDED, which is a judgement worth stating: Linux counts a
+    /// core as iowait when it is idle and some task on it is blocked on I/O, so
+    /// calling it busy would show a machine waiting on a slow disk as a machine
+    /// out of CPU - the opposite diagnosis. It is reported separately so the
+    /// colour can say "waiting" where a single bar would say "busy".
+    pub fn busy(&self) -> u64 {
+        self.user + self.system
+    }
+}
+
+/// Per-core counters from `/proc/stat`, in `cpuN` order.
+///
+/// The `cpuN` lines are `user nice system idle iowait irq softirq steal ...`.
+/// Anything shorter than the first five fields is skipped rather than
+/// zero-filled: a truncated line is a read that went wrong, and a core reported
+/// at 0% is indistinguishable from a core that is genuinely idle.
+pub fn parse_cpu_cores(stat: &str) -> Vec<CoreTimes> {
+    stat.lines()
+        .filter(|l| l.starts_with("cpu") && !l.starts_with("cpu "))
+        .filter_map(|l| {
+            let v: Vec<u64> = l.split_whitespace().skip(1).filter_map(|f| f.parse().ok()).collect();
+            if v.len() < 5 {
+                return None;
+            }
+            Some(CoreTimes {
+                user: v[0] + v[1],
+                system: v[2] + v.get(5).copied().unwrap_or(0) + v.get(6).copied().unwrap_or(0),
+                iowait: v[4],
+                idle: v[3],
+            })
+        })
+        .collect()
+}
+
+/// What each core did between two samples, as percentages of that core's own
+/// elapsed jiffies.
+///
+/// Per core rather than per machine: a single core pegged on an eight-core box
+/// is 12.5% of the machine and 100% of the thing that is stuck, and the grid
+/// exists to show the second number.
+///
+/// A core whose total did not advance reports zeros rather than dividing - that
+/// happens on the first sample and on a core the kernel offlined, and both are
+/// "nothing measured" rather than "nothing happening". Cores that appeared or
+/// vanished between samples are dropped, since there is no pair to difference.
+pub fn core_percentages(now: &[CoreTimes], prev: &[CoreTimes]) -> Vec<CoreUsage> {
+    now.iter()
+        .zip(prev.iter())
+        .map(|(n, p)| {
+            let span = n.total().saturating_sub(p.total());
+            if span == 0 {
+                return CoreUsage::default();
+            }
+            let pct = |a: u64, b: u64| a.saturating_sub(b) as f64 / span as f64 * 100.0;
+            CoreUsage {
+                user: pct(n.user, p.user),
+                system: pct(n.system, p.system),
+                iowait: pct(n.iowait, p.iowait),
+            }
+        })
+        .collect()
+}
+
+/// One core's share of its own last interval, in percent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+pub struct CoreUsage {
+    pub user: f64,
+    pub system: f64,
+    /// Waiting on I/O, which is not the same as busy. Carried separately so the
+    /// grid can colour it differently rather than adding it to the height.
+    pub iowait: f64,
 }
 
 /// The memory-pressure meter the plan asks for, backed by real PSI.
@@ -340,7 +453,9 @@ impl SystemMonitor {
     pub fn sample_at(&self, now: Instant) -> SystemTick {
         let now_counters = self.probe.read();
         let mut previous = self.previous.lock().unwrap_or_else(|e| e.into_inner());
-        let last = previous.replace((now_counters, now));
+        // Cloned rather than moved: `Counters` carries the per-core vector now,
+        // so the stored copy and the one this tick reads from are separate.
+        let last = previous.replace((now_counters.clone(), now));
         drop(previous);
 
         let mem_total_gb = kib_to_gib(now_counters.mem_total_kb);
@@ -359,6 +474,7 @@ impl SystemMonitor {
                 mem_used_gb: kib_to_gib(mem_used_kb),
                 mem_total_gb,
                 mem_pressure: now_counters.mem_pressure,
+                cores: Vec::new(),
                 disk_read_mbs: 0.0,
                 disk_write_mbs: 0.0,
                 net_rx_mbs: 0.0,
@@ -397,6 +513,7 @@ impl SystemMonitor {
             net_tx_mbs: rate(now_counters.net_tx_bytes, prev.net_tx_bytes, BYTE),
             rates_ready: true,
             mem_pressure: now_counters.mem_pressure,
+            cores: core_percentages(&now_counters.cores, &prev.cores),
         }
     }
 }
@@ -603,5 +720,79 @@ mod tests {
         std::fs::write(dir.join("proc/pressure/memory"), PRESSURE).unwrap();
         assert_eq!(probe.read().mem_pressure.unwrap().level, "ok");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- the per-core grid --------------------------------------------------
+
+    /// Real shape: `cpu ` aggregate first, then one line per logical core.
+    #[test]
+    fn the_aggregate_line_is_not_a_core() {
+        let cores = parse_cpu_cores(STAT);
+        assert_eq!(cores.len(), 2, "cpu0 and cpu1, not the `cpu ` total");
+    }
+
+    #[test]
+    fn a_core_line_splits_into_user_system_iowait_and_idle() {
+        // user nice system idle iowait irq softirq
+        let c = parse_cpu_cores("cpu0 10 5 20 100 7 1 2\n");
+        assert_eq!(c[0].user, 15, "user + nice");
+        assert_eq!(c[0].system, 23, "system + irq + softirq");
+        assert_eq!(c[0].iowait, 7);
+        assert_eq!(c[0].idle, 100);
+    }
+
+    /// The judgement worth pinning: a core waiting on a disk is NOT busy. Calling
+    /// it busy would diagnose a slow disk as a CPU shortage.
+    #[test]
+    fn iowait_does_not_count_as_busy() {
+        let c = CoreTimes { user: 10, system: 5, iowait: 80, idle: 5 };
+        assert_eq!(c.busy(), 15);
+        assert_eq!(c.total(), 100);
+    }
+
+    /// A truncated line is a read that went wrong, and a core at 0% reads exactly
+    /// like a core that is idle - so it is dropped rather than zero-filled.
+    #[test]
+    fn a_truncated_core_line_is_dropped_rather_than_reported_idle() {
+        assert!(parse_cpu_cores("cpu0 1 2\n").is_empty());
+        assert_eq!(parse_cpu_cores("cpu0 1 2\ncpu1 1 1 1 1 1\n").len(), 1);
+    }
+
+    /// Per core, not per machine: one pegged core on a two-core box is 100% of
+    /// itself, which is the number the grid exists to show.
+    #[test]
+    fn one_pegged_core_reads_full_while_its_neighbour_reads_idle() {
+        let prev = parse_cpu_cores("cpu0 0 0 0 0 0\ncpu1 0 0 0 0 0\n");
+        let now = parse_cpu_cores("cpu0 100 0 0 0 0\ncpu1 0 0 0 100 0\n");
+        let u = core_percentages(&now, &prev);
+        assert_eq!(u[0].user, 100.0);
+        assert_eq!(u[1].user, 0.0);
+    }
+
+    #[test]
+    fn the_three_shares_are_reported_separately() {
+        let prev = parse_cpu_cores("cpu0 0 0 0 0 0\n");
+        let now = parse_cpu_cores("cpu0 25 0 25 25 25\n");
+        let u = core_percentages(&now, &prev);
+        assert_eq!(u[0].user, 25.0);
+        assert_eq!(u[0].system, 25.0);
+        assert_eq!(u[0].iowait, 25.0);
+    }
+
+    /// The first sample, and an offlined core: nothing advanced, so nothing is
+    /// claimed. Zeros here mean "not measured" and must not divide.
+    #[test]
+    fn a_core_that_did_not_advance_reports_zero_rather_than_dividing() {
+        let same = parse_cpu_cores("cpu0 5 5 5 5 5\n");
+        let u = core_percentages(&same, &same);
+        assert_eq!(u[0], CoreUsage::default());
+    }
+
+    /// A core count that changed between samples has no pair to difference.
+    #[test]
+    fn cores_without_a_partner_in_the_previous_sample_are_dropped() {
+        let prev = parse_cpu_cores("cpu0 0 0 0 0 0\n");
+        let now = parse_cpu_cores("cpu0 10 0 0 0 0\ncpu1 10 0 0 0 0\n");
+        assert_eq!(core_percentages(&now, &prev).len(), 1);
     }
 }
