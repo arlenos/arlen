@@ -220,5 +220,29 @@ console.log("ci-system-deps:");
   rmSync(d, { recursive: true, force: true });
 }
 
+// The cache key had an EMPTY segment on its first real run - `apt-Linux--<hash>`,
+// because `ImageOS` is set on the runner process and not in the workflow's `env`
+// map, so the expression resolved to nothing. It cost only re-downloads rather
+// than a wrong install, which is exactly why it would have sat there: a key that
+// silently stops distinguishing what it names still looks like a key.
+{
+  const wf = readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8");
+  const keys = [...wf.matchAll(/^\s+key: (apt-.*)$/gm)].map((m) => m[1]);
+  check("every job caches packages under a key", keys.length === 3, `found ${keys.length}`);
+  // NB this one reads the source text, so it catches a literally empty segment
+  // and NOT the bug above, which was empty only at runtime. The check below is
+  // the one that would have caught it; this is here because both shapes exist.
+  check(
+    "no cache key has a literally empty segment",
+    keys.every((k) => !/--/.test(k)),
+    keys.join("\n       "),
+  );
+  check(
+    "the key varies with the runner image, not just the package list",
+    keys.every((k) => /runner-image/.test(k)),
+    keys.join("\n       "),
+  );
+}
+
 console.log(failures ? `\n${failures} case(s) failed` : "\nthe cache is used, the failures are still failures");
 process.exit(failures ? 1 : 0);

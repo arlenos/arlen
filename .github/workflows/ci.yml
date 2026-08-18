@@ -429,11 +429,20 @@ jobs:
       # the same mirror at the same moment. That contention is what made
       # `system deps` fail a different unrelated job on every run. The key is
       # the script, because the script holds the package list.
+      # `ImageOS` is set on the runner PROCESS, not in the workflow's `env` map,
+      # so `${{ env.ImageOS }}` in the key below resolved to nothing and the key
+      # read `apt-Linux--<hash>` on the first run that used it. Harmless in the
+      # sense that a stale entry only costs a re-download, but a key that does not
+      # vary with the image is a key that quietly stops matching what it names.
+      # Reading it in a step is the way to get it into an expression.
+      - name: runner image identity
+        id: runner-image
+        run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: cache system packages
         uses: actions/cache@v4
         with:
           path: ~/apt-archive-cache
-          key: apt-${{ runner.os }}-${{ env.ImageOS }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
+          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
       - name: system deps
         # A step ceiling, because THIS is the step that hangs - and the same
         # command succeeds beside it. All 118 rust jobs come from one matrix
@@ -535,11 +544,20 @@ jobs:
       # the same mirror at the same moment. That contention is what made
       # `system deps` fail a different unrelated job on every run. The key is
       # the script, because the script holds the package list.
+      # `ImageOS` is set on the runner PROCESS, not in the workflow's `env` map,
+      # so `${{ env.ImageOS }}` in the key below resolved to nothing and the key
+      # read `apt-Linux--<hash>` on the first run that used it. Harmless in the
+      # sense that a stale entry only costs a re-download, but a key that does not
+      # vary with the image is a key that quietly stops matching what it names.
+      # Reading it in a step is the way to get it into an expression.
+      - name: runner image identity
+        id: runner-image
+        run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: cache system packages
         uses: actions/cache@v4
         with:
           path: ~/apt-archive-cache
-          key: apt-${{ runner.os }}-${{ env.ImageOS }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
+          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
       - name: system deps
         # A step ceiling, because THIS is the step that hangs - and the same
         # command succeeds beside it. All 118 rust jobs come from one matrix
@@ -596,11 +614,20 @@ jobs:
       # the same mirror at the same moment. That contention is what made
       # `system deps` fail a different unrelated job on every run. The key is
       # the script, because the script holds the package list.
+      # `ImageOS` is set on the runner PROCESS, not in the workflow's `env` map,
+      # so `${{ env.ImageOS }}` in the key below resolved to nothing and the key
+      # read `apt-Linux--<hash>` on the first run that used it. Harmless in the
+      # sense that a stale entry only costs a re-download, but a key that does not
+      # vary with the image is a key that quietly stops matching what it names.
+      # Reading it in a step is the way to get it into an expression.
+      - name: runner image identity
+        id: runner-image
+        run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: cache system packages
         uses: actions/cache@v4
         with:
           path: ~/apt-archive-cache
-          key: apt-${{ runner.os }}-${{ env.ImageOS }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
+          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
       - name: system deps
         # A step ceiling, because THIS is the step that hangs - and the same
         # command succeeds beside it. All 118 rust jobs come from one matrix
