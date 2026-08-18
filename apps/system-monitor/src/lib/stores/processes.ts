@@ -181,6 +181,46 @@ export async function stop(id: number): Promise<void> {
   }
 }
 
+/// Every pid a row stands for: itself and, when it is an app row, its members.
+///
+/// The landing view became app-grouped on 18 August and this was the hole it
+/// opened. A "chrome" row is fifteen processes with the eldest pid on the row, so
+/// `stop(row.id)` ended ONE of them and left fourteen - the app still on screen,
+/// the row back on the next poll, and the person told it was stopped. The plan is
+/// explicit: "On an app group, Stop terminates the whole process tree."
+export function pidsOf(p: Process): number[] {
+  return [p.id, ...(p.children ?? []).map((c) => c.id)];
+}
+
+/// Stop everything a row stands for.
+///
+/// Each pid is stopped on its own rather than as one call, because a partial
+/// refusal is the normal case: a browser's helpers may go while a privileged
+/// child stays. Any refusal RELOADS rather than restoring the pre-click list -
+/// with a group, some are gone and some are not, and putting the old list back
+/// would claim the survivors are all still there.
+export async function stopRow(p: Process): Promise<void> {
+  const ids = pidsOf(p);
+  if (ids.length === 1) return stop(ids[0]);
+  const failures: string[] = [];
+  for (const id of ids) {
+    try {
+      await invoke("stop_process", { id });
+    } catch (e) {
+      failures.push(String(e));
+    }
+  }
+  if (failures.length && tauriAvailable) {
+    lastError.set(
+      `Stopped ${ids.length - failures.length} of ${ids.length}: ${failures[0]}`,
+    );
+  }
+  // Reload either way: the truth about which members survived is the backend's,
+  // and after a group action guessing it locally is exactly the false
+  // confirmation this surface must not give.
+  await load();
+}
+
 function setFlag(id: number, patch: Partial<Process>): void {
   processes.update((list) => list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
 }
