@@ -188,8 +188,15 @@ async fn main() {
         failures += ask_all(&client).await;
         // After the last round's snapshot, wait for the one answer that arrives
         // over time rather than declaring it absent at a fixed offset.
-        if round == ROUNDS && !await_ingestion(&client).await {
-            failures += 1;
+        //
+        // The result is NOT counted as a probe failure, deliberately. This tool
+        // reports and `probe_verdict` grades, and the verdict has a specific
+        // sentence for an empty ingestion - "the graph answered with rows, but
+        // nothing this run produced reached it" - which a raised failure count
+        // short-circuits into the generic "reported failures". Counting it here
+        // cost the reader the better message; the printed line is the report.
+        if round == ROUNDS {
+            await_ingestion(&client).await;
         }
     }
     failures += report_timeline();
