@@ -232,8 +232,11 @@ fn handle_file_written(
 
     let payload = proto::FileWrittenPayload {
         path,
-        app_id: format!("ebpf:{}", event.pid),
+        // Empty for the same reason as the open payload: the sensor sees a write,
+        // not an application. The cgroup below is the key that survives pid reuse.
+        app_id: String::new(),
         bytes: event.count,
+        cgroup_id: event.cgroup_id,
     };
     encode_envelope("file.written", event.pid, event.uid, event.timestamp_ns, session_id, payload.encode_to_vec())
 }

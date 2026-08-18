@@ -43,6 +43,7 @@ message FileWrittenPayload {
   string path   = 1;  // absolute path
   string app_id = 2;  // application identifier
   uint64 bytes  = 3;  // number of bytes written
+  uint64 cgroup_id = 4;  // cgroup v2 id of the writer; 0 when unknown
 }
 
 // Emitted when keyboard focus changes between Wayland surfaces.

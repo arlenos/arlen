@@ -59,6 +59,7 @@ mod tests {
             timestamp_ns: 3_000_000_000,
             fd,
             count,
+            cgroup_id: 0,
         }
     }
 
@@ -176,6 +177,7 @@ mod tests {
             path: "/home/tim/output.log".into(),
             app_id: "ebpf:999".into(),
             bytes: 4096,
+            cgroup_id: 4242,
         };
         let msg = encode_test("file.written", 999, 3_000_000, "sess", payload.encode_to_vec());
         let decoded = proto::Event::decode(&msg[4..]).unwrap();

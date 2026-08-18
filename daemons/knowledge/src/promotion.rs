@@ -596,10 +596,17 @@ async fn promote_file_written(
     } else {
         file_payload.path.clone()
     };
-    let app_id = if file_payload.app_id.is_empty() {
-        format!("{source}:{pid}")
-    } else {
+    // The same three-branch rule as the open path, and for the same reason: a pid
+    // is reused within a boot, a cgroup id is not, so two unrelated writers do not
+    // collapse into one App node. The kernel sensor sends no app_id (it sees a
+    // write, not an application) and does send a cgroup, so its events land on the
+    // middle branch; a producer that knows its own identity still wins.
+    let app_id = if !file_payload.app_id.is_empty() {
         file_payload.app_id.clone()
+    } else if file_payload.cgroup_id != 0 {
+        format!("{source}:cgroup:{}", file_payload.cgroup_id)
+    } else {
+        format!("{source}:{pid}")
     };
 
     let path_esc = escape_cypher(&path);
@@ -1453,6 +1460,43 @@ mod shell_event_tests {
             .unwrap_or(0)
     }
 
+    /// The write path's version of the case above, added 18 August when the
+    /// sensor's write probe started forwarding for the first time. Until then the
+    /// arm had no traffic and no cgroup field to key on, so two writers under one
+    /// recycled pid would have merged into a single App node the moment it did.
+    #[tokio::test]
+    async fn two_writers_reusing_a_pid_do_not_become_one_app() {
+        let (graph, _tmp) = setup().await;
+        for (i, (path, cgroup)) in [("/a/one.log", 333u64), ("/b/two.log", 444u64)]
+            .into_iter()
+            .enumerate()
+        {
+            let payload = FileWrittenPayload {
+                path: path.into(),
+                app_id: String::new(),
+                bytes: 10,
+                cgroup_id: cgroup,
+            };
+            let mut buf = Vec::new();
+            payload.encode(&mut buf).unwrap();
+            promote_file_written(&graph, &format!("wv{i}"), &200, "ebpf", &1234, &buf)
+                .await
+                .unwrap();
+        }
+
+        let rs = graph
+            .query_rows("MATCH (a:App) RETURN a.id AS id ORDER BY a.id".into())
+            .await
+            .unwrap();
+        let ids: Vec<String> = rs
+            .rows
+            .iter()
+            .filter_map(|r| r.first())
+            .map(|v| v.as_str().to_string())
+            .collect();
+        assert_eq!(ids, vec!["ebpf:cgroup:333", "ebpf:cgroup:444"], "{ids:?}");
+    }
+
     #[tokio::test]
     async fn two_processes_reusing_a_pid_do_not_become_one_app() {
         // The defect this guards, from the kernel sensor's own feed. Its file
@@ -1699,6 +1743,7 @@ mod shell_event_tests {
             path: "/p/foo.pdf".into(),
             app_id: "pandoc:9".into(),
             bytes: 10,
+            cgroup_id: 0,
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
@@ -1748,6 +1793,7 @@ mod shell_event_tests {
             path: "/p/foo.pdf".into(),
             app_id: "pandoc:9".into(),
             bytes: 10,
+            cgroup_id: 0,
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
@@ -1776,6 +1822,7 @@ mod shell_event_tests {
             path: "/proj/out.bin".into(),
             app_id: "build:7".into(),
             bytes: 4096,
+            cgroup_id: 0,
         };
         let mut buf = Vec::new();
         payload.encode(&mut buf).unwrap();
