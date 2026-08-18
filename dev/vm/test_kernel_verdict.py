@@ -103,6 +103,29 @@ def main() -> int:
         check("one sensor row among desktop rows passes", ok, True)
         check("and it counts them rather than saying 'ok'", "1 of 3" in msg, True)
 
+        # The case that made this line exist. The first real boot forwarded 50
+        # events and every one was `process.started` - the sensor was up and its
+        # FILE probe had produced nothing, which a bare count reports as a working
+        # sensor. The types have to be in the sentence.
+        typed = os.path.join(tmp, "typed.db")
+        conn = sqlite3.connect(typed)
+        conn.execute(
+            "CREATE TABLE events (id TEXT PRIMARY KEY, type TEXT NOT NULL, "
+            "timestamp INTEGER NOT NULL, source TEXT NOT NULL, pid INTEGER NOT NULL, "
+            "origin TEXT NOT NULL, payload BLOB)"
+        )
+        for i, kind in enumerate(["process.started"] * 3 + ["file.opened"]):
+            conn.execute(
+                "INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (f"t{i}", kind, 1, KERNEL_SOURCE, 1, "system:test", b""),
+            )
+        conn.commit()
+        conn.close()
+        ok, msg = kernel_verdict(typed)
+        check("a sensor-only store passes", ok, True)
+        check("it names the types it saw", "3x process.started" in msg, True)
+        check("and does not hide the smaller one", "1x file.opened" in msg, True)
+
     if FAILURES:
         print(f"\n{len(FAILURES)} case(s) did not behave: {', '.join(FAILURES)}")
         return 1

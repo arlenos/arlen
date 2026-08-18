@@ -115,10 +115,26 @@ def kernel_verdict(db_path: str) -> tuple[bool, str]:
             f"file picture on this boot came from the desktop alone."
         )
 
+    # WHICH types, not just how many. The first boot this ran against forwarded 50
+    # events and every one was `process.started`: the sensor had loaded and its
+    # file probe had produced nothing, and a bare count called that a working
+    # sensor. Naming the types puts the difference in the line rather than leaving
+    # it for whoever thinks to open the store afterwards.
+    try:
+        kinds = _query(
+            db_path,
+            "SELECT type, count(*) FROM events WHERE source = ? "
+            "GROUP BY type ORDER BY count(*) DESC",
+            (KERNEL_SOURCE,),
+        )
+    except sqlite3.Error:
+        kinds = []
+    breakdown = ", ".join(f"{n}x {t}" for t, n in kinds) if kinds else "types unreadable"
+
     return True, (
         f"{mine} of {total} event(s) came from the kernel sensor "
         f"(`source = {KERNEL_SOURCE!r}`, origin `{KERNEL_ORIGIN}`), so the BPF "
-        f"program loaded, attached and forwarded on this boot."
+        f"program loaded, attached and forwarded on this boot: {breakdown}."
     )
 
 
