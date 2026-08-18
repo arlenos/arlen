@@ -2,7 +2,32 @@
   /// Whether the access block reflects the machine. It does not yet: see the
   /// comment at its render site, and the matching flag in `ProcessTable`. Both
   /// flip together the day the permission profile drives this.
-  const accessMeasured = false;
+  /// What the selected process is holding, read from `/proc/<pid>/fd` on
+  /// demand. `undefined` until the first answer arrives; a field inside it
+  /// being undefined means the read was refused, which the pane says rather
+  /// than smoothing into an empty list.
+  let held = $state<HeldResources | undefined>(undefined);
+
+  $effect(() => {
+    const pid = process.id;
+    held = undefined;
+    // The pid is captured, so an answer for a row the user has already left is
+    // discarded instead of being painted under the new selection.
+    heldFor(pid).then((h) => {
+      if (process.id === pid) held = h;
+    });
+  });
+
+  /// The sensors are measured exactly when the fd table could be read. A process
+  /// belonging to another user leaves this false, and the pane keeps saying so.
+  ///
+  /// `!= null` and not `!== undefined`: serde writes a Rust `None` as JSON
+  /// `null`, so the strict check passed for a process whose fd table had been
+  /// REFUSED, and the pane went back to printing "Not using your camera,
+  /// microphone, or screen" about a process it had never read. That false
+  /// clearance is the defect this whole pane exists to remove, and I put it back
+  /// in for twenty minutes by trusting a type name over the wire.
+  const accessMeasured = $derived(held?.camera != null);
 
   import { t, locale } from "$lib/i18n/messages";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
@@ -10,7 +35,7 @@
   /// plus the Arlen-native ACCESS tab: what the process holds + the KG capability
   /// scopes it holds, revocable right here. The sovereign angle as per-process
   /// detail, not a landing.
-  import { detailFor, type ProcDetail } from "$lib/stores/detail";
+  import { detailFor, heldFor, type HeldResources, type ProcDetail } from "$lib/stores/detail";
   import type { Process } from "$lib/stores/processes";
   import { ScopeChip } from "@arlen/ui-kit/components/ui/scope-chip";
   import { X, Camera, Mic, Cog, Cpu } from "lucide-svelte";
@@ -85,7 +110,7 @@
 
   <div class="dp-body">
     {#if tab === "Access"}
-      <div class="acc-sensor" data-lit={detail.access.camera || detail.access.mic}>
+      <div class="acc-sensor" data-lit={held?.camera || held?.mic}>
         <!-- MEASURED, OR SAID TO BE UNMEASURED - never a reassurance nobody checked.
              `detail.access` comes from a hand-keyed table in `stores/detail.ts`
              matched on process name, which the file itself calls a stand-in. For
@@ -96,12 +121,12 @@
              pane on `claude` and reading what it said. -->
         {#if !accessMeasured}
           <span>{$t("tm.dp.accessUnknown")}</span>
-        {:else if detail.access.camera || detail.access.mic}
-          {#if detail.access.camera}<Camera size={15} strokeWidth={2} />{/if}
-          {#if detail.access.mic}<Mic size={15} strokeWidth={2} />{/if}
-          <span>{detail.access.camera && detail.access.mic
+        {:else if held?.camera || held?.mic}
+          {#if held?.camera}<Camera size={15} strokeWidth={2} />{/if}
+          {#if held?.mic}<Mic size={15} strokeWidth={2} />{/if}
+          <span>{held?.camera && held?.mic
             ? $t("tm.dp.usingBoth")
-            : detail.access.camera
+            : held?.camera
               ? $t("tm.dp.usingCamera")
               : $t("tm.dp.usingMic")}</span>
         {:else}
@@ -137,10 +162,24 @@
       </dl>
     {:else}
       <div class="files">
-        {#each detail.openFiles as f (f)}<div class="fline">{f}</div>{/each}
-        {#each detail.connections as c (c)}<div class="fline conn">{c}</div>{/each}
-        {#if detail.openFiles.length === 0 && detail.connections.length === 0}
-          <p class="empty">{$t("tm.dp.noOpenFiles")}</p>
+        <!-- Real, or said to be unread. The invented version built three paths
+             from the process name and gave anything with traffic a hardcoded
+             GitHub address, so the pane showed a connection for a process it had
+             never inspected. `undefined` here means the fd table was refused
+             (another user's process), which is NOT the same as holding nothing
+             open and must not render as "no open files". -->
+        {#if held === undefined}
+          <p class="empty">{$t("tm.dp.readingFiles")}</p>
+        {:else if held.openFiles == null}
+          <p class="empty">{held.unreadable ?? $t("tm.dp.filesUnknown")}</p>
+        {:else}
+          {#each held.openFiles as f (f)}<div class="fline">{f}</div>{/each}
+          {#each held.connections ?? [] as c (c.proto + c.local + c.peer)}
+            <div class="fline conn">{c.proto} {c.local} → {c.peer} {c.state}</div>
+          {/each}
+          {#if held.openFiles.length === 0 && (held.connections ?? []).length === 0}
+            <p class="empty">{$t("tm.dp.noOpenFiles")}</p>
+          {/if}
         {/if}
       </div>
     {/if}

@@ -8,7 +8,49 @@
 /// data (rides sdk/system-monitor + the LCG Grant nodes + the audit ledger) + the
 /// revoke are coder seams; under vite this derives a plausible fixture.
 
+import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 import type { Process } from "./processes";
+
+/// One socket the process holds, as the kernel's own tables report it.
+export interface Connection {
+  proto: string;
+  local: string;
+  peer: string;
+  state: string;
+}
+
+/// What a process holds open, read from `/proc/<pid>/fd`. Every field is
+/// optional and `undefined` means NOT MEASURED, which is a different statement
+/// from an empty list: a process belonging to another user cannot be read at
+/// all, and printing "no open files" for it would be a false all-clear on the
+/// one screen that exists to say what programs can reach.
+/// NB `| null`, not merely optional. serde writes a Rust `None` as JSON `null`,
+/// so these arrive as `null` rather than absent, and a `!== undefined` test
+/// passes for a field that was never measured. Test with `== null`.
+export interface HeldResources {
+  openFiles?: string[] | null;
+  connections?: Connection[] | null;
+  camera?: boolean | null;
+  mic?: boolean | null;
+  unreadable?: string | null;
+}
+
+/// Ask the backend what `pid` is holding.
+///
+/// Outside a Tauri webview there is no backend to ask, and the honest answer is
+/// that nothing was measured - NOT a fixture. The invented version of this
+/// (three paths built from the process name, plus `tcp 140.82.121.4:443
+/// ESTABLISHED` for anything with traffic) put a real GitHub address on screen
+/// for a process nobody had inspected.
+export async function heldFor(pid: number): Promise<HeldResources> {
+  if (!tauriAvailable) return { unreadable: "not measured: no backend in this window" };
+  try {
+    return await invoke<HeldResources>("process_held_resources", { pid });
+  } catch (e) {
+    return { unreadable: `not measured: ${e}` };
+  }
+}
 
 /// One held KG capability scope, revocable right here.
 export interface AccessScope {

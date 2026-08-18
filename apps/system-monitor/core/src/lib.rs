@@ -6,5 +6,6 @@
 //! toolchain).
 
 pub mod actions;
+pub mod procdetail;
 pub mod procmon;
 pub mod sysmon;
