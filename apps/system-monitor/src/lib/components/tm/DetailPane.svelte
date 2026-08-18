@@ -8,9 +8,16 @@
   /// than smoothing into an empty list.
   let held = $state<HeldResources | undefined>(undefined);
 
+  /// The Statistics and Memory figures, read alongside the fd table.
+  let stats = $state<ProcStats | undefined>(undefined);
+
   $effect(() => {
     const pid = process.id;
     held = undefined;
+    stats = undefined;
+    statsFor(pid).then((s) => {
+      if (process.id === pid) stats = s;
+    });
     // The pid is captured, so an answer for a row the user has already left is
     // discarded instead of being painted under the new selection.
     heldFor(pid).then((h) => {
@@ -35,7 +42,7 @@
   /// plus the Arlen-native ACCESS tab: what the process holds + the KG capability
   /// scopes it holds, revocable right here. The sovereign angle as per-process
   /// detail, not a landing.
-  import { detailFor, heldFor, type HeldResources, type ProcDetail } from "$lib/stores/detail";
+  import { detailFor, heldFor, statsFor, type HeldResources, type ProcDetail, type ProcStats } from "$lib/stores/detail";
   import type { Process } from "$lib/stores/processes";
   import { ScopeChip } from "@arlen/ui-kit/components/ui/scope-chip";
   import { X, Camera, Mic, Cog, Cpu } from "lucide-svelte";
@@ -64,13 +71,27 @@
     onForceQuit(process.id);
   }
 
+  /// An em-dash-free placeholder for a figure that was not measured. Printing a
+  /// zero, or a number derived from the row, is what this pane did before: the
+  /// thread count was memory divided by 40, so it moved when memory did and read
+  /// like a measurement.
+  const UNMEASURED = "-";
+  function num(v: number | null | undefined): string {
+    return v == null ? UNMEASURED : formatDecimal(v, 0, $locale);
+  }
+  /// A pid is an identifier, not a quantity: grouping it reads as "2,965,880"
+  /// beside a Process ID printed plainly, and nobody groups a pid anywhere else
+  /// in the tool.
+  function id(v: number | null | undefined): string {
+    return v == null ? UNMEASURED : String(v);
+  }
   const STATE_ROWS = $derived([
-    ["Process ID", String(detail.pid)],
-    ["Parent process", String(detail.ppid)],
-    ["Threads", String(detail.threads)],
-    ["State", detail.state],
-    ["Priority", String(detail.priority)],
-    ["Context switches", formatDecimal(detail.ctxSwitches, 0, $locale)],
+    ["Process ID", String(process.id)],
+    ["Parent process", id(stats?.ppid)],
+    ["Threads", num(stats?.threads)],
+    ["State", stats?.state ?? UNMEASURED],
+    ["Priority", num(stats?.nice)],
+    ["Context switches", num(stats?.ctxSwitches)],
   ]);
   function mem(mb: number): string {
     return mb >= 1024
@@ -155,11 +176,16 @@
         {/each}
       </dl>
     {:else if tab === "Memory"}
+      <!-- `smaps_rollup` is owner-readable only, so another user's process has no
+           PSS to show. It stays blank rather than borrowing RSS: the two answer
+           different questions and the gap grows with sharing, so a browser would
+           be misreported by hundreds of megabytes under a label saying PSS. -->
       <dl class="stats">
-        <div class="stat"><dt>{$t("tm.dp.rss")}</dt><dd>{mem(detail.rssMB)}</dd></div>
-        <div class="stat"><dt>{$t("tm.dp.pss")}</dt><dd>{mem(detail.pssMB)}</dd></div>
-        <div class="stat"><dt>{$t("tm.dp.shared")}</dt><dd>{mem(detail.sharedMB)}</dd></div>
+        <div class="stat"><dt>{$t("tm.dp.rss")}</dt><dd>{stats?.rssMB == null ? UNMEASURED : mem(stats.rssMB)}</dd></div>
+        <div class="stat"><dt>{$t("tm.dp.pss")}</dt><dd>{stats?.pssMB == null ? UNMEASURED : mem(stats.pssMB)}</dd></div>
+        <div class="stat"><dt>{$t("tm.dp.shared")}</dt><dd>{stats?.sharedMB == null ? UNMEASURED : mem(stats.sharedMB)}</dd></div>
       </dl>
+      {#if stats?.unreadable}<p class="empty">{stats.unreadable}</p>{/if}
     {:else}
       <div class="files">
         <!-- Real, or said to be unread. The invented version built three paths

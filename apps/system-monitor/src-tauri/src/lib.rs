@@ -15,7 +15,7 @@
 use tauri::Manager;
 
 use arlen_system_monitor_core::actions;
-use arlen_system_monitor_core::procdetail::{held_resources, HeldResources};
+use arlen_system_monitor_core::procdetail::{held_resources, proc_stats, HeldResources, ProcStats};
 use arlen_system_monitor_core::procmon::{group_processes, Monitor, Process};
 use arlen_system_monitor_core::sysmon::{SystemMonitor, SystemTick};
 
@@ -62,6 +62,17 @@ fn list_app_rows(monitor: tauri::State<'_, Monitor>) -> Vec<Process> {
 #[tauri::command]
 fn process_held_resources(pid: u32) -> HeldResources {
     held_resources(std::path::Path::new("/proc"), pid)
+}
+
+/// The per-process Statistics and Memory figures, read from `/proc/<pid>`.
+///
+/// Paired with `process_held_resources` on the same selection rather than folded
+/// into it: the fd walk is the expensive half and the statistics are three small
+/// file reads, so a pane that only shows numbers does not pay for a file table
+/// it is not displaying.
+#[tauri::command]
+fn process_stats(pid: u32) -> ProcStats {
+    proc_stats(std::path::Path::new("/proc"), pid)
 }
 
 /// One tick of system-wide device counters for the Performance tab: CPU, memory,
@@ -116,6 +127,7 @@ pub fn run() {
             frontend_log,
             list_processes,
             process_held_resources,
+            process_stats,
             list_app_rows,
             system_tick,
             stop_process,
