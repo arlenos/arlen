@@ -259,6 +259,7 @@ mod tests {
     use super::*;
     use serde::Deserialize;
     use std::io::Write;
+    use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Mutex};
 
     #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -537,22 +538,61 @@ mod tests {
         );
     }
 
+    /// A stopped watcher stops calling back.
+    ///
+    /// This used to sleep 100ms, call `stop()`, sleep another 200ms and assert
+    /// NOTHING - the comment said "no panic, no hang" and that was the whole
+    /// test. It would have passed with `stop()` as an empty function, which is
+    /// the only thing it is meant to be about.
+    ///
+    /// Two halves, and the first is what stops the second being vacuous: prove
+    /// the watcher was live and armed by making it fire, THEN prove it goes
+    /// quiet. Without the arming half, "no callback arrived" is equally true of
+    /// a watcher that never worked at all.
+    ///
+    /// The quiet half is a negative claim, so it is bounded rather than settled:
+    /// a machine slow enough to delay a callback past the window makes this pass
+    /// when it should not, never fail when it should not. That asymmetry is the
+    /// right one - it is the direction `until` above is written for too - and it
+    /// is why the window is generous rather than tight.
     #[test]
-    fn test_stop_is_clean() {
+    fn a_stopped_watcher_stops_calling_back() {
         let dir = tempfile::TempDir::new().unwrap();
         let cfg_path = dir.path().join("test.toml");
         write_cfg(&cfg_path, "value = 1");
 
+        let count = Arc::new(AtomicUsize::new(0));
+        let count_clone = count.clone();
         let watcher = ConfigWatcher::watch::<TestCfg, _>(
             "test",
             None,
-            Some(cfg_path),
-            |_| {},
+            Some(cfg_path.clone()),
+            move |_| {
+                count_clone.fetch_add(1, Ordering::SeqCst);
+            },
         );
 
-        std::thread::sleep(Duration::from_millis(100));
+        let armed = until(
+            || write_cfg(&cfg_path, "value = 42"),
+            || count.load(Ordering::SeqCst) > 0,
+        );
+        assert!(armed, "the watcher never fired, so the rest of this proves nothing");
+
         watcher.stop();
-        std::thread::sleep(Duration::from_millis(200));
-        // No panic, no hang -- clean shutdown.
+        // Let the thread notice the flag before writing again: a change that
+        // lands while it is still inside its loop is a race this test is not
+        // about, and it would make the assertion below flap.
+        std::thread::sleep(4 * W);
+        let after_stop = count.load(Ordering::SeqCst);
+
+        for _ in 0..5 {
+            write_cfg(&cfg_path, "value = 43");
+            std::thread::sleep(2 * W);
+        }
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            after_stop,
+            "the watcher kept calling back after stop()"
+        );
     }
 }
