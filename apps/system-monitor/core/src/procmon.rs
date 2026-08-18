@@ -39,6 +39,14 @@ pub struct Process {
     /// Per-process network rate in KB/s (0 until eBPF/cgroup attribution lands).
     #[serde(rename = "netKBs")]
     pub net_kbs: f64,
+    /// The members this row stands for, when it is an app row.
+    ///
+    /// `None` on a plain per-pid row and on every child, which is what keeps the
+    /// grouped and flat shapes the SAME type: the frontend's `Process` already
+    /// models `children?`, so grouping adds no second contract for the table to
+    /// learn. Skipped when absent so the flat list serialises exactly as before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<Process>>,
 }
 
 /// The known first-party background daemons: they show as ordinary rows in the
@@ -142,6 +150,9 @@ pub fn build_processes(
                 mem_mb: d.mem_kb as f64 / 1024.0,
                 disk_kbs: disk,
                 net_kbs: 0.0,
+                // The flat list is flat. Grouping is `group_processes`, applied
+                // to this output, so the sample itself carries no hierarchy.
+                children: None,
             }
         })
         .collect();
@@ -206,44 +217,6 @@ impl Default for Monitor {
     }
 }
 
-/// One row of the DEFAULT view: an app and everything it is running.
-///
-/// The plan's first bullet, and the reason it is first: "Chrome is one Chrome
-/// row, not 15 nameless PIDs". A layperson opening this to find the frozen thing
-/// is looking for a NAME they recognise, and a flat pid list hides that name
-/// among its own children. The flat list stays - it is the power-user toggle -
-/// but it is not what opens.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct AppRow {
-    /// The name every member shares, which is what the user is looking for.
-    pub name: String,
-    /// `"app" | "background" | "system"`, from the members. Grouping never spans
-    /// these: a `chrome` in Apps and a hypothetical daemon of the same name are
-    /// different rows, because the three groups are the plan's own division and
-    /// merging across them would file a daemon under an app.
-    pub group: &'static str,
-    /// The worst status among the members, not the first or the commonest.
-    ///
-    /// A frozen tab in a browser that is otherwise fine is EXACTLY the case the
-    /// landing view exists for, and an average would bury it. Order:
-    /// not-responding beats suspended beats running.
-    pub status: &'static str,
-    /// Summed across members, because that is what the resource costs.
-    pub cpu: f64,
-    #[serde(rename = "memMB")]
-    pub mem_mb: f64,
-    #[serde(rename = "diskKBs")]
-    pub disk_kbs: f64,
-    #[serde(rename = "netKBs")]
-    pub net_kbs: f64,
-    /// How many processes this row stands for. 1 is an ordinary process and the
-    /// row reads exactly as it does today; the number is what earns the expander.
-    pub count: usize,
-    /// The members' pids, ascending, so expanding a row needs no second pass and
-    /// a Stop on the row knows what it is stopping.
-    pub pids: Vec<u32>,
-}
-
 /// Rank a status so the worst one wins a group. Higher is worse.
 fn status_rank(status: &str) -> u8 {
     match status {
@@ -253,18 +226,34 @@ fn status_rank(status: &str) -> u8 {
     }
 }
 
-/// Fold the flat per-pid rows into the app-grouped rows the landing view shows.
+/// Fold the flat per-pid rows into the app rows the landing view opens on.
 ///
-/// Keyed on `(group, name)` and NOT on process lineage. Lineage would be the
-/// textbook answer and it is the wrong one here: a browser's renderers are
-/// re-parented, a daemon's workers are not its children, and a `pid`-tree view
-/// puts the same program in several places depending on who happened to fork it.
-/// The name is what the user reads off the row, so the name is what the row is.
+/// The plan's first bullet, and first for a reason: "Chrome is one Chrome row,
+/// not 15 nameless PIDs". Someone opening this to find the frozen thing is
+/// looking for a NAME they recognise, and a flat pid list hides that name among
+/// its own children. The flat list stays as the power-user toggle; it is just
+/// not what opens.
+///
+/// Returns `Process` rather than a new type, because the frontend's own model
+/// already carries `children?` - a parallel `AppRow` would be a second contract
+/// describing the same rows, and the table would have to learn both.
+///
+/// KEYED ON `(group, name)`, NOT ON LINEAGE. Lineage is the textbook answer and
+/// the wrong one here: a browser's renderers get re-parented, a daemon's workers
+/// are not its children, and a pid tree files the same program in several places
+/// depending on who forked it. The name is what the user reads off the row, so
+/// the name is what the row is. Grouping never spans the three groups either -
+/// that division is the plan's own, and merging across it would file a daemon
+/// under an app.
+///
+/// The parent's `id` is the LOWEST member pid: a real pid rather than a
+/// synthetic one, so a Stop on the row has something to aim at and a detail pane
+/// opening from it lands on a process that exists.
 ///
 /// Sorted CPU-desc then memory-desc, the same order as the flat list, so the
-/// toggle between the two views does not reshuffle the top of the screen.
-pub fn group_processes(rows: &[Process]) -> Vec<AppRow> {
-    let mut out: Vec<AppRow> = Vec::new();
+/// toggle between the two does not reshuffle the top of the screen.
+pub fn group_processes(rows: &[Process]) -> Vec<Process> {
+    let mut out: Vec<Process> = Vec::new();
     for p in rows {
         match out
             .iter_mut()
@@ -275,27 +264,25 @@ pub fn group_processes(rows: &[Process]) -> Vec<AppRow> {
                 r.mem_mb += p.mem_mb;
                 r.disk_kbs += p.disk_kbs;
                 r.net_kbs += p.net_kbs;
-                r.count += 1;
-                r.pids.push(p.id);
+                r.id = r.id.min(p.id);
+                // The worst status wins, not the first seen or the commonest: one
+                // frozen tab in a browser that is otherwise fine is exactly the
+                // case the landing view exists for, and averaging buries it.
                 if status_rank(p.status) > status_rank(r.status) {
                     r.status = p.status;
                 }
+                r.children.get_or_insert_with(Vec::new).push(p.clone());
             }
-            None => out.push(AppRow {
-                name: p.name.clone(),
-                group: p.group,
-                status: p.status,
-                cpu: p.cpu,
-                mem_mb: p.mem_mb,
-                disk_kbs: p.disk_kbs,
-                net_kbs: p.net_kbs,
-                count: 1,
-                pids: vec![p.id],
+            None => out.push(Process {
+                children: None,
+                ..p.clone()
             }),
         }
     }
     for r in &mut out {
-        r.pids.sort_unstable();
+        if let Some(kids) = r.children.as_mut() {
+            kids.sort_by_key(|k| k.id);
+        }
     }
     out.sort_by(|a, b| {
         b.cpu
@@ -394,6 +381,7 @@ mod tests {
             mem_mb: mem,
             disk_kbs: 0.0,
             net_kbs: 0.0,
+            children: None,
         }
     }
 
@@ -405,11 +393,10 @@ mod tests {
             .collect();
         let grouped = group_processes(&flat);
         assert_eq!(grouped.len(), 1, "one row, not fifteen");
-        assert_eq!(grouped[0].count, 15);
+        assert_eq!(grouped[0].children.as_ref().unwrap().len(), 14, "the row plus fourteen more");
         assert_eq!(grouped[0].cpu, 30.0, "the resource is what it costs together");
         assert_eq!(grouped[0].mem_mb, 1500.0);
-        assert_eq!(grouped[0].pids.first(), Some(&1));
-        assert_eq!(grouped[0].pids.last(), Some(&15));
+        assert_eq!(grouped[0].id, 1, "the row takes the eldest pid, a real one");
     }
 
     /// The case the landing view exists for: one frozen child in an app that is
@@ -475,9 +462,9 @@ mod tests {
         let flat = [row(7, "solo", "system", "running", 3.5, 12.0)];
         let grouped = group_processes(&flat);
         assert_eq!(grouped.len(), 1);
-        assert_eq!(grouped[0].count, 1);
+        assert!(grouped[0].children.is_none(), "a lone process gets no expander");
         assert_eq!(grouped[0].cpu, 3.5);
-        assert_eq!(grouped[0].pids, vec![7]);
+        assert_eq!(grouped[0].id, 7);
     }
 
     #[test]
