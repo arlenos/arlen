@@ -47,16 +47,28 @@ pub fn run<T: std::borrow::Borrow<aya::maps::MapData>>(
     let mut dedup_exec: HashMap<(u32, String), DedupEntry> = HashMap::new();
     let mut dedup_net: HashMap<(u32, u16, u16), DedupEntry> = HashMap::new();
     let mut stream: Option<UnixStream> = None;
+    let mut tally_open = Tally::default();
+    let mut last_tally = Instant::now();
 
     info!("normalizer started, forwarding to {}", producer_socket);
 
     loop {
+        // Say what the probes saw and what became of it. The open probe is the one
+        // under investigation, so it is the one counted; the others get the same
+        // treatment when they need it rather than pre-emptively.
+        if last_tally.elapsed() >= TALLY_INTERVAL {
+            if let Some(line) = tally_open.line("file.opened") {
+                info!("{line}");
+            }
+            last_tally = Instant::now();
+        }
+
         let mut had_event = false;
 
         // --- file.opened ---
         while let Some(item) = ring_open.next() {
             had_event = true;
-            if let Some(msg) = handle_file_opened(&item, session_id, &mut dedup_open) {
+            if let Some(msg) = handle_file_opened(&item, session_id, &mut dedup_open, &mut tally_open) {
                 send(&mut stream, producer_socket, &msg);
             }
         }
@@ -117,16 +129,24 @@ fn handle_file_opened(
     item: &[u8],
     session_id: &str,
     dedup: &mut HashMap<(u32, String), DedupEntry>,
+    tally: &mut Tally,
 ) -> Option<Vec<u8>> {
     let event = bytemuck_cast::<FileOpenedEvent>(item)?;
-    let path = extract_string(&event.path)?;
+    tally.seen += 1;
+    let Some(path) = extract_string(&event.path) else {
+        tally.empty_path += 1;
+        return None;
+    };
 
     if is_blocked(&path) {
+        tally.blocked += 1;
         return None;
     }
     if !dedup_check(dedup, (event.pid, path.clone()), DEDUP_WINDOW_OPEN) {
+        tally.deduped += 1;
         return None;
     }
+    tally.forwarded += 1;
 
     debug!("file.opened pid={} path={}", event.pid, path);
 
@@ -291,13 +311,49 @@ fn bytemuck_cast<T: Copy>(bytes: &[u8]) -> Option<&T> {
     Some(unsafe { &*(bytes.as_ptr() as *const T) })
 }
 
+/// What a probe saw and what became of it, so a probe that forwards nothing can
+/// say WHY rather than looking identical to one that was never fired.
+///
+/// Built on 18 August after three boots spent guessing. The sensor's journal
+/// proved all four tracepoints attach and the store proved `file.opened` and
+/// `file.written` still arrive at zero, which leaves three silent discards in
+/// each handler - an empty path, the path-prefix filter, and the dedup window -
+/// and no way to tell them apart from outside. A count of each is the difference
+/// between a diagnosis and another night of hypotheses.
+#[derive(Default)]
+pub(crate) struct Tally {
+    pub(crate) seen: u64,
+    pub(crate) empty_path: u64,
+    pub(crate) blocked: u64,
+    pub(crate) deduped: u64,
+    pub(crate) forwarded: u64,
+}
+
+impl Tally {
+    /// None when this probe has seen nothing, so a quiet probe does not print a
+    /// row of zeroes every interval and bury the one that is interesting.
+    pub(crate) fn line(&self, probe: &str) -> Option<String> {
+        if self.seen == 0 {
+            return None;
+        }
+        Some(format!(
+            "{probe}: {} seen, {} forwarded ({} empty path, {} filtered by prefix, {} deduped)",
+            self.seen, self.forwarded, self.empty_path, self.blocked, self.deduped
+        ))
+    }
+}
+
+/// How often the tallies are printed. Long enough not to be noise in a journal,
+/// short enough that a 90-second verify boot gets at least one.
+const TALLY_INTERVAL: Duration = Duration::from_secs(30);
+
 fn extract_string(buf: &[u8]) -> Option<String> {
     let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
     let s = std::str::from_utf8(&buf[..end]).ok()?.to_string();
     if s.is_empty() { None } else { Some(s) }
 }
 
-fn is_blocked(path: &str) -> bool {
+pub(crate) fn is_blocked(path: &str) -> bool {
     BLOCKED_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
 }
 
