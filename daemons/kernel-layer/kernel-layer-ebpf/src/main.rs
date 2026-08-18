@@ -3,7 +3,7 @@
 
 use aya_ebpf::{
     macros::{map, tracepoint},
-    maps::RingBuf,
+    maps::{LruHashMap, RingBuf},
     programs::TracePointContext,
     helpers::{
         bpf_get_current_cgroup_id, bpf_get_current_uid_gid, bpf_ktime_get_ns,
@@ -22,6 +22,7 @@ use aya_ebpf::{
 };
 use aya_log_ebpf::debug;
 use kernel_layer_common::{
+    SCHED_FORK_CHILD_PID,
     syscall_arg, FileOpenedEvent, FileWrittenEvent, NetStateEvent, ProcessExecEvent, MAX_COMM_LEN,
     MAX_PATH_LEN,
 };
@@ -105,6 +106,38 @@ fn try_file_opened(ctx: TracePointContext) -> Result<(), i64> {
     Ok(())
 }
 
+// ===== Process fork tracepoint =====
+
+/// child pid -> the cgroup its parent held at fork.
+///
+/// An LRU map rather than a plain hash, deliberately. Nothing deletes on exit:
+/// adding a `sched_process_exit` probe purely to free entries would put a third
+/// program in the hot path of every process teardown on the machine, and an
+/// entry that outlives its process is harmless because the next fork of that pid
+/// overwrites it. What is NOT harmless is a full map, which on a plain hash
+/// starts silently refusing inserts - so eviction is the behaviour to want here,
+/// and 10240 entries is far above any plausible live process count.
+#[map]
+static PARENT_CGROUP: LruHashMap<u32, u64> = LruHashMap::with_max_entries(10240, 0);
+
+#[tracepoint]
+pub fn process_fork(ctx: TracePointContext) -> u32 {
+    match try_process_fork(ctx) {
+        Ok(()) => 0,
+        Err(_) => 0,
+    }
+}
+
+fn try_process_fork(ctx: TracePointContext) -> Result<(), i64> {
+    // At `sched_process_fork` the running task IS the parent, so its cgroup is
+    // the one to remember. Reading it here is what makes the exec probe's job a
+    // map lookup instead of a walk through an opaque `task_struct`.
+    let parent_cgroup = unsafe { bpf_get_current_cgroup_id() };
+    let child_pid: u32 = unsafe { ctx.read_at(SCHED_FORK_CHILD_PID).map_err(|_| -1i64)? };
+    let _ = PARENT_CGROUP.insert(&child_pid, &parent_cgroup, 0);
+    Ok(())
+}
+
 // ===== Process exec tracepoint =====
 
 #[map]
@@ -138,11 +171,19 @@ fn try_process_exec(ctx: TracePointContext) -> Result<(), i64> {
     // now matches, and a reservation is only taken once nothing left can fail.
     let data_loc: u32 = unsafe { ctx.read_at(8).map_err(|_| -1i64)? };
 
+    // The child's own cgroup, and the parent's as recorded at fork. A miss is 0
+    // and not an error: the sensor may have started after this process did, and
+    // an exec we cannot attribute is still worth forwarding for its filename.
+    let cgroup_id = unsafe { bpf_get_current_cgroup_id() };
+    let parent_cgroup_id = unsafe { PARENT_CGROUP.get(&pid).copied().unwrap_or(0) };
+
     let mut entry = EXEC_EVENTS.reserve::<ProcessExecEvent>(0).ok_or(-1i64)?;
     let event = unsafe { entry.assume_init_mut() };
     event.pid = pid;
     event.uid = uid;
     event.timestamp_ns = timestamp_ns;
+    event.cgroup_id = cgroup_id;
+    event.parent_cgroup_id = parent_cgroup_id;
     event.comm = [0u8; MAX_COMM_LEN];
     event.filename = [0u8; MAX_PATH_LEN];
 

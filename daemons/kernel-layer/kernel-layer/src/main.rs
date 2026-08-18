@@ -16,6 +16,8 @@ use log::{info, warn};
 use tokio::signal;
 
 mod normalizer;
+mod tracepoint_layout;
+use tracepoint_layout::verify_fork_record_layout;
 
 /// Resolve a daemon socket path per the standard Arlen 3-tier
 /// convention: the `env_var` override (non-empty) wins, else
@@ -127,6 +129,21 @@ async fn main() -> Result<()> {
         prog.attach("syscalls", "sys_enter_openat")
             .context("failed to attach to sys_enter_openat")?;
         info!("eBPF tracepoint attached to sys_enter_openat");
+    }
+    // BEFORE the exec probe, and the order is the point rather than tidiness: the
+    // fork probe is what fills the map the exec probe reads. Attaching exec first
+    // leaves a window where execs are seen with no parent recorded, which does
+    // not error - it just writes zeros and the launches quietly go unattributed.
+    {
+        verify_fork_record_layout()?;
+        let prog: &mut TracePoint = ebpf
+            .program_mut("process_fork")
+            .context("program 'process_fork' not found")?
+            .try_into()?;
+        prog.load()?;
+        prog.attach("sched", "sched_process_fork")
+            .context("failed to attach to sched_process_fork")?;
+        info!("eBPF tracepoint attached to sched_process_fork");
     }
     {
         let prog: &mut TracePoint = ebpf
