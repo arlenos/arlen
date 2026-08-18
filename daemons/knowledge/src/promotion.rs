@@ -43,6 +43,11 @@ const PROMOTION_THRESHOLD_DEFAULT: usize = 3;
 /// them polling at a cadence that used to match.
 const PROMOTION_INTERVAL: Duration = os_sdk::graph::PROMOTION_INTERVAL;
 
+/// How many events one pass takes. Named so the `LIMIT` in the fetch and the
+/// backlog arithmetic below cannot drift apart - a log line that reports a rate
+/// the query does not use is worse than no line.
+const PROMOTION_BATCH: i64 = 1000;
+
 /// High-water mark key in a metadata table we use to track progress.
 /// The promotion pass only processes events newer than the last run.
 const HWM_KEY: &str = "promotion_hwm";
@@ -178,9 +183,10 @@ async fn run_pass(
          FROM events
          WHERE timestamp > ?
          ORDER BY timestamp ASC
-         LIMIT 1000",
+         LIMIT ?",
     )
     .bind(hwm)
+    .bind(PROMOTION_BATCH)
     .fetch_all(pool)
     .await?;
 
@@ -190,6 +196,35 @@ async fn run_pass(
     }
 
     info!(count = rows.len(), "promoting events to ladybug");
+
+    // Say when there is more waiting than this pass can take.
+    //
+    // The fetch above is capped at 1000 and the pass runs every 30 seconds, so the
+    // graph absorbs about 33 events a second no matter how fast they arrive. That
+    // was invisible while a boot produced ~100 events. With the kernel sensor
+    // forwarding file events it produces ~10000, and measured on the 18 August
+    // boot the dogfood's own file took between 177 and 300 seconds to reach the
+    // graph - the backlog, draining at its fixed rate.
+    //
+    // A component that falls behind silently is one nobody can size, so this says
+    // how far. It costs one COUNT per pass and only when the batch came back full,
+    // which is exactly when the number is interesting.
+    if rows.len() as i64 >= PROMOTION_BATCH {
+        let behind: i64 = sqlx::query_scalar("SELECT count(*) FROM events WHERE timestamp > ?")
+            .bind(hwm)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(-1);
+        if behind > PROMOTION_BATCH {
+            let secs = (behind as f64 / PROMOTION_BATCH as f64) * PROMOTION_INTERVAL.as_secs_f64();
+            warn!(
+                behind,
+                batch = PROMOTION_BATCH,
+                drain_seconds = secs.round() as i64,
+                "promotion is behind: the graph will not show the newest events for a while"
+            );
+        }
+    }
 
     let mut all_ok = true;
     let mut skipped = 0usize;
