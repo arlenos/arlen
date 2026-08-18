@@ -95,6 +95,7 @@ const messages: Catalogs = {
     "tm.menu.unlimit": "Remove limit",
     "tm.menu.limit": "Limit",
     "tm.menu.stop": "Stop",
+    "tm.menu.stopCritical": "Stop {$name}? It is a system service and nothing here restarts it.",
     "tm.menu.forceQuit": "Force quit",
   },
   de: {
@@ -173,6 +174,7 @@ const messages: Catalogs = {
     "tm.menu.unlimit": "Begrenzung aufheben",
     "tm.menu.limit": "Begrenzen",
     "tm.menu.stop": "Beenden",
+    "tm.menu.stopCritical": "{$name} beenden? Das ist ein Systemdienst und hier startet ihn nichts wieder.",
     "tm.menu.forceQuit": "Beenden erzwingen",
   },
 };
