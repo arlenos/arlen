@@ -48,6 +48,7 @@ pub fn run<T: std::borrow::Borrow<aya::maps::MapData>>(
     let mut dedup_net: HashMap<(u32, u16, u16), DedupEntry> = HashMap::new();
     let mut stream: Option<UnixStream> = None;
     let mut tally_open = Tally::default();
+    let mut tally_write = Tally::default();
     let mut last_tally = Instant::now();
 
     info!("normalizer started, forwarding to {}", producer_socket);
@@ -57,7 +58,10 @@ pub fn run<T: std::borrow::Borrow<aya::maps::MapData>>(
         // under investigation, so it is the one counted; the others get the same
         // treatment when they need it rather than pre-emptively.
         if last_tally.elapsed() >= TALLY_INTERVAL {
-            if let Some(line) = tally_open.line("file.opened") {
+            for line in [tally_open.line("file.opened"), tally_write.line("file.written")]
+                .into_iter()
+                .flatten()
+            {
                 info!("{line}");
             }
             last_tally = Instant::now();
@@ -84,7 +88,7 @@ pub fn run<T: std::borrow::Borrow<aya::maps::MapData>>(
         // --- file.written ---
         while let Some(item) = ring_write.next() {
             had_event = true;
-            if let Some(msg) = handle_file_written(&item, session_id, &mut dedup_write) {
+            if let Some(msg) = handle_file_written(&item, session_id, &mut dedup_write, &mut tally_write) {
                 send(&mut stream, producer_socket, &msg);
             }
         }
@@ -192,19 +196,31 @@ fn handle_file_written(
     item: &[u8],
     session_id: &str,
     dedup: &mut HashMap<(u32, u64), DedupEntry>,
+    tally: &mut Tally,
 ) -> Option<Vec<u8>> {
     let event = bytemuck_cast::<FileWrittenEvent>(item)?;
+    tally.seen += 1;
 
     if !dedup_check(dedup, (event.pid, event.fd), DEDUP_WINDOW_WRITE) {
+        tally.deduped += 1;
         return None;
     }
 
     // Resolve fd to path via /proc. Falls back to fd:N if the process is gone.
     let path = resolve_fd(event.pid, event.fd);
+    // This probe's version of "the path came back unusable": the fallback, not an
+    // empty string. `resolve_fd` never returns empty - it returns `fd:N` when the
+    // readlink fails - so counting emptiness here would count nothing, which is
+    // the kind of check that reads as evidence and is not.
+    if path.starts_with("fd:") {
+        tally.empty_path += 1;
+    }
 
     if is_blocked(&path) {
+        tally.blocked += 1;
         return None;
     }
+    tally.forwarded += 1;
 
     debug!("file.written pid={} fd={} path={} bytes={}", event.pid, event.fd, path, event.count);
 
