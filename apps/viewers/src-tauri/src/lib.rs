@@ -311,6 +311,13 @@ fn trash_file(path: String) -> Result<TrashedDto, String> {
             T::CrossDevice => "this file is not on the same drive as your trash, \
                                so it cannot be moved there"
                 .to_string(),
+            // The drive itself refuses to hold a trash - read-only, or it will
+            // not take the directory. Said rather than quietly deleting: a
+            // permanent delete wearing the name of a reversible one is the one
+            // outcome this cannot offer.
+            T::NoTrashHere(why) => {
+                format!("this drive cannot hold a trash, so the file was not deleted: {why}")
+            }
             T::NotFound => "the file is no longer there".to_string(),
             T::Unsupported => "this drive cannot move a file safely enough to undo it".to_string(),
             T::NoSlot => "the trash already holds too many files by that name".to_string(),
