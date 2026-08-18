@@ -187,7 +187,7 @@ pub struct SoundBinding {
     pub sound: String,
 }
 
-/// The four default-on sound events mapped to their resolved names. Pure over the
+/// The six default-on sound events mapped to their resolved names. Pure over the
 /// resolved [`arlen_theme::SoundTokens`] so it is testable without config I/O.
 fn sound_bindings(s: &arlen_theme::SoundTokens) -> Vec<SoundBinding> {
     vec![
@@ -203,10 +203,20 @@ fn sound_bindings(s: &arlen_theme::SoundTokens) -> Vec<SoundBinding> {
             label: "Action completion".into(),
             sound: s.action.clone(),
         },
+        SoundBinding {
+            event: "device-added".into(),
+            label: "Device attached".into(),
+            sound: s.device_added.clone(),
+        },
+        SoundBinding {
+            event: "device-removed".into(),
+            label: "Device removed".into(),
+            sound: s.device_removed.clone(),
+        },
     ]
 }
 
-/// The active appearance's resolved event-to-sound map (the four default-on
+/// The active appearance's resolved event-to-sound map (the six default-on
 /// events), so the Appearance sound page shows the real bindings instead of a
 /// fixture. Resolved through `sdk/theme` - the same `SoundTokens` the Notification
 /// Daemon plays - so the page and playback agree.
