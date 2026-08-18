@@ -326,6 +326,17 @@ pub fn trash(source: &str, uid: u32) -> Result<TrashSlot, TrashError> {
     trash_into_recording(&files, &info, base_name, source, &recorded)
 }
 
+/// [`trash`] for the user this process runs as.
+///
+/// The uid is a parameter on `trash` so a test can name one; every real caller
+/// wants its own, and asking each of them to reach for `libc` to get it invites
+/// four slightly different answers.
+pub fn trash_for_current_user(source: &str) -> Result<TrashSlot, TrashError> {
+    // SAFETY: `getuid` reads a process property and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    trash(source, uid)
+}
+
 /// [`trash_into`], with the `Path` field written into the sidecar given
 /// separately from the entity being moved.
 ///

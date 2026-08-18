@@ -288,33 +288,19 @@ pub struct TrashedDto {
 /// implementation with its own edge cases.
 #[tauri::command]
 fn trash_file(path: String) -> Result<TrashedDto, String> {
-    let base = arlen_freedesktop_trash::home_trash_dir()
-        .ok_or_else(|| "no home trash directory: neither XDG_DATA_HOME nor HOME is absolute".to_string())?;
-    let files = base.join("files");
-    let info = base.join("info");
-    for dir in [&files, &info] {
-        std::fs::create_dir_all(dir).map_err(|e| format!("cannot prepare the trash: {e}"))?;
-    }
-    let name = Path::new(&path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| "the file has no readable name".to_string())?;
-
-    // A sentence per case, not the error's Debug. Deleting a picture that lives on
-    // a USB stick used to report `Io("Invalid cross-device link")` to somebody
-    // looking at a photo - true, and useless. The cross-device case is the one
-    // that actually happens to people, and it is now named rather than folded
-    // into a kernel string.
-    let slot = arlen_freedesktop_trash::trash_into(&files, &info, name, &path).map_err(|e| {
+    // The trash the FILE belongs to, not the one this user's home has. A picture
+    // on a USB stick or a second disk cannot be renamed into `$HOME`'s trash - the
+    // kernel answers EXDEV - so a home-only delete failed on exactly the media
+    // people keep pictures on. `trash_for_current_user` picks the volume's own
+    // trash in that case and the home one otherwise.
+    let slot = arlen_freedesktop_trash::trash_for_current_user(&path).map_err(|e| {
         use arlen_freedesktop_trash::TrashError as T;
         match e {
+            // Still reachable, and now it means something narrower: the home
+            // trash could not take it AND the volume has no trash to offer.
             T::CrossDevice => "this file is not on the same drive as your trash, \
                                so it cannot be moved there"
                 .to_string(),
-            // The drive itself refuses to hold a trash - read-only, or it will
-            // not take the directory. Said rather than quietly deleting: a
-            // permanent delete wearing the name of a reversible one is the one
-            // outcome this cannot offer.
             T::NoTrashHere(why) => {
                 format!("this drive cannot hold a trash, so the file was not deleted: {why}")
             }
