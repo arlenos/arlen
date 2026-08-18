@@ -303,6 +303,22 @@ def main():
             loaded = rq(base, "POST", f"/session/{sid}/execute/sync",
                         {"script": "return location.href;", "args": []})["value"]
             print(f"loaded url: {loaded}")
+            # Loud, because the bare URL line is skimmable and I have skimmed it.
+            # A binary built with plain `cargo build` still points at `devUrl`, so
+            # it answers from whatever dev server happens to hold that port rather
+            # than from the frontend that was bundled into it. Three times in one
+            # sitting on 18 August that produced a run reporting on a stale vite
+            # while I read it as the app: once with no buttons at all, twice with
+            # a probe returning null and me about to write it up. Not a refusal -
+            # driving a dev server is a legitimate thing to do - but it must not
+            # be a line you can slide past.
+            if loaded.startswith("http://localhost:"):
+                print(
+                    "NOTE: this is a DEV SERVER, not the frontend bundled into the"
+                    " binary. Whatever is serving that port answered. For the"
+                    " shipped frontend build with `tauri build --no-bundle`; a plain"
+                    " `cargo build --release` leaves the binary pointing at devUrl."
+                )
             wrong = wrong_app(args.app, loaded)
             if wrong:
                 print(f"WRONG APP: {wrong}")
