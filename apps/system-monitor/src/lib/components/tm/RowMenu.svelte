@@ -4,12 +4,32 @@
   /// Escape dismisses it.
   import { trapFocus } from "@arlen/ui-kit/keyboard/trap_focus";
   import { t } from "$lib/i18n/messages";
-  import type { Process } from "$lib/stores/processes";
+  import { niceLevels, niceOf, renice, type NiceLevel, type Process } from "$lib/stores/processes";
 
   /// Armed by the first click on Stop when the row is a critical daemon; the
   /// menu deliberately stays open so the warning is READ, not dismissed by the
   /// click that acknowledged it.
   let confirmStop = $state(false);
+
+  /// The Advanced affordance (system-monitor-plan.md (c)): priority behind a
+  /// disclosure rather than beside Stop, because a nice value is expert
+  /// vocabulary and the direction of it is famously backwards.
+  ///
+  /// Real-time scheduling is deliberately NOT here. The plan says to warn
+  /// against it, and not shipping the control is the strongest warning: a
+  /// SCHED_FIFO runaway can need the power button.
+  let showAdvanced = $state(false);
+  let levels = $state<NiceLevel[]>([]);
+  let current = $state<number | null>(null);
+
+  $effect(() => {
+    if (!showAdvanced) return;
+    const pid = process.id;
+    void niceLevels().then((l) => (levels = l));
+    void niceOf(pid).then((n) => {
+      if (process.id === pid) current = n;
+    });
+  });
 
   let {
     process,
@@ -123,6 +143,41 @@
       </button>
     {/if}
     <div class="mi-sep" role="separator"></div>
+    <button
+      type="button"
+      class="mi"
+      role="menuitem"
+      aria-expanded={showAdvanced}
+      onclick={(e) => {
+        e.stopPropagation();
+        showAdvanced = !showAdvanced;
+      }}
+    >
+      {$t("tm.menu.advanced")}
+    </button>
+    {#if showAdvanced}
+      <div class="mi-adv">
+        <span class="mi-cap">{$t("tm.menu.priority")}</span>
+        {#each levels as l (l.nice)}
+          <button
+            type="button"
+            class="mi mi-sub"
+            class:on={current === l.nice}
+            role="menuitem"
+            onclick={() => {
+              void renice(process.id, l.nice);
+              onClose();
+            }}
+          >
+            {l.label}
+          </button>
+        {/each}
+        {#if levels.length === 0}
+          <span class="mi-cap">{$t("tm.menu.priorityUnavailable")}</span>
+        {/if}
+      </div>
+    {/if}
+    <div class="mi-sep" role="separator"></div>
     <!-- The plan's guardrail (system-monitor-plan.md (d)1): a daemon is an
          ordinary row you can stop, and stopping one asks first. The row carries
          `critical` from the core's own name list, so this cannot drift from the
@@ -192,6 +247,22 @@
   }
   .mi:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+  }
+  .mi-adv {
+    display: flex;
+    flex-direction: column;
+    padding: 2px 0 4px;
+  }
+  .mi-cap {
+    padding: 4px 12px 2px;
+    font-size: 11px;
+    color: var(--color-fg-disabled, #737373);
+  }
+  .mi-sub {
+    padding-left: 22px;
+  }
+  .mi-sub.on::before {
+    content: "\2713\00a0";
   }
   .mi-sep {
     height: 1px;

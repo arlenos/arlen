@@ -105,6 +105,37 @@ fn limit_process(id: u32, limited: bool) -> Result<(), String> {
     actions::limit(id, limited)
 }
 
+/// Set a process's scheduling priority - the Advanced affordance
+/// (system-monitor-plan.md (c)).
+///
+/// Refusals reach the UI verbatim, which matters here more than elsewhere:
+/// raising a nice value needs no privilege but LOWERING one needs `CAP_SYS_NICE`,
+/// so "make this faster" is refused for an ordinary user while "make this
+/// slower" works. A control that quietly did nothing in one direction would be
+/// worse than no control.
+#[tauri::command]
+fn renice_process(id: u32, nice: i32) -> Result<(), String> {
+    actions::set_nice(id, nice)
+}
+
+/// The priority a process is at now, so the menu can tick the real one. `None`
+/// when it cannot be read, never a confident Normal.
+#[tauri::command]
+fn process_nice(id: u32) -> Option<i32> {
+    actions::get_nice(id)
+}
+
+/// The priority levels the Advanced menu offers, as (label, nice) pairs.
+///
+/// Served rather than duplicated in the frontend: `set_nice` validates against
+/// this same table, so a hand-copied list in TypeScript would drift into
+/// offering a level the backend refuses. One source, like the `critical` flag on
+/// a row.
+#[tauri::command]
+fn nice_levels() -> Vec<(String, i32)> {
+    actions::NICE_LEVELS.iter().map(|(l, n)| ((*l).to_string(), *n)).collect()
+}
+
 /// Build + run the app.
 pub fn run() {
     // Dependencies at warn, this app at info. A blanket `info` also turns on
@@ -132,7 +163,10 @@ pub fn run() {
             system_tick,
             stop_process,
             freeze_process,
-            limit_process
+            limit_process,
+            renice_process,
+            process_nice,
+            nice_levels
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-system-monitor");
