@@ -35,6 +35,9 @@ jobs:
   changes:
     name: detect changed components
     runs-on: ubuntu-latest
+    # See the rust job's note. Same ceiling: this job compiles or builds too, and
+    # a limit that fires on real work is worse than no limit at all.
+    timeout-minutes: 75
     outputs:
       rust: ${{ steps.detect.outputs.rust }}
       rust_touched: ${{ steps.detect.outputs.rust_touched }}
@@ -165,6 +168,9 @@ jobs:
     # Split out so a red here is a red here. It still blocks a merge when it is a
     # required check, which is where that decision belongs.
     runs-on: ubuntu-latest
+    # See the rust job's note. Same ceiling: this job compiles or builds too, and
+    # a limit that fires on real work is worse than no limit at all.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       # The matrix below is hand-kept and its comment claims every [package] is
@@ -391,6 +397,17 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.rust != '[]' }}
     runs-on: ubuntu-latest
+    # A CEILING, so a job that stops making progress fails with a name instead of
+    # holding a matrix slot until someone with the CI view happens to look. On
+    # 18 August six unrelated crates sat in_progress for over two hours on run
+    # 32083341071 - the same six had taken one to five minutes on the run before
+    # - and nothing in this file could end them; GitHub's default is six hours.
+    #
+    # 75 minutes is picked against the one job that is legitimately slow: a cold
+    # `knowledge` build runs about 35 minutes (lbug compiles a C++ engine), so a
+    # cache miss on the slowest crate has better than double its measured time
+    # before this fires. Anything past that is not building.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -446,6 +463,9 @@ jobs:
     # it finds.
     if: ${{ needs.changes.outputs.frontend != '[]' || contains(needs.changes.outputs.rust_touched, 'sdk/i18n') }}
     runs-on: ubuntu-latest
+    # See the rust job's note. Same ceiling: this job compiles or builds too, and
+    # a limit that fires on real work is worse than no limit at all.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -486,6 +506,9 @@ jobs:
     # full-matrix run lists them too). The scenarios assemble real daemons.
     if: ${{ contains(needs.changes.outputs.rust_touched, 'daemons/knowledge') || contains(needs.changes.outputs.rust_touched, 'daemons/event-bus') || contains(needs.changes.outputs.rust_touched, 'dev/integration') }}
     runs-on: ubuntu-latest
+    # See the rust job's note. Same ceiling: this job compiles or builds too, and
+    # a limit that fires on real work is worse than no limit at all.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - name: free disk space
@@ -526,6 +549,9 @@ jobs:
     # was justfile-only until now, which is exactly why a drift sat unnoticed
     # long enough to disable the gates behind it.
     runs-on: ubuntu-latest
+    # See the rust job's note. Same ceiling: this job compiles or builds too, and
+    # a limit that fires on real work is worse than no limit at all.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - name: packaged unit gates
@@ -536,6 +562,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.rust_touched != '[]' }}
     runs-on: ubuntu-latest
+    # See the rust job's note. Same ceiling: this job compiles or builds too, and
+    # a limit that fires on real work is worse than no limit at all.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - name: system deps
@@ -624,6 +653,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.frontend != '[]' }}
     runs-on: ubuntu-latest
+    # See the rust job's note. Same ceiling: this job compiles or builds too, and
+    # a limit that fires on real work is worse than no limit at all.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
