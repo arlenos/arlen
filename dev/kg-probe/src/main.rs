@@ -186,6 +186,11 @@ async fn main() {
         }
         println!("kg-probe: round {round} of {ROUNDS}");
         failures += ask_all(&client).await;
+        // After the last round's snapshot, wait for the one answer that arrives
+        // over time rather than declaring it absent at a fixed offset.
+        if round == ROUNDS && !await_ingestion(&client).await {
+            failures += 1;
+        }
     }
     failures += report_timeline();
     failures += report_event_store();
@@ -517,6 +522,57 @@ fn blanks(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Stri
         String::new()
     } else {
         format!(" ({})", empty.join(", "))
+    }
+}
+
+/// How long the LAST round waits for the ingestion question, and how often it
+/// re-asks.
+///
+/// The rounds above separate "nothing is ever recorded" from "nothing had been
+/// recorded yet", and that was enough until the kernel sensor started forwarding
+/// file events on 18 August. A boot now puts ~8000 events in the store instead of
+/// ~100, promotion works through them at its own pace, and the dogfood's own file
+/// arrives late in that queue: measured on the boot that caught it, both rounds
+/// answered 0 and the graph read out of the halted image afterwards HELD the file.
+/// The question was right and the moment was wrong.
+///
+/// So the last round asks until it is answered or this budget runs out, and says
+/// which. A fixed offset is a guess about how busy the machine is.
+const INGEST_POLL_BUDGET: std::time::Duration = std::time::Duration::from_secs(90);
+const INGEST_POLL_GAP: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Poll the ingestion question to a deadline. Returns whether it was answered.
+///
+/// Only this question polls: the others ask about shape (does the schema have
+/// these labels, is the timeline mounted) and their answer does not arrive later,
+/// so re-asking them would only make the log longer.
+async fn await_ingestion(client: &UnixGraphClient) -> bool {
+    let (name, cypher) = QUESTIONS
+        .iter()
+        .find(|(n, _)| *n == "ingestion: this run's file")
+        .expect("the ingestion question is in the list");
+    let start = std::time::Instant::now();
+    loop {
+        if let Ok(rows) = client.query_rows(cypher).await {
+            if !rows.is_empty() {
+                println!(
+                    "kg-probe: {name}: {} row(s) after {}s of waiting",
+                    rows.len(),
+                    start.elapsed().as_secs()
+                );
+                return true;
+            }
+        }
+        if start.elapsed() >= INGEST_POLL_BUDGET {
+            println!(
+                "kg-probe: {name}: still 0 row(s) after {}s. The store may hold it \
+                 while promotion has not reached it yet - read the event store \
+                 before reading this as an ingestion fault",
+                start.elapsed().as_secs()
+            );
+            return false;
+        }
+        tokio::time::sleep(INGEST_POLL_GAP).await;
     }
 }
 
