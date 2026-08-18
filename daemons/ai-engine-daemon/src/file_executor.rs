@@ -230,6 +230,17 @@ impl FileSystemExecutor {
                         .to_string(),
                 };
             }
+            Err(RenameError::CrossDevice) => {
+                // The comment above already called this out as refused rather than
+                // softened; it just had no variant to match on and arrived here as
+                // a kernel string.
+                return ExecuteOutcome::Error {
+                    code: ContractError::ExecutionFailed,
+                    message: "fs.move refused: source and destination are on different \
+                              filesystems, which a rename cannot cross"
+                        .to_string(),
+                };
+            }
             Err(RenameError::Other(m)) => {
                 return ExecuteOutcome::Error {
                     code: ContractError::ExecutionFailed,
@@ -338,6 +349,13 @@ impl FileSystemExecutor {
                 return exec_err(
                     ContractError::ExecutionFailed,
                     "fs.trash refused: this filesystem cannot perform an atomic no-clobber move",
+                )
+            }
+            Err(TrashError::CrossDevice) => {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    "fs.trash refused: the file is on a different filesystem from the \
+                     home trash, which this cannot move it into",
                 )
             }
             Err(TrashError::NoSlot) => {
