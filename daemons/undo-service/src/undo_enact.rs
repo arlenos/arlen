@@ -257,37 +257,48 @@ fn enact_delete_created(path: &str, fingerprint: &str) -> Result<EnactOutcome, E
     }
 }
 
-/// Trash the created entity at `path` (move it to the freedesktop home trash) only
-/// if it still carries `fingerprint`; otherwise leave a user's replacement in place.
+/// Trash the created entity at `path` (into the trash of the volume it lives on)
+/// only if it still carries `fingerprint`; otherwise leave a user's replacement in
+/// place.
 /// The trash-first undo-of-create - it NEVER permanently destroys, so an accidental
 /// undo (e.g. of a folder the user has since filled) stays recoverable from the
 /// trash. An already-absent file is an identity mismatch, never an error (idempotent).
 fn enact_trash_created(path: &str, fingerprint: &str) -> Result<EnactOutcome, EnactError> {
-    let trash = arlen_freedesktop_trash::home_trash_dir()
-        .ok_or_else(|| EnactError::Io("no home trash directory".to_string()))?;
-    enact_trash_created_in(path, fingerprint, &trash)
+    enact_trash_created_in(path, fingerprint, None)
 }
 
-/// [`enact_trash_created`] against an explicit trash root, so the trash-put is
-/// unit-tested without touching the real home trash.
+/// [`enact_trash_created`] with an OPTIONAL explicit trash root, so the trash-put
+/// is unit-tested without touching the real one.
+///
+/// `None` is the production path and follows the FILE: a rename cannot cross a
+/// device, so undoing the creation of something on another volume used to fail
+/// outright. `Some(dir)` is the test seam. One override rather than two
+/// functions, so the path that ships is the path the tests drive.
 fn enact_trash_created_in(
     path: &str,
     fingerprint: &str,
-    trash_dir: &Path,
+    trash_dir: Option<&Path>,
 ) -> Result<EnactOutcome, EnactError> {
     match fingerprint_file(Path::new(path)) {
         Some(current) if current == fingerprint => {
-            let files_dir = trash_dir.join("files");
-            let info_dir = trash_dir.join("info");
-            std::fs::create_dir_all(&files_dir)
-                .and_then(|()| std::fs::create_dir_all(&info_dir))
-                .map_err(|e| EnactError::Io(e.to_string()))?;
-            let base_name = Path::new(path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .ok_or_else(|| EnactError::Io("created path has no file name".to_string()))?;
-            arlen_freedesktop_trash::trash_into(&files_dir, &info_dir, base_name, path)
-                .map(|_slot| EnactOutcome::Trashed)
+            let put = match trash_dir {
+                Some(dir) => {
+                    let files_dir = dir.join("files");
+                    let info_dir = dir.join("info");
+                    std::fs::create_dir_all(&files_dir)
+                        .and_then(|()| std::fs::create_dir_all(&info_dir))
+                        .map_err(|e| EnactError::Io(e.to_string()))?;
+                    let base_name = Path::new(path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .ok_or_else(|| {
+                            EnactError::Io("created path has no file name".to_string())
+                        })?;
+                    arlen_freedesktop_trash::trash_into(&files_dir, &info_dir, base_name, path)
+                }
+                None => arlen_freedesktop_trash::trash_for_current_user(path),
+            };
+            put.map(|_slot| EnactOutcome::Trashed)
                 .map_err(|e| EnactError::Io(format!("trash: {e:?}")))
         }
         _ => Ok(EnactOutcome::RefusedIdentityMismatch),
@@ -642,7 +653,7 @@ mod tests {
         std::fs::write(&created, b"content").unwrap();
         let fp = fingerprint_file(&created).unwrap();
         let trash = d.join("Trash");
-        let outcome = enact_trash_created_in(created.to_str().unwrap(), &fp, &trash).unwrap();
+        let outcome = enact_trash_created_in(created.to_str().unwrap(), &fp, Some(&trash)).unwrap();
         assert_eq!(outcome, EnactOutcome::Trashed);
         assert!(!created.exists(), "the created file was moved out of its place");
         // It landed in the trash with its sidecar - restorable, not destroyed.
@@ -658,7 +669,7 @@ mod tests {
         let trash = d.join("Trash");
         // A user replaced the file (different content) -> undo leaves it alone.
         let outcome =
-            enact_trash_created_in(created.to_str().unwrap(), "deadbeef", &trash).unwrap();
+            enact_trash_created_in(created.to_str().unwrap(), "deadbeef", Some(&trash)).unwrap();
         assert_eq!(outcome, EnactOutcome::RefusedIdentityMismatch);
         assert!(created.exists(), "the replacement is left in place");
     }
