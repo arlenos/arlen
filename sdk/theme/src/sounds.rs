@@ -32,6 +32,11 @@ pub fn generate_sound_overrides(theme: &ArlenTheme) -> String {
         ("error", &s.error),
         ("warning", &s.warning),
         ("action", &s.action),
+        // The daemon has had these two events all along; the theme schema gained
+        // them on 19 Aug, so until then a theme could not remap either and the
+        // emitted map named four of the six.
+        ("device-added", &s.device_added),
+        ("device-removed", &s.device_removed),
     ] {
         out.push_str(event);
         out.push_str(" = \"");
@@ -59,6 +64,8 @@ mod tests {
         assert_eq!(sounds["error"].as_str(), Some("dialog-error"));
         assert_eq!(sounds["warning"].as_str(), Some("dialog-warning"));
         assert_eq!(sounds["action"].as_str(), Some("complete"));
+        assert_eq!(sounds["device-added"].as_str(), Some("device-added"));
+        assert_eq!(sounds["device-removed"].as_str(), Some("device-removed"));
     }
 
     #[test]
@@ -79,6 +86,17 @@ mod tests {
         let out = generate_sound_overrides(&theme_from("[sounds]\nerror = \"evil\\\"\\nnotification = \\\"x\""));
         let doc: toml::Value = toml::from_str(&out).expect("still valid TOML");
         // The hostile string stayed one value of `error`, not a forged second key.
-        assert!(doc["sounds"].as_table().unwrap().len() == 4, "exactly the four events, no injected key");
+        // The count is the assertion: it was 4 until the schema gained the two
+        // device events on 19 Aug, and it must track the emitted list exactly -
+        // a `>=` here would let an injected key pass unnoticed, which is the one
+        // thing this test exists to catch.
+        let table = doc["sounds"].as_table().unwrap();
+        assert_eq!(table.len(), 6, "exactly the six events, no injected key");
+        // And the hostile value never reaches the output at all: the inert floor
+        // refuses it at resolve, so the field falls back to its default rather
+        // than being escaped through. Worth asserting - it says WHICH of the two
+        // defences did the work, and a change that moved the floor would show up
+        // here as an escaped string instead of the default.
+        assert_eq!(table["error"].as_str(), Some("dialog-error"));
     }
 }

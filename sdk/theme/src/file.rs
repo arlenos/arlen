@@ -264,4 +264,11 @@ pub struct SoundsSection {
     pub error:        Option<String>,
     pub warning:      Option<String>,
     pub action:       Option<String>,
+    /// A removable device was attached, and detached. Added 19 Aug: the
+    /// notification daemon has had `SoundEvent::DeviceAdded`/`DeviceRemoved`
+    /// since it was written, so a theme could not name a cue for either and
+    /// Settings could not offer them - two of the six events were unreachable
+    /// from the theme system entirely.
+    pub device_added:   Option<String>,
+    pub device_removed: Option<String>,
 }

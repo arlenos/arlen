@@ -422,6 +422,10 @@ pub struct SoundTokens {
     pub warning: String,
     /// Action completion.
     pub action: String,
+    /// A removable device was attached.
+    pub device_added: String,
+    /// A removable device was detached.
+    pub device_removed: String,
 }
 
 /// Fully resolved theme. Both compositor and desktop-shell consume
@@ -745,6 +749,8 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
         error: sound_name_or(snd.error, "dialog-error"),
         warning: sound_name_or(snd.warning, "dialog-warning"),
         action: sound_name_or(snd.action, "complete"),
+        device_added: sound_name_or(snd.device_added, "device-added"),
+        device_removed: sound_name_or(snd.device_removed, "device-removed"),
     };
 
     let variant = match meta.variant.as_str() {
@@ -904,6 +910,8 @@ fn merge_sounds(
             error: o.error.or(u.error),
             warning: o.warning.or(u.warning),
             action: o.action.or(u.action),
+            device_added: o.device_added.or(u.device_added),
+            device_removed: o.device_removed.or(u.device_removed),
         }),
     }
 }
@@ -1155,6 +1163,11 @@ size  = 24
         assert_eq!(t.sounds.error, "dialog-error");
         assert_eq!(t.sounds.warning, "dialog-warning");
         assert_eq!(t.sounds.action, "complete");
+        // The two the schema could not express until 19 Aug. Their absence was
+        // invisible: the daemon has always had the events, so a theme simply had
+        // no way to name a cue for either and Settings had nothing to offer.
+        assert_eq!(t.sounds.device_added, "device-added");
+        assert_eq!(t.sounds.device_removed, "device-removed");
     }
 
     #[test]
@@ -1164,12 +1177,18 @@ size  = 24
             error: Some("base-error".into()),
             warning: Some("base-warn".into()),
             action: Some("base-action".into()),
+            device_added: Some("base-added".into()),
+            device_removed: Some("base-removed".into()),
         };
         let overlay = SoundsSection {
             notification: Some("over-notif".into()),
             error: None,
             warning: None,
             action: None,
+            device_added: None,
+            // Left unset on purpose: the whole point of the merge is that a
+            // partial overlay does not erase what the base named.
+            device_removed: None,
         };
         let merged = merge_sounds(Some(base), Some(overlay)).expect("some");
         // The overlay wins where it sets a value; the base is kept where it does not
