@@ -77,24 +77,6 @@ NOT_YET_DEPLOYED: dict[str, str] = {
     ),
     "install-helper.service": "the install path is not exercised on the appliance image (15 Aug, reached only by installd)",
     "permission-helper.service": "the install path is not exercised on the appliance image (15 Aug, reached only by installd)",
-    "xdg-desktop-portal-arlen.service": (
-        "the portal is not staged into the image yet (15 Aug), so the security fixes "
-        "it now "
-        "carries are not in effect: the OpenFile descriptor TOCTOU, the resolved "
-        "mount containment, the picker peer-credential check. Not urgent - nothing "
-        "on the image routes through the portal yet - but this is a deferral of "
-        "shipped fixes, not of scaffolding. The expensive half is the picker-ui, a "
-        "Tauri app, so staging is a frontend build rather than a plain daemon step.\n"
-        "    MEASURED 18 Aug, and the work is larger than the line above reads: "
-        "`xdg-desktop-portal` - the FRONTEND - is not in `mkosi.conf`'s package "
-        "list at all. This daemon registers "
-        "`org.freedesktop.impl.portal.desktop.arlen`, an IMPL backend, and an app "
-        "never talks to it: it calls the frontend, which authenticates the caller "
-        "and re-dispatches here. So staging the backend on its own would leave "
-        "every one of those fixes just as inert, because nothing would ever dial "
-        "it. Three parts, not one - the frontend package, the daemon, the "
-        "picker-ui - and the first is what makes the other two mean anything"
-    ),
 }
 
 
@@ -168,7 +150,10 @@ NO_UNIT: dict[str, str] = {
     "bridge-ingest": "runs from the dogfood path today, unreviewed as a standalone service",
     "integration-packages": "a library and CLI for package assembly, not a running service",
     "lock-auth": "the lock screen's auth backend, consumed in-process, not a service",
-    "print": "the print backend is reached through the portal, which is itself unstaged",
+    # Corrected 18 Aug when the portal was staged: the old reason ("the portal is
+    # itself unstaged") stopped being true that day. What actually keeps print
+    # waiting is the other half - five built operations that no surface reaches.
+    "print": "the print operations are built but no surface calls them (18 Aug)",
     "sentinel-detect": "detection library, no daemon shape yet",
 }
 

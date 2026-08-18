@@ -1,0 +1,80 @@
+#!/bin/sh
+# Phase 8u (CHROOT): the xdg-desktop-portal backend and its file picker.
+#
+# WHAT THIS UNBLOCKS. Our portal is an impl BACKEND, not a frontend: it owns
+# `org.freedesktop.impl.portal.desktop.arlen` and is only ever reached because
+# `xdg-desktop-portal` (the frontend, added to mkosi.conf alongside this) reads a
+# `.portal` file, authenticates the calling app and re-dispatches. Until now none
+# of the three parts was on the image, so a confined app asking for a file had
+# nothing to ask, and the security work on that path - the OpenFile descriptor
+# TOCTOU fix, the resolved-mount containment, the picker's peer-credential check -
+# was shipped code that could not execute.
+#
+# BOTH BINARIES, DELIBERATELY IN ONE PHASE. `dist/xdg-desktop-portal/portals/arlen.portal`
+# claims FileChooser, and its own comment says what to do if the daemon ever ships
+# without the picker: drop the interface rather than ship a promise it cannot keep.
+# Staging them together means that instruction never has to be followed, because a
+# dialog that opens and fails reads to a user as a broken app rather than a missing
+# portal.
+#
+# Two build styles in one script for the same reason the app phases have two: the
+# daemon is plain Rust in its own workspace, the picker is a Tauri 2 app that needs
+# its frontend built first.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-xdg-portal"   # own dir; separate workspace
+export npm_config_cache="$cache/npm"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+src="$SRCDIR/arlen/daemons/xdg-portal"
+
+cd "$SRCDIR/arlen"
+echo ">> cargo build the portal backend - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path "$src/daemon/Cargo.toml"
+
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/xdg-desktop-portal-arlen' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! xdg-desktop-portal-arlen not found after build" >&2; exit 1; }
+install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/libexec/xdg-desktop-portal-arlen"
+
+echo ">> tauri build --no-bundle (production) the portal file picker"
+cd "$src/picker-ui"
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+./node_modules/.bin/tauri build --no-bundle
+
+picker=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/xdg-desktop-portal-arlen-picker' 2>/dev/null \
+        | head -1)
+# Named rather than tolerated: without the picker the daemon still starts and
+# still answers OpenURI, but every FileChooser request it accepts ends in a dialog
+# that never appears. The `.portal` file promises the interface, so a missing
+# picker is a broken promise and not a smaller feature set.
+[ -n "$picker" ] || { echo "!! the portal picker was not built; FileChooser would be a dead promise" >&2; exit 1; }
+install -Dm755 "$picker" "$DESTDIR/usr/lib/arlen/libexec/xdg-desktop-portal-arlen-picker"
+
+# The three declarations, installed from the daemon's own `dist/` rather than
+# copied into mkosi.extra, so there is one source for each and no second copy to
+# drift. `arlen.portal` is what makes the frontend route here at all; the D-Bus
+# service file is what starts us on demand; the unit is what systemd runs.
+install -Dm644 "$src/dist/xdg-desktop-portal/portals/arlen.portal" \
+        "$DESTDIR/usr/share/xdg-desktop-portal/portals/arlen.portal"
+install -Dm644 "$src/dist/dbus/org.freedesktop.impl.portal.desktop.arlen.service" \
+        "$DESTDIR/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.arlen.service"
+install -Dm644 "$src/dist/systemd/xdg-desktop-portal-arlen.service" \
+        "$DESTDIR/usr/lib/systemd/user/xdg-desktop-portal-arlen.service"
+
+echo ">> staged the portal backend, its picker and its three declarations"
