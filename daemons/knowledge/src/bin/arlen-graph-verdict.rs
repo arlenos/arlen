@@ -121,6 +121,29 @@ fn main() -> std::process::ExitCode {
         ),
     );
 
+    // The sensor's own trace, read out of the graph rather than out of the event
+    // store. `kernel_verdict` asks SQLite whether a row carried `source = 'ebpf'`;
+    // this asks the graph whether promotion turned one into a node, which is the
+    // question that says the machine-wide sensor reaches the surfaces we ship
+    // rather than merely reaching the store.
+    //
+    // The App id is the join: an open with no app_id of its own is minted
+    // `{source}:cgroup:{id}` (or `{source}:{pid}` when there is no cgroup) by
+    // `promote_file_opened`, so a node whose id starts with the sensor's source
+    // came from the sensor and from nothing else.
+    //
+    // REPORTED, not folded into the exit code, so `--require-graph` keeps meaning
+    // exactly what it meant before this line existed.
+    let sensor = ask(
+        &conn,
+        "MATCH (a:App) WHERE starts_with(a.id, 'ebpf:') RETURN a.id LIMIT 1",
+    );
+    match &sensor {
+        Answer::Yes => println!("GRAPH sensor: yes, an App node minted by the kernel sensor"),
+        Answer::No => println!("GRAPH sensor: no App node from the kernel sensor in this store"),
+        Answer::NoTable(e) => println!("GRAPH sensor: not measured ({e})"),
+    }
+
     for (what, answer) in [("promoted", &promoted), ("linked", &linked)] {
         match answer {
             Answer::Yes => println!("GRAPH {what}: yes"),

@@ -664,6 +664,13 @@ def main():
                          "to have run and a project to link to, so a sound boot can "
                          "lack it; the answer is printed either way. Everything else "
                          "about the KG grades what the guest said about itself")
+    ap.add_argument("--require-kernel", action="store_true",
+                    help="fail unless the EVENT STORE holds at least one event from "
+                         "the eBPF sensor. Off by default for the same reason as "
+                         "--require-graph: the sensor's program is loaded at runtime "
+                         "and the verifier can refuse it, which is exactly the thing "
+                         "worth seeing, so the answer is printed on every run and "
+                         "this is the switch for a run that means to hold it")
     ap.add_argument("--journal-out", default=None, metavar="PATH",
                     help="write the guest's own journal here, read out of the "
                          "overlay after it halts. Unlike the serial log this covers "
@@ -1338,6 +1345,27 @@ def main():
             print(f"VERIFY FAIL: {message}")
             return 1
         print(f"event store: {message}")
+
+        # Same store, one question further out, and the one nothing was asking
+        # until 18 August: the two verdicts above are both satisfied by events the
+        # DESKTOP emits, so an image whose kernel sensor never loaded answers them
+        # perfectly and has no machine-wide file events in it at all. The eBPF
+        # program is loaded at runtime and the verifier CAN refuse it - it did, on
+        # the first image that carried the sensor - and that refusal is visible
+        # from nowhere except the sensor's own journal, while the unit retries and
+        # the desktop comes up looking well.
+        #
+        # REPORTED, not required, on the --require-graph precedent: a boot can be
+        # sound and still be too short for the sensor to have observed anything
+        # worth writing, so gating it today would fail runs for the wrong reason.
+        # `--require-kernel` is the switch for a run that means to hold it.
+        from kernel_verdict import kernel_verdict
+
+        kok, kmessage = kernel_verdict(store)
+        print(f"kernel sensor: {kmessage}")
+        if args.require_kernel and not kok:
+            print("VERIFY FAIL: the event store holds nothing from the eBPF sensor")
+            return 1
 
         # One hop further, and the same discipline: the graph store comes out of
         # the image too, and the host opens it with our own engine and asks. The
