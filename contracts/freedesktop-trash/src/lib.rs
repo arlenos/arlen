@@ -305,8 +305,21 @@ pub fn trash(source: &str, uid: u32) -> Result<TrashSlot, TrashError> {
     // builds the path, so the device question is asked of the nearest ancestor
     // that exists - the trash itself may not have been created yet.
     if let Some(home) = home_trash_dir() {
-        let probe = if home.exists() { Some(home.clone()) } else { home.parent().map(Path::to_path_buf) };
-        let same = probe.as_deref().and_then(dev_of).is_some_and(|d| d == src_dev);
+        // The NEAREST EXISTING ancestor, not just the parent. A first-ever trash
+        // has neither `Trash/` nor, under a fresh `XDG_DATA_HOME`, the data home
+        // itself - and one unstattable level made this decide "different volume"
+        // and send the file to the volume trash instead. Caught by `trash-rm`'s
+        // own test, which points `XDG_DATA_HOME` at a directory it never creates.
+        let mut probe = home.as_path();
+        let same = loop {
+            if let Some(d) = dev_of(probe) {
+                break d == src_dev;
+            }
+            match probe.parent() {
+                Some(p) if p != probe => probe = p,
+                _ => break false,
+            }
+        };
         if same {
             let files = home.join("files");
             let info = home.join("info");
@@ -586,6 +599,31 @@ mod follows_the_file_tests {
             .expect("the entry has a Path");
         assert_eq!(moved.join(rel), moved.join("sub/a.md"), "resolves against the new mount");
         std::fs::remove_dir_all(&moved).ok();
+    }
+
+    /// A first-ever trash has no `Trash/` yet, and under a fresh `XDG_DATA_HOME`
+    /// not even the data home. That must still read as "the home volume", not as
+    /// a different one - the bug this pins sent such a file to the volume trash
+    /// instead, and `trash-rm`'s own test is what caught it.
+    #[test]
+    fn a_home_trash_that_does_not_exist_yet_is_still_the_home_volume() {
+        let _serial = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let root = std::env::temp_dir().join(format!("arlen-fh-new-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        // Named but never created, two levels deep.
+        let data_home = root.join("data/never-made");
+        // SAFETY: the test owns this temp dir; the lock above serialises access.
+        unsafe { std::env::set_var("XDG_DATA_HOME", &data_home) };
+
+        let src = root.join("a.md");
+        std::fs::write(&src, b"x").unwrap();
+        let slot = trash(src.to_str().unwrap(), 1000).expect("the home volume takes it");
+        assert!(
+            slot.trashed().as_str().starts_with(data_home.to_str().unwrap()),
+            "into the home trash it just created: {}",
+            slot.trashed().as_str()
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 
     /// A trash that cannot complete leaves the file where it was.
