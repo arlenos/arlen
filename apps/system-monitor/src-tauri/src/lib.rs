@@ -15,6 +15,7 @@
 use tauri::Manager;
 
 use arlen_system_monitor_core::actions;
+use arlen_system_monitor_core::procdetail::{held_resources, HeldResources};
 use arlen_system_monitor_core::procmon::{group_processes, Monitor, Process};
 use arlen_system_monitor_core::sysmon::{SystemMonitor, SystemTick};
 
@@ -48,6 +49,19 @@ fn list_processes(monitor: tauri::State<'_, Monitor>) -> Vec<Process> {
 #[tauri::command]
 fn list_app_rows(monitor: tauri::State<'_, Monitor>) -> Vec<Process> {
     group_processes(&monitor.sample())
+}
+
+/// What one process is holding open: its files, its sockets, and whether a camera
+/// or microphone is among them.
+///
+/// Read on demand rather than per poll: walking an fd table for every process
+/// every second is work done on the machine the user opened this to relieve, and
+/// only the selected row's detail is on screen. Every field is optional, and a
+/// process belonging to another user comes back unmeasured with the reason
+/// attached - never as an empty list, which would read as "holds nothing open".
+#[tauri::command]
+fn process_held_resources(pid: u32) -> HeldResources {
+    held_resources(std::path::Path::new("/proc"), pid)
 }
 
 /// One tick of system-wide device counters for the Performance tab: CPU, memory,
@@ -101,6 +115,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             frontend_log,
             list_processes,
+            process_held_resources,
             list_app_rows,
             system_tick,
             stop_process,

@@ -357,5 +357,54 @@ else
 fi
 
 
+# WHAT A PROCESS HOLDS OPEN, and the two answers that must stay apart. The pane
+# used to invent this: three paths built from the process name, plus a hardcoded
+# `tcp 140.82.121.4:443 ESTABLISHED` (a real GitHub address) for anything with
+# traffic. Both cases below are needed - a reader that returns an empty list for
+# a process it could not read looks identical to a working one on our own rows.
+cat > "$probes/p-openfiles.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(2500);
+const rows = [...document.querySelectorAll("[role=row][data-pid]")];
+const name = r => (r.querySelector(".cell.name")?.textContent || "").trim();
+const read = async (row) => {
+  row.click();
+  await wait(1200);
+  const pane = document.querySelector("aside");
+  [...pane.querySelectorAll("button")].find(b => /open files|dateien/i.test(b.textContent || ""))?.click();
+  await wait(1500);
+  // `.files` itself, not the pane: the pane's footer sits OUTSIDE the tab body
+  // and reads the same on every tab, so a tail-of-innerText check reports the
+  // footer no matter which tab is showing.
+  return (pane.querySelector(".files")?.innerText || "NO FILES SECTION").replace(/\s+/g, " ").trim();
+};
+// A process of ours (the app's own webview) and one that is not (pid 1, root).
+const mine = rows.find(r => /WebKitWebProcess|arlen-system-monitor/.test(name(r)));
+const theirs = rows.find(r => /^systemd$/.test(name(r)));
+if (!mine || !theirs) return JSON.stringify({ skipped: "needed both an own and a foreign process" });
+const ours = await read(mine);
+const foreign = await read(theirs);
+return JSON.stringify({
+  // Real fds look like real paths, and the invented address is gone.
+  realPaths: /\/(dev|proc|memfd|usr|home|tmp)/.test(ours),
+  invented: /140\.82\.121\.4/.test(ours),
+  // The foreign one must say it could not look - NOT "no open files", which
+  // would be a false all-clear on the screen about what programs can reach.
+  saysUnmeasured: /not measured/i.test(foreign),
+  claimsEmpty: /no open files|keine offenen/i.test(foreign),
+  ours: ours.slice(0, 120), foreign: foreign.slice(0, 90) });
+JS
+got=$(drive "$probes/p-openfiles.js" sysmon-openfiles.png)
+if printf '%s' "$got" | grep -q '"skipped"'; then
+  echo "  --   what a process holds open: $got"
+else
+  say "the open-files pane reads real fds, and says so when it cannot" \
+    "$(printf '%s' "$got" | grep -q '"realPaths":true' \
+       && printf '%s' "$got" | grep -q '"invented":false' \
+       && printf '%s' "$got" | grep -q '"saysUnmeasured":true' \
+       && printf '%s' "$got" | grep -q '"claimsEmpty":false' && echo 1 || echo 0)" "$got"
+fi
+
+
 [ "$fail" = 0 ] && echo "a process list that sorts, a detail that names a pid, graphs that draw, and a kill that asks before it acts"
 exit "$fail"
