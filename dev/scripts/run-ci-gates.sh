@@ -25,10 +25,31 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 # maintain it. A filter that additionally requires a naming convention is a
 # maintained list again, just harder to notice, because it fails by leaving
 # things out silently and the runner still prints a confident tally.
-mapfile -t scripts < <(
+mapfile -t found < <(
   grep -oE 'dev/scripts/[a-z0-9-]+\.(py|mjs|sh)' .github/workflows/ci.yml \
     | awk '!seen[$0]++'
 )
+
+# Not everything CI runs from `dev/scripts/` is a check. `ci-system-deps.sh`
+# installs packages with sudo, so deriving the list caught it and tried to apt
+# on a developer's Arch laptop, which asked for a fingerprint and then failed
+# three times over.
+#
+# The fix is NOT a list of names here - the comment above spent a paragraph on
+# why that shape rots. The script declares it, and this reads the declaration,
+# so the knowledge lives with the thing it describes. The skips are printed for
+# the same reason: a check that quietly drops something is the failure mode this
+# whole runner exists to close.
+scripts=()
+skipped=()
+for s in "${found[@]}"; do
+  reason=$(sed -n 's/^# not-a-local-gate: //p' "$s" 2>/dev/null | head -1)
+  if [ -n "$reason" ]; then
+    skipped+=("$s: $reason")
+  else
+    scripts+=("$s")
+  fi
+done
 
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
@@ -59,5 +80,8 @@ for i in "${!scripts[@]}"; do
     # failure up by hand, which is the friction that gets a hook disabled.
     sed 's/^/    /' "$out/$i.log" 2>/dev/null | tail -20
   fi
+done
+for s in "${skipped[@]}"; do
+  printf '%-42s not run here: %s\n' "${s%%:*}" "${s#*: }"
 done
 exit "$fail"

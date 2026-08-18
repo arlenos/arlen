@@ -40,6 +40,8 @@
 # ones after it do not touch the mirror for a package body at all.
 #
 # Run: dev/scripts/ci-system-deps.sh
+#
+# not-a-local-gate: it installs packages with sudo, and a laptop has no apt.
 set -uo pipefail
 
 # cmake + nasm build AWS-LC, which aws-lc-rs (pulled in by the tough TUF
