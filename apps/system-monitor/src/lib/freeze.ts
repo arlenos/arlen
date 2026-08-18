@@ -41,3 +41,25 @@ export function pinnedOrder<T extends Identified>(fresh: T[], pinned: number[]):
   // they come out in the order `fresh` had them.
   return [...held, ...byId.values()];
 }
+
+/// Does this row survive the filter box?
+///
+/// Lives here rather than inside the table because of what the second clause
+/// does: a row matches on its OWN name or on any CHILD's, so typing a tab title
+/// surfaces the browser row that holds it. That is what keeps search usable now
+/// that the landing view is grouped - the thing you remember is often the child,
+/// and the row you need to act on is the parent.
+///
+/// It is also the clause a drive on this machine cannot check, because here the
+/// children carry the same name as their parent, so "matched by its own name"
+/// and "matched by a child's" are indistinguishable on screen. A unit test can
+/// build the case the machine will not produce.
+export function rowMatches(
+  row: { name: string; children?: { name: string }[] },
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (row.name.toLowerCase().includes(q)) return true;
+  return (row.children ?? []).some((c) => c.name.toLowerCase().includes(q));
+}

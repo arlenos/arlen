@@ -195,5 +195,46 @@ say "holding the modifier stops the rows reordering" \
 say "and the figures keep arriving while it is held" \
   "$(printf '%s' "$got" | grep -q '"moved":true' && echo 1 || echo 0)" "$got"
 
+# The filter box, which existed and had never been pressed. Names come from each
+# row's `aria-label` and NOT from the name cell: the cell also carries the icon
+# badge letter, so its textContent reads "c claude" - a string the interface
+# never shows anyone, and typing it matches nothing. The first cut of this probe
+# did exactly that and reported the filter as broken.
+#
+# The child-name clause (a tab title surfacing its browser row) is NOT checked
+# here and cannot be: this machine's children carry their parent's name, so the
+# two cases are the same string on screen. `freeze.test.ts` builds that case.
+cat > "$probes/p-filter.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(3000);
+const names = () => [...document.querySelectorAll("[role=row][data-pid]")]
+  .map(r => r.getAttribute("aria-label")).filter(Boolean);
+const before = names().length;
+const withKids = [...document.querySelectorAll("[role=row][data-pid]")]
+  .find(r => r.querySelector("button.twist"));
+const parentName = withKids ? withKids.getAttribute("aria-label") : names()[0];
+const box = [...document.querySelectorAll("input")].find(i => i.offsetParent !== null);
+if (!box) return JSON.stringify({ error: "no filter box" });
+const type = async (v) => {
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(box, v);
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  await wait(700);
+};
+await type("zzzznomatch");
+const noneCount = names().length;
+await type(parentName);
+const hit = names();
+await type("");
+return JSON.stringify({ before, parentName, noneCount,
+  hitCount: hit.length, hitHasIt: hit.some(n => n.includes(parentName)),
+  narrowed: hit.length < before, restored: names().length === before });
+JS
+got=$(drive "$probes/p-filter.js" sysmon-filter.png)
+say "typing in the filter narrows the list to what matches" \
+  "$(printf '%s' "$got" | grep -q '"noneCount":0' \
+     && printf '%s' "$got" | grep -q '"hitHasIt":true' \
+     && printf '%s' "$got" | grep -q '"narrowed":true' \
+     && printf '%s' "$got" | grep -q '"restored":true' && echo 1 || echo 0)" "$got"
+
 [ "$fail" = 0 ] && echo "a process list that sorts, a detail that names a pid, graphs that draw, and a kill that asks before it acts"
 exit "$fail"
