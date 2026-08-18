@@ -1342,6 +1342,17 @@ def main():
                     "pulled: fix the shutdown (or raise --shutdown-wait) before "
                     "reading this as an ingestion fault"
                 )
+            # The sensor's line before the return, because the two answers are
+            # about different producers and the useful failure names both. A boot
+            # where the desktop's own event never arrived AND the sensor forwarded
+            # nothing is a different fault from one where only the desktop is
+            # quiet, and returning here would have reported them identically.
+            try:
+                from kernel_verdict import kernel_verdict as _kv
+
+                print(f"kernel sensor: {_kv(store)[1]}")
+            except Exception as e:  # never let a diagnostic mask the real failure
+                print(f"kernel sensor: not measured ({e})")
             print(f"VERIFY FAIL: {message}")
             return 1
         print(f"event store: {message}")
