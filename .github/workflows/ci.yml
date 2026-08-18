@@ -425,7 +425,14 @@ jobs:
             /opt/hostedtoolcache/CodeQL /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
           df -h /
       - name: system deps
-        # A step-level ceiling, because THIS is the step that hangs.
+        # A step-level ceiling and apt deadlines, because THIS is the step that
+        # hangs - and the same command succeeds beside it. All 118 rust jobs come
+        # from one matrix with one copy of this step, so on run 32104354507 the
+        # identical apt line finished for 101 of them and three sat in it for an
+        # hour. Not the package list, not a missing package: a socket with no
+        # deadline. `Acquire::*::Timeout` gives one, `Retries` survives a mirror
+        # that drops, and the ceiling below turns whatever is left into a red
+        # naming this step rather than a job burning its 75-minute allowance.
         # Measured on run 32104354507 (18 Aug): 101 jobs finished and three -
         # apps/files/core, ai, apps/viewers/core - sat here for 52 minutes with
         # every later step pending. The three before that were a different six,
@@ -440,8 +447,8 @@ jobs:
         # cmake + nasm build AWS-LC, which aws-lc-rs (pulled in by the tough TUF
         # library, used by forage/cookbook-sign) compiles from C source.
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
             protobuf-compiler build-essential pkg-config cmake nasm \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libssl-dev libdbus-1-dev fuse3 libfuse3-dev \
@@ -536,8 +543,8 @@ jobs:
         # Same ceiling as the first, same reason.
         timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
             protobuf-compiler build-essential pkg-config cmake nasm \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libssl-dev libdbus-1-dev fuse3 libfuse3-dev \
@@ -587,8 +594,8 @@ jobs:
         # Same ceiling as the first, same reason.
         timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
             protobuf-compiler build-essential pkg-config \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libdbus-1-dev libfuse3-dev
       - uses: dtolnay/rust-toolchain@stable
