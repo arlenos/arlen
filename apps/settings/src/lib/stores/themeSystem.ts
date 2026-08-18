@@ -8,6 +8,8 @@
 /// option lists are placeholders until the real enumeration lands.
 
 import { writable, derived } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// A selectable option.
 ///
@@ -181,4 +183,38 @@ export function resetTerminal(): void {
     }
     return next;
   });
+}
+
+/// What a preview attempt did. The backend answers rather than returning unit,
+/// so a button that made no sound can say which kind of nothing happened
+/// instead of looking broken.
+export type PreviewOutcome = "played" | "silenced" | "not-found" | "no-audio-tool" | "unavailable";
+
+/// Play one cue through the notification daemon's own resolver.
+export async function previewSound(name: string): Promise<PreviewOutcome> {
+  if (!tauriAvailable) return "unavailable";
+  try {
+    return (await invoke<string>("sound_preview", { name })) as PreviewOutcome;
+  } catch {
+    return "unavailable";
+  }
+}
+
+/// One installed sound theme.
+export interface SoundThemeOption {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+/// The themes this machine actually has, for the picker. Empty without a
+/// backend, which the page renders as "not measured" rather than as the old
+/// invented list.
+export async function installedSoundThemes(): Promise<SoundThemeOption[]> {
+  if (!tauriAvailable) return [];
+  try {
+    return await invoke<SoundThemeOption[]>("sound_themes");
+  } catch {
+    return [];
+  }
 }
