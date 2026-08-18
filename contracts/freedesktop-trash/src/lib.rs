@@ -162,15 +162,27 @@ pub fn home_trash_dir() -> Option<PathBuf> {
 /// Found by walking up while `st_dev` is unchanged, because that is the only
 /// definition that does not need `/proc/mounts` parsed and kept in step with it.
 /// A path that cannot be stat'd has no answer.
-pub fn top_directory_of(path: &Path) -> Option<PathBuf> {
-    let dev_of = |p: &Path| -> Option<u64> {
-        use std::os::unix::fs::MetadataExt;
-        std::fs::metadata(p).ok().map(|m| m.dev())
-    };
-    let start = if path.is_dir() { path.to_path_buf() } else { path.parent()?.to_path_buf() };
-    let dev = dev_of(&start)?;
-    let mut top = start.clone();
-    let mut cursor = start;
+/// The walk itself, over a device lookup the caller supplies.
+///
+/// Split out from [`top_directory_of`] on 18 August because the test for it was
+/// red on CI and green here: it asserted that `/tmp` is its own mount, which is
+/// true of this machine and of a systemd host and is NOT true of a CI runner,
+/// whose layout nobody here chose. A test whose subject is the host's mount table
+/// is a test about the host.
+///
+/// The rule is pure logic - climb while the device number holds, stop at the
+/// first ancestor that differs or cannot be read - and only the reading of the
+/// device numbers needs a filesystem. So the rule is tested against a table the
+/// test writes, and the reading is covered by the one case that holds on any
+/// layout: a file and the directory holding it answer the same.
+///
+/// `start` must be a directory. `dev_of` returns the device number for a path, or
+/// None when it cannot be read, which ends the walk exactly as a differing device
+/// does - an ancestor we cannot stat is not one we may claim.
+pub fn top_directory_from(start: &Path, dev_of: impl Fn(&Path) -> Option<u64>) -> Option<PathBuf> {
+    let dev = dev_of(start)?;
+    let mut top = start.to_path_buf();
+    let mut cursor = start.to_path_buf();
     while let Some(parent) = cursor.parent().map(Path::to_path_buf) {
         if parent == cursor {
             break;
@@ -186,6 +198,15 @@ pub fn top_directory_of(path: &Path) -> Option<PathBuf> {
         }
     }
     Some(top)
+}
+
+pub fn top_directory_of(path: &Path) -> Option<PathBuf> {
+    let dev_of = |p: &Path| -> Option<u64> {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(p).ok().map(|m| m.dev())
+    };
+    let start = if path.is_dir() { path.to_path_buf() } else { path.parent()?.to_path_buf() };
+    top_directory_from(&start, dev_of)
 }
 
 /// Which trash directory serves entities on `topdir`, per the spec's two forms.
@@ -514,6 +535,19 @@ mod follows_the_file_tests {
         };
         let home = home_base.join(format!(".cache/arlen-fh-home-{}", std::process::id()));
         std::fs::create_dir_all(&home).unwrap();
+        // And say so when the arrangement did not work. On a machine where $HOME
+        // and the temp directory share a device - a CI runner, a container - the
+        // source is NOT on another volume, the trash takes the home branch, and
+        // every assertion below passes while testing the case this test exists to
+        // avoid. Passing quietly there is worse than not running.
+        if top_directory_of(&home) == top_directory_of(&std::env::temp_dir()) {
+            eprintln!(
+                "$HOME and the temp directory are on one device here, so the \
+                 cross-volume case cannot be arranged: not asserting it"
+            );
+            std::fs::remove_dir_all(&home).ok();
+            return;
+        }
         // SAFETY: the test owns these temp dirs; the lock above serialises access.
         unsafe { std::env::set_var("XDG_DATA_HOME", &home) };
 
@@ -674,25 +708,80 @@ mod top_dir_tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
-    /// `/tmp` is a mount of its own on this machine and on any systemd host, and
-    /// `$HOME` is not - which is the whole reason a home-only trash fails there.
+    /// A mount table this test writes, so the assertions are about the RULE and
+    /// not about whichever machine is running them. `/mnt/stick` is its own
+    /// device, everything else is the root one.
+    fn table(p: &Path) -> Option<u64> {
+        let s = p.to_string_lossy();
+        if s == "/mnt/stick" || s.starts_with("/mnt/stick/") {
+            Some(42)
+        } else {
+            Some(1)
+        }
+    }
+
     #[test]
     fn a_path_resolves_to_the_mount_it_lives_on() {
-        let tmp = top_directory_of(Path::new("/tmp")).expect("tmp is stat-able");
-        assert_eq!(tmp, Path::new("/tmp"), "a mount point is its own top directory");
-        let root = top_directory_of(Path::new("/usr/bin")).expect("/usr/bin is stat-able");
-        assert!(
-            root == Path::new("/") || root == Path::new("/usr"),
-            "walks up to the mount, got {}",
-            root.display()
+        assert_eq!(
+            top_directory_from(Path::new("/mnt/stick"), table).unwrap(),
+            Path::new("/mnt/stick"),
+            "a mount point is its own top directory"
         );
+        assert_eq!(
+            top_directory_from(Path::new("/mnt/stick/photos/2026"), table).unwrap(),
+            Path::new("/mnt/stick"),
+            "a path inside the mount climbs to it and stops"
+        );
+        assert_eq!(
+            top_directory_from(Path::new("/usr/bin"), table).unwrap(),
+            Path::new("/"),
+            "a path on the root device climbs to the root"
+        );
+    }
+
+    /// An ancestor that cannot be read ends the walk where a differing device
+    /// would. Getting this wrong claims a top directory across a boundary nobody
+    /// could see, and a trash written there is a trash on the wrong volume.
+    #[test]
+    fn an_unreadable_ancestor_stops_the_walk() {
+        let opaque = |p: &Path| -> Option<u64> {
+            match p.to_string_lossy().as_ref() {
+                "/a/b/c" | "/a/b" => Some(7),
+                _ => None,
+            }
+        };
+        assert_eq!(
+            top_directory_from(Path::new("/a/b/c"), opaque).unwrap(),
+            Path::new("/a/b"),
+            "stops at the last ancestor it could read"
+        );
+    }
+
+    /// The one case that needs a real filesystem, written so it holds on any
+    /// layout: whatever the temp directory's own top directory is, a file inside
+    /// it answers the same. It asserts the READING agrees with the rule without
+    /// asserting anything about where the host put its mounts.
+    #[test]
+    fn the_real_reader_agrees_with_the_rule() {
+        let dir = std::env::temp_dir().join(format!("arlen-topread-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("x");
+        std::fs::write(&f, b"x").unwrap();
+        assert_eq!(top_directory_of(&f).unwrap(), top_directory_of(&dir).unwrap());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn a_file_answers_for_the_directory_holding_it() {
         let f = std::env::temp_dir().join(format!("arlen-top-{}", std::process::id()));
         std::fs::write(&f, b"x").unwrap();
-        assert_eq!(top_directory_of(&f).unwrap(), top_directory_of(Path::new("/tmp")).unwrap());
+        // Against the temp directory's OWN answer, not against `/tmp` by name: the
+        // claim is that a file and the directory holding it agree, which holds on
+        // any layout. Naming `/tmp` made it a claim about this host's mounts.
+        assert_eq!(
+            top_directory_of(&f).unwrap(),
+            top_directory_of(&std::env::temp_dir()).unwrap()
+        );
         std::fs::remove_file(&f).ok();
     }
 
