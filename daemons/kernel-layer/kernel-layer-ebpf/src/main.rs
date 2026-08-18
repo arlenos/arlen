@@ -50,14 +50,23 @@ pub fn file_opened(ctx: TracePointContext) -> u32 {
 }
 
 fn try_file_opened(ctx: TracePointContext) -> Result<(), i64> {
-    // sys_enter_openat tracepoint args layout:
-    //   +0:  __syscall_nr (int)
-    //   +8:  dfd (int)
-    //   +16: filename (const char __user *)
-    //   +24: flags (int)
-    //   +32: mode (umode_t)
+    // Offsets are from the start of the TRACEPOINT RECORD, which is what
+    // `read_at` indexes - not from the start of the syscall args. The record
+    // begins with the common fields (common_type 2, common_flags 1,
+    // common_preempt_count 1, common_pid 4 = 8 bytes), so:
+    //   +8:  __syscall_nr (int, padded to 8)
+    //   +16: dfd (int, padded to 8)
+    //   +24: filename (const char __user *)
+    //   +32: flags
+    //   +40: mode
+    //
+    // This read was at 16 until 18 August, which is `dfd` - an int like AT_FDCWD
+    // (-100) read as a user pointer, so `bpf_probe_read_user_str_bytes` failed,
+    // `event.path` stayed zeroed, and userspace dropped every open as an empty
+    // path. Measured on the boot that proved it: 50687 opens seen, 50687
+    // discarded for an empty path, none filtered and none deduped.
     let filename_ptr = unsafe {
-        ctx.read_at::<u64>(16).map_err(|_| -1i64)? as *const u8
+        ctx.read_at::<u64>(24).map_err(|_| -1i64)? as *const u8
     };
 
     let uid_gid = unsafe { bpf_get_current_uid_gid() };
@@ -168,13 +177,18 @@ pub fn file_written(ctx: TracePointContext) -> u32 {
 }
 
 fn try_file_written(ctx: TracePointContext) -> Result<(), i64> {
-    // sys_enter_write args (relative to args start):
-    //   +0: __syscall_nr (4 bytes, padded to 8)
-    //   +8: fd (8 bytes, unsigned long)
-    //   +16: buf (8 bytes, pointer)
-    //   +24: count (8 bytes, size_t)
-    let fd: u64 = unsafe { ctx.read_at(8).map_err(|_| -1i64)? };
-    let count: u64 = unsafe { ctx.read_at(24).map_err(|_| -1i64)? };
+    // Record-relative, same as the open probe above and for the same reason - the
+    // 8 bytes of common fields come first:
+    //   +8:  __syscall_nr
+    //   +16: fd (unsigned long)
+    //   +24: buf (pointer)
+    //   +32: count (size_t)
+    //
+    // These were 8 and 24, which read `__syscall_nr` as the fd and `buf` as the
+    // count. The fd then failed the `fd <= 2` guard or resolved to nothing, which
+    // is why this probe forwarded as little as its sibling.
+    let fd: u64 = unsafe { ctx.read_at(16).map_err(|_| -1i64)? };
+    let count: u64 = unsafe { ctx.read_at(32).map_err(|_| -1i64)? };
 
     // Skip stdin/stdout/stderr
     if fd <= 2 {
