@@ -54,8 +54,15 @@ ln -sf "../lib/arlen/apps/dev.arlen.viewers/bin/arlen-viewers" \
         "$DESTDIR/usr/bin/arlen-viewers"
 
 # The sandboxed decoders, beside the binary because that is where `worker_dir()`
-# looks. Each is its own crate with its own workspace, built in turn; heic and jxl
-# link C libraries (libheif, libjxl) that phases 1-2 installed.
+# looks. Each is its own crate with its own workspace, built in turn.
+#
+# Only ONE of them links a C library: heic, through libheif-rs -> libheif-sys ->
+# pkg-config. jxl does not - `jxl-oxide` is pure Rust. This comment claimed both
+# did and that "phases 1-2 installed" them, and neither half was true: libheif
+# appeared nowhere in `01-install-deps.sh` or `mkosi.conf`, so the image build
+# died here on 18 August with `Package 'libheif' was not found`. Written from
+# intent rather than from the config, which is how it went eleven weeks without
+# anyone noticing that the sentence and the build disagreed.
 for w in decode-image decode-audio decode-heic decode-jxl; do
     echo ">> cargo build --release arlen-$w"
     ( cd "$SRCDIR/arlen/apps/viewers/$w" \
