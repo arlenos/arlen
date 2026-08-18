@@ -409,6 +409,38 @@ provision-agent-profile:
     echo "installed agent permission profile -> $dest/ai-agent.toml"
     echo "NB executor_live stays OFF; flipping it in ai.toml is a separate manual step."
 
+# Drive the built apps through the behaviours their plans name, and read what
+# came back. Viewer, system monitor, text editor, file manager - nineteen cases,
+# each one a control pressed in a running app rather than a symbol found in the
+# source.
+#
+# WHY IT EXISTS. Stage 2's apps were listed as open work on the strength of line
+# counts and greps, and both were wrong in both directions: the system monitor's
+# "115 lines of Rust" counted its Tauri shim and not the 895-line core, while a
+# grep for `zoom` in the viewer found a control whose label disagreed with the
+# picture. A minute of pressing settles what an afternoon of reading cannot.
+#
+# Each script checks the WORLD where it can, not the widget: the file on disk
+# after a save, a rename, a delete and an undo; the process gone after a kill;
+# the waveform matching the envelope in its own fixture.
+#
+# Needs the four RELEASE binaries built with `tauri build --no-bundle` (a plain
+# `cargo build --release` leaves them pointing at devUrl and the run reports on
+# whatever serves that port), plus tauri-driver, WebKitWebDriver, Xvfb, openbox.
+# Not in the PR matrix, like `integration-smoke`: it wants a display and built
+# apps, and it ends processes and moves files under $HOME.
+#
+# Press the four Stage-2 apps and read what came back (19 cases).
+drive-apps:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for app in viewer system-monitor text-editor files; do
+        "{{ROOT}}/dev/screenshot/drive-$app.sh" || fail=1
+    done
+    [ "$fail" = 0 ] && echo "every behaviour these four plans name answered when it was pressed"
+    exit "$fail"
+
 # Headless terminal round-trip smoke (#3 PR-2): build the prod-asset terminal
 # binary (`cargo tauri build` embeds the frontend; a plain `cargo build` loads
 # the dev URL and renders nothing), then drive a real command through the running
