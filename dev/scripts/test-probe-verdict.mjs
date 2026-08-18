@@ -49,6 +49,28 @@ const ROUND = (n, rows, own = rows) =>
 // carries it and the refusals below vary it on purpose.
 const STORE = (n) => `kg-probe: store: ${n} event row(s) naming this run's file`;
 
+// The two readings of an empty ingestion answer, separated 18 August. With the
+// kernel sensor forwarding, a boot's own event routinely sits in the store while
+// promotion works through ~10000 others, so "the desktop did not do its job" was
+// pointing at a queue. Both still refuse the run; they differ in where they send
+// the reader.
+{
+  const backlog =
+    `${ROUND(1, 0)}\n${ROUND(2, 3, 0)}\n${STORE(27)}\nkg-probe: done, 0 question(s) failed\n`;
+  const r = verdict(backlog);
+  check("an empty graph answer WITH the event in the store blames the backlog", r.code === 1);
+  check("and says the ingestion path is not broken", r.out.includes("not broken"));
+  check("and does not blame the desktop", !r.out.includes("did not do its job"));
+}
+
+{
+  const broken =
+    `${ROUND(1, 0)}\n${ROUND(2, 3, 0)}\n${STORE(0)}\nkg-probe: done, 0 question(s) failed\n`;
+  const r = verdict(broken);
+  check("an empty answer with an empty store still blames the writer", r.code === 1);
+  check("and says so", r.out.includes("did not do its job"));
+}
+
 // The two lines the probe prints when it POLLS for the ingestion answer instead
 // of asking once, added 18 August with the poll itself. The risk is not the
 // waiting, it is that this verdict greps for a shape and a new one it cannot read
@@ -74,7 +96,13 @@ const STORE = (n) => `kg-probe: store: ${n} event row(s) naming this run's file`
   // Specifically the ingestion sentence, not the generic "reported failures". The
   // probe deliberately does not raise its own failure count for this, because
   // doing so short-circuits the verdict into a message that says less.
-  check("and the message names what did not arrive", r.out.includes("nothing this run produced"));
+  //
+  // This fixture carries STORE(1) - the event IS in the store - so the accurate
+  // reading is the backlog one, not "the writer dropped it". The assertion said
+  // the latter until 18 August, which made it a control pinning a sentence that
+  // was wrong for its own fixture.
+  check("and the message reads it as a backlog, which is what this fixture is",
+        r.out.includes("not broken"));
 }
 
 // A good boot: asked twice, answered, the graph held this run's own file, and the

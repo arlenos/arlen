@@ -113,12 +113,32 @@ def probe_verdict(journal_text: str) -> tuple[bool, str]:
         if INGESTION_QUESTION in l and re.search(r": [1-9][0-9]* row\(s\)", l)
     ]
     if not ingested:
+        # Which of the two it is, since the answer is already here. The store line
+        # below comes from a second reader, and when IT holds the event the graph
+        # is not broken - promotion has not reached it yet. That became the common
+        # case on 18 August: with the kernel sensor forwarding, a boot puts ~10000
+        # events in the store instead of ~100 and the pass takes about five minutes
+        # to drain them, so this question can be asked truthfully and answered
+        # empty while nothing is wrong. Saying "the desktop did not do its job"
+        # there sends the reader after a defect that is a queue.
+        in_store = any(
+            re.search(r"store: [1-9][0-9]* event row\(s\)", l) for l in lines
+        )
+        if in_store:
+            return False, (
+                f"the '{INGESTION_QUESTION}' question came back empty while the "
+                f"event store HOLDS the event behind it. So the ingestion path is "
+                f"not broken - promotion had not reached this event when the "
+                f"question was asked. Look at how far behind the pass reported "
+                f"itself before reading this as a fault; the run is still refused "
+                f"because the graph could not answer for the boot."
+            )
         return False, (
             f"the graph answered with rows, but nothing this run produced reached "
-            f"it: the '{INGESTION_QUESTION}' question came back empty. The boot "
-            f"emitted a file.opened for that path, so an empty answer means the "
-            f"writer or the promotion pass did not carry it - the desktop came up "
-            f"and did not do its job."
+            f"it: the '{INGESTION_QUESTION}' question came back empty, AND the "
+            f"event store does not hold the event either. The boot emitted a "
+            f"file.opened for that path, so the writer never carried it - the "
+            f"desktop came up and did not do its job."
         )
     # The corroboration, and the only line here that does not come from the graph
     # daemon. Everything above is the daemon answering about itself: it says the
