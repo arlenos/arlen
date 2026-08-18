@@ -15,7 +15,7 @@
 use tauri::Manager;
 
 use arlen_system_monitor_core::actions;
-use arlen_system_monitor_core::procmon::{group_processes, AppRow, Monitor, Process};
+use arlen_system_monitor_core::procmon::{group_processes, Monitor, Process};
 use arlen_system_monitor_core::sysmon::{SystemMonitor, SystemTick};
 
 /// A structured log line from the frontend into the app's stdout (the shell has no
@@ -41,10 +41,12 @@ fn list_processes(monitor: tauri::State<'_, Monitor>) -> Vec<Process> {
 ///
 /// A second command rather than a flag on the first, because the flat list is
 /// the power-user toggle and both are wanted: the frontend holds one sample and
-/// asks for whichever shape it is showing. The fold is pure and unit-tested in
-/// `procmon`, so this is the wiring and nothing else.
+/// asks for whichever shape it is showing. Same `Process` type either way - the
+/// grouped rows carry `children`, which the frontend model already has - so the
+/// table learns no second shape. The fold is pure and unit-tested in `procmon`,
+/// so this is the wiring and nothing else.
 #[tauri::command]
-fn list_app_rows(monitor: tauri::State<'_, Monitor>) -> Vec<AppRow> {
+fn list_app_rows(monitor: tauri::State<'_, Monitor>) -> Vec<Process> {
     group_processes(&monitor.sample())
 }
 
