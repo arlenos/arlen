@@ -109,5 +109,86 @@ say "Ctrl+Z puts it back on disk with its contents" \
      && [ -e "$work/beta.txt" ] && [ "$(cat "$work/beta.txt")" = two ] && echo 1 || echo 0)" \
   "$got (beta.txt on disk: $([ -e "$work/beta.txt" ] && echo present || echo GONE))"
 
-[ "$fail" = 0 ] && echo "a folder that opens, a delete that reaches the disk, and an undo that restores it with its contents"
+
+# Rename and search each get their own run and their own fixture state, for the
+# same reason the delete and undo do: a check after the fact cannot attribute a
+# change to the step that should have caused it.
+navigate='
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const out = {};
+await wait(3000);
+const cellFor = n => [...document.querySelectorAll("*")]
+  .filter(e => e.children.length === 0 && (e.textContent||"").trim() === n)[0];
+const listing = () => [...document.querySelectorAll(".fm-browse *")]
+  .filter(e => e.children.length === 0 && /\.txt$|^sub$/.test((e.textContent||"").trim()))
+  .map(e => e.textContent.trim()).sort();
+const folder = cellFor("arlen-drive-files");
+if (!folder) return JSON.stringify({ step: "navigate", found: false });
+(folder.closest("[role=row], li, tr, div") || folder)
+  .dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+await wait(1800);
+out.opened = listing();
+'
+
+{ printf '%s' "$navigate"; cat <<'JS'
+const a = cellFor("alpha.txt");
+if (!a) return JSON.stringify({ ...out, step: "select" });
+const row = a.closest("[role=row], li, tr, div") || a;
+row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+row.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+row.click();
+await wait(600);
+// F2 is handled on `.fm`; it opens an inline editor rather than a dialog, so the
+// new name is typed into that input and committed with Enter.
+(document.querySelector(".fm") || document.body)
+  .dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true, cancelable: true }));
+await wait(900);
+const input = document.querySelector(".fm-browse input");
+out.editor = !!input;
+if (!input) return JSON.stringify(out);
+Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set
+  .call(input, "renamed.txt");
+input.dispatchEvent(new Event("input", { bubbles: true }));
+input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+await wait(2000);
+out.afterRename = listing();
+return JSON.stringify(out);
+JS
+} > "$work/.rename.js"
+
+{ printf '%s' "$navigate"; cat <<'JS'
+// Ctrl+F is bound at the layout, so this one goes to the window.
+window.dispatchEvent(new KeyboardEvent("keydown",
+  { key: "f", ctrlKey: true, bubbles: true, cancelable: true }));
+await wait(900);
+const box = [...document.querySelectorAll("input")].find(i => i.offsetParent !== null);
+out.searchBox = !!box;
+if (!box) return JSON.stringify(out);
+box.focus();
+Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(box, "gamma");
+box.dispatchEvent(new Event("input", { bubbles: true }));
+box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+await wait(3000);
+out.hits = [...document.querySelectorAll("*")]
+  .filter(e => e.children.length === 0 && /gamma\.txt/.test(e.textContent||""))
+  .map(e => e.textContent.trim()).slice(0, 3);
+return JSON.stringify(out);
+JS
+} > "$work/.search.js"
+
+got=$(SHOOT_INJECT="$work/.rename.js" "$here/shoot-app.sh" "$app" "$here/out/files-rename.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+say "F2 renames the file on disk" \
+  "$(printf '%s' "$got" | grep -q '"afterRename":\["beta.txt","renamed.txt","sub"\]' \
+     && [ -e "$work/renamed.txt" ] && [ ! -e "$work/alpha.txt" ] && echo 1 || echo 0)" \
+  "$got (on disk: $(ls "$work" | tr '\n' ' '))"
+mv "$work/renamed.txt" "$work/alpha.txt" 2>/dev/null
+
+# gamma.txt is in `sub/`, so finding it from the parent is the recursive half.
+got=$(SHOOT_INJECT="$work/.search.js" "$here/shoot-app.sh" "$app" "$here/out/files-search.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+say "search reaches into a subfolder" \
+  "$(printf '%s' "$got" | grep -q 'gamma.txt' && echo 1 || echo 0)" "$got"
+
+[ "$fail" = 0 ] && echo "a folder that opens, a rename and a delete that reach the disk, an undo that restores it, and a search that goes deeper than the folder"
 exit "$fail"
