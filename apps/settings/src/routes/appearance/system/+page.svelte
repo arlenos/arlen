@@ -31,19 +31,29 @@
     resetTerminal,
     CURSOR_THEMES,
     ICON_THEMES,
-    SOUND_THEMES,
     sysOptions,
     SOUND_NAMES,
     SOUND_EVENTS,
     ANSI_META,
     previewSound,
+    installedSoundThemes,
     type PreviewOutcome,
+    type SoundThemeOption,
   } from "$lib/stores/themeSystem";
 
   /// What the last preview of each event did, so a click that made no sound can
   /// say which kind of nothing it was. Keyed by event, cleared after a moment so
   /// the row does not keep a stale verdict.
   let previewed = $state<Record<string, PreviewOutcome>>({});
+
+  /// The sound themes this machine has. `undefined` until the read answers;
+  /// empty means the read happened and found none, which the picker says rather
+  /// than falling back to the invented list it used to show.
+  let soundThemes = $state<SoundThemeOption[] | undefined>(undefined);
+
+  $effect(() => {
+    void installedSoundThemes().then((t) => (soundThemes = t));
+  });
 
   async function play(eventKey: string, name: string) {
     const outcome = await previewSound(name);
@@ -132,7 +142,29 @@
           id="sys-soundTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={String($effective.soundTheme)} options={sysOptions(SOUND_THEMES, $t)} ariaLabel={$t("s.sys.soundTheme")} onchange={(v) => setSys("soundTheme", v)} />
+            <!-- The installed themes, read from the sound roots. This offered
+                 "Chime" and "Soft" until 19 Aug - names of themes that exist on
+                 no machine, so picking one wrote a `[sound] theme` the resolver
+                 could never find and every cue fell through to the synth while
+                 the row showed a confident selection. -->
+            {#if soundThemes === undefined}
+              <span class="snd-said">{$t("s.snd.themesReading")}</span>
+            {:else if soundThemes.length === 0}
+              <span class="snd-said">{$t("s.snd.themesNone")}</span>
+            {:else}
+              {#if !soundThemes.some((t) => t.id === String($effective.soundTheme))}
+                <!-- The configured theme is not on this machine. Worth saying:
+                     the resolver will find nothing and every cue falls through to
+                     the synth, which otherwise just sounds like a different theme. -->
+                <span class="snd-said">{$t("s.snd.themeMissing")}</span>
+              {/if}
+              <PopoverSelect
+                value={String($effective.soundTheme)}
+                options={soundThemes.map((t) => ({ value: t.id, label: t.name }))}
+                ariaLabel={$t("s.sys.soundTheme")}
+                onchange={(v) => setSys("soundTheme", v)}
+              />
+            {/if}
           {/snippet}
         </OverrideRow>
         <Collapsible class="expander">
