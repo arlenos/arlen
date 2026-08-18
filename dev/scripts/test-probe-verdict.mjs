@@ -49,6 +49,34 @@ const ROUND = (n, rows, own = rows) =>
 // carries it and the refusals below vary it on purpose.
 const STORE = (n) => `kg-probe: store: ${n} event row(s) naming this run's file`;
 
+// The two lines the probe prints when it POLLS for the ingestion answer instead
+// of asking once, added 18 August with the poll itself. The risk is not the
+// waiting, it is that this verdict greps for a shape and a new one it cannot read
+// turns a working ingestion into a silent failure - which is the fault this whole
+// file exists to prevent, aimed at itself.
+{
+  const won =
+    `${ROUND(1, 0)}\n${ROUND(2, 1, 0)}\n` +
+    `kg-probe: ingestion: this run's file: 3 row(s) after 12s of waiting\n` +
+    `${STORE(1)}\nkg-probe: done, 0 question(s) failed\n`;
+  const r = verdict(won);
+  check("a polled ingestion answer is read as an answer", r.code === 0);
+  check("and it still counts as the run's own file", r.out.includes("own file"));
+}
+
+{
+  const lost =
+    `${ROUND(1, 0)}\n${ROUND(2, 1, 0)}\n` +
+    `kg-probe: ingestion: this run's file: still 0 row(s) after 90s of waiting\n` +
+    `${STORE(1)}\nkg-probe: done, 0 question(s) failed\n`;
+  const r = verdict(lost);
+  check("a polled timeout is still a refusal", r.code === 1);
+  // Specifically the ingestion sentence, not the generic "reported failures". The
+  // probe deliberately does not raise its own failure count for this, because
+  // doing so short-circuits the verdict into a message that says less.
+  check("and the message names what did not arrive", r.out.includes("nothing this run produced"));
+}
+
 // A good boot: asked twice, answered, the graph held this run's own file, and the
 // store agrees that the event behind it arrived.
 {
