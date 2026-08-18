@@ -61,12 +61,10 @@ export const ICON_THEMES: SysOption[] = [
   { value: "Tela", label: "Tela" },
 ];
 
-// i18n-foreign: sound themes name themselves, on disk and in their own project.
-export const SOUND_THEMES: SysOption[] = [
-  { value: "None", labelKey: "s.sys.none" },
-  { value: "Chime", label: "Chime" },
-  { value: "Soft", label: "Soft" },
-];
+// The sound themes are no longer a constant: `installedSoundThemes()` below reads
+// what the machine actually has. The list that used to sit here named "Chime" and
+// "Soft", which exist nowhere, so choosing one wrote a theme the resolver could
+// never find while the row showed a confident selection.
 
 // i18n-foreign: the sound files a theme ships, under the names it gives them.
 export const SOUND_NAMES: SysOption[] = [
@@ -115,7 +113,10 @@ export const SYS_DEFAULTS: Record<string, string | number | boolean> = {
   cursorSize: 24,
   iconTheme: "Default",
   soundsEnabled: true,
-  soundTheme: "Chime",
+  // Matches the notification daemon's own default (`SoundConfig::default`). It
+  // said "Chime" until 19 Aug, which named no theme the resolver could find, so
+  // the row's default selection was unreachable from the start.
+  soundTheme: "arlen",
   sndNotification: "Message",
   sndError: "Bell",
   sndWarning: "Pop",
