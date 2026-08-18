@@ -259,7 +259,9 @@
     color: var(--color-fg-disabled, #737373);
   }
   .mi-sub {
-    padding-left: 22px;
+    /* Logical, not physical: in an RTL locale these items hang off the right
+       edge, where a padding-left would indent them away from their parent. */
+    padding-inline-start: 22px;
   }
   .mi-sub.on::before {
     content: "\2713\00a0";
