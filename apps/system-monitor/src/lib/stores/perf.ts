@@ -18,6 +18,7 @@
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
+import { refreshMs } from "$lib/refresh";
 
 /// A monitored device.
 export type Device = "cpu" | "memory" | "disk" | "network" | "ai";
@@ -118,6 +119,7 @@ function push(s: Series, d: Device, v: number): number[] {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
+let rateUnsub: (() => void) | null = null;
 
 async function sample(): Promise<void> {
   try {
@@ -139,8 +141,13 @@ async function sample(): Promise<void> {
   }
 }
 
-/// Start the 1 Hz sampler. Without a Tauri runtime (a browser, the screenshot
-/// loop) there is no host to ask, and the tab says so rather than drawing.
+/// Start the sampler at the shared refresh rate. Without a Tauri runtime (a
+/// browser, the screenshot loop) there is no host to ask, and the tab says so
+/// rather than drawing.
+///
+/// The rate is the same one the process list uses (system-monitor-plan.md (a),
+/// "a global refresh-rate control"). It was a fixed 1 Hz here and 2 Hz there, so
+/// two tabs of one window disagreed about how current their numbers were.
 export function startPerf(): void {
   if (timer) return;
   if (!tauriAvailable) {
@@ -148,11 +155,18 @@ export function startPerf(): void {
     return;
   }
   void sample();
-  timer = setInterval(() => void sample(), 1000);
+  rateUnsub = refreshMs.subscribe((ms) => {
+    if (timer) clearInterval(timer);
+    timer = setInterval(() => void sample(), ms);
+  });
 }
 
 /// Stop the tick when the Performance tab isn't visible.
 export function stopPerf(): void {
+  if (rateUnsub) {
+    rateUnsub();
+    rateUnsub = null;
+  }
   if (timer) {
     clearInterval(timer);
     timer = null;

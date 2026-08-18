@@ -14,6 +14,7 @@
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { RATES, rateLabel, refreshMs, setRefreshMs } from "$lib/refresh";
 
   const TABS = [
     { key: "Processes", id: "tm.tab.processes" },
@@ -140,6 +141,23 @@
         />
       </span>
       <span class="spacer"></span>
+      <!-- The global refresh rate (system-monitor-plan.md (a)). Both pollers
+           read it, so the Processes list and the Performance tab agree on how
+           current their numbers are; before this they ran at 2 Hz and 1 Hz from
+           two independent timers with no control over either. -->
+      <label class="rate">
+        <span class="rate-label">{$t("tm.rate.label")}</span>
+        <select
+          class="rate-select"
+          aria-label={$t("tm.rate.aria")}
+          value={String($refreshMs)}
+          onchange={(e) => setRefreshMs(Number((e.currentTarget as HTMLSelectElement).value))}
+        >
+          {#each RATES as r (r)}
+            <option value={String(r)}>{rateLabel(r)}</option>
+          {/each}
+        </select>
+      </label>
       <button
         type="button"
         class="toggle"
@@ -287,6 +305,21 @@
   /* A refused action is the one thing here worth a colour. */
   .note.error {
     color: var(--color-fg-danger, #f87171);
+  }
+  .rate {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-fg-secondary, #a3a3a3);
+  }
+  .rate-select {
+    background: var(--color-bg-input, #1f1f1f);
+    color: var(--color-fg-primary, #fafafa);
+    border: 1px solid var(--color-border-default, #2a2a2a);
+    border-radius: 6px;
+    padding: 3px 6px;
+    font: inherit;
   }
   .toolbar {
     display: flex;
