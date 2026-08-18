@@ -236,6 +236,29 @@ mod tests {
 
     // ===== Shared logic tests =====
 
+    /// The tally line has to distinguish the three ways an open is discarded,
+    /// because telling them apart is the whole reason it exists: an empty path
+    /// means the probe read nothing, a filtered path means the prefix list ate a
+    /// real one, and a dedup means it was a repeat. A line that folded them into
+    /// "dropped" would leave the question exactly where it was.
+    #[test]
+    fn a_tally_names_which_discard_it_was() {
+        let t = crate::normalizer::Tally { seen: 9, empty_path: 4, blocked: 3, deduped: 1, forwarded: 1 };
+        let line = t.line("file.opened").expect("a probe that saw something reports");
+        assert!(line.contains("9 seen"), "{line}");
+        assert!(line.contains("1 forwarded"), "{line}");
+        assert!(line.contains("4 empty path"), "{line}");
+        assert!(line.contains("3 filtered by prefix"), "{line}");
+        assert!(line.contains("1 deduped"), "{line}");
+    }
+
+    /// And a probe that saw nothing says nothing, so one interesting row is not
+    /// buried under three rows of zeroes every interval.
+    #[test]
+    fn a_probe_that_saw_nothing_prints_nothing() {
+        assert!(crate::normalizer::Tally::default().line("file.opened").is_none());
+    }
+
     #[test]
     fn blocked_paths_are_filtered() {
         let blocked = [
@@ -244,14 +267,11 @@ mod tests {
         ];
         let allowed = ["/home/tim/file.txt", "/etc/hostname", "/opt/app/config.toml"];
 
-        let is_blocked = |path: &str| {
-            ["/proc/", "/sys/", "/dev/", "/run/", "/tmp/",
-             "/usr/lib/", "/usr/lib64/", "/usr/share/", "/usr/bin/",
-             "/usr/sbin/", "/lib/", "/lib64/"]
-                .iter()
-                .any(|prefix| path.starts_with(prefix))
-        };
-
+        // The REAL filter, not a copy of it. This test used to re-implement the
+        // prefix list as a closure, so it asserted about its own duplicate and
+        // would have passed unchanged while the shipping filter drifted - and that
+        // filter is a live suspect in why the open probe forwards nothing.
+        use crate::normalizer::is_blocked;
         for p in &blocked { assert!(is_blocked(p), "expected {p} blocked"); }
         for p in &allowed { assert!(!is_blocked(p), "expected {p} allowed"); }
     }
