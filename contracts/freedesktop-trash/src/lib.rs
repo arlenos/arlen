@@ -150,6 +150,78 @@ pub fn home_trash_dir() -> Option<PathBuf> {
     Some(data_home.join("Trash"))
 }
 
+/// The top directory of the filesystem `path` lives on: the highest ancestor
+/// still on the same device, which is the mount point.
+///
+/// Found by walking up while `st_dev` is unchanged, because that is the only
+/// definition that does not need `/proc/mounts` parsed and kept in step with it.
+/// A path that cannot be stat'd has no answer.
+pub fn top_directory_of(path: &Path) -> Option<PathBuf> {
+    let dev_of = |p: &Path| -> Option<u64> {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(p).ok().map(|m| m.dev())
+    };
+    let start = if path.is_dir() { path.to_path_buf() } else { path.parent()?.to_path_buf() };
+    let dev = dev_of(&start)?;
+    let mut top = start.clone();
+    let mut cursor = start;
+    while let Some(parent) = cursor.parent().map(Path::to_path_buf) {
+        if parent == cursor {
+            break;
+        }
+        match dev_of(&parent) {
+            Some(d) if d == dev => {
+                top = parent.clone();
+                cursor = parent;
+            }
+            // A different device, or an ancestor we cannot stat: the last one that
+            // matched is the mount point.
+            _ => break,
+        }
+    }
+    Some(top)
+}
+
+/// Which trash directory serves entities on `topdir`, per the spec's two forms.
+///
+/// `$topdir/.Trash/$uid` FIRST, and only when `.Trash` is a directory, is not a
+/// symlink, and has the sticky bit: that one is administrator-provided and shared,
+/// so all three conditions are what stop a hostile `.Trash` on a removable volume
+/// from being a place this writes into. Without the sticky bit any user could
+/// replace another's subdirectory, which is the attack the spec's rule exists for.
+///
+/// Otherwise `$topdir/.Trash-$uid`, created at 0700 - the per-user form, which
+/// needs no cooperation from whoever formatted the volume.
+///
+/// NOT created here: this decides, `ensure_top_trash` creates. A read-only mount
+/// answers the question fine and simply cannot be written to, and keeping those
+/// apart means the refusal can say which one happened.
+pub fn top_trash_dir(topdir: &Path, uid: u32) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let admin = topdir.join(".Trash");
+    let usable = std::fs::symlink_metadata(&admin)
+        .ok()
+        .filter(|m| m.is_dir() && !m.file_type().is_symlink())
+        .is_some_and(|m| m.permissions().mode() & 0o1000 != 0);
+    if usable {
+        admin.join(uid.to_string())
+    } else {
+        topdir.join(format!(".Trash-{uid}"))
+    }
+}
+
+/// The `Path` field for an entity trashed into a TOP-DIRECTORY trash: relative to
+/// the top directory, per the spec.
+///
+/// This is what lets an entry survive the volume being mounted somewhere else.
+/// An absolute `/run/media/tim/stick/notes.md` is a claim about where the volume
+/// was that day; `notes.md` is a claim about the volume, and the volume carries
+/// the trash with it. Returns `None` when the source is not under the top
+/// directory, which is a caller error rather than something to paper over.
+pub fn relative_to_top(topdir: &Path, source: &Path) -> Option<PathBuf> {
+    source.strip_prefix(topdir).ok().map(Path::to_path_buf)
+}
+
 /// Reserve a unique trash slot, write its `.trashinfo` sidecar, and move `source`
 /// into `files/<name>` atomically (no-clobber). The sidecar is created first
 /// (freedesktop info-first) and removed on a move failure, so a failed trash leaves
@@ -282,6 +354,84 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+#[cfg(test)]
+mod top_dir_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// `/tmp` is a mount of its own on this machine and on any systemd host, and
+    /// `$HOME` is not - which is the whole reason a home-only trash fails there.
+    #[test]
+    fn a_path_resolves_to_the_mount_it_lives_on() {
+        let tmp = top_directory_of(Path::new("/tmp")).expect("tmp is stat-able");
+        assert_eq!(tmp, Path::new("/tmp"), "a mount point is its own top directory");
+        let root = top_directory_of(Path::new("/usr/bin")).expect("/usr/bin is stat-able");
+        assert!(
+            root == Path::new("/") || root == Path::new("/usr"),
+            "walks up to the mount, got {}",
+            root.display()
+        );
+    }
+
+    #[test]
+    fn a_file_answers_for_the_directory_holding_it() {
+        let f = std::env::temp_dir().join(format!("arlen-top-{}", std::process::id()));
+        std::fs::write(&f, b"x").unwrap();
+        assert_eq!(top_directory_of(&f).unwrap(), top_directory_of(Path::new("/tmp")).unwrap());
+        std::fs::remove_file(&f).ok();
+    }
+
+    #[test]
+    fn without_a_sticky_admin_trash_it_is_the_per_user_one() {
+        let dir = std::env::temp_dir().join(format!("arlen-tt-a-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(top_trash_dir(&dir, 1000), dir.join(".Trash-1000"));
+
+        // Present but NOT sticky: still refused, because without the sticky bit
+        // one user can replace another's subdirectory inside it.
+        let admin = dir.join(".Trash");
+        std::fs::create_dir_all(&admin).unwrap();
+        std::fs::set_permissions(&admin, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert_eq!(top_trash_dir(&dir, 1000), dir.join(".Trash-1000"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_sticky_admin_trash_is_preferred_and_per_uid() {
+        let dir = std::env::temp_dir().join(format!("arlen-tt-b-{}", std::process::id()));
+        let admin = dir.join(".Trash");
+        std::fs::create_dir_all(&admin).unwrap();
+        std::fs::set_permissions(&admin, std::fs::Permissions::from_mode(0o1777)).unwrap();
+        assert_eq!(top_trash_dir(&dir, 1000), admin.join("1000"));
+        assert_eq!(top_trash_dir(&dir, 42), admin.join("42"), "per uid, not shared");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A symlink named `.Trash` is the case the spec's rule is written against:
+    /// it can point anywhere, including somewhere the attacker can read.
+    #[test]
+    fn a_symlinked_admin_trash_is_refused() {
+        let dir = std::env::temp_dir().join(format!("arlen-tt-c-{}", std::process::id()));
+        let elsewhere = dir.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::set_permissions(&elsewhere, std::fs::Permissions::from_mode(0o1777)).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, dir.join(".Trash")).unwrap();
+        assert_eq!(top_trash_dir(&dir, 1000), dir.join(".Trash-1000"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_recorded_path_is_relative_to_the_volume() {
+        let top = Path::new("/run/media/tim/stick");
+        assert_eq!(
+            relative_to_top(top, Path::new("/run/media/tim/stick/notes/a.md")).unwrap(),
+            Path::new("notes/a.md"),
+            "so the entry still resolves when the volume mounts elsewhere"
+        );
+        assert!(relative_to_top(top, Path::new("/home/tim/a.md")).is_none());
+    }
 }
 
 #[cfg(test)]
