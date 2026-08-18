@@ -111,10 +111,15 @@ async fn a_store_with_only_desktop_apps_reports_no_sensor() {
     );
 }
 
-/// A launch relationship is visible to the reader, and its absence reads as the
-/// rule rather than as a fault. Both directions matter: the line is REPORTED and
-/// never gated, because on a boot almost every exec's parent is systemd, which
-/// resolves to no app, so "none recorded" is the correct answer and not a defect.
+/// A launch relationship is visible to the reader, and its absence is explained
+/// rather than left bare. Both directions matter, and what the absence MEANS
+/// changed on 18 August: the arm used to key both ends on the executable's path,
+/// so systemd's binary resolved to no app and nearly every exec was dropped -
+/// "none recorded" was then the ordinary answer. Keyed on the cgroup, systemd
+/// starting a service puts the two ends in different cgroups and those execs do
+/// resolve, so a boot with no launch at all is closer to suspicious. Still
+/// reported and never gated: suspicious is not wrong, and a gate that fires on
+/// boot timing teaches people to ignore it.
 #[tokio::test]
 async fn the_store_reports_a_launch_between_two_apps() {
     let dir = tempfile::tempdir().unwrap();
@@ -144,7 +149,10 @@ async fn a_store_with_no_launches_says_so_without_calling_it_a_fault() {
     .await;
     let (code, out) = verdict(&store);
     assert!(out.contains("GRAPH launches: none recorded"), "{out}");
-    assert!(out.contains("correct when"), "the absence is explained: {out}");
+    // The absence carries its reading with it. Pinned on "worth a look" rather
+    // than the whole sentence so a rewording does not fail here, but pinned on
+    // SOMETHING because a bare "none recorded" is the thing this guards against.
+    assert!(out.contains("worth a look"), "the absence is explained: {out}");
     assert_ne!(code, 0, "this store fails for its missing FILE, not for launches");
 }
 
