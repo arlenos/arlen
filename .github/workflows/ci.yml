@@ -447,12 +447,29 @@ jobs:
         # cmake + nasm build AWS-LC, which aws-lc-rs (pulled in by the tough TUF
         # library, used by forage/cookbook-sign) compiles from C source.
         run: |
-          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
-          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+          # Retry the WHOLE apt call, not only apt's own fetch.
+          # `Acquire::Retries` retries a FAILED download; the stall that
+          # cost two hours a run was a slow one - measured on 18 Aug at
+          # libjavascriptcoregtk-4.1-0, 8 MB from the azure mirror, which
+          # the step ceiling killed at 10 minutes while apt was still
+          # patiently waiting. A slow mirror is not a failed download, so
+          # the inner retry never fires. This bounds each attempt with
+          # `timeout` and takes a fresh mirror on the next one.
+          ok=0
+          for attempt in 1 2 3; do
+            if timeout 240 sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 && \
+               timeout 420 sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
             protobuf-compiler build-essential pkg-config cmake nasm \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libssl-dev libdbus-1-dev fuse3 libfuse3-dev \
             libdav1d-dev libheif-dev zlib1g-dev libheif-plugin-libde265
+            then
+              ok=1; break
+            fi
+            echo "apt attempt $attempt stalled or failed; retrying" >&2
+            sleep 5
+          done
+          [ "$ok" = 1 ] || { echo "apt failed after three attempts" >&2; exit 1; }
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -543,12 +560,29 @@ jobs:
         # Same ceiling as the first, same reason.
         timeout-minutes: 10
         run: |
-          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
-          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+          # Retry the WHOLE apt call, not only apt's own fetch.
+          # `Acquire::Retries` retries a FAILED download; the stall that
+          # cost two hours a run was a slow one - measured on 18 Aug at
+          # libjavascriptcoregtk-4.1-0, 8 MB from the azure mirror, which
+          # the step ceiling killed at 10 minutes while apt was still
+          # patiently waiting. A slow mirror is not a failed download, so
+          # the inner retry never fires. This bounds each attempt with
+          # `timeout` and takes a fresh mirror on the next one.
+          ok=0
+          for attempt in 1 2 3; do
+            if timeout 240 sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 && \
+               timeout 420 sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
             protobuf-compiler build-essential pkg-config cmake nasm \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libssl-dev libdbus-1-dev fuse3 libfuse3-dev \
             libdav1d-dev libheif-dev zlib1g-dev libheif-plugin-libde265
+            then
+              ok=1; break
+            fi
+            echo "apt attempt $attempt stalled or failed; retrying" >&2
+            sleep 5
+          done
+          [ "$ok" = 1 ] || { echo "apt failed after three attempts" >&2; exit 1; }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: build backend daemons
@@ -594,10 +628,27 @@ jobs:
         # Same ceiling as the first, same reason.
         timeout-minutes: 10
         run: |
-          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
-          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+          # Retry the WHOLE apt call, not only apt's own fetch.
+          # `Acquire::Retries` retries a FAILED download; the stall that
+          # cost two hours a run was a slow one - measured on 18 Aug at
+          # libjavascriptcoregtk-4.1-0, 8 MB from the azure mirror, which
+          # the step ceiling killed at 10 minutes while apt was still
+          # patiently waiting. A slow mirror is not a failed download, so
+          # the inner retry never fires. This bounds each attempt with
+          # `timeout` and takes a fresh mirror on the next one.
+          ok=0
+          for attempt in 1 2 3; do
+            if timeout 240 sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 && \
+               timeout 420 sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
             protobuf-compiler build-essential pkg-config \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libdbus-1-dev libfuse3-dev
+            then
+              ok=1; break
+            fi
+            echo "apt attempt $attempt stalled or failed; retrying" >&2
+            sleep 5
+          done
+          [ "$ok" = 1 ] || { echo "apt failed after three attempts" >&2; exit 1; }
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
