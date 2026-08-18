@@ -18,7 +18,7 @@
 //
 // Run: node dev/scripts/test-check-image-contents.mjs
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -132,11 +132,33 @@ check(
 // Deliberate, and the reason the check can run from `just check-executor` on a
 // tree that has never built an image: being asked about a named file that is
 // missing is an error, having nothing to ask about is not.
-check(
-  "naming no image at all on a tree with none is not a failure",
-  [],
-  (code) => code === 0,
-);
+//
+// Run against a COPY of the gate placed where its default path resolves to
+// nothing, rather than against the gate in the tree. Two reasons, and the second
+// is why this was changed on 18 August:
+//
+//   - This tree usually HAS an image, so `[]` was not exercising "a tree with
+//     none" at all. It was running a full inspection of the real one and passing
+//     because that happened to succeed, which is a different assertion than the
+//     name makes.
+//   - Which also meant it needed an appliance, and the comment above `shellless
+//     Image` says exactly what happens then: on a machine already running qemu it
+//     dies on `io_uring: Cannot allocate memory`. The fixture path skips for that;
+//     this case went red for it, twice in one commit.
+//
+// A case about the branch that never opens an image must not need libguestfs to
+// prove it.
+{
+  const isolated = join(dir, "scripts");
+  mkdirSync(isolated, { recursive: true });
+  const copy = join(isolated, "check-image-contents.sh");
+  copyFileSync(GATE, copy);
+  chmodSync(copy, 0o755);
+  const r = spawnSync(copy, [], { encoding: "utf8" });
+  const ok = r.status === 0;
+  console.log(`  ${ok ? "ok  " : "FAIL"} naming no image at all on a tree with none is not a failure`);
+  if (!ok) failures.push({ name: "no image", code: r.status, out: (r.stdout || "") + (r.stderr || "") });
+}
 
 // A SOURCE-level case, and labelled as one because the image-level version needs
 // a built image with a shell in it. It pins the thing that made this check report
