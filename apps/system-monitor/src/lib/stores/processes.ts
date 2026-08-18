@@ -384,3 +384,49 @@ export async function unlimit(id: number): Promise<void> {
     "limit_process", { id, limited: false }, "Could not remove that limit",
   );
 }
+
+/// One offered priority: the plain-words label and its nice value.
+export interface NiceLevel {
+  label: string;
+  nice: number;
+}
+
+/// The priority levels, from the backend so the list and the validator agree.
+export async function niceLevels(): Promise<NiceLevel[]> {
+  if (!tauriAvailable) return [];
+  try {
+    const raw = await invoke<[string, number][]>("nice_levels");
+    return raw.map(([label, nice]) => ({ label, nice }));
+  } catch {
+    return [];
+  }
+}
+
+/// What priority a process is at now. `null` when it cannot be read - never 0,
+/// which would tick "Normal" for a process that is nothing of the sort.
+export async function niceOf(id: number): Promise<number | null> {
+  if (!tauriAvailable) return null;
+  try {
+    return (await invoke<number | null>("process_nice", { id })) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/// Change a process's priority (system-monitor-plan.md (c), the Advanced
+/// affordance).
+///
+/// Surfaces a refusal instead of swallowing it, and this one is refused often:
+/// raising a nice value is free but lowering one needs `CAP_SYS_NICE`, so an
+/// ordinary user asking for a HIGHER priority gets EPERM. Reported rather than
+/// ignored, or the menu would look like it worked and change nothing.
+export async function renice(id: number, nice: number): Promise<boolean> {
+  if (!tauriAvailable) return false;
+  try {
+    await invoke("renice_process", { id, nice });
+    return true;
+  } catch (e) {
+    lastError.set(`Could not change that priority: ${String(e)}`);
+    return false;
+  }
+}

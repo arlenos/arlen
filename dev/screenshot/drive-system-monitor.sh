@@ -539,5 +539,67 @@ ok=0
 say "the refresh-rate control changes how often the machine is actually read" "$ok" "$got"
 
 
+# THE ADVANCED AFFORDANCE (plan (c)): priority behind a disclosure. Two halves,
+# because the kernel treats the two directions differently and a control that
+# silently no-ops one way is worse than none. Downward (kinder) is allowed for
+# your own process; upward needs CAP_SYS_NICE and MUST show the refusal.
+#
+# Real-time scheduling is deliberately absent, which is why nothing here looks
+# for it: the plan says warn against RT, and not shipping the control is the
+# strongest form of that.
+cat > "$probes/p-advanced.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(2500);
+const rows = () => [...document.querySelectorAll("[role=row][data-pid]")];
+const name = r => (r.querySelector(".cell.name")?.textContent || "").trim();
+const pick = () => rows().find(r => /WebKitWebProcess|arlen-system-monitor/.test(name(r)));
+if (!pick()) return JSON.stringify({ skipped: "no own process row" });
+const err = () => ((document.body.innerText || "").match(/Could not change that priority[^|]{0,60}/) || [null])[0];
+// Every round starts from a CLOSED menu. Leaving one open and dispatching the
+// next contextmenu meant the second round acted on a stale menu, and the whole
+// probe reported "the priority did not take" for a change that never got
+// clicked. It passed run alone and failed in the suite for that reason.
+const openAdv = async () => {
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await wait(300);
+  const row = pick();
+  row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 300, clientY: 200 }));
+  await wait(500);
+  const menu = document.querySelector('[role="menu"]');
+  const adv = [...menu.querySelectorAll('[role="menuitem"]')].find(b => /^advanced$/i.test(b.textContent.trim()));
+  if (!adv) return null;
+  adv.click();
+  await wait(900);
+  return { menu, pid: row.dataset.pid };
+};
+const a = await openAdv();
+if (!a) return JSON.stringify({ error: "no advanced item" });
+const levels = [...a.menu.querySelectorAll(".mi-sub")].map(b => b.textContent.trim());
+const tickedFirst = [...a.menu.querySelectorAll(".mi-sub.on")].map(b => b.textContent.trim());
+// Downward: allowed for our own process, so this must actually land.
+[...a.menu.querySelectorAll('[role="menuitem"]')].find(b => b.textContent.trim() === "Lowest")?.click();
+await wait(1000);
+const errAfterDown = err();
+const b = await openAdv();
+const tickedAfter = [...b.menu.querySelectorAll(".mi-sub.on")].map(x => x.textContent.trim());
+// Upward: needs CAP_SYS_NICE, so an ordinary user is refused and must be told.
+[...b.menu.querySelectorAll('[role="menuitem"]')].find(x => x.textContent.trim() === "Highest")?.click();
+await wait(1000);
+return JSON.stringify({ pid: a.pid, samePid: a.pid === b.pid, levels, tickedFirst, tickedAfter,
+  // The tick is READ back from the kernel, so it moving proves the write landed.
+  took: tickedAfter.includes("Lowest"),
+  errAfterDown, refused: /Could not change that priority/i.test(document.body.innerText || "") });
+JS
+got=$(drive "$probes/p-advanced.js" sysmon-advanced.png)
+if printf '%s' "$got" | grep -q '"skipped"'; then
+  echo "  --   the advanced priority menu: $got"
+else
+  say "priority sits behind Advanced, takes effect, and says so when it is refused" \
+    "$(printf '%s' "$got" | grep -q '"took":true' \
+       && printf '%s' "$got" | grep -q '"refused":true' \
+       && printf '%s' "$got" | grep -q '"tickedFirst":\["Normal"\]' && echo 1 || echo 0)" "$got"
+fi
+
+
 [ "$fail" = 0 ] && echo "a process list that sorts, a detail that names a pid, graphs that draw, and a kill that asks before it acts"
 exit "$fail"
