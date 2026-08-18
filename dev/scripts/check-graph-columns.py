@@ -209,7 +209,14 @@ def _columns(body: str) -> set[str]:
     declaration."""
     out = set()
     for part in body.split(","):
-        part = part.strip()
+        # A Rust line continuation inside the literal leaves a backslash at the
+        # start of whichever declaration follows it. `split()[0]` was then `\\`,
+        # which is not an identifier, so that column was dropped and every query
+        # against it reported as a schema disagreement. Found on 18 August by the
+        # LAUNCHED table, whose first column sits right after the continuation;
+        # the check's own header says it understands these continuations, and
+        # here it did not.
+        part = part.strip().lstrip("\\").strip()
         if not part:
             continue
         name = part.split()[0]
