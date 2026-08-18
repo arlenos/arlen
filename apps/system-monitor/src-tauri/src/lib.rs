@@ -15,7 +15,7 @@
 use tauri::Manager;
 
 use arlen_system_monitor_core::actions;
-use arlen_system_monitor_core::procmon::{Monitor, Process};
+use arlen_system_monitor_core::procmon::{group_processes, AppRow, Monitor, Process};
 use arlen_system_monitor_core::sysmon::{SystemMonitor, SystemTick};
 
 /// A structured log line from the frontend into the app's stdout (the shell has no
@@ -35,6 +35,17 @@ fn frontend_log(level: String, message: String) {
 #[tauri::command]
 fn list_processes(monitor: tauri::State<'_, Monitor>) -> Vec<Process> {
     monitor.sample()
+}
+
+/// The same sample, folded into the app-grouped rows the landing view opens on.
+///
+/// A second command rather than a flag on the first, because the flat list is
+/// the power-user toggle and both are wanted: the frontend holds one sample and
+/// asks for whichever shape it is showing. The fold is pure and unit-tested in
+/// `procmon`, so this is the wiring and nothing else.
+#[tauri::command]
+fn list_app_rows(monitor: tauri::State<'_, Monitor>) -> Vec<AppRow> {
+    group_processes(&monitor.sample())
 }
 
 /// One tick of system-wide device counters for the Performance tab: CPU, memory,
@@ -88,6 +99,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             frontend_log,
             list_processes,
+            list_app_rows,
             system_tick,
             stop_process,
             freeze_process,

@@ -206,6 +206,110 @@ impl Default for Monitor {
     }
 }
 
+/// One row of the DEFAULT view: an app and everything it is running.
+///
+/// The plan's first bullet, and the reason it is first: "Chrome is one Chrome
+/// row, not 15 nameless PIDs". A layperson opening this to find the frozen thing
+/// is looking for a NAME they recognise, and a flat pid list hides that name
+/// among its own children. The flat list stays - it is the power-user toggle -
+/// but it is not what opens.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AppRow {
+    /// The name every member shares, which is what the user is looking for.
+    pub name: String,
+    /// `"app" | "background" | "system"`, from the members. Grouping never spans
+    /// these: a `chrome` in Apps and a hypothetical daemon of the same name are
+    /// different rows, because the three groups are the plan's own division and
+    /// merging across them would file a daemon under an app.
+    pub group: &'static str,
+    /// The worst status among the members, not the first or the commonest.
+    ///
+    /// A frozen tab in a browser that is otherwise fine is EXACTLY the case the
+    /// landing view exists for, and an average would bury it. Order:
+    /// not-responding beats suspended beats running.
+    pub status: &'static str,
+    /// Summed across members, because that is what the resource costs.
+    pub cpu: f64,
+    #[serde(rename = "memMB")]
+    pub mem_mb: f64,
+    #[serde(rename = "diskKBs")]
+    pub disk_kbs: f64,
+    #[serde(rename = "netKBs")]
+    pub net_kbs: f64,
+    /// How many processes this row stands for. 1 is an ordinary process and the
+    /// row reads exactly as it does today; the number is what earns the expander.
+    pub count: usize,
+    /// The members' pids, ascending, so expanding a row needs no second pass and
+    /// a Stop on the row knows what it is stopping.
+    pub pids: Vec<u32>,
+}
+
+/// Rank a status so the worst one wins a group. Higher is worse.
+fn status_rank(status: &str) -> u8 {
+    match status {
+        "not-responding" => 2,
+        "suspended" => 1,
+        _ => 0,
+    }
+}
+
+/// Fold the flat per-pid rows into the app-grouped rows the landing view shows.
+///
+/// Keyed on `(group, name)` and NOT on process lineage. Lineage would be the
+/// textbook answer and it is the wrong one here: a browser's renderers are
+/// re-parented, a daemon's workers are not its children, and a `pid`-tree view
+/// puts the same program in several places depending on who happened to fork it.
+/// The name is what the user reads off the row, so the name is what the row is.
+///
+/// Sorted CPU-desc then memory-desc, the same order as the flat list, so the
+/// toggle between the two views does not reshuffle the top of the screen.
+pub fn group_processes(rows: &[Process]) -> Vec<AppRow> {
+    let mut out: Vec<AppRow> = Vec::new();
+    for p in rows {
+        match out
+            .iter_mut()
+            .find(|r| r.name == p.name && r.group == p.group)
+        {
+            Some(r) => {
+                r.cpu += p.cpu;
+                r.mem_mb += p.mem_mb;
+                r.disk_kbs += p.disk_kbs;
+                r.net_kbs += p.net_kbs;
+                r.count += 1;
+                r.pids.push(p.id);
+                if status_rank(p.status) > status_rank(r.status) {
+                    r.status = p.status;
+                }
+            }
+            None => out.push(AppRow {
+                name: p.name.clone(),
+                group: p.group,
+                status: p.status,
+                cpu: p.cpu,
+                mem_mb: p.mem_mb,
+                disk_kbs: p.disk_kbs,
+                net_kbs: p.net_kbs,
+                count: 1,
+                pids: vec![p.id],
+            }),
+        }
+    }
+    for r in &mut out {
+        r.pids.sort_unstable();
+    }
+    out.sort_by(|a, b| {
+        b.cpu
+            .partial_cmp(&a.cpu)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(
+                b.mem_mb
+                    .partial_cmp(&a.mem_mb)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
+    });
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,5 +382,106 @@ mod tests {
         assert_eq!(rows[0].id, 2);
         assert_eq!(rows[0].cpu, 0.0);
         assert_eq!(rows[0].disk_kbs, 0.0);
+    }
+
+    fn row(id: u32, name: &str, group: &'static str, status: &'static str, cpu: f64, mem: f64) -> Process {
+        Process {
+            id,
+            name: name.to_string(),
+            group,
+            status,
+            cpu,
+            mem_mb: mem,
+            disk_kbs: 0.0,
+            net_kbs: 0.0,
+        }
+    }
+
+    /// The plan's own example, and the whole reason the default view is grouped.
+    #[test]
+    fn fifteen_chrome_pids_are_one_chrome_row() {
+        let flat: Vec<Process> = (1..=15)
+            .map(|i| row(i, "chrome", "app", "running", 2.0, 100.0))
+            .collect();
+        let grouped = group_processes(&flat);
+        assert_eq!(grouped.len(), 1, "one row, not fifteen");
+        assert_eq!(grouped[0].count, 15);
+        assert_eq!(grouped[0].cpu, 30.0, "the resource is what it costs together");
+        assert_eq!(grouped[0].mem_mb, 1500.0);
+        assert_eq!(grouped[0].pids.first(), Some(&1));
+        assert_eq!(grouped[0].pids.last(), Some(&15));
+    }
+
+    /// The case the landing view exists for: one frozen child in an app that is
+    /// otherwise fine has to reach the row a person is looking at.
+    #[test]
+    fn one_frozen_child_makes_the_whole_row_read_as_frozen() {
+        let flat = [
+            row(1, "chrome", "app", "running", 1.0, 10.0),
+            row(2, "chrome", "app", "not-responding", 1.0, 10.0),
+            row(3, "chrome", "app", "running", 1.0, 10.0),
+        ];
+        let grouped = group_processes(&flat);
+        assert_eq!(grouped[0].status, "not-responding");
+    }
+
+    /// Suspended is worse than running and better than frozen, so a row carrying
+    /// both a suspended and a running member says suspended.
+    #[test]
+    fn the_worst_status_wins_and_not_the_first_one_seen() {
+        let flat = [
+            row(1, "x", "app", "running", 0.0, 0.0),
+            row(2, "x", "app", "suspended", 0.0, 0.0),
+        ];
+        assert_eq!(group_processes(&flat)[0].status, "suspended");
+        // And the other order, so this is not passing on iteration luck.
+        let flat = [
+            row(1, "x", "app", "suspended", 0.0, 0.0),
+            row(2, "x", "app", "running", 0.0, 0.0),
+        ];
+        assert_eq!(group_processes(&flat)[0].status, "suspended");
+    }
+
+    /// A name shared across two groups is two rows. Merging them would file a
+    /// daemon under an app, which is the one thing the three groups are for.
+    #[test]
+    fn the_same_name_in_two_groups_stays_two_rows() {
+        let flat = [
+            row(1, "helper", "app", "running", 5.0, 0.0),
+            row(2, "helper", "background", "running", 1.0, 0.0),
+        ];
+        let grouped = group_processes(&flat);
+        assert_eq!(grouped.len(), 2);
+        assert_eq!(grouped[0].group, "app", "and the busier one is on top");
+    }
+
+    /// The toggle between grouped and flat must not reshuffle the top of the
+    /// screen, so both are ordered the same way.
+    #[test]
+    fn rows_are_sorted_by_summed_cpu_so_the_hog_is_on_top() {
+        let flat = [
+            row(1, "quiet", "app", "running", 40.0, 0.0),
+            row(2, "busy", "app", "running", 25.0, 0.0),
+            row(3, "busy", "app", "running", 25.0, 0.0),
+        ];
+        let grouped = group_processes(&flat);
+        assert_eq!(grouped[0].name, "busy", "50 summed beats 40 alone");
+        assert_eq!(grouped[0].cpu, 50.0);
+    }
+
+    /// An ordinary single process is an ordinary row: same numbers, count 1.
+    #[test]
+    fn a_lone_process_survives_grouping_unchanged() {
+        let flat = [row(7, "solo", "system", "running", 3.5, 12.0)];
+        let grouped = group_processes(&flat);
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].count, 1);
+        assert_eq!(grouped[0].cpu, 3.5);
+        assert_eq!(grouped[0].pids, vec![7]);
+    }
+
+    #[test]
+    fn no_processes_is_no_rows_rather_than_a_panic() {
+        assert!(group_processes(&[]).is_empty());
     }
 }
