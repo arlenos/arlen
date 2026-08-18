@@ -48,21 +48,19 @@ pub fn resolve_original(operand: &str) -> Option<CanonicalPath> {
     parent_canon.join(file_name).to_str().and_then(CanonicalPath::new)
 }
 
-/// Trash every operand in `inv` into the freedesktop home trash, capturing a
-/// [`InverseReceipt::RestoreFromTrash`] per success. A missing operand errors unless
-/// `-f`; a directory needs `-r` or `-d` (else it errors, like the unlink path). A
-/// cross-filesystem operand errors (the home trash cannot atomically move across a
-/// mount boundary), never a silent fall-through to a copy.
+/// Trash every operand in `inv` into the trash that serves the volume it lives
+/// on, capturing a [`InverseReceipt::RestoreFromTrash`] per success. A missing
+/// operand errors unless `-f`; a directory needs `-r` or `-d` (else it errors,
+/// like the unlink path).
+///
+/// The trash follows the FILE. An `rm` on a USB stick used to error here - the
+/// home trash cannot take a rename across a mount boundary - and erroring was the
+/// right answer while there was nowhere else to put it. Now there is: the
+/// volume's own `.Trash-$uid`, which is also where the bytes stay. Still never a
+/// silent fall-through to a copy, and a volume that cannot host a trash still
+/// errors rather than unlinking.
 pub fn execute_trash(inv: &RmInvocation) -> TrashReport {
     let mut report = TrashReport::default();
-    let Some(trash) = arlen_freedesktop_trash::home_trash_dir() else {
-        for path in &inv.paths {
-            report.errors.push((path.clone(), "no home trash directory".to_string()));
-        }
-        return report;
-    };
-    let files = trash.join("files");
-    let info = trash.join("info");
     for path in &inv.paths {
         // Existence and directory gating, matching the unlink path's semantics.
         match std::fs::symlink_metadata(path) {
@@ -87,17 +85,7 @@ pub fn execute_trash(inv: &RmInvocation) -> TrashReport {
             report.errors.push((path.clone(), "cannot resolve a canonical path".to_string()));
             continue;
         };
-        if let Err(e) =
-            std::fs::create_dir_all(&files).and_then(|()| std::fs::create_dir_all(&info))
-        {
-            report.errors.push((path.clone(), format!("trash unavailable: {e}")));
-            continue;
-        }
-        let base = Path::new(path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
-        match arlen_freedesktop_trash::trash_into(&files, &info, base, original.as_str()) {
+        match arlen_freedesktop_trash::trash_for_current_user(original.as_str()) {
             Ok(slot) => {
                 let (trashed, trash_info) = slot.into_parts();
                 let inverse = InverseReceipt::RestoreFromTrash { original, trashed, trash_info };
