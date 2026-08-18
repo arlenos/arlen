@@ -815,6 +815,21 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create CO_ACCESSED rel: {e}"))?;
 
+    // Which application launches which, as ONE edge per pair rather than a node
+    // per exec. A Process node per exec is forbidden outright (provenance-halo.md
+    // §7): it turns the system's busiest source into the minute-by-minute activity
+    // map the Halo exists to prevent, and pid lineage is meaningless a boot later
+    // anyway. A shell's thousand `ls` calls collapse into one edge that stops
+    // growing - the same shape CO_ACCESSED uses.
+    //
+    // `count` is a tally, not a series: it says a pair recurs, and no query can
+    // return when, because no when is stored.
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS LAUNCHED(FROM App TO App, \
+         first_seen INT64, last_seen INT64, count INT64)",
+    )
+    .map_err(|e| anyhow!("create LAUNCHED rel: {e}"))?;
+
     // A document links to another file (KG-richness Thrust 3c, deterministic
     // cross-content edges). A markdown/wiki reference parsed from a document's
     // content - exact, no inference. Directed (the linking doc is FROM); a pair

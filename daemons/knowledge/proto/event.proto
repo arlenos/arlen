@@ -120,6 +120,12 @@ message ProcessLifecyclePayload {
   uint32 ppid       = 3;  // parent PID
   string comm       = 4;  // process name (comm field)
   int32  exit_code  = 5;  // only set for "exited"
+  // Executable paths, which is what an exec can be resolved to an app BY.
+  // The argument vector is deliberately absent and must stay absent: argv
+  // carries passwords, tokens and file paths, and the executable identity is
+  // the whole payload (provenance-halo.md §7).
+  string exe_path        = 6;  // the child's executable
+  string parent_exe_path = 7;  // the parent's executable; empty when unreadable
 }
 
 // Emitted when a network connection is established.
