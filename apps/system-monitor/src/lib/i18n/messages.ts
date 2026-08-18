@@ -57,6 +57,7 @@ const messages: Catalogs = {
     // drive from a busy system disk and only one of those makes things feel slow.
     "tm.perf.disk.device": "{$name} {$read}/{$write}",
     "tm.perf.net.detail": "down {$down}, up {$up} MB/s",
+    "tm.perf.net.link": "{$name} {$down}/{$up}",
     "tm.perf.ai.detail": "Not measured: the engine does not report tokens per second yet.",
     "tm.perf.nomeasurement": "no measurement",
     "tm.unavailable": "Cannot read the processes on this machine right now.",
@@ -132,6 +133,7 @@ const messages: Catalogs = {
     "tm.perf.disk.detail": "lesen {$read}, schreiben {$write} MB/s",
     "tm.perf.disk.device": "{$name} {$read}/{$write}",
     "tm.perf.net.detail": "runter {$down}, hoch {$up} MB/s",
+    "tm.perf.net.link": "{$name} {$down}/{$up}",
     "tm.perf.ai.detail": "Nicht gemessen: die Engine meldet noch keine Token pro Sekunde.",
     "tm.perf.nomeasurement": "keine Messung",
     "tm.unavailable": "Die Prozesse dieses Rechners können gerade nicht gelesen werden.",
