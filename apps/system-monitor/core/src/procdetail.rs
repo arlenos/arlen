@@ -255,6 +255,175 @@ fn tcp_state(hex: &str) -> &'static str {
     }
 }
 
+/// The Statistics and Memory tabs, read rather than derived.
+///
+/// What this replaces: the pane computed `threads` as memory divided by 40,
+/// `ppid` as `1200 + pid % 40`, and `ctxSwitches` as `1000 + pid * 137`. Those
+/// are not estimates, they are numbers with the shape of measurements, and a
+/// thread count that tracks memory is exactly the sort of thing someone would
+/// reason from.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcStats {
+    pub ppid: Option<u32>,
+    pub threads: Option<u32>,
+    /// The kernel's state letter spelled out.
+    pub state: Option<String>,
+    /// Nice value, the number the user can act on, not the raw kernel priority.
+    pub nice: Option<i64>,
+    /// Voluntary plus involuntary, matching what the pane has always labelled
+    /// "Context switches".
+    pub ctx_switches: Option<u64>,
+    /// Explicitly renamed, like `Process::net_kbs` beside it. serde's camelCase
+    /// turns `rss_mb` into `rssMb`, not `rssMB`, so the consumer reading `rssMB`
+    /// gets undefined and the Memory tab shows a dash for a figure that was read
+    /// correctly. The unit is an acronym and the automatic rule does not know it.
+    #[serde(rename = "rssMB")]
+    pub rss_mb: Option<f64>,
+    /// Proportional set size: shared pages divided by the number of sharers, so
+    /// the per-process figures sum to something near the machine's real usage.
+    /// Absent on kernels or processes without `smaps_rollup`, and NOT
+    /// substituted with RSS - they answer different questions.
+    #[serde(rename = "pssMB")]
+    pub pss_mb: Option<f64>,
+    #[serde(rename = "sharedMB")]
+    pub shared_mb: Option<f64>,
+    pub unreadable: Option<String>,
+}
+
+/// Read the per-process statistics for `pid` under `proc_root`.
+pub fn proc_stats(proc_root: &Path, pid: u32) -> ProcStats {
+    let base = proc_root.join(pid.to_string());
+    let mut out = ProcStats::default();
+
+    match fs::read_to_string(base.join("stat")) {
+        Ok(text) => {
+            if let Some(st) = parse_stat(&text) {
+                out.ppid = Some(st.ppid);
+                out.threads = Some(st.threads);
+                out.state = Some(state_word(st.state).to_string());
+                out.nice = Some(st.nice);
+            }
+        }
+        Err(err) => {
+            out.unreadable = Some(
+                match err.kind() {
+                    std::io::ErrorKind::NotFound => "not measured: the process has exited",
+                    _ => "not measured: its status could not be read",
+                }
+                .to_string(),
+            );
+            return out;
+        }
+    }
+
+    if let Ok(text) = fs::read_to_string(base.join("status")) {
+        out.ctx_switches = parse_ctx_switches(&text);
+    }
+    // smaps_rollup is owner-readable only, so PSS is simply absent for another
+    // user's process. RSS is left absent with it rather than filled in from a
+    // cheaper source, because a Memory tab showing RSS where it says PSS would
+    // be wrong by a factor that grows with sharing.
+    if let Ok(text) = fs::read_to_string(base.join("smaps_rollup")) {
+        let (rss, pss, shared) = parse_smaps_rollup(&text);
+        out.rss_mb = rss;
+        out.pss_mb = pss;
+        out.shared_mb = shared;
+    }
+    out
+}
+
+/// The fields of `/proc/<pid>/stat` this pane needs.
+pub struct StatFields {
+    pub state: char,
+    pub ppid: u32,
+    pub nice: i64,
+    pub threads: u32,
+}
+
+/// Parse `/proc/<pid>/stat`.
+///
+/// THE TRAP: field 2 is the executable name in parentheses, and it may contain
+/// spaces AND parentheses - `(Web Content)` is ordinary, and a program is free
+/// to be called `(a) b`. Splitting the line on whitespace therefore shifts every
+/// later field by an unpredictable amount, and the resulting ppid and thread
+/// count are numbers from the wrong columns rather than an error. Everything
+/// after the LAST `)` is the fixed-position part.
+pub fn parse_stat(line: &str) -> Option<StatFields> {
+    let close = line.rfind(')')?;
+    let rest: Vec<&str> = line[close + 1..].split_whitespace().collect();
+    // Indices are relative to the field after comm, which the kernel calls
+    // field 3 (state), so field N is at N-3: state 3 -> 0, ppid 4 -> 1,
+    // nice 19 -> 16, num_threads 20 -> 17. Index 15 is PRIORITY, not nice; the
+    // first cut read it and reported 20 for a process niced to -5, which looks
+    // like a plausible default rather than a wrong column.
+    if rest.len() < 18 {
+        return None;
+    }
+    Some(StatFields {
+        state: rest[0].chars().next()?,
+        ppid: rest[1].parse().ok()?,
+        nice: rest[16].parse().ok()?,
+        threads: rest[17].parse().ok()?,
+    })
+}
+
+/// The kernel's state letter in plain words.
+pub fn state_word(state: char) -> &'static str {
+    match state {
+        'R' => "Running",
+        'S' => "Sleeping",
+        // Uninterruptible sleep is nearly always a process blocked on I/O, and
+        // saying so is more use than the kernel's word for it.
+        'D' => "Waiting for disk",
+        'T' => "Stopped",
+        't' => "Stopped by a debugger",
+        'Z' => "Not responding",
+        'I' => "Idle",
+        _ => "Unknown",
+    }
+}
+
+/// Voluntary plus involuntary context switches from `/proc/<pid>/status`.
+pub fn parse_ctx_switches(text: &str) -> Option<u64> {
+    let mut total = 0u64;
+    let mut seen = false;
+    for line in text.lines() {
+        if let Some(v) = line.strip_prefix("voluntary_ctxt_switches:") {
+            total += v.trim().parse::<u64>().ok()?;
+            seen = true;
+        } else if let Some(v) = line.strip_prefix("nonvoluntary_ctxt_switches:") {
+            total += v.trim().parse::<u64>().ok()?;
+            seen = true;
+        }
+    }
+    seen.then_some(total)
+}
+
+/// Rss, Pss and shared pages from `/proc/<pid>/smaps_rollup`, in MB.
+///
+/// Shared is clean plus dirty: the pane's label is "Shared", and reporting only
+/// one half would understate it for any process with a written-to shared
+/// mapping.
+pub fn parse_smaps_rollup(text: &str) -> (Option<f64>, Option<f64>, Option<f64>) {
+    let kb = |prefix: &str| -> Option<f64> {
+        text.lines().find_map(|l| {
+            l.strip_prefix(prefix)?
+                .trim()
+                .trim_end_matches("kB")
+                .trim()
+                .parse::<f64>()
+                .ok()
+        })
+    };
+    let mb = |v: Option<f64>| v.map(|k| k / 1024.0);
+    let shared = match (kb("Shared_Clean:"), kb("Shared_Dirty:")) {
+        (None, None) => None,
+        (a, b) => Some(a.unwrap_or(0.0) + b.unwrap_or(0.0)),
+    };
+    (mb(kb("Rss:")), mb(kb("Pss:")), mb(shared))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +450,113 @@ mod tests {
 
     const TCP_HEADER: &str =
         "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n";
+
+    /// A `/proc/<pid>/stat` line in the real shape, with the fields after comm
+    /// filled so the indices are checkable.
+    fn stat_line(comm: &str) -> String {
+        // state ppid pgrp session tty tpgid flags min_flt cmin_flt maj_flt
+        // cmaj_flt utime stime cutime cstime priority nice num_threads ...
+        format!(
+            "1234 ({comm}) S 900 1 1 0 -1 4194304 100 0 0 0 5 6 0 0 20 -5 7 0 0",
+        )
+    }
+
+    #[test]
+    fn the_statistics_come_from_the_kernel_not_from_the_row() {
+        let st = parse_stat(&stat_line("bash")).unwrap();
+        assert_eq!(st.ppid, 900);
+        assert_eq!(st.threads, 7);
+        assert_eq!(st.nice, -5);
+        assert_eq!(state_word(st.state), "Sleeping");
+    }
+
+    #[test]
+    fn a_program_name_with_a_space_does_not_shift_every_field() {
+        // `(Web Content)` is an ordinary Firefox process. Splitting the line on
+        // whitespace puts ppid where pgrp is, and the pane shows a number from
+        // the wrong column rather than an error.
+        let st = parse_stat(&stat_line("Web Content")).unwrap();
+        assert_eq!(st.ppid, 900);
+        assert_eq!(st.threads, 7);
+    }
+
+    #[test]
+    fn a_program_name_containing_a_bracket_parses_from_the_last_one() {
+        // A process is free to be called this, and a first-bracket scan would
+        // read the rest of the name as the state letter.
+        let st = parse_stat(&stat_line("weird) name")).unwrap();
+        assert_eq!(st.ppid, 900);
+        assert_eq!(state_word(st.state), "Sleeping");
+    }
+
+    #[test]
+    fn a_truncated_stat_line_is_refused_rather_than_half_read() {
+        assert!(parse_stat("1234 (bash) S 900 1").is_none());
+        assert!(parse_stat("nonsense with no bracket").is_none());
+    }
+
+    #[test]
+    fn disk_wait_is_named_for_what_it_is() {
+        // "Uninterruptible sleep" is the kernel's word; a person reading a task
+        // manager wants to know the process is blocked on I/O.
+        assert_eq!(state_word('D'), "Waiting for disk");
+        assert_eq!(state_word('Z'), "Not responding");
+        assert_eq!(state_word('?'), "Unknown");
+    }
+
+    #[test]
+    fn context_switches_are_both_kinds_added() {
+        let status = "Name:\tbash\nvoluntary_ctxt_switches:\t120\nnonvoluntary_ctxt_switches:\t7\n";
+        assert_eq!(parse_ctx_switches(status), Some(127));
+        // A kernel that reports neither leaves the field unmeasured rather than
+        // showing a confident zero.
+        assert_eq!(parse_ctx_switches("Name:\tbash\n"), None);
+    }
+
+    #[test]
+    fn memory_reads_rss_pss_and_both_halves_of_shared() {
+        let rollup = "55d0 [rollup]\nRss:  20480 kB\nPss:  10240 kB\nShared_Clean:  4096 kB\nShared_Dirty:  1024 kB\n";
+        let (rss, pss, shared) = parse_smaps_rollup(rollup);
+        assert_eq!(rss, Some(20.0));
+        assert_eq!(pss, Some(10.0));
+        // Clean alone would understate a process with a written-to shared map.
+        assert_eq!(shared, Some(5.0));
+    }
+
+    #[test]
+    fn a_kernel_without_pss_leaves_it_absent_rather_than_copying_rss() {
+        // PSS and RSS answer different questions, and the gap grows with
+        // sharing; filling one in from the other would misreport a browser by
+        // hundreds of megabytes under a label that says otherwise.
+        let (rss, pss, shared) = parse_smaps_rollup("Rss:  20480 kB\n");
+        assert_eq!(rss, Some(20.0));
+        assert_eq!(pss, None);
+        assert_eq!(shared, None);
+    }
+
+    #[test]
+    fn stats_for_a_process_that_is_gone_say_so() {
+        let d = tempfile::tempdir().unwrap();
+        let s = proc_stats(d.path(), 999);
+        assert!(s.ppid.is_none() && s.threads.is_none());
+        assert!(s.unreadable.unwrap().contains("exited"));
+    }
+
+    #[test]
+    fn a_process_without_smaps_rollup_still_reports_its_statistics() {
+        // smaps_rollup is owner-readable only. Losing the memory figures must
+        // not lose the thread count and parent with them.
+        let d = tempfile::tempdir().unwrap();
+        let base = d.path().join("77");
+        fs::create_dir_all(&base).unwrap();
+        fs::write(base.join("stat"), stat_line("thing")).unwrap();
+        fs::write(base.join("status"), "voluntary_ctxt_switches:\t3\n").unwrap();
+        let s = proc_stats(d.path(), 77);
+        assert_eq!(s.threads, Some(7));
+        assert_eq!(s.ctx_switches, Some(3));
+        assert!(s.pss_mb.is_none());
+        assert!(s.unreadable.is_none());
+    }
 
     #[test]
     fn a_process_reports_the_files_it_holds() {

@@ -236,9 +236,18 @@ const noneCount = names().length;
 await type(parentName);
 const hit = names();
 await type("");
+const after = names();
 return JSON.stringify({ before, parentName, noneCount,
   hitCount: hit.length, hitHasIt: hit.some(n => n.includes(parentName)),
-  narrowed: hit.length < before, restored: names().length === before });
+  narrowed: hit.length < before,
+  // "Restored" cannot be an exact count: this runs over ten seconds of a live
+  // machine and the driver itself starts and reaps processes, so `after ===
+  // before` fails whenever anything on the box exits. It went red on 18 August
+  // for that reason and the filter was fine. What the clause MEANS is that
+  // clearing the box brings back rows the filter had hidden, which is checked
+  // by a row that did NOT match the query being present again.
+  restored: after.length > hit.length && after.some(n => !n.includes(parentName)),
+  afterCount: after.length });
 JS
 got=$(drive "$probes/p-filter.js" sysmon-filter.png)
 say "typing in the filter narrows the list to what matches" \
@@ -403,6 +412,67 @@ else
        && printf '%s' "$got" | grep -q '"invented":false' \
        && printf '%s' "$got" | grep -q '"saysUnmeasured":true' \
        && printf '%s' "$got" | grep -q '"claimsEmpty":false' && echo 1 || echo 0)" "$got"
+fi
+
+
+# THE STATISTICS AND MEMORY TABS, which were computed from the row: threads as
+# memory divided by 40, ppid as `1200 + pid % 40`, context switches as
+# `1000 + pid * 137`. Numbers with the shape of measurements.
+cat > "$probes/p-stats.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(2500);
+const rows = [...document.querySelectorAll("[role=row][data-pid]")];
+const name = r => (r.querySelector(".cell.name")?.textContent || "").trim();
+const read = async (row) => {
+  row.click();
+  await wait(1200);
+  const pane = document.querySelector("aside");
+  const tab = t => [...pane.querySelectorAll("button")].find(b => b.textContent.trim() === t);
+  tab("Statistics")?.click(); await wait(1200);
+  const stats = [...pane.querySelectorAll(".stat")].map(d => d.innerText.replace(/\s+/g, " ").trim());
+  tab("Memory")?.click(); await wait(800);
+  const mem = [...pane.querySelectorAll(".stat")].map(d => d.innerText.replace(/\s+/g, " ").trim());
+  return { stats, mem };
+};
+const mine = rows.find(r => /WebKitWebProcess|arlen-system-monitor/.test(name(r)));
+const theirs = rows.find(r => /^systemd$/.test(name(r)));
+if (!mine || !theirs) return JSON.stringify({ skipped: "needed both an own and a foreign process" });
+const ours = await read(mine);
+const foreign = await read(theirs);
+const num = (rows, label) => {
+  const line = rows.find(r => r.startsWith(label));
+  return line ? line.slice(label.length).replace(/[^\d.-]/g, "") : "";
+};
+return JSON.stringify({
+  // A webview has many threads and pid 1 has one; a formula from memory cannot
+  // produce that pair.
+  ourThreads: num(ours.stats, "Threads"),
+  initThreads: num(foreign.stats, "Threads"),
+  // pid 1's parent is 0, which no `1200 + pid % 40` can yield.
+  initParent: num(foreign.stats, "Parent process"),
+  // PSS must be below RSS: it divides shared pages by their sharers. Equal
+  // values would mean one was copied from the other.
+  rss: parseFloat(num(ours.mem, "Resident (RSS)")),
+  pss: parseFloat(num(ours.mem, "Proportional (PSS)")),
+  // smaps_rollup needs ptrace-read, so a foreign process has no memory figures
+  // and must show a dash rather than a borrowed number.
+  foreignMemBlank: foreign.mem.every(r => /-$/.test(r)),
+  ourStats: ours.stats.join(" | ").slice(0, 130) });
+JS
+got=$(drive "$probes/p-stats.js" sysmon-stats.png)
+if printf '%s' "$got" | grep -q '"skipped"'; then
+  echo "  --   per-process statistics: $got"
+else
+  ourT=$(printf '%s' "$got" | sed -n 's/.*"ourThreads":"\([0-9]*\)".*/\1/p')
+  initT=$(printf '%s' "$got" | sed -n 's/.*"initThreads":"\([0-9]*\)".*/\1/p')
+  initP=$(printf '%s' "$got" | sed -n 's/.*"initParent":"\([0-9-]*\)".*/\1/p')
+  rss=$(printf '%s' "$got" | sed -n 's/.*"rss":\([0-9.]*\).*/\1/p')
+  pss=$(printf '%s' "$got" | sed -n 's/.*"pss":\([0-9.]*\).*/\1/p')
+  ok=0
+  [ -n "$ourT" ] && [ "$ourT" -gt 1 ] && [ "$initT" = 1 ] && [ "$initP" = 0 ] \
+    && printf '%s' "$got" | grep -q '"foreignMemBlank":true' \
+    && awk "BEGIN{exit !($pss > 0 && $pss < $rss)}" && ok=1
+  say "the statistics and memory tabs read the kernel, and stay blank when they cannot" "$ok" "$got"
 fi
 
 

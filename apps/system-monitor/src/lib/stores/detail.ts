@@ -36,6 +36,32 @@ export interface HeldResources {
   unreadable?: string | null;
 }
 
+/// The Statistics and Memory figures. Same `| null` discipline as above: a
+/// number that could not be read arrives as `null`, and the pane must say so
+/// rather than print a plausible default. The invented version computed threads
+/// as memory divided by 40 and context switches as `1000 + pid * 137`.
+export interface ProcStats {
+  ppid?: number | null;
+  threads?: number | null;
+  state?: string | null;
+  nice?: number | null;
+  ctxSwitches?: number | null;
+  rssMB?: number | null;
+  pssMB?: number | null;
+  sharedMB?: number | null;
+  unreadable?: string | null;
+}
+
+/// Ask the backend for `pid`'s statistics.
+export async function statsFor(pid: number): Promise<ProcStats> {
+  if (!tauriAvailable) return { unreadable: "not measured: no backend in this window" };
+  try {
+    return await invoke<ProcStats>("process_stats", { pid });
+  } catch (e) {
+    return { unreadable: `not measured: ${e}` };
+  }
+}
+
 /// Ask the backend what `pid` is holding.
 ///
 /// Outside a Tauri webview there is no backend to ask, and the honest answer is
