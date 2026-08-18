@@ -55,6 +55,25 @@ fn ask(conn: &Connection, cypher: &str) -> Answer {
     }
 }
 
+/// The first row of an answer, rendered for a person to read.
+///
+/// `ask` reduces a query to yes or no and throws the row away, which is right
+/// for most of these questions and wrong for the launch one: "at least one app
+/// launched another" is true whether the pair is two sensible cgroups or one
+/// piece of nonsense, and the whole reason the arm was rebuilt was that the ids
+/// it keys on changed. A verdict that can see its subject and does not show it
+/// makes the reader boot the image again to ask.
+fn first_row(conn: &Connection, cypher: &str) -> Option<String> {
+    let mut result = conn.query(cypher).ok()?;
+    let row = result.next()?;
+    Some(
+        row.iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
 fn escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "\\'")
 }
@@ -160,12 +179,14 @@ fn main() -> std::process::ExitCode {
     // Still not gated, because "suspicious" is not "wrong" - a boot that halts
     // early enough genuinely has none - and a gate that fires on a boot-timing
     // difference teaches people to ignore it.
-    let launched = ask(
-        &conn,
-        "MATCH (p:App)-[l:LAUNCHED]->(c:App) RETURN p.id, c.id, l.count LIMIT 1",
-    );
+    const LAUNCH_QUERY: &str =
+        "MATCH (p:App)-[l:LAUNCHED]->(c:App) RETURN p.id, c.id, l.count LIMIT 1";
+    let launched = ask(&conn, LAUNCH_QUERY);
     match &launched {
-        Answer::Yes => println!("GRAPH launches: at least one app launched another"),
+        Answer::Yes => match first_row(&conn, LAUNCH_QUERY) {
+            Some(row) => println!("GRAPH launches: at least one app launched another ({row})"),
+            None => println!("GRAPH launches: at least one app launched another"),
+        },
         Answer::No => println!(
             "GRAPH launches: none recorded - worth a look, since cgroup keying \
              should catch systemd starting its services"
