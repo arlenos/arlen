@@ -95,6 +95,13 @@ def main() -> int:
             True,
         )
 
+        # The refusal has to name the cause that is actually most often true.
+        # Three builds on 18 August carried no sensor at all because the phase is
+        # opt-in, and each reading was read as a broken sensor instead.
+        ok, msg = kernel_verdict(desktop_only)
+        check("the refusal names the opt-in build flag first", "--kernel-layer" in msg, True)
+        check("and still names the verifier refusal", "verifier refused" in msg, True)
+
         with_sensor = make_store(
             os.path.join(tmp, "sensor.db"),
             ["desktop-shell", KERNEL_SOURCE, "knowledge"],

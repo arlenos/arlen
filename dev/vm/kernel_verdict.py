@@ -108,11 +108,16 @@ def kernel_verdict(db_path: str) -> tuple[bool, str]:
         # from every other angle.
         return False, (
             f"{total} event(s) in the store and not one from the kernel sensor "
-            f"(`source = {KERNEL_SOURCE!r}`). Either the unit did not run, or the "
-            f"verifier refused the BPF program - which it does silently as far as "
-            f"anything outside the sensor's own journal is concerned, while the "
-            f"unit restarts and the desktop comes up looking well. The graph's "
-            f"file picture on this boot came from the desktop alone."
+            f"(`source = {KERNEL_SOURCE!r}`). Three causes, in the order they turn "
+            f"out to be true: the image was built WITHOUT the sensor (the phase is "
+            f"opt-in - `build-image.sh --kernel-layer`, and a plain build skips it "
+            f"silently); the unit did not run; or the verifier refused the BPF "
+            f"program - which it does silently as far as anything outside the "
+            f"sensor's own journal is concerned, while the unit restarts and the "
+            f"desktop comes up looking well. Check the first before the other two: "
+            f"on 18 August three builds in a row had no sensor on them and the "
+            f"reading was blamed on the third cause each time. Either way the "
+            f"graph's file picture on this boot came from the desktop alone."
         )
 
     # WHICH types, not just how many. The first boot this ran against forwarded 50
