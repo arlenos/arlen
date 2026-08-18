@@ -1,0 +1,8 @@
+[Sound Theme]
+Name=Arlen
+Comment=The default Arlen cue set
+Directories=stereo
+Inherits=freedesktop
+
+[stereo]
+OutputProfile=stereo
