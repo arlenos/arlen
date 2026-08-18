@@ -44,6 +44,8 @@ const messages: Catalogs = {
     // sixteen threads and oversubscribed on two, and the raw number looks the
     // same in both.
     "tm.perf.cpu.load": "load {$one} / {$five} / {$fifteen} ({$perCore} per core)",
+    "tm.perf.cpu.clock": "{$mhz} MHz",
+    "tm.perf.cpu.temp": "{$label} {$c} °C",
     "tm.perf.mem.detail": "{$used} of {$total} GB in use",
     // The pressure meter. "Not measured" is a real state and not a failure: a
     // kernel without CONFIG_PSI has no figure to give, and a green light there
@@ -125,6 +127,8 @@ const messages: Catalogs = {
     "tm.perf.waiting": "Wird gemessen.",
     "tm.perf.cpu.detail": "{$count} logische Prozessoren",
     "tm.perf.cpu.load": "Last {$one} / {$five} / {$fifteen} ({$perCore} pro Kern)",
+    "tm.perf.cpu.clock": "{$mhz} MHz",
+    "tm.perf.cpu.temp": "{$label} {$c} °C",
     "tm.perf.mem.detail": "{$used} von {$total} GB belegt",
     "tm.perf.mem.pressure.ok": "Speicherdruck: keiner",
     "tm.perf.mem.pressure.warn": "Speicherdruck: teils Wartezeit ({$full}% vollständig blockiert)",

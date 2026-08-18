@@ -70,6 +70,12 @@ export type SystemTick = {
   /// excluded: they carry packets the NIC already counted, so including them
   /// multiplies a container's download into the figure several times.
   links: { name: string; rxMbs: number; txMbs: number }[];
+  /// CPU package temperature in Celsius, or null where the machine exposes no
+  /// CPU sensor. Null is "not measured": 0 would be a plausible-looking lie.
+  cpuTempC: { celsius: number; label: string } | null;
+  /// Per-core clock in MHz, in `cpuN` order. Empty where there is no cpufreq;
+  /// an entry is null for a core whose own directory is missing.
+  coreFreqs: (number | null)[];
 };
 
 /// One core's share of its own last interval, in percent.

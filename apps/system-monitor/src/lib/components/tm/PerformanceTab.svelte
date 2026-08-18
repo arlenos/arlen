@@ -58,8 +58,26 @@
         const base = $t("tm.perf.cpu.detail", { count: String(s.cpuCount) });
         // No load line at all where it could not be read, rather than a zero:
         // 0.00 is a real and reassuring number and would be a lie here.
-        if (!s.load) return base;
-        return `${base} - ${$t("tm.perf.cpu.load", {
+        // Clock and temperature ride with the count, and each is simply absent
+        // where the machine does not measure it - no zero, no dash pretending to
+        // be a reading.
+        const extras: string[] = [];
+        const live = s.coreFreqs.filter((f): f is number => f !== null);
+        if (live.length > 0) {
+          const avg = live.reduce((a, b) => a + b, 0) / live.length;
+          extras.push($t("tm.perf.cpu.clock", { mhz: n(avg, 0) }));
+        }
+        // The sensor's own label travels with the figure. On AMD, `Tctl` carries
+        // a vendor offset and reads ~100 C on a perfectly cool machine, so the
+        // bare number under the word "temperature" is alarming and wrong.
+        if (s.cpuTempC) {
+          extras.push(
+            $t("tm.perf.cpu.temp", { label: s.cpuTempC.label, c: n(s.cpuTempC.celsius, 0) }),
+          );
+        }
+        const head = extras.length ? `${base}, ${extras.join(", ")}` : base;
+        if (!s.load) return head;
+        return `${head} - ${$t("tm.perf.cpu.load", {
           one: n(s.load.one, 2),
           five: n(s.load.five, 2),
           fifteen: n(s.load.fifteen, 2),

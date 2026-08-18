@@ -289,9 +289,16 @@ if (!tab) return JSON.stringify({ error: "no performance tab" });
 tab.click();
 await wait(3500);
 const text = (document.body.innerText || "").replace(/\s+/g, " ").trim();
-const m = text.match(/(logical processors|logische Prozessoren)[^A-Za-z]*(load|Last)[^)]*\)/);
-return JSON.stringify({ line: m ? m[0].slice(0, 110) : null,
-  hasPerCore: /per core|pro Kern/.test(text) });
+// Anchored on the two ENDS rather than on what sits between them: the clock and
+// the temperature landed in that gap later, and a regex that spelled out the
+// middle went null the moment they did - reporting a working line as missing.
+const m = text.match(/(logical processors|logische Prozessoren)[\s\S]{0,90}?(per core|pro Kern)\)/);
+return JSON.stringify({ line: m ? m[0].slice(0, 130) : null,
+  hasPerCore: /per core|pro Kern/.test(text),
+  hasClock: /MHz/.test(text),
+  // The sensor label travels with the figure, so a bare number cannot pass as a
+  // die temperature. Reported, not asserted: plenty of machines have no sensor.
+  temp: (text.match(/(Tctl|Tdie|Package[^,]*|temp\d)\s*[\d.,]+\s*°C/) || [null])[0] });
 JS
 got=$(drive "$probes/p-load.js" sysmon-load.png)
 say "the CPU pane gives the load against this machine's core count" \
