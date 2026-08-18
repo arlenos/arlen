@@ -144,6 +144,24 @@ fn main() -> std::process::ExitCode {
         Answer::NoTable(e) => println!("GRAPH sensor: not measured ({e})"),
     }
 
+    // Whether any exec became a launch relationship. Reported, never gated: on a
+    // boot the parent of almost every exec is systemd, whose executable resolves
+    // to no app, and provenance-halo.md §7 says an exec that does not resolve to
+    // two apps is not recorded. So "no" is the CORRECT answer for a boot with no
+    // app launching another, and reading it as a fault would be reading the rule
+    // as a defect. The line exists so the arm's presence is visible at all.
+    let launched = ask(
+        &conn,
+        "MATCH (p:App)-[l:LAUNCHED]->(c:App) RETURN p.id, c.id, l.count LIMIT 1",
+    );
+    match &launched {
+        Answer::Yes => println!("GRAPH launches: at least one app launched another"),
+        Answer::No => println!(
+            "GRAPH launches: none recorded (correct when no exec had two app-resolvable ends)"
+        ),
+        Answer::NoTable(e) => println!("GRAPH launches: not measured ({e})"),
+    }
+
     for (what, answer) in [("promoted", &promoted), ("linked", &linked)] {
         match answer {
             Answer::Yes => println!("GRAPH {what}: yes"),

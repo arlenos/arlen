@@ -111,6 +111,43 @@ async fn a_store_with_only_desktop_apps_reports_no_sensor() {
     );
 }
 
+/// A launch relationship is visible to the reader, and its absence reads as the
+/// rule rather than as a fault. Both directions matter: the line is REPORTED and
+/// never gated, because on a boot almost every exec's parent is systemd, which
+/// resolves to no app, so "none recorded" is the correct answer and not a defect.
+#[tokio::test]
+async fn the_store_reports_a_launch_between_two_apps() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with(
+        dir.path(),
+        &[
+            "CREATE (:App {id: 'terminal', name: 'terminal'})".to_string(),
+            "CREATE (:App {id: 'files', name: 'files'})".to_string(),
+            "MATCH (p:App {id: 'terminal'}), (c:App {id: 'files'}) \
+             CREATE (p)-[:LAUNCHED {first_seen: 1, last_seen: 2, count: 4}]->(c)"
+                .to_string(),
+        ],
+    )
+    .await;
+    let (_, out) = verdict(&store);
+    assert!(out.contains("GRAPH launches: at least one"), "{out}");
+    assert!(!out.contains("not measured"), "the predicate ran: {out}");
+}
+
+#[tokio::test]
+async fn a_store_with_no_launches_says_so_without_calling_it_a_fault() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_with(
+        dir.path(),
+        &["CREATE (:App {id: 'terminal', name: 'terminal'})".to_string()],
+    )
+    .await;
+    let (code, out) = verdict(&store);
+    assert!(out.contains("GRAPH launches: none recorded"), "{out}");
+    assert!(out.contains("correct when"), "the absence is explained: {out}");
+    assert_ne!(code, 0, "this store fails for its missing FILE, not for launches");
+}
+
 #[tokio::test]
 async fn a_promoted_file_with_no_edge_is_refused() {
     // The self-report case: the agent would have said it wrote. The store says
