@@ -16,7 +16,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 
-const { processes, unavailable, mocked, load } = await import("./processes");
+const { processes, unavailable, mocked, load, pidsOf } = await import("./processes");
 const { get } = await import("svelte/store");
 
 const ONE = [
@@ -70,5 +70,42 @@ describe("load", () => {
     expect(get(processes)).toHaveLength(0);
     expect(get(unavailable)).toBe(true);
     vi.unstubAllEnvs();
+  });
+});
+
+describe("pidsOf", () => {
+  /// The hole the grouped landing view opened: a row that stands for fifteen
+  /// processes has the eldest pid on it, so stopping "the row" by its id ends
+  /// one and leaves fourteen - with the person told it was stopped.
+  it("names every process an app row stands for", () => {
+    const row = {
+      id: 100,
+      name: "chrome",
+      group: "app" as const,
+      status: "running" as const,
+      cpu: 0,
+      memMB: 0,
+      diskKBs: 0,
+      netKBs: 0,
+      children: [
+        { id: 101, name: "chrome", group: "app" as const, status: "running" as const, cpu: 0, memMB: 0, diskKBs: 0, netKBs: 0 },
+        { id: 102, name: "chrome", group: "app" as const, status: "running" as const, cpu: 0, memMB: 0, diskKBs: 0, netKBs: 0 },
+      ],
+    };
+    expect(pidsOf(row)).toEqual([100, 101, 102]);
+  });
+
+  it("is just the process itself when the row is not a group", () => {
+    const lone = {
+      id: 7,
+      name: "systemd",
+      group: "system" as const,
+      status: "running" as const,
+      cpu: 0,
+      memMB: 0,
+      diskKBs: 0,
+      netKBs: 0,
+    };
+    expect(pidsOf(lone)).toEqual([7]);
   });
 });
