@@ -57,8 +57,15 @@ impl Default for WatchConfig {
 /// Top-level `graph.toml` structure.
 #[derive(Debug, Clone, Default, Deserialize)]
 struct GraphConfig {
-    #[serde(default)]
-    projects: WatchConfig,
+    // `Option`, not `#[serde(default)]`, so a file that parses without a
+    // `[projects]` section is distinguishable from one that sets it. Both end up
+    // watching the same three home directories; only one of them says so, and
+    // until 18 August that was the missing-file case alone. A config that exists
+    // and simply does not mention projects took the defaults in silence - which
+    // is how a hermetic run of this daemon ended up scanning the real
+    // `~/Repositories`, with a `watch_directories = []` in the file and no
+    // section header above it.
+    projects: Option<WatchConfig>,
 }
 
 impl WatchConfig {
@@ -88,10 +95,22 @@ impl WatchConfig {
 
         match std::fs::read_to_string(&path) {
             Ok(content) => match toml::from_str::<GraphConfig>(&content) {
-                Ok(gc) => {
-                    tracing::info!("loaded project config from {}", path.display());
-                    gc.projects
-                }
+                Ok(gc) => match gc.projects {
+                    Some(projects) => {
+                        tracing::info!("loaded project config from {}", path.display());
+                        projects
+                    }
+                    None => {
+                        let d = Self::default();
+                        tracing::info!(
+                            "{} has no [projects] section; watching the default user \
+                             directories: {}",
+                            path.display(),
+                            d.watch_directories.join(", ")
+                        );
+                        d
+                    }
+                },
                 Err(e) => {
                     tracing::warn!("failed to parse {}: {e}, using defaults", path.display());
                     Self::default()
@@ -141,15 +160,31 @@ watch_directories = ["/tmp/projects"]
 max_depth = 2
 "#;
         let gc: GraphConfig = toml::from_str(toml).unwrap();
-        assert_eq!(gc.projects.watch_directories, vec!["/tmp/projects"]);
-        assert_eq!(gc.projects.max_depth, 2);
+        let projects = gc.projects.expect("the section is present");
+        assert_eq!(projects.watch_directories, vec!["/tmp/projects"]);
+        assert_eq!(projects.max_depth, 2);
     }
 
+    /// A file with no `[projects]` section leaves it ABSENT rather than
+    /// defaulted, so `load` can say out loud that it is about to watch three
+    /// directories in the user's home. Both cases end up watching them; only a
+    /// distinguishable one can be reported.
     #[test]
-    fn parse_empty_config_uses_defaults() {
+    fn a_file_without_the_section_leaves_it_absent() {
         let gc: GraphConfig = toml::from_str("").unwrap();
-        assert!(!gc.projects.watch_directories.is_empty());
-        assert_eq!(gc.projects.max_depth, 3);
+        assert!(gc.projects.is_none());
+        let d = WatchConfig::default();
+        assert!(!d.watch_directories.is_empty(), "and the fallback still watches them");
+        assert_eq!(d.max_depth, 3);
+    }
+
+    /// The shape that produced the silence: a `watch_directories` at the top
+    /// level rather than under `[projects]`. It parses, it looks like it turned
+    /// watching off, and it does the opposite.
+    #[test]
+    fn a_key_outside_the_section_does_not_configure_it() {
+        let gc: GraphConfig = toml::from_str("watch_directories = []\n").unwrap();
+        assert!(gc.projects.is_none(), "the section, not the key, is what sets this");
     }
 
     /// Sprint C added `auto_promote_threshold`. Existing user
@@ -165,7 +200,7 @@ max_depth = 2
 "#;
         let gc: GraphConfig = toml::from_str(toml).unwrap();
         assert_eq!(
-            gc.projects.auto_promote_threshold, 3,
+            gc.projects.expect("section present").auto_promote_threshold, 3,
             "missing threshold must default to 3 (compositor #29 era \
              behaviour) — change with care, this affects every existing \
              user's graph.toml"
@@ -179,6 +214,6 @@ max_depth = 2
 auto_promote_threshold = 7
 "#;
         let gc: GraphConfig = toml::from_str(toml).unwrap();
-        assert_eq!(gc.projects.auto_promote_threshold, 7);
+        assert_eq!(gc.projects.expect("section present").auto_promote_threshold, 7);
     }
 }
