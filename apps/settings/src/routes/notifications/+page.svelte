@@ -298,6 +298,12 @@
 
   {#if $notifications.loading && !$notifications.data}
     <div class="status">{$t("s.notif.loading")}</div>
+  {:else if $notifications.hostless}
+    <!-- No backend to ask, which is a fact about this window and not a fault.
+         This branch used to be the error one: with no host the invoke threw and
+         the page said your settings could not be loaded, in a window where they
+         were never going to be. -->
+    <div class="status">{$t("s.notif.noHost")}</div>
   {:else if $notifications.error && !$notifications.data}
     <!-- The reason is shown when it is the backend's own words and suppressed
          when it is a JS runtime error: with no backend this rendered

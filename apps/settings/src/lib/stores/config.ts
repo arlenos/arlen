@@ -8,6 +8,7 @@
 
 import { writable, derived, get, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 export type ConfigFile =
   | "appearance"
@@ -24,6 +25,12 @@ export interface ConfigState<T> {
   defaults: T | null;
   loading: boolean;
   error: string | null;
+  /// True when there is no Tauri host to ask at all - a browser tab, a
+  /// screenshot run, `vite dev`. NOT an error: nothing failed, there is simply
+  /// nobody to answer. Kept apart from `error` because a page that renders "could
+  /// not load your settings" in a window that was never going to have a backend
+  /// describes a broken system to someone looking at a working one.
+  hostless: boolean;
   lastSaved: Date | null;
 }
 
@@ -42,11 +49,20 @@ export function createConfigStore<T>(file: ConfigFile): ConfigStore<T> {
     defaults: null,
     loading: false,
     error: null,
+    hostless: false,
     lastSaved: null,
   });
 
   async function load(): Promise<void> {
-    inner.update((s) => ({ ...s, loading: true, error: null }));
+    // Asked before the try, because "no host" is not a failure to catch. The
+    // invoke would throw a `window.__TAURI_INTERNALS__` TypeError, which pages
+    // then had to pattern-match out of the message to avoid printing a stack
+    // trace at the user - the state is cleaner than the string.
+    if (!tauriAvailable) {
+      inner.update((s) => ({ ...s, loading: false, error: null, hostless: true }));
+      return;
+    }
+    inner.update((s) => ({ ...s, loading: true, error: null, hostless: false }));
     try {
       const [data, defaults] = await Promise.all([
         invoke<T>("config_get", { file, key: null }),
@@ -57,6 +73,7 @@ export function createConfigStore<T>(file: ConfigFile): ConfigStore<T> {
         defaults,
         loading: false,
         error: null,
+        hostless: false,
         lastSaved: new Date(),
       });
     } catch (e) {
