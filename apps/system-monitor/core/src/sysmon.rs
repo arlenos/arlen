@@ -46,6 +46,9 @@ pub struct Counters {
     /// cache holds the rest, and a monitor that showed it would report a machine
     /// as full while it is fine.
     pub mem_available_kb: u64,
+    /// Memory pressure, or `None` where the kernel exposes no PSI file. Carried
+    /// as-read rather than as a number, so the absence survives to the surface.
+    pub mem_pressure: Option<MemoryPressure>,
     /// Sectors read across the physical block devices.
     pub disk_read_sectors: u64,
     /// Sectors written across the physical block devices.
@@ -84,6 +87,11 @@ pub struct SystemTick {
     /// against and are reported as zero. The surface uses this to avoid drawing a
     /// zero it would otherwise present as a measurement.
     pub rates_ready: bool,
+    /// Memory pressure, or `None` where the kernel exposes no PSI. `None` is
+    /// "not measured" and must render as such: a green meter over an absent
+    /// reading is the surface inventing a verdict.
+    #[serde(rename = "memPressure")]
+    pub mem_pressure: Option<MemoryPressure>,
 }
 
 /// A `/proc` and `/sys` reader, rooted so tests can point it at a fixture.
@@ -124,6 +132,13 @@ impl SysProbe {
             parse_diskstats(&diskstats, &|name| self.is_whole_disk(name));
         let netdev = std::fs::read_to_string(self.proc_root.join("net/dev")).unwrap_or_default();
         let (net_rx_bytes, net_tx_bytes) = parse_netdev(&netdev);
+        // Absent on a kernel without CONFIG_PSI. `unwrap_or_default()` like the
+        // others would turn that into an empty string and then into 0.00 - a
+        // green meter over a machine nobody measured - so this one keeps the
+        // read fallible all the way through.
+        let mem_pressure = std::fs::read_to_string(self.proc_root.join("pressure/memory"))
+            .ok()
+            .and_then(|s| parse_pressure(&s));
         Counters {
             cpu_busy,
             cpu_total,
@@ -133,6 +148,7 @@ impl SysProbe {
             disk_write_sectors,
             net_rx_bytes,
             net_tx_bytes,
+            mem_pressure,
         }
     }
 
@@ -169,6 +185,70 @@ fn parse_cpu(stat: &str) -> Option<(u64, u64)> {
     let total: u64 = v.iter().sum();
     let idle = v[3] + v[4];
     Some((total.saturating_sub(idle), total))
+}
+
+/// The memory-pressure meter the plan asks for, backed by real PSI.
+///
+/// `/proc/pressure/memory` is the kernel telling you how much time tasks spent
+/// STALLED waiting on memory, which is a different question from "how full is
+/// it". A machine can sit at 95% used and be perfectly happy, and it can thrash
+/// itself to a standstill at 60% if the working set does not fit - the plan
+/// calls this "the single best 'is it actually thrashing' signal" for exactly
+/// that reason, and a percentage-full bar cannot answer it.
+///
+/// Two lines matter and they mean different things:
+///
+///   some   at least one task was stalled. Some of this is normal on any busy
+///          machine, so it is the early warning and not the alarm.
+///   full   EVERY non-idle task was stalled - nothing could make progress. This
+///          is the number that says thrashing rather than busy.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct MemoryPressure {
+    /// `some avg10` as a percentage of the last ten seconds.
+    pub some10: f64,
+    /// `full avg10` as a percentage of the last ten seconds.
+    pub full10: f64,
+    /// `"ok" | "warn" | "critical"`, the meter's three states.
+    pub level: &'static str,
+}
+
+/// Where PSI is not available, and why that is NOT "ok".
+///
+/// A kernel built without `CONFIG_PSI`, or one where it is off, has no file to
+/// read - and a container may be showing the host's figures or nothing at all.
+/// Returning green there would be the surface stating something nobody measured,
+/// so the absence is `None` and the caller has to render it as unavailable.
+pub fn parse_pressure(text: &str) -> Option<MemoryPressure> {
+    let avg10 = |prefix: &str| -> Option<f64> {
+        text.lines()
+            .find(|l| l.starts_with(prefix))?
+            .split_whitespace()
+            .find_map(|f| f.strip_prefix("avg10=")?.parse().ok())
+    };
+    let some10 = avg10("some")?;
+    let full10 = avg10("full")?;
+    Some(MemoryPressure {
+        some10,
+        full10,
+        level: pressure_level(some10, full10),
+    })
+}
+
+/// The three states, from thresholds chosen with reasons rather than measured.
+///
+/// Said plainly because it matters for how much weight the colour carries: these
+/// numbers are a judgement, not a finding. `full > 0` at all means something got
+/// nothing done waiting for memory, which is worth a colour; 10% of the last ten
+/// seconds fully stalled is a machine in trouble by any reading. `some` alone is
+/// ordinary on a busy machine, so it takes a much higher bar to say anything.
+fn pressure_level(some10: f64, full10: f64) -> &'static str {
+    if full10 >= 10.0 {
+        "critical"
+    } else if full10 > 0.0 || some10 >= 20.0 {
+        "warn"
+    } else {
+        "ok"
+    }
 }
 
 /// `MemTotal` and `MemAvailable` in kibibytes.
@@ -279,6 +359,7 @@ impl SystemMonitor {
                 mem_pct,
                 mem_used_gb: kib_to_gib(mem_used_kb),
                 mem_total_gb,
+                mem_pressure: now_counters.mem_pressure,
                 disk_read_mbs: 0.0,
                 disk_write_mbs: 0.0,
                 net_rx_mbs: 0.0,
@@ -316,6 +397,7 @@ impl SystemMonitor {
             net_rx_mbs: rate(now_counters.net_rx_bytes, prev.net_rx_bytes, BYTE),
             net_tx_mbs: rate(now_counters.net_tx_bytes, prev.net_tx_bytes, BYTE),
             rates_ready: true,
+            mem_pressure: now_counters.mem_pressure,
         }
     }
 }
@@ -460,5 +542,67 @@ mod tests {
         let t = m.sample();
         assert_eq!(t.mem_total_gb, 0.0);
         assert_eq!(t.cpu_count, 1, "never divide by zero cores");
+    }
+
+    /// This machine's own format, copied off `/proc/pressure/memory`.
+    const PRESSURE: &str = "some avg10=0.00 avg60=0.02 avg300=0.00 total=159475849\nfull avg10=0.00 avg60=0.02 avg300=0.00 total=146254960\n";
+
+    #[test]
+    fn a_quiet_machine_reads_ok() {
+        let p = parse_pressure(PRESSURE).expect("the real format parses");
+        assert_eq!(p.some10, 0.0);
+        assert_eq!(p.full10, 0.0);
+        assert_eq!(p.level, "ok");
+    }
+
+    /// The number that means thrashing rather than busy: every task stalled.
+    #[test]
+    fn any_full_stall_at_all_is_worth_a_colour() {
+        let text = "some avg10=3.00 avg60=0.00 avg300=0.00 total=1\nfull avg10=0.40 avg60=0.00 avg300=0.00 total=1\n";
+        assert_eq!(parse_pressure(text).unwrap().level, "warn");
+    }
+
+    #[test]
+    fn a_tenth_of_the_window_fully_stalled_is_critical() {
+        let text = "some avg10=60.00 avg60=0.00 avg300=0.00 total=1\nfull avg10=12.50 avg60=0.00 avg300=0.00 total=1\n";
+        assert_eq!(parse_pressure(text).unwrap().level, "critical");
+    }
+
+    /// `some` alone is ordinary on a busy machine - this box sits around 30 on
+    /// the CPU file - so it takes a much higher bar before it says anything.
+    #[test]
+    fn some_pressure_alone_stays_quiet_until_it_is_high() {
+        let mild = "some avg10=8.00 avg60=0.00 avg300=0.00 total=1\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=1\n";
+        assert_eq!(parse_pressure(mild).unwrap().level, "ok");
+        let heavy = "some avg10=25.00 avg60=0.00 avg300=0.00 total=1\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=1\n";
+        assert_eq!(parse_pressure(heavy).unwrap().level, "warn");
+    }
+
+    /// A kernel with no PSI is NOT a healthy one. The absence has to survive.
+    #[test]
+    fn a_kernel_without_psi_reads_as_absent_and_not_as_ok() {
+        assert!(parse_pressure("").is_none());
+        assert!(parse_pressure("some avg10=1.00 total=5\n").is_none(), "no full line");
+        assert!(parse_pressure("garbage\n").is_none());
+    }
+
+    /// The probe must carry that absence rather than defaulting it away, which
+    /// is what every other counter in `read()` does.
+    #[test]
+    fn a_proc_tree_with_no_pressure_file_yields_no_reading() {
+        let dir = tmp("no-psi");
+        let probe = fixture(&dir, &["sda"]);
+        assert!(probe.read().mem_pressure.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_proc_tree_with_a_pressure_file_yields_one() {
+        let dir = tmp("psi");
+        let probe = fixture(&dir, &["sda"]);
+        std::fs::create_dir_all(dir.join("proc/pressure")).unwrap();
+        std::fs::write(dir.join("proc/pressure/memory"), PRESSURE).unwrap();
+        assert_eq!(probe.read().mem_pressure.unwrap().level, "ok");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
