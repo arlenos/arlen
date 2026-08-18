@@ -16,6 +16,7 @@
   import { ChevronRight, Cog, Cpu, Camera, Mic, Brain } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
   import { sensorsFor } from "$lib/stores/detail";
+  import { pinnedOrder } from "$lib/freeze";
   import { t, locale } from "$lib/i18n/messages";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
 
@@ -84,10 +85,43 @@
     | { kind: "group"; id: string }
     | { kind: "proc"; proc: Process; depth: number; expandable: boolean; open: boolean };
 
+  // FREEZE-THE-REFRESH (plan (a)). Holding the modifier pins the row ORDER, not
+  // the data: the poll keeps running and the figures keep arriving, only the
+  // positions stop moving. Stopping the poll instead would show a two-second-old
+  // snapshot as if it were now.
+  //
+  // The pin is captured per group at the moment the key goes down, and it is
+  // captured from the sorted ids rather than from the raw list, because the sort
+  // is what moves rows about.
+  let frozen = $state(false);
+  let pinned = $state<Map<string, number[]>>(new Map());
+
+  function onFreezeKey(e: KeyboardEvent) {
+    // Shift, not Ctrl or Alt: Ctrl is the platform's own accelerator prefix and
+    // Alt reaches the window menu on some compositors, while Shift alone does
+    // nothing here otherwise.
+    if (e.key !== "Shift" || e.repeat) return;
+    if (e.type === "keydown") {
+      frozen = true;
+    } else {
+      frozen = false;
+      pinned = new Map();
+    }
+  }
+
   const items = $derived.by<DisplayItem[]>(() => {
     const out: DisplayItem[] = [];
     for (const g of GROUPS) {
-      const rows = list.filter((p) => p.group === g.key && matches(p)).sort(cmp);
+      let rows = list.filter((p) => p.group === g.key && matches(p)).sort(cmp);
+      if (frozen) {
+        const held = pinned.get(g.key);
+        if (held) {
+          rows = pinnedOrder(rows, held);
+        } else {
+          // First derive after the key went down: this order becomes the pin.
+          pinned.set(g.key, rows.map((r) => r.id));
+        }
+      }
       if (rows.length === 0) continue;
       out.push({ kind: "group", id: g.id });
       for (const p of rows) {
@@ -252,7 +286,9 @@
   }
 </script>
 
-<div class="pt" role="grid" aria-label={$t("tm.grid.label", { count: procIds.length })} bind:this={rootEl}>
+<svelte:window onkeydown={onFreezeKey} onkeyup={onFreezeKey} />
+
+<div class="pt" role="grid" data-frozen={frozen ? "yes" : "no"} aria-label={$t("tm.grid.label", { count: procIds.length })} bind:this={rootEl}>
   <div class="head" role="row">
     <span class="hcell" role="columnheader" aria-sort={ariaSort("name")}><button class="h name" class:sorted={sortKey === "name"} aria-label={$t("tm.col.name")} onclick={() => sortBy("name")}>
       {$t("tm.col.name")}

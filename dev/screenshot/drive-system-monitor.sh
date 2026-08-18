@@ -155,5 +155,45 @@ JS
   kill "$victim" 2>/dev/null
 fi
 
+# FREEZE-THE-REFRESH, and both halves, because either alone would pass for the
+# wrong implementation: an order that holds while the numbers also stop is just a
+# stopped poll wearing the feature's name, and numbers that move while the order
+# does too is no freeze at all. So this pins the ids AND watches one process's
+# CPU change underneath them.
+cat > "$probes/p-freeze.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(3000);
+const rows = () => [...document.querySelectorAll("[role=row][data-pid]")];
+const ids = () => rows().map(r => r.getAttribute("data-pid")).slice(0, 12);
+// Read the CPU cell BY PID, so the reading follows the process rather than a
+// screen position - which would be circular here.
+const cpuOf = pid => {
+  const r = rows().find(x => x.getAttribute("data-pid") === pid);
+  const c = r && r.querySelector(".cell.num");
+  return c ? c.textContent.trim() : null;
+};
+const grid = document.querySelector("[role=grid]");
+const busiest = ids()[0];
+window.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", bubbles: true }));
+await wait(600);
+const frozenAttr = grid && grid.getAttribute("data-frozen");
+const pinned = ids();
+const samples = [];
+for (let i = 0; i < 5; i++) { samples.push(cpuOf(busiest)); await wait(1500); }
+const stillPinned = ids();
+window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", bubbles: true }));
+await wait(2000);
+return JSON.stringify({ frozenAttr, held: JSON.stringify(pinned) === JSON.stringify(stillPinned),
+  thawedAttr: grid && grid.getAttribute("data-frozen"),
+  samples, moved: new Set(samples.filter(Boolean)).size > 1 });
+JS
+got=$(drive "$probes/p-freeze.js" sysmon-freeze.png)
+say "holding the modifier stops the rows reordering" \
+  "$(printf '%s' "$got" | grep -q '"frozenAttr":"yes"' \
+     && printf '%s' "$got" | grep -q '"held":true' \
+     && printf '%s' "$got" | grep -q '"thawedAttr":"no"' && echo 1 || echo 0)" "$got"
+say "and the figures keep arriving while it is held" \
+  "$(printf '%s' "$got" | grep -q '"moved":true' && echo 1 || echo 0)" "$got"
+
 [ "$fail" = 0 ] && echo "a process list that sorts, a detail that names a pid, graphs that draw, and a kill that asks before it acts"
 exit "$fail"
