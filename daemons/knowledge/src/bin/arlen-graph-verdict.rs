@@ -144,12 +144,22 @@ fn main() -> std::process::ExitCode {
         Answer::NoTable(e) => println!("GRAPH sensor: not measured ({e})"),
     }
 
-    // Whether any exec became a launch relationship. Reported, never gated: on a
-    // boot the parent of almost every exec is systemd, whose executable resolves
-    // to no app, and provenance-halo.md §7 says an exec that does not resolve to
-    // two apps is not recorded. So "no" is the CORRECT answer for a boot with no
-    // app launching another, and reading it as a fault would be reading the rule
-    // as a defect. The line exists so the arm's presence is visible at all.
+    // Whether any exec became a launch relationship. Reported, never gated - but
+    // what a "no" MEANS changed on 18 August and the old wording would now
+    // mislead whoever reads it.
+    //
+    // It used to say a bare "no" was correct, because the arm keyed both ends on
+    // the executable's path: systemd's binary resolves to no installed app, so
+    // nearly every exec on a boot was dropped for an unresolvable parent. The arm
+    // is keyed on the CGROUP now, and systemd starting a service puts the two
+    // ends in different cgroups, so those execs do resolve. A boot that records
+    // no launch at all is therefore closer to suspicious than to expected: the
+    // most likely causes are the fork probe not attaching, or its map never being
+    // read, both of which look exactly like this and like nothing else.
+    //
+    // Still not gated, because "suspicious" is not "wrong" - a boot that halts
+    // early enough genuinely has none - and a gate that fires on a boot-timing
+    // difference teaches people to ignore it.
     let launched = ask(
         &conn,
         "MATCH (p:App)-[l:LAUNCHED]->(c:App) RETURN p.id, c.id, l.count LIMIT 1",
@@ -157,7 +167,8 @@ fn main() -> std::process::ExitCode {
     match &launched {
         Answer::Yes => println!("GRAPH launches: at least one app launched another"),
         Answer::No => println!(
-            "GRAPH launches: none recorded (correct when no exec had two app-resolvable ends)"
+            "GRAPH launches: none recorded - worth a look, since cgroup keying \
+             should catch systemd starting its services"
         ),
         Answer::NoTable(e) => println!("GRAPH launches: not measured ({e})"),
     }
