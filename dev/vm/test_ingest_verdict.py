@@ -21,6 +21,8 @@ Run: python3 dev/vm/test_ingest_verdict.py
 """
 
 import os
+import pathlib
+import re
 import sqlite3
 import sys
 import tempfile
@@ -28,6 +30,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ingest_verdict import DOGFOOD_PATH, INGEST_TYPE, ingest_verdict
 
+REPO = pathlib.Path(__file__).resolve().parents[2]
 FAILURES = []
 
 
@@ -147,6 +150,71 @@ def main() -> int:
     except OSError:
         in_probe = False
     check("the probe still asks about the same path this check looks for", in_probe, True)
+
+    # The lag half. The verify run keeps ending on "promotion had not reached this
+    # event", which is true and unactionable without a size, so the size is now in
+    # the sentence. These build a store WITH a high-water mark and check the
+    # arithmetic rather than trusting it.
+    with tempfile.TemporaryDirectory() as d:
+        from ingest_verdict import PROMOTION_BATCH, PROMOTION_INTERVAL_S, promotion_lag
+
+        # 2500 events stamped after the mark: three passes of 1000, so 90s.
+        db = os.path.join(d, "behind.db")
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "CREATE TABLE events (id TEXT PRIMARY KEY, type TEXT NOT NULL, "
+            "timestamp INTEGER NOT NULL, source TEXT NOT NULL, pid INTEGER NOT NULL, "
+            "origin TEXT NOT NULL, payload BLOB)"
+        )
+        conn.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO metadata VALUES ('promotion_hwm', '100')")
+        for i in range(2500):
+            conn.execute(
+                "INSERT INTO events VALUES (?, 'file.opened', ?, 'test', 1, 'system:test', ?)",
+                (f"b{i}", 200, b""),
+            )
+        conn.commit()
+        conn.close()
+        lag = promotion_lag(db)
+        check("a backlog is reported with its size", "2500 event(s) behind" in lag, True)
+        check("and converted into how long it takes to clear", "1m30s" in lag, True)
+
+        # Nothing after the mark is the state a passing run should describe.
+        db2 = os.path.join(d, "caught-up.db")
+        conn = sqlite3.connect(db2)
+        conn.execute(
+            "CREATE TABLE events (id TEXT PRIMARY KEY, type TEXT NOT NULL, "
+            "timestamp INTEGER NOT NULL, source TEXT NOT NULL, pid INTEGER NOT NULL, "
+            "origin TEXT NOT NULL, payload BLOB)"
+        )
+        conn.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO metadata VALUES ('promotion_hwm', '999')")
+        conn.execute(
+            "INSERT INTO events VALUES ('a', 'file.opened', 5, 'test', 1, 'system:test', x'')"
+        )
+        conn.commit()
+        conn.close()
+        check("a caught-up store says so", "caught up" in promotion_lag(db2), True)
+
+        # A store with no metadata table at all must not fail the run: the lag is
+        # an aside, and an aside that can refuse is a new way to go red.
+        db3 = make_store(os.path.join(d, "nometa.db"), [("file.opened", b"x")])
+        check("a store without the mark stays quiet", promotion_lag(db3), "")
+
+        # The two constants are a COPY of the daemon's, which is how a number in
+        # one language quietly stops describing the other. Read both out of the
+        # Rust and compare, so the lag sentence cannot go on quoting a batch size
+        # nobody uses.
+        promo = (REPO / "daemons/knowledge/src/promotion.rs").read_text()
+        graph = (REPO / "sdk/os-sdk/src/graph.rs").read_text()
+        batch = re.search(r"const PROMOTION_BATCH: i64 = (\d+)", promo)
+        interval = re.search(r"PROMOTION_INTERVAL: std::time::Duration = std::time::Duration::from_secs\((\d+)\)", graph)
+        check("the batch size here is the daemon's", int(batch.group(1)) if batch else None, PROMOTION_BATCH)
+        check(
+            "and so is the interval",
+            int(interval.group(1)) if interval else None,
+            PROMOTION_INTERVAL_S,
+        )
 
     if FAILURES:
         print(f"\n{len(FAILURES)} check(s) failed: {', '.join(FAILURES)}")

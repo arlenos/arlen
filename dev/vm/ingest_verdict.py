@@ -58,6 +58,47 @@ def _query(db_path: str, sql: str, params: tuple = ()) -> list:
         return conn.execute(sql, params).fetchall()
 
 
+#: One promotion pass moves this many events every `PROMOTION_INTERVAL`, and both
+#: live in `daemons/knowledge/src/promotion.rs`. Kept here so the lag can be
+#: reported in minutes rather than as a raw count nobody can weigh.
+PROMOTION_BATCH = 1000
+PROMOTION_INTERVAL_S = 30
+
+
+def promotion_lag(db_path: str) -> str:
+    """How far promotion is behind the writer, as a sentence, or "" if it is not.
+
+    The verify run has ended on the same refusal several times: the store HOLDS
+    this run's file and the graph cannot answer for it, because promotion had not
+    reached it yet. That is a true sentence and a useless one - it says a backlog
+    exists without saying how big, and the fix (raise the batch, shorten the
+    interval, drain to empty, forward less) is a choice between numbers.
+
+    So this reports the number. The high-water mark is a TIMESTAMP, not a row
+    id, so the backlog is the count of events stamped after it.
+    """
+    try:
+        hwm_rows = _query(db_path, "SELECT value FROM metadata WHERE key = 'promotion_hwm'")
+        if not hwm_rows:
+            return "promotion has not recorded a high-water mark yet, so nothing has been promoted"
+        hwm = int(hwm_rows[0][0])
+        behind = _query(db_path, "SELECT count(*) FROM events WHERE timestamp > ?", (hwm,))[0][0]
+    except (sqlite3.Error, ValueError, IndexError):
+        # A store without the metadata table, or a mark that will not parse. The
+        # lag is an aside; failing the run over it would be the tail wagging.
+        return ""
+
+    if behind == 0:
+        return "promotion is caught up with the writer"
+    passes = -(-behind // PROMOTION_BATCH)
+    return (
+        f"promotion is {behind} event(s) behind, which is {passes} pass(es) of "
+        f"{PROMOTION_BATCH} at {PROMOTION_INTERVAL_S}s apart, so about "
+        f"{passes * PROMOTION_INTERVAL_S // 60}m{passes * PROMOTION_INTERVAL_S % 60:02d}s "
+        f"of catching up from the moment this was read"
+    )
+
+
 def ingest_verdict(db_path: str) -> tuple[bool, str]:
     """`(ok, message)` for the guest's event store at `db_path`."""
     if not os.path.exists(db_path):
@@ -116,10 +157,12 @@ def ingest_verdict(db_path: str) -> tuple[bool, str]:
             f"what the boot emitted did not reach it."
         )
 
+    lag = promotion_lag(db_path)
     return True, (
         f"the guest's event store holds this run's file: {mine} `{INGEST_TYPE}` "
         f"row(s) for `{DOGFOOD_PATH}`, out of {total} event(s), read from the "
         f"store itself rather than from anything the guest said about it"
+        + (f". {lag}" if lag else "")
     )
 
 
