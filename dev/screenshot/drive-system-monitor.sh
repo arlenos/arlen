@@ -84,7 +84,12 @@ await new Promise(r => setTimeout(r, 2500));
 const row = [...document.querySelectorAll("[role=row]")]
   .filter(r => !r.querySelector("[role=columnheader]"))[0];
 if (!row) return "no rows";
-(row.querySelector("button") || row).click();
+// The ROW, not the first button inside it. `row.querySelector("button")` used to
+// find nothing on a flat list and fall through to the row, which is the only
+// reason it worked; the moment the landing view became app-grouped the first
+// button became the expander, whose handler stopPropagation()s, so the probe
+// toggled a twisty and reported "no detail pane" as if selection had broken.
+row.click();
 await new Promise(r => setTimeout(r, 1000));
 const pane = document.querySelector("[class*=detail], [class*=Detail], aside");
 return pane ? (pane.textContent||"").replace(/\s+/g," ").trim().slice(0,140) : "no detail pane";
