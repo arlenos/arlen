@@ -15,6 +15,29 @@ set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 
+# Refuse before forty minutes of work rather than after. `systemd-repart`
+# pre-populates the whole root filesystem under /var/tmp to size the partition,
+# so the last step of the build is also its hungriest - and it is where the disk
+# has now filled twice, on 10 and 18 August. Both times the build had already
+# cross-compiled every daemon, built four Tauri frontends and populated a
+# buildroot before finding out.
+#
+# The floor is the image (~5 GB) plus the staging copy of it plus room for the
+# builddir to grow, rounded to something a person can hold in their head. It is
+# deliberately checked against /var/tmp and not the output directory: on this
+# machine they are the same filesystem, and on one where they are not, the
+# staging copy is the half that runs out.
+NEED_GB=20
+free_gb=$(df -BG --output=avail /var/tmp | tail -1 | tr -dc '0-9')
+if [ "${free_gb:-0}" -lt "$NEED_GB" ]; then
+    echo "!! ${free_gb} GB free on the filesystem holding /var/tmp, and this build wants ${NEED_GB} GB." >&2
+    echo "   It would run for about forty minutes and then fail populating the root partition." >&2
+    echo "   Two caches are safe to drop, in this order:" >&2
+    echo "     rm -rf $(cd "$here/../.." && pwd)/target/debug/incremental   # pure scratch, no recompile" >&2
+    echo "     rm -rf $here/mkosi.builddir                                 # costs a full in-container rebuild" >&2
+    exit 1
+fi
+
 # A build that dies part-way leaves the half-written arlen.raw behind, and the
 # next verify run boots it without complaint. That happened on 10 Aug: the disk
 # filled during `systemd-repart`, the copy failed, and a 4.4G image was sitting
