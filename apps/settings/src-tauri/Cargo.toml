@@ -20,6 +20,11 @@ modulesd-proto = { path = "../../../contracts/modulesd-proto" }
 arlen-extensions = { path = "../../../contracts/extensions" }
 # ST-7 reads the audit ledger to answer what an extension was seen doing.
 arlen-monitor-reads = { path = "../../../sdk/monitor-reads" }
+# The notification daemon's own sound module, for the cue preview. Reused rather
+# than reimplemented on purpose: a preview whose resolution differs from the
+# daemon's would audition a file the system will not play, which is the one thing
+# a preview must not do.
+arlen-notification-daemon = { path = "../../../daemons/notification-daemon" }
 arlen-forage-bridge-install = { path = "../../../forage/bridge-install" }
 arlen-ai-model-manager = { path = "../../../ai/ai-model-manager" }
 arlen-theme = { path = "../../../sdk/theme" }

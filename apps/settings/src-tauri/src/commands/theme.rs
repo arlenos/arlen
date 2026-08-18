@@ -813,3 +813,51 @@ mod tests {
         assert_eq!(color.get("bg_app").unwrap().as_str(), Some("#000000"));
     }
 }
+
+/// Play one cue, exactly as the Notification Daemon would resolve it
+/// (`sound-system-plan.md` SO-R3, the picker's play-preview).
+///
+/// REUSES the daemon's own `resolve_sound` and `SystemSoundPlayer` rather than
+/// resolving here. A preview that walked its own theme chain could audition a
+/// file the system will never play - a different theme root, a different
+/// extension order, a `.disabled` marker it did not honour - and the whole point
+/// of the button is to hear what will actually happen.
+///
+/// NOT gated by do-not-disturb, mute or Focus, and that is deliberate: those gate
+/// cues the system RAISES at you. This is a cue you asked for, in the surface
+/// where you are choosing it, and a preview button that silently did nothing
+/// because DND was on would read as a broken theme.
+///
+/// Returns what happened rather than unit, so the page can say "this event is
+/// silenced" or "the theme has no file for it" instead of leaving a button that
+/// looks like it failed.
+#[tauri::command]
+pub fn sound_preview(name: String) -> Result<String, String> {
+    use arlen_notification_daemon::sound::{
+        default_sound_roots, resolve_sound, SoundPlayer, SoundResolution, SystemSoundPlayer,
+    };
+
+    // The active sound theme is the notification daemon's own `[sound] theme`,
+    // NOT the appearance theme: `SoundTokens` carries per-event NAMES and no
+    // theme, and the daemon resolves those names inside whichever theme its
+    // config names. Reading the appearance theme here would preview a theme
+    // nothing plays from.
+    let config = arlen_notification_daemon::config::load_config(
+        &arlen_notification_daemon::config::default_config_path(),
+    );
+    let theme = config.sound.theme.clone();
+    let resolution = resolve_sound(&default_sound_roots(), &theme, &name);
+    match &resolution {
+        SoundResolution::File(_) => match SystemSoundPlayer::discover() {
+            Some(player) => {
+                player.play(&resolution, 1.0);
+                Ok("played".into())
+            }
+            // A machine with no play command is a real state, not an error: say so
+            // rather than reporting a sound that never left the speaker.
+            None => Ok("no-audio-tool".into()),
+        },
+        SoundResolution::Silenced => Ok("silenced".into()),
+        SoundResolution::NotFound => Ok("not-found".into()),
+    }
+}

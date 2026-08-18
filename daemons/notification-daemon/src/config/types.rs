@@ -63,7 +63,14 @@ impl Default for SoundConfig {
         Self {
             muted: false,
             volume: 1.0,
-            theme: "freedesktop".to_string(),
+            // Arlen's own cue set, which `themes/sounds/` builds and the image
+            // installs at `/usr/share/sounds/arlen/`. It was "freedesktop" until
+            // 19 Aug, which meant the bundled cues could never be reached: the
+            // resolver looks up a theme by DIRECTORY name, so it walked a theme
+            // we do not ship and fell through to the synth. Our `index.theme`
+            // carries `Inherits=freedesktop`, so the standard fallback chain is
+            // unchanged - this only puts our own theme first.
+            theme: "arlen".to_string(),
             overrides: HashMap::new(),
         }
     }
