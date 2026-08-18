@@ -63,6 +63,9 @@ export type SystemTick = {
   /// Load average, or null where `/proc/loadavg` could not be read. 0.00 is a
   /// real reading, so absence is null rather than zero.
   load: { one: number; five: number; fifteen: number; perCore: number } | null;
+  /// One entry per whole disk. Empty on the first tick, and empty for a device
+  /// that was not present in the previous sample.
+  devices: { name: string; readMbs: number; writeMbs: number }[];
 };
 
 /// One core's share of its own last interval, in percent.

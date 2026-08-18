@@ -57,6 +57,8 @@ pub struct Counters {
     pub cores: Vec<CoreTimes>,
     /// Load average, or `None` where `/proc/loadavg` could not be read.
     pub load: Option<LoadAverage>,
+    /// Per-whole-disk sector counters, for the device breakdown.
+    pub devices: Vec<DeviceCounters>,
     /// Sectors read across the physical block devices.
     pub disk_read_sectors: u64,
     /// Sectors written across the physical block devices.
@@ -105,6 +107,9 @@ pub struct SystemTick {
     /// Load average, or `None` where it could not be read. A load of 0.00 is a
     /// real reading, so absence is carried rather than defaulted.
     pub load: Option<LoadAverage>,
+    /// Per-whole-disk rates. Empty on the first tick, and empty for any device
+    /// that was not present in the previous sample.
+    pub devices: Vec<DeviceRate>,
 }
 
 /// A `/proc` and `/sys` reader, rooted so tests can point it at a fixture.
@@ -152,6 +157,9 @@ impl SysProbe {
             std::fs::read_to_string(self.proc_root.join("diskstats")).unwrap_or_default();
         let (disk_read_sectors, disk_write_sectors) =
             parse_diskstats(&diskstats, &|name| self.is_whole_disk(name));
+        // The same text and the same whole-disk rule as the totals, so the
+        // breakdown can never disagree with the figure above it.
+        let devices = parse_diskstats_devices(&diskstats, &|name| self.is_whole_disk(name));
         let netdev = std::fs::read_to_string(self.proc_root.join("net/dev")).unwrap_or_default();
         let (net_rx_bytes, net_tx_bytes) = parse_netdev(&netdev);
         // Absent on a kernel without CONFIG_PSI. `unwrap_or_default()` like the
@@ -173,6 +181,7 @@ impl SysProbe {
             mem_pressure,
             cores,
             load,
+            devices,
         }
     }
 
@@ -192,7 +201,28 @@ impl SysProbe {
         if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("zram") {
             return false;
         }
-        self.sys_root.join("block").join(name).exists()
+        let dir = self.sys_root.join("block").join(name);
+        if !dir.exists() {
+            return false;
+        }
+        // A STACKED device is not another disk, it is the same one seen through a
+        // layer. `/sys/block/dm-0/slaves/` holds `nvme0n1p2` on this machine, so
+        // every byte written through the LUKS mapper is also counted under the
+        // nvme - and the total read about double what the hardware actually did.
+        //
+        // Found by building the per-device breakdown and seeing `nvme0n1` and
+        // `dm-0` side by side, which is a thing one summed figure could never
+        // show. It affects any machine with LUKS, LVM or software RAID, which is
+        // most of them.
+        //
+        // The physical device wins because it is the one with finite throughput.
+        // Naming the volume a person recognises instead is a presentation
+        // question and a different change.
+        !dir
+            .join("slaves")
+            .read_dir()
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false)
     }
 }
 
@@ -353,6 +383,75 @@ pub fn parse_loadavg(text: &str, cpus: usize) -> Option<LoadAverage> {
         fifteen,
         per_core: one / cpus.max(1) as f64,
     })
+}
+
+/// One whole disk's sector counters, kept apart from its siblings.
+///
+/// The plan asks for "per-device util + read/write" rather than one total,
+/// because the total answers the wrong question: a machine writing hard to an
+/// external drive and a machine writing hard to the disk its swap is on look
+/// identical in a single figure, and only one of them is about to feel slow.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceCounters {
+    /// Kernel name, `nvme0n1` or `sda`.
+    pub name: String,
+    pub read_sectors: u64,
+    pub write_sectors: u64,
+}
+
+/// One whole disk's rates over the last interval.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceRate {
+    pub name: String,
+    pub read_mbs: f64,
+    pub write_mbs: f64,
+}
+
+/// Per-device sector counters, whole disks only, in the order the kernel lists
+/// them.
+///
+/// Partitions are excluded by the same `keep` the totals use: counting `nvme0n1`
+/// and `nvme0n1p2` both would double every byte, and a per-device list showing a
+/// disk beside its own partition invites exactly that mistake by hand.
+pub fn parse_diskstats_devices(text: &str, keep: &dyn Fn(&str) -> bool) -> Vec<DeviceCounters> {
+    text.lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() < 10 || !keep(f[2]) {
+                return None;
+            }
+            Some(DeviceCounters {
+                name: f[2].to_string(),
+                read_sectors: f[5].parse().unwrap_or(0),
+                write_sectors: f[9].parse().unwrap_or(0),
+            })
+        })
+        .collect()
+}
+
+/// Per-device rates between two samples, matched BY NAME rather than by
+/// position.
+///
+/// Position would be wrong the moment a USB disk is plugged in or removed
+/// mid-session: `/proc/diskstats` would shift under the index and every device
+/// would report its neighbour's traffic. A device with no counterpart in the
+/// previous sample is omitted - it has no interval to have a rate over.
+pub fn device_rates(now: &[DeviceCounters], prev: &[DeviceCounters], secs: f64) -> Vec<DeviceRate> {
+    if secs <= 0.0 {
+        return Vec::new();
+    }
+    const SECTOR_MB: f64 = 512.0 / (1024.0 * 1024.0);
+    now.iter()
+        .filter_map(|n| {
+            let p = prev.iter().find(|p| p.name == n.name)?;
+            Some(DeviceRate {
+                name: n.name.clone(),
+                read_mbs: n.read_sectors.saturating_sub(p.read_sectors) as f64 * SECTOR_MB / secs,
+                write_mbs: n.write_sectors.saturating_sub(p.write_sectors) as f64 * SECTOR_MB / secs,
+            })
+        })
+        .collect()
 }
 
 /// The memory-pressure meter the plan asks for, backed by real PSI.
@@ -532,6 +631,7 @@ impl SystemMonitor {
                 mem_pressure: now_counters.mem_pressure,
                 cores: Vec::new(),
                 load: now_counters.load,
+                devices: Vec::new(),
                 disk_read_mbs: 0.0,
                 disk_write_mbs: 0.0,
                 net_rx_mbs: 0.0,
@@ -572,6 +672,7 @@ impl SystemMonitor {
             mem_pressure: now_counters.mem_pressure,
             cores: core_percentages(&now_counters.cores, &prev.cores),
             load: now_counters.load,
+            devices: device_rates(&now_counters.devices, &prev.devices, secs),
         }
     }
 }
@@ -901,5 +1002,91 @@ mod tests {
         let probe = fixture(&dir, &["sda"]);
         assert!(probe.read().load.is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- per-device disk ----------------------------------------------------
+
+    #[test]
+    fn only_whole_disks_appear_in_the_breakdown() {
+        // The real shape: a disk and two of its partitions.
+        let text = concat!(
+            " 259 0 nvme0n1 1 0 1000 1 1 0 2000 1 0 1 1\n",
+            " 259 1 nvme0n1p1 1 0 500 1 1 0 500 1 0 1 1\n",
+            " 259 2 nvme0n1p2 1 0 400 1 1 0 400 1 0 1 1\n",
+        );
+        let d = parse_diskstats_devices(text, &|n| n == "nvme0n1");
+        assert_eq!(d.len(), 1, "a disk beside its own partitions is counted once");
+        assert_eq!(d[0].name, "nvme0n1");
+        assert_eq!(d[0].read_sectors, 1000);
+        assert_eq!(d[0].write_sectors, 2000);
+    }
+
+    /// The reason the breakdown exists: two disks doing different things read
+    /// identically in one total.
+    #[test]
+    fn two_disks_report_their_own_traffic() {
+        let prev = vec![
+            DeviceCounters { name: "sda".into(), read_sectors: 0, write_sectors: 0 },
+            DeviceCounters { name: "sdb".into(), read_sectors: 0, write_sectors: 0 },
+        ];
+        // 2048 sectors = 1 MiB, over one second.
+        let now = vec![
+            DeviceCounters { name: "sda".into(), read_sectors: 2048, write_sectors: 0 },
+            DeviceCounters { name: "sdb".into(), read_sectors: 0, write_sectors: 4096 },
+        ];
+        let r = device_rates(&now, &prev, 1.0);
+        assert_eq!(r[0].name, "sda");
+        assert_eq!(r[0].read_mbs, 1.0);
+        assert_eq!(r[0].write_mbs, 0.0);
+        assert_eq!(r[1].write_mbs, 2.0);
+    }
+
+    /// Matched by NAME, not by position: a USB disk appearing mid-session shifts
+    /// every later line, and by index every device would report its neighbour's
+    /// traffic.
+    #[test]
+    fn a_disk_appearing_between_samples_does_not_shift_the_others() {
+        let prev = vec![DeviceCounters { name: "sdb".into(), read_sectors: 0, write_sectors: 0 }];
+        let now = vec![
+            DeviceCounters { name: "sda".into(), read_sectors: 9999, write_sectors: 9999 },
+            DeviceCounters { name: "sdb".into(), read_sectors: 2048, write_sectors: 0 },
+        ];
+        let r = device_rates(&now, &prev, 1.0);
+        assert_eq!(r.len(), 1, "the newcomer has no interval yet");
+        assert_eq!(r[0].name, "sdb");
+        assert_eq!(r[0].read_mbs, 1.0, "and sdb still reports its own traffic");
+    }
+
+    #[test]
+    fn a_counter_that_went_backwards_does_not_wrap_into_a_huge_rate() {
+        let prev = vec![DeviceCounters { name: "sda".into(), read_sectors: 500, write_sectors: 0 }];
+        let now = vec![DeviceCounters { name: "sda".into(), read_sectors: 0, write_sectors: 0 }];
+        assert_eq!(device_rates(&now, &prev, 1.0)[0].read_mbs, 0.0);
+    }
+
+    #[test]
+    fn a_zero_interval_yields_no_rates_rather_than_infinity() {
+        let prev = vec![DeviceCounters { name: "sda".into(), read_sectors: 0, write_sectors: 0 }];
+        let now = vec![DeviceCounters { name: "sda".into(), read_sectors: 2048, write_sectors: 0 }];
+        assert!(device_rates(&now, &prev, 0.0).is_empty());
+    }
+
+    /// The double count this found: a LUKS mapper's bytes are the backing disk's
+    /// bytes, and `/sys/block/dm-0` exists just like a real disk's does.
+    #[test]
+    fn a_stacked_device_is_not_counted_beside_the_disk_it_sits_on() {
+        let dir = tmp("stacked");
+        let probe = fixture(&dir, &["nvme0n1", "dm-0"]);
+        // dm-0 sits on a partition of the nvme, the way LUKS and LVM do.
+        std::fs::create_dir_all(dir.join("sys/block/dm-0/slaves/nvme0n1p2")).unwrap();
+        std::fs::write(
+            dir.join("proc/diskstats"),
+            " 259 0 nvme0n1 1 0 2048 1 1 0 2048 1 0 1 1\n             253 0 dm-0 1 0 2048 1 1 0 2048 1 0 1 1\n",
+        )
+        .unwrap();
+        let c = probe.read();
+        assert_eq!(c.devices.len(), 1, "the mapper is the same traffic, not more of it");
+        assert_eq!(c.devices[0].name, "nvme0n1");
+        assert_eq!(c.disk_read_sectors, 2048, "and the total is not doubled");
     }
 }

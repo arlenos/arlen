@@ -81,10 +81,26 @@
           : $t(`tm.perf.mem.pressure.${p.level}`, { full: n(p.full10, 2) });
         return `${base} - ${pressure}`;
       }
-      case "disk":
-        return s.ratesReady
-          ? $t("tm.perf.disk.detail", { read: n(s.diskReadMbs, 1), write: n(s.diskWriteMbs, 1) })
-          : $t("tm.perf.waiting");
+      case "disk": {
+        if (!s.ratesReady) return $t("tm.perf.waiting");
+        const total = $t("tm.perf.disk.detail", {
+          read: n(s.diskReadMbs, 1),
+          write: n(s.diskWriteMbs, 1),
+        });
+        // Only when there is more than one disk. On a single-disk machine the
+        // breakdown would repeat the total back, which is noise dressed as depth.
+        if (s.devices.length < 2) return total;
+        const per = s.devices
+          .map((d) =>
+            $t("tm.perf.disk.device", {
+              name: d.name,
+              read: n(d.readMbs, 1),
+              write: n(d.writeMbs, 1),
+            }),
+          )
+          .join("  ");
+        return `${total} - ${per}`;
+      }
       case "network":
         return s.ratesReady
           ? $t("tm.perf.net.detail", { down: n(s.netRxMbs, 1), up: n(s.netTxMbs, 1) })

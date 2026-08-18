@@ -53,6 +53,9 @@ const messages: Catalogs = {
     "tm.perf.mem.pressure.critical": "Memory pressure: thrashing ({$full}% fully stalled)",
     "tm.perf.mem.pressure.absent": "Memory pressure: not measured by this kernel",
     "tm.perf.disk.detail": "read {$read}, write {$write} MB/s",
+    // Per device beside the total, because the total cannot tell a busy external
+    // drive from a busy system disk and only one of those makes things feel slow.
+    "tm.perf.disk.device": "{$name} {$read}/{$write}",
     "tm.perf.net.detail": "down {$down}, up {$up} MB/s",
     "tm.perf.ai.detail": "Not measured: the engine does not report tokens per second yet.",
     "tm.perf.nomeasurement": "no measurement",
@@ -127,6 +130,7 @@ const messages: Catalogs = {
     "tm.perf.mem.pressure.critical": "Speicherdruck: am Auslagern ({$full}% vollständig blockiert)",
     "tm.perf.mem.pressure.absent": "Speicherdruck: von diesem Kernel nicht gemessen",
     "tm.perf.disk.detail": "lesen {$read}, schreiben {$write} MB/s",
+    "tm.perf.disk.device": "{$name} {$read}/{$write}",
     "tm.perf.net.detail": "runter {$down}, hoch {$up} MB/s",
     "tm.perf.ai.detail": "Nicht gemessen: die Engine meldet noch keine Token pro Sekunde.",
     "tm.perf.nomeasurement": "keine Messung",
