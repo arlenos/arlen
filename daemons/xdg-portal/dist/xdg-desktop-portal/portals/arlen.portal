@@ -9,6 +9,10 @@
 # startup when it is absent. If the daemon is ever staged into an image ahead of
 # the picker, drop FileChooser from this list for that image rather than shipping
 # a promise it cannot keep.
+# NB `UseIn=` below is deprecated (since frontend 1.18) and is kept only as the
+# fallback for an older frontend. What actually routes interfaces here is
+# `../arlen-portals.conf` beside this directory; if you add an interface to the
+# line below, add it there too or nothing will ever be routed to it.
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.arlen
 Interfaces=org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.OpenURI;org.freedesktop.impl.portal.Screenshot;
