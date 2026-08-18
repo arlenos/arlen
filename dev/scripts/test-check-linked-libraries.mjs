@@ -115,6 +115,20 @@ console.log("check-linked-libraries:");
   rmSync(d, { recursive: true, force: true });
 }
 
+// The roots beyond apps/ and daemons/, widened 18 August. A claim about scope is
+// worth exactly as much as a fixture that lands outside the old one.
+for (const at of ["sdk/net-guard", "contracts/capsule", "forage/store"]) {
+  const d = tree({
+    deps: GOOD_DEPS,
+    packages: GOOD_PKGS,
+    manifest: '[package]\nname = "x"\n\n[dependencies]\nfoobar-sys = "1"\n',
+    at,
+  });
+  const r = run(d);
+  check(`a -sys dependency under ${at} is seen`, r.code === 1 && r.out.includes("foobar-sys"), r.out);
+  rmSync(d, { recursive: true, force: true });
+}
+
 // A name inside a features list is not a dependency; reading it as one would make
 // the check cry wolf and get itself ignored.
 {

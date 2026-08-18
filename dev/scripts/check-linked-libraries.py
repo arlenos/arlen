@@ -91,7 +91,13 @@ NO_SYSTEM_LIB: dict[str, str] = {
 }
 
 #: Where a crate that reaches the image can live.
-CRATE_ROOTS = ("apps", "daemons")
+#
+# `sdk`, `contracts` and `forage` were outside this on 18 August, when the check
+# was written from the two roots the libheif finding happened to be in. None of
+# them holds a `-sys` dependency today, so widening costs nothing now - which is
+# exactly when to do it, rather than after one lands there and the check reports
+# a clean tree because it was not looking.
+CRATE_ROOTS = ("apps", "daemons", "sdk", "contracts", "forage")
 
 
 def _direct_deps(text: str) -> set[str]:
