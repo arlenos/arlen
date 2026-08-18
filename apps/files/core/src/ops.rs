@@ -165,12 +165,23 @@ pub struct TrashedEntry {
 /// location the entry was deleted from (the recorded `Path=`, percent-DECODED)
 /// and the recorded deletion time.
 ///
-/// `original_path` is RECORDED DATA, not a capability target: it is an absolute
-/// path written by whoever trashed the entry (untrusted - a crafted info file
-/// could record `/etc/passwd`). The host uses it to DISPLAY the prior location
-/// and to drive its OWN trust-checked resolution into a [`restore_entry`]
-/// destination capability + relative path; this module never feeds it to a
-/// cap-std method. See [`restore_entry`] for the division.
+/// `original_path` is RECORDED DATA, not a capability target: it is written by
+/// whoever trashed the entry (untrusted - a crafted info file could record
+/// `/etc/passwd`). The host uses it to DISPLAY the prior location and to drive
+/// its OWN trust-checked resolution into a [`restore_entry`] destination
+/// capability + relative path; this module never feeds it to a cap-std method.
+/// See [`restore_entry`] for the division.
+///
+/// IT IS NOT ALWAYS ABSOLUTE, and this doc said it was until 18 August. The spec
+/// records a home-trash entry with an absolute path and a TOP-DIRECTORY trash
+/// entry (`$topdir/.Trash-$uid`, what a USB stick gets) with one RELATIVE to that
+/// top directory - which is what lets the entry still resolve after the volume is
+/// mounted somewhere else. `contracts/freedesktop-trash` writes both.
+///
+/// So a host resolving one must join a relative value onto the TOP DIRECTORY of
+/// the trash it came from, never onto the process working directory. Nothing here
+/// reads a volume trash yet; this is the note that has to be true before anything
+/// does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrashInfo {
     /// The percent-decoded original absolute path from `Path=`. A `PathBuf`
@@ -2279,6 +2290,17 @@ mod tests {
     }
 
     #[test]
+    /// A volume trash records its `Path=` relative to the top directory, so the
+    /// parser has to hand that back as it stands rather than absolutising it
+    /// against anything. A host joins it onto the trash's own top directory; a
+    /// parser that guessed would be guessing about where a USB stick was.
+    #[test]
+    fn parse_trashinfo_keeps_a_relative_path_relative() {
+        let info = parse_trashinfo(b"[Trash Info]\nPath=notes/a.md\n").unwrap();
+        assert_eq!(info.original_path, PathBuf::from("notes/a.md"));
+        assert!(!info.original_path.is_absolute(), "not absolutised behind the caller's back");
+    }
+
     fn parse_trashinfo_missing_path_fails_closed() {
         let err = parse_trashinfo(b"[Trash Info]\nDeletionDate=2026-01-02T03:04:05\n");
         assert!(matches!(err, Err(OpError::Io(_))), "missing Path is refused");
