@@ -722,6 +722,14 @@ def main():
         built = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(image)))
         age_h = (time.time() - os.path.getmtime(image)) / 3600
         print(f"image: {image} (built {built}, {age_h:.1f}h ago)", flush=True)
+    # And which tree it came from, when the build left a stamp beside it. An image
+    # is an opaque 5 GB file whose mtime against `git log` is a guess; this is the
+    # build saying so itself. Absent for images built before 18 August, and absence
+    # is silent because an old image is not a fault.
+    stamp = image + ".stamp"
+    if os.path.exists(stamp):
+        for line in open(stamp).read().splitlines():
+            print(f"  {line}", flush=True)
     if not os.path.exists(image):
         sys.exit(f"image not found: {image} (run dev/mkosi/build-image.sh first)")
 

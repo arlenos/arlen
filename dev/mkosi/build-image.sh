@@ -122,6 +122,28 @@ for arg in "$@"; do
     esac
 done
 
+# Stamp the tree this image is built from, beside the artefact.
+#
+# Three times on 18 August I could not say which commit an image carried - the
+# sensor flag, a probe change committed mid-build, and a source edit whose timing
+# against the build I had to reason about instead of read. An image is an opaque
+# 5 GB file and the only clue was its mtime against `git log`, which is a guess.
+#
+# `arlen.raw.stamp` says the commit, whether the tree was dirty when the build
+# started, and which optional phases were asked for. `verify.py` prints it, so a
+# boot report names the tree it is a report about.
+stamp="$here/arlen.raw.stamp"
+{
+    echo "commit: $(git -C "$here/../.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    if [ -n "$(git -C "$here/../.." status --porcelain 2>/dev/null)" ]; then
+        echo "tree: dirty at build start (the image may carry uncommitted work)"
+    else
+        echo "tree: clean"
+    fi
+    echo "flags:${verify_args[*]:+ ${verify_args[*]}}"
+    echo "built: $(date -Is)"
+} > "$stamp.next"
+
 echo ">> mkosi build --incremental --force"
 # Move the last good image aside before mkosi deletes it, so a failure anywhere
 # from here to the end of the build scripts can put it back.
@@ -138,6 +160,10 @@ writing_image=1
 # incremental cache (only -ff drops it), so the slow Debian-rootfs assembly is
 # paid once, not on every build.
 ( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" "${verify_args[@]}" build --force )
-echo ">> image built: $here/arlen.raw"
+# The stamp becomes the image's only once the image exists, so a failed build
+# leaves the previous image with the previous stamp rather than a description of
+# a run that produced nothing.
+mv "$stamp.next" "$stamp"
+echo ">> image built: $here/arlen.raw ($(head -1 "$stamp"))"
 # The new one is on disk, so the kept copy has done its job.
 [ -z "$prev_image" ] || { rm -f "$here/arlen.raw.prev"; prev_image=""; }

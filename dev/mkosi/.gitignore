@@ -6,6 +6,8 @@
 # survives a crash. Same 4.5G artefact under a name the list did not have, which
 # is how it turned up as untracked in `git status` mid-build.
 /arlen.raw.prev
+/arlen.raw.stamp
+/arlen.raw.stamp.next
 /arlen.efi
 /arlen.initrd
 /arlen.vmlinuz
