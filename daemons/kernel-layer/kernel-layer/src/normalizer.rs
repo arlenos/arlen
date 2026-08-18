@@ -3,9 +3,7 @@
 /// as length-prefixed protobuf messages.
 
 use aya::maps::RingBuf;
-use kernel_layer_common::{
-    FileOpenedEvent, FileWrittenEvent, NetStateEvent, ProcessExecEvent, MAX_PATH_LEN,
-};
+use kernel_layer_common::{FileOpenedEvent, FileWrittenEvent, NetStateEvent, ProcessExecEvent};
 use log::{debug, info, warn};
 use prost::Message as _;
 use std::{
