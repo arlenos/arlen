@@ -29,4 +29,20 @@ cargo build --release --manifest-path daemons/notification-daemon/Cargo.toml
 
 install -Dm755 "$CARGO_TARGET_DIR/release/arlen-notifyd" \
     "$DESTDIR/usr/lib/arlen/libexec/arlen-notifyd"
+# The default cue set (sound-system-plan.md SO-R2). Staged beside the daemon
+# because it is the daemon that resolves it, and because the two have to agree:
+# `[sound] theme` defaults to `arlen`, and the resolver looks a theme up by
+# DIRECTORY name, so this path is the config value.
+#
+# Without this the daemon resolves every cue to nothing and falls through to the
+# synth - which sounds like a working system with a different theme, rather than
+# like a missing asset. The set is built from a CC0 pack by
+# `themes/sounds/build-sound-theme.sh`; `themes/sounds/PROVENANCE.md` says which
+# pack and what was done to it.
+for f in "$SRCDIR"/arlen/themes/sounds/arlen/stereo/*.oga; do
+    install -Dm644 "$f" "$DESTDIR/usr/share/sounds/arlen/stereo/$(basename "$f")"
+done
+install -Dm644 "$SRCDIR/arlen/themes/sounds/arlen/index.theme" \
+    "$DESTDIR/usr/share/sounds/arlen/index.theme"
+echo ">> staged the default cue set into the image"
 echo ">> staged arlen-notifyd into the image"
