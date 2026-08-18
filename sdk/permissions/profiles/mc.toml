@@ -1,0 +1,10 @@
+# Starting permission profile for Midnight Commander (a terminal file manager).
+# Home, because browsing the user's files IS the program; narrower would leave it
+# looking at an empty tree. No network by default - its FTP and SFTP shells are a
+# separate grant, the same call made for the git clients here.
+[info]
+app_id = "mc"
+tier = "third-party"
+
+[filesystem]
+home = true

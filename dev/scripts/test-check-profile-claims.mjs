@@ -126,6 +126,24 @@ check(
 );
 rmSync(d, { recursive: true, force: true });
 
+// A failing run must not END on the sentence a passing one prints. It did: the
+// summary went to stdout before the findings went to stderr, so `tail` on a red
+// CI log read "no description claims a directory its grants do not include"
+// while the exit code said the opposite.
+d = tree({
+  x:
+    "# Reads what the user points it at. It gets Pictures.\n" +
+    '[info]\napp_id = "x"\ntier = "third-party"\n',
+});
+r = run(d);
+check("a failing run is refused", r.code === 1, r.out);
+check(
+  "and does not also print the all-clear sentence",
+  !/no description claims a directory/.test(r.out),
+  r.out,
+);
+rmSync(d, { recursive: true, force: true });
+
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);
 console.log("the stale claim is caught, and all four measured false positives stay false");

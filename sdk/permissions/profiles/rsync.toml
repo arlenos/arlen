@@ -1,0 +1,18 @@
+# Starting permission profile for rsync. Home on both counts - source and
+# destination are arbitrary paths the user names on the command line, and either
+# may be anywhere in the tree. Network because rsync over ssh, and rsync:// to a
+# daemon, are its usual remote forms.
+[info]
+app_id = "rsync"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because the scoped form
+# cannot be enforced yet - `arlen-run` refuses a FilteredHosts policy without an
+# egress enforcer (exit 67), and nothing raises a NetworkAccess consent for a host
+# an app did not declare, so narrowing today would leave the app with no network
+# and no way to ask. Revisit when both land: most of these want a host list.
+[network]
+allow_all = true
