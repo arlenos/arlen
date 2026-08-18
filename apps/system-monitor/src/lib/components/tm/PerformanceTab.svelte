@@ -55,11 +55,21 @@
     switch (d) {
       case "cpu":
         return $t("tm.perf.cpu.detail", { count: String(s.cpuCount) });
-      case "memory":
-        return $t("tm.perf.mem.detail", {
+      case "memory": {
+        const base = $t("tm.perf.mem.detail", {
           used: n(s.memUsedGb, 1),
           total: n(s.memTotalGb, 1),
         });
+        // The pressure line sits BESIDE the used-of-total figure rather than
+        // replacing it, because they answer different questions: how full it is,
+        // and whether anything is waiting on it. A machine can be nearly full
+        // and untroubled, or half empty and thrashing.
+        const p = s.memPressure;
+        const pressure = !p
+          ? $t("tm.perf.mem.pressure.absent")
+          : $t(`tm.perf.mem.pressure.${p.level}`, { full: n(p.full10, 2) });
+        return `${base} - ${pressure}`;
+      }
       case "disk":
         return s.ratesReady
           ? $t("tm.perf.disk.detail", { read: n(s.diskReadMbs, 1), write: n(s.diskWriteMbs, 1) })

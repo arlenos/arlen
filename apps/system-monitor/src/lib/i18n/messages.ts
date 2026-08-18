@@ -41,6 +41,13 @@ const messages: Catalogs = {
     "tm.perf.waiting": "Measuring.",
     "tm.perf.cpu.detail": "{$count} logical processors",
     "tm.perf.mem.detail": "{$used} of {$total} GB in use",
+    // The pressure meter. "Not measured" is a real state and not a failure: a
+    // kernel without CONFIG_PSI has no figure to give, and a green light there
+    // would be a verdict nobody took.
+    "tm.perf.mem.pressure.ok": "Memory pressure: none",
+    "tm.perf.mem.pressure.warn": "Memory pressure: some waiting ({$full}% fully stalled)",
+    "tm.perf.mem.pressure.critical": "Memory pressure: thrashing ({$full}% fully stalled)",
+    "tm.perf.mem.pressure.absent": "Memory pressure: not measured by this kernel",
     "tm.perf.disk.detail": "read {$read}, write {$write} MB/s",
     "tm.perf.net.detail": "down {$down}, up {$up} MB/s",
     "tm.perf.ai.detail": "Not measured: the engine does not report tokens per second yet.",
@@ -110,6 +117,10 @@ const messages: Catalogs = {
     "tm.perf.waiting": "Wird gemessen.",
     "tm.perf.cpu.detail": "{$count} logische Prozessoren",
     "tm.perf.mem.detail": "{$used} von {$total} GB belegt",
+    "tm.perf.mem.pressure.ok": "Speicherdruck: keiner",
+    "tm.perf.mem.pressure.warn": "Speicherdruck: teils Wartezeit ({$full}% vollständig blockiert)",
+    "tm.perf.mem.pressure.critical": "Speicherdruck: am Auslagern ({$full}% vollständig blockiert)",
+    "tm.perf.mem.pressure.absent": "Speicherdruck: von diesem Kernel nicht gemessen",
     "tm.perf.disk.detail": "lesen {$read}, schreiben {$write} MB/s",
     "tm.perf.net.detail": "runter {$down}, hoch {$up} MB/s",
     "tm.perf.ai.detail": "Nicht gemessen: die Engine meldet noch keine Token pro Sekunde.",

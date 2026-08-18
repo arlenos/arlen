@@ -90,7 +90,6 @@ pub struct SystemTick {
     /// Memory pressure, or `None` where the kernel exposes no PSI. `None` is
     /// "not measured" and must render as such: a green meter over an absent
     /// reading is the surface inventing a verdict.
-    #[serde(rename = "memPressure")]
     pub mem_pressure: Option<MemoryPressure>,
 }
 

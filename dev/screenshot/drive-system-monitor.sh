@@ -192,8 +192,19 @@ say "holding the modifier stops the rows reordering" \
   "$(printf '%s' "$got" | grep -q '"frozenAttr":"yes"' \
      && printf '%s' "$got" | grep -q '"held":true' \
      && printf '%s' "$got" | grep -q '"thawedAttr":"no"' && echo 1 || echo 0)" "$got"
-say "and the figures keep arriving while it is held" \
-  "$(printf '%s' "$got" | grep -q '"moved":true' && echo 1 || echo 0)" "$got"
+# The other half - that the DATA keeps arriving while the order is held - is
+# REPORTED here and asserted in `freeze.test.ts` instead, deliberately.
+#
+# As an assertion it was flaky by construction: it required one process's CPU to
+# CHANGE within about seven seconds, which is a claim about how busy this machine
+# happens to be, not about the code. It read 7.3/7.6/10.0/7.2 on one run and
+# 6.2 five times on the next, and the second is not a defect - it is a quiet
+# laptop. Asserting it would have made this driver fail for the weather.
+#
+# The unit test settles it properly and deterministically: `pinnedOrder` returns
+# the SAME OBJECT it was handed, so the row on screen is this poll's row rather
+# than a copy taken when the key went down. Identity, not hope.
+printf '%s\n' "       (data during the freeze: $(printf '%s' "$got" | sed -n 's/.*"samples":\[\([^]]*\)\].*/\1/p'))"
 
 # The filter box, which existed and had never been pressed. Names come from each
 # row's `aria-label` and NOT from the name cell: the cell also carries the icon
@@ -235,6 +246,33 @@ say "typing in the filter narrows the list to what matches" \
      && printf '%s' "$got" | grep -q '"hitHasIt":true' \
      && printf '%s' "$got" | grep -q '"narrowed":true' \
      && printf '%s' "$got" | grep -q '"restored":true' && echo 1 || echo 0)" "$got"
+
+# The memory-pressure meter, which needs the Performance tab AND its Memory
+# device - it lives behind two clicks, which is why it went unlooked-at.
+#
+# Matching on the whole line rather than a fragment: the first cut of this probe
+# used `[^.]*pressure[^.]*` and the regex cut at the decimal point in "36.2", so
+# it reported "0 GB in use" and looked like a broken figure. The app was right.
+cat > "$probes/p-pressure.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(2500);
+const tab = [...document.querySelectorAll("button")]
+  .find(b => /performance|leistung/i.test(b.textContent || ""));
+if (!tab) return JSON.stringify({ error: "no performance tab" });
+tab.click();
+await wait(2500);
+const mem = [...document.querySelectorAll("button,li,[role=option],[role=tab]")]
+  .find(e => /^\s*(memory|arbeitsspeicher|speicher)\b/i.test((e.textContent || "").trim()));
+if (mem) { mem.click(); await wait(2000); }
+const text = (document.body.innerText || "").replace(/\s+/g, " ").trim();
+const line = (text.match(/[0-9][^-]*GB in use[^|]{0,80}/) || [null])[0];
+return JSON.stringify({ line: line ? line.slice(0, 110) : null,
+  hasMeter: /Memory pressure: (none|some waiting|thrashing|not measured)/.test(text) });
+JS
+got=$(drive "$probes/p-pressure.js" sysmon-pressure.png)
+say "the memory pane says how full it is AND whether anything is waiting on it" \
+  "$(printf '%s' "$got" | grep -q '"hasMeter":true' \
+     && printf '%s' "$got" | grep -q 'GB in use' && echo 1 || echo 0)" "$got"
 
 [ "$fail" = 0 ] && echo "a process list that sorts, a detail that names a pid, graphs that draw, and a kill that asks before it acts"
 exit "$fail"
