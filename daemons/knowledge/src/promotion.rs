@@ -3,7 +3,7 @@ use crate::project::ProjectStore;
 use crate::proto::{
     AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
     CodeFileIndexPayload, CommandFinishedPayload, FileOpenedPayload, FileWrittenPayload,
-    NetworkConnectionPayload,
+    NetworkConnectionPayload, ProcessLifecyclePayload,
     PresenceClearPayload, PresenceSetPayload, ServiceEventPayload, ShortcutActionInvokedPayload,
     TimelineRecordPayload, WindowFocusLeftPayload, WindowFocusedPayload,
 };
@@ -261,6 +261,9 @@ async fn run_pass(
                     }
                 }
                 res
+            }
+            "process.started" => {
+                promote_process_started(graph, timestamp, source, payload).await
             }
             "window.focused" => {
                 promote_window_focused(graph, id, timestamp, session_of(origin), payload).await
@@ -616,6 +619,82 @@ async fn link_co_accessed(
 /// is not clobbered here (a write is not an access). The per-write history (the
 /// byte count, the timestamp) stays in the SQLite event log; this records only
 /// that the relationship exists.
+/// An exec becomes one LAUNCHED edge between two apps, or nothing at all.
+///
+/// The shape is decided in `provenance-halo.md` §7 and the alternatives are ruled
+/// OUT, not merely unchosen: a Process node per exec turns the system's busiest
+/// source into the minute-by-minute activity map the Halo exists to prevent, and
+/// pid lineage stops meaning anything a boot later. What is durable is which
+/// application launches which, so a shell's thousand `ls` calls collapse into a
+/// single edge that stops growing - `count` is a tally saying the pair recurs, and
+/// no query can return WHEN because no when is stored.
+///
+/// Two rules this shares with the file arms rather than deciding for itself:
+///
+///   - An exec whose subject does not resolve to an app is NOT recorded. Never
+///     pooled under a stand-in, which is the `unknown`-merge defect; the same rule
+///     governs `promote_file_opened`, and this is the third place it applies, so
+///     it is a property of this layer.
+///   - The argument vector never appears. It carries passwords, tokens and paths;
+///     the executable identity is the whole payload. There is no argv field to
+///     drop here because there is none in the payload, and there must not be one.
+async fn promote_process_started(
+    graph: &GraphHandle,
+    timestamp: &i64,
+    source: &str,
+    payload: &[u8],
+) -> Result<()> {
+    let p = ProcessLifecyclePayload::decode(payload)?;
+    if p.event_type != "started" {
+        return Ok(());
+    }
+
+    // Both ends or nothing. An unresolvable parent is as disqualifying as an
+    // unresolvable child: half an edge is a claim about an app that did not make
+    // it.
+    let (Some(child), Some(parent)) = (
+        resolve_launch_app(&p.exe_path),
+        resolve_launch_app(&p.parent_exe_path),
+    ) else {
+        debug!(
+            source,
+            "exec did not resolve to two apps; recording nothing"
+        );
+        return Ok(());
+    };
+    if child == parent {
+        // A process re-execing itself is not a launch relationship, and a self
+        // edge would read as one.
+        return Ok(());
+    }
+
+    let child_esc = escape_cypher(&child);
+    let parent_esc = escape_cypher(&parent);
+    let ts = *timestamp;
+    graph
+        .write(format!(
+            "MERGE (p:App {{id: '{parent_esc}'}}) \
+             MERGE (c:App {{id: '{child_esc}'}}) \
+             MERGE (p)-[l:LAUNCHED]->(c) \
+             ON CREATE SET l.first_seen = {ts}, l.last_seen = {ts}, l.count = 1 \
+             ON MATCH SET l.last_seen = {ts}, l.count = l.count + 1"
+        ))
+        .await?;
+    Ok(())
+}
+
+/// An executable path to the app it belongs to, or None.
+///
+/// None covers every way the question can fail to have an answer - an empty path
+/// (the normalizer could not read it), or a binary that belongs to no installed
+/// app - and all of them mean the same thing here: not recorded.
+fn resolve_launch_app(exe_path: &str) -> Option<String> {
+    if exe_path.is_empty() {
+        return None;
+    }
+    arlen_permissions::identity::path_to_app_id(std::path::Path::new(exe_path)).ok()
+}
+
 async fn promote_file_written(
     graph: &GraphHandle,
     event_id: &str,
@@ -1499,6 +1578,95 @@ mod shell_event_tests {
     /// sensor's write probe started forwarding for the first time. Until then the
     /// arm had no traffic and no cgroup field to key on, so two writers under one
     /// recycled pid would have merged into a single App node the moment it did.
+    /// Helper: one `process.started` payload, parent and child by executable path.
+    fn exec_payload(parent: &str, child: &str) -> Vec<u8> {
+        let p = ProcessLifecyclePayload {
+            event_type: "started".into(),
+            pid: 100,
+            ppid: 0,
+            comm: "child".into(),
+            exit_code: 0,
+            exe_path: child.into(),
+            parent_exe_path: parent.into(),
+        };
+        let mut buf = Vec::new();
+        p.encode(&mut buf).unwrap();
+        buf
+    }
+
+    /// Two apps in a launch relationship produce ONE edge.
+    #[tokio::test]
+    async fn a_launch_between_two_apps_is_one_edge() {
+        let (graph, _tmp) = setup().await;
+        let buf = exec_payload("/usr/bin/arlen-terminal", "/usr/bin/arlen-files");
+        promote_process_started(&graph, &10, "ebpf", &buf).await.unwrap();
+
+        let rs = graph
+            .query_rows(
+                "MATCH (p:App)-[l:LAUNCHED]->(c:App) \
+                 RETURN p.id AS p, c.id AS c, l.count AS n"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rs.rows.len(), 1, "one edge, not one per exec");
+        let row = &rs.rows[0];
+        assert_eq!(row[0].as_str(), "terminal");
+        assert_eq!(row[1].as_str(), "files");
+        assert_eq!(row[2].as_i64(), 1);
+    }
+
+    /// Re-running the child REFRESHES the edge rather than adding anything. This
+    /// is the property that makes a shell's thousand `ls` calls one row.
+    #[tokio::test]
+    async fn re_running_the_child_refreshes_instead_of_adding() {
+        let (graph, _tmp) = setup().await;
+        let buf = exec_payload("/usr/bin/arlen-terminal", "/usr/bin/arlen-files");
+        for ts in [10i64, 20, 30] {
+            promote_process_started(&graph, &ts, "ebpf", &buf).await.unwrap();
+        }
+
+        let rs = graph
+            .query_rows(
+                "MATCH ()-[l:LAUNCHED]->() \
+                 RETURN l.count AS n, l.first_seen AS f, l.last_seen AS s"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rs.rows.len(), 1, "still one edge after three execs");
+        assert_eq!(rs.rows[0][0].as_i64(), 3, "the tally counts them");
+        assert_eq!(rs.rows[0][1].as_i64(), 10, "first_seen is the first");
+        assert_eq!(rs.rows[0][2].as_i64(), 30, "last_seen moves");
+    }
+
+    /// An exec whose subject does not resolve to an app produces NOTHING - not an
+    /// edge, and not a node under a stand-in id, which is the `unknown`-merge
+    /// defect this rule exists to prevent.
+    #[tokio::test]
+    async fn an_unresolved_exec_records_nothing() {
+        let (graph, _tmp) = setup().await;
+        for (parent, child) in [
+            ("/usr/bin/arlen-terminal", "/tmp/something-random"),
+            ("", "/usr/bin/arlen-files"),
+            ("/opt/vendor/thing", "/opt/vendor/other"),
+        ] {
+            let buf = exec_payload(parent, child);
+            promote_process_started(&graph, &10, "ebpf", &buf).await.unwrap();
+        }
+
+        let edges = graph
+            .query_rows("MATCH ()-[l:LAUNCHED]->() RETURN l.count".into())
+            .await
+            .unwrap();
+        assert!(edges.rows.is_empty(), "no edge from an unresolved exec");
+        let apps = graph
+            .query_rows("MATCH (a:App) RETURN a.id".into())
+            .await
+            .unwrap();
+        assert!(apps.rows.is_empty(), "and no App node either: {:?}", apps.rows);
+    }
+
     #[tokio::test]
     async fn two_writers_reusing_a_pid_do_not_become_one_app() {
         let (graph, _tmp) = setup().await;
