@@ -273,6 +273,74 @@ pub fn trash_into(
     base_name: &str,
     source: &str,
 ) -> Result<TrashSlot, TrashError> {
+    // The absolute source is what a home trash records, per the spec.
+    trash_into_recording(files_dir, info_dir, base_name, source, source)
+}
+
+/// Trash `source` into whichever trash serves the volume it lives on.
+///
+/// THE ENTRY POINT A CALLER SHOULD USE. Trash follows the file, not the home
+/// directory: the home trash is one case of the spec rather than the whole of it,
+/// and a rename cannot cross a device - so a home-only implementation fails on a
+/// USB stick, a second disk, and anything under `/tmp`, for every consumer of
+/// this crate at once.
+///
+/// The home trash is preferred when the entity is already on its filesystem,
+/// because that is where a person expects to find it and it is the one a desktop
+/// shell empties. Otherwise the volume's own trash, with the recorded `Path`
+/// relative to the top directory.
+///
+/// A volume that cannot host a trash comes back as
+/// [`TrashError::NoTrashHere`] and nothing is deleted. That refusal is the whole
+/// point: a permanent delete wearing the name of a reversible one is the outcome
+/// this crate exists to prevent, and it is the one nobody can undo.
+pub fn trash(source: &str, uid: u32) -> Result<TrashSlot, TrashError> {
+    use std::os::unix::fs::MetadataExt;
+    let src = Path::new(source);
+    let base_name = src.file_name().and_then(|n| n.to_str()).ok_or(TrashError::NonCanonical)?;
+    let dev_of = |p: &Path| std::fs::metadata(p).ok().map(|m| m.dev());
+    let src_dev = dev_of(src).ok_or(TrashError::NotFound)?;
+
+    // The home trash, when the entity is on its filesystem. `home_trash_dir` only
+    // builds the path, so the device question is asked of the nearest ancestor
+    // that exists - the trash itself may not have been created yet.
+    if let Some(home) = home_trash_dir() {
+        let probe = if home.exists() { Some(home.clone()) } else { home.parent().map(Path::to_path_buf) };
+        let same = probe.as_deref().and_then(dev_of).is_some_and(|d| d == src_dev);
+        if same {
+            let files = home.join("files");
+            let info = home.join("info");
+            for d in [&files, &info] {
+                std::fs::create_dir_all(d)
+                    .map_err(|e| TrashError::NoTrashHere(format!("{}: {e}", d.display())))?;
+            }
+            return trash_into(&files, &info, base_name, source);
+        }
+    }
+
+    let top = top_directory_of(src).ok_or(TrashError::NotFound)?;
+    let (files, info) = ensure_top_trash(&top, uid)?;
+    let recorded = relative_to_top(&top, src)
+        .and_then(|r| r.to_str().map(str::to_string))
+        .ok_or(TrashError::NonCanonical)?;
+    trash_into_recording(&files, &info, base_name, source, &recorded)
+}
+
+/// [`trash_into`], with the `Path` field written into the sidecar given
+/// separately from the entity being moved.
+///
+/// They are the same string for a home trash and they are NOT for a volume's own
+/// trash, where the spec asks for a path relative to the top directory - which is
+/// what lets an entry still resolve after the volume is mounted somewhere else.
+/// One parameter rather than a flag, because the caller already knows which trash
+/// it opened and the rule is about the recorded string, not about a mode.
+pub fn trash_into_recording(
+    files_dir: &Path,
+    info_dir: &Path,
+    base_name: &str,
+    source: &str,
+    recorded_path: &str,
+) -> Result<TrashSlot, TrashError> {
     use std::io::Write;
     for n in 0..MAX_TRASH_DEDUP {
         let candidate = dedup_name(base_name, n);
@@ -289,7 +357,7 @@ pub fn trash_into(
         match std::fs::OpenOptions::new().write(true).create_new(true).open(&info_path) {
             Ok(mut f) => {
                 if let Err(e) = f
-                    .write_all(trashinfo_bytes(source).as_bytes())
+                    .write_all(trashinfo_bytes(recorded_path).as_bytes())
                     .and_then(|()| f.sync_all())
                 {
                     let _ = std::fs::remove_file(&info_path);
@@ -394,6 +462,162 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+#[cfg(test)]
+mod follows_the_file_tests {
+    use super::*;
+
+    /// A serial lock: these point `HOME`/`XDG_DATA_HOME` at their own directories
+    /// and cargo runs them on threads of one process, so without it one test sets
+    /// the variable underneath another. The same trap the searches store hit.
+    static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// `/tmp` is its own mount, and `$HOME` is not - so a file there is exactly
+    /// the case a home-only trash cannot take. It must land in the volume's own
+    /// trash and come back out of it.
+    #[test]
+    fn a_file_on_another_volume_trashes_and_restores() {
+        let _serial = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        // The data home has to be on a DIFFERENT device from the source, which is
+        // the whole case - so it goes under the real `$HOME` while the source goes
+        // under `/tmp`. Putting both in `temp_dir()` made this test pass through
+        // the home-trash branch and assert nothing, which is how it was written
+        // the first time.
+        let Some(home_base) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+            eprintln!("no HOME: the cross-device case cannot be arranged, not asserting");
+            return;
+        };
+        let home = home_base.join(format!(".cache/arlen-fh-home-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        // SAFETY: the test owns these temp dirs; the lock above serialises access.
+        unsafe { std::env::set_var("XDG_DATA_HOME", &home) };
+
+        // The source lives on /tmp, which is a different device from $HOME on any
+        // systemd host - and identical to $HOME here only if /tmp is not a mount,
+        // in which case this test is vacuous and says so rather than passing.
+        let work = std::env::temp_dir().join(format!("arlen-fh-work-{}", std::process::id()));
+        std::fs::create_dir_all(&work).unwrap();
+        let doomed = work.join("notes.md");
+        std::fs::write(&doomed, b"keep me").unwrap();
+
+        // Say so rather than pass vacuously: on a host where /tmp is not its own
+        // mount there is no cross-device case to test here.
+        {
+            use std::os::unix::fs::MetadataExt;
+            let dev = |p: &Path| std::fs::metadata(p).unwrap().dev();
+            if dev(&work) == dev(&home) {
+                eprintln!("/tmp and $HOME are one filesystem here; nothing cross-device to assert");
+                std::fs::remove_dir_all(&work).ok();
+                std::fs::remove_dir_all(&home).ok();
+                return;
+            }
+        }
+
+        let slot = trash(doomed.to_str().unwrap(), 1000).expect("the volume takes it");
+        assert!(!doomed.exists(), "the file left its place");
+        assert!(
+            slot.trashed().as_str().contains(".Trash-1000/files"),
+            "into the volume's own trash: {}",
+            slot.trashed().as_str()
+        );
+
+        // The recorded Path is relative to the top directory, so the entry still
+        // resolves when the volume is mounted somewhere else next time.
+        let info = std::fs::read_to_string(slot.trash_info().as_str()).unwrap();
+        let path_line = info.lines().find(|l| l.starts_with("Path=")).unwrap();
+        assert!(!path_line.contains("Path=/"), "relative, not absolute: {path_line}");
+        assert!(path_line.contains("notes.md"), "{path_line}");
+
+        // Restore: the inverse the slot yields puts it back with its contents.
+        rename_noreplace(slot.trashed().as_str(), doomed.to_str().unwrap()).unwrap();
+        assert_eq!(std::fs::read_to_string(&doomed).unwrap(), "keep me");
+
+        std::fs::remove_dir_all(&work).ok();
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// The reason the Path is relative: the same entry, read after the volume has
+    /// been mounted somewhere else, still names the file.
+    #[test]
+    fn an_entry_survives_the_volume_moving() {
+        let _serial = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let top = std::env::temp_dir().join(format!("arlen-fh-vol-{}", std::process::id()));
+        std::fs::create_dir_all(top.join("sub")).unwrap();
+        let (files, info) = ensure_top_trash(&top, 1000).unwrap();
+        let src = top.join("sub/a.md");
+        std::fs::write(&src, b"x").unwrap();
+        let recorded = relative_to_top(&top, &src).unwrap();
+        let slot = trash_into_recording(
+            &files,
+            &info,
+            "a.md",
+            src.to_str().unwrap(),
+            recorded.to_str().unwrap(),
+        )
+        .unwrap();
+
+        // "Mounted somewhere else": move the whole volume directory, then read the
+        // entry and resolve it against the new location.
+        let moved = std::env::temp_dir().join(format!("arlen-fh-vol2-{}", std::process::id()));
+        std::fs::remove_dir_all(&moved).ok();
+        std::fs::rename(&top, &moved).unwrap();
+        let entry = std::fs::read_to_string(
+            slot.trash_info().as_str().replace(
+                top.to_str().unwrap(),
+                moved.to_str().unwrap(),
+            ),
+        )
+        .unwrap();
+        let rel = entry
+            .lines()
+            .find_map(|l| l.strip_prefix("Path="))
+            .expect("the entry has a Path");
+        assert_eq!(moved.join(rel), moved.join("sub/a.md"), "resolves against the new mount");
+        std::fs::remove_dir_all(&moved).ok();
+    }
+
+    /// A trash that cannot complete leaves the file where it was.
+    ///
+    /// The refusal this asserts is the reachable one. A genuinely read-only MOUNT
+    /// needs privileges to arrange, so `ensure_top_trash`'s own test covers that
+    /// half by making the top directory unwritable and reading the
+    /// `NoTrashHere` back. Here the source sits in a directory that refuses the
+    /// move - and the first version of this test asserted `NoTrashHere` from
+    /// `trash()`, which was wrong: `top_directory_of` walks up to `/tmp`, the
+    /// volume hosts a trash perfectly well, and what fails is the rename. The
+    /// property that matters survives either way and is what is checked: the
+    /// file is still there afterwards.
+    #[test]
+    fn a_trash_that_cannot_complete_deletes_nothing() {
+        use std::os::unix::fs::PermissionsExt;
+        let _serial = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(home_base) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+            eprintln!("no HOME: not asserting");
+            return;
+        };
+        let home = home_base.join(format!(".cache/arlen-fh-h2-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        // SAFETY: the test owns this temp dir; the lock above serialises access.
+        unsafe { std::env::set_var("XDG_DATA_HOME", &home) };
+
+        let holder = std::env::temp_dir().join(format!("arlen-fh-ro-{}", std::process::id()));
+        std::fs::create_dir_all(&holder).unwrap();
+        let src = holder.join("a.md");
+        std::fs::write(&src, b"still here").unwrap();
+        std::fs::set_permissions(&holder, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+        let outcome = trash(src.to_str().unwrap(), 1000);
+        assert!(outcome.is_err(), "a move it cannot make must not report success");
+        std::fs::set_permissions(&holder, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&src).unwrap(),
+            "still here",
+            "nothing was deleted, which is the one thing that must hold"
+        );
+        std::fs::remove_dir_all(&holder).ok();
+        std::fs::remove_dir_all(&home).ok();
+    }
 }
 
 #[cfg(test)]
