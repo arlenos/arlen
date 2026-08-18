@@ -143,19 +143,56 @@ say "delete goes to the trash and undo brings the file back" \
   "$(printf '%s' "$got" | grep -q '"undone":true' && [ -f "$fix/b-two.png" ] && echo 1 || echo 0)" \
   "$got (file present afterwards: $([ -f "$fix/b-two.png" ] && echo yes || echo NO))"
 
+# NB the wording here was "an audio file PLAYS", and it was wrong. There is no
+# `<audio>` element, no `AudioContext` and no `new Audio()` anywhere in
+# apps/viewers: `playing` in AudioPlayer.svelte is a `$state(true)` boolean that
+# Space toggles and the transport draws an icon from. So the face renders and
+# responds; it emits no sound, and a probe cannot assert otherwise because there
+# is nothing to assert against.
+#
+# What IS real is checked: the waveform canvas, the stream details read off the
+# file by ffprobe rather than invented (pcm_s16le at 44100 is the fixture this
+# script generates), and the transport actually changing state on Space - which
+# is the behaviour the component has.
 cat > "$fix/p-audio.js" <<'JS'
 await new Promise(r => setTimeout(r, 1600));
 window.dispatchEvent(new KeyboardEvent("keydown", { key: "i", bubbles: true }));
 await new Promise(r => setTimeout(r, 900));
 const cv = document.querySelector("canvas");
+// The transport's primary button names its NEXT action, so the label flips when
+// the state does. Read it, press Space, read it again.
+// BUTTONS only. The first cut scanned every `[aria-label]` and matched the
+// player container's own "Audio player" on /play/, so before and after were the
+// same string and the case failed against my own selector rather than the app.
+const label = () => {
+  const b = [...document.querySelectorAll("button[aria-label]")]
+    .map(e => e.getAttribute("aria-label"))
+    .filter(l => /^(pause|play|wiedergabe|pausieren)/i.test((l || "").trim()));
+  return b[0] || null;
+};
+const before = label();
+window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
+await new Promise(r => setTimeout(r, 500));
 return JSON.stringify({ waveform: cv ? [cv.width, cv.height] : null,
+  transportBefore: before, transportAfter: label(),
   details: (document.body.innerText||"").replace(/\s+/g," ").trim().slice(0,160) });
 JS
 got=$(drive "$fix/p-audio.js" tone.wav viewer-audio.png)
-say "an audio file plays with a waveform read off the file itself" \
+say "an audio file opens with a waveform and stream details read off the file itself" \
   "$(printf '%s' "$got" | grep -q '"waveform":\[' \
      && printf '%s' "$got" | grep -q "pcm_s16le" \
      && printf '%s' "$got" | grep -q "44100" && echo 1 || echo 0)" "$got"
+# Separate case, because it fails for a different reason: the face can render
+# correctly while its one interaction does nothing.
+say "and Space moves the transport between play and pause" \
+  "$(printf '%s' "$got" | python3 -c "
+import json,sys
+try:
+    d = json.loads(sys.stdin.read() or '{}')
+except Exception:
+    print(0); raise SystemExit
+b, a = d.get('transportBefore'), d.get('transportAfter')
+print(1 if b and a and b != a else 0)")" "$got"
 
 [ "$fail" = 0 ] && echo "every behaviour the plan names answered when it was pressed"
 exit "$fail"
