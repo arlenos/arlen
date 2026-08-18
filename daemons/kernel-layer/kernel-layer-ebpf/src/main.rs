@@ -207,6 +207,7 @@ fn try_file_written(ctx: TracePointContext) -> Result<(), i64> {
     event.timestamp_ns = timestamp_ns;
     event.fd = fd;
     event.count = count;
+    event.cgroup_id = unsafe { bpf_get_current_cgroup_id() };
 
     entry.submit(0);
     Ok(())

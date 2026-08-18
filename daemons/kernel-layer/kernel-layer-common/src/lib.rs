@@ -95,6 +95,11 @@ pub struct FileWrittenEvent {
     pub timestamp_ns: u64,
     pub fd: u64,
     pub count: u64,
+    /// cgroup v2 id of the writing task, for the same reason the open event
+    /// carries one: a pid is reused within a boot and a cgroup id is not, so it
+    /// is the better key for the App node this becomes. Last field, and every
+    /// field before it is 8-aligned, so it adds no padding.
+    pub cgroup_id: u64,
 }
 
 #[cfg(feature = "user")]
