@@ -274,5 +274,29 @@ say "the memory pane says how full it is AND whether anything is waiting on it" 
   "$(printf '%s' "$got" | grep -q '"hasMeter":true' \
      && printf '%s' "$got" | grep -q 'GB in use' && echo 1 || echo 0)" "$got"
 
+# The CPU pane's load line. Worth a case of its own because of HOW it was broken:
+# `LoadAverage` shipped `per_core` while the frontend read `perCore`, since serde
+# applies `rename_all` per struct and a nested one does not inherit it. The types
+# both said `perCore` and svelte-check was happy - TypeScript cannot check what a
+# Rust process actually puts on the wire. The line simply did not appear, and
+# nothing but pressing the app said so.
+cat > "$probes/p-load.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(2500);
+const tab = [...document.querySelectorAll("button")]
+  .find(b => /performance|leistung/i.test(b.textContent || ""));
+if (!tab) return JSON.stringify({ error: "no performance tab" });
+tab.click();
+await wait(3500);
+const text = (document.body.innerText || "").replace(/\s+/g, " ").trim();
+const m = text.match(/(logical processors|logische Prozessoren)[^A-Za-z]*(load|Last)[^)]*\)/);
+return JSON.stringify({ line: m ? m[0].slice(0, 110) : null,
+  hasPerCore: /per core|pro Kern/.test(text) });
+JS
+got=$(drive "$probes/p-load.js" sysmon-load.png)
+say "the CPU pane gives the load against this machine's core count" \
+  "$(printf '%s' "$got" | grep -q '"hasPerCore":true' \
+     && printf '%s' "$got" | grep -q '"line":"' && echo 1 || echo 0)" "$got"
+
 [ "$fail" = 0 ] && echo "a process list that sorts, a detail that names a pid, graphs that draw, and a kill that asks before it acts"
 exit "$fail"
