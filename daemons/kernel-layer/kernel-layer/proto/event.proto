@@ -109,6 +109,12 @@ message ProcessLifecyclePayload {
   // the whole payload (provenance-halo.md §7).
   string exe_path        = 6;  // the child's executable
   string parent_exe_path = 7;  // the parent's executable; empty when unreadable
+  // The cgroup v2 ids of child and parent: the app identities either end of a
+  // launch. An app IS its cgroup, so a launch that stays inside one cgroup - a
+  // shell running `ls` - is a self-edge and is not a relationship between apps.
+  // Zero means the sensor did not see the fork and the parent is unattributed.
+  uint64 cgroup_id        = 8;
+  uint64 parent_cgroup_id = 9;
 }
 
 // Emitted when a network connection is established.

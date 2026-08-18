@@ -653,8 +653,8 @@ async fn promote_process_started(
     // unresolvable child: half an edge is a claim about an app that did not make
     // it.
     let (Some(child), Some(parent)) = (
-        resolve_launch_app(&p.exe_path),
-        resolve_launch_app(&p.parent_exe_path),
+        launch_app_id(source, p.cgroup_id),
+        launch_app_id(source, p.parent_cgroup_id),
     ) else {
         debug!(
             source,
@@ -663,8 +663,12 @@ async fn promote_process_started(
         return Ok(());
     };
     if child == parent {
-        // A process re-execing itself is not a launch relationship, and a self
-        // edge would read as one.
+        // THE FREQUENCY FILTER, and it is structural rather than a matter of
+        // taste. A shell running `ls` a hundred times keeps both ends inside the
+        // shell's own cgroup, so both resolve to the same App and this is a self
+        // edge; a terminal starting a build under its own scope, or an app
+        // launching a helper, crosses a cgroup boundary and is exactly what is
+        // worth recording. Nothing here asks whether a binary is interesting.
         return Ok(());
     }
 
@@ -683,16 +687,29 @@ async fn promote_process_started(
     Ok(())
 }
 
-/// An executable path to the app it belongs to, or None.
+/// A cgroup id to the App node id it names, or None when there is no id.
 ///
-/// None covers every way the question can fail to have an answer - an empty path
-/// (the normalizer could not read it), or a binary that belongs to no installed
-/// app - and all of them mean the same thing here: not recorded.
-fn resolve_launch_app(exe_path: &str) -> Option<String> {
-    if exe_path.is_empty() {
+/// The SAME key `promote_file_opened` builds, and it has to be: if a launch
+/// wrote `ebpf:cgroup:42` while an open wrote something else for the same
+/// cgroup, the graph would hold two App nodes for one application and the
+/// launch edge would hang off the one with no files on it.
+///
+/// This replaced a resolution through the executable path, which the sensor read
+/// out of `/proc/<ppid>/exe`. Two things were wrong with that and only one was
+/// obvious. The obvious one is that `/proc` resolution stops working the first
+/// time somebody hardens the unit, and stops quietly. The other is that a path
+/// answers a different question: a binary belongs to an installed app, but the
+/// thing that makes an exec worth recording is that it crossed an APPLICATION
+/// boundary, and only the cgroup knows where that boundary is.
+///
+/// Zero means the sensor never saw the fork - it started mid-session, or the map
+/// evicted the entry - and an unattributed end is not recorded, per the rule that
+/// governs the file arms too.
+fn launch_app_id(source: &str, cgroup_id: u64) -> Option<String> {
+    if cgroup_id == 0 {
         return None;
     }
-    arlen_permissions::identity::path_to_app_id(std::path::Path::new(exe_path)).ok()
+    Some(format!("{source}:cgroup:{cgroup_id}"))
 }
 
 async fn promote_file_written(
@@ -1579,15 +1596,20 @@ mod shell_event_tests {
     /// arm had no traffic and no cgroup field to key on, so two writers under one
     /// recycled pid would have merged into a single App node the moment it did.
     /// Helper: one `process.started` payload, parent and child by executable path.
-    fn exec_payload(parent: &str, child: &str) -> Vec<u8> {
+    /// An exec, named by the two cgroups either end of it. The paths are display
+    /// only and are deliberately NOT what the edge is keyed on, so a fixture
+    /// cannot accidentally pass by naming a plausible binary.
+    fn exec_payload(parent_cgroup: u64, child_cgroup: u64) -> Vec<u8> {
         let p = ProcessLifecyclePayload {
             event_type: "started".into(),
             pid: 100,
             ppid: 0,
             comm: "child".into(),
             exit_code: 0,
-            exe_path: child.into(),
-            parent_exe_path: parent.into(),
+            cgroup_id: child_cgroup,
+            parent_cgroup_id: parent_cgroup,
+            exe_path: "/usr/bin/whatever".into(),
+            parent_exe_path: String::new(),
         };
         let mut buf = Vec::new();
         p.encode(&mut buf).unwrap();
@@ -1598,7 +1620,7 @@ mod shell_event_tests {
     #[tokio::test]
     async fn a_launch_between_two_apps_is_one_edge() {
         let (graph, _tmp) = setup().await;
-        let buf = exec_payload("/usr/bin/arlen-terminal", "/usr/bin/arlen-files");
+        let buf = exec_payload(700, 800);
         promote_process_started(&graph, &10, "ebpf", &buf).await.unwrap();
 
         let rs = graph
@@ -1611,8 +1633,8 @@ mod shell_event_tests {
             .unwrap();
         assert_eq!(rs.rows.len(), 1, "one edge, not one per exec");
         let row = &rs.rows[0];
-        assert_eq!(row[0].as_str(), "terminal");
-        assert_eq!(row[1].as_str(), "files");
+        assert_eq!(row[0].as_str(), "ebpf:cgroup:700");
+        assert_eq!(row[1].as_str(), "ebpf:cgroup:800");
         assert_eq!(row[2].as_i64(), 1);
     }
 
@@ -1621,7 +1643,7 @@ mod shell_event_tests {
     #[tokio::test]
     async fn re_running_the_child_refreshes_instead_of_adding() {
         let (graph, _tmp) = setup().await;
-        let buf = exec_payload("/usr/bin/arlen-terminal", "/usr/bin/arlen-files");
+        let buf = exec_payload(700, 800);
         for ts in [10i64, 20, 30] {
             promote_process_started(&graph, &ts, "ebpf", &buf).await.unwrap();
         }
@@ -1643,13 +1665,43 @@ mod shell_event_tests {
     /// An exec whose subject does not resolve to an app produces NOTHING - not an
     /// edge, and not a node under a stand-in id, which is the `unknown`-merge
     /// defect this rule exists to prevent.
+    /// A shell running `ls` a hundred times records NOTHING, and the reason is
+    /// the identity rather than a filter bolted on top: the child stays inside
+    /// the shell's own cgroup, so both ends of the exec are the same App.
+    ///
+    /// This is the case the whole design turns on. Without it the busiest source
+    /// on the machine writes an edge per command and the launch graph is noise.
+    #[tokio::test]
+    async fn a_shell_running_ls_a_hundred_times_records_nothing() {
+        let (graph, _tmp) = setup().await;
+        let buf = exec_payload(700, 700);
+        for ts in 0..100i64 {
+            promote_process_started(&graph, &ts, "ebpf", &buf).await.unwrap();
+        }
+
+        let edges = graph
+            .query_rows("MATCH ()-[l:LAUNCHED]->() RETURN l.count".into())
+            .await
+            .unwrap();
+        assert!(edges.rows.is_empty(), "a same-cgroup exec is not a launch");
+        let apps = graph
+            .query_rows("MATCH (a:App) RETURN a.id".into())
+            .await
+            .unwrap();
+        assert!(apps.rows.is_empty(), "and writes no App node: {:?}", apps.rows);
+    }
+
     #[tokio::test]
     async fn an_unresolved_exec_records_nothing() {
         let (graph, _tmp) = setup().await;
         for (parent, child) in [
-            ("/usr/bin/arlen-terminal", "/tmp/something-random"),
-            ("", "/usr/bin/arlen-files"),
-            ("/opt/vendor/thing", "/opt/vendor/other"),
+            // The fork was never seen, so the parent is unattributed.
+            (0u64, 800u64),
+            // The exec's own cgroup is missing, which should not happen and is
+            // still not half-recorded if it does.
+            (700, 0),
+            // Neither end.
+            (0, 0),
         ] {
             let buf = exec_payload(parent, child);
             promote_process_started(&graph, &10, "ebpf", &buf).await.unwrap();

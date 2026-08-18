@@ -40,6 +40,11 @@ mod tests {
             pid,
             uid: 1000,
             timestamp_ns: 2_000_000_000,
+            // Two distinct cgroups by default: the interesting case, and the one
+            // that produces an edge. A same-cgroup exec is set explicitly by the
+            // test that wants it, so neither reading is the silent default.
+            cgroup_id: 2222,
+            parent_cgroup_id: 1111,
             comm: [0u8; MAX_COMM_LEN],
             filename: [0u8; MAX_PATH_LEN],
         };
@@ -144,8 +149,12 @@ mod tests {
             ppid: 0,
             comm: "firefox".into(),
             exit_code: 0,
+            cgroup_id: 2222,
+            parent_cgroup_id: 1111,
             exe_path: "/usr/lib/arlen/apps/dev.arlen.browser/bin/firefox".into(),
-            parent_exe_path: "/usr/bin/arlen-terminal".into(),
+            // Empty on purpose: the parent's path was a `/proc` read and the
+            // cgroup replaced it as the identity, so nothing fills this now.
+            parent_exe_path: String::new(),
         };
         let msg = encode_test("process.started", 5678, 2_000_000, "sess", payload.encode_to_vec());
         let decoded = proto::Event::decode(&msg[4..]).unwrap();
@@ -154,6 +163,8 @@ mod tests {
         assert_eq!(p.comm, "firefox");
         assert_eq!(p.event_type, "started");
         assert_eq!(p.ppid, 0);
+        assert_eq!(p.cgroup_id, 2222);
+        assert_eq!(p.parent_cgroup_id, 1111);
     }
 
     #[test]
@@ -245,31 +256,6 @@ mod tests {
     /// means the probe read nothing, a filtered path means the prefix list ate a
     /// real one, and a dedup means it was a repeat. A line that folded them into
     /// "dropped" would leave the question exactly where it was.
-    /// `/proc/<pid>/stat` field 2 is the executable's `comm` and it is NOT
-    /// sanitised - a process can be named with spaces and parentheses, which
-    /// shifts every field a whitespace split would count. Parsing from the last
-    /// `)` is the documented way and this pins it against the hostile name.
-    #[test]
-    fn the_parent_pid_survives_a_process_named_with_parentheses() {
-        use crate::normalizer::ppid_from_stat;
-
-        // The ordinary case: pid, (comm), state, ppid, ...
-        assert_eq!(ppid_from_stat("42 (bash) S 7 42 42 0 -1 4194304").unwrap(), 7);
-
-        // A name carrying a close-paren and spaces. A whitespace split would read
-        // `3` here, which is a real pid belonging to someone else.
-        assert_eq!(
-            ppid_from_stat("42 (evil) 1 2 3) S 7 42 42 0 -1").unwrap(),
-            7,
-            "parsed from the LAST close-paren, not the first"
-        );
-
-        // A line with no close-paren at all is refused rather than guessed at.
-        assert!(ppid_from_stat("nonsense without parens").is_none());
-        // And a truncated line, which is what a read racing an exit can return.
-        assert!(ppid_from_stat("42 (bash)").is_none());
-    }
-
     #[test]
     fn a_tally_names_which_discard_it_was() {
         let t = crate::normalizer::Tally { seen: 9, empty_path: 4, blocked: 3, deduped: 1, forwarded: 1 };

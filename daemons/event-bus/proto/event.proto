@@ -95,6 +95,12 @@ message ProcessLifecyclePayload {
   uint32 ppid       = 3;  // parent PID
   string comm       = 4;  // process name (comm field)
   int32  exit_code  = 5;  // only set for "exited"
+  // The cgroup v2 ids of child and parent: the app identities either end of a
+  // launch. An app IS its cgroup, so a launch that stays inside one cgroup - a
+  // shell running `ls` - is a self-edge and is not a relationship between apps.
+  // Zero means the sensor did not see the fork and the parent is unattributed.
+  uint64 cgroup_id        = 8;
+  uint64 parent_cgroup_id = 9;
 }
 
 // Emitted when a network connection is established.

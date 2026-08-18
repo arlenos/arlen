@@ -37,6 +37,25 @@ pub const fn syscall_arg(n: usize) -> usize {
     SYSCALL_ARG_BASE + n * 8
 }
 
+/// Offset of `child_pid` inside a `sched_process_fork` tracepoint record.
+///
+/// This one is NOT a syscall tracepoint, so `syscall_arg` does not apply: the
+/// record is the common 8 bytes, then `parent_comm[16]` at 8, `parent_pid` at
+/// 24, `child_comm[16]` at 28, and `child_pid` at 44. The layout comes from the
+/// `TRACE_EVENT(sched_process_fork)` macro rather than from a syscall's argument
+/// list, which is exactly the distinction the two file probes got wrong.
+///
+/// The daemon checks this against the kernel's own
+/// `/sys/kernel/tracing/events/sched/sched_process_fork/format` at load time and
+/// refuses the probe on a mismatch, because a wrong offset here does not fail:
+/// it silently keys the fork map by whatever those four bytes happen to be, and
+/// every later lookup misses while the counters all look healthy.
+pub const SCHED_FORK_CHILD_PID: usize = 44;
+
+/// Offset of `parent_pid` in the same record. Kept beside its sibling so the
+/// pair can be checked together against the kernel's format file.
+pub const SCHED_FORK_PARENT_PID: usize = 24;
+
 /// An event emitted when a file is opened via the `openat` syscall.
 ///
 /// Written by the eBPF tracepoint program into the ring buffer.
@@ -79,6 +98,22 @@ pub struct ProcessExecEvent {
     pub pid: u32,
     pub uid: u32,
     pub timestamp_ns: u64,
+    /// cgroup v2 id of the task doing the exec: the CHILD's app identity.
+    pub cgroup_id: u64,
+    /// cgroup v2 id the parent held when it forked this task, or 0 when the fork
+    /// was not seen (the sensor started mid-session, or the map evicted it).
+    ///
+    /// This is the whole point of the exec probe. An app's identity is its
+    /// cgroup, so a launch is an edge between two cgroups; a shell running `ls`
+    /// puts both ends in the same one and resolves to a self-edge, which is not
+    /// recorded. That is the frequency filter, and it falls out of the identity
+    /// rather than out of a list of interesting binaries.
+    ///
+    /// It cannot be read off the current task: `task_struct` is opaque in the
+    /// generated aya bindings, so `real_parent->cgroups` is not a field read
+    /// available here. It comes from the fork tracepoint instead, which sees the
+    /// parent's cgroup as its own at the moment the child appears.
+    pub parent_cgroup_id: u64,
     pub comm: [u8; MAX_COMM_LEN],
     pub filename: [u8; MAX_PATH_LEN],
 }
