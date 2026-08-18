@@ -305,6 +305,8 @@ jobs:
           node dev/scripts/test-check-bus-names-covered.mjs
           node dev/scripts/test-pre-commit-hook.mjs
           node dev/scripts/test-ci-system-deps.mjs
+          python3 dev/scripts/check-serde-nesting.py
+          node dev/scripts/test-check-serde-nesting.mjs
           bash dev/scripts/check-shared-signature.sh
           bash dev/scripts/check-packaged-units.sh
           bash dev/scripts/check-sensing-vectors.sh
