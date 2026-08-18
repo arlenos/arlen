@@ -814,6 +814,39 @@ mod tests {
     }
 }
 
+/// One sound theme the machine actually has.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SoundThemeOption {
+    /// The directory name, which is what `[sound] theme` stores.
+    pub id: String,
+    /// What to show a person.
+    pub name: String,
+    /// Is this the one in use now?
+    pub active: bool,
+}
+
+/// The installed sound themes, for the picker.
+///
+/// Replaces a hardcoded list of "Chime" and "Soft" - names of themes that exist
+/// on no machine, so choosing one wrote a `[sound] theme` the resolver could
+/// never find and every cue fell through to the synth while the page showed a
+/// confident selection.
+#[tauri::command]
+pub fn sound_themes() -> Result<Vec<SoundThemeOption>, String> {
+    let active = arlen_notification_daemon::config::load_config(
+        &arlen_notification_daemon::config::default_config_path(),
+    )
+    .sound
+    .theme;
+    Ok(arlen_notification_daemon::sound::installed_themes(
+        &arlen_notification_daemon::sound::default_sound_roots(),
+    )
+    .into_iter()
+    .map(|t| SoundThemeOption { active: t.id == active, id: t.id, name: t.name })
+    .collect())
+}
+
 /// Play one cue, exactly as the Notification Daemon would resolve it
 /// (`sound-system-plan.md` SO-R3, the picker's play-preview).
 ///

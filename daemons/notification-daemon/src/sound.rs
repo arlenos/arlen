@@ -127,6 +127,61 @@ fn split_list(v: &str) -> Vec<String> {
         .collect()
 }
 
+/// One sound theme that is actually installed: the directory name the resolver
+/// looks a theme up by, and the display name its index gives itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledTheme {
+    /// The DIRECTORY name. This is what goes in `[sound] theme` - the resolver
+    /// joins it onto each root, so the display name below is not interchangeable
+    /// with it.
+    pub id: String,
+    /// `Name=` from the index, or the directory name when the index has none.
+    pub name: String,
+}
+
+/// Enumerate the sound themes present under `roots`.
+///
+/// WHAT THIS REPLACES. The Settings sound picker offered a hardcoded list -
+/// "Chime", "Soft" - naming themes that do not exist on any machine, so choosing
+/// one wrote a `[sound] theme` the resolver could never find and every cue fell
+/// through to the synth. A picker has to offer what is installed.
+///
+/// A directory counts as a theme when it carries an `index.theme`, which is the
+/// freedesktop rule and also what keeps stray directories under `sounds/` out of
+/// the list. Earlier roots win on a name collision, matching the resolver's own
+/// precedence, so the entry shown is the one that would actually play.
+pub fn installed_themes(roots: &[PathBuf]) -> Vec<InstalledTheme> {
+    let mut out: Vec<InstalledTheme> = Vec::new();
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(root) else { continue };
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            let index = dir.join("index.theme");
+            if !index.is_file() {
+                continue;
+            }
+            let Some(id) = dir.file_name().and_then(|s| s.to_str()).map(str::to_string) else {
+                continue;
+            };
+            if out.iter().any(|t| t.id == id) {
+                continue;
+            }
+            let name = std::fs::read_to_string(&index)
+                .ok()
+                .and_then(|text| {
+                    text.lines()
+                        .map(str::trim)
+                        .find_map(|l| l.strip_prefix("Name=").map(|v| v.trim().to_string()))
+                })
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| id.clone());
+            out.push(InstalledTheme { id, name });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
 /// The sound-theme base directories in freedesktop precedence:
 /// `$XDG_DATA_HOME/sounds` (or `~/.local/share/sounds`) first, then each
 /// `$XDG_DATA_DIRS/sounds`. The production roots for [`resolve_sound`].
@@ -398,6 +453,71 @@ fn find_in_path(name: &str, path: &std::ffi::OsStr) -> Option<PathBuf> {
     std::env::split_paths(path)
         .map(|dir| dir.join(name))
         .find(|candidate| candidate.is_file())
+}
+
+#[cfg(test)]
+mod installed_theme_tests {
+    use super::*;
+
+    fn theme(root: &Path, dir: &str, index: Option<&str>) {
+        let d = root.join(dir);
+        std::fs::create_dir_all(d.join("stereo")).unwrap();
+        if let Some(text) = index {
+            std::fs::write(d.join("index.theme"), text).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_theme_is_listed_by_its_directory_and_its_display_name() {
+        // The two are different and the difference matters: `id` is what goes in
+        // the config, `name` is what a person reads.
+        let t = tempfile::tempdir().unwrap();
+        theme(t.path(), "arlen", Some("[Sound Theme]\nName=Arlen\nDirectories=stereo\n"));
+        let found = installed_themes(&[t.path().to_path_buf()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, "arlen");
+        assert_eq!(found[0].name, "Arlen");
+    }
+
+    #[test]
+    fn a_directory_without_an_index_is_not_a_theme() {
+        // Otherwise any stray directory under `sounds/` becomes a pickable theme
+        // that resolves to nothing.
+        let t = tempfile::tempdir().unwrap();
+        theme(t.path(), "notatheme", None);
+        assert!(installed_themes(&[t.path().to_path_buf()]).is_empty());
+    }
+
+    #[test]
+    fn an_index_without_a_name_falls_back_to_the_directory() {
+        // Never empty: a nameless entry in a picker is unchoosable.
+        let t = tempfile::tempdir().unwrap();
+        theme(t.path(), "plain", Some("[Sound Theme]\nDirectories=stereo\n"));
+        let found = installed_themes(&[t.path().to_path_buf()]);
+        assert_eq!(found[0].name, "plain");
+    }
+
+    #[test]
+    fn the_earlier_root_wins_a_collision() {
+        // Matching the resolver's own precedence, so the entry the picker shows
+        // is the one that would actually play.
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        theme(a.path(), "arlen", Some("[Sound Theme]\nName=Mine\n"));
+        theme(b.path(), "arlen", Some("[Sound Theme]\nName=System\n"));
+        let found = installed_themes(&[a.path().to_path_buf(), b.path().to_path_buf()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "Mine");
+    }
+
+    #[test]
+    fn a_root_that_does_not_exist_is_skipped_rather_than_fatal() {
+        // Most machines have only one of the freedesktop roots.
+        let t = tempfile::tempdir().unwrap();
+        theme(t.path(), "arlen", Some("[Sound Theme]\nName=Arlen\n"));
+        let found = installed_themes(&[PathBuf::from("/nonexistent"), t.path().to_path_buf()]);
+        assert_eq!(found.len(), 1);
+    }
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@
   /// Mock-vs-live: the biggest backend gap - cursor/icon theme listing + setting +
   /// generator, the sound map + playback, and terminal per-slot editing all need
   /// coder backend. Fixture-backed until then.
-  import { ChevronRight, MousePointer2, Image } from "lucide-svelte";
+  import { ChevronRight, MousePointer2, Image, Play } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -36,7 +36,24 @@
     SOUND_NAMES,
     SOUND_EVENTS,
     ANSI_META,
+    previewSound,
+    type PreviewOutcome,
   } from "$lib/stores/themeSystem";
+
+  /// What the last preview of each event did, so a click that made no sound can
+  /// say which kind of nothing it was. Keyed by event, cleared after a moment so
+  /// the row does not keep a stale verdict.
+  let previewed = $state<Record<string, PreviewOutcome>>({});
+
+  async function play(eventKey: string, name: string) {
+    const outcome = await previewSound(name);
+    previewed = { ...previewed, [eventKey]: outcome };
+    // Long enough to read, short enough not to look like row state.
+    setTimeout(() => {
+      const { [eventKey]: _drop, ...rest } = previewed;
+      previewed = rest;
+    }, 2500);
+  }
 
   const cursorSize = $derived(Number($effective.cursorSize));
   const soundsOn = $derived(Boolean($effective.soundsEnabled));
@@ -134,10 +151,26 @@
                   id={`sys-${ev.key}`}
                 >
                   {#snippet control()}
-                    <!-- A play-preview belongs here; it returns when a Settings
-                         command can ask the daemon to play a cue. Until then no
-                         dead button. -->
-                    <PopoverSelect value={String($effective[ev.key])} options={sysOptions(SOUND_NAMES, $t)} ariaLabel={$t("s.snd.pickAria", { event: $t(ev.label) })} onchange={(v) => setSys(ev.key, v)} />
+                    <span class="snd-control">
+                      <!-- The play-preview the earlier note here promised. It goes
+                           through the notification daemon's own resolver, so what
+                           you hear is what the system would play - not this page's
+                           idea of it. -->
+                      <button
+                        type="button"
+                        class="snd-play"
+                        aria-label={$t("s.snd.playAria", { event: $t(ev.label) })}
+                        onclick={() => play(ev.key, String($effective[ev.key]))}
+                      >
+                        <Play size={13} strokeWidth={2} />
+                      </button>
+                      {#if previewed[ev.key] && previewed[ev.key] !== "played"}
+                        <!-- Only ever shown when nothing was heard. "It played" is
+                             reported by the speaker. -->
+                        <span class="snd-said">{$t(`s.snd.outcome.${previewed[ev.key]}`)}</span>
+                      {/if}
+                      <PopoverSelect value={String($effective[ev.key])} options={sysOptions(SOUND_NAMES, $t)} ariaLabel={$t("s.snd.pickAria", { event: $t(ev.label) })} onchange={(v) => setSys(ev.key, v)} />
+                    </span>
                   {/snippet}
                 </OverrideRow>
               {/each}
@@ -252,6 +285,30 @@
   }
 
   /* Terminal palette editor: a grid of 16 swatches + fg/bg. */
+  .snd-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .snd-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--color-border-default, #2a2a2a);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-fg-secondary, #a3a3a3);
+    cursor: pointer;
+  }
+  .snd-play:hover {
+    color: var(--color-fg-primary, #fafafa);
+  }
+  .snd-said {
+    font-size: 11px;
+    color: var(--color-fg-disabled, #737373);
+  }
   .term-editor {
     display: flex;
     flex-direction: column;
