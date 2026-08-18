@@ -120,12 +120,18 @@ pub enum TrashError {
     /// A resolved trash path was not canonical-absolute (fail-closed; the inverse
     /// relies on canonical paths).
     NonCanonical,
-    /// The entity is not on the same filesystem as the home trash, so this
-    /// primitive cannot take it. Implementing the spec's per-device
-    /// `.Trash-$uid` is the fix and is not in this crate's scope today - see the
-    /// module doc - so the caller is told which case it is instead of being
-    /// handed a kernel string.
+    /// The entity is not on the same filesystem as the home trash, so a home
+    /// trash cannot take it. The caller's answer is [`ensure_top_trash`] on the
+    /// entity's own volume; this remains for a caller that has only a home trash.
     CrossDevice,
+    /// The volume cannot host a trash at all: it is mounted read-only, or the
+    /// top directory refuses the write.
+    ///
+    /// A REFUSAL, and never a fall-back to unlink. A permanent delete dressed as
+    /// a trash is the one outcome this whole primitive exists to prevent, and it
+    /// is the one that cannot be undone; being told "not deleted, and here is
+    /// why" is the annoying answer and the correct one.
+    NoTrashHere(String),
     /// Any other IO failure.
     Io(String),
 }
@@ -208,6 +214,40 @@ pub fn top_trash_dir(topdir: &Path, uid: u32) -> PathBuf {
     } else {
         topdir.join(format!(".Trash-{uid}"))
     }
+}
+
+/// Create the trash `top_trash_dir` chose, and return its `files/` and `info/`.
+///
+/// 0700 on everything this makes: a trash holds what a person deleted, which is
+/// frequently the most private thing on the volume, and on a shared disk the
+/// per-user form is the only thing separating one user's deletions from another's
+/// eyes. The administrator form's own `.Trash` is NOT created or re-permissioned
+/// here - it belongs to whoever set the volume up, and this only ever makes the
+/// `$uid` subdirectory inside it.
+///
+/// A read-only mount or a refused write comes back as [`TrashError::NoTrashHere`]
+/// carrying the reason, so the caller can say which happened. It never falls back
+/// to anything.
+pub fn ensure_top_trash(topdir: &Path, uid: u32) -> Result<(PathBuf, PathBuf), TrashError> {
+    use std::os::unix::fs::DirBuilderExt;
+    let base = top_trash_dir(topdir, uid);
+    let make = |p: &Path| -> Result<(), TrashError> {
+        if p.is_dir() {
+            return Ok(());
+        }
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(p).map_err(|e| {
+            TrashError::NoTrashHere(format!(
+                "{}: {e}",
+                p.display()
+            ))
+        })
+    };
+    make(&base)?;
+    let files = base.join("files");
+    let info = base.join("info");
+    make(&files)?;
+    make(&info)?;
+    Ok((files, info))
 }
 
 /// The `Path` field for an entity trashed into a TOP-DIRECTORY trash: relative to
@@ -419,6 +459,65 @@ mod top_dir_tests {
         std::fs::set_permissions(&elsewhere, std::fs::Permissions::from_mode(0o1777)).unwrap();
         std::os::unix::fs::symlink(&elsewhere, dir.join(".Trash")).unwrap();
         assert_eq!(top_trash_dir(&dir, 1000), dir.join(".Trash-1000"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_per_user_trash_is_created_private_with_both_halves() {
+        let dir = std::env::temp_dir().join(format!("arlen-tt-d-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (files, info) = ensure_top_trash(&dir, 1000).expect("a writable volume hosts one");
+        assert_eq!(files, dir.join(".Trash-1000/files"));
+        assert_eq!(info, dir.join(".Trash-1000/info"));
+        for p in [dir.join(".Trash-1000"), files, info] {
+            let mode = std::fs::metadata(&p).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o700, "{} is owner-only, got {mode:o}", p.display());
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn creating_it_twice_is_the_same_answer() {
+        let dir = std::env::temp_dir().join(format!("arlen-tt-e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = ensure_top_trash(&dir, 1000).unwrap();
+        let again = ensure_top_trash(&dir, 1000).unwrap();
+        assert_eq!(first, again);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The refusal the decision insists on. A volume that cannot host a trash
+    /// must say so and stop - the alternative is a permanent delete wearing the
+    /// name of a reversible one.
+    #[test]
+    fn a_volume_that_cannot_host_one_refuses_and_says_why() {
+        let dir = std::env::temp_dir().join(format!("arlen-tt-f-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Read-only stands in for a read-only mount: the write fails the same way
+        // and needs no privileges to arrange.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+        match ensure_top_trash(&dir, 1000) {
+            Err(TrashError::NoTrashHere(why)) => {
+                assert!(why.contains(".Trash-1000"), "names the path it could not make: {why}");
+            }
+            other => panic!("expected a refusal naming the volume, got {other:?}"),
+        }
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The administrator form: this makes the `$uid` subdirectory and leaves the
+    /// shared `.Trash` exactly as whoever set the volume up left it.
+    #[test]
+    fn the_admin_trash_keeps_its_own_permissions() {
+        let dir = std::env::temp_dir().join(format!("arlen-tt-g-{}", std::process::id()));
+        let admin = dir.join(".Trash");
+        std::fs::create_dir_all(&admin).unwrap();
+        std::fs::set_permissions(&admin, std::fs::Permissions::from_mode(0o1777)).unwrap();
+        let (files, _) = ensure_top_trash(&dir, 1000).unwrap();
+        assert_eq!(files, admin.join("1000/files"));
+        let mode = std::fs::metadata(&admin).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(mode, 0o1777, "the shared directory is not re-permissioned");
         std::fs::remove_dir_all(&dir).ok();
     }
 

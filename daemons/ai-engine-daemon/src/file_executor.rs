@@ -351,6 +351,13 @@ impl FileSystemExecutor {
                     "fs.trash refused: this filesystem cannot perform an atomic no-clobber move",
                 )
             }
+            Err(TrashError::NoTrashHere(why)) => {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    format!("fs.trash refused: that volume cannot hold a trash ({why}), and a \
+                             permanent delete is not what was asked for"),
+                )
+            }
             Err(TrashError::CrossDevice) => {
                 return exec_err(
                     ContractError::ExecutionFailed,
