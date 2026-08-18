@@ -23,10 +23,17 @@ import sys
 import tempfile
 import time
 
-# How long after boot the knowledge probe's second round answers. The probe asks
-# twice so it can tell "nothing yet" from "nothing ever"; only the second round is
-# a verdict, so a run that ends before it has no probe result to read.
-PROBE_ROUND_GAP = 90
+# How long after boot the knowledge probe has a verdict. The probe asks twice so it
+# can tell "nothing yet" from "nothing ever"; only the second round is a verdict,
+# so a run that ends before it has no probe result to read.
+#
+# The second round lands at ~82s (5s to start, then its 75s gap) and since 18
+# August it then POLLS the ingestion question for up to 90s more, because with the
+# kernel sensor forwarding, the dogfood's own file reaches the graph later than the
+# round does. A run that ends at 90s now cuts the probe off mid-poll and reads as
+# an ingestion failure that is really a harness that did not wait - the same shape
+# as the 13 Aug fault this constant was introduced for, one layer along.
+PROBE_ROUND_GAP = 180
 
 OVMF_CODE = "/usr/share/edk2/x64/OVMF_CODE.4m.fd"
 OVMF_VARS = "/usr/share/edk2/x64/OVMF_VARS.4m.fd"
@@ -677,8 +684,9 @@ def main():
                          "the whole run.")
     ap.add_argument("--require-probe", action="store_true",
                     help="fail unless the knowledge probe answered every question "
-                         "AND found something. Needs --linger past 75s, the gap "
-                         "between the probe's two rounds. Implied whenever the "
+                         "AND found something. Needs --linger past ~172s - the "
+                         "second round at 82s plus its 90s ingestion poll - and is "
+                         "raised to that automatically. Implied whenever the "
                          "serial shows the probe unit starting, so an image that "
                          "ships the probe is held to it without being asked; pass "
                          "this to demand it from an image that may not.")
