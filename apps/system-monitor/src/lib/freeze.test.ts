@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pinnedOrder } from "./freeze";
+import { pinnedOrder, rowMatches } from "./freeze";
 
 const row = (id: number) => ({ id });
 
@@ -47,5 +47,37 @@ describe("pinnedOrder", () => {
     const out = pinnedOrder(fresh, [1, 99, 5]);
     expect(out.map((r) => r.id).sort()).toEqual([1, 5, 7]);
     expect(out).toHaveLength(3);
+  });
+});
+
+describe("rowMatches", () => {
+  const firefox = {
+    name: "firefox",
+    children: [{ name: "Arlen OS - Wikipedia" }, { name: "Design docs" }],
+  };
+
+  it("keeps every row when the box is empty or blank", () => {
+    expect(rowMatches(firefox, "")).toBe(true);
+    expect(rowMatches(firefox, "   ")).toBe(true);
+  });
+
+  it("matches a row on its own name, case-insensitively", () => {
+    expect(rowMatches(firefox, "FIRE")).toBe(true);
+  });
+
+  it("surfaces the parent when the query matches a CHILD", () => {
+    // The clause a drive cannot check on a machine whose children share their
+    // parent's name: here the child is a tab title and the parent is not.
+    expect(rowMatches(firefox, "wikipedia")).toBe(true);
+    expect(rowMatches(firefox, "design")).toBe(true);
+  });
+
+  it("refuses a row that matches neither itself nor any child", () => {
+    expect(rowMatches(firefox, "zzzznomatch")).toBe(false);
+  });
+
+  it("handles a row with no children at all", () => {
+    expect(rowMatches({ name: "systemd" }, "systemd")).toBe(true);
+    expect(rowMatches({ name: "systemd" }, "kernel")).toBe(false);
   });
 });

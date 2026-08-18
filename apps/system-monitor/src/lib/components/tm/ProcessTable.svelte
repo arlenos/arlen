@@ -16,7 +16,7 @@
   import { ChevronRight, Cog, Cpu, Camera, Mic, Brain } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
   import { sensorsFor } from "$lib/stores/detail";
-  import { pinnedOrder } from "$lib/freeze";
+  import { pinnedOrder, rowMatches } from "$lib/freeze";
   import { t, locale } from "$lib/i18n/messages";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
 
@@ -68,12 +68,10 @@
     suspended: "tm.status.suspended",
   };
 
-  function matches(p: Process): boolean {
-    if (!filter.trim()) return true;
-    const q = filter.toLowerCase();
-    if (p.name.toLowerCase().includes(q)) return true;
-    return (p.children ?? []).some((c) => c.name.toLowerCase().includes(q));
-  }
+  // The rule lives in `$lib/freeze` so the child-name clause can be tested: on
+  // this machine a browser's children carry the browser's own name, so a drive
+  // cannot tell "matched itself" from "matched a child".
+  const matches = (p: Process) => rowMatches(p, filter);
   function cmp(a: Process, b: Process): number {
     const dir = sortDir === "desc" ? -1 : 1;
     if (sortKey === "name") return dir * a.name.localeCompare(b.name);
