@@ -49,7 +49,28 @@ fn socket_path(env_var: &str, file_name: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    // `warn,kernel_layer=info` and not a bare level, which is the shape
+    // `check-log-filters.py` exists to enforce: a blanket `info` would put aya and
+    // every other dependency at info too, and a dependency at info is how message
+    // bytes reach a journal no capability grant covers. This daemon speaks, its
+    // dependencies do not.
+    //
+    // What was here was `env_logger::init()`, which defaults to ERROR - the mute
+    // half of that same gate's docstring, still in the one daemon the gate does
+    // not read.
+    //
+    // That was not cosmetic. `kernel_verdict` says a verifier refusal is "invisible
+    // from everywhere except the sensor's own journal" - and the sensor's own
+    // journal held nothing either, because every line it writes is info!. The
+    // 18 August boot logged four systemd lines, 2.5s of CPU and not one word about
+    // which of the four tracepoints attached, while its file probe produced zero
+    // events and its exec probe produced fifty. Which of those attached is the
+    // first question anyone asks, and the answer was being thrown away at the
+    // logger.
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("warn,kernel_layer=info"),
+    )
+    .init();
 
     let producer_socket = socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
 
