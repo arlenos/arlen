@@ -425,6 +425,18 @@ jobs:
             /opt/hostedtoolcache/CodeQL /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
           df -h /
       - name: system deps
+        # A step-level ceiling, because THIS is the step that hangs.
+        # Measured on run 32104354507 (18 Aug): 101 jobs finished and three -
+        # apps/files/core, ai, apps/viewers/core - sat here for 52 minutes with
+        # every later step pending. The three before that were a different six,
+        # and the six before those different again, which is what a shared step
+        # stalling on whichever jobs it catches looks like from the outside.
+        #
+        # 10 minutes is generous for an apt install that normally takes under two,
+        # and it turns a job that would burn the whole 75-minute job ceiling into a
+        # red naming this step. The retries handle the ordinary case of one mirror
+        # being unreachable, which is the likeliest cause of the stall itself.
+        timeout-minutes: 10
         # cmake + nasm build AWS-LC, which aws-lc-rs (pulled in by the tough TUF
         # library, used by forage/cookbook-sign) compiles from C source.
         run: |
@@ -521,6 +533,8 @@ jobs:
             /opt/hostedtoolcache/CodeQL /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
           df -h /
       - name: system deps
+        # Same ceiling as the first, same reason.
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -570,6 +584,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: system deps
+        # Same ceiling as the first, same reason.
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
