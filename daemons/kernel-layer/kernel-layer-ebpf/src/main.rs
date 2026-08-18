@@ -22,8 +22,8 @@ use aya_ebpf::{
 };
 use aya_log_ebpf::debug;
 use kernel_layer_common::{
-    FileOpenedEvent, FileWrittenEvent, NetStateEvent, ProcessExecEvent,
-    MAX_COMM_LEN, MAX_PATH_LEN,
+    syscall_arg, FileOpenedEvent, FileWrittenEvent, NetStateEvent, ProcessExecEvent, MAX_COMM_LEN,
+    MAX_PATH_LEN,
 };
 
 /// Ring buffer shared between the eBPF program and the user-space daemon.
@@ -66,7 +66,7 @@ fn try_file_opened(ctx: TracePointContext) -> Result<(), i64> {
     // path. Measured on the boot that proved it: 50687 opens seen, 50687
     // discarded for an empty path, none filtered and none deduped.
     let filename_ptr = unsafe {
-        ctx.read_at::<u64>(24).map_err(|_| -1i64)? as *const u8
+        ctx.read_at::<u64>(syscall_arg(1)).map_err(|_| -1i64)? as *const u8
     };
 
     let uid_gid = unsafe { bpf_get_current_uid_gid() };
@@ -187,8 +187,8 @@ fn try_file_written(ctx: TracePointContext) -> Result<(), i64> {
     // These were 8 and 24, which read `__syscall_nr` as the fd and `buf` as the
     // count. The fd then failed the `fd <= 2` guard or resolved to nothing, which
     // is why this probe forwarded as little as its sibling.
-    let fd: u64 = unsafe { ctx.read_at(16).map_err(|_| -1i64)? };
-    let count: u64 = unsafe { ctx.read_at(32).map_err(|_| -1i64)? };
+    let fd: u64 = unsafe { ctx.read_at(syscall_arg(0)).map_err(|_| -1i64)? };
+    let count: u64 = unsafe { ctx.read_at(syscall_arg(2)).map_err(|_| -1i64)? };
 
     // Skip stdin/stdout/stderr
     if fd <= 2 {

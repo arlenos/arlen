@@ -11,6 +11,32 @@
 /// Longer paths are truncated. 256 bytes covers most practical paths.
 pub const MAX_PATH_LEN: usize = 256;
 
+/// Byte offset of the FIRST syscall argument inside a `sys_enter_*` tracepoint
+/// record, and the stride between arguments.
+///
+/// A tracepoint record starts with the common fields - `common_type` (2),
+/// `common_flags` (1), `common_preempt_count` (1), `common_pid` (4) - then
+/// `__syscall_nr`, then the arguments, each widened to 8 bytes. `read_at` indexes
+/// the record, so an argument's offset is `syscall_arg(n)` and not the offset
+/// documented in the kernel's own arg-relative tables.
+///
+/// This exists because both file probes had those two scales confused until 18
+/// August: each carried its own comment saying "relative to args start" beside a
+/// read that indexed the record, so the openat probe read `dfd` where it wanted
+/// `filename` and forwarded nothing for months. Measured on the boot that found
+/// it: 50687 opens seen, 50687 discarded for an empty path.
+///
+/// Naming it once means the next probe inherits the reasoning instead of
+/// repeating the mistake, and `syscall_arg(1)` says which argument is wanted
+/// where `24` says only where to look.
+pub const SYSCALL_ARG_BASE: usize = 16;
+
+/// Offset of the `n`th syscall argument within the tracepoint record. Argument 0
+/// is the syscall's first parameter.
+pub const fn syscall_arg(n: usize) -> usize {
+    SYSCALL_ARG_BASE + n * 8
+}
+
 /// An event emitted when a file is opened via the `openat` syscall.
 ///
 /// Written by the eBPF tracepoint program into the ring buffer.
@@ -98,3 +124,19 @@ pub struct NetStateEvent {
 
 #[cfg(feature = "user")]
 unsafe impl Send for NetStateEvent {}
+
+
+#[cfg(test)]
+mod arg_offset_tests {
+    use super::syscall_arg;
+
+    /// The three offsets the file probes actually use, spelled out so a change to
+    /// the base or the stride has to be deliberate. These are the numbers that
+    /// were wrong by exactly one common-field block until 18 August.
+    #[test]
+    fn the_arguments_sit_where_the_record_layout_says() {
+        assert_eq!(syscall_arg(0), 16, "first argument, after the common fields and __syscall_nr");
+        assert_eq!(syscall_arg(1), 24, "openat filename");
+        assert_eq!(syscall_arg(2), 32, "write count");
+    }
+}
