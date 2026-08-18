@@ -61,6 +61,10 @@ pub struct Counters {
     pub devices: Vec<DeviceCounters>,
     /// Per-physical-interface byte counters.
     pub links: Vec<LinkCounters>,
+    /// CPU package temperature in Celsius, or `None` where no CPU sensor exists.
+    pub cpu_temp_c: Option<CpuTemp>,
+    /// Per-core clock in MHz, empty where the machine exposes no `cpufreq`.
+    pub core_freqs: Vec<Option<f64>>,
     /// Sectors read across the physical block devices.
     pub disk_read_sectors: u64,
     /// Sectors written across the physical block devices.
@@ -114,6 +118,10 @@ pub struct SystemTick {
     pub devices: Vec<DeviceRate>,
     /// Per-physical-interface rates, same rules as `devices`.
     pub links: Vec<LinkRate>,
+    /// CPU temperature with its sensor label, `None` where unmeasured.
+    pub cpu_temp_c: Option<CpuTemp>,
+    /// Per-core clock in MHz, empty where unmeasured.
+    pub core_freqs: Vec<Option<f64>>,
 }
 
 /// A `/proc` and `/sys` reader, rooted so tests can point it at a fixture.
@@ -167,6 +175,8 @@ impl SysProbe {
         let netdev = std::fs::read_to_string(self.proc_root.join("net/dev")).unwrap_or_default();
         let (net_rx_bytes, net_tx_bytes) = parse_netdev(&netdev, &|n| self.is_real_link(n));
         let links = parse_netdev_links(&netdev, &|n| self.is_real_link(n));
+        let cpu_temp_c = read_cpu_temp(&self.sys_root);
+        let core_freqs = read_core_freqs(&self.sys_root, cores.len());
         // Absent on a kernel without CONFIG_PSI. `unwrap_or_default()` like the
         // others would turn that into an empty string and then into 0.00 - a
         // green meter over a machine nobody measured - so this one keeps the
@@ -188,6 +198,8 @@ impl SysProbe {
             load,
             devices,
             links,
+            cpu_temp_c,
+            core_freqs,
         }
     }
 
@@ -534,6 +546,102 @@ pub fn link_rates(now: &[LinkCounters], prev: &[LinkCounters], secs: f64) -> Vec
         .collect()
 }
 
+/// hwmon chip names that are a CPU temperature.
+///
+/// An allowlist rather than "the first sensor found", because `/sys/class/hwmon`
+/// on this laptop holds eleven chips including the charger, two DIMM sensors and
+/// the WiFi radio. Picking one by position would put the SSD's temperature under
+/// a heading that says CPU, and a wrong number under a confident label is worse
+/// than no number at all.
+///
+/// `k10temp` and `zenpower` are AMD, `coretemp` Intel, `cpu_thermal` the
+/// ARM/Raspberry Pi driver.
+const CPU_SENSORS: &[&str] = &["k10temp", "coretemp", "zenpower", "cpu_thermal"];
+
+/// A CPU temperature reading and WHAT it is a temperature of.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CpuTemp {
+    pub celsius: f64,
+    /// The sensor's own label - `Tdie`, `Tctl`, `Package id 0`.
+    ///
+    /// Carried rather than dropped because on AMD it changes what the number
+    /// MEANS. This laptop's `k10temp` reports only `Tctl`, which is a control
+    /// value carrying a vendor offset: it reads a steady 100.1 C while the die
+    /// is far cooler. Printed bare under the word "temperature" that is a
+    /// machine apparently about to melt, so the label goes with the figure and
+    /// the reader can tell which one they are looking at.
+    pub label: String,
+}
+
+/// The CPU temperature, or `None`.
+///
+/// `None` covers a machine with no such sensor at all - most VMs, and any chip
+/// whose driver is not loaded - and it must stay distinct from a reading: 0 C is
+/// a plausible-looking number and would be a lie on every machine that has ever
+/// been switched on.
+///
+/// Within a matching chip, a sensor labelled `Tdie` wins over any other, because
+/// it is the actual silicon temperature where `Tctl` is an offset control value.
+/// Where only `Tctl` exists it is reported under its own name rather than
+/// silently promoted.
+pub fn read_cpu_temp(sys_root: &std::path::Path) -> Option<CpuTemp> {
+    let dir = sys_root.join("class/hwmon").read_dir().ok()?;
+    let mut chips: Vec<_> = dir.filter_map(|e| e.ok().map(|e| e.path())).collect();
+    // Sorted so a machine with two matching chips picks the same one every tick
+    // rather than flickering between them as readdir order changes.
+    chips.sort();
+    for chip in chips {
+        let Ok(name) = std::fs::read_to_string(chip.join("name")) else { continue };
+        if !CPU_SENSORS.contains(&name.trim()) {
+            continue;
+        }
+        let mut found: Vec<CpuTemp> = Vec::new();
+        for i in 1..=8 {
+            let Ok(raw) = std::fs::read_to_string(chip.join(format!("temp{i}_input"))) else {
+                continue;
+            };
+            let Ok(milli) = raw.trim().parse::<f64>() else { continue };
+            let label = std::fs::read_to_string(chip.join(format!("temp{i}_label")))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| format!("temp{i}"));
+            found.push(CpuTemp { celsius: milli / 1000.0, label });
+        }
+        if let Some(die) = found.iter().find(|t| t.label.eq_ignore_ascii_case("Tdie")) {
+            return Some(die.clone());
+        }
+        if let Some(first) = found.into_iter().next() {
+            return Some(first);
+        }
+    }
+    None
+}
+
+/// Current clock of each logical core, in megahertz, in `cpuN` order.
+///
+/// Empty where the machine exposes no `cpufreq` - a VM, or a driver that is not
+/// loaded - rather than a list of zeros, for the same reason as the temperature.
+/// `count` comes from the caller so the list lines up with the core grid even if
+/// a core's `cpufreq` directory is missing: that core reports `None` in place.
+pub fn read_core_freqs(sys_root: &std::path::Path, count: usize) -> Vec<Option<f64>> {
+    let mut out = Vec::with_capacity(count);
+    let mut any = false;
+    for i in 0..count {
+        let path = sys_root
+            .join("devices/system/cpu")
+            .join(format!("cpu{i}"))
+            .join("cpufreq/scaling_cur_freq");
+        // Kilohertz in the file; megahertz is what a person reads.
+        let mhz = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .map(|khz| khz / 1000.0);
+        any |= mhz.is_some();
+        out.push(mhz);
+    }
+    if any { out } else { Vec::new() }
+}
+
 /// The memory-pressure meter the plan asks for, backed by real PSI.
 ///
 /// `/proc/pressure/memory` is the kernel telling you how much time tasks spent
@@ -715,6 +823,8 @@ impl SystemMonitor {
                 load: now_counters.load,
                 devices: Vec::new(),
                 links: Vec::new(),
+                cpu_temp_c: now_counters.cpu_temp_c.clone(),
+                core_freqs: now_counters.core_freqs.clone(),
                 disk_read_mbs: 0.0,
                 disk_write_mbs: 0.0,
                 net_rx_mbs: 0.0,
@@ -757,6 +867,8 @@ impl SystemMonitor {
             load: now_counters.load,
             devices: device_rates(&now_counters.devices, &prev.devices, secs),
             links: link_rates(&now_counters.links, &prev.links, secs),
+            cpu_temp_c: now_counters.cpu_temp_c.clone(),
+            core_freqs: now_counters.core_freqs.clone(),
         }
     }
 }
@@ -1219,5 +1331,114 @@ mod tests {
         assert_eq!(c.devices.len(), 1, "the mapper is the same traffic, not more of it");
         assert_eq!(c.devices[0].name, "nvme0n1");
         assert_eq!(c.disk_read_sectors, 2048, "and the total is not doubled");
+    }
+
+    // ---- temperature and clock ---------------------------------------------
+
+    /// The case the allowlist exists for: this laptop's `/sys/class/hwmon` holds
+    /// the charger, two DIMM sensors and the WiFi radio alongside the CPU, and
+    /// picking by position would put one of those under a "CPU" heading.
+    #[test]
+    fn the_cpu_sensor_is_chosen_by_name_and_not_by_position() {
+        let dir = tmp("temp");
+        for (i, (name, val)) in [("ACAD", "0"), ("spd5118", "45000"), ("k10temp", "61500")]
+            .iter()
+            .enumerate()
+        {
+            let h = dir.join("sys/class/hwmon").join(format!("hwmon{i}"));
+            std::fs::create_dir_all(&h).unwrap();
+            std::fs::write(h.join("name"), name).unwrap();
+            std::fs::write(h.join("temp1_input"), val).unwrap();
+        }
+        let got = read_cpu_temp(&dir.join("sys")).unwrap();
+        assert_eq!(got.celsius, 61.5, "the k10temp, not the first chip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A machine with sensors but none of them a CPU one reads as unmeasured. A
+    /// plausible-looking 0 C would be a lie on any machine that is switched on.
+    #[test]
+    fn a_machine_with_no_cpu_sensor_reports_nothing_rather_than_zero() {
+        let dir = tmp("temp-none");
+        let h = dir.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&h).unwrap();
+        std::fs::write(h.join("name"), "nvme").unwrap();
+        std::fs::write(h.join("temp1_input"), "40000").unwrap();
+        assert_eq!(read_cpu_temp(&dir.join("sys")), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn no_hwmon_directory_at_all_is_not_an_error() {
+        assert_eq!(read_cpu_temp(std::path::Path::new("/nonexistent")), None);
+    }
+
+    #[test]
+    fn core_clocks_are_read_per_core_in_megahertz() {
+        let dir = tmp("freq");
+        for (i, khz) in ["4244342", "1400000"].iter().enumerate() {
+            let c = dir.join("sys/devices/system/cpu").join(format!("cpu{i}")).join("cpufreq");
+            std::fs::create_dir_all(&c).unwrap();
+            std::fs::write(c.join("scaling_cur_freq"), khz).unwrap();
+        }
+        let f = read_core_freqs(&dir.join("sys"), 2);
+        assert_eq!(f[0], Some(4244.342));
+        assert_eq!(f[1], Some(1400.0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A machine with no cpufreq at all - a VM, or a driver not loaded - gets an
+    /// empty list rather than a row of zeros that would read as idle cores.
+    #[test]
+    fn a_machine_without_cpufreq_reports_an_empty_list() {
+        assert!(read_core_freqs(std::path::Path::new("/nonexistent"), 4).is_empty());
+    }
+
+    /// One core missing its directory does not lose the others, and keeps its
+    /// place so the list still lines up with the grid.
+    #[test]
+    fn a_core_without_cpufreq_holds_its_place_as_unmeasured() {
+        let dir = tmp("freq-gap");
+        let c = dir.join("sys/devices/system/cpu/cpu1/cpufreq");
+        std::fs::create_dir_all(&c).unwrap();
+        std::fs::write(c.join("scaling_cur_freq"), "2000000").unwrap();
+        let f = read_core_freqs(&dir.join("sys"), 3);
+        assert_eq!(f, vec![None, Some(2000.0), None]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The finding this label exists for: `Tctl` is a control value with a
+    /// vendor offset, and on this laptop it reads a steady 100.1 C while the die
+    /// is far cooler. Where a chip offers both, the real one wins.
+    #[test]
+    fn a_die_reading_beats_the_offset_control_value() {
+        let dir = tmp("tdie");
+        let h = dir.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&h).unwrap();
+        std::fs::write(h.join("name"), "k10temp").unwrap();
+        std::fs::write(h.join("temp1_input"), "100125").unwrap();
+        std::fs::write(h.join("temp1_label"), "Tctl").unwrap();
+        std::fs::write(h.join("temp2_input"), "73000").unwrap();
+        std::fs::write(h.join("temp2_label"), "Tdie").unwrap();
+        let got = read_cpu_temp(&dir.join("sys")).unwrap();
+        assert_eq!(got.celsius, 73.0);
+        assert_eq!(got.label, "Tdie");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// And where only Tctl exists, it is reported UNDER ITS OWN NAME rather than
+    /// promoted to a die temperature it is not.
+    #[test]
+    fn a_tctl_only_chip_says_that_is_what_it_is() {
+        let dir = tmp("tctl");
+        let h = dir.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&h).unwrap();
+        std::fs::write(h.join("name"), "k10temp").unwrap();
+        std::fs::write(h.join("temp1_input"), "100125").unwrap();
+        std::fs::write(h.join("temp1_label"), "Tctl").unwrap();
+        let got = read_cpu_temp(&dir.join("sys")).unwrap();
+        assert_eq!(got.label, "Tctl");
+        assert_eq!(got.celsius, 100.125);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
