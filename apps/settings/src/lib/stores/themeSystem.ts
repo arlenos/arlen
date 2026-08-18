@@ -66,15 +66,10 @@ export const ICON_THEMES: SysOption[] = [
 // "Soft", which exist nowhere, so choosing one wrote a theme the resolver could
 // never find while the row showed a confident selection.
 
-// i18n-foreign: the sound files a theme ships, under the names it gives them.
-export const SOUND_NAMES: SysOption[] = [
-  { value: "None", labelKey: "s.sys.none" },
-  { value: "Message", label: "Message" },
-  { value: "Bell", label: "Bell" },
-  { value: "Click", label: "Click" },
-  { value: "Pop", label: "Pop" },
-  { value: "Chime", label: "Chime" },
-];
+// The per-event choices are no longer a constant either: `themeCues()` below
+// lists what the active theme actually ships. The list that used to sit here
+// named "Bell", "Pop" and "Click", which no theme provides, so choosing one
+// wrote a mapping that resolved to nothing and the event fell silent.
 
 /// The four system sound events.
 export const SOUND_EVENTS = [
@@ -82,6 +77,11 @@ export const SOUND_EVENTS = [
   { key: "sndError", label: "s.snd.sndError.label", hint: "s.snd.sndError.hint" },
   { key: "sndWarning", label: "s.snd.sndWarning.label", hint: "s.snd.sndWarning.hint" },
   { key: "sndAction", label: "s.snd.sndAction.label", hint: "s.snd.sndAction.hint" },
+  // The two the page could not show until 19 Aug: the daemon has always had the
+  // events and the theme schema gained the fields the same day, so they were
+  // unconfigurable rather than unwanted.
+  { key: "sndDeviceAdded", label: "s.snd.sndDeviceAdded.label", hint: "s.snd.sndDeviceAdded.hint" },
+  { key: "sndDeviceRemoved", label: "s.snd.sndDeviceRemoved.label", hint: "s.snd.sndDeviceRemoved.hint" },
 ];
 
 /// The 16 ANSI slots (normal 0-7, bright 8-15). `label` holds a message KEY,
@@ -117,10 +117,12 @@ export const SYS_DEFAULTS: Record<string, string | number | boolean> = {
   // said "Chime" until 19 Aug, which named no theme the resolver could find, so
   // the row's default selection was unreachable from the start.
   soundTheme: "arlen",
-  sndNotification: "Message",
-  sndError: "Bell",
-  sndWarning: "Pop",
-  sndAction: "Click",
+  sndNotification: "message-new-instant",
+  sndError: "dialog-error",
+  sndWarning: "dialog-warning",
+  sndAction: "complete",
+  sndDeviceAdded: "device-added",
+  sndDeviceRemoved: "device-removed",
   ansi0: "#1a1d24",
   ansi1: "#dc2626",
   ansi2: "#16a34a",
@@ -215,6 +217,16 @@ export async function installedSoundThemes(): Promise<SoundThemeOption[]> {
   if (!tauriAvailable) return [];
   try {
     return await invoke<SoundThemeOption[]>("sound_themes");
+  } catch {
+    return [];
+  }
+}
+
+/// The cue names the active theme ships, for the per-event picker.
+export async function themeCues(): Promise<string[]> {
+  if (!tauriAvailable) return [];
+  try {
+    return await invoke<string[]>("sound_cues");
   } catch {
     return [];
   }

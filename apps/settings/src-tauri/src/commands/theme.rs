@@ -857,6 +857,24 @@ pub fn sound_themes() -> Result<Vec<SoundThemeOption>, String> {
     .collect())
 }
 
+/// The cue names the active theme provides, for the per-event picker.
+///
+/// Replaces a hardcoded "Bell / Pop / Click" that no theme ships: choosing one
+/// wrote a mapping that resolved to nothing, so the event fell silent while the
+/// row showed a confident selection.
+#[tauri::command]
+pub fn sound_cues() -> Result<Vec<String>, String> {
+    let theme = arlen_notification_daemon::config::load_config(
+        &arlen_notification_daemon::config::default_config_path(),
+    )
+    .sound
+    .theme;
+    Ok(arlen_notification_daemon::sound::theme_cue_names(
+        &arlen_notification_daemon::sound::default_sound_roots(),
+        &theme,
+    ))
+}
+
 /// Play one cue, exactly as the Notification Daemon would resolve it
 /// (`sound-system-plan.md` SO-R3, the picker's play-preview).
 ///
@@ -874,8 +892,16 @@ pub fn sound_themes() -> Result<Vec<SoundThemeOption>, String> {
 /// Returns what happened rather than unit, so the page can say "this event is
 /// silenced" or "the theme has no file for it" instead of leaving a button that
 /// looks like it failed.
+/// ASYNC, and that is load-bearing rather than stylistic. `SystemSoundPlayer::play`
+/// reaps its child through `tokio::task::spawn_blocking`, whose own comment says
+/// the assumption out loud: "`play` is always called from the tokio dispatch
+/// path, so a runtime is present". A synchronous `#[tauri::command]` runs off
+/// that runtime, so `spawn_blocking` panicked and took the whole Settings app
+/// down - the WebDriver session died mid-click with "Session terminated without
+/// a reply" the first time this button was pressed on a theme that HAD a file to
+/// play. An async command runs on Tauri's tokio runtime, which satisfies it.
 #[tauri::command]
-pub fn sound_preview(name: String) -> Result<String, String> {
+pub async fn sound_preview(name: String) -> Result<String, String> {
     use arlen_notification_daemon::sound::{
         default_sound_roots, resolve_sound, SoundPlayer, SoundResolution, SystemSoundPlayer,
     };

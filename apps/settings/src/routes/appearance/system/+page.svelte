@@ -32,11 +32,11 @@
     CURSOR_THEMES,
     ICON_THEMES,
     sysOptions,
-    SOUND_NAMES,
     SOUND_EVENTS,
     ANSI_META,
     previewSound,
     installedSoundThemes,
+    themeCues,
     type PreviewOutcome,
     type SoundThemeOption,
   } from "$lib/stores/themeSystem";
@@ -51,8 +51,13 @@
   /// than falling back to the invented list it used to show.
   let soundThemes = $state<SoundThemeOption[] | undefined>(undefined);
 
+  /// The cue names the active theme ships. Empty means the read happened and the
+  /// theme provides none, which the row says rather than offering invented ones.
+  let cues = $state<string[] | undefined>(undefined);
+
   $effect(() => {
     void installedSoundThemes().then((t) => (soundThemes = t));
+    void themeCues().then((c) => (cues = c));
   });
 
   async function play(eventKey: string, name: string) {
@@ -201,7 +206,21 @@
                              reported by the speaker. -->
                         <span class="snd-said">{$t(`s.snd.outcome.${previewed[ev.key]}`)}</span>
                       {/if}
-                      <PopoverSelect value={String($effective[ev.key])} options={sysOptions(SOUND_NAMES, $t)} ariaLabel={$t("s.snd.pickAria", { event: $t(ev.label) })} onchange={(v) => setSys(ev.key, v)} />
+                      {#if cues === undefined}
+                        <span class="snd-said">{$t("s.snd.themesReading")}</span>
+                      {:else if cues.length === 0}
+                        <!-- The theme ships no cue at all. Said plainly, because
+                             the alternative is a list of names that resolve to
+                             nothing. -->
+                        <span class="snd-said">{$t("s.snd.cuesNone")}</span>
+                      {:else}
+                        <PopoverSelect
+                          value={String($effective[ev.key])}
+                          options={cues.map((c) => ({ value: c, label: c }))}
+                          ariaLabel={$t("s.snd.pickAria", { event: $t(ev.label) })}
+                          onchange={(v) => setSys(ev.key, v)}
+                        />
+                      {/if}
                     </span>
                   {/snippet}
                 </OverrideRow>

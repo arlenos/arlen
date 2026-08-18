@@ -182,6 +182,44 @@ pub fn installed_themes(roots: &[PathBuf]) -> Vec<InstalledTheme> {
     out
 }
 
+/// The cue names a theme provides, across its own directories.
+///
+/// WHAT THIS REPLACES. The per-event picker in Settings offered "Bell", "Pop"
+/// and "Click" - names no theme on any machine ships, so choosing one wrote an
+/// event mapping that resolved to nothing and the event fell silent while the
+/// row showed a confident selection. A picker for "which sound plays" has to
+/// offer sounds that exist.
+///
+/// Names only, deduplicated and sorted: a cue is a flat freedesktop identifier,
+/// and the extension (`.oga` / `.ogg` / `.wav`) is the resolver's business. A
+/// `.disabled` marker is NOT a cue - it is the absence of one - so it is skipped
+/// rather than offered as something to choose.
+pub fn theme_cue_names(roots: &[PathBuf], theme: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for root in roots {
+        let base = root.join(theme);
+        let (dirs, _) = read_theme_index(&base);
+        for d in &dirs {
+            let dir = if d.is_empty() { base.clone() } else { base.join(d) };
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Some(ext) = path.extension().and_then(|s| s.to_str()) else { continue };
+                if !matches!(ext, "oga" | "ogg" | "wav") {
+                    continue;
+                }
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    if !out.iter().any(|n| n == stem) {
+                        out.push(stem.to_string());
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// The sound-theme base directories in freedesktop precedence:
 /// `$XDG_DATA_HOME/sounds` (or `~/.local/share/sounds`) first, then each
 /// `$XDG_DATA_DIRS/sounds`. The production roots for [`resolve_sound`].
@@ -458,6 +496,42 @@ fn find_in_path(name: &str, path: &std::ffi::OsStr) -> Option<PathBuf> {
 #[cfg(test)]
 mod installed_theme_tests {
     use super::*;
+
+    #[test]
+    fn a_theme_offers_the_cues_it_actually_ships() {
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path().join("arlen/stereo");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(t.path().join("arlen/index.theme"), "[Sound Theme]\nDirectories=stereo\n").unwrap();
+        for f in ["dialog-error.oga", "complete.wav", "message-new-instant.ogg"] {
+            std::fs::write(d.join(f), b"x").unwrap();
+        }
+        // Not a cue: a silence marker is the absence of one, and offering it as a
+        // choice would let someone pick "silence" from a list of sounds.
+        std::fs::write(d.join("dialog-warning.disabled"), b"").unwrap();
+        // Nor is a stray file that is not audio at all.
+        std::fs::write(d.join("README.txt"), b"").unwrap();
+        let cues = theme_cue_names(&[t.path().to_path_buf()], "arlen");
+        assert_eq!(cues, vec!["complete", "dialog-error", "message-new-instant"]);
+    }
+
+    #[test]
+    fn a_flat_theme_without_directories_still_lists_its_cues() {
+        // `read_theme_index` answers `[""]` for a theme with no Directories key,
+        // meaning the theme root itself.
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path().join("flat");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("index.theme"), "[Sound Theme]\n").unwrap();
+        std::fs::write(d.join("bell.oga"), b"x").unwrap();
+        assert_eq!(theme_cue_names(&[t.path().to_path_buf()], "flat"), vec!["bell"]);
+    }
+
+    #[test]
+    fn a_theme_that_is_not_installed_offers_nothing_rather_than_failing() {
+        let t = tempfile::tempdir().unwrap();
+        assert!(theme_cue_names(&[t.path().to_path_buf()], "absent").is_empty());
+    }
 
     fn theme(root: &Path, dir: &str, index: Option<&str>) {
         let d = root.join(dir);
