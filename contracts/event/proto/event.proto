@@ -38,6 +38,20 @@ message FileOpenedPayload {
   uint64 cgroup_id = 4;  // cgroup v2 id of the opening task; join key to Command. 0 = no attribution
 }
 
+// Emitted when a process writes to a file.
+// Event type: "file.written"
+//
+// Present in the three daemon copies (kernel-layer, knowledge, installd) and
+// absent here until 18 August, although the kernel sensor puts this event on the
+// bus like any other. A reference proto that omits a live event type is one a
+// daemon cannot be regenerated from, which is the whole job of this file.
+message FileWrittenPayload {
+  string path      = 1;  // absolute path
+  string app_id    = 2;  // application identifier; empty from the sensor, which sees a write and not an app
+  uint64 bytes     = 3;  // number of bytes written
+  uint64 cgroup_id = 4;  // cgroup v2 id of the writer; 0 = no attribution
+}
+
 // Emitted when keyboard focus changes between Wayland surfaces.
 // Event type: "window.focused"
 message WindowFocusedPayload {
