@@ -85,7 +85,13 @@ export const unavailable = writable(false);
 /// Set only when a real backend refused - see `stop`/`setFlagChecked`.
 export const lastError = writable("");
 
-/// Load the process list. Live: `list_processes`; fixture under vite.
+/// Load the process list. Live: `list_app_rows`; fixture under vite.
+///
+/// The GROUPED rows, because that is what the plan says the landing opens on -
+/// one "chrome" row over its children rather than fifteen nameless pids. The
+/// flat `list_processes` is still there and is what the power-user toggle will
+/// ask for; both return the same `Process` shape, the grouped one simply
+/// carrying `children`.
 ///
 /// Merged, not replaced. The backend reports neither `limited` (a cgroup
 /// `cpu.max` leash it has no field for) nor `paused`, so a blind `set` would drop
@@ -94,7 +100,7 @@ export const lastError = writable("");
 /// self-corrects when a process is frozen or thawed outside this app.
 export async function load(): Promise<void> {
   try {
-    const next = await invoke<Process[]>("list_processes");
+    const next = await invoke<Process[]>("list_app_rows");
     processes.update((prev) => {
       const wasLimited = new Set(prev.filter((p) => p.limited).map((p) => p.id));
       return next.map((p) => ({
