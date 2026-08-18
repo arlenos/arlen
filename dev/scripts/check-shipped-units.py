@@ -84,7 +84,16 @@ NOT_YET_DEPLOYED: dict[str, str] = {
         "mount containment, the picker peer-credential check. Not urgent - nothing "
         "on the image routes through the portal yet - but this is a deferral of "
         "shipped fixes, not of scaffolding. The expensive half is the picker-ui, a "
-        "Tauri app, so staging is a frontend build rather than a plain daemon step"
+        "Tauri app, so staging is a frontend build rather than a plain daemon step.\n"
+        "    MEASURED 18 Aug, and the work is larger than the line above reads: "
+        "`xdg-desktop-portal` - the FRONTEND - is not in `mkosi.conf`'s package "
+        "list at all. This daemon registers "
+        "`org.freedesktop.impl.portal.desktop.arlen`, an IMPL backend, and an app "
+        "never talks to it: it calls the frontend, which authenticates the caller "
+        "and re-dispatches here. So staging the backend on its own would leave "
+        "every one of those fixes just as inert, because nothing would ever dial "
+        "it. Three parts, not one - the frontend package, the daemon, the "
+        "picker-ui - and the first is what makes the other two mean anything"
     ),
 }
 
