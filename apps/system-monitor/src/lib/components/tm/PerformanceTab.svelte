@@ -54,8 +54,18 @@
     // and the sweep could not press one until today.
     if (!s) return $perfError ? $t("tm.col.notMeasured") : $t("tm.perf.waiting");
     switch (d) {
-      case "cpu":
-        return $t("tm.perf.cpu.detail", { count: String(s.cpuCount) });
+      case "cpu": {
+        const base = $t("tm.perf.cpu.detail", { count: String(s.cpuCount) });
+        // No load line at all where it could not be read, rather than a zero:
+        // 0.00 is a real and reassuring number and would be a lie here.
+        if (!s.load) return base;
+        return `${base} - ${$t("tm.perf.cpu.load", {
+          one: n(s.load.one, 2),
+          five: n(s.load.five, 2),
+          fifteen: n(s.load.fifteen, 2),
+          perCore: n(s.load.perCore, 2),
+        })}`;
+      }
       case "memory": {
         const base = $t("tm.perf.mem.detail", {
           used: n(s.memUsedGb, 1),

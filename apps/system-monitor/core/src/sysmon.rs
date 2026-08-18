@@ -55,6 +55,8 @@ pub struct Counters {
     pub mem_pressure: Option<MemoryPressure>,
     /// Per-logical-core jiffies, in `cpuN` order, for the grid.
     pub cores: Vec<CoreTimes>,
+    /// Load average, or `None` where `/proc/loadavg` could not be read.
+    pub load: Option<LoadAverage>,
     /// Sectors read across the physical block devices.
     pub disk_read_sectors: u64,
     /// Sectors written across the physical block devices.
@@ -100,6 +102,9 @@ pub struct SystemTick {
     /// Per-core shares since the previous sample, in `cpuN` order. Empty on the
     /// first tick, when there is nothing to difference against.
     pub cores: Vec<CoreUsage>,
+    /// Load average, or `None` where it could not be read. A load of 0.00 is a
+    /// real reading, so absence is carried rather than defaulted.
+    pub load: Option<LoadAverage>,
 }
 
 /// A `/proc` and `/sys` reader, rooted so tests can point it at a fixture.
@@ -135,6 +140,12 @@ impl SysProbe {
         // The same read, so the grid and the aggregate can never disagree about
         // which instant they describe.
         let cores = parse_cpu_cores(&stat);
+        // Counted from the same `stat` read the cores came from, so the divisor
+        // and the grid describe the same machine.
+        let cpus = cores.len().max(1);
+        let load = std::fs::read_to_string(self.proc_root.join("loadavg"))
+            .ok()
+            .and_then(|s| parse_loadavg(&s, cpus));
         let meminfo = std::fs::read_to_string(self.proc_root.join("meminfo")).unwrap_or_default();
         let (mem_total_kb, mem_available_kb) = parse_meminfo(&meminfo);
         let diskstats =
@@ -161,6 +172,7 @@ impl SysProbe {
             net_tx_bytes,
             mem_pressure,
             cores,
+            load,
         }
     }
 
@@ -297,6 +309,50 @@ pub struct CoreUsage {
     /// Waiting on I/O, which is not the same as busy. Carried separately so the
     /// grid can colour it differently rather than adding it to the height.
     pub iowait: f64,
+}
+
+/// The three load averages, and what they mean on THIS machine.
+///
+/// Load is the number of tasks runnable or in uninterruptible sleep, averaged
+/// over one, five and fifteen minutes. On its own it is not a percentage and not
+/// comparable between machines: a load of 8 is half-idle on a sixteen-thread box
+/// and badly oversubscribed on a dual-core one. So the count it is measured
+/// against travels with it rather than being left for the reader to remember.
+// `rename_all` is NOT inherited from the tick that carries this: serde applies
+// it per struct, so a nested one without it ships `per_core` while the frontend
+// reads `perCore` and the whole line silently vanishes. That is exactly what
+// happened, and the screenshot probe is what said so.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadAverage {
+    /// One-minute average: what is happening now.
+    pub one: f64,
+    /// Five-minute average.
+    pub five: f64,
+    /// Fifteen-minute average: whether this is a spike or the shape of the day.
+    pub fifteen: f64,
+    /// `one` divided by the logical CPU count - the figure that is comparable.
+    /// At 1.0 the machine is exactly saturated; above it, work is queueing.
+    pub per_core: f64,
+}
+
+/// Parse `/proc/loadavg`, which is `one five fifteen running/total lastpid`.
+///
+/// `None` rather than zeros when the line is missing or short: a load of 0.00 is
+/// a real and reassuring reading, so a failed parse must not be able to produce
+/// one. `cpus` is clamped to at least 1 so the division cannot blow up on a
+/// machine whose core count could not be read either.
+pub fn parse_loadavg(text: &str, cpus: usize) -> Option<LoadAverage> {
+    let mut f = text.split_whitespace();
+    let one: f64 = f.next()?.parse().ok()?;
+    let five: f64 = f.next()?.parse().ok()?;
+    let fifteen: f64 = f.next()?.parse().ok()?;
+    Some(LoadAverage {
+        one,
+        five,
+        fifteen,
+        per_core: one / cpus.max(1) as f64,
+    })
 }
 
 /// The memory-pressure meter the plan asks for, backed by real PSI.
@@ -475,6 +531,7 @@ impl SystemMonitor {
                 mem_total_gb,
                 mem_pressure: now_counters.mem_pressure,
                 cores: Vec::new(),
+                load: now_counters.load,
                 disk_read_mbs: 0.0,
                 disk_write_mbs: 0.0,
                 net_rx_mbs: 0.0,
@@ -514,6 +571,7 @@ impl SystemMonitor {
             rates_ready: true,
             mem_pressure: now_counters.mem_pressure,
             cores: core_percentages(&now_counters.cores, &prev.cores),
+            load: now_counters.load,
         }
     }
 }
@@ -794,5 +852,54 @@ mod tests {
         let prev = parse_cpu_cores("cpu0 0 0 0 0 0\n");
         let now = parse_cpu_cores("cpu0 10 0 0 0 0\ncpu1 10 0 0 0 0\n");
         assert_eq!(core_percentages(&now, &prev).len(), 1);
+    }
+
+    // ---- load average -------------------------------------------------------
+
+    /// This machine's real line, including the trailing fields nobody wants.
+    #[test]
+    fn the_real_loadavg_line_parses_and_ignores_its_tail() {
+        let l = parse_loadavg("2.45 3.48 4.04 5/3333 2710519\n", 16).unwrap();
+        assert_eq!(l.one, 2.45);
+        assert_eq!(l.five, 3.48);
+        assert_eq!(l.fifteen, 4.04);
+    }
+
+    /// The number that is actually comparable. A load of 8 is half-idle on this
+    /// box and badly oversubscribed on a dual-core one, and the raw figure looks
+    /// identical in both.
+    #[test]
+    fn the_same_load_reads_differently_on_different_machines() {
+        assert_eq!(parse_loadavg("8 0 0", 16).unwrap().per_core, 0.5);
+        assert_eq!(parse_loadavg("8 0 0", 2).unwrap().per_core, 4.0);
+    }
+
+    #[test]
+    fn saturation_is_one_per_core() {
+        assert_eq!(parse_loadavg("16 0 0", 16).unwrap().per_core, 1.0);
+    }
+
+    /// 0.00 is a real and reassuring reading, so a failed parse must not be able
+    /// to produce one.
+    #[test]
+    fn an_unreadable_loadavg_is_absent_rather_than_zero() {
+        assert!(parse_loadavg("", 4).is_none());
+        assert!(parse_loadavg("1.0 2.0", 4).is_none(), "a short line is not a load");
+        assert!(parse_loadavg("banana 2 3", 4).is_none());
+    }
+
+    /// A machine whose core count could not be read either must not divide by it.
+    #[test]
+    fn a_zero_core_count_does_not_blow_up_the_division() {
+        let l = parse_loadavg("4 0 0", 0).unwrap();
+        assert_eq!(l.per_core, 4.0);
+    }
+
+    #[test]
+    fn a_proc_tree_with_no_loadavg_yields_none() {
+        let dir = tmp("no-load");
+        let probe = fixture(&dir, &["sda"]);
+        assert!(probe.read().load.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

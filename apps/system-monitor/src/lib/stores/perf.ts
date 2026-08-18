@@ -60,6 +60,9 @@ export type SystemTick = {
   /// One entry per logical core, in `cpuN` order. Empty on the first tick, when
   /// there is nothing to difference against.
   cores: CoreUsage[];
+  /// Load average, or null where `/proc/loadavg` could not be read. 0.00 is a
+  /// real reading, so absence is null rather than zero.
+  load: { one: number; five: number; fifteen: number; perCore: number } | null;
 };
 
 /// One core's share of its own last interval, in percent.
