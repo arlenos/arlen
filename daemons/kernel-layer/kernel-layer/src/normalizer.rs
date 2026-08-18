@@ -156,7 +156,13 @@ fn handle_file_opened(
 
     let payload = proto::FileOpenedPayload {
         path: path.clone(),
-        app_id: format!("ebpf:{}", event.pid),
+        // Deliberately EMPTY, not `ebpf:<pid>`. The sensor observes a syscall; it
+        // does not know which application made it, and inventing a pid-shaped
+        // stand-in here silently wins over the cgroup key in
+        // `promote_file_opened` - whose whole point is that a pid is reused within
+        // a boot and a cgroup id is not. The payload carries `cgroup_id` as its
+        // own field; the consumer picks the best key it has from that.
+        app_id: String::new(),
         flags: 0,
         cgroup_id: event.cgroup_id,
     };
