@@ -20,7 +20,13 @@
 set -eu
 
 if [ "${ARLEN_KERNEL_LAYER:-0}" != "1" ]; then
-    echo ">> kernel layer not requested; skipping (set ARLEN_KERNEL_LAYER=1)"
+    # Name the flag a CALLER passes, not the variable this script reads. Those are
+    # different things and the difference cost two forty-minute builds on 18
+    # August: `ARLEN_KERNEL_LAYER=1` is set by `build-image.sh` from
+    # `--kernel-layer`, and mkosi does not forward host environment into the build
+    # container, so exporting it by hand does exactly nothing and the build says
+    # this line anyway.
+    echo ">> kernel layer not requested; skipping (build with: dev/mkosi/build-image.sh --kernel-layer)"
     exit 0
 fi
 
