@@ -53,6 +53,10 @@ export type SystemTick = {
   netTxMbs: number;
   /// False on the first tick, when the rates have nothing to delta against.
   ratesReady: boolean;
+  /// Memory pressure from `/proc/pressure/memory`, or null where the kernel
+  /// exposes none. Null is "not measured", NOT "fine" - see the meter's own
+  /// strings, which say so rather than showing a green light.
+  memPressure: { some10: number; full10: number; level: "ok" | "warn" | "critical" } | null;
 };
 
 /// How many points the graphs hold.
