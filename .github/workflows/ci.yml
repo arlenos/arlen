@@ -242,6 +242,7 @@ jobs:
           python3 dev/scripts/check-bus-declarations.py
           python3 dev/scripts/check-log-filters.py
           python3 dev/scripts/check-runtime-deps.py
+          python3 dev/scripts/check-linked-libraries.py
           python3 dev/scripts/check-bus-socket-pins.py
           python3 dev/scripts/check-probe-admission.py
           python3 dev/scripts/check-dbus-activation.py
@@ -290,6 +291,7 @@ jobs:
           node dev/scripts/test-check-bus-declarations.mjs
           node dev/scripts/test-check-log-filters.mjs
           node dev/scripts/test-check-runtime-deps.mjs
+          node dev/scripts/test-check-linked-libraries.mjs
           node dev/scripts/test-check-bus-socket-pins.mjs
           node dev/scripts/test-check-probe-admission.mjs
           node dev/scripts/test-check-dbus-activation.mjs
