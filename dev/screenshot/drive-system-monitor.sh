@@ -61,16 +61,28 @@ say "lists real processes off this machine, with columns" \
      && printf '%s' "$got" | grep -q "Name" && echo 1 || echo 0)" "$got"
 
 cat > "$probes/p-sort.js" <<'JS'
-await new Promise(r => setTimeout(r, 2500));
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(2500);
 const rows = () => [...document.querySelectorAll("[role=row]")]
   .filter(r => !r.querySelector("[role=columnheader]"));
 const top = () => rows().slice(0, 3).map(r => (r.textContent||"").replace(/\s+/g," ").trim().slice(0,30));
+// Wait for a MEASURED CPU column before capturing the order. CPU is a delta, so
+// the first poll of a run has none and every row reads a dash; with every value
+// tied the default CPU sort can coincidentally equal the memory sort, and this
+// probe then reports "clicking did nothing" about a table with nothing to sort.
+// That is how it went red on 18 August, after another probe left the refresh
+// rate at 10s and the second sample had not arrived.
+for (let i = 0; i < 40; i++) {
+  const cpu = rows()[0]?.querySelectorAll(".cell.num")[0]?.textContent?.trim();
+  if (cpu && cpu !== "-") break;
+  await wait(500);
+}
 const before = top();
 const mem = [...document.querySelectorAll("[role=columnheader]")]
   .find(h => /memory/i.test(h.textContent||""));
 if (!mem) return "no memory column";
 (mem.querySelector("button") || mem).click();
-await new Promise(r => setTimeout(r, 1000));
+await wait(1000);
 return JSON.stringify({ before, after: top() });
 JS
 got=$(drive "$probes/p-sort.js" sysmon-sort.png)
@@ -474,6 +486,57 @@ else
     && awk "BEGIN{exit !($pss > 0 && $pss < $rss)}" && ok=1
   say "the statistics and memory tabs read the kernel, and stay blank when they cannot" "$ok" "$got"
 fi
+
+
+# THE GLOBAL REFRESH RATE, which the plan names beside freeze-the-refresh. The
+# failure mode for a control like this is being cosmetic: the select changes, the
+# stored value changes, and the timer keeps its old period. So this MEASURES the
+# cadence at both ends of the range instead of asserting the widget moved.
+cat > "$probes/p-rate.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(2500);
+const sel = document.querySelector("select.rate-select");
+if (!sel) return JSON.stringify({ error: "no rate control" });
+const set = async (v) => {
+  sel.value = v;
+  sel.dispatchEvent(new Event("change", { bubbles: true }));
+  await wait(400);
+};
+// How often the top row's text changes over `secs`. CPU figures move every poll
+// on any real machine, so this counts polls without needing a clock inside the
+// app.
+const changes = async (secs) => {
+  let last = null, n = 0;
+  for (let i = 0; i < secs * 4; i++) {
+    await wait(250);
+    const v = document.querySelectorAll("[role=row][data-pid]")[0]?.innerText || "";
+    if (last !== null && v !== last) n++;
+    last = v;
+  }
+  return n;
+};
+await set("500");
+const fast = await changes(5);
+await set("10000");
+const slow = await changes(5);
+const stored = localStorage.getItem("arlen.system-monitor.refreshMs");
+// Put it back. The rate PERSISTS, so leaving it at 10s made the next probe's app
+// start with no second sample yet - every row read a dash where the sort probe
+// expected figures, and that probe went red with nothing wrong in the app. A
+// probe that changes remembered state has to change it back.
+await set("2000");
+return JSON.stringify({ opts: [...sel.options].map(o => o.textContent.trim()),
+  fast, slow, stored, restored: localStorage.getItem("arlen.system-monitor.refreshMs") });
+JS
+got=$(drive "$probes/p-rate.js" sysmon-rate.png)
+fast=$(printf '%s' "$got" | sed -n 's/.*"fast":\([0-9]*\).*/\1/p')
+slow=$(printf '%s' "$got" | sed -n 's/.*"slow":\([0-9]*\).*/\1/p')
+ok=0
+# Five seconds at 500ms is up to ten polls and at 10s is at most one, so the two
+# cannot be confused by a slow machine or a quiet moment.
+[ -n "$fast" ] && [ -n "$slow" ] && [ "$fast" -ge 4 ] && [ "$slow" -le 1 ] \
+  && printf '%s' "$got" | grep -q '"stored":"10000"' && ok=1
+say "the refresh-rate control changes how often the machine is actually read" "$ok" "$got"
 
 
 [ "$fail" = 0 ] && echo "a process list that sorts, a detail that names a pid, graphs that draw, and a kill that asks before it acts"

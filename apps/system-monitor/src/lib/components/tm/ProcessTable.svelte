@@ -16,6 +16,7 @@
   import { ChevronRight, Cog, Cpu, Camera, Mic, Brain } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
   import { sensorsFor } from "$lib/stores/detail";
+  import { ratesReady } from "$lib/stores/processes";
   import { pinnedOrder, rowMatches } from "$lib/freeze";
   import { t, locale } from "$lib/i18n/messages";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
@@ -222,7 +223,9 @@
   // August in the first desktop-width sweep. Blank says nothing, which is what we
   // know, and it is already this file's convention: `rate()` renders a zero rate
   // as blank rather than as a nought.
-  const totalCpu = $derived(list.length ? `${formatDecimal(totals.cpu, 0, $locale)}%` : "");
+  const totalCpu = $derived(
+    list.length && $ratesReady ? `${formatDecimal(totals.cpu, 0, $locale)}%` : "",
+  );
   const totalMem = $derived(list.length ? mem(totals.memMB) : "");
   const totalDisk = $derived(list.length ? rate(totals.diskKBs) || "0" : "");
   /// Whether per-process network is measured at all on this system.
@@ -384,9 +387,15 @@
             {#if accessMeasured && sensors.mic}<Mic size={13} strokeWidth={2} />{/if}
             {#if accessMeasured && sensors.knowledge}<span class="kg-glyph"><Brain size={13} strokeWidth={2} /></span>{/if}
           </div>
-          <div class="cell num" role="gridcell" style="--heat: {dispHeat(p)}">{formatDecimal(dispCpu(p), 1, $locale)}%</div>
+          <!-- A dash until the second poll. CPU and disk are deltas, so the
+               first sample of a run has nothing to subtract and the backend
+               reports zero; printing it says "using no CPU" about a process
+               nobody has measured yet, and at a 10s refresh that sentence is on
+               screen for ten seconds. -->
+          <div class="cell num" role="gridcell" style="--heat: {$ratesReady ? dispHeat(p) : 0}"
+            >{$ratesReady ? `${formatDecimal(dispCpu(p), 1, $locale)}%` : "-"}</div>
           <div class="cell num" role="gridcell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
-          <div class="cell num muted" role="gridcell">{rate(p.diskKBs)}</div>
+          <div class="cell num muted" role="gridcell">{$ratesReady ? rate(p.diskKBs) : "-"}</div>
           <!-- Not a zero. Per-process network is not in /proc - it needs eBPF or
                cgroup attribution, and `procmon.rs` says so and reports 0 - so
                printing "0" here would state that this process used no network,

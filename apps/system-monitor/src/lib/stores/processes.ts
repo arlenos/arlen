@@ -11,6 +11,7 @@
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
+import { refreshMs } from "$lib/refresh";
 
 /// Which group a process lives in.
 export type ProcGroup = "app" | "background" | "system";
@@ -116,6 +117,15 @@ export async function load(): Promise<void> {
     });
     mocked.set(false);
     unavailable.set(false);
+    // CPU, disk and network are DELTAS against the previous sample, so the first
+    // poll of a run has nothing to subtract and the backend reports them as
+    // zero. Rendering that zero says "this process is using no CPU", which is a
+    // measurement nobody took - and at a 10s refresh rate it is on screen for
+    // ten seconds. The Performance tab already had this distinction as
+    // `ratesReady`; the process list did not, and every row read 0.0% until the
+    // second poll landed.
+    loads += 1;
+    if (loads >= 2) ratesReady.set(true);
   } catch {
     if (import.meta.env.DEV) {
       processes.set(FIXTURE);
@@ -135,7 +145,20 @@ export async function load(): Promise<void> {
   }
 }
 
+/// How many successful polls this run has had. Two are needed before any rate
+/// column means anything.
+let loads = 0;
+
+/// False until a delta exists. The table renders the rate columns as unmeasured
+/// while it is false rather than printing the backend's placeholder zero.
+///
+/// Starts TRUE without a Tauri runtime: under vite the fixture is the data, it
+/// is not a delta of anything, and blanking its CPU column would make the mock
+/// unreviewable while telling the truth about nothing.
+export const ratesReady = writable(!tauriAvailable);
+
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let rateUnsub: (() => void) | null = null;
 
 /// Poll the process list while the Processes tab is visible.
 ///
@@ -147,13 +170,31 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 ///
 /// Only polls with a real backend: under vite each tick would re-set the fixture
 /// and wipe the optimistic Stop/Pause the mock relies on to stay reviewable.
-export function startProcessPolling(intervalMs = 2000): void {
+export function startProcessPolling(intervalMs?: number): void {
   if (pollTimer || !tauriAvailable) return;
-  pollTimer = setInterval(() => void load(), intervalMs);
+  if (intervalMs !== undefined) {
+    pollTimer = setInterval(() => void load(), intervalMs);
+    return;
+  }
+  // Follows the shared rate (system-monitor-plan.md (a)). Subscribing rather
+  // than reading once means changing the rate takes effect on the running view,
+  // not at the next mount - a control that only applies after a restart is one
+  // people conclude is broken.
+  rateUnsub = refreshMs.subscribe((ms) => {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(() => void load(), ms);
+  });
 }
 
 /// Stop polling (tab hidden or view destroyed).
 export function stopProcessPolling(): void {
+  // The backend keeps its own previous sample across a stop/start, so readiness
+  // is NOT reset here: re-showing the tab would otherwise blank every rate
+  // column for one poll even though the delta is available.
+  if (rateUnsub) {
+    rateUnsub();
+    rateUnsub = null;
+  }
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
