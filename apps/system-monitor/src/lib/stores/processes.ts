@@ -29,6 +29,11 @@ export interface Process {
   memMB: number;
   diskKBs: number;
   netKBs: number;
+  /// Something else depends on this one, so Stop asks first. Decided in the core
+  /// (`procmon::is_critical`) and carried on the row, never re-derived from the
+  /// name here: two lists of daemon names in two languages is how a guardrail
+  /// quietly stops covering the daemon somebody renamed.
+  critical?: boolean;
   /// Frozen (cgroup.freeze) - the non-destructive pause.
   paused?: boolean;
   /// Soft-throttled (cgroup memory.high + cpu.max) - the non-destructive leash.

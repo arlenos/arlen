@@ -26,6 +26,10 @@ pub struct Process {
     pub name: String,
     /// `"app" | "background" | "system"`.
     pub group: &'static str,
+    /// Does stopping this take something else down with it? Carried on the row
+    /// rather than re-derived in the frontend, so the warning and the grouping
+    /// read one list. See `is_critical`.
+    pub critical: bool,
     /// `"running" | "suspended" | "not-responding"`.
     pub status: &'static str,
     /// CPU% (share of total capacity in the sample window).
@@ -92,6 +96,27 @@ const SYSTEM: &[&str] = &[
     "seatd",
 ];
 
+/// Is this process one whose loss takes something else down with it?
+///
+/// The plan's guardrail (system-monitor-plan.md (d)1): the Arlen daemons appear
+/// as ordinary rows you can stop like anything else - that IS the sovereignty
+/// statement - but stopping one warns first, "the way Windows greys out critical
+/// processes". Stopping `knowledge` from here does not fail; it silently ends
+/// event promotion, and the next thing the user notices is a graph that stopped
+/// growing an hour ago.
+///
+/// The two NAMED lists only, deliberately not the `arlen-` prefix: prefixed
+/// binaries include ordinary first-party apps (the file manager, the terminal),
+/// and a warning that fires on a text editor teaches people to click through it.
+///
+/// This is a name list, not an attested property. It is what the tree has - there
+/// is no critical-process flag to read - and a daemon renamed without touching
+/// this list stops warning. `classify_group` carries the same exposure and the
+/// same lists, so the two drift together rather than apart. Pure.
+pub fn is_critical(name: &str) -> bool {
+    SYSTEM.contains(&name) || BACKGROUND.contains(&name)
+}
+
 /// Classify a process into the task-manager's three groups by name. An `arlen-`
 /// prefixed binary that is not core infrastructure is a first-party background
 /// service; everything else the user launched is an app. Pure.
@@ -145,6 +170,7 @@ pub fn build_processes(
                 id: d.pid,
                 name: d.name.clone(),
                 group: classify_group(&d.name),
+                critical: is_critical(&d.name),
                 status: map_status(d.state),
                 cpu,
                 mem_mb: d.mem_kb as f64 / 1024.0,
@@ -371,8 +397,48 @@ mod tests {
         assert_eq!(rows[0].disk_kbs, 0.0);
     }
 
+    #[test]
+    fn the_daemons_that_carry_the_session_are_flagged() {
+        // A row you can stop, that warns first. Both lists, because losing the
+        // compositor and losing the event bus are both more than losing a window.
+        assert!(is_critical("knowledge"));
+        assert!(is_critical("event-bus"));
+        assert!(is_critical("cosmic-comp"));
+        assert!(is_critical("pipewire"));
+    }
+
+    #[test]
+    fn an_ordinary_first_party_app_is_not_flagged() {
+        // The clause the `arlen-` prefix would get wrong. These are apps: closing
+        // the file manager closes the file manager. A warning here would be the
+        // kind people learn to click through, which is how the real warning stops
+        // working.
+        assert!(!is_critical("arlen-files"));
+        assert!(!is_critical("arlen-terminal"));
+        assert!(!is_critical("firefox"));
+        // ...while `classify_group` still files them as background by prefix, so
+        // the two rules are deliberately different questions about the same name.
+        assert_eq!(classify_group("arlen-files"), "background");
+    }
+
+    #[test]
+    fn the_flag_travels_on_the_row_through_grouping() {
+        // The frontend must never re-derive this from a name it holds. A grouped
+        // row keeps the member's flag, so a daemon with helper processes still
+        // warns.
+        let rows = vec![
+            row(1, "knowledge", "background", "running", 1.0, 1.0),
+            row(2, "knowledge", "background", "running", 1.0, 1.0),
+        ];
+        let out = group_processes(&rows);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].critical);
+        assert!(!row(3, "firefox", "app", "running", 1.0, 1.0).critical);
+    }
+
     fn row(id: u32, name: &str, group: &'static str, status: &'static str, cpu: f64, mem: f64) -> Process {
         Process {
+            critical: is_critical(name),
             id,
             name: name.to_string(),
             group,

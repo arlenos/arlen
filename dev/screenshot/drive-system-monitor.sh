@@ -305,5 +305,57 @@ say "the CPU pane gives the load against this machine's core count" \
   "$(printf '%s' "$got" | grep -q '"hasPerCore":true' \
      && printf '%s' "$got" | grep -q '"line":"' && echo 1 || echo 0)" "$got"
 
+# THE GUARDRAIL. Stopping a daemon warns first (plan (d)1). The target is chosen
+# with care: this probe CLICKS Stop, so if the guardrail were broken the click
+# would land as a real stop. `systemd` (pid 1) cannot be killed by this user, so
+# a broken guardrail here produces a refused kill and a red probe rather than a
+# dead session. Never a live daemon that WOULD die.
+cat > "$probes/p-guardrail.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(2500);
+// [role=row], not `tbody tr` - the warning at the top of this file, which I
+// then walked straight into: `tbody tr` finds nothing and an empty list looks
+// exactly like a machine with no systemd on it.
+const rows = [...document.querySelectorAll("[role=row]")]
+  .filter(r => !r.querySelector("[role=columnheader]"));
+const target = rows.find(r => /(^|\s)systemd(\s|$)/i.test(
+  (r.querySelector(".cell.name")?.textContent || "").trim()));
+if (!target) return JSON.stringify({ skipped: "no systemd row on this machine" });
+target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 200, clientY: 200 }));
+await wait(400);
+const menu = document.querySelector('[role="menu"]');
+if (!menu) return JSON.stringify({ error: "no row menu" });
+const items = [...menu.querySelectorAll('[role="menuitem"]')];
+// The plain Stop item, not Force Quit, matched on the whole label so the German
+// "Beenden" inside "Sofort beenden" cannot pick the wrong one.
+const stop = items.find(b => /^(stop|beenden)$/i.test((b.textContent || "").trim()));
+if (!stop) return JSON.stringify({ error: "no stop item", items: items.map(b => b.textContent.trim()) });
+const before = stop.textContent.trim();
+stop.click();
+await wait(300);
+// The SAME element, re-read. The first cut asked for `[role=menuitem].danger`,
+// which Force Quit already is - so it reported "armed" on a label that had not
+// changed at all, and passed for a reason unrelated to the guardrail.
+const after = stop.textContent.trim();
+// Read before dismissing: the menu staying open IS the behaviour (the warning
+// must be readable), and Escape would make that unmeasurable.
+const stillOpen = document.body.contains(menu);
+// Escape rather than a second click: the point is that the first press did NOT
+// act, and pressing again would be asking pid 1 to exit.
+document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+return JSON.stringify({ before, after, stillOpen,
+  // Named the consequence, not merely different: "Stop?" would also be longer.
+  armed: /system service|Systemdienst/.test(after), namesIt: /systemd/.test(after) });
+JS
+got=$(drive "$probes/p-guardrail.js" sysmon-guardrail.png)
+if printf '%s' "$got" | grep -q '"skipped"'; then
+  echo "  --   the daemon guardrail (no systemd row here): $got"
+else
+  say "stopping a system service asks before it acts" \
+    "$(printf '%s' "$got" | grep -q '"armed":true' \
+       && printf '%s' "$got" | grep -q '"stillOpen":true' && echo 1 || echo 0)" "$got"
+fi
+
+
 [ "$fail" = 0 ] && echo "a process list that sorts, a detail that names a pid, graphs that draw, and a kill that asks before it acts"
 exit "$fail"

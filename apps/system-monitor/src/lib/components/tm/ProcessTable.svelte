@@ -334,6 +334,7 @@
           role="row"
           aria-label={p.name}
           data-pid={p.id}
+          data-critical={p.critical ? "1" : null}
           tabindex={p.id === activeRowId ? 0 : -1}
           onclick={() => {
             activeId = p.id;
