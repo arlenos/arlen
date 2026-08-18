@@ -1,0 +1,11 @@
+# Starting permission profile for khal (a terminal calendar). Home, because its
+# events live in a vdir the user configures - ~/.local/share/calendars is the
+# common one but the path is a setting, not a rule. No network at all: khal reads
+# and writes local files only, and syncing is vdirsyncer's job under its own
+# profile.
+[info]
+app_id = "khal"
+tier = "third-party"
+
+[filesystem]
+home = true

@@ -1,0 +1,21 @@
+# Starting permission profile for rclone (sync to cloud storage). Network is its
+# function and the remote is user-configured, so no host is knowable. The local
+# side is a custom path the user grants explicitly rather than a blanket Home:
+# rclone is pointed at one directory at a time, which makes the narrow grant the
+# workable one here where it is not for a backup tool that walks the whole tree.
+#
+# NB Arlen's online-accounts daemon runs its own confined rclone for accounts the
+# user has connected. This profile is for the user's own copy, invoked by hand,
+# and the two are separate: that one is configured by the daemon and never reads
+# this file.
+[info]
+app_id = "rclone"
+tier = "third-party"
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because the scoped form
+# cannot be enforced yet - `arlen-run` refuses a FilteredHosts policy without an
+# egress enforcer (exit 67), and nothing raises a NetworkAccess consent for a host
+# an app did not declare, so narrowing today would leave the app with no network
+# and no way to ask. Revisit when both land: most of these want a host list.
+[network]
+allow_all = true

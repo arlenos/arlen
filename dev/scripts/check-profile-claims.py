@@ -100,13 +100,14 @@ def main() -> int:
         print("NOTHING WAS READ: no profile parsed", file=sys.stderr)
         return 2
 
-    print(
-        f"{read} profile(s) checked: no description claims a directory its grants do "
-        f"not include. The description is a profile's only statement of intent, so a "
-        f"claim the mechanism does not honour is the one a later reader acts on."
-    )
+    # The summary is printed only when there is nothing to report. It used to be
+    # printed FIRST, unconditionally, so a failing run ended on the words "no
+    # description claims a directory its grants do not include" - on stdout,
+    # after the findings had gone to stderr. The exit code was right and the last
+    # line a reader sees was the opposite of it, which is the shape this whole
+    # directory exists to stop.
     if findings:
-        print("\nprofiles claiming a grant they do not have:\n", file=sys.stderr)
+        print(f"{read} profile(s) checked, {len(findings)} claiming a grant they do not have:\n", file=sys.stderr)
         for f in findings:
             print(f"  - {f}", file=sys.stderr)
         print(
@@ -115,6 +116,12 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    print(
+        f"{read} profile(s) checked: no description claims a directory its grants do "
+        f"not include. The description is a profile's only statement of intent, so a "
+        f"claim the mechanism does not honour is the one a later reader acts on."
+    )
     return 0
 
 

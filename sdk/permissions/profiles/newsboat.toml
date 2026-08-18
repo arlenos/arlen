@@ -1,0 +1,18 @@
+# Starting permission profile for newsboat (a terminal RSS/Atom reader). Network is
+# its function - it fetches feeds the user subscribes to. Downloads because its
+# podcast half (podboat) writes enclosures there. No wider file access: the feed
+# list and cache are its own state.
+[info]
+app_id = "newsboat"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because the scoped form
+# cannot be enforced yet - `arlen-run` refuses a FilteredHosts policy without an
+# egress enforcer (exit 67), and nothing raises a NetworkAccess consent for a host
+# an app did not declare, so narrowing today would leave the app with no network
+# and no way to ask. Revisit when both land: most of these want a host list.
+[network]
+allow_all = true

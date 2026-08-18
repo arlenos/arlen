@@ -1,0 +1,14 @@
+# Starting permission profile for pass (the standard unix password manager). Home,
+# because it needs both ~/.password-store and the GnuPG keyring in ~/.gnupg that
+# decrypts it - and neither path is fixed, PASSWORD_STORE_DIR and GNUPGHOME move
+# them. No network: `pass git push` is git's, under a grant of its own.
+#
+# This one is worth narrowing sooner than most. The grant is Home and the secret
+# is every credential the user has, so the gap between what it needs and what it
+# holds is as wide as it gets in this catalogue.
+[info]
+app_id = "pass"
+tier = "third-party"
+
+[filesystem]
+home = true

@@ -1,0 +1,20 @@
+# Starting permission profile for NeoMutt (a terminal mail client). Network is its
+# function - IMAP, SMTP and NNTP all go out. Home rather than a narrower grant
+# because a local maildir has no fixed location: ~/Maildir, ~/.mail and a path
+# from mbox_type are all ordinary, and a profile that guesses wrong leaves the
+# reader with no mail. Downloads is where saved attachments land, and is inside
+# Home already; it is not named separately for that reason.
+[info]
+app_id = "neomutt"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because the scoped form
+# cannot be enforced yet - `arlen-run` refuses a FilteredHosts policy without an
+# egress enforcer (exit 67), and nothing raises a NetworkAccess consent for a host
+# an app did not declare, so narrowing today would leave the app with no network
+# and no way to ask. Revisit when both land: most of these want a host list.
+[network]
+allow_all = true

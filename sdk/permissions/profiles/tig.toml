@@ -1,0 +1,10 @@
+# Starting permission profile for tig (a terminal git browser). It reads
+# repositories wherever they live in the user's tree, so it gets Home; no network,
+# because tig only reads what is already cloned and fetching is git's job under a
+# grant of its own. Matches lazygit.
+[info]
+app_id = "tig"
+tier = "third-party"
+
+[filesystem]
+home = true

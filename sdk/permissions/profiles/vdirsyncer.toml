@@ -1,0 +1,18 @@
+# Starting permission profile for vdirsyncer (calendar and contact sync). Both
+# halves are its function: network to reach CalDAV and CardDAV servers, and Home
+# to write the local vdir that khal and khard then read. The server is
+# user-configured, so no host is knowable here.
+[info]
+app_id = "vdirsyncer"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because the scoped form
+# cannot be enforced yet - `arlen-run` refuses a FilteredHosts policy without an
+# egress enforcer (exit 67), and nothing raises a NetworkAccess consent for a host
+# an app did not declare, so narrowing today would leave the app with no network
+# and no way to ask. Revisit when both land: most of these want a host list.
+[network]
+allow_all = true
