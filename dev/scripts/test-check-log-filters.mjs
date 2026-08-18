@@ -37,6 +37,7 @@ function run(dir) {
 }
 
 const GOOD = 'fn run() { env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,arlen_x_lib=info")).init(); }\n';
+const MUTE = "fn run() { env_logger::init(); }\n";
 const BLANKET = 'fn run() { env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init(); }\n';
 const BARE = "fn run() { env_logger::init(); }\n";
 const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
@@ -80,6 +81,30 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
   const d = tree({ quiet: NO_LOGGING });
   check("an app with no logging is not a subject", run(d).code === 0);
   rmSync(d, { recursive: true, force: true });
+}
+
+// Daemons, which this check could not see until 18 August. The last component in
+// the tree still calling a bare `env_logger::init()` was the eBPF sensor, and it
+// sat outside the window: its journal carried four systemd lines and nothing of
+// its own, so which of its tracepoints attached was unreadable on every boot. A
+// daemon written that way tomorrow has to be caught here, not by someone reading
+// an empty journal in three months.
+{
+  const dir = mkdtempSync(join(tmpdir(), "log-filters-daemon-"));
+  // Both layouts a daemon uses: src straight under it, and a crate one level down
+  // (`kernel-layer/kernel-layer/src`), which is the shape the real offender had.
+  const flat = join(dir, "daemons", "flatd", "src");
+  const nested = join(dir, "daemons", "nestd", "nestd", "src");
+  mkdirSync(flat, { recursive: true });
+  mkdirSync(nested, { recursive: true });
+  mkdirSync(join(dir, "apps", "keep", "src-tauri", "src"), { recursive: true });
+  writeFileSync(join(dir, "apps", "keep", "src-tauri", "src", "lib.rs"), GOOD);
+  writeFileSync(join(flat, "main.rs"), GOOD);
+  writeFileSync(join(nested, "main.rs"), MUTE);
+  const r = run(dir);
+  check("a daemon crate one level down is read, not skipped", r.code !== 0 && r.out.includes("nestd"));
+  check("and a daemon with a sound filter is not flagged", !r.out.includes("flatd"));
+  rmSync(dir, { recursive: true, force: true });
 }
 
 // Pointed somewhere with no apps, "nothing wrong" would describe a scan that
