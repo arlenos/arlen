@@ -181,5 +181,44 @@ console.log("ci-system-deps:");
   );
 }
 
+// The runner derives its list from the workflow, which is the right shape and
+// is exactly how this script - not a check at all - ended up being run as one,
+// asking a developer for a fingerprint and failing three apt attempts. The
+// declaration is what stops that, so both halves are held: the marker is
+// present here, and the runner acts on it.
+{
+  const script = readFileSync(SCRIPT, "utf8");
+  check("the script declares it is not a local gate", /^# not-a-local-gate: \S/m.test(script));
+
+  const runner = readFileSync(join(ROOT, "dev/scripts/run-ci-gates.sh"), "utf8");
+  check(
+    "the runner reads that declaration rather than a list of names",
+    /not-a-local-gate/.test(runner) && !/ci-system-deps/.test(runner.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n")),
+    "run-ci-gates.sh should skip by declaration, not by naming this script",
+  );
+
+  // And prove it end to end: a marked script in a throwaway workflow is skipped
+  // while an unmarked one beside it runs.
+  const d = mkdtempSync(join(tmpdir(), "gate-runner-"));
+  mkdirSync(join(d, "dev/scripts"), { recursive: true });
+  mkdirSync(join(d, ".github/workflows"), { recursive: true });
+  writeFileSync(join(d, "dev/scripts/check-marked.sh"), "# not-a-local-gate: would touch the machine\nexit 1\n");
+  writeFileSync(join(d, "dev/scripts/check-plain.sh"), "exit 0\n");
+  writeFileSync(
+    join(d, ".github/workflows/ci.yml"),
+    "run: |\n  bash dev/scripts/check-marked.sh\n  bash dev/scripts/check-plain.sh\n",
+  );
+  writeFileSync(join(d, "dev/scripts/run-ci-gates.sh"), readFileSync(join(ROOT, "dev/scripts/run-ci-gates.sh"), "utf8"));
+  const r = spawnSync("bash", [join(d, "dev/scripts/run-ci-gates.sh")], { encoding: "utf8" });
+  const out = (r.stdout || "") + (r.stderr || "");
+  check(
+    "a marked script is skipped, and skipping is said out loud",
+    r.status === 0 && /not run here: would touch the machine/.test(out),
+    out,
+  );
+  check("an unmarked script beside it still runs", /check-plain\.sh\s+ok/.test(out), out);
+  rmSync(d, { recursive: true, force: true });
+}
+
 console.log(failures ? `\n${failures} case(s) failed` : "\nthe cache is used, the failures are still failures");
 process.exit(failures ? 1 : 0);
