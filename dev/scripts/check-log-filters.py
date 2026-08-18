@@ -40,6 +40,7 @@ ROOT = (
     else pathlib.Path(__file__).resolve().parents[2]
 )
 APPS = ROOT / "apps"
+DAEMONS = ROOT / "daemons"
 
 # app -> why its filter is not ours to fix.
 NOT_OURS: dict[str, str] = {
@@ -62,6 +63,42 @@ def _code_only(text: str) -> str:
     return "\n".join(re.sub(r"//.*$", "", line) for line in text.splitlines())
 
 
+def _components() -> list:
+    """Every component that initialises logging, apps AND daemons.
+
+    Daemons were outside this check until 18 August, and the last component in the
+    tree still calling a bare `env_logger::init()` was the eBPF sensor - whose
+    whole failure mode is silence. Its journal held four systemd lines and nothing
+    of its own, so which of its four tracepoints attached could not be read
+    anywhere, on any boot. A check that names a defect and cannot see half the
+    processes that can carry it is the shape this file exists to argue against.
+
+    NOT ENFORCED HERE, and worth knowing before someone reaches for it: all 24
+    daemons use `EnvFilter::new("info")`, a bare level, ten of them alongside zbus.
+    That is the same blanket the app half refuses. It is not added to the rule yet
+    because the fix is NOT mechanical: a `tracing` target roots at the crate the
+    line was compiled into, so a daemon whose logic sits in a lib behind a thin
+    `main.rs` needs BOTH names, and a filter naming one of the two makes the other
+    half mute - which is the defect, not the fix. It wants a sitting with each
+    daemon run afterwards, not a sweep.
+    """
+    out = []
+    for base, rel in ((APPS, ("src-tauri", "src")), (DAEMONS, ("src",))):
+        if not base.is_dir():
+            continue
+        for comp in sorted(base.iterdir()):
+            if not comp.is_dir():
+                continue
+            # A daemon may hold its crate one level down (kernel-layer/kernel-layer).
+            roots = [comp.joinpath(*rel)]
+            roots += [c.joinpath(*rel) for c in sorted(comp.iterdir()) if c.is_dir()]
+            files = [f for r in roots if r.is_dir() for f in sorted(r.glob("*.rs"))]
+            if not files:
+                continue
+            out.append((comp.name, "\n".join(_code_only(f.read_text()) for f in files)))
+    return out
+
+
 def main() -> int:
     if not APPS.is_dir():
         print(f"NOTHING WAS READ: no apps directory under {ROOT}", file=sys.stderr)
@@ -74,12 +111,7 @@ def main() -> int:
 
     problems: list[str] = []
     checked = 0
-    for app_dir in sorted(APPS.iterdir()):
-        src = app_dir / "src-tauri" / "src"
-        if not src.is_dir():
-            continue
-        app = app_dir.name
-        text = "\n".join(_code_only(p.read_text()) for p in sorted(src.glob("*.rs")))
+    for app, text in _components():
         if "env_logger" not in text and "tracing_subscriber" not in text:
             continue
         checked += 1
@@ -118,7 +150,7 @@ def main() -> int:
         return 1
 
     print(
-        f"{checked} app(s) initialise logging; each names its own crate rather than "
+        f"{checked} component(s) initialise logging; each names its own crate rather than "
         f"setting a level for every dependency ({len(NOT_OURS)} excused)"
     )
     return 0
