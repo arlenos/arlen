@@ -1744,6 +1744,20 @@ def main():
         print("identity: NOT MEASURED - the serial log was empty or unreadable, "
               "so nothing here says the identity chain or the socket table agree")
 
+    if not require_probe:
+        # The same argument as the identity line above, one level up. Every store
+        # reading in this file - the event store, the graph store, and the kernel
+        # sensor - sits behind `require_probe`, which self-arms only when the image
+        # ships the knowledge probe. An image built without `ARLEN_VERIFY_IMAGE=1`
+        # has no probe, so the run walks past all three and ends on VERIFY OK.
+        #
+        # That happened on the 06:47 image of 18 August and read as a clean boot of
+        # a working system. It WAS a clean boot; it just says nothing about whether
+        # anything reached the graph, which is most of what this image is for.
+        print("stores: NOT MEASURED - this image ships no knowledge probe, so "
+              "nothing here read the event store, the graph store or the kernel "
+              "sensor. Build with ARLEN_VERIFY_IMAGE=1 for a run that does")
+
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
                            if bar_present else "the compositor rendered a frame"))
     # Clean run: nobody needs the overlay or the vars copy. Every failing path
