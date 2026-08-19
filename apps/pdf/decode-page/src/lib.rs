@@ -210,7 +210,7 @@ mod tests {
         let stream = b"BT /F1 24 Tf 20 40 Td (Hello) Tj ET";
         let mut out = Vec::from(&b"%PDF-1.5\n"[..]);
         let mut offsets = Vec::new();
-        let mut add = |out: &mut Vec<u8>, offsets: &mut Vec<usize>, body: Vec<u8>| {
+        let add = |out: &mut Vec<u8>, offsets: &mut Vec<usize>, body: Vec<u8>| {
             offsets.push(out.len());
             out.extend_from_slice(format!("{} 0 obj\n", offsets.len()).as_bytes());
             out.extend_from_slice(&body);
