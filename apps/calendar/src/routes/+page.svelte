@@ -108,7 +108,14 @@
                 </span>
                 <span class="what">
                   <span class="summary">{e.summary}</span>
-                  {#if e.tzid}<span class="tz">{e.tzid}</span>{/if}
+                  <!-- A time written in UTC is not the reader's 16:00, and one
+                       written floating is whatever clock they are reading. Both
+                       say so; only a local zoned time can be shown bare. -->
+                  {#if e.tzid}
+                    <span class="tz">{e.tzid}</span>
+                  {:else if e.kind === "utc"}
+                    <span class="tz">{$t("cal.utc")}</span>
+                  {/if}
                   {#if e.location}
                     <span class="where"><MapPin size={12} strokeWidth={2} />{e.location}</span>
                   {/if}
