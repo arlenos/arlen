@@ -9,6 +9,7 @@
 /// fixture stands in, with a genuinely different past state so the time
 /// travel shows real change, and `projectsMocked` says so.
 import { writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { BrowserAdapter, FileEntry } from "@arlen/ui-kit/components/browser";
 import { type TimelineEvent } from "$lib/stores/timeline";
@@ -128,7 +129,7 @@ export const projectsAdapter: BrowserAdapter = {
       projectsUnavailable.set(false);
       return entries;
     } catch {
-      if (import.meta.env.DEV) {
+      if (!tauriAvailable) {
         projectsMocked.set(true);
         projectsUnavailable.set(false);
         return fixtureList(location, currentAsOf);

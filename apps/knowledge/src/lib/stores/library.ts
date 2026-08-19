@@ -5,6 +5,7 @@
 /// (a coder seam); under vite the fixture stands in, telling the same story
 /// as the timeline and search, and `libraryMocked` says so.
 import { writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// One bridged item, display-shaped.
@@ -87,7 +88,7 @@ export async function loadLibrary(): Promise<void> {
     libraryMocked.set(false);
     libraryUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       sources.set(FIXTURE);
       libraryMocked.set(true);
       libraryUnavailable.set(false);

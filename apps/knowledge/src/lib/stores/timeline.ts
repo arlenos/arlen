@@ -5,6 +5,7 @@
 /// reads the `knowledge_timeline` command (a coder seam over the FUSE timeline
 /// + the typed reads); under vite a fixture stands in and `mocked` says so.
 import { get, writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// What kind of thing happened; drives the row's mark and verb.
@@ -258,7 +259,7 @@ export async function loadTimeline(): Promise<void> {
     timelineMocked.set(false);
     timelineUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       days.set(groupByDay(fixture()));
       timelineMocked.set(true);
       timelineUnavailable.set(false);
@@ -290,7 +291,7 @@ export async function setPaused(value: boolean): Promise<void> {
   try {
     await invoke("knowledge_timeline_pause", { paused: value });
   } catch {
-    if (import.meta.env.DEV) return; // no backend under vite
+    if (!tauriAvailable) return; // no host, so no backend to ask
     // A failed write, now that the backend exists: put the switch back and say
     // so. Leaving it flipped would tell someone their activity is no longer
     // being recorded while it is - which is the one thing this control must
@@ -329,7 +330,7 @@ export async function deleteRange(fromUnix: number): Promise<boolean> {
     await loadTimeline();
     return true;
   } catch {
-    if (!import.meta.env.DEV) {
+    if (tauriAvailable) {
       return false;
     }
     days.update((d) =>

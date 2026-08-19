@@ -31,8 +31,8 @@ about the build: a debug log, a dev-only route, a `?nowake` query parameter. It 
 refused in a file that also calls `invoke`, because there the branch is about the
 backend and the build mode is standing in for it.
 
-THE BASELINE. The sweep landed in Settings and Files, where the DEV fixtures were
-being read as real. Twenty-odd files in the other apps still carry the old shape;
+THE BASELINE. The sweep landed in Settings, Files and Knowledge, where the DEV
+fixtures were being read as real. The files below still carry the old shape;
 they are listed below so this gate can hold the line from today rather than wait
 for one large change nobody can verify in a sitting. Remove an entry when you fix
 the file. Adding one needs a reason in the commit.
@@ -66,12 +66,6 @@ BASELINE = {
     "apps/desktop-shell/src/lib/stores/waypointerAsk.ts",
     "apps/desktop-shell/src/lib/stores/windowsFile.ts",
     "apps/harness/src/lib/stores/conversation.ts",
-    "apps/knowledge/src/lib/adapter.ts",
-    "apps/knowledge/src/lib/stores/library.ts",
-    "apps/knowledge/src/lib/stores/projects.ts",
-    "apps/knowledge/src/lib/stores/provenance.ts",
-    "apps/knowledge/src/lib/stores/search.ts",
-    "apps/knowledge/src/lib/stores/timeline.ts",
     "apps/meetings/src/lib/stores/meeting.ts",
     "apps/system-monitor/src/lib/stores/processes.ts",
     "apps/text-editor/src/lib/stores/aiEdit.ts",

@@ -8,6 +8,7 @@
 /// an unknown node gets ONLY its origin line - honestly thin, never invented
 /// rich.
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// One lineage hop, already phrased: quiet verb, emphasized subject, moment.
 export interface ProvenanceHop {
@@ -76,7 +77,7 @@ export async function provenanceFor(name: string): Promise<ProvenanceHop[]> {
   try {
     return await invoke<ProvenanceHop[]>("knowledge_provenance", { node: name });
   } catch (e) {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       return FIXTURE[keyFor(name)] ?? [];
     }
     throw e;

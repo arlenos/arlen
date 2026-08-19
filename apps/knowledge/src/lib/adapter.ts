@@ -10,6 +10,7 @@
 /// and, failing under vite, the store serves a fixture per place so the shell
 /// navigates + renders.
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 import { writable } from "svelte/store";
 import type { BrowserAdapter, FileEntry } from "@arlen/ui-kit/components/browser";
 
@@ -79,7 +80,7 @@ export const knowledgeAdapter: BrowserAdapter = {
       unavailable.set(false);
       return entries;
     } catch {
-      if (import.meta.env.DEV) {
+      if (!tauriAvailable) {
         mocked.set(true);
         unavailable.set(false);
         return FIXTURES[location] ?? [];
