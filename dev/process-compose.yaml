@@ -285,6 +285,47 @@ processes:
     availability:
       restart: "on_failure"
 
+  # The reminder chain. Neither of these was in the stack until 19 August, so
+  # `just dev` could not exercise it at all: the calendar daemon registers its
+  # alarms with `org.arlen.Clock1`, the clock is the only thing that can wake a
+  # suspended machine, and with neither running a reminder had nowhere to go.
+  # Both were built, both ship units, and nobody could watch one fire.
+  #
+  # Readiness is the bus name rather than a socket, because that is what these
+  # two actually offer; the pattern is ai-proxy's above. Verified by running
+  # both on a private session bus with no event bus present - they claim their
+  # names either way, so the probe cannot hang the stack waiting on a dependency
+  # that is only needed later.
+  clock:
+    command: "cargo run --manifest-path daemons/clock/Cargo.toml"
+    depends_on:
+      event-bus: { condition: process_healthy }
+    readiness_probe:
+      exec:
+        command: "bash -c 'busctl --user list | grep -q org.arlen.Clock1'"
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 30
+    availability:
+      restart: "on_failure"
+
+  # After the clock, because its whole job is handing that one the triggers it
+  # derived. It re-derives on a timer, so a clock that arrives late is caught up
+  # with rather than missed - the ordering is for a readable stack, not a race.
+  calendar:
+    command: "cargo run --manifest-path daemons/calendar/Cargo.toml"
+    depends_on:
+      clock: { condition: process_healthy }
+      event-bus: { condition: process_healthy }
+    readiness_probe:
+      exec:
+        command: "bash -c 'busctl --user list | grep -q org.arlen.Calendar1'"
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 30
+    availability:
+      restart: "on_failure"
+
   # bridge-ingest (the Obsidian floor) is deliberately NOT a base-stack process:
   # it requires a configured vault to do anything and exits without one. Run it
   # opt-in, e.g.:
