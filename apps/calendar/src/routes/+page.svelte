@@ -37,9 +37,13 @@
   let agenda = $state<Agenda | null>(null);
   let failure = $state<string | null>(null);
 
+  /// The file the app was opened on, when it was opened on one. Read once: it
+  /// is an argument, not a setting, and it cannot change while the window lives.
+  let launched = $state<string | null>(null);
+
   async function read() {
     try {
-      agenda = await invoke<Agenda>("calendar_agenda");
+      agenda = await invoke<Agenda>("calendar_agenda", { file: launched });
       failure = null;
     } catch (e) {
       failure = String(e);
@@ -49,7 +53,10 @@
   onMount(() => {
     // Asked before the try, because "nobody to ask" is not a failure to catch.
     if (!tauriAvailable) return;
-    void read();
+    void (async () => {
+      launched = await invoke<string | null>("launch_file").catch(() => null);
+      await read();
+    })();
     // A file edited or synced while this window is open changes the answer, and
     // an agenda that keeps showing the old one gives no sign that it is stale.
     const stop = listen("arlen://calendar-changed", () => void read());

@@ -5,7 +5,7 @@ Name=Calendar
 Name[de]=Kalender
 Comment=Your own calendar files, as an agenda
 Comment[de]=Deine eigenen Kalenderdateien, als Agenda
-Exec=arlen-calendar
+Exec=arlen-calendar %f
 Icon=arlen-calendar
 Terminal=false
 # One main category (Office) plus the additional `Calendar`. Naming two main
@@ -16,8 +16,9 @@ Keywords=calendar;agenda;events;meetings;appointments;
 Keywords[de]=kalender;agenda;termine;besprechungen;
 StartupNotify=true
 
-# NO MimeType, and no `%f`, deliberately. This app reads the calendar DIRECTORY;
-# it takes no file argument. Claiming `text/calendar` would make it the handler
-# for every `.ics` a person double-clicks, and it would then open showing its own
-# directory rather than that file - an app that appears to ignore what you asked
-# it to open. The claim lands when opening one file does.
+# `text/calendar` is claimed because opening one file now WORKS: launched with a
+# path, the agenda is that file's events and the surface names that file. The
+# claim was deliberately withheld until then - an app registered for a type it
+# would answer by showing something else is an app that ignores what you asked
+# it to open.
+MimeType=text/calendar;
