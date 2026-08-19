@@ -112,6 +112,8 @@ mod tests {
             days,
             enabled: true,
             fire_late: true,
+            on_date: None,
+            payload: None,
             next_fire_at: due,
         }
     }

@@ -23,6 +23,27 @@ pub struct Alarm {
     /// Days it repeats on, `0..=6` with **0 = Monday** (the kit's DaysPicker
     /// convention, which the app is already built to). Empty means one-shot.
     pub days: Vec<u8>,
+    /// The day this rings on, for an alarm that belongs to a date rather than to
+    /// a time of day.
+    ///
+    /// A plain one-shot means "the next 07:00", which is what somebody setting a
+    /// morning alarm means. A calendar reminder does not: `calendar-app.md`
+    /// section 4 has the calendar register the trigger for one OCCURRENCE, and
+    /// 08:45 on the 26th is not the same claim as the next 08:45. Without this
+    /// the registration lands a day away from the meeting it is for.
+    ///
+    /// Serde-default, so an alarm stored before this existed still reads.
+    #[serde(default)]
+    pub on_date: Option<chrono::NaiveDate>,
+    /// Whatever the registrant needs handed back when this rings.
+    ///
+    /// Opaque here on purpose: the clock owns arming and ringing, and knowing
+    /// that a string is an event UID plus a recurrence-id would make it own the
+    /// calendar's model too. Carried so a re-derivation can recognise its own
+    /// registrations and replace them, which section 4 requires and a
+    /// free-floating timer cannot offer.
+    #[serde(default)]
+    pub payload: Option<String>,
     /// Whether it is armed.
     pub enabled: bool,
     /// Opt-in fire-late-once: after downtime, ring once rather than dropping
@@ -71,6 +92,20 @@ pub fn next_fire_at<Tz: TimeZone>(alarm: &Alarm, tz: &Tz, now_ms: i64) -> Option
     let at = parse_hhmm(&alarm.time)?;
     let now = tz.timestamp_millis_opt(now_ms).single()?;
     let today = now.date_naive();
+
+    if let Some(date) = alarm.on_date {
+        // A repeat set AND a date are two different claims about when this
+        // rings, and there is no reading that honours both. Refused rather than
+        // resolved to one of them silently.
+        if !alarm.days.is_empty() {
+            return None;
+        }
+        let ms = resolve_local(tz, date, at)?.timestamp_millis();
+        // A dated alarm whose moment has passed is over. Rolling it to the next
+        // matching wall-clock time would ring for a meeting that already
+        // happened, on a day nobody asked about.
+        return (ms > now_ms).then_some(ms);
+    }
 
     // A week ahead is enough for any repeat set, and one extra day covers a
     // one-shot whose time has already passed today.
@@ -154,8 +189,53 @@ mod tests {
             days: days.to_vec(),
             enabled: true,
             fire_late: false,
+            on_date: None,
+            payload: None,
             next_fire_at: None,
         }
+    }
+
+    #[test]
+    fn a_dated_alarm_rings_on_its_own_day_rather_than_the_next_matching_time() {
+        let tz = utc();
+        // Wednesday 2026-08-19, 09:00. A reminder for the 26th at 08:45 is a
+        // week out; a plain one-shot at 08:45 would ring TOMORROW, which is the
+        // whole reason a date exists.
+        let now = at(&tz, 2026, 8, 19, 9, 0);
+        let mut a = alarm("08:45", &[]);
+        assert_eq!(next_fire_at(&a, &tz, now), Some(at(&tz, 2026, 8, 20, 8, 45)));
+        a.on_date = Some(chrono::NaiveDate::from_ymd_opt(2026, 8, 26).unwrap());
+        assert_eq!(next_fire_at(&a, &tz, now), Some(at(&tz, 2026, 8, 26, 8, 45)));
+    }
+
+    #[test]
+    fn a_dated_alarm_whose_day_has_passed_is_over() {
+        let tz = utc();
+        let now = at(&tz, 2026, 8, 19, 9, 0);
+        let mut a = alarm("08:45", &[]);
+        a.on_date = Some(chrono::NaiveDate::from_ymd_opt(2026, 8, 19).unwrap());
+        // Rolling it forward would ring for a meeting that already happened.
+        assert_eq!(next_fire_at(&a, &tz, now), None);
+    }
+
+    #[test]
+    fn a_date_and_a_repeat_set_together_are_refused_rather_than_resolved() {
+        let tz = utc();
+        let now = at(&tz, 2026, 8, 19, 9, 0);
+        let mut a = alarm("08:45", &[0, 1, 2]);
+        a.on_date = Some(chrono::NaiveDate::from_ymd_opt(2026, 8, 26).unwrap());
+        // Two different claims about when this rings; picking one silently would
+        // arm an alarm nobody described.
+        assert_eq!(next_fire_at(&a, &tz, now), None);
+    }
+
+    #[test]
+    fn an_alarm_stored_before_dates_existed_still_reads() {
+        let stored = r#"{"id":"a","time":"07:00","label":"","days":[],"enabled":true,
+            "fire_late":false,"next_fire_at":null}"#;
+        let a: Alarm = serde_json::from_str(stored).expect("old shape parses");
+        assert_eq!(a.on_date, None);
+        assert_eq!(a.payload, None);
     }
 
     #[test]
