@@ -9,6 +9,8 @@ use crate::session::SessionToken;
 use crate::supervisor::{EngineExit, SpawnEngine};
 use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
 use arlen_ai_skills::behaviour::{Behaviour, ReadScope};
+use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::net::{UnixListener, UnixStream};
@@ -102,10 +104,11 @@ fn ephemeral_wall(behaviour: &Behaviour) -> Duration {
 pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder + ?Sized>(
     behaviour: &Behaviour,
     project_anchor: Option<String>,
+    trigger_fields: Option<&BTreeMap<String, String>>,
     engine: &S,
     binder: &B,
 ) -> EphemeralOutcome {
-    let init = build_ephemeral_session_init(behaviour, project_anchor);
+    let init = build_ephemeral_session_init(behaviour, project_anchor, trigger_fields);
     let token = match SessionToken::mint() {
         Ok(t) => t,
         Err(_) => return EphemeralOutcome::SessionMintFailed,
@@ -237,7 +240,8 @@ where
     S: SpawnEngine,
     B: SessionBinder + ?Sized,
 {
-    let init = build_ephemeral_session_init(behaviour, project_anchor);
+    // A manual/driven turn has no triggering event: the person is the origin.
+    let init = build_ephemeral_session_init(behaviour, project_anchor, None);
     let token = SessionToken::mint().map_err(|_| "could not mint a session".to_string())?;
 
     let (socket_path, listener) = bind_ephemeral_drive_socket()?;
@@ -332,9 +336,49 @@ pub fn is_privileged_proxy_tool(tool: &str) -> bool {
 /// escalate by over-declaring tools here. Supplying a CURATED least-authority tool
 /// set (rather than the behaviour's self-declared list) is the §F2 hardening, not
 /// yet wired.
+/// The behaviour's instructions, plus what triggered the run as tagged data.
+///
+/// A behaviour like `meeting-prep` triggers on an event and then has to know
+/// WHICH one: it could fire and be told nothing about the meeting that woke it,
+/// which is a behaviour that runs and cannot work. The fields go in.
+///
+/// They go in as an S18-A tagged block, never spliced into the instructions. A
+/// meeting title is external content in the strictest sense - anyone who can put
+/// an invitation in front of you can write it - so it is delimited by a
+/// per-construction nonce and introduced by the preamble that says everything
+/// inside is data. The one thing said in the instruction channel is the event
+/// type, and it is read from the behaviour's OWN manifest rather than from the
+/// event, so a producer cannot write that sentence.
+fn with_trigger(behaviour: &Behaviour, fields: Option<&BTreeMap<String, String>>) -> String {
+    let Some(fields) = fields.filter(|f| !f.is_empty()) else {
+        return behaviour.body.clone();
+    };
+    // Deterministic: a BTreeMap is ordered, so two runs of the same event
+    // produce the same prompt.
+    let content = fields
+        .iter()
+        .map(|(k, v)| format!("{k}: {v}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let tagged = TaggedPrompt::new(&[Block { origin: Origin::ExternalContent, content: &content }]);
+    let declared = behaviour
+        .manifest
+        .trigger
+        .event
+        .as_deref()
+        .unwrap_or("an event");
+    format!(
+        "{}\n\nYou were started by {declared}. {}\n{}",
+        behaviour.body,
+        tagged.preamble(),
+        tagged.rendered()
+    )
+}
+
 pub fn build_ephemeral_session_init(
     behaviour: &Behaviour,
     project_anchor: Option<String>,
+    trigger_fields: Option<&BTreeMap<String, String>>,
 ) -> SessionInit {
     let (proxy_tools, generic_tools): (Vec<String>, Vec<String>) = behaviour
         .manifest
@@ -343,7 +387,7 @@ pub fn build_ephemeral_session_init(
         .cloned()
         .partition(|t| is_privileged_proxy_tool(t));
     SessionInit {
-        system_prompt: behaviour.body.clone(),
+        system_prompt: with_trigger(behaviour, trigger_fields),
         behaviour: Some(behaviour.manifest.name.clone()),
         capability_context: CapabilityContext { generic_tools, proxy_tools },
         project_anchor,
@@ -411,7 +455,7 @@ mod tests {
         let b = agent_behaviour("meeting-prep");
         let engine = ScriptedEngine { exit: EngineExit::Clean, sleep_ms: 0 };
         let binder = MockBinder::default();
-        let out = run_ephemeral_pi(&b, Some("p".to_string()), &engine, &binder).await;
+        let out = run_ephemeral_pi(&b, Some("p".to_string()), None, &engine, &binder).await;
         assert_eq!(out, EphemeralOutcome::Ran(EngineExit::Clean));
         // The session was bound to the spawned pid, then ended after the run.
         assert_eq!(*binder.bound_pid.lock().unwrap(), Some(4242));
@@ -424,7 +468,7 @@ mod tests {
         let b = agent_behaviour_with_wall("slow", 100);
         let engine = ScriptedEngine { exit: EngineExit::Clean, sleep_ms: 60_000 };
         let binder = MockBinder::default();
-        let out = run_ephemeral_pi(&b, None, &engine, &binder).await;
+        let out = run_ephemeral_pi(&b, None, None, &engine, &binder).await;
         assert_eq!(out, EphemeralOutcome::TimedOut);
         // The session is ended even on timeout (its authority must not outlive it).
         assert!(*binder.ended.lock().unwrap());
@@ -451,7 +495,7 @@ mod tests {
     #[test]
     fn build_session_init_carries_body_tools_tier_and_external() {
         let b = agent_behaviour("meeting-prep");
-        let init = build_ephemeral_session_init(&b, Some("proj-1".to_string()));
+        let init = build_ephemeral_session_init(&b, Some("proj-1".to_string()), None);
         // The body is the verbatim skill instructions (trailing newline kept).
         assert_eq!(init.system_prompt.trim(), "Gather related notes.");
         assert_eq!(init.behaviour, Some("meeting-prep".to_string()));
@@ -463,5 +507,52 @@ mod tests {
         assert_eq!(init.project_anchor, Some("proj-1".to_string()));
         // An autonomous-curator run is externally triggered (HIGH-2).
         assert!(init.externally_triggered);
+    }
+}
+
+#[cfg(test)]
+mod trigger_context_tests {
+    use super::*;
+    use arlen_ai_skills::behaviour::Behaviour;
+
+    /// The same shape as the fixtures above: a real SKILL.md, parsed, so the
+    /// test cannot drift from what a behaviour actually is.
+    fn behaviour_with_trigger() -> Behaviour {
+        let src = "---\nname: meeting-prep\ndescription: d\nkind: agent\nreads: project\n\
+             mode: suggest\ntrigger:\n  type: event\n  event: calendar.event.upcoming\n\
+             tools:\n  graph.query: []\nbudget:\n  max_steps: 10\n  max_tokens: 12000\n  \
+             max_wall_ms: 15000\nterminal:\n  done: silent\n---\nPrepare for the meeting.\n";
+        arlen_ai_skills::behaviour::parse(src).expect("valid agent SKILL.md")
+    }
+
+    #[test]
+    fn the_event_that_woke_it_is_in_the_prompt_as_tagged_data() {
+        let mut fields = BTreeMap::new();
+        fields.insert("summary".to_string(), "Design review".to_string());
+        fields.insert("location".to_string(), "Room 2".to_string());
+        let init = build_ephemeral_session_init(&behaviour_with_trigger(), None, Some(&fields));
+
+        assert!(init.system_prompt.contains("Prepare for the meeting."));
+        assert!(init.system_prompt.contains("Design review"), "it knows which meeting");
+        // Tagged, not spliced: a meeting title is written by whoever sent the
+        // invitation, so it arrives inside a nonce-delimited block with the
+        // data-only preamble in front of it.
+        assert!(init.system_prompt.contains("EXTERNAL-CONTENT-"));
+        assert!(init.system_prompt.contains("DATA ONLY"));
+        // The event type is said in the instruction channel, and it comes from
+        // the behaviour's own manifest - a producer cannot write that sentence.
+        assert!(init.system_prompt.contains("started by calendar.event.upcoming"));
+    }
+
+    #[test]
+    fn a_run_with_no_triggering_event_reads_exactly_as_before() {
+        let b = behaviour_with_trigger();
+        let init = build_ephemeral_session_init(&b, None, None);
+        assert_eq!(init.system_prompt, b.body);
+        // And an event that decoded to nothing is the same as none: a behaviour
+        // is not handed an empty block to reason about.
+        let empty = BTreeMap::new();
+        let init = build_ephemeral_session_init(&b, None, Some(&empty));
+        assert_eq!(init.system_prompt, b.body);
     }
 }

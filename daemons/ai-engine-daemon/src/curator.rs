@@ -94,6 +94,10 @@ impl RouteHandler for CuratorHandler {
                     return;
                 };
                 let behaviour = lb.behaviour.clone();
+                // The event's own fields travel with the run: a behaviour that
+                // triggers on an event and is told nothing about it can wake up
+                // and not know what woke it.
+                let fields = event.fields.clone();
                 let sidecar = self.sidecar.clone();
                 let binder = self.binder.clone();
                 // A pi run is bounded but can take seconds; spawn it so the
@@ -104,7 +108,8 @@ impl RouteHandler for CuratorHandler {
                 tokio::spawn(async move {
                     let _permit = permit; // released when the run ends
                     let outcome =
-                        run_ephemeral_pi(&behaviour, None, sidecar.as_ref(), binder.as_ref()).await;
+                        run_ephemeral_pi(&behaviour, None, Some(&fields), sidecar.as_ref(), binder.as_ref())
+                            .await;
                     tracing::info!(behaviour = %behaviour.manifest.name, ?outcome, "ephemeral pi run");
                 });
             }
