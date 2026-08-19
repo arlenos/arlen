@@ -160,6 +160,15 @@ def main() -> int:
             problems.append(
                 f"{name} is in WAITING but is not served at all, so the entry is stale."
             )
+        elif name in in_portal and name in in_conf:
+            # The other direction of rot, and the one that would sit unnoticed:
+            # the entry stops being a note about a thing that waits and becomes a
+            # standing excuse for a thing that no longer does. Whoever advertises
+            # an interface has just answered what it was waiting for.
+            problems.append(
+                f"{name} is advertised in both files and still in WAITING. The wait is "
+                "over; drop the entry rather than leaving a reason that has been answered."
+            )
 
     if problems:
         print("check-portal-interfaces: the bus and the advertising disagree\n")

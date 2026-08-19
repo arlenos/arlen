@@ -132,6 +132,18 @@ expect(
   "must agree",
 );
 
+// The entry that outlives its reason: advertised everywhere and still excused.
+expect(
+  "an interface advertised in both files but still in WAITING is refused",
+  tree({
+    served: ["FileChooser", "OpenUri", "Screenshot", "Print", "ScreenCast"],
+    portal: ["FileChooser", "OpenURI", "Screenshot", "Print"],
+    preferred: ["FileChooser", "OpenURI", "Screenshot", "Print"],
+  }),
+  true,
+  "wait is over",
+);
+
 // The good state, so the check is not merely always-red.
 expect(
   "a tree where the bus and both files agree passes, with the waiting two served",
