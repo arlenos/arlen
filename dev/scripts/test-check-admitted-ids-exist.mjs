@@ -63,6 +63,32 @@ try {
 }
 check("the source is restored", readFileSync(INSTALLD, "utf8") === original);
 
+// The deferred-daemon set comes from the OTHER gate's list, so an id acknowledged
+// there must not need acknowledging here as well. Two lists of the same decision
+// go stale on one side and then read as two different facts.
+{
+  const py = `
+import importlib.util, pathlib
+spec = importlib.util.spec_from_file_location("g", ${JSON.stringify(GATE)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = m.deferred_daemons(pathlib.Path(${JSON.stringify(ROOT)}))
+print(",".join(sorted(d)))
+`;
+  const got = (spawnSync("python3", ["-c", py], { encoding: "utf8" }).stdout || "").trim();
+  check(
+    "the not-yet-shipped daemons are derived from the unit gate",
+    got.includes("transferd") && got.includes("online-accounts"),
+    `derived: ${got || "(nothing)"}`,
+  );
+  const src = readFileSync(GATE, "utf8");
+  const ack = src.slice(src.indexOf("NOT_PACKAGED_YET"), src.indexOf("}", src.indexOf("NOT_PACKAGED_YET")));
+  check(
+    "and are not repeated in this gate's own acknowledgements",
+    !ack.includes("transferd") && !ack.includes("online-accounts"),
+    "the same decision is written down twice",
+  );
+}
+
 // An acknowledgement that has come true must be reported too, or the list turns
 // into a place where entries go to be forgotten.
 {

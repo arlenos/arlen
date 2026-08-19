@@ -68,13 +68,7 @@ NOT_PACKAGED_YET = {
     "org.arlen.contacts": "shared-entity writer for an app that does not exist yet",
     "org.arlen.places": "shared-entity writer for an app that does not exist yet",
     "system": "the daemons' own reserved principal, not a binary on disk",
-    # Daemons the audit ingest admits that no build phase stages. Each is a
-    # producer whose entries would simply never arrive, which is harmless - but
-    # it is also how a list drifts into naming things that no longer exist.
-    "ai-daemon": "no image build phase stages the ai-daemon binary",
-    "connections": "the connections daemon has no image build phase",
-    "online-accounts": "the accounts daemon has no image build phase",
-    "transferd": "the transfer daemon has no image build phase",
+    "ai-daemon": "no image build phase stages the ai-daemon binary and it carries no unit",
 }
 
 #: Lists whose entries are development ids by construction.
@@ -136,6 +130,39 @@ def strict_rules(root: pathlib.Path) -> dict[str, str]:
     return {path: app_id for path, app_id in STRICT_RULE.findall(src.read_text())}
 
 
+def deferred_daemons(root: pathlib.Path) -> dict[str, str]:
+    """Ids belonging to daemons another gate already records as not-yet-shipped.
+
+    `check-shipped-units.py` keeps the list of units deliberately left off the
+    image, each with a reason and a date. Those daemons' ids are absent from the
+    image for a decided reason, and repeating them here would be a second copy of
+    a decision - the kind that goes stale on one side and reads as two facts.
+
+    The mapping is the unit's own `ExecStart`, resolved through the same rules as
+    everything else, so a daemon that gets shipped stops being deferred here the
+    moment its unit leaves that list.
+    """
+    gate = root / "dev/scripts/check-shipped-units.py"
+    if not gate.is_file():
+        print(f"NOTHING WAS READ: no unit gate at {gate}", file=sys.stderr)
+        raise SystemExit(2)
+    text = gate.read_text()
+    block = text[text.index("NOT_YET_DEPLOYED"):]
+    block = block[: block.index("\n}")]
+    units = set(re.findall(r'"([a-z0-9@.-]+\.service)"', block))
+    strict = strict_rules(root)
+    out: dict[str, str] = {}
+    for unit in root.glob("**/dist/**/*.service"):
+        if SKIP_DIRS & set(unit.parts) or unit.name not in units:
+            continue
+        for m in re.findall(r"^ExecStart=(\S+)", unit.read_text(), re.M):
+            if m in strict:
+                out[strict[m]] = f"{unit.name} is deliberately not on the image"
+            elif m.startswith("/usr/bin/arlen-"):
+                out[m[len("/usr/bin/arlen-"):]] = f"{unit.name} is deliberately not on the image"
+    return out
+
+
 def producible(root: pathlib.Path) -> dict[str, str]:
     """Every id the image can resolve, mapped to the path that produces it."""
     strict = strict_rules(root)
@@ -171,9 +198,10 @@ def main() -> int:
         print("NOTHING WAS READ: no staged binaries found", file=sys.stderr)
         return 2
 
+    deferred = deferred_daemons(ROOT)
     findings = []
     for app_id, where in sorted(names.items()):
-        if app_id in can_be or app_id in NOT_PACKAGED_YET:
+        if app_id in can_be or app_id in NOT_PACKAGED_YET or app_id in deferred:
             continue
         findings.append(
             f"{where} admits `{app_id}`, and no path the image stages resolves to "
