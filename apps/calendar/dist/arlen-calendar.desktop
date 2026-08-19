@@ -22,3 +22,8 @@ StartupNotify=true
 # would answer by showing something else is an app that ignores what you asked
 # it to open.
 MimeType=text/calendar;
+
+# The id the resolver derives from the installed binary, stated here so the
+# launcher and every daemon that admits by app id cannot disagree about who this
+# app is.
+X-Arlen-AppId=dev.arlen.calendar
