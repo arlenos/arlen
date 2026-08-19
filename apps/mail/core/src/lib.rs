@@ -45,6 +45,7 @@
 //! two readings as though it were the message.
 
 pub mod alternative;
+pub mod exfiltration;
 pub mod sync;
 
 use std::collections::BTreeSet;
