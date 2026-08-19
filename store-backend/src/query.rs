@@ -11,6 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::{AppCard, ComponentId, SourceLayer, TrustSignals, Variant};
+use crate::collections::Collection;
 
 /// A capability facet for discovery filtering (section 9): match cards by a
 /// capability their variants request. `Requires` keeps cards a variant of which asks
@@ -282,6 +283,13 @@ pub enum Request {
     /// let the answer depend on what the caller claimed rather than on what is
     /// actually on disk.
     Outdated,
+    /// The editorial collections, narrowed to what this catalog actually holds.
+    ///
+    /// Carries nothing: the curated list is the machine's, and the narrowing is
+    /// against the catalog the backend already has. A caller supplying either
+    /// could name apps it cannot show, which is the failure this op exists to
+    /// end.
+    Collections,
 }
 
 /// What the store can honestly say about an app's observed-vs-declared standing
@@ -350,6 +358,9 @@ pub enum Response {
     },
     /// What can honestly be said about this app's observed-vs-declared standing.
     Observed(ObservedStatus),
+    /// The editorial collections, already narrowed to members this catalog has.
+    /// Empty means there is nothing curated to show, not that the read failed.
+    Collections(Vec<Collection>),
     /// A request the backend could not satisfy (unknown id/variant, ...).
     Error(String),
 }
@@ -405,6 +416,23 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
             Response::Cards(cards)
         }
         Request::ListByFacet { facet } => Response::Cards(catalog.search("", &[facet])),
+        // Narrowed here rather than by the caller: the app cannot know which
+        // component-ids this machine's catalog carries without asking for every
+        // one of them, and a landing view built from ids nobody checked is how
+        // the store came to render nothing over a live catalog. A broken shipped
+        // file is reported and treated as no collections at all - half a curated
+        // list is not one.
+        Request::Collections => {
+            let curated = match crate::collections::load_collections() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("store-backend: ignoring the collections file: {e}");
+                    Vec::new()
+                }
+            };
+            let present = |id: &ComponentId| catalog.card(id).is_some();
+            Response::Collections(crate::collections::resolve(&curated, &present))
+        }
         // The lock is the authority on what is installed, so it is read here
         // rather than accepted from the request. Absent or unreadable yields an
         // empty map, which reports no updates - the honest answer when nothing is

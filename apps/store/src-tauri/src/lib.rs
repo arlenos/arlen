@@ -18,7 +18,7 @@ mod url;
 use std::collections::BTreeSet;
 
 use arlen_store_backend::{
-    request_default, store_card, store_cards, CapabilityFacet, ComponentId, ObservedStatus,
+    request_default, store_card, store_cards, CapabilityFacet, Collection, ComponentId, ObservedStatus,
     PendingUpdate, Request, Response, SortOrder, SourceLayer, StoreCard, TrustSignals, Variant,
 };
 use serde::Serialize;
@@ -208,6 +208,30 @@ async fn store_observed_vs_declared(id: String) -> Result<ObservedStatus, String
     }
 }
 
+/// The editorial collections the landing view shows before anyone types
+/// (store-app.md section 8.7), already narrowed to apps this machine's catalog
+/// carries.
+///
+/// The narrowing is the reason this is an op rather than a constant in the page.
+/// A hardcoded collection names ids that exist in a fixture, and against a live
+/// catalog every one of them resolves to nothing, so the store's landing view
+/// renders empty over a catalog full of apps. Here the backend intersects the
+/// curated list with what it actually has and drops a collection left with
+/// nothing, so a heading is never shown over empty space.
+///
+/// Titles arrive per locale from the curator's own file rather than as
+/// identifiers, which is the one deliberate exception to this app's
+/// no-copy-from-Rust rule: a collection's name belongs to whoever picked it, and
+/// a curator who needs an app release to add one is not curating.
+#[tauri::command]
+async fn store_collections() -> Result<Vec<Collection>, String> {
+    match ask(Request::Collections).await? {
+        Response::Collections(c) => Ok(c),
+        Response::Error(e) => Err(e),
+        other => Err(format!("unexpected store response: {other:?}")),
+    }
+}
+
 /// Route a frontend log line into the backend's stdout (Tim cannot open the
 /// webview devtools; this is the diagnostic channel).
 #[tauri::command]
@@ -235,6 +259,7 @@ pub fn run() {
             store_observed_vs_declared,
             store_outdated,
             store_skip_update,
+            store_collections,
             frontend_log,
         ])
         .run(tauri::generate_context!())
