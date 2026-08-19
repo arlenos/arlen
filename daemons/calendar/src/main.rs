@@ -291,10 +291,22 @@ async fn main() {
     };
     info!("calendar daemon serving {BUS_NAME}");
 
+    // SIGTERM as well as ctrl_c: `systemctl stop` sends the first, and a daemon
+    // that only listens for the second is killed wherever it stands. Nothing
+    // here is mid-write, so the cost today is a log line rather than damage -
+    // but the moment this daemon owns a store it would be the difference.
+    let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("could not listen for SIGTERM: {e}");
+            return;
+        }
+    };
     let mut ticks = tokio::time::interval(std::time::Duration::from_secs(RE_DERIVE_SECS));
     loop {
         tokio::select! {
             _ = ticks.tick() => re_derive(&calendar, &connection).await,
+            _ = term.recv() => break,
             _ = tokio::signal::ctrl_c() => break,
         }
     }

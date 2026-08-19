@@ -34,6 +34,7 @@
 arlen-ai-engine-daemon	org.arlen.AI1	/org/arlen/AI1
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1
 arlen-clockd	org.arlen.Clock1	/org/arlen/Clock1
+arlen-calendard	org.arlen.Calendar1	/org/arlen/Calendar1
 arlen-powerd	org.arlen.Power1	/org/arlen/Power1
 arlen-undod	org.arlen.Undo1	/org/arlen/Undo1
 arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1
