@@ -269,6 +269,11 @@ fn parse_time(prop: &Property) -> Option<CalTime> {
 /// Returns seconds. Weeks are `P3W` and are exclusive of the rest by the grammar,
 /// but accepting them alongside costs nothing and refusing would drop a real
 /// value.
+/// A VEVENT part-read: its start, end and duration as written, and the event so
+/// far. The three times stay apart until the end of the block because which of
+/// them wins depends on the others.
+type Pending = (Option<CalTime>, Option<CalTime>, Option<i64>, Event);
+
 /// A `TRIGGER` value: a signed duration from one end of the event, or a fixed
 /// instant.
 ///
@@ -371,7 +376,10 @@ pub fn parse_events(text: &str) -> Result<Vec<Event>, IcsError> {
     }
 
     let mut events = Vec::new();
-    let mut current: Option<(Option<CalTime>, Option<CalTime>, Option<i64>, Event)> = None;
+    // The event being read, alongside the three properties that cannot be
+    // applied until END:VEVENT: DTSTART decides how DURATION is interpreted, and
+    // DTEND and DURATION are alternatives the specification forbids together.
+    let mut current: Option<Pending> = None;
     // A VALARM sits INSIDE a VEVENT and carries properties with the same names.
     // Its `DURATION` is the repeat interval of the alarm, not the length of the
     // meeting, so reading it as the event's would move the end of an event that
@@ -739,12 +747,12 @@ pub mod when {
     /// Recurrence is NOT expanded here either, so a weekly meeting is upcoming
     /// only on the day the file writes it. Whoever expands `RRULE` feeds the
     /// expansion in and this needs no change.
-    pub fn upcoming<'a>(
-        events: &'a [Event],
+    pub fn upcoming(
+        events: &[Event],
         now: DateTime<Utc>,
         local: Tz,
         lead_seconds: i64,
-    ) -> Vec<(&'a Event, DateTime<Utc>)> {
+    ) -> Vec<(&Event, DateTime<Utc>)> {
         let mut out: Vec<(&Event, DateTime<Utc>)> = events
             .iter()
             .filter_map(|e| instant(&e.start, local).map(|i| (e, i)))
