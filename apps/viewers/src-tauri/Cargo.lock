@@ -191,8 +191,15 @@ dependencies = [
 name = "arlen-viewers-host"
 version = "0.1.0"
 dependencies = [
- "arlen-confiner",
  "arlen-viewers-core",
+ "arlen-worker-sandbox",
+]
+
+[[package]]
+name = "arlen-worker-sandbox"
+version = "0.1.0"
+dependencies = [
+ "arlen-confiner",
  "libc",
  "seccompiler",
 ]
