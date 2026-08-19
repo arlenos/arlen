@@ -135,6 +135,12 @@ export const clockMocked = writable(false);
 /// from `clockMocked`: an alarm nobody set is worse than no alarms.
 export const clockUnavailable = writable(false);
 
+/// True when the clock service is not running at all - which is not the same as
+/// a read that failed, and is the ordinary state of a machine where nobody
+/// started it. Saying "your data cannot be read" there sends a person looking
+/// for a fault that does not exist.
+export const clockAbsent = writable(false);
+
 /// True when the last alarm, timer or stopwatch action did not reach the daemon.
 /// An alarm nobody set is the failure this app must never produce, and the same
 /// goes for one somebody set that was never recorded.
@@ -164,7 +170,8 @@ export async function loadClock(): Promise<void> {
     clock.set(forceNoWake ? { ...s, wake_capable: false } : s);
     clockMocked.set(false);
     clockUnavailable.set(false);
-  } catch {
+    clockAbsent.set(false);
+  } catch (e) {
     if (!tauriAvailable) {
       const s = fixtureState(Date.now());
       clock.set(forceNoWake ? { ...s, wake_capable: false } : s);
@@ -179,7 +186,12 @@ export async function loadClock(): Promise<void> {
     // read.
     clock.set(null);
     clockMocked.set(false);
-    clockUnavailable.set(true);
+    // Two different nothings: the service is not running, or it is and the read
+    // failed. Only the second is a fault, and only the second should read like
+    // one.
+    const absent = String(e).includes("clock-daemon-not-running");
+    clockAbsent.set(absent);
+    clockUnavailable.set(!absent);
   }
 }
 

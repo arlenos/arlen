@@ -16,6 +16,7 @@ const messages: Catalogs = {
     "c.tab.world": "World",
     "c.sample": "Example state - no clock service is running.",
     "c.unavailable": "Cannot read your saved clock data right now, so nothing on this tab is shown.",
+    "c.notRunning": "The clock service is not running, so your alarms and timers are not being kept.",
     "c.actionFailed": "That did not reach the clock service, so nothing was set.",
 
     "c.al.add": "Add alarm",
@@ -90,6 +91,7 @@ const messages: Catalogs = {
     "c.tab.world": "Welt",
     "c.sample": "Beispielzustand - es läuft kein Uhr-Dienst.",
     "c.unavailable": "Deine gespeicherten Uhr-Daten k\u00f6nnen gerade nicht gelesen werden, daher wird auf diesem Tab nichts angezeigt.",
+    "c.notRunning": "Der Uhr-Dienst l\u00e4uft nicht, deine Wecker und Timer werden also nicht gef\u00fchrt.",
     "c.actionFailed": "Das hat den Uhrendienst nicht erreicht, es wurde nichts gestellt.",
 
     "c.al.add": "Wecker hinzufügen",

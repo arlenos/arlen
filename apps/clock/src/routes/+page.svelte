@@ -10,7 +10,8 @@
   import FocusView from "$lib/components/FocusView.svelte";
   import StopwatchView from "$lib/components/StopwatchView.svelte";
   import WorldView from "$lib/components/WorldView.svelte";
-  import { clockMocked, clockUnavailable, clockActionFailed } from "$lib/stores/clock";
+  import { clockMocked, clockUnavailable,
+    clockAbsent, clockActionFailed } from "$lib/stores/clock";
   import { requestAdd } from "$lib/stores/ui";
   import { t, dir } from "$lib/i18n/messages";
 
@@ -84,6 +85,10 @@
 
   {#if $clockMocked}
     <p class="sample">{$t("c.sample")}</p>
+  {:else if $clockAbsent}
+    <!-- Not a failure: nobody started the service. Naming it is what lets a
+         person do something about it, where "cannot be read" only worries them. -->
+    <p class="sample">{$t("c.notRunning")}</p>
   {:else if $clockUnavailable}
     <!-- This line sits above the tab switch, so it shows on WHICHEVER tab is
          open. It used to say "Cannot read your alarms and timers", which is a
