@@ -20,6 +20,7 @@
 
 use std::sync::Arc;
 
+use arlen_clock::callers::{self, Reach};
 use arlen_clock::missed::LATE_WINDOW_MS;
 use arlen_clock::reduce::{self, Command};
 use arlen_clock::state::{Alarm, ClockState, FocusConfig};
@@ -383,33 +384,24 @@ async fn watch_sleep(clock: std::sync::Arc<Clock>, socket: String) {
     warn!("sleep events ended; the stopwatch will count time spent asleep");
 }
 
-/// The callers allowed to reach the clock's state.
+/// Refuse a caller that reaches only its own registrations.
 ///
-/// The app, and nothing else. `arlen-run` binds the session bus into every
-/// confined app and the bus is default-allow, so without this any app on the
-/// machine could read the alarm labels - the user's own words - or delete an
-/// alarm, which fails by silence and is the whole failure for an alarm.
+/// The reason there is a gate at all: `arlen-run` binds the session bus into
+/// every confined app and the bus is default-allow, so without one any app on
+/// the machine could read the alarm labels - the user's own words - or delete an
+/// alarm, which fails by silence and is the whole failure for an alarm. Who
+/// reaches how far is decided in `callers`, beside its tests.
 ///
-/// `clock` is what the resolver returns for `/usr/bin/arlen-clock`, which is
-/// where the image installs it; the desktop entry states the same id so the
-/// launcher and the daemon cannot disagree about who this app is. The dev entry
-/// is the cargo-run binary, admitted only in a debug build so `just dev` and the
-/// screenshot harness reach a daemon that a release build would refuse.
-const ADMITTED: &[&str] = &["clock"];
-/// The same app run from a build tree. Debug only, deliberately.
-#[cfg(debug_assertions)]
-const DEV_ADMITTED: &[&str] = &["dev.arlen-clock-app"];
-
-/// Whether a resolved caller may drive the clock.
-fn caller_admitted(app_id: &str) -> bool {
-    if ADMITTED.contains(&app_id) {
-        return true;
+/// Every verb but the three alarm ones is the clock app's: a registrant has no
+/// business starting a timer or ending a focus session, and there is no
+/// per-object rule that could narrow those the way a payload narrows an alarm.
+fn require_full(reach: Reach) -> zbus::fdo::Result<()> {
+    match reach {
+        Reach::Full => Ok(()),
+        _ => Err(zbus::fdo::Error::AccessDenied(
+            "this caller may only reach its own registrations".into(),
+        )),
     }
-    #[cfg(debug_assertions)]
-    if DEV_ADMITTED.contains(&app_id) {
-        return true;
-    }
-    false
 }
 
 /// The caller's attested app id, or why it could not be established.
@@ -448,13 +440,15 @@ async fn resolve_caller_app_id(
 async fn admit(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
-) -> zbus::fdo::Result<()> {
+) -> zbus::fdo::Result<Reach> {
     match resolve_caller_app_id(header, connection).await {
-        Ok(id) if caller_admitted(&id) => Ok(()),
-        Ok(id) => {
-            warn!(app_id = %id, "refused a clock call from an app that is not the clock");
-            Err(zbus::fdo::Error::AccessDenied("not the clock app".into()))
-        }
+        Ok(id) => match callers::reach_of(&id) {
+            Reach::None => {
+                warn!(app_id = %id, "refused a clock call from an app that is not the clock");
+                Err(zbus::fdo::Error::AccessDenied("not the clock app".into()))
+            }
+            reach => Ok(reach),
+        },
         Err(e) => {
             warn!("refused a clock call from an unresolved caller: {e}");
             Err(zbus::fdo::Error::AccessDenied("unresolved caller".into()))
@@ -480,6 +474,28 @@ struct ClockInterface {
     clock: Arc<Clock>,
 }
 
+impl ClockInterface {
+    /// Refuse a caller that cannot reach the alarm this id names.
+    ///
+    /// Looked up by id in the CURRENT list rather than trusted from the call: the
+    /// caller supplies only the id, so the payload that decides the question has
+    /// to come from the alarm the daemon holds. An id that names nothing is
+    /// refused too, so a registrant cannot probe for which ids exist.
+    async fn may_reach_alarm(&self, reach: Reach, id: &str) -> zbus::fdo::Result<()> {
+        if reach == Reach::Full {
+            return Ok(());
+        }
+        let state = self.clock.state.lock().await;
+        let alarm = state.alarms.iter().find(|a| a.id == id);
+        if alarm.is_some_and(|a| callers::may_touch(reach, a.payload.as_deref())) {
+            return Ok(());
+        }
+        Err(zbus::fdo::Error::AccessDenied(
+            "this caller may only reach its own registrations".into(),
+        ))
+    }
+}
+
 #[zbus::interface(name = "org.arlen.Clock1")]
 impl ClockInterface {
     /// Everything the app renders, in one read.
@@ -488,6 +504,9 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<String> {
+        // A read, and a registrant needs it: section 4 has the calendar
+        // re-derive against what the clock currently holds, which it cannot do
+        // blind. The list is not a secret from a component that writes to it.
         admit(&header, connection).await?;
         let state = self.clock.state.lock().await;
         Ok(serde_json::to_string(&*state).unwrap_or_else(|_| "{}".to_string()))
@@ -500,12 +519,21 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
         let alarm: Alarm = serde_json::from_str(&alarm_json)
             .map_err(|e| zbus::fdo::Error::InvalidArgs(format!("not an alarm: {e}")))?;
+        // Checked against the alarm being WRITTEN, so a registrant cannot mint
+        // one without its own mark and then own it.
+        if !callers::may_touch(reach, alarm.payload.as_deref()) {
+            return Err(zbus::fdo::Error::AccessDenied(
+                "this caller may only set its own registrations".into(),
+            ));
+        }
         self.clock.apply(Command::SetAlarm(alarm)).await;
         Ok(())
     }
+
+
 
     /// Arm or disarm one.
     async fn toggle_alarm(
@@ -515,7 +543,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        self.may_reach_alarm(reach, &id).await?;
         self.clock.apply(Command::ToggleAlarm { id, enabled }).await;
         Ok(())
     }
@@ -527,7 +556,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        self.may_reach_alarm(reach, &id).await?;
         self.clock.apply(Command::DeleteAlarm { id }).await;
         Ok(())
     }
@@ -540,7 +570,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<String> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         let id = uuid::Uuid::now_v7().to_string();
         self.clock
             .apply(Command::TimerStart {
@@ -560,7 +591,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock
             .apply(Command::TimerSetPaused { id, paused })
             .await;
@@ -574,7 +606,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::TimerCancel { id }).await;
         Ok(())
     }
@@ -589,7 +622,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::FocusStart { held: vec![] }).await;
         Ok(())
     }
@@ -600,7 +634,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::FocusEnd).await;
         Ok(())
     }
@@ -612,7 +647,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         let config: FocusConfig = serde_json::from_str(&config_json)
             .map_err(|e| zbus::fdo::Error::InvalidArgs(format!("not a focus config: {e}")))?;
         self.clock.apply(Command::FocusConfigure(config)).await;
@@ -625,7 +661,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::StopwatchStart).await;
         Ok(())
     }
@@ -636,7 +673,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::StopwatchPause).await;
         Ok(())
     }
@@ -647,7 +685,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::StopwatchLap).await;
         Ok(())
     }
@@ -658,7 +697,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::StopwatchReset).await;
         Ok(())
     }
@@ -670,7 +710,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::WorldAdd { id }).await;
         Ok(())
     }
@@ -682,7 +723,8 @@ impl ClockInterface {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<()> {
-        admit(&header, connection).await?;
+        let reach = admit(&header, connection).await?;
+        require_full(reach)?;
         self.clock.apply(Command::WorldRemove { id }).await;
         Ok(())
     }
