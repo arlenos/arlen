@@ -450,8 +450,18 @@ jobs:
       - name: runner image identity
         id: runner-image
         run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-      - name: cache system packages
-        uses: actions/cache@v4
+      # RESTORE and SAVE as separate steps, deliberately. `actions/cache` saves in a
+      # post-job step that runs only when the job SUCCEEDED - and the job dies
+      # inside `system deps` below, so the archive was never written, so the next
+      # run restored nothing and hit the same mirror contention. Two runs in a row
+      # got worse that way (16 jobs, then 18): a cache that only fills on success
+      # cannot help the failure it exists to prevent. Saving with `always()`
+      # breaks that: whatever apt did manage to fetch before the ceiling is there
+      # for the next run, and a truncated archive costs a re-download rather than
+      # a wrong build, because apt checksums what it reuses.
+      - name: restore system packages
+        id: apt-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/apt-archive-cache
           key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
@@ -466,6 +476,15 @@ jobs:
         # its 75-minute allowance.
         timeout-minutes: 10
         run: dev/scripts/ci-system-deps.sh
+      # `always()`, so a run that timed out still leaves what it fetched behind.
+      # A key that already exists makes this a no-op with a warning, which is the
+      # steady state once one run has filled it.
+      - name: save system packages
+        if: always() && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-archive-cache
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -565,8 +584,18 @@ jobs:
       - name: runner image identity
         id: runner-image
         run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-      - name: cache system packages
-        uses: actions/cache@v4
+      # RESTORE and SAVE as separate steps, deliberately. `actions/cache` saves in a
+      # post-job step that runs only when the job SUCCEEDED - and the job dies
+      # inside `system deps` below, so the archive was never written, so the next
+      # run restored nothing and hit the same mirror contention. Two runs in a row
+      # got worse that way (16 jobs, then 18): a cache that only fills on success
+      # cannot help the failure it exists to prevent. Saving with `always()`
+      # breaks that: whatever apt did manage to fetch before the ceiling is there
+      # for the next run, and a truncated archive costs a re-download rather than
+      # a wrong build, because apt checksums what it reuses.
+      - name: restore system packages
+        id: apt-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/apt-archive-cache
           key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
@@ -581,6 +610,15 @@ jobs:
         # its 75-minute allowance.
         timeout-minutes: 10
         run: dev/scripts/ci-system-deps.sh
+      # `always()`, so a run that timed out still leaves what it fetched behind.
+      # A key that already exists makes this a no-op with a warning, which is the
+      # steady state once one run has filled it.
+      - name: save system packages
+        if: always() && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-archive-cache
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: build backend daemons
@@ -635,8 +673,18 @@ jobs:
       - name: runner image identity
         id: runner-image
         run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-      - name: cache system packages
-        uses: actions/cache@v4
+      # RESTORE and SAVE as separate steps, deliberately. `actions/cache` saves in a
+      # post-job step that runs only when the job SUCCEEDED - and the job dies
+      # inside `system deps` below, so the archive was never written, so the next
+      # run restored nothing and hit the same mirror contention. Two runs in a row
+      # got worse that way (16 jobs, then 18): a cache that only fills on success
+      # cannot help the failure it exists to prevent. Saving with `always()`
+      # breaks that: whatever apt did manage to fetch before the ceiling is there
+      # for the next run, and a truncated archive costs a re-download rather than
+      # a wrong build, because apt checksums what it reuses.
+      - name: restore system packages
+        id: apt-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/apt-archive-cache
           key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
@@ -651,6 +699,15 @@ jobs:
         # its 75-minute allowance.
         timeout-minutes: 10
         run: dev/scripts/ci-system-deps.sh
+      # `always()`, so a run that timed out still leaves what it fetched behind.
+      # A key that already exists makes this a no-op with a warning, which is the
+      # steady state once one run has filled it.
+      - name: save system packages
+        if: always() && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-archive-cache
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
