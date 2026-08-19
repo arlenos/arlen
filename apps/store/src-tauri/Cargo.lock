@@ -117,6 +117,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-launch-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+]
+
+[[package]]
 name = "arlen-modules"
 version = "0.1.0"
 dependencies = [
@@ -3651,6 +3661,7 @@ dependencies = [
 name = "tauri-plugin-arlen-portal"
 version = "0.1.0"
 dependencies = [
+ "arlen-launch-contract",
  "futures-util",
  "log",
  "rand",
