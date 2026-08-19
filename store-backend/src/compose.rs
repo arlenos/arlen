@@ -588,9 +588,7 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
     }
     for yaml in &inputs.dep11_yaml {
         // Best-effort per record: a corrupt document is skipped inside, never fatal.
-        let mut es = dep11_entries(yaml);
-        fuse_apt_profiles(&mut es, &inputs.apt_profiles);
-        entries.extend(es);
+        entries.extend(dep11_entries(yaml));
     }
     // AFTER every source, not inside the Flathub branch. It sat there until 19
     // August, so on a machine with Flatpaks installed and no Flathub catalogue -
@@ -600,6 +598,11 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
     // not care which source produced the entry: an installed Flatpak that
     // reached the catalogue through its exported MetaInfo is the same app.
     fuse_flatpak_metadata(&mut entries, &inputs.flatpak_metadata);
+    // The apt fuse moves out of the DEP-11 loop for the same reason: an enrolled
+    // `.deb` whose card reached the catalogue through its installed MetaInfo,
+    // rather than through a DEP-11 document, is the same app and its profile is
+    // the same declaration. Matching is by id either way.
+    fuse_apt_profiles(&mut entries, &inputs.apt_profiles);
     crate::query::Catalog::new(crate::catalog::merge_catalog(entries))
 }
 
@@ -645,7 +648,7 @@ fn fuse_apt_profiles(entries: &mut [CatalogEntry], profiles: &[(String, String)]
             continue;
         };
         let labels = arlen_extensions::profile::profile_labels(&profile);
-        for entry in entries.iter_mut().filter(|e| e.id.0 == *id) {
+        for entry in entries.iter_mut().filter(|e| same_app(&e.id.0, id)) {
             // An enrolled profile IS the declaration, so this footprint is read.
             entry.capabilities = CapabilityFootprint::read(labels.clone());
         }
@@ -699,6 +702,36 @@ mod tests {
         assert!(
             !super::same_app("org.gnome.gedit.plugin", "org.gnome.gedit"),
             "only the suffix convention, not any shared prefix"
+        );
+    }
+
+    /// The apt half of the same move: an enrolled `.deb` whose card came from
+    /// its installed MetaInfo, with no DEP-11 document anywhere, still gets its
+    /// declared capabilities. Inside the DEP-11 loop the fuse only ever reached
+    /// entries that loop produced.
+    #[test]
+    fn an_enrolled_deb_gets_its_profile_without_a_dep11_catalogue() {
+        let inputs = super::SourceInputs {
+            metainfo_xml: vec![
+                "<component type=\"desktop-application\"><id>org.example.Notes</id>\
+                 <name>Notes</name></component>"
+                    .to_string(),
+            ],
+            apt_profiles: vec![(
+                "org.example.Notes".to_string(),
+                "[info]\napp_id = \"org.example.Notes\"\ntier = \"third-party\"\n\
+                 \n[filesystem]\nhome = true\n"
+                    .to_string(),
+            )],
+            ..Default::default()
+        };
+        let catalog = super::compose_catalog(inputs);
+        let card = &catalog.search("", &[])[0];
+        assert!(card.variants[0].capabilities.known, "the profile was read");
+        assert!(
+            card.variants[0].capabilities.capabilities.contains(&"filesystem".to_string()),
+            "and it declared filesystem access: {:?}",
+            card.variants[0].capabilities.capabilities
         );
     }
 
