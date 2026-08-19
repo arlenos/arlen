@@ -46,6 +46,25 @@ mkdir -p "$run/data/arlen/calendars" "$run/state" "$run/config"
 soon_date=$(date -u -d "+4 minutes" +%Y%m%d)
 soon_time=$(date -u -d "+4 minutes" +%H%M%S)
 
+# And a third whose alarm comes due WHILE THIS RUNS, so the last link in the
+# chain is exercised rather than inferred. Everything above proves a reminder
+# was derived, handed over and stored; none of it proves the clock ever reaches
+# the moment and rings.
+#
+# SEVENTY-FIVE SECONDS, AND NOT TWELVE, WHICH IS WHAT I TRIED FIRST. A reminder
+# is a wall-clock time to the minute: the calendar registers `%H:%M` and the
+# clock resolves that to `HH:MM:00`, then refuses a dated alarm whose moment has
+# passed - correctly, since ringing for a meeting that already happened is
+# worse than silence. So an alarm twelve seconds out is armed for the START of
+# the minute it is already inside, which is behind `now` the instant it lands,
+# and it can never fire. The case failed, and it was the fixture that was wrong.
+#
+# Truncation to the minute costs at most 59 seconds, so 75 leaves the armed
+# moment at least 16 seconds ahead of the registration no matter which second
+# the run starts on. That is what makes the window below as wide as it is.
+ring_date=$(date -u -d "+75 seconds" +%Y%m%d)
+ring_time=$(date -u -d "+75 seconds" +%H%M%S)
+
 # One event, one alarm, tomorrow, so the trigger is always ahead of now.
 tomorrow=$(date -u -d "+1 day" +%Y%m%d)
 cat > "$run/data/arlen/calendars/work.ics" <<ICS
@@ -66,6 +85,15 @@ UID:soon@drive
 SUMMARY:Starting shortly
 LOCATION:Room 3
 DTSTART:${soon_date}T${soon_time}Z
+END:VEVENT
+BEGIN:VEVENT
+UID:imminent@drive
+SUMMARY:Rings during this run
+DTSTART:${ring_date}T${ring_time}Z
+BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER:-PT0S
+END:VALARM
 END:VEVENT
 END:VCALENDAR
 ICS
@@ -90,7 +118,11 @@ clock_pid=$!
 sleep 2
 "$CALD" >"$RUN/calendar.log" 2>&1 &
 cal_pid=$!
-sleep 6
+# Long enough for the imminent alarm to come due inside the run. The rest of
+# the assertions are satisfied within a second or two; this one is the reason
+# the window is this wide, and why this script takes a minute and a half rather
+# than ten seconds. It is a script somebody runs, not a per-commit gate.
+sleep 100
 kill "$cal_pid" "$clock_pid" "$bus_pid" 2>/dev/null
 wait 2>/dev/null
 SH
@@ -114,8 +146,12 @@ say "the calendar daemon takes its bus name" \
 
 # The whole point. Anything less than this - a refused call, a clock that never
 # came up, a derivation that found nothing - shows up as a missing line.
+# Any number above zero, not exactly one: the fixture has grown a second alarm
+# since this was written, and a case that counts what the fixture happens to
+# hold is a case that goes red when the fixture is edited rather than when the
+# daemons stop talking.
 say "a reminder reaches the clock" \
-  "$(printf '%s' "$log" | grep -qE "set=1.*reminders registered|reminders registered.*set=1" && echo 1 || echo 0)" "$log"
+  "$(printf '%s' "$log" | grep -qE "set=[1-9].*reminders registered|reminders registered.*set=[1-9]" && echo 1 || echo 0)" "$log"
 
 # The failure this drive was written after: the clock refusing the calendar
 # outright. Named separately so the reason is in the output rather than inferred
@@ -149,8 +185,31 @@ say "a meeting about to start is announced on the bus" \
 
 # And it is said once. The store is re-read on a timer; without the memory this
 # one meeting would wake the agent at every pass.
+#
+# Counted PER MEETING, by uid, rather than over the whole log. The promise is
+# that one meeting is announced once, not that the daemon speaks once - and with
+# the window now wide enough for the imminent alarm, a second meeting enters the
+# lead window and is rightly announced too. Counting every line would read that
+# correct behaviour as a repeat.
 say "and only once, however often the store is re-read" \
-  "$([ "$(printf '%s\n' "$log" | grep -c 'announced an upcoming meeting')" = 1 ] && echo 1 || echo 0)" "$log"
+  "$([ "$(printf '%s\n' "$log" | grep -c 'uid=soon@drive')" = 1 ] && echo 1 || echo 0)" "$log"
+
+# THE LAST LINK. Everything above proves a reminder was derived, handed over,
+# stored and marked; none of it proves the clock ever reaches the moment. An
+# alarm armed for a time that arrives and passes in silence is the whole feature
+# failing at the last step, and it would have read as eight green cases.
+#
+# Read from the CLOCK's own log, not the calendar's: the calendar's part ended
+# when the registration returned.
+clocklog=$(strip_ansi < "$run/clock.log" 2>/dev/null)
+say "the alarm comes due and the clock rings it" \
+  "$(printf '%s' "$clocklog" | grep -q "announcing" && echo 1 || echo 0)" "$clocklog"
+
+# And it rings the right one. `announcing` alone would also hold for the
+# stopwatch, a timer, or a focus session ending - anything the clock says out
+# loud - so the meeting's own title has to be in what it announced.
+say "and what it rings carries the meeting's own title" \
+  "$(printf '%s' "$clocklog" | grep -q "Rings during this run" && echo 1 || echo 0)" "$clocklog"
 
 [ "$fail" = 0 ] && echo "the two daemons spoke, and an alarm exists that nobody set by hand"
 exit "$fail"
