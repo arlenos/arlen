@@ -43,17 +43,43 @@ def main() -> int:
         print("apps/ is missing; the layout moved and this check did not")
         return 1
 
-    validator = shutil.which("desktop-file-validate")
-    if not validator:
-        print("desktop-file-validate not installed (desktop-file-utils); not run")
-        return 0
-
     found = entries()
     if not found:
         print("no desktop entry found under apps/*/dist; that is not plausible")
         return 1
 
     problems: list[str] = []
+
+    # X-Arlen-AppId, checked here rather than only by the sdk test suite.
+    #
+    # The id in this key is what the launcher states and what every daemon that
+    # admits by app id keys on, so an entry without one is an app the system
+    # cannot name. `sdk/permissions` asserts it, but that test runs in CI and not
+    # in the pre-commit gates - so on 19 August a new app's entry landed without
+    # the key and the board went red on a commit whose author had already moved
+    # on. The validator below cannot see it: it is an X- key, which freedesktop
+    # says nothing about.
+    for entry in found:
+        text = entry.read_text(encoding="utf-8", errors="replace")
+        if not any(line.startswith("X-Arlen-AppId=") for line in text.splitlines()):
+            problems.append(
+                f"{entry.relative_to(ROOT)}:\n      no X-Arlen-AppId, so nothing states which "
+                "app this is.\n      Every daemon that admits by app id keys on that name."
+            )
+
+    validator = shutil.which("desktop-file-validate")
+    if not validator:
+        if problems:
+            print("\ndesktop entries the launcher would read wrongly:\n")
+            for p in problems:
+                print(f"  - {p}")
+            return 1
+        print(
+            f"{len(found)} desktop entrie(s) name an app id; "
+            "desktop-file-validate not installed (desktop-file-utils), so the rest is not run"
+        )
+        return 0
+
     for entry in found:
         out = subprocess.run(
             [validator, str(entry)], capture_output=True, text=True, check=False

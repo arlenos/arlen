@@ -56,6 +56,7 @@ Exec=arlen-good %f
 Icon=arlen-good
 Terminal=false
 Categories=Utility;TextEditor;
+X-Arlen-AppId=dev.arlen.good
 `;
 
 // Valid to the letter, and it names Utility AND Graphics - two main categories.
@@ -63,6 +64,10 @@ const twoMain = good.replace("Categories=Utility;TextEditor;", "Categories=Utili
 
 // A hard error: Type is required.
 const broken = good.replace("Type=Application\n", "");
+
+// Valid to the letter, and unnameable: no app id, so nothing states which app
+// this is and every daemon that admits by app id has nothing to key on.
+const noAppId = good.replace("X-Arlen-AppId=dev.arlen.good\n", "");
 
 if (!haveValidator) {
   console.log("  skip desktop-file-validate is not installed; the check self-skips too");
@@ -74,6 +79,14 @@ if (!haveValidator) {
   const root = tree({ good });
   const rc = run(root);
   rc === 0 ? ok("a clean entry passes") : bad("a clean entry passes", `expected 0, got ${rc}`);
+}
+
+{
+  const root = tree({ noAppId });
+  const rc = run(root);
+  rc === 1
+    ? ok("an entry that never says which app it is is caught")
+    : bad("an entry that never says which app it is is caught", `expected 1, got ${rc}`);
   rmSync(root, { recursive: true, force: true });
 }
 
