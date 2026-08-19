@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use arlen_calendar_core as ics;
+use ics::view::{rows, AgendaEvent};
 use serde::Serialize;
 use tauri::Emitter;
 
@@ -29,37 +30,6 @@ fn calendar_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
     Some(base.join("arlen/calendars"))
-}
-
-/// One event, flattened for the frontend.
-///
-/// The times are strings in the file's own terms plus the KIND of time they are,
-/// because the three forms mean different things and the surface has to be able
-/// to say which one it is showing. Collapsing them here would undo the care the
-/// parser takes.
-#[derive(Debug, Clone, Serialize)]
-pub struct AgendaEvent {
-    pub uid: String,
-    pub summary: String,
-    pub location: String,
-    /// `YYYY-MM-DD` in the event's own terms.
-    pub date: String,
-    /// `HH:MM`, or absent for an all-day event.
-    pub time: Option<String>,
-    /// `HH:MM` of the end, when the file gave one.
-    pub end_time: Option<String>,
-    /// `day`, `floating`, `utc` or `zoned`.
-    pub kind: String,
-    /// The zone name for a `zoned` time, so a surface can show it rather than
-    /// pretending the reader is in it.
-    pub tzid: Option<String>,
-    /// True when the event carries an RRULE.
-    pub repeats: bool,
-    /// True when THIS row is one the calendar worked out from the rule. False on
-    /// a repeating event whose rule `rrule` refuses - that row is the one date
-    /// the file names, and the surface has to say so rather than implying the
-    /// series is drawn.
-    pub expanded: bool,
 }
 
 /// What one read of the calendar directory found.
@@ -98,76 +68,6 @@ fn launch_file(state: tauri::State<'_, LaunchFile>) -> Option<String> {
     state.0.clone()
 }
 
-/// How far the agenda draws GENERATED occurrences, either side of today.
-///
-/// A written event is a fact in a file and is shown whenever it falls; a
-/// repeat is generated, and generation without bounds is infinite - "every
-/// Monday for ever" has no last row to draw. Backwards as well as forwards
-/// because an agenda that hid this Monday's standup on Tuesday would be
-/// answering a question nobody asked.
-///
-/// The numbers are a choice rather than a law, which is why they are here with
-/// a name instead of inline: far enough that a person planning a quarter sees
-/// their meetings, near enough that a daily rule is a few hundred rows.
-const REPEAT_BACK_DAYS: i64 = 30;
-const REPEAT_AHEAD_DAYS: i64 = 120;
-
-/// Every date this event actually falls on, inside the window.
-///
-/// A non-repeating event is its own single date. A repeat this machine can work
-/// out becomes one row per occurrence. A repeat it CANNOT work out - the rules
-/// `rrule` refuses - stays a single row that still says it repeats, which is
-/// what the surface said before any of this existed: better a row that admits
-/// it does not know than rows on days nobody agreed to.
-fn occurrences(e: &ics::Event, today: chrono::NaiveDate) -> Vec<chrono::NaiveDate> {
-    let start = e.start.date();
-    let Some(rule) = e.rrule.as_deref() else {
-        return vec![start];
-    };
-    let from = today - chrono::Duration::days(REPEAT_BACK_DAYS);
-    let to = today + chrono::Duration::days(REPEAT_AHEAD_DAYS);
-    match ics::rrule::expand(rule, start, from, to) {
-        Some(dates) if !dates.is_empty() => dates,
-        // Refused, or a series that has ended before the window: the event is
-        // still real and still says it repeats.
-        _ => vec![start],
-    }
-}
-
-/// Day, then time of day, then title: the order an agenda is read in.
-fn sort_events(events: &mut [AgendaEvent]) {
-    events.sort_by(|a, b| (&a.date, &a.time, &a.summary).cmp(&(&b.date, &b.time, &b.summary)));
-}
-
-fn kind_of(t: &ics::CalTime) -> (&'static str, Option<String>) {
-    match t {
-        ics::CalTime::Day(_) => ("day", None),
-        ics::CalTime::Floating(_) => ("floating", None),
-        ics::CalTime::Utc(_) => ("utc", None),
-        ics::CalTime::Zoned { tzid, .. } => ("zoned", Some(tzid.clone())),
-    }
-}
-
-fn flatten(e: &ics::Event, on: chrono::NaiveDate, expanded: bool) -> AgendaEvent {
-    let (kind, tzid) = kind_of(&e.start);
-    AgendaEvent {
-        uid: e.uid.clone(),
-        summary: e.summary.clone(),
-        location: e.location.clone(),
-        date: on.format("%Y-%m-%d").to_string(),
-        time: e.start.time().map(|t| t.format("%H:%M").to_string()),
-        end_time: e
-            .end
-            .as_ref()
-            .and_then(|t| t.time())
-            .map(|t| t.format("%H:%M").to_string()),
-        kind: kind.to_string(),
-        tzid,
-        repeats: e.repeats(),
-        expanded,
-    }
-}
-
 /// One file's events, for the launched-on-a-file case.
 ///
 /// `directory` carries the FILE's own path here rather than a directory, because
@@ -189,16 +89,10 @@ fn agenda_of_file(path: &std::path::Path) -> Result<Agenda, String> {
     agenda.files = 1;
     match ics::parse_events(&text) {
         Ok(events) => {
-            let today = chrono::Local::now().date_naive();
-            for e in &events {
-                let dates = occurrences(e, today);
-                let expanded = e.repeats() && dates.len() > 1;
-                agenda.events.extend(dates.into_iter().map(|on| flatten(e, on, expanded)));
-            }
+            agenda.events = rows(&events, chrono::Local::now().date_naive());
         }
         Err(_) => agenda.unreadable = 1,
     }
-    sort_events(&mut agenda.events);
     Ok(agenda)
 }
 
@@ -227,6 +121,7 @@ fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
         files: 0,
         unreadable: 0,
     };
+    let mut parsed: Vec<ics::Event> = Vec::new();
     if !agenda.directory_exists {
         return Ok(agenda);
     }
@@ -243,22 +138,14 @@ fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
             continue;
         };
         match ics::parse_events(&text) {
-            Ok(events) => {
-                let today = chrono::Local::now().date_naive();
-                for e in &events {
-                    let dates = occurrences(e, today);
-                    // One date back from a repeating event means the rule was
-                    // refused, not that the series has one occurrence.
-                    let expanded = e.repeats() && dates.len() > 1;
-                    agenda
-                        .events
-                        .extend(dates.into_iter().map(|on| flatten(e, on, expanded)));
-                }
-            }
+            Ok(events) => parsed.extend(events),
             Err(_) => agenda.unreadable += 1,
         }
     }
-    sort_events(&mut agenda.events);
+    // Sorted across every file at once, not per file: an agenda is one list, and
+    // sorting each file's rows separately would leave the day's meetings grouped
+    // by which file happened to hold them.
+    agenda.events = rows(&parsed, chrono::Local::now().date_naive());
     Ok(agenda)
 }
 
@@ -353,79 +240,43 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    /// A weekly meeting must appear on its days, not once on the day the file
-    /// happens to name. This is the whole reason the expansion exists.
+    /// The rows themselves are `arlen_calendar_core::view`'s and tested there,
+    /// where the daemon reads them from too. What is left here is what this host
+    /// alone decides: that a file it was opened on is the whole agenda, and that
+    /// the surface can name what it read when there is nothing in it.
     #[test]
-    fn a_weekly_event_draws_one_row_per_occurrence_in_the_window() {
-        let events = ics::parse_events(
-            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:standup\nSUMMARY:Standup\n\
-             DTSTART:20260819T070000Z\nRRULE:FREQ=WEEKLY;BYDAY=WE\nEND:VEVENT\nEND:VCALENDAR\n",
+    fn opened_on_a_file_the_agenda_is_that_file_and_names_it() {
+        let dir = std::env::temp_dir().join(format!("arlen-cal-host-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("one.ics");
+        std::fs::write(
+            &path,
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:only\nSUMMARY:The only one\n\
+             DTSTART:20260819T090000Z\nEND:VEVENT\nEND:VCALENDAR\n",
         )
-        .expect("a calendar");
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 8, 19).unwrap();
-        let dates = occurrences(&events[0], today);
-        assert!(dates.len() > 4, "a weekly rule fills the window: {}", dates.len());
-        assert!(dates.iter().all(|d| chrono::Datelike::weekday(d) == chrono::Weekday::Wed));
+        .expect("write");
+
+        let agenda = agenda_of_file(&path).expect("reads");
+        assert_eq!(agenda.files, 1);
+        assert_eq!(agenda.unreadable, 0);
+        assert_eq!(agenda.events.len(), 1);
+        assert_eq!(agenda.events[0].summary, "The only one");
+        // The FILE, not the calendar folder: "no events in <this file>" is the
+        // honest sentence when the thing somebody opened turns out to be empty.
+        assert_eq!(agenda.directory, path.display().to_string());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// A rule the expander refuses stays ONE row that still says it repeats -
-    /// the state the surface handled before expansion existed. Rows on guessed
-    /// days would be worse than a row that admits it does not know.
     #[test]
-    fn a_refused_rule_stays_a_single_row() {
-        let events = ics::parse_events(
-            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:board\nSUMMARY:Board\n\
-             DTSTART:20260803T090000Z\nRRULE:FREQ=MONTHLY;BYDAY=1MO\nEND:VEVENT\nEND:VCALENDAR\n",
-        )
-        .expect("a calendar");
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 8, 19).unwrap();
-        assert_eq!(occurrences(&events[0], today).len(), 1);
-        assert!(events[0].repeats(), "and it still says it repeats");
-    }
+    fn a_file_that_is_not_a_calendar_is_counted_rather_than_erroring() {
+        let dir = std::env::temp_dir().join(format!("arlen-cal-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("notes.ics");
+        std::fs::write(&path, "just some text").expect("write");
 
-    /// A one-off is its own single date, whatever the window is.
-    #[test]
-    fn a_single_event_is_untouched_by_the_window() {
-        let events = ics::parse_events(
-            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nDTSTART:20200101T090000Z\nEND:VEVENT\nEND:VCALENDAR\n",
-        )
-        .expect("a calendar");
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 8, 19).unwrap();
-        assert_eq!(
-            occurrences(&events[0], today),
-            vec![chrono::NaiveDate::from_ymd_opt(2020, 1, 1).unwrap()],
-            "a written date is a fact in the file, not something generated"
-        );
-    }
-
-    /// The flattening must not lose which KIND of time an event carries - that
-    /// is the whole point of the parser keeping them apart, and a surface that
-    /// cannot tell a zoned time from a floating one will print one as the other.
-    #[test]
-    fn a_zoned_event_keeps_its_zone_through_the_flattening() {
-        let events = ics::parse_events(
-            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nSUMMARY:Standup\n\
-             DTSTART;TZID=Europe/Vienna:20260819T090000\nEND:VEVENT\nEND:VCALENDAR\n",
-        )
-        .expect("a calendar");
-        let flat = flatten(&events[0], events[0].start.date(), false);
-        assert_eq!(flat.kind, "zoned");
-        assert_eq!(flat.tzid.as_deref(), Some("Europe/Vienna"));
-        assert_eq!(flat.date, "2026-08-19");
-        assert_eq!(flat.time.as_deref(), Some("09:00"));
-    }
-
-    /// An all-day event has no time of day, and inventing midnight for it would
-    /// put it in the agenda ahead of a 00:30 event that really is at 00:30.
-    #[test]
-    fn an_all_day_event_carries_no_time() {
-        let events = ics::parse_events(
-            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nSUMMARY:Holiday\n\
-             DTSTART;VALUE=DATE:20260819\nEND:VEVENT\nEND:VCALENDAR\n",
-        )
-        .expect("a calendar");
-        let flat = flatten(&events[0], events[0].start.date(), false);
-        assert_eq!(flat.kind, "day");
-        assert_eq!(flat.time, None);
+        let agenda = agenda_of_file(&path).expect("reads");
+        assert_eq!(agenda.unreadable, 1);
+        assert!(agenda.events.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
