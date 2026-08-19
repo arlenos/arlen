@@ -331,20 +331,73 @@ pub fn theme_resolved_metrics() -> Result<std::collections::BTreeMap<String, Str
 ///
 /// `key` is validated against the same key set the read command emits, so the
 /// frontend can only write metric overrides and cannot reach an arbitrary dotted
-/// path in the appearance config. That agreement is test-pinned rather than
-/// restated: a metric that becomes readable but not writable, or the reverse, is
-/// a row that silently does nothing.
+/// path in the config. That agreement is test-pinned rather than restated: a
+/// metric that becomes readable but not writable, or the reverse, is a row that
+/// silently does nothing.
+///
+/// WHERE IT WRITES, AND WHY IT MOVED. This wrote `overrides.<key>` into
+/// `appearance.toml` until 19 Aug, and nothing on the reading side ever looked
+/// there. The `[overrides]` table deserialises into `UserOverrides`, which holds
+/// exactly three fields - `accent`, `font_scale`, `radius_intensity` - with no
+/// catch-all, so `overrides.depth.shadow_card` landed on disk and was dropped by
+/// the loader. The command was added to fix rows that "edited an in-memory store
+/// that was never persisted and never applied", and it got as far as persisted.
+///
+/// The per-field channel is `theme.toml`, sdk/theme's layer 3, which the resolver
+/// merges field-by-field over the active theme. `ConfigFile::Customization` was
+/// already defined for it and its doc already said the Appearance suite writes it;
+/// nothing did. The metric keys are `section.field` and the theme file is grouped
+/// into exactly those sections, so the key IS the path - no prefix.
+///
+/// TYPES MATTER HERE. The read command stringifies everything, so the frontend
+/// round-trips strings, but `radius.button` is an `f32` in the schema and
+/// `depth.blur_enabled` a `bool`. Writing those as TOML strings would make the
+/// merged theme fail to parse, which is worse than being ignored: an unreadable
+/// customization file takes the whole theme down rather than one row. So the value
+/// is converted to the type the schema declares, and a value that will not convert
+/// is refused rather than written.
 #[tauri::command]
 pub async fn theme_set_metric(key: String, value: String) -> Result<(), String> {
     if !is_known_metric(&key) {
         return Err(format!("not an appearance metric: {key}"));
     }
-    config_set(
-        ConfigFile::Appearance,
-        format!("overrides.{key}"),
-        serde_json::Value::String(value),
-    )
-    .await
+    config_set(ConfigFile::Customization, key.clone(), metric_value(&key, &value)?).await
+}
+
+/// The TOML type a metric holds, from the theme schema rather than from the
+/// stringified read.
+///
+/// Hand-kept, and pinned by a test that every key `theme_resolved_metrics` emits
+/// appears here: a metric that gains a row but no type would be written as a
+/// string and break the file it is written into.
+fn metric_value(key: &str, value: &str) -> Result<serde_json::Value, String> {
+    let number = |v: &str| {
+        v.parse::<f64>()
+            .map_err(|_| format!("{key} is a number and {v:?} is not one"))
+            .and_then(|n| {
+                serde_json::Number::from_f64(n)
+                    .map(serde_json::Value::Number)
+                    .ok_or_else(|| format!("{key} cannot hold {v:?}"))
+            })
+    };
+    match key {
+        // Radii are floats; `window_corners` is the four-corner array and is not
+        // offered as a metric row, so it needs no case here.
+        k if k.starts_with("radius.") => number(value),
+        // Weights are integers in the schema, but a JSON number covers both and
+        // toml_edit writes an integer for a whole value.
+        "typography.weight_normal" | "typography.weight_medium" | "typography.weight_bold" => {
+            number(value)
+        }
+        "depth.blur_enabled" => match value {
+            "true" => Ok(serde_json::Value::Bool(true)),
+            "false" => Ok(serde_json::Value::Bool(false)),
+            other => Err(format!("{key} is a switch and {other:?} is neither on nor off")),
+        },
+        // Everything else is a CSS-ish string the theme carries verbatim: spacing
+        // lengths, durations, easings, font families, shadows.
+        _ => Ok(serde_json::Value::String(value.to_string())),
+    }
 }
 
 /// Whether `key` names a metric [`theme_resolved_metrics`] reports.
@@ -727,6 +780,45 @@ pub async fn theme_import_scheme(
 mod tests {
     use super::*;
 
+    /// Every metric the read command reports converts to the type the theme
+    /// schema declares for it.
+    ///
+    /// The failure this guards is quiet and total: a numeric field written as a
+    /// TOML string makes `theme.toml` fail to deserialise, and a customization
+    /// file that will not parse does not lose one row, it takes the whole theme
+    /// down. So a new metric that arrives without a type entry has to fail here
+    /// rather than on the user's machine.
+    #[test]
+    fn every_metric_converts_to_the_type_the_schema_declares() {
+        let Ok(metrics) = super::theme_resolved_metrics() else {
+            return; // no resolvable theme here; the shape cases below still hold
+        };
+        for (key, resolved) in metrics {
+            if key == "radius.window_corners" {
+                continue; // the four-corner array is not offered as a metric row
+            }
+            let v = super::metric_value(&key, &resolved)
+                .unwrap_or_else(|e| panic!("{key} does not round-trip its own resolved value: {e}"));
+            let want_number = key.starts_with("radius.") || key.starts_with("typography.weight_");
+            let want_bool = key == "depth.blur_enabled";
+            assert_eq!(v.is_number(), want_number, "{key} number-ness");
+            assert_eq!(v.is_boolean(), want_bool, "{key} bool-ness");
+        }
+    }
+
+    /// A value of the wrong shape is refused rather than written. Writing
+    /// `"maybe"` into a boolean field is the same total failure as writing a
+    /// string into a float one.
+    #[test]
+    fn a_value_that_is_not_the_declared_type_is_refused() {
+        assert!(super::metric_value("radius.button", "quite round").is_err());
+        assert!(super::metric_value("depth.blur_enabled", "maybe").is_err());
+        assert!(super::metric_value("typography.weight_bold", "heavy").is_err());
+        // And the string fields take what they are given, since the theme carries
+        // them verbatim.
+        assert!(super::metric_value("spacing.md", "0.75rem").is_ok());
+    }
+
     /// The guard the write command rests on: it accepts exactly what the read
     /// command reports. A key readable but not writable is a row that silently
     /// does nothing; a key writable but not readable is a value nothing shows.
@@ -754,11 +846,18 @@ mod tests {
     }
 
     #[test]
-    fn sound_bindings_map_the_four_events_from_the_resolved_theme() {
+    fn sound_bindings_map_every_event_from_the_resolved_theme() {
         let theme = arlen_theme::ArlenTheme::from_bundled(arlen_theme::DARK_TOML).unwrap();
         let bindings = sound_bindings(&theme.sounds);
         let events: Vec<&str> = bindings.iter().map(|b| b.event.as_str()).collect();
-        assert_eq!(events, ["notification", "error", "warning", "action"]);
+        // Four until 19 Aug, when the theme gained device-added and
+        // device-removed. The list is spelled out rather than counted, so an
+        // event that appears in the schema without a label and a resolved name
+        // fails here instead of rendering as a blank row.
+        assert_eq!(
+            events,
+            ["notification", "error", "warning", "action", "device-added", "device-removed"]
+        );
         // Every binding carries a non-empty resolved freedesktop sound name.
         assert!(bindings.iter().all(|b| !b.sound.is_empty() && !b.label.is_empty()));
     }
