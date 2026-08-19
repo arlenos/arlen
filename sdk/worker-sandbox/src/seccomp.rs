@@ -47,7 +47,31 @@
 
 #![cfg(target_os = "linux")]
 
-use arlen_viewers_core::Decoder;
+/// What a worker is allowed to need, as far as the syscall filter is concerned.
+///
+/// Named for the capability rather than for a format, because that is what the
+/// filter actually varies on: this held a `Decoder` enum while the viewer's
+/// decoders were the only callers, and the PDF page renderer made the coupling
+/// visible - a document renderer is not an image codec, and the filter never
+/// cared which it was, only whether the worker makes threads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkerProfile {
+    /// Whether the worker may create threads.
+    ///
+    /// Off by default and on only where a C library needs it: the threading
+    /// syscalls are the widest part of the allowlist, and `clone` is then
+    /// admitted only with the namespace flag bits clear so a worker cannot
+    /// unshare its way out.
+    pub threads: bool,
+}
+
+impl WorkerProfile {
+    /// A worker that runs on one thread: the tight filter.
+    pub const SINGLE_THREADED: Self = Self { threads: false };
+    /// A worker whose C library makes threads of its own.
+    pub const THREADED: Self = Self { threads: true };
+}
+
 use seccompiler::{
     BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
     SeccompRule,
@@ -197,7 +221,7 @@ fn decoder_base_allowlist() -> Vec<libc::c_long> {
 }
 
 /// The extra syscalls the C-linked HEIC/AVIF worker needs to create the decode
-/// threads (`dav1d`/`libde265`). Added ONLY for [`Decoder::LibHeif`]; the
+/// threads (`dav1d`/`libde265`). Added ONLY for [`WorkerProfile::THREADED`]; the
 /// pure-Rust workers never receive these, so thread creation is denied to them.
 /// `clone` is listed here (it is allowed for HEIC) but is given a flag mask in
 /// [`decoder_filter_bytes`] so a namespace-creating `clone` is still refused;
@@ -226,11 +250,11 @@ fn clone_namespace_mask() -> u64 {
         | libc::CLONE_NEWNET) as u64
 }
 
-/// The allowlist for `decoder`: the base set, plus the threading set for the
+/// The allowlist for `profile`: the base set, plus the threading set for the
 /// HEIC/AVIF worker only. The result is sorted + deduplicated.
-pub fn decoder_allowlist(decoder: Decoder) -> Vec<libc::c_long> {
+pub fn decoder_allowlist(profile: WorkerProfile) -> Vec<libc::c_long> {
     let mut set = decoder_base_allowlist();
-    if matches!(decoder, Decoder::LibHeif) {
+    if profile.threads {
         set.extend(threading_syscalls());
     }
     set.sort_unstable();
@@ -238,19 +262,19 @@ pub fn decoder_allowlist(decoder: Decoder) -> Vec<libc::c_long> {
     set
 }
 
-/// Compile `decoder`'s allowlist to cBPF bytes for `bwrap --seccomp <fd>`. The
+/// Compile `profile`'s allowlist to cBPF bytes for `bwrap --seccomp <fd>`. The
 /// mismatch action is `ENOSYS` (not kill, not EPERM): a denied call cannot bypass
 /// the filter, and `ENOSYS` ("syscall not implemented") drives glibc's own
 /// fallbacks - notably `clone3 -> clone`, so the HEIC worker's threads route
 /// through the flag-masked `clone` below rather than the unfilterable `clone3`.
-pub fn decoder_filter_bytes(decoder: Decoder) -> Result<Vec<u8>, SeccompError> {
+pub fn decoder_filter_bytes(profile: WorkerProfile) -> Result<Vec<u8>, SeccompError> {
     let mut rules: BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>> =
-        decoder_allowlist(decoder).into_iter().map(|nr| (nr, Vec::new())).collect();
+        decoder_allowlist(profile).into_iter().map(|nr| (nr, Vec::new())).collect();
 
     // The HEIC worker may create threads but not namespaces: replace the plain
     // `clone` allow with one gated on the namespace flag bits being clear, so a
     // `clone(CLONE_NEWUSER|...)` does not match and falls to the `ENOSYS` action.
-    if matches!(decoder, Decoder::LibHeif) {
+    if profile.threads {
         let no_namespace_flags = SeccompCondition::new(
             0,
             SeccompCmpArgLen::Qword,
@@ -297,16 +321,16 @@ mod tests {
 
     #[test]
     fn both_profiles_compile_to_nonempty_cbpf() {
-        assert!(!decoder_filter_bytes(Decoder::ImageRs).unwrap().is_empty());
-        assert!(!decoder_filter_bytes(Decoder::LibHeif).unwrap().is_empty());
+        assert!(!decoder_filter_bytes(WorkerProfile::SINGLE_THREADED).unwrap().is_empty());
+        assert!(!decoder_filter_bytes(WorkerProfile::THREADED).unwrap().is_empty());
         // Each cBPF instruction is 8 bytes.
-        assert_eq!(decoder_filter_bytes(Decoder::ImageRs).unwrap().len() % 8, 0);
+        assert_eq!(decoder_filter_bytes(WorkerProfile::SINGLE_THREADED).unwrap().len() % 8, 0);
     }
 
     #[test]
     fn heic_profile_is_a_strict_superset_of_the_pure_rust_one() {
-        let base = decoder_allowlist(Decoder::ImageRs);
-        let heic = decoder_allowlist(Decoder::LibHeif);
+        let base = decoder_allowlist(WorkerProfile::SINGLE_THREADED);
+        let heic = decoder_allowlist(WorkerProfile::THREADED);
         // Every base call is in the HEIC set...
         assert!(base.iter().all(|nr| heic.contains(nr)));
         // ...and the HEIC set adds exactly the threading calls, nothing else.
@@ -322,10 +346,10 @@ mod tests {
         // clone3's flags live behind a pointer seccomp cannot read, so it is left
         // out of every allowlist; the ENOSYS mismatch action makes glibc retry
         // via clone, which IS in the HEIC set (and flag-masked in the filter).
-        for decoder in [Decoder::ImageRs, Decoder::JxlOxide, Decoder::LibHeif, Decoder::Symphonia] {
-            assert!(!decoder_allowlist(decoder).contains(&libc::SYS_clone3));
+        for profile in [WorkerProfile::SINGLE_THREADED, WorkerProfile::THREADED] {
+            assert!(!decoder_allowlist(profile).contains(&libc::SYS_clone3));
         }
-        assert!(decoder_allowlist(Decoder::LibHeif).contains(&libc::SYS_clone));
+        assert!(decoder_allowlist(WorkerProfile::THREADED).contains(&libc::SYS_clone));
         // The namespace mask covers the unprivileged-userns flag.
         assert_ne!(clone_namespace_mask() & libc::CLONE_NEWUSER as u64, 0);
     }
@@ -335,12 +359,12 @@ mod tests {
         // jxl-oxide is built without rayon and Symphonia decodes single-threaded,
         // so they map to the same no-clone profile as image-rs.
         assert_eq!(
-            decoder_allowlist(Decoder::JxlOxide),
-            decoder_allowlist(Decoder::ImageRs)
+            decoder_allowlist(WorkerProfile::SINGLE_THREADED),
+            decoder_allowlist(WorkerProfile::SINGLE_THREADED)
         );
         assert_eq!(
-            decoder_allowlist(Decoder::Symphonia),
-            decoder_allowlist(Decoder::ImageRs)
+            decoder_allowlist(WorkerProfile::SINGLE_THREADED),
+            decoder_allowlist(WorkerProfile::SINGLE_THREADED)
         );
     }
 
@@ -362,17 +386,17 @@ mod tests {
             // decoder needs it only for glibc's tty probe, which tolerates EPERM.
             libc::SYS_ioctl,
         ];
-        for decoder in [Decoder::ImageRs, Decoder::JxlOxide, Decoder::LibHeif, Decoder::Symphonia] {
-            let set = decoder_allowlist(decoder);
+        for profile in [WorkerProfile::SINGLE_THREADED, WorkerProfile::THREADED] {
+            let set = decoder_allowlist(profile);
             for nr in forbidden {
-                assert!(!set.contains(&nr), "{nr} must not be in the {decoder:?} allowlist");
+                assert!(!set.contains(&nr), "{nr} must not be in the {profile:?} allowlist");
             }
         }
     }
 
     #[test]
     fn the_pure_rust_profile_forbids_thread_creation() {
-        let base = decoder_allowlist(Decoder::ImageRs);
+        let base = decoder_allowlist(WorkerProfile::SINGLE_THREADED);
         assert!(!base.contains(&libc::SYS_clone));
         assert!(!base.contains(&libc::SYS_clone3));
     }
