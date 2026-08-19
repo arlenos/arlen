@@ -604,7 +604,11 @@ fn fuse_flatpak_metadata(entries: &mut [CatalogEntry], metadata: &[(String, Stri
     for (id, text) in metadata {
         let labels = crate::flatpak::context_labels(text);
         for entry in entries.iter_mut().filter(|e| e.id.0 == *id) {
-            entry.capabilities.capabilities = labels.clone();
+            // READ, and marked so: this app's own `metadata` file is the
+            // persisted form of its `finish-args`, so a Flatpak that asks for
+            // nothing here has genuinely asked for nothing. Without the flag the
+            // facets would stay withdrawn for an app we did read.
+            entry.capabilities = CapabilityFootprint::read(labels.clone());
         }
     }
 }
@@ -623,13 +627,56 @@ fn fuse_apt_profiles(entries: &mut [CatalogEntry], profiles: &[(String, String)]
         };
         let labels = arlen_extensions::profile::profile_labels(&profile);
         for entry in entries.iter_mut().filter(|e| e.id.0 == *id) {
-            entry.capabilities.capabilities = labels.clone();
+            // An enrolled profile IS the declaration, so this footprint is read.
+            entry.capabilities = CapabilityFootprint::read(labels.clone());
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+
+    /// A Flatpak whose `metadata` was read must count as READ, not only carry the
+    /// labels. The distinction is what the negative facets rest on: without the
+    /// flag, an app we did read keeps its claim withdrawn for ever, which is the
+    /// opposite error to the one the flag exists to prevent.
+    #[test]
+    fn a_fused_flatpak_footprint_counts_as_read() {
+        let mut entries = vec![super::CatalogEntry {
+            id: super::ComponentId("org.example.Fused".into()),
+            layer: super::SourceLayer::Flatpak,
+            display: super::DisplayMeta { name: "Fused".into(), ..Default::default() },
+            capabilities: super::CapabilityFootprint::unread(),
+            trust: super::TrustSignals::default(),
+            version: String::new(),
+            install_handle: Some("org.example.Fused".into()),
+            kind: Default::default(),
+        }];
+        let metadata = vec![(
+            "org.example.Fused".to_string(),
+            "[Application]\nname=org.example.Fused\n\n[Context]\nshared=network;ipc;\n".to_string(),
+        )];
+        super::fuse_flatpak_metadata(&mut entries, &metadata);
+        assert!(entries[0].capabilities.known, "we read this one");
+        assert_eq!(entries[0].capabilities.capabilities, vec!["network"]);
+    }
+
+    /// And an id with no metadata stays unread rather than becoming a clean slate.
+    #[test]
+    fn a_flatpak_without_metadata_stays_unread() {
+        let mut entries = vec![super::CatalogEntry {
+            id: super::ComponentId("org.example.Absent".into()),
+            layer: super::SourceLayer::Flatpak,
+            display: super::DisplayMeta { name: "Absent".into(), ..Default::default() },
+            capabilities: super::CapabilityFootprint::unread(),
+            trust: super::TrustSignals::default(),
+            version: String::new(),
+            install_handle: Some("org.example.Absent".into()),
+            kind: Default::default(),
+        }];
+        super::fuse_flatpak_metadata(&mut entries, &[]);
+        assert!(!entries[0].capabilities.known);
+    }
 
     #[test]
     fn an_apt_entry_carries_the_package_apt_would_be_told_to_install() {
