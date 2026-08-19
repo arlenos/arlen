@@ -147,6 +147,20 @@ console.log("ci-system-deps:");
   rmSync(s.dir, { recursive: true, force: true });
 }
 
+// The key is a cache of the package LIST, not of the script that installs them.
+// Keyed on the script, the 19 August retry-logic fix invalidated the cache for
+// all 118 jobs at once and sent every one of them back to the mirror on the run
+// that most needed a warm start.
+{
+  const wf = readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8");
+  check(
+    "the cache key hashes the package list rather than the install script",
+    wf.includes("hashFiles('dev/scripts/ci-system-packages.txt')") &&
+      !wf.includes("hashFiles('dev/scripts/ci-system-deps.sh')"),
+    "the key still hashes the script, so editing the retry logic costs a cold run",
+  );
+}
+
 // The ratchet the 19 August runs died of: the step is killed from outside, so
 // the archive is never written, so the next run restores nothing and hits the
 // same mirror. The script's own budget is what keeps the ending in its hands.

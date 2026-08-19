@@ -1,0 +1,33 @@
+# The Debian packages every CI job installs before building.
+#
+# ITS OWN FILE so the cache key can hash the package LIST rather than the whole
+# install script. The key held `hashFiles('ci-system-deps.sh')`, so a change to
+# the retry logic - which is what the 19 August ratchet fix was - invalidated the
+# cache for all 118 jobs and sent every one of them back to the mirror on the
+# first run after it. The list is what the cache is of; the logic is not.
+#
+# One package per line. Blank lines and `#` comments are ignored.
+
+protobuf-compiler
+build-essential
+pkg-config
+cmake
+nasm
+
+# The webview and its GTK stack (Tauri).
+libwebkit2gtk-4.1-dev
+libgtk-3-dev
+libsoup-3.0-dev
+
+libssl-dev
+libdbus-1-dev
+
+# The timeline mount.
+fuse3
+libfuse3-dev
+
+# Image decoding: AV1, HEIC and the de265 plugin HEIC needs at runtime.
+libdav1d-dev
+libheif-dev
+libheif-plugin-libde265
+zlib1g-dev

@@ -464,7 +464,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/apt-archive-cache
-          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
+          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-packages.txt') }}
       - name: system deps
         # A step ceiling, because THIS is the step that hangs - and the same
         # command succeeds beside it. All 118 rust jobs come from one matrix
@@ -598,7 +598,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/apt-archive-cache
-          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
+          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-packages.txt') }}
       - name: system deps
         # A step ceiling, because THIS is the step that hangs - and the same
         # command succeeds beside it. All 118 rust jobs come from one matrix
@@ -687,7 +687,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/apt-archive-cache
-          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-deps.sh') }}
+          key: apt-${{ runner.os }}-${{ steps.runner-image.outputs.key }}-${{ hashFiles('dev/scripts/ci-system-packages.txt') }}
       - name: system deps
         # A step ceiling, because THIS is the step that hangs - and the same
         # command succeeds beside it. All 118 rust jobs come from one matrix
