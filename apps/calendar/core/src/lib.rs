@@ -20,6 +20,7 @@
 //! occurrence of a weekly meeting would be worse than one that says the event
 //! repeats and it cannot yet say when.
 
+pub mod reminders;
 pub mod rrule;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
