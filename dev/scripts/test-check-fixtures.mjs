@@ -673,7 +673,48 @@ export function loadOther() {
     `exit ${r6.code}: ${r6.out.trim()}`,
   );
 
-  for (const d of [caught, flag, styleComment, stale, moved, second])
+  // The spelling that hid the screenshot tool's invented desktop for as long as
+  // it shipped: the fixture word is not at the START of the identifier, so
+  // neither `FIXTURE` (wrong case) nor `\bfixture\w*\(` (no word boundary
+  // inside `buildFixture`) matched it. `demo` and `sample` are deliberately NOT
+  // matched mid-word, so the case below asserts that too - `demonstrate()` in a
+  // catch is prose about a feature, not a fixture, and a check that fails on it
+  // is a check people turn off.
+  const embedded = tree({
+    "apps/tool/src/lib/stores/shot.ts": `export async function load() {
+  try {
+    return await invoke("capture");
+  } catch {
+    return buildFixture();
+  }
+}
+`,
+  });
+  const r7 = run("check-fixture-on-failure.py", embedded);
+  check(
+    "a fixture builder whose name does not start with the fixture word is caught",
+    r7.code === 1 && r7.out.includes("buildFixture"),
+    `exit ${r7.code}: ${r7.out.trim()}`,
+  );
+
+  const prose = tree({
+    "apps/tool/src/lib/stores/other.ts": `export async function load() {
+  try {
+    return await invoke("capture");
+  } catch {
+    return demonstrate();
+  }
+}
+`,
+  });
+  const r8 = run("check-fixture-on-failure.py", prose);
+  check(
+    "a word that merely contains demo is not reported as a fixture",
+    r8.code === 0,
+    `exit ${r8.code}: ${r8.out.trim()}`,
+  );
+
+  for (const d of [caught, flag, styleComment, stale, moved, second, embedded, prose])
     rmSync(d, { recursive: true, force: true });
 }
 
