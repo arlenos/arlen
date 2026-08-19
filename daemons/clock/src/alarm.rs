@@ -42,6 +42,11 @@ pub struct Alarm {
     /// calendar's model too. Carried so a re-derivation can recognise its own
     /// registrations and replace them, which section 4 requires and a
     /// free-floating timer cannot offer.
+    ///
+    /// It is also the mark of an alarm somebody's software set rather than a
+    /// person: a user alarm never carries one. A surface listing alarms has to
+    /// respect that, because a calendar reminder shown as an editable alarm
+    /// invites an edit the next derivation silently undoes.
     #[serde(default)]
     pub payload: Option<String>,
     /// Whether it is armed.
