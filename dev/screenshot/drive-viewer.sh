@@ -212,7 +212,7 @@ got=$(drive "$fix/p-print.js" a-one.png viewer-print.png)
 # document reached a printer before that is exactly the kind of statement this
 # app is not allowed to make.
 say "the print control hands the file to the portal and says the request is pending" \
-  "$(printf '%s' "$got" | grep -qiE "print dialog|Druckdialog" && echo 1 || echo 0)" "$got"
+  "$(printf '%s' "$got" | grep -qiE "print service|Druckdienst" && echo 1 || echo 0)" "$got"
 
 [ "$fail" = 0 ] && echo "every behaviour the plan names answered when it was pressed"
 exit "$fail"
