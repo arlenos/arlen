@@ -93,6 +93,13 @@ say() {
 # One launch per page: the app has no route argument, so each probe clicks its own
 # way there and reports what arrived. Two injects with a settle between them, since
 # a single inject followed by the capture races the route transition.
+#
+# BOTH results are returned, not just the read. This used to `tail -1` and keep the
+# read alone, which threw away the one signal that says the navigation never
+# happened: a run where the sidebar link was not found reported `went:false` into
+# nothing, the read then described whatever page WAS open, and the case failed with
+# an empty detail line. On 19 August the shot filed as `knowledge-timeline.png` was
+# a picture of the Library.
 page() {  # page <sidebar-label> <out.png>
   local label="$1" png="$2"
   cat > "$work/goto.js" <<JS
@@ -113,10 +120,16 @@ JS
   ARLEN_DAEMON_SOCKET="$work/run/arlen/knowledge.sock" \
   SHOOT_INJECT="$work/goto.js:$work/read.js" SHOOT_INJECT_SETTLE=2 \
     "$root/dev/screenshot/shoot-app.sh" "$app" "$out/$png" "" 9 2>&1 \
-    | sed -n 's/^inject result: //p' | tail -1
+    | sed -n 's/^inject result: //p' | tr '\n' ' '
 }
 
+# Every case below asserts it arrived before it asserts what it saw: a claim about
+# the timeline read off the library page is worse than no claim.
+arrived() { printf '%s' "$1" | grep -q '"went":true'; }
+
 got=$(page Timeline knowledge-timeline.png)
+say "the timeline page is the one that opened" \
+  "$(arrived "$got" && echo 1 || echo 0)" "$got"
 say "the timeline lists the files that were actually opened" \
   "$(printf '%s' "$got" | grep -q "README.md" && echo 1 || echo 0)" "$got"
 
