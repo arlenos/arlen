@@ -135,8 +135,26 @@ RETURNS = re.compile(r"\breturn\b")
 # helper - a week of invented activity on the app's landing view, missed because
 # of capitalisation. Both times the check had inherited the spelling of the
 # handful of files it was written from.
+#
+# A THIRD time, 20 August, and this one had teeth. Every spelling above expects
+# the fixture word at the START of the identifier, so `buildFixture()` matched
+# nothing: not `FIXTURE` (wrong case), not `\bfixture\w*\(` (no word boundary
+# between `build` and `Fixture`). The screenshot tool called exactly that on the
+# branch where a host could not capture the screen, and drew an invented desktop
+# with a made-up account and a made-up token, uncaveated, with Save enabled and
+# the thumbnail auto-saving it. It was found by opening the app, not by this.
+#
+# The embedded case is `Fixture` and `Mock` only. `demo` and `sample` start real
+# English words, and writing the control for this turned up a false positive that
+# had been here from the start: `demonstrate(` in a catch matched `demo\w*\(` and
+# was reported as a fixture. So those two now need a non-lowercase char after
+# them - `demo(`, `demoData(`, `DEMO_ROWS` still match, `demonstrate(` no longer
+# does. `sampleRate(` would still match and there is none in the tree today; it
+# is a name worth an acknowledgement rather than a looser pattern.
 FIXTURE_NAME = re.compile(
-    r"\b(FIXTURE\w*|\w*_FIXTURE|MOCK\w*|DEMO\w*|SAMPLE\w*)\b|\b(fixture|mock|demo|sample)\w*\s*\("
+    r"\b(FIXTURE\w*|\w*_FIXTURE|MOCK\w*|DEMO\w*|SAMPLE\w*)\b"
+    r"|\b(fixture\w*|mock\w*|demo(?![a-z])\w*|sample(?![a-z])\w*)\s*\("
+    r"|\b\w+(Fixture|Mock)\w*\s*\("
 )
 MOCKED_FLAG = re.compile(r"mocked:\s*true")
 # A fixture that reaches the screen without passing through a catch at all.
