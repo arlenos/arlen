@@ -6,7 +6,14 @@
   /// the search anatomy: emphasized title, quiet sub, time in a FIXED column
   /// so nothing drifts between rows.
   import { onMount } from "svelte";
-  import { sources, libraryMocked, libraryUnavailable, loadLibrary, type LibraryEntry } from "$lib/stores/library";
+  import {
+    sources,
+    libraryMocked,
+    libraryUnavailable,
+    libraryNotBuilt,
+    loadLibrary,
+    type LibraryEntry,
+  } from "$lib/stores/library";
   import { t, locale } from "$lib/i18n/messages";
 
   let { onselect }: { onselect: (e: LibraryEntry) => void } = $props();
@@ -54,7 +61,11 @@
 
   <div class="li-scroll">
     {#if $sources && $sources.length === 0}
-      <p class="li-empty">{$libraryUnavailable ? $t("k.library.unavailable") : $t("k.empty.library")}</p>
+      <p class="li-empty">{$libraryNotBuilt
+          ? $t("k.library.notBuilt")
+          : $libraryUnavailable
+            ? $t("k.library.unavailable")
+            : $t("k.empty.library")}</p>
     {:else if $sources}
       {#each $sources as src (src.key)}
         <section class="li-source">

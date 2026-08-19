@@ -32,6 +32,11 @@ export const libraryMocked = writable(false);
 
 /// True when a real session could not read the library sections at all.
 export const libraryUnavailable = writable(false);
+
+/// True when the library has no backend at all, as opposed to one that failed.
+/// Different sentences: one asks the reader to wait, the other tells them the
+/// feature is not there yet, and only one of those is true today.
+export const libraryNotBuilt = writable(false);
 /// The loaded sections, or null before the read settles.
 export const sources = writable<LibrarySource[] | null>(null);
 
@@ -87,15 +92,25 @@ export async function loadLibrary(): Promise<void> {
     sources.set(live);
     libraryMocked.set(false);
     libraryUnavailable.set(false);
-  } catch {
+    libraryNotBuilt.set(false);
+  } catch (e) {
     if (!tauriAvailable) {
       sources.set(FIXTURE);
       libraryMocked.set(true);
       libraryUnavailable.set(false);
+      libraryNotBuilt.set(false);
     } else {
       sources.set([]);
       libraryMocked.set(false);
-      libraryUnavailable.set(true);
+      // `knowledge_library` has no host: it is on the known-missing list in
+      // `check-invoke-exists.py`, waiting on a schema decision about how a
+      // bridge's namespace maps onto this page's sections. So the read did not
+      // fail, it was never possible - and "cannot read your library right now"
+      // promises a retry that will never work. Tauri rejects an unregistered
+      // command by name, which is what tells the two apart.
+      const missing = /not found|unknown command/i.test(String(e));
+      libraryNotBuilt.set(missing);
+      libraryUnavailable.set(!missing);
     }
   }
 }
