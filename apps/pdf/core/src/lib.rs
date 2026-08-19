@@ -34,6 +34,8 @@ pub enum PdfError {
     Unreadable(String),
     /// It parsed, but carries no pages at all.
     NoPages,
+    /// A page was asked for that this document does not have.
+    NoSuchPage(usize),
 }
 
 impl std::fmt::Display for PdfError {
@@ -41,6 +43,7 @@ impl std::fmt::Display for PdfError {
         match self {
             Self::Unreadable(why) => write!(f, "this file could not be read as a PDF: {why}"),
             Self::NoPages => write!(f, "this PDF contains no pages"),
+            Self::NoSuchPage(n) => write!(f, "this PDF has no page {n}"),
         }
     }
 }
@@ -65,6 +68,40 @@ pub struct OutlineEntry {
     /// is still worth showing. A reader disables the jump rather than hiding the
     /// heading.
     pub page: Option<usize>,
+}
+
+/// The most text this crate will decompress out of a single page.
+///
+/// A PDF stream is compressed, and a small file can name a very large one - the
+/// zip-bomb shape, in a format people are sent by strangers every day. Eight
+/// mebibytes is far past any real page of prose and far short of a problem.
+const MAX_PAGE_TEXT: usize = 8 * 1024 * 1024;
+
+/// How much of the surrounding line a hit carries, either side of the match.
+const SNIPPET_CONTEXT: usize = 60;
+
+/// One place a search found what it was looking for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hit {
+    /// The page it is on, one-based.
+    pub page: usize,
+    /// The match with a little of its surroundings, whitespace collapsed, so a
+    /// result list reads as sentences rather than as page numbers.
+    pub snippet: String,
+}
+
+/// What a search found, and what it could not look at.
+///
+/// The second half is the point. A page whose text cannot be extracted - a scan,
+/// a stream this parser refuses, a page past the decompression ceiling - is not
+/// a page with no matches, and a result list that quietly omits it tells the
+/// reader their document does not contain something it may well contain.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SearchOutcome {
+    /// Where the text was found, in page order.
+    pub hits: Vec<Hit>,
+    /// Pages that could not be read, one-based and in order.
+    pub unsearchable: Vec<usize>,
 }
 
 /// A PDF, read for what it says rather than for how it looks.
@@ -122,6 +159,52 @@ impl Document {
         out
     }
 
+    /// The text on one page, one-based.
+    ///
+    /// An empty string is a real answer: a scanned page carries an image and no
+    /// text, and saying so is different from failing.
+    ///
+    /// # Errors
+    /// [`PdfError::NoSuchPage`] when the page is outside the document, and
+    /// [`PdfError::Unreadable`] when its content stream cannot be read - which
+    /// includes a stream that would decompress past [`MAX_PAGE_TEXT`].
+    pub fn page_text(&self, page: usize) -> Result<String, PdfError> {
+        if page == 0 || page > self.pages.len() {
+            return Err(PdfError::NoSuchPage(page));
+        }
+        let number = u32::try_from(page).map_err(|_| PdfError::NoSuchPage(page))?;
+        self.inner
+            .extract_text_with_limit(&[number], MAX_PAGE_TEXT)
+            .map_err(|e| PdfError::Unreadable(e.to_string()))
+    }
+
+    /// Every page carrying `needle`, and every page that could not be looked at.
+    ///
+    /// Case-insensitive, because somebody searching a document is looking for a
+    /// word rather than for a capitalisation. One hit per page: a reader jumps to
+    /// the page and the viewer highlights within it, so ten matches on one page
+    /// are one destination, not ten.
+    #[must_use]
+    pub fn search(&self, needle: &str) -> SearchOutcome {
+        let mut out = SearchOutcome::default();
+        let needle = needle.trim().to_lowercase();
+        if needle.is_empty() {
+            return out;
+        }
+        for page in 1..=self.pages.len() {
+            match self.page_text(page) {
+                Ok(text) => {
+                    let flat = collapse(&text);
+                    if let Some(at) = flat.to_lowercase().find(&needle) {
+                        out.hits.push(Hit { page, snippet: snippet_at(&flat, at, needle.len()) });
+                    }
+                }
+                Err(_) => out.unsearchable.push(page),
+            }
+        }
+        out
+    }
+
     /// The first top-level outline entry, when the catalogue names one.
     fn outline_root(&self) -> Option<ObjectId> {
         let catalog = self.inner.catalog().ok()?;
@@ -156,11 +239,11 @@ impl Document {
             if let Some(title) = dict.get(b"Title").ok().and_then(|t| self.text_of(t)) {
                 out.push(OutlineEntry { title, depth, page: self.destination_page(dict) });
             }
-            if let Some(Object::Reference(child)) = dict.get(b"First").ok() {
+            if let Ok(Object::Reference(child)) = dict.get(b"First") {
                 self.walk_outline(*child, depth + 1, seen, out);
             }
-            current = match dict.get(b"Next").ok() {
-                Some(Object::Reference(next)) => Some(*next),
+            current = match dict.get(b"Next") {
+                Ok(Object::Reference(next)) => Some(*next),
                 _ => None,
             };
         }
@@ -225,6 +308,43 @@ impl Document {
             Some(String::from_utf8_lossy(&bytes).into_owned())
         }
     }
+}
+
+/// Runs of whitespace as single spaces, so a snippet reads as a line.
+///
+/// Extracted text carries the newlines the layout happened to have, and a
+/// result list broken across them reads as fragments rather than as a sentence.
+fn collapse(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The match plus a little either side, cut on character boundaries.
+///
+/// Byte offsets from `find` cannot be sliced with directly: a multi-byte
+/// character straddling the cut would panic, and a PDF is exactly the place
+/// non-ASCII text arrives from.
+fn snippet_at(text: &str, at: usize, len: usize) -> String {
+    let start = text[..at]
+        .char_indices()
+        .rev()
+        .take(SNIPPET_CONTEXT)
+        .last()
+        .map_or(at, |(i, _)| i);
+    let after = at + len;
+    let end = text[after.min(text.len())..]
+        .char_indices()
+        .take(SNIPPET_CONTEXT)
+        .last()
+        .map_or(text.len(), |(i, c)| after + i + c.len_utf8());
+    let mut s = String::new();
+    if start > 0 {
+        s.push('\u{2026}');
+    }
+    s.push_str(&text[start..end]);
+    if end < text.len() {
+        s.push('\u{2026}');
+    }
+    s
 }
 
 #[cfg(test)]
@@ -349,6 +469,78 @@ mod tests {
             vec![("Introduction", 0), ("Background", 1), ("Method", 0)],
             "a child sits under its parent and the next sibling returns to the top level"
         );
+    }
+
+    #[test]
+    fn a_page_gives_up_its_text() {
+        let doc = Document::open(&pdf_with(&["hello world", "second page"], false))
+            .expect("opens");
+        assert!(doc.page_text(1).expect("reads").contains("hello world"));
+        assert!(doc.page_text(2).expect("reads").contains("second page"));
+    }
+
+    #[test]
+    fn a_page_this_document_does_not_have_is_refused_rather_than_answered() {
+        let doc = Document::open(&pdf_with(&["only"], false)).expect("opens");
+        // Zero as well as past the end: a one-based API asked for page zero has
+        // been asked something meaningless, and answering page one would be a
+        // guess about which off-by-one the caller made.
+        assert_eq!(doc.page_text(0), Err(PdfError::NoSuchPage(0)));
+        assert_eq!(doc.page_text(2), Err(PdfError::NoSuchPage(2)));
+    }
+
+    #[test]
+    fn search_finds_the_page_and_shows_the_words_around_the_match() {
+        let doc = Document::open(&pdf_with(
+            &["nothing here", "the quick brown fox jumps", "nor here"],
+            false,
+        ))
+        .expect("opens");
+        let found = doc.search("brown fox");
+        assert_eq!(found.hits.len(), 1);
+        assert_eq!(found.hits[0].page, 2);
+        assert!(
+            found.hits[0].snippet.contains("quick brown fox jumps"),
+            "the snippet carries the sentence, not just the match: {}",
+            found.hits[0].snippet
+        );
+        assert!(found.unsearchable.is_empty());
+    }
+
+    #[test]
+    fn search_ignores_capitalisation_because_a_reader_is_looking_for_a_word() {
+        let doc = Document::open(&pdf_with(&["The Quick Brown Fox"], false)).expect("opens");
+        assert_eq!(doc.search("quick brown").hits.len(), 1);
+        assert_eq!(doc.search("QUICK BROWN").hits.len(), 1);
+    }
+
+    #[test]
+    fn an_empty_search_finds_nothing_rather_than_everything() {
+        // A blank box is not a query, and matching "" would report every page.
+        let doc = Document::open(&pdf_with(&["anything"], false)).expect("opens");
+        assert!(doc.search("").hits.is_empty());
+        assert!(doc.search("   ").hits.is_empty());
+    }
+
+    #[test]
+    fn one_hit_per_page_however_often_the_word_appears_on_it() {
+        let doc = Document::open(&pdf_with(&["fox fox fox fox"], false)).expect("opens");
+        // A page is one destination. Ten matches on it are not ten places to go.
+        assert_eq!(doc.search("fox").hits.len(), 1);
+    }
+
+    #[test]
+    fn a_snippet_cuts_on_characters_and_not_on_bytes() {
+        // The case that panics if byte offsets are sliced directly, and a PDF is
+        // exactly where non-ASCII arrives from.
+        let long = "Grüße aus Österreich, ".repeat(8) + "NADEL" + &" und mehr Grüße".repeat(8);
+        let doc = Document::open(&pdf_with(&[&long], false)).expect("opens");
+        let found = doc.search("nadel");
+        assert_eq!(found.hits.len(), 1);
+        let snippet = &found.hits[0].snippet;
+        assert!(snippet.contains("NADEL"), "got {snippet}");
+        assert!(snippet.starts_with('\u{2026}') && snippet.ends_with('\u{2026}'),
+            "a cut snippet says it was cut: {snippet}");
     }
 
     #[test]
