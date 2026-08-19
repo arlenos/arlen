@@ -41,51 +41,76 @@ impl InstallDaemon {
 /// (the inode registry today, AppArmor later), so it gets stronger where it
 /// stands rather than being unpicked.
 ///
-/// `store` is the only packaged caller. The other real client is the `forage`
-/// CLI, which today resolves to `UnknownBinary` at every plausible path and is
-/// not installed by any image build - so in a debug build it arrives as
-/// `dev.forage` and is admitted by the dev rule below, and in a release build it
-/// does not exist yet. **Packaging forage means adding its canonical path to
-/// `path_to_app_id` and its id here in the same change**, or the CLI will lose
-/// the ability to install.
-const INSTALL_CALLERS: &[&str] = &["store"];
-
-/// The same two callers as they resolve in a development build, where the
-/// resolver reports `dev.<bin-name>` for a cargo-run binary.
+/// ONE SCHEME, and it is whatever `path_to_app_id` returns. Every app on the
+/// image lives at `/usr/lib/arlen/apps/dev.arlen.<name>/`, so the resolver
+/// answers `dev.arlen.<name>` and that is what these lists hold. Until 19 Aug
+/// they held the bare id `store`, which no path on the image can produce: the
+/// daemon shipped refusing EVERY caller for both reading and installing, and the
+/// Settings Remove button was reporting the truth about a system that could not
+/// remove anything.
 ///
-/// Exact ids, not a `dev.` prefix: the audit daemon's ingest carried the broad
-/// prefix and it was deliberately narrowed to an exact producer list, because a
-/// prefix admits every binary anyone happens to be running from a target
-/// directory. Repeating the loose form here would undo that lesson one daemon
-/// over.
-const DEV_INSTALL_CALLERS: &[&str] = &["dev.arlen-store", "dev.forage"];
+/// The binary-name debug entries (`dev.arlen-store`, `dev.forage`) are gone with
+/// them. Two schemes in one list is how someone adds the entry that looks right
+/// and is still refused, which is exactly what happened here.
+///
+/// `dev.arlen.settings` is here because its surface offers Remove, and a control
+/// that offers what the daemon refuses is a lie about the machine. It does not
+/// blur the read/mutate split below: every other caller still needs each right
+/// named separately, and nothing has mutate by default.
+///
+/// A caller that is not packaged is absent from this list until it is. `forage`
+/// is the live example: it resolves to `UnknownBinary` at every plausible path
+/// and no image build installs it, so **packaging it means adding its canonical
+/// path to `path_to_app_id` AND its id here in the same change**.
+const INSTALL_CALLERS: &[&str] = &["dev.arlen.store", "dev.arlen.settings"];
 
 /// Who may ASK what is installed, previewed or trashed.
 ///
 /// A separate list from [`INSTALL_CALLERS`] on purpose, even though it holds the
-/// same two names today. Seeing what is installed and changing what is installed
-/// are different powers, and folding them into one const would mean the first
-/// surface that legitimately wants to LIST apps - Settings, a search provider -
-/// could only be granted that by also being granted the ability to install.
-/// Keeping the axes apart costs one const and stops that trade.
-const READ_CALLERS: &[&str] = &["store"];
+/// same names today. Seeing what is installed and changing what is installed are
+/// different powers, and folding them into one const would mean the first surface
+/// that legitimately wants to LIST apps - a search provider, a launcher - could
+/// only be granted that by also being granted the ability to install. Keeping the
+/// axes apart costs one const and stops that trade.
+const READ_CALLERS: &[&str] = &["dev.arlen.store", "dev.arlen.settings"];
 
-/// The read callers as they resolve in a development build. Exact ids, not a
-/// `dev.` prefix, for the reason given above [`DEV_INSTALL_CALLERS`].
-const DEV_READ_CALLERS: &[&str] = &["dev.arlen-store", "dev.forage"];
+/// The desktop's own parts, which no caller may remove.
+///
+/// Removing the shell leaves a machine with no way to start anything; removing
+/// Settings leaves no way to put it back. These are not apps a person installed
+/// and may change their mind about, they are the running system.
+///
+/// The bound lives HERE rather than in each caller. `installd` is what knows
+/// what removal means, so a surface that offers Remove gets the refusal instead
+/// of being trusted to hide the button - and the next caller inherits the rule
+/// rather than re-implementing it. The list is deliberately short: everything
+/// else on the image is a first-party app the user is free to remove, which is
+/// the whole point of shipping a removable desktop.
+const NOT_REMOVABLE: &[&str] = &[
+    "dev.arlen.desktop-shell",
+    "dev.arlen.settings",
+    "dev.arlen.greeter",
+];
+
+/// Why `app_id` may not be removed, or `None` when it may.
+///
+/// A sentence rather than a bare refusal, because it is read by a person who
+/// pressed Remove and is owed the reason.
+fn removal_refused(app_id: &str) -> Option<String> {
+    NOT_REMOVABLE.contains(&app_id).then(|| {
+        format!("{app_id} is part of the desktop itself and cannot be removed")
+    })
+}
 
 /// Whether a resolved caller may see what is installed. A caller that may change
 /// what is installed may certainly look at it.
 fn caller_may_read(app_id: &str) -> bool {
-    READ_CALLERS.contains(&app_id)
-        || (cfg!(debug_assertions) && DEV_READ_CALLERS.contains(&app_id))
-        || caller_may_mutate(app_id)
+    READ_CALLERS.contains(&app_id) || caller_may_mutate(app_id)
 }
 
 /// Whether a resolved caller may change what is installed.
 fn caller_may_mutate(app_id: &str) -> bool {
     INSTALL_CALLERS.contains(&app_id)
-        || (cfg!(debug_assertions) && DEV_INSTALL_CALLERS.contains(&app_id))
 }
 
 /// Resolve the calling program's app id from its connection's pid.
@@ -254,6 +279,10 @@ impl InstallDaemon {
         // `unknown` rather than `refused`, so a caller that does not check polls a
         // job that was never enqueued.
         authorise_mutation("Uninstall", &header, connection).await.map_err(zbus::fdo::Error::AccessDenied)?;
+        if let Some(why) = removal_refused(&app_id) {
+            tracing::warn!("refused Uninstall of {app_id}: {why}");
+            return Err(zbus::fdo::Error::AccessDenied(why));
+        }
         let job_id = self.queue.enqueue(JobKind::Uninstall { app_id });
         tracing::info!("enqueued uninstall job {job_id}");
         Ok(job_id)
@@ -562,14 +591,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_the_store_may_change_what_is_installed() {
-        assert!(caller_may_mutate("store"));
+    fn only_the_store_and_settings_may_change_what_is_installed() {
+        assert!(caller_may_mutate("dev.arlen.store"));
+        // Settings offers Remove, so it holds the right its surface implies.
+        assert!(caller_may_mutate("dev.arlen.settings"));
         // The shell, the agent and any other same-uid peer are not install
         // callers, which is the whole point: uid does not tell them apart.
-        assert!(!caller_may_mutate("desktop-shell"));
+        assert!(!caller_may_mutate("dev.arlen.desktop-shell"));
         assert!(!caller_may_mutate("ai-agent"));
-        assert!(!caller_may_mutate("settings"));
         assert!(!caller_may_mutate(""));
+    }
+
+    /// One scheme, and it is the resolver's. The bare ids these lists used to
+    /// hold (`store`) match no path on the image, so the daemon shipped refusing
+    /// every caller - a gate that is closed against everyone looks exactly like a
+    /// gate that works.
+    #[test]
+    fn every_admitted_id_is_one_the_resolver_can_produce() {
+        for id in INSTALL_CALLERS.iter().chain(READ_CALLERS) {
+            assert!(
+                id.starts_with("dev.arlen."),
+                "{id} is not in the scheme `path_to_app_id` returns for a packaged app"
+            );
+            // The binary-name form (`dev.arlen-store`) is the other scheme, and
+            // mixing the two is how the entry that looks right gets refused.
+            assert!(!id.contains('-') || id.rsplit('.').next().is_some_and(|n| n.contains('-')),
+                "{id} looks like the binary-name scheme");
+        }
     }
 
     /// Reading and mutating are separate powers here, and the test is what keeps
@@ -585,14 +633,32 @@ mod tests {
         assert!(!caller_may_read("com.example.nosy"));
     }
 
+    /// The debug allowance is gone with the second scheme. A cargo-run binary
+    /// resolves to `dev.<bin-name>`, which is not what a packaged app resolves
+    /// to, and admitting both shapes is what let the mismatch hide: the release
+    /// list could name ids nothing produces while the debug list kept development
+    /// working.
     #[test]
-    fn the_named_dev_binaries_are_admitted_in_debug_only() {
-        // A development session runs the store and forage from `target/debug`,
-        // where the resolver reports `dev.<bin-name>`. The shipped gate must not
-        // carry that allowance, so this asserts the build-dependent behaviour
-        // rather than one arm of it.
-        assert_eq!(caller_may_mutate("dev.forage"), cfg!(debug_assertions));
-        assert_eq!(caller_may_mutate("dev.arlen-store"), cfg!(debug_assertions));
+    fn the_binary_name_scheme_is_not_admitted_in_any_build() {
+        assert!(!caller_may_mutate("dev.forage"));
+        assert!(!caller_may_mutate("dev.arlen-store"));
+        assert!(!caller_may_read("dev.arlen-store"));
+    }
+
+    /// The desktop's own parts are refused with a sentence naming them, and
+    /// everything else on the image stays removable - the point of shipping a
+    /// desktop you can take apart.
+    #[test]
+    fn the_desktop_itself_cannot_be_removed() {
+        let why = removal_refused("dev.arlen.desktop-shell").expect("refused");
+        assert!(why.contains("dev.arlen.desktop-shell"), "the refusal names it: {why}");
+        assert!(why.contains("cannot be removed"), "the refusal says what happened: {why}");
+        assert!(removal_refused("dev.arlen.settings").is_some());
+        assert!(removal_refused("dev.arlen.greeter").is_some());
+        // An ordinary first-party app is not a component of the desktop.
+        assert!(removal_refused("dev.arlen.clock").is_none());
+        assert!(removal_refused("dev.arlen.text-editor").is_none());
+        assert!(removal_refused("com.example.thing").is_none());
     }
 
     #[test]
