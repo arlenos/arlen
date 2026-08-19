@@ -57,11 +57,6 @@ pub struct TimelineItem {
 /// person scrolls days, not thousands of rows.
 const LIMIT: usize = 200;
 
-/// What the frontend keys on to say the service is absent rather than that the
-/// read failed. A marker rather than the sentence itself: the wording is the
-/// page's, and it is translated there.
-pub const NOT_RUNNING: &str = "knowledge-daemon-not-running";
-
 /// The recorded spine, newest first.
 ///
 /// Both reads are best-effort in the same direction: whichever source answers
@@ -70,15 +65,7 @@ pub const NOT_RUNNING: &str = "knowledge-daemon-not-running";
 /// mocked, rather than an empty timeline that would read as "you did nothing".
 #[tauri::command]
 pub async fn knowledge_timeline() -> Result<Vec<TimelineItem>, String> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
-    // An absent socket is not a failed read, and the difference is the whole
-    // sentence the page shows. On a machine where the daemon is not running -
-    // which is the normal state of a fresh install, not a fault - "cannot read
-    // your timeline right now" is true and leaves the reader with nothing to do.
-    // Naming the service gives them somewhere to go.
-    if !socket.exists() {
-        return Err(NOT_RUNNING.to_string());
-    }
+    let socket = crate::service::socket_or_absent()?;
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
 
     let files = read_file_accesses(&client).await;
