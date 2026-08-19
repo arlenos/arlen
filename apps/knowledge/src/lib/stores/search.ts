@@ -9,6 +9,7 @@
 /// index assembled from the one fixture story (projects, library, timeline)
 /// stands in and `searchMocked` says so.
 import { writable, derived, get } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// What kind of node a result is; drives the type tag and the type facet.
@@ -131,7 +132,7 @@ export async function loadProjectChoices(): Promise<void> {
     projectChoices.set(live);
     projectChoicesUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       projectChoices.set(["Arlen OS", "Thesis", "Website redesign"]);
       projectChoicesUnavailable.set(false);
       return;
@@ -175,7 +176,7 @@ export async function loadSavedSearches(): Promise<void> {
     savedSearches.set(await invoke<SavedSearch[]>("knowledge_searches"));
     savedUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       savedSearches.set(DEV_PRESETS);
       return;
     }
@@ -199,7 +200,7 @@ export async function saveSearch(name: string): Promise<void> {
     // disk rather than what this window hoped was on disk.
     savedSearches.set(await invoke<SavedSearch[]>("knowledge_search_save", { search: s }));
   } catch {
-    if (import.meta.env.DEV) return; // no backend under vite
+    if (!tauriAvailable) return; // no host, so no backend to ask
     // A saved search that was not saved is gone at the next start, and the user
     // will look for it. Better it is not there now than not there later.
     savedSearches.update((l) => l.filter((x) => x.id !== s.id));
