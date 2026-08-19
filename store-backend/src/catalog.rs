@@ -85,12 +85,39 @@ impl DisplayMeta {
 
 /// A variant's capability footprint: the tier badge plus the concrete capabilities
 /// it requests, so the install picker can show the least-privilege choice.
+///
+/// NOT KNOWING is a state of its own. A source whose permissions nobody has read
+/// yet - a Flathub component without its `finish-args`, an apt package with no
+/// enrolled profile - has an EMPTY list, and an empty list read as "asks for
+/// nothing" turns silence into a safety claim: the app then displays as unable to
+/// reach the network because nobody looked. [`Self::known`] is what separates
+/// "we read its permissions and they are none" from "we have not read them".
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapabilityFootprint {
     /// The requested capabilities (network hosts, filesystem scopes, devices...),
     /// in a stable display order.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Whether this footprint was actually read from the source. `false` means
+    /// the list above says nothing at all, rather than saying "none".
+    ///
+    /// Defaults to false, so a source that forgets to set it is treated as
+    /// unread rather than as clean - the safe direction for a claim about
+    /// permissions.
+    #[serde(default)]
+    pub known: bool,
+}
+
+impl CapabilityFootprint {
+    /// A footprint that WAS read, listing exactly these capabilities.
+    pub fn read(capabilities: Vec<String>) -> Self {
+        Self { capabilities, known: true }
+    }
+
+    /// A source whose permissions have not been read.
+    pub fn unread() -> Self {
+        Self::default()
+    }
 }
 
 /// Per-layer trust signals (store-app.md section 9.2). Each field is `None` when the
@@ -318,9 +345,7 @@ mod tests {
                 screenshots: (0..screenshots).map(|i| format!("shot{i}")).collect(),
                 icon: Some("icon".into()),
             },
-            capabilities: CapabilityFootprint {
-                capabilities: vec!["network".into()],
-            },
+            capabilities: CapabilityFootprint::read(vec!["network".into()]),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: String::new(),

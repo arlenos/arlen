@@ -586,9 +586,9 @@ mod tests {
                 summary: Some(format!("{name} is great")),
                 ..Default::default()
             },
-            capabilities: CapabilityFootprint {
-                capabilities: caps.iter().map(|s| s.to_string()).collect(),
-            },
+            capabilities: CapabilityFootprint::read(
+                caps.iter().map(|c| c.to_string()).collect(),
+            ),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: String::new(),
