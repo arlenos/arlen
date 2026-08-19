@@ -1,0 +1,21 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-calendar"
+version = "0.1.0"
+edition = "2021"
+description = "The calendar daemon: owns the store, the expansion and the reminders that must outlive the window"
+
+[lib]
+path = "src/lib.rs"
+
+# The iCalendar reader, recurrence engine and reminder derivation, all pure and
+# tested there. It lives beside the app because the app was written first; the
+# same shape as `daemons/terminal-run-mcp` reaching for `apps/terminal/core`.
+[dependencies]
+arlen-calendar-core = { path = "../../apps/calendar/core" }
+dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]

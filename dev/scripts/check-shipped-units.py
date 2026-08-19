@@ -160,6 +160,13 @@ def installed_units() -> set[str]:
 # have a unit somewhere in its own tree, or say below why it has none. A
 # hand-maintained list is strongest exactly where it is needed least.
 NO_UNIT: dict[str, str] = {
+    "calendar": (
+        "no process yet: this is the store half, the part that reads the "
+        "calendar directory and says what it holds. `calendar-app.md` section 2 "
+        "puts it outside the app because reminders must outlive the window, and "
+        "the unit lands with the process that serves `org.arlen.Calendar1` and "
+        "registers triggers with `org.arlen.Clock1`"
+    ),
     "arlen-run": (
         "no unit by design: it is a fork-exec launcher a session invokes per app, "
         "not a service that runs"
