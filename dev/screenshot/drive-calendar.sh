@@ -126,5 +126,25 @@ got=$(drive "$fix/p-empty.js" "$empty" calendar-no-files.png)
 say "with no calendar directory it names the path to put files in" \
   "$(printf '%s' "$got" | grep -q "arlen/calendars" && echo 1 || echo 0)" "$got"
 
+# German. Six other apps had a defect that only the German render showed - a
+# column sized to an English word, a heading that never adopted the catalogue -
+# so this is a case rather than something someone remembers to look at. The
+# release binary takes its language from `locale.toml`, not from a URL: the
+# `?locale=` hook is compiled out of a production build.
+cfg="$fix/config-de"
+mkdir -p "$cfg/arlen"
+printf '[locale]\nui = "de"\n' > "$cfg/arlen/locale.toml"
+got=$(XDG_DATA_HOME="$fix" XDG_CONFIG_HOME="$cfg" SHOOT_INJECT="$fix/p-agenda.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/calendar-agenda-de.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+say "the German build says the German words, dates included" \
+  "$(printf '%s' "$got" | grep -q "Mittwoch, 19. August" \
+     && printf '%s' "$got" | grep -q "Ganztägig" \
+     && printf '%s' "$got" | grep -q "Wiederholt sich" && echo 1 || echo 0)" "$got"
+# The titles come from the FILE and stay as written: translating someone's own
+# event would be a worse bug than leaving it.
+say "and leaves the events' own titles alone" \
+  "$(printf '%s' "$got" | grep -q "Morning standup" && echo 1 || echo 0)" "$got"
+
 [ "$fail" = 0 ] && echo "the file's own traps all came through the way RFC 5545 says"
 exit "$fail"

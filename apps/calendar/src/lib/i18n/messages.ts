@@ -25,7 +25,7 @@ const messages: Catalogs = {
   },
   de: {
     "cal.app.title": "Kalender",
-    "cal.agenda": "Agenda",
+    "cal.agenda": "Termine",
     "cal.allDay": "Ganztägig",
     "cal.utc": "UTC",
     "cal.repeats": "Wiederholt sich",
