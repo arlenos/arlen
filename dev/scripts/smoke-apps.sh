@@ -35,6 +35,7 @@ APPS=(
     "arlen-files"
     "arlen-knowledge-app"
     "arlen-meetings"
+    "arlen-pdf-app"
     "arlen-screenshot"
     "arlen-settings"
     "arlen-system-monitor"
@@ -50,7 +51,6 @@ SKIPPED=(
     "arlen-greeter|runs as the greeter user against greetd, before a session exists"
     "arlen-harness|arlen-ui's live work"
     "arlen-store|arlen-ui's live work"
-    "arlen-pdf-app|has no frontend yet, so there is no window to start: the host answers commands and nothing calls them"
 )
 
 command -v Xvfb >/dev/null || { echo "Xvfb is not installed" >&2; exit 2; }
