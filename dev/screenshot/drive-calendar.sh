@@ -152,6 +152,25 @@ wait
 say "a file written while the window is open appears without a restart" \
   "$(printf '%s' "$got" | grep -q "Added while the window was open" && echo 1 || echo 0)" "$got"
 
+# Opened ON a file, the way a double-click in the file manager arrives. That file
+# is the whole agenda: mixing it with the directory would bury what the person
+# actually opened.
+cat > "$fix/second.ics" <<'ICS'
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:only@arlen
+SUMMARY:The only event in this file
+DTSTART;TZID=Europe/Vienna:20260819T110000
+END:VEVENT
+END:VCALENDAR
+ICS
+got=$(XDG_DATA_HOME="$fix" SHOOT_APP_ARGS="$fix/second.ics" SHOOT_INJECT="$fix/p-agenda.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/calendar-one-file.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+say "opened on a file, it shows that file and not the whole directory" \
+  "$(printf '%s' "$got" | grep -q "The only event in this file" \
+     && ! printf '%s' "$got" | grep -q "Morning standup" && echo 1 || echo 0)" "$got"
+
 # German. Six other apps had a defect that only the German render showed - a
 # column sized to an English word, a heading that never adopted the catalogue -
 # so this is a case rather than something someone remembers to look at. The

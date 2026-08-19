@@ -85,6 +85,19 @@ pub struct Agenda {
     pub unreadable: usize,
 }
 
+/// The `.ics` the calendar was opened on, when it was opened on one.
+///
+/// `arlen-calendar <file>`, or the desktop entry's `%f` when a person
+/// double-clicks a calendar file in the file manager. `None` when launched bare,
+/// which is the ordinary case and means "read the directory".
+struct LaunchFile(Option<String>);
+
+/// The file the app was launched with, for the page to ask about on mount.
+#[tauri::command]
+fn launch_file(state: tauri::State<'_, LaunchFile>) -> Option<String> {
+    state.0.clone()
+}
+
 /// How far the agenda draws GENERATED occurrences, either side of today.
 ///
 /// A written event is a fact in a file and is shown whenever it falls; a
@@ -121,6 +134,11 @@ fn occurrences(e: &ics::Event, today: chrono::NaiveDate) -> Vec<chrono::NaiveDat
     }
 }
 
+/// Day, then time of day, then title: the order an agenda is read in.
+fn sort_events(events: &mut [AgendaEvent]) {
+    events.sort_by(|a, b| (&a.date, &a.time, &a.summary).cmp(&(&b.date, &b.time, &b.summary)));
+}
+
 fn kind_of(t: &ics::CalTime) -> (&'static str, Option<String>) {
     match t {
         ics::CalTime::Day(_) => ("day", None),
@@ -150,6 +168,40 @@ fn flatten(e: &ics::Event, on: chrono::NaiveDate, expanded: bool) -> AgendaEvent
     }
 }
 
+/// One file's events, for the launched-on-a-file case.
+///
+/// `directory` carries the FILE's own path here rather than a directory, because
+/// that is what the surface has to name when the file turns out to hold nothing:
+/// "no events in <this file>" is the honest sentence, and naming the calendar
+/// folder instead would point at something the person did not open.
+fn agenda_of_file(path: &std::path::Path) -> Result<Agenda, String> {
+    let mut agenda = Agenda {
+        events: Vec::new(),
+        directory: path.display().to_string(),
+        directory_exists: path.is_file(),
+        files: 0,
+        unreadable: 0,
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        agenda.unreadable = 1;
+        return Ok(agenda);
+    };
+    agenda.files = 1;
+    match ics::parse_events(&text) {
+        Ok(events) => {
+            let today = chrono::Local::now().date_naive();
+            for e in &events {
+                let dates = occurrences(e, today);
+                let expanded = e.repeats() && dates.len() > 1;
+                agenda.events.extend(dates.into_iter().map(|on| flatten(e, on, expanded)));
+            }
+        }
+        Err(_) => agenda.unreadable = 1,
+    }
+    sort_events(&mut agenda.events);
+    Ok(agenda)
+}
+
 /// Read every `.ics` file in the calendar directory.
 ///
 /// Sorted by the date and time each event writes for itself, which groups an
@@ -158,7 +210,13 @@ fn flatten(e: &ics::Event, on: chrono::NaiveDate, expanded: bool) -> AgendaEvent
 /// and is a separate step; doing it by string comparison would be a guess
 /// dressed as an answer.
 #[tauri::command]
-fn calendar_agenda() -> Result<Agenda, String> {
+fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
+    // Opened ON a file: that file is the whole agenda. Reading the directory too
+    // would answer a question the person did not ask - they double-clicked one
+    // calendar, and mixing it with everything else would bury it.
+    if let Some(path) = file.filter(|p| !p.is_empty()) {
+        return agenda_of_file(std::path::Path::new(&path));
+    }
     let Some(dir) = calendar_dir() else {
         return Err("this machine has no home directory to read calendars from".into());
     };
@@ -200,9 +258,7 @@ fn calendar_agenda() -> Result<Agenda, String> {
             Err(_) => agenda.unreadable += 1,
         }
     }
-    agenda
-        .events
-        .sort_by(|a, b| (&a.date, &a.time, &a.summary).cmp(&(&b.date, &b.time, &b.summary)));
+    sort_events(&mut agenda.events);
     Ok(agenda)
 }
 
@@ -285,7 +341,10 @@ pub fn run() {
             spawn_calendar_watcher(app.handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![calendar_agenda])
+        .manage(LaunchFile(
+            std::env::args().skip(1).find(|a| !a.starts_with('-')),
+        ))
+        .invoke_handler(tauri::generate_handler![calendar_agenda, launch_file])
         .run(tauri::generate_context!())
         .expect("error while running arlen-calendar");
 }
