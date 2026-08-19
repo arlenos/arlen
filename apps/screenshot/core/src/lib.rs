@@ -114,7 +114,34 @@ pub fn save_png_bytes(bytes: &[u8], dir: &Path, filename: &str) -> io::Result<Pa
 /// `Screenshot-<timestamp>.png` name. `timestamp` is formatted by the caller
 /// (`%Y%m%d-%H%M%S`), matching `sdk::default_filename`.
 pub fn save_capture(bytes: &[u8], timestamp: &str) -> io::Result<PathBuf> {
-    save_png_bytes(bytes, &screenshots_dir(), &default_filename(timestamp))
+    let dir = screenshots_dir();
+    save_png_bytes(bytes, &dir, &free_name(&dir, &default_filename(timestamp)))
+}
+
+/// A name in `dir` that nothing is using yet.
+///
+/// The default name carries a timestamp to the SECOND, so two captures inside
+/// one second would land on the same path and the second would overwrite the
+/// first without a word. That is not exotic: a before-and-after pair, or a
+/// shortcut pressed twice, does it. The suffix counts up the way every file
+/// manager does, and the cap is there because a directory that somehow holds a
+/// thousand of them should get a collision it can see rather than a loop it
+/// cannot.
+fn free_name(dir: &Path, wanted: &str) -> String {
+    if !dir.join(wanted).exists() {
+        return wanted.to_string();
+    }
+    let (stem, ext) = match wanted.rsplit_once('.') {
+        Some((s, e)) => (s, format!(".{e}")),
+        None => (wanted, String::new()),
+    };
+    for n in 2..1000 {
+        let candidate = format!("{stem}-{n}{ext}");
+        if !dir.join(&candidate).exists() {
+            return candidate;
+        }
+    }
+    wanted.to_string()
 }
 
 /// A display output offered in the capture-source picker: a stable IPC shape over
@@ -254,6 +281,34 @@ mod tests {
         let b64 = url.strip_prefix("data:image/png;base64,").expect("png data-url prefix");
         let decoded = base64::engine::general_purpose::STANDARD.decode(b64).unwrap();
         assert_eq!(decoded, PNG, "the exact capture bytes survive the encode");
+    }
+
+    /// Two captures inside one second must not become one file. The timestamp in
+    /// the default name only goes to the second, so this is the ordinary case of
+    /// pressing the shortcut twice, and the loss was silent.
+    #[test]
+    fn a_second_capture_in_the_same_second_does_not_overwrite_the_first() {
+        let dir = std::env::temp_dir().join(format!("arlen-shot-free-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = save_png_bytes(PNG, &dir, &free_name(&dir, "Screenshot-20260819-093000.png")).unwrap();
+        let second = save_png_bytes(PNG, &dir, &free_name(&dir, "Screenshot-20260819-093000.png")).unwrap();
+        assert_ne!(first, second);
+        assert!(first.exists() && second.exists(), "both captures survive");
+        assert_eq!(
+            second.file_name().unwrap().to_string_lossy(),
+            "Screenshot-20260819-093000-2.png"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A free name is left alone: the suffix is for collisions, not decoration.
+    #[test]
+    fn a_name_nothing_is_using_comes_back_unchanged() {
+        let dir = std::env::temp_dir().join(format!("arlen-shot-plain-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(free_name(&dir, "Screenshot-x.png"), "Screenshot-x.png");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
