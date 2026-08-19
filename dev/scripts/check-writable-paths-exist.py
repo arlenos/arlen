@@ -37,6 +37,7 @@ is whether SOMETHING creates the tree, not what it resolves to on this machine.
 Run: dev/scripts/check-writable-paths-exist.py [repo-root]
 """
 
+import os
 import pathlib
 import re
 import sys
@@ -75,11 +76,19 @@ OURS = ("dev/mkosi/mkosi.extra", "daemons", "apps", "distro")
 def tmpfiles_paths(root: pathlib.Path) -> set[str]:
     """Every path a tmpfiles.d entry WE ship creates."""
     out: set[str] = set()
-    for conf in root.glob("**/tmpfiles.d/*.conf"):
-        if {"target", "mkosi.builddir", "node_modules", "mkosi.cache", "mkosi.tools"} & set(
-            conf.parts
-        ):
-            continue
+    # PRUNED rather than filtered afterwards. `Path.glob("**/...")` descends into
+    # every directory first and the caller drops the matches later, so the walk
+    # covered `target/` and `mkosi.builddir/` - gigabytes, on every commit, while
+    # a build may be writing them. Skipping them at the directory level is the
+    # same answer for a fraction of the work, and it stops a gate's verdict
+    # depending on what a concurrent build happens to be doing.
+    skip = {"target", "mkosi.builddir", "node_modules", "mkosi.cache", "mkosi.tools", ".git"}
+    confs: list[pathlib.Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        if pathlib.Path(dirpath).name == "tmpfiles.d":
+            confs.extend(pathlib.Path(dirpath) / f for f in filenames if f.endswith(".conf"))
+    for conf in confs:
         rel = conf.relative_to(root).as_posix()
         if not rel.startswith(OURS):
             continue
