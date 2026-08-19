@@ -1,0 +1,30 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-pdf-decode-page"
+version = "0.1.0"
+edition = "2021"
+description = "The sandboxed PDF page renderer: reads a document on stdin, writes one page as an RGBA raster frame on stdout (quickview-plan.md)"
+
+[[bin]]
+name = "arlen-pdf-decode-page"
+path = "src/main.rs"
+
+[lib]
+name = "arlen_pdf_decode_page"
+
+[dependencies]
+# MuPDF, built from the vendored C source the -sys crate carries: no system
+# library, so no line in `ci-system-packages.txt` and no cold apt round for the
+# whole matrix. AGPL-3.0, which is what this tree already is.
+#
+# It is also the largest piece of C in the project and it parses files people
+# are sent by strangers, which is the entire reason this is a separate worker
+# binary behind a sandbox rather than a function in the reader.
+mupdf = { version = "0.8", default-features = false }
+
+# For the Landlock ruleset the viewer's decoders already use. One reviewed
+# implementation of the confinement rather than a second copy of it here; if it
+# moves to the sdk, both callers move together.
+arlen-viewers-core = { path = "../../viewers/core" }
+
+[workspace]
