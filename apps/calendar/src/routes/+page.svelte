@@ -24,6 +24,7 @@
     kind: string;
     tzid: string | null;
     repeats: boolean;
+    expanded: boolean;
   };
   type Agenda = {
     events: AgendaEvent[];
@@ -136,7 +137,10 @@
                     <!-- Said out loud: the rule is parsed but not worked out, so
                          showing this one occurrence silently would be a claim
                          about the others. -->
-                    <span class="repeat" title={$t("cal.repeatsUnexpanded")}>
+                    <span
+                      class="repeat"
+                      title={e.expanded ? $t("cal.repeatsShown") : $t("cal.repeatsUnexpanded")}
+                    >
                       <Repeat size={12} strokeWidth={2} />{$t("cal.repeats")}
                     </span>
                   {/if}
