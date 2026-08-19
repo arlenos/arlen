@@ -365,6 +365,8 @@ jobs:
           node dev/scripts/test-check-runtime-assets.mjs
           python3 dev/scripts/check-desktop-entries.py
           node dev/scripts/test-check-desktop-entries.mjs
+          python3 dev/scripts/check-behaviour-tools.py
+          node dev/scripts/test-check-behaviour-tools.mjs
           python3 dev/scripts/check-dev-ports.py
           node dev/scripts/test-check-dev-ports.mjs
           python3 dev/scripts/check-plugin-grants.py
