@@ -15,7 +15,7 @@
 use arlen_ai_skills::behaviour::{BehaviourKind, TriggerKind};
 use arlen_ai_skills::loader::{behaviour_sources, load, LoadOutcome, LoadedBehaviour, Provenance};
 use arlen_ai_skills::router::matching_behaviours;
-use os_sdk::proto::{Event, FileOpenedPayload, WindowFocusedPayload};
+use os_sdk::proto::{CalendarEventUpcomingPayload, Event, FileOpenedPayload, WindowFocusedPayload};
 use os_sdk::{EventConsumer, SubscribeError, UnixEventConsumer};
 use prost::Message as _;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -79,6 +79,19 @@ pub fn decode_event(ev: Event) -> TriggerEvent {
             if let Ok(p) = WindowFocusedPayload::decode(ev.payload.as_slice()) {
                 fields.insert("app_id".to_string(), p.app_id);
                 fields.insert("window_title".to_string(), p.window_title);
+            }
+        }
+        // The calendar's own announcement. `meeting-prep` has triggered on this
+        // since it was written and could never fire, because nothing emitted it
+        // and nothing decoded it; both halves land together so the behaviour is
+        // reachable rather than merely present.
+        "calendar.event.upcoming" => {
+            if let Ok(p) = CalendarEventUpcomingPayload::decode(ev.payload.as_slice()) {
+                fields.insert("uid".to_string(), p.uid);
+                fields.insert("summary".to_string(), p.summary);
+                fields.insert("location".to_string(), p.location);
+                fields.insert("starts_at".to_string(), p.starts_at.to_string());
+                fields.insert("recurrence_id".to_string(), p.recurrence_id);
             }
         }
         // Other event types carry no router-readable fields yet; their payload
@@ -646,5 +659,47 @@ mod tests {
         assert_eq!(seen.len(), 2, "the two distinct matches route; the duplicate coalesces, window.focused matches nothing");
         assert!(seen.contains(&("auto-tag".to_string(), Route::DeterministicCuration)));
         assert!(seen.contains(&("meeting-prep".to_string(), Route::PiRun)));
+    }
+}
+
+#[cfg(test)]
+mod calendar_decode_tests {
+    use super::*;
+    use prost::Message;
+
+    #[test]
+    fn an_upcoming_meeting_arrives_as_fields_a_behaviour_can_filter_on() {
+        let payload = CalendarEventUpcomingPayload {
+            uid: "standup@x".into(),
+            summary: "Morning standup".into(),
+            location: "Room 2".into(),
+            starts_at: 1_787_215_500,
+            recurrence_id: "2026-08-20".into(),
+        };
+        let ev = Event {
+            r#type: "calendar.event.upcoming".into(),
+            payload: payload.encode_to_vec(),
+            ..Default::default()
+        };
+        let t = decode_event(ev);
+        assert_eq!(t.fields.get("summary").map(String::as_str), Some("Morning standup"));
+        assert_eq!(t.fields.get("location").map(String::as_str), Some("Room 2"));
+        assert_eq!(t.fields.get("starts_at").map(String::as_str), Some("1787215500"));
+        // Which occurrence, so a filter can tell one day's standup from the next.
+        assert_eq!(t.fields.get("recurrence_id").map(String::as_str), Some("2026-08-20"));
+        // The titles come out of somebody's own file, so they stay external.
+        assert!(t.external_content);
+    }
+
+    #[test]
+    fn a_payload_that_does_not_decode_yields_no_fields_rather_than_wrong_ones() {
+        let ev = Event {
+            r#type: "calendar.event.upcoming".into(),
+            payload: b"not a protobuf message at all".to_vec(),
+            ..Default::default()
+        };
+        // Filters then fail closed on the missing fields, which is the existing
+        // contract for every other event type here.
+        assert!(decode_event(ev).fields.is_empty());
     }
 }

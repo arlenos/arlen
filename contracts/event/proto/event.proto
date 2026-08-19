@@ -654,3 +654,23 @@ message CodeFileIndexPayload {
   string language    = 2;  // "rust"
   repeated CodeSymbolPayload symbols = 3;
 }
+
+// A meeting about to start, emitted by the calendar daemon shortly before it
+// does. Event type "calendar.event.upcoming".
+//
+// The behaviour `meeting-prep` has triggered on this event since it was
+// written and nothing has ever emitted it, so the payload is named here rather
+// than invented in the emitter: a producer and a consumer that each decide what
+// an event carries disagree the first time one of them changes.
+//
+// The strings come from the user's own calendar file, so a consumer treats them
+// as external content. `starts_at` is the resolved instant; a written time that
+// names a zone this machine does not know produces no event at all rather than
+// a guessed one.
+message CalendarEventUpcomingPayload {
+  string uid           = 1;  // the VEVENT's own UID
+  string summary       = 2;  // its title, as written
+  string location      = 3;  // as written; empty when the file said nothing
+  int64  starts_at     = 4;  // epoch seconds, UTC
+  string recurrence_id = 5;  // YYYY-MM-DD: WHICH occurrence of a repeating event
+}

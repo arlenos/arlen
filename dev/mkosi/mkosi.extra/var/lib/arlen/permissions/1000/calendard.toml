@@ -1,0 +1,25 @@
+# The calendar daemon's event-bus profile.
+#
+# `calendard`, not `calendar` or `arlen-calendard`: it installs at
+# `/usr/lib/arlen/libexec/arlen-calendard`, which is neither `/usr/bin/arlen-*`
+# nor an app directory, so `identity.rs` carries an explicit rule mapping it to
+# that id. The filename has to be the id or the profile is never found, which is
+# the mistake the compositor's profile made for weeks.
+#
+# ONE TOPIC, AND IT IS THE ONE THAT MAKES A BEHAVIOUR REACHABLE.
+# `calendar.event.upcoming` has had a consumer since `meeting-prep` was written
+# and never had a producer; this daemon is it. Without a declared publish scope
+# every announcement is dropped at the bus under enforcement, and the wire
+# protocol is fire-and-forget, so the daemon would keep logging that it announced
+# a meeting while nothing ever heard one.
+#
+# Nothing heard: the daemon is a pure producer. It reads calendar files from
+# disk and talks to `org.arlen.Clock1` over D-Bus, neither of which comes
+# through here.
+[info]
+app_id = "calendard"
+tier = "first-party"
+
+[event_bus]
+publish = ["calendar.event.upcoming"]
+subscribe = []

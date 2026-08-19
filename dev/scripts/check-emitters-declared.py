@@ -80,6 +80,11 @@ DIR_TO_ID = {
     "daemons/anomaly-detector": "anomalyd",
     "daemons/power-daemon": "powerd",
     "daemons/knowledge": "knowledge",
+    # The binary is `arlen-calendard`, one letter off the directory, so the
+    # arm-matching below (which looks for `/arlen-<dir>`) cannot bridge it and
+    # would report a missing `calendar.toml` - a name nothing resolves to, which
+    # is the mistake this table's own comment warns about.
+    "daemons/calendar": "calendard",
 }
 
 # Emitters that are not in the image, with the reason.
