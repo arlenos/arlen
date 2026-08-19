@@ -401,6 +401,8 @@ jobs:
           node dev/scripts/test-check-dependency-direction.mjs
           python3 dev/scripts/check-tests-run.py
           node dev/scripts/test-check-tests-run.mjs
+          python3 dev/scripts/check-lockfiles-current.py
+          node dev/scripts/test-check-lockfiles-current.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
