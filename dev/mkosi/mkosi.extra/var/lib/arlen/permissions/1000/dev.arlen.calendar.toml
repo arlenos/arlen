@@ -1,0 +1,52 @@
+# The calendar's profile, under the uid it applies to, like every other app here.
+#
+# NARROW BY CONSTRUCTION, because the app is narrow: it reads the `.ics` files in
+# one directory and shows them. It does not write, it does not sync, it reaches
+# no network, and it reads nothing from the knowledge graph - so there is no
+# `[graph]` section at all rather than an empty one, which would be a different
+# statement.
+#
+# Each grant below was read out of the source, not assumed:
+#
+#   custom = the calendar dir    `calendar_dir()` (src-tauri/src/lib.rs) resolves
+#                                `$XDG_DATA_HOME/arlen/calendars`, falling back to
+#                                `~/.local/share`. That one directory is the whole
+#                                filesystem surface: `calendar_agenda` reads the
+#                                `.ics` files in it and the watcher watches it.
+#
+# NOT `home = true`, which every other file-reading app here has. This one has no
+# file picker and no argument: it only ever looks in the directory it created
+# itself, so a home-wide grant would be permission for something the code cannot
+# do.
+#
+# NO write anywhere. The app has never written a calendar file - there is no
+# create, no edit, no sync - and when those arrive they land as a write grant
+# decided then, against a feature that exists.
+[info]
+app_id = "dev.arlen.calendar"
+tier = "first-party"
+
+[filesystem]
+custom = [
+    "$HOME/.local/share/arlen/calendars",
+]
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# NOTHING IS PUBLISHED: there is no emitter in this app. Opening the calendar
+# does not reach the knowledge graph at all today, and whether it should is a
+# design question rather than a grant to make in advance.
+#
+# The subscribe list is not this app's own code: `sdk/tauri-plugin-shell`
+# subscribes these three from inside every Tauri process, and declaring any
+# subscribe list drops the system-tier exemption - so omitting them would
+# silently switch off the topbar menu, the toolbar and the shortcuts while the
+# subscribe still returns Ok.
+[event_bus]
+publish = []
+subscribe = [
+    "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]

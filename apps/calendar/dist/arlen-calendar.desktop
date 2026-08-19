@@ -1,0 +1,23 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Calendar
+Name[de]=Kalender
+Comment=Your own calendar files, as an agenda
+Comment[de]=Deine eigenen Kalenderdateien, als Agenda
+Exec=arlen-calendar
+Icon=arlen-calendar
+Terminal=false
+# One main category (Office) plus the additional `Calendar`. Naming two main
+# categories is what `desktop-file-validate` reports as a hint, and a hint is a
+# failure here.
+Categories=Office;Calendar;
+Keywords=calendar;agenda;events;meetings;appointments;
+Keywords[de]=kalender;agenda;termine;besprechungen;
+StartupNotify=true
+
+# NO MimeType, and no `%f`, deliberately. This app reads the calendar DIRECTORY;
+# it takes no file argument. Claiming `text/calendar` would make it the handler
+# for every `.ics` a person double-clicks, and it would then open showing its own
+# directory rather than that file - an app that appears to ignore what you asked
+# it to open. The claim lands when opening one file does.
