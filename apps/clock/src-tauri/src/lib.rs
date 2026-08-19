@@ -41,6 +41,42 @@ async fn clock() -> Result<zbus::Proxy<'static>, String> {
         .map_err(|e| format!("clock daemon unavailable: {e}"))
 }
 
+/// The marker a command returns when the clock daemon is not running.
+///
+/// A token rather than a sentence: the wording belongs to the page, where it is
+/// translated. The same shape the knowledge app uses for its own daemon.
+pub const NOT_RUNNING: &str = "clock-daemon-not-running";
+
+/// Is anything serving `org.arlen.Clock1`?
+///
+/// Not D-Bus-activatable (no `.service` file under `dbus-1/services`), so an
+/// absent daemon stays absent and a call to it simply fails - which the app used
+/// to render as "cannot read your saved clock data right now". True, and the
+/// wrong half of the truth: on a machine where nobody started the service there
+/// is nothing to read and nothing wrong, and telling a person their data cannot
+/// be read sends them looking for a fault that is not there.
+async fn daemon_running() -> bool {
+    let Ok(conn) = zbus::Connection::session().await else {
+        return false;
+    };
+    let Ok(dbus) = zbus::fdo::DBusProxy::new(&conn).await else {
+        return false;
+    };
+    let Ok(name) = CLOCK_SERVICE.try_into() else {
+        return false;
+    };
+    dbus.name_has_owner(name).await.unwrap_or(false)
+}
+
+/// Turn a call failure into the not-running marker when that is what it is.
+async fn explain(e: String) -> String {
+    if daemon_running().await {
+        e
+    } else {
+        NOT_RUNNING.to_string()
+    }
+}
+
 /// Call a method that returns nothing.
 async fn tell<A>(method: &str, args: &A) -> Result<(), String>
 where
@@ -61,11 +97,13 @@ where
 /// boundary instead of somewhere inside a surface.
 #[tauri::command]
 async fn clock_state() -> Result<Value, String> {
-    let raw: String = clock()
-        .await?
-        .call("State", &())
-        .await
-        .map_err(|e| format!("State: {e}"))?;
+    let raw: String = match clock().await {
+        Ok(proxy) => match proxy.call("State", &()).await {
+            Ok(raw) => raw,
+            Err(e) => return Err(explain(format!("State: {e}")).await),
+        },
+        Err(e) => return Err(explain(e).await),
+    };
     serde_json::from_str(&raw).map_err(|e| format!("clock state is not JSON: {e}"))
 }
 
