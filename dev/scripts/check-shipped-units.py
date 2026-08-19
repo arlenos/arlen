@@ -57,6 +57,11 @@ BUILD_STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 # `org.arlen.InstallDaemon1` and Files to `org.arlen.Accounts1`. Both now answer
 # "unavailable on this system" rather than an empty list or a dead button, which
 # is the rule for a backend that does not exist yet.
+# Read by `check-admitted-ids-exist.py` as well: a daemon whose unit is deferred
+# here is one whose app id no image can produce, and that gate derives the second
+# fact from this list rather than keeping its own copy. Removing an entry from
+# here therefore also stops excusing that daemon's allowlist entries, which is the
+# behaviour you want when it finally ships.
 NOT_YET_DEPLOYED: dict[str, str] = {
     "arlen-accountsd.service": (
         "online-accounts is not part of the image scope yet (15 Aug). The Files "
