@@ -16,6 +16,7 @@ const messages: Catalogs = {
     "pdf.pages": "{$count} pages",
     "pdf.onePage": "1 page",
     "pdf.page": "Page {$number}",
+    "pdf.pageOf": "Page {$number} of {$total}",
     "pdf.search.label": "Search in document",
     "pdf.search.none": "No page contains that.",
     "pdf.search.unsearchable":
@@ -32,6 +33,7 @@ const messages: Catalogs = {
     "pdf.pages": "{$count} Seiten",
     "pdf.onePage": "1 Seite",
     "pdf.page": "Seite {$number}",
+    "pdf.pageOf": "Seite {$number} von {$total}",
     "pdf.search.label": "Im Dokument suchen",
     "pdf.search.none": "Keine Seite enthält das.",
     "pdf.search.unsearchable":

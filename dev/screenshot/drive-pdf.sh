@@ -140,6 +140,36 @@ say "the page is drawn as opaque paper rather than a transparent sheet" \
 say "and the document's own text is on it" \
   "$(printf '%s' "$ink" | grep -qE "dark=[1-9]" && echo 1 || echo 0)" "$ink"
 
+# Page navigation, the third thing `quickview-plan.md` names for this reader and
+# the last one to arrive. Pressed as a key on the window rather than clicked,
+# because keyboard-first is the convention and a reader who has to reach for the
+# mouse to turn a page is not reading.
+nav=$(SHOOT_APP_ARGS="$fix/sample.pdf" SHOOT_INJECT=/dev/stdin "$here/shoot-app.sh" "$app" "" 2>&1 <<'JS' \
+  | sed -n 's/^inject result: //p'
+const at = () => document.querySelector(".pdf-page-number")?.innerText ?? "?";
+const press = (key, shiftKey = false) =>
+  window.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true }));
+const start = at();
+press("ArrowRight");
+const forward = at();
+press("ArrowLeft");
+const back = at();
+press("End");
+const end = at();
+// Past the last page: the end of a document is the end of it, and wrapping to
+// page one would read as the document having restarted.
+press("ArrowRight");
+const clamped = at();
+return `start=${start} forward=${forward} back=${back} end=${end} clamped=${clamped}`;
+JS
+)
+
+say "a key turns the page, and turns it back" \
+  "$(printf '%s' "$nav" | grep -q "start=Page 1 of 3 forward=Page 2 of 3 back=Page 1 of 3" && echo 1 || echo 0)" "$nav"
+
+say "the last page is the last page, not a wrap to the first" \
+  "$(printf '%s' "$nav" | grep -q "end=Page 3 of 3 clamped=Page 3 of 3" && echo 1 || echo 0)" "$nav"
+
 # Nothing here is a fixture string: a document with no contents page and a
 # document that failed to open are different, and the second must not be
 # reported as the first.
