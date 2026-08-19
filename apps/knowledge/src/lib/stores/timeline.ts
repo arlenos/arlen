@@ -5,6 +5,7 @@
 /// reads the `knowledge_timeline` command (a coder seam over the FUSE timeline
 /// + the typed reads); under vite a fixture stands in and `mocked` says so.
 import { get, writable } from "svelte/store";
+import { isServiceAbsent } from "$lib/service";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -274,7 +275,7 @@ export async function loadTimeline(): Promise<void> {
     // The daemon's own marker, not a guess at the message: a missing socket is
     // the normal state of a machine that has not started the service, and it
     // deserves a different sentence from a read that failed.
-    timelineNoService.set(String(e).includes("knowledge-daemon-not-running"));
+    timelineNoService.set(isServiceAbsent(e));
     // This is the app's landing view, and the fixture is a week of dated
     // activity attributed to this machine - "ran Terminal", "imported Zotero
     // bridge", "edited Text editor", each with a time. A label above a week of

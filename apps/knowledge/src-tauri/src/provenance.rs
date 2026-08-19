@@ -59,7 +59,7 @@ pub struct ProvenanceHop {
 /// file it may know plenty about.
 #[tauri::command]
 pub async fn knowledge_provenance(node: String) -> Result<Vec<ProvenanceHop>, String> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = crate::service::socket_or_absent()?;
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
         .query_rows(&file_query(&node))

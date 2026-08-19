@@ -39,7 +39,7 @@ pub async fn knowledge_timeline_delete(from: i64) -> Result<u64, String> {
     if !is_usable_boundary(from) {
         return Err("a delete needs a range boundary at or after the epoch".to_string());
     }
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = crate::service::socket_or_absent()?;
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     client.delete_activity(from).await.map_err(|e| crate::report::graph_call_failed("knowledge_timeline_delete", e))
 }

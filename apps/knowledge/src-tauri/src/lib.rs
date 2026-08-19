@@ -22,6 +22,7 @@ mod settings_link;
 mod provenance;
 mod report;
 mod search;
+mod service;
 mod searches;
 mod timeline;
 

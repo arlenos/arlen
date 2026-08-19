@@ -51,7 +51,7 @@ pub async fn knowledge_projects_list(
     if as_of.is_some() {
         return Err("as-of reads are not wired yet".to_string());
     }
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = crate::service::socket_or_absent()?;
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
 
     match project_in(&path) {
@@ -104,7 +104,7 @@ pub async fn knowledge_list(location: String) -> Result<Vec<BrowserEntry>, Strin
     if location != "projects" {
         return Err(format!("the {location} place is not wired yet"));
     }
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = crate::service::socket_or_absent()?;
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     list_projects(&client).await
 }

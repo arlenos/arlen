@@ -66,7 +66,7 @@ const ANSWERABLE: [&str; 2] = ["file", "project"];
 /// silently answers nothing is worse than one that is not offered.
 #[tauri::command]
 pub async fn knowledge_project_names() -> Result<Vec<String>, String> {
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = crate::service::socket_or_absent()?;
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
         .query_rows(
@@ -99,7 +99,7 @@ pub async fn knowledge_search(
             return Ok(Vec::new());
         }
     }
-    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let socket = crate::service::socket_or_absent()?;
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
 
     let trimmed = query.trim();
