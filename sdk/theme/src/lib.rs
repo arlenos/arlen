@@ -826,6 +826,20 @@ fn resolve_terminal(c: &ColorTokens, section: Option<TerminalSection>) -> Termin
         bright(blend(c.success, c.info)), // 14 bright cyan
         c.fg_primary,              // 15 bright white
     ];
+    let mut fg = c.fg_primary;
+    let mut bg = c.bg_app;
+    let mut cursor = c.accent;
+    if let Some(ref t) = section {
+        if let Some(rgba) = t.fg.as_deref().and_then(parse_hex) {
+            fg = rgba;
+        }
+        if let Some(rgba) = t.bg.as_deref().and_then(parse_hex) {
+            bg = rgba;
+        }
+        if let Some(rgba) = t.cursor.as_deref().and_then(parse_hex) {
+            cursor = rgba;
+        }
+    }
     if let Some(a) = section.and_then(|t| t.ansi) {
         let slots = [
             a.black, a.red, a.green, a.yellow, a.blue, a.magenta, a.cyan, a.white,
@@ -838,12 +852,7 @@ fn resolve_terminal(c: &ColorTokens, section: Option<TerminalSection>) -> Termin
             }
         }
     }
-    TerminalTokens {
-        fg: c.fg_primary,
-        bg: c.bg_app,
-        cursor: c.accent,
-        ansi,
-    }
+    TerminalTokens { fg, bg, cursor, ansi }
 }
 
 /// Field-by-field merge — every Optional in `over` that is `Some`
@@ -925,6 +934,9 @@ fn merge_terminal(
     match (under, over) {
         (None, x) | (x, None) => x,
         (Some(u), Some(o)) => Some(TerminalSection {
+            fg: o.fg.or(u.fg),
+            bg: o.bg.or(u.bg),
+            cursor: o.cursor.or(u.cursor),
             ansi: merge_terminal_ansi(u.ansi, o.ansi),
         }),
     }
@@ -1612,6 +1624,29 @@ button = 12
         // slot-exact, it does not re-seed the bright derivation).
         assert_eq!(t.terminal.ansi[2], t.color.success, "green still synthesised");
         assert_eq!(t.terminal.ansi[9], scale_rgb(t.color.error, 1.25), "bright red keeps the synthesis");
+    }
+
+    #[test]
+    fn authored_terminal_fg_bg_and_cursor_override_only_themselves() {
+        // The Appearance terminal editor offers these three beside the sixteen
+        // slots, and until 19 Aug the schema had nowhere to put them: they
+        // synthesised from the app chrome and an edit went nowhere.
+        let user = "[terminal]\nfg = \"#112233\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        assert_eq!(t.terminal.fg, parse_hex("#112233").unwrap(), "authored fg honoured");
+        assert_eq!(t.terminal.bg, t.color.bg_app, "bg still synthesised");
+        assert_eq!(t.terminal.cursor, t.color.accent, "cursor still synthesised");
+        // And the slot palette is untouched by an fg edit.
+        assert_eq!(t.terminal.ansi[2], t.color.success, "green still synthesised");
+    }
+
+    #[test]
+    fn an_invalid_authored_terminal_colour_keeps_the_synthesis() {
+        // Same typed fail-to-default as the ANSI slots: a value that is not hex
+        // cannot reach the resolved palette.
+        let user = "[terminal]\nbg = \"url(evil)\"\n";
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, Some(user), None).expect("resolve");
+        assert_eq!(t.terminal.bg, t.color.bg_app, "invalid bg falls back to the synthesis");
     }
 
     #[test]
