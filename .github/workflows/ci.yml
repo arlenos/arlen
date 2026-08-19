@@ -311,6 +311,8 @@ jobs:
           python3 dev/scripts/check-sound-theme.py
           python3 dev/scripts/check-serde-nesting.py
           python3 dev/scripts/check-host-vs-devbuild.py
+          python3 dev/scripts/check-admitted-ids-exist.py
+          node dev/scripts/test-check-admitted-ids-exist.mjs
           node dev/scripts/test-check-host-vs-devbuild.mjs
           node dev/scripts/test-check-serde-nesting.mjs
           bash dev/scripts/check-shared-signature.sh
