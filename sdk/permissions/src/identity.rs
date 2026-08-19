@@ -586,6 +586,15 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-clockd" => {
             return Ok("clockd".to_string());
         }
+        // The calendar daemon. It registers each occurrence's reminder with
+        // `Clock1`, which admits it by resolved app id and grants it only the
+        // alarms carrying its own payload - so without an entry here it resolves
+        // to UnknownBinary and every reminder it registers is refused, leaving a
+        // calendar whose alarms never ring on a shipped image while working in a
+        // developer build.
+        "/usr/lib/arlen/libexec/arlen-calendard" => {
+            return Ok("calendard".to_string());
+        }
         // The session undo service. It reads the signed undo log through the undo
         // signer and the audit ledger through the audit daemon, and BOTH admit by
         // resolved app id - so without this entry it resolves to UnknownBinary and
