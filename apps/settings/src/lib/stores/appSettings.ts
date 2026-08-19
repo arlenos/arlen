@@ -5,6 +5,7 @@
 /// src-tauri (PAS-0..7); under vite the fixture stands in - a demo schema that
 /// exercises every declared type so the renderer is fully visible.
 import { get, writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { t } from "$lib/i18n/messages";
 import { invoke } from "@tauri-apps/api/core";
 import type {
@@ -152,7 +153,7 @@ export async function loadAppSettings(appId: string): Promise<void> {
     // Only under vite, and only for the demo id. A real session that could not
     // read the page shows no page: an invented settings page is one the user
     // then edits, and those writes go to a schema nobody confirmed.
-    const demo = import.meta.env.DEV && appId === FIXTURE.appId;
+    const demo = !tauriAvailable && appId === FIXTURE.appId;
     appPage.set(demo ? structuredClone(FIXTURE) : null);
     appPageMocked.set(demo);
   }
@@ -187,7 +188,7 @@ export async function writeKey(key: string, value: unknown): Promise<void> {
       writeErrors.update((e) => ({ ...e, [answer.refusedKey || key]: answer.message }));
     }
   } catch {
-    if (import.meta.env.DEV) return; // broker unwired under vite
+    if (!tauriAvailable) return; // no host to write through
     // The write did not happen, so the row must not keep showing the new value.
     // A settings surface that displays what you typed while the file still says
     // the old thing is the same lie as a fixture, and it survives a reboot: the
@@ -245,7 +246,7 @@ export async function resolveOptions(source: ValueSource): Promise<SettingOption
     // the same defect as the capture picker offering windows that do not exist.
     // A rejection is the honest answer: the widget already renders a
     // could-not-ask line for it (`resolveFailed`).
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       const fixture = RESOLVE_FIXTURE[source];
       if (fixture) return fixture;
     }
@@ -312,7 +313,7 @@ export async function loadAppMeta(appId: string): Promise<void> {
     appMeta.set(await invoke<AppMeta | null>("settings_app_meta", { appId }));
     appMetaMocked.set(false);
   } catch {
-    const demo = import.meta.env.DEV && appId === FIXTURE.appId;
+    const demo = !tauriAvailable && appId === FIXTURE.appId;
     appMeta.set(demo ? { ...META_FIXTURE } : null);
     appMetaMocked.set(demo);
   }
@@ -352,7 +353,7 @@ export async function loadAppGeneral(appId: string): Promise<void> {
   } catch {
     // No mocked flag on this one, so the fixture would be unlabelled if it ever
     // reached a real session. It cannot now.
-    appGeneral.set(import.meta.env.DEV && appId === FIXTURE.appId ? structuredClone(GENERAL_FIXTURE) : null);
+    appGeneral.set(!tauriAvailable && appId === FIXTURE.appId ? structuredClone(GENERAL_FIXTURE) : null);
   }
 }
 
@@ -364,7 +365,7 @@ export async function clearAppCache(appId: string): Promise<void> {
   try {
     await invoke("settings_app_clear_cache", { appId });
   } catch {
-    if (import.meta.env.DEV) return; // seam unwired under vite
+    if (!tauriAvailable) return; // no host to write through
     // A zero here says the disk was freed. It was not, and somebody chasing
     // space would move on to the next app believing this one is clean.
     if (before !== undefined) {

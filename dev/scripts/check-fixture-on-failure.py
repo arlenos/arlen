@@ -165,10 +165,19 @@ MARKUP_FIXTURE = re.compile(
 )
 SVELTE_COMMENT = re.compile(r"<!--.*?-->", re.S)
 SVELTE_STYLE = re.compile(r"<style[^>]*>.*?</style>", re.S)
-# Either guard counts as the author having separated the two sessions. Whether
+# Any of these counts as the author having separated the two sessions. Whether
 # they got the branches the right way round is not something a regex settles;
 # what it can see is that the question was asked at all.
-DEV_GUARD = re.compile(r"import\.meta\.env\.DEV|isTauri\(")
+#
+# `tauriAvailable` is the one to reach for. This check used to name only
+# `import.meta.env.DEV`, and the tree followed it into a real defect: a DEV build
+# under `tauri dev` HAS a backend, so a command that genuinely failed there took
+# the fixture branch and the page showed invented printers, capsules and grants;
+# a release build rendered headlessly is not a DEV build and has no backend, so
+# it took the other branch and reported a failure that had not happened. Asking
+# for `__TAURI_INTERNALS__` answers the question the branch is really about.
+# `check-host-vs-devbuild.py` holds that line going forward.
+DEV_GUARD = re.compile(r"import\.meta\.env\.DEV|isTauri\(|tauriAvailable")
 
 # In CI since 9 August. It was the one check in `dev/scripts/` that no runner
 # called - found by asking the mechanical question rather than remembering: 26
@@ -348,7 +357,7 @@ def main() -> int:
             findings.append(
                 f"{rel}:{line}: a failed read falls back to `{name}`, so "
                 f"invented content renders as fact. Guard it with "
-                f"`import.meta.env.DEV` and give the real session an error the "
+                f"`tauriAvailable` and give the real session an error the "
                 f"surface can show."
             )
 

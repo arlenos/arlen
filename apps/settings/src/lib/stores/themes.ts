@@ -10,6 +10,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { get, writable, derived } from "svelte/store";
 import { theme } from "./theme";
+import { tauriAvailable } from "$lib/tauri";
 
 /// One installed theme as the gallery shows it.
 export interface ThemeInfo {
@@ -63,7 +64,7 @@ export async function loadThemes(): Promise<void> {
     themes.set(list.map((t) => ({ id: t.id, name: t.name, isBuiltin: t.is_builtin, swatch: t.swatch })));
     activeThemeId.set(await invoke<string>("get_active_theme_id"));
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       // The no-Tauri dev fallback this function's doc describes. It used to run
       // in a real session too, which is not what the sentence says.
       themes.set(FIXTURE);
@@ -87,7 +88,7 @@ export async function setActiveTheme(id: string): Promise<void> {
     // The persist is what makes the choice real; it must succeed on its own.
     await theme.setValue("theme.active", id);
   } catch {
-    if (import.meta.env.DEV) return;
+    if (!tauriAvailable) return;
     // Nothing was written, so the grid must not keep the new tick: the next
     // load would silently move it back and the choice would look self-undoing.
     activeThemeId.set(before);

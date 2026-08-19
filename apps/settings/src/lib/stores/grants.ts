@@ -21,6 +21,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Translate } from "@arlen/ui-kit/i18n";
 import { get, writable } from "svelte/store";
 import { locale } from "$lib/i18n/messages";
+import { tauriAvailable } from "$lib/tauri";
 
 /// One capability grant, mirroring `GrantView` in `sdk/os-sdk/src/graph.rs`.
 export interface GrantView {
@@ -786,7 +787,7 @@ export async function loadGrants(): Promise<void> {
     grantsError.set(false);
     grantsMocked.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       // No backend to ask under vite, so the fixture is the honest thing to
       // render for design work - labelled a sample by `grantsMocked`.
       grants.set(MOCK_GRANTS);

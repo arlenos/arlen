@@ -7,6 +7,7 @@
 /// set, and the add flow all render without image files.
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// How the image maps to the screen (the daemon's `Scale`).
 ///
@@ -61,7 +62,7 @@ export async function listWallpapers(): Promise<void> {
     wallpapers.set(list);
     wallpapersUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       wallpapers.set(FIXTURE);
       currentId.set("wp-nightfall");
       wallpapersUnavailable.set(false);
@@ -86,7 +87,7 @@ export async function setWallpaper(id: string): Promise<void> {
   try {
     await invoke("set_wallpaper", { id, scale: s });
   } catch {
-    if (import.meta.env.DEV) return; // no daemon under vite
+    if (!tauriAvailable) return; // no host, so no daemon to ask
     // The desktop still shows the old one, so the picker must too.
     currentId.set(before);
     wallpaperChangeFailed.set(true);
@@ -103,7 +104,7 @@ export async function setScale(next: WallpaperScale): Promise<void> {
   try {
     await invoke("set_wallpaper", { id, scale: next });
   } catch {
-    if (import.meta.env.DEV) return; // vite: nothing to persist
+    if (!tauriAvailable) return; // no host, so nothing to persist
     scale.set(before);
     wallpaperChangeFailed.set(true);
   }

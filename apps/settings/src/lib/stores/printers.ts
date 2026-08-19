@@ -18,6 +18,7 @@
 
 import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// IPP printer-state, mirrored from `model.rs::PrinterState`.
 export type PrinterState = "idle" | "processing" | "stopped" | "unknown";
@@ -208,7 +209,7 @@ export async function load(): Promise<void> {
       unavailable: false,
     }));
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       printers.update((s) => ({
         ...s,
         printers: FIXTURE.printers,
@@ -242,7 +243,7 @@ export async function setDefault(name: string): Promise<void> {
   } catch {
     // This one HAS a backend now (the per-user `lpoptions` default), so a
     // failure here is a real one - a read-only home, a name CUPS will not take.
-    if (!import.meta.env.DEV) {
+    if (tauriAvailable) {
       printers.update((s) => ({ ...s, actionFailed: true }));
       return;
     }
@@ -256,7 +257,7 @@ export async function setOptions(name: string, options: PrinterOptions): Promise
   try {
     await invoke("printers_set_options", { name, options });
   } catch {
-    if (import.meta.env.DEV) return;
+    if (!tauriAvailable) return;
     // This has a backend now (the per-user `lpoptions` line), so a failure is a
     // real one. Paper size and duplex the service never heard about print wrong.
     printers.update((s) => {
@@ -279,7 +280,7 @@ export async function cancelJob(printer: string, id: number): Promise<void> {
     // A job shown as canceled that is still queued prints anyway, on paper, in
     // another room. `print_job_cancel` does have a backend, so this is a real
     // service failure rather than a missing command.
-    if (!import.meta.env.DEV) {
+    if (tauriAvailable) {
       printers.update((s) => ({ ...s, actionFailed: true }));
       return;
     }
@@ -304,7 +305,7 @@ export async function retryJob(id: number): Promise<void> {
     // while it is configured to, so a job old enough to be forgotten cannot be
     // printed again. Either way it did not restart, and the row must not say it
     // did.
-    if (!import.meta.env.DEV) {
+    if (tauriAvailable) {
       printers.update((s) => ({ ...s, actionFailed: true }));
       return;
     }
@@ -329,7 +330,7 @@ export async function testPage(printer: string): Promise<void> {
   try {
     await invoke("printers_test_page", { printer });
   } catch {
-    if (import.meta.env.DEV) return; // a test page is a no-op in the mock
+    if (!tauriAvailable) return; // a test page is a no-op in the mock
     // Nothing comes out of the printer, and a button that reports nothing looks
     // the same as one that worked.
     printers.update((s) => ({ ...s, actionFailed: true }));
