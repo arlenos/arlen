@@ -249,6 +249,7 @@ jobs:
           python3 dev/scripts/check-bus-socket-pins.py
           python3 dev/scripts/check-probe-admission.py
           python3 dev/scripts/check-dbus-activation.py
+          python3 dev/scripts/check-portal-interfaces.py
           python3 dev/scripts/check-read-scope.py
           python3 dev/scripts/check-dbus-callers.py
           python3 dev/scripts/check-refusal-shape.py
@@ -298,6 +299,7 @@ jobs:
           node dev/scripts/test-check-bus-socket-pins.mjs
           node dev/scripts/test-check-probe-admission.mjs
           node dev/scripts/test-check-dbus-activation.mjs
+          node dev/scripts/test-check-portal-interfaces.mjs
           node dev/scripts/test-probe-verdict.mjs
           node dev/scripts/test-identity-verdict.mjs
           node dev/scripts/test-check-socket-servers.mjs
