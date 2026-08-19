@@ -18,6 +18,8 @@
 //! What this adds is the part that needs a filesystem: which directory, which
 //! files, and what to say when one of them cannot be read.
 
+pub mod announce;
+
 use std::path::{Path, PathBuf};
 
 use arlen_calendar_core as ics;
