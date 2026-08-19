@@ -130,7 +130,7 @@ return JSON.stringify({ state: (document.querySelector('[role="status"]')||{}).t
 JS
 got=$(drive "$work/p-print.js" editor-print.png)
 say "the print control hands the open file to the portal and says the request is pending" \
-  "$(printf '%s' "$got" | grep -qiE "print dialog|Druckdialog" && echo 1 || echo 0)" "$got"
+  "$(printf '%s' "$got" | grep -qiE "print service|Druckdienst" && echo 1 || echo 0)" "$got"
 
 [ "$fail" = 0 ] && echo "a real buffer over a real file, a find panel, and a save that lands on disk"
 exit "$fail"
