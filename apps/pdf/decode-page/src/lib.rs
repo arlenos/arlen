@@ -59,6 +59,78 @@ impl Raster {
     }
 }
 
+/// One line of text on a page, and where it sits.
+///
+/// Per LINE rather than per glyph, because that is the granularity a reader
+/// selects in: an overlay of one box per character makes a page of a thousand
+/// invisible elements and selects like one too. Coordinates are in the same
+/// pixel space as the rendered raster at the same scale, so a surface can lay
+/// these straight over the canvas without a second transform to get wrong.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextLine {
+    /// The line as written.
+    pub text: String,
+    /// Left edge, in pixels from the page's left.
+    pub x: f32,
+    /// Top edge, in pixels from the page's top.
+    pub y: f32,
+    /// Width in pixels.
+    pub width: f32,
+    /// Height in pixels.
+    pub height: f32,
+}
+
+/// The text on page `page` (one-based) of `bytes`, with each line's box.
+///
+/// Empty is a real answer: a scanned page carries an image and no text, and
+/// that is different from a failure.
+///
+/// # Errors
+/// The same shapes as [`render_page`]: bytes that are not a PDF, or a page the
+/// document does not have.
+pub fn page_text_layer(bytes: &[u8], page: usize, scale: f32) -> Result<Vec<TextLine>, String> {
+    use mupdf::{Document, TextPageFlags};
+
+    let scale = if scale.is_finite() { scale.clamp(MIN_SCALE, MAX_SCALE) } else { 1.0 };
+    let doc = Document::from_bytes(bytes, "application/pdf")
+        .map_err(|e| format!("this file could not be read as a PDF: {e}"))?;
+    let count = usize::try_from(doc.page_count().unwrap_or(0)).unwrap_or(0);
+    if page == 0 || page > count {
+        return Err(format!("this PDF has {count} pages, so there is no page {page}"));
+    }
+    let index = i32::try_from(page - 1).map_err(|_| format!("page {page} is out of range"))?;
+    let loaded = doc.load_page(index).map_err(|e| format!("page {page} would not load: {e}"))?;
+    let text = loaded
+        .to_text_page(TextPageFlags::empty())
+        .map_err(|e| format!("page {page} has no readable text layer: {e}"))?;
+
+    let mut out = Vec::new();
+    for block in text.blocks() {
+        for line in block.lines() {
+            let mut s = String::new();
+            for ch in line.chars() {
+                if let Some(c) = ch.char() {
+                    s.push(c);
+                }
+            }
+            // A line that is only whitespace positions nothing a reader would
+            // select, and a box over it is a box that swallows clicks.
+            if s.trim().is_empty() {
+                continue;
+            }
+            let b = line.bounds();
+            out.push(TextLine {
+                text: s,
+                x: b.x0 * scale,
+                y: b.y0 * scale,
+                width: (b.x1 - b.x0) * scale,
+                height: (b.y1 - b.y0) * scale,
+            });
+        }
+    }
+    Ok(out)
+}
+
 /// Render page `page` (one-based) of `bytes` at `scale`.
 ///
 /// # Errors
@@ -174,6 +246,35 @@ mod tests {
         let out = render_page(&text_page_pdf(), 1, 1.0).expect("renders");
         let dark = out.rgba.chunks_exact(4).filter(|p| p[0] < 128).count();
         assert!(dark > 20, "a page with text on it drew {dark} dark pixels");
+    }
+
+    #[test]
+    fn the_text_layer_says_what_the_line_reads_and_where_it_sits() {
+        let lines = page_text_layer(&text_page_pdf(), 1, 1.0).expect("reads");
+        assert_eq!(lines.len(), 1, "one line of text, one entry");
+        assert!(lines[0].text.contains("Hello"), "got {:?}", lines[0].text);
+        // Inside the 200x100 page it was written on, and not a zero-size box:
+        // a box with no area selects nothing, which is the failure that looks
+        // like a working text layer.
+        assert!(lines[0].width > 1.0 && lines[0].height > 1.0, "got {:?}", lines[0]);
+        assert!(lines[0].x >= 0.0 && lines[0].x < 200.0);
+        assert!(lines[0].y >= 0.0 && lines[0].y < 100.0);
+    }
+
+    #[test]
+    fn the_text_layer_scales_with_the_page_it_is_laid_over() {
+        // It has to land on the raster rendered at the SAME scale, so both move
+        // together or the boxes drift off the words at every zoom but one.
+        let one = page_text_layer(&text_page_pdf(), 1, 1.0).expect("reads");
+        let two = page_text_layer(&text_page_pdf(), 1, 2.0).expect("reads");
+        assert!((two[0].x - one[0].x * 2.0).abs() < 0.01, "{:?} vs {:?}", one[0], two[0]);
+        assert!((two[0].width - one[0].width * 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_page_with_no_text_has_an_empty_layer_rather_than_a_failure() {
+        // What a scan looks like. Empty and broken must not read the same.
+        assert_eq!(page_text_layer(&one_page_pdf(), 1, 1.0).expect("reads"), Vec::new());
     }
 
     #[test]
