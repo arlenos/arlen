@@ -8,14 +8,24 @@ description = "The calendar daemon: owns the store, the expansion and the remind
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "arlen-calendard"
+path = "src/main.rs"
+
 # The iCalendar reader, recurrence engine and reminder derivation, all pure and
 # tested there. It lives beside the app because the app was written first; the
 # same shape as `daemons/terminal-run-mcp` reaching for `apps/terminal/core`.
 [dependencies]
 arlen-calendar-core = { path = "../../apps/calendar/core" }
+arlen-permissions = { path = "../../sdk/permissions" }
 chrono = "0.4"
 chrono-tz = "0.9"
 dirs = "5"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
 serde_json = "1"

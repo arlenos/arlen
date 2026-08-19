@@ -55,6 +55,11 @@ DAEMONS=(
     "arlen-file-manager-mcp|-|"
     "arlen-system-monitor-mcp|-|"
     "arlen-terminal-run-mcp|-|"
+    # No socket of its own: it takes a bus name and answers there. Started here
+    # to prove it comes up and stays up with no calendars, no clock and no bus
+    # name to take - the state of a fresh machine, which is where a daemon that
+    # exits on a missing dependency shows itself.
+    "arlen-calendard|-|"
     # Takes its config from the environment, so the bundled Obsidian example
     # drives it: it comes up as a real bridge and watches an empty vault.
     "arlen-bridge-ingest|-|ARLEN_BRIDGE_CONFIG=daemons/bridge-ingest/examples/obsidian/bridge.toml ARLEN_OBSIDIAN_VAULT=\$rt/vault"
