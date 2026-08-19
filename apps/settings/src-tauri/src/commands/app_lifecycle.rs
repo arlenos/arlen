@@ -101,6 +101,16 @@ fn describe_call_failure(err: zbus::Error) -> String {
              install daemon"
                 .to_owned()
         }
+        // A refusal the daemon explained: it decides what may be removed - a
+        // component of the running desktop is refused by name - and the sentence
+        // it wrote is for the person who pressed Remove. Wrapping it in "the
+        // install daemon refused the request: org.freedesktop.DBus.Error.
+        // AccessDenied: ..." buries the only part they can act on.
+        zbus::Error::MethodError(name, Some(detail), _)
+            if name.as_str().ends_with("AccessDenied") && !detail.trim().is_empty() =>
+        {
+            detail.trim().to_owned()
+        }
         _ => format!("the install daemon refused the request: {err}"),
     }
 }
@@ -147,6 +157,44 @@ mod tests {
         assert!(!is_safe_app_id(".."));
         assert!(!is_safe_app_id("org.arlen.files; rm -rf /"));
         assert!(!is_safe_app_id("../../etc"));
+    }
+
+    /// A refusal the daemon explained reaches the person unwrapped.
+    ///
+    /// `installd` decides what may be removed and writes the sentence - "X is
+    /// part of the desktop itself and cannot be removed". Reporting that as "the
+    /// install daemon refused the request:
+    /// org.freedesktop.DBus.Error.AccessDenied: X is part of..." buries the only
+    /// part of it a reader can act on under two layers of transport.
+    #[test]
+    fn the_daemons_own_sentence_is_what_the_reader_sees() {
+        let denied = zbus::Error::MethodError(
+            zbus::names::OwnedErrorName::try_from("org.freedesktop.DBus.Error.AccessDenied")
+                .unwrap(),
+            Some("dev.arlen.desktop-shell is part of the desktop itself and cannot be removed".into()),
+            zbus::Message::method_call("/org/arlen/InstallDaemon1", "Uninstall")
+                .unwrap()
+                .build(&())
+                .unwrap(),
+        );
+        let said = describe_call_failure(denied);
+        assert_eq!(
+            said,
+            "dev.arlen.desktop-shell is part of the desktop itself and cannot be removed"
+        );
+
+        // A denial with nothing to say still gets the generic line rather than an
+        // empty string, which would render as a blank error.
+        let bare = zbus::Error::MethodError(
+            zbus::names::OwnedErrorName::try_from("org.freedesktop.DBus.Error.AccessDenied")
+                .unwrap(),
+            Some("   ".into()),
+            zbus::Message::method_call("/org/arlen/InstallDaemon1", "Uninstall")
+                .unwrap()
+                .build(&())
+                .unwrap(),
+        );
+        assert!(describe_call_failure(bare).contains("refused"));
     }
 
     /// The two failures have to read differently, because they send the reader
