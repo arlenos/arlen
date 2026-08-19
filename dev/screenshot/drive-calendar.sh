@@ -80,9 +80,13 @@ drive() {  # drive <probe-js> <data-home> <out-png>
 
 echo "calendar:"
 
+# A wide slice on purpose. The window is short and the events are many, and the
+# probe reads the whole text rather than a screenful: when a sentence was added
+# above the list, a 400-character slice silently cut the last three events off
+# and three cases failed for a reason that had nothing to do with them.
 cat > "$fix/p-agenda.js" <<'JS'
 await new Promise(r => setTimeout(r, 1200));
-return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 400);
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1200);
 JS
 got=$(drive "$fix/p-agenda.js" "$fix" calendar-agenda.png)
 
@@ -110,6 +114,13 @@ say "an all-day entry says so rather than claiming midnight" \
 # showing it bare beside local times says it is.
 say "a time written in UTC is marked as UTC" \
   "$(printf '%s' "$got" | grep -qE "16:00 Call with Lisbon, then lunch UTC|UTC" && echo 1 || echo 0)" "$got"
+
+# Nothing starts the calendar daemon here, and that is the point: the app reads
+# the files itself, shows the same agenda, and has to SAY that no reminders are
+# being set. An agenda that looked identical either way would let somebody
+# believe their reminders were armed when nothing was arming them.
+say "with no service running it says the reminders are not being set" \
+  "$(printf '%s' "$got" | grep -q "no reminders are being set" && echo 1 || echo 0)" "$got"
 
 say "a repeating event says it repeats" \
   "$(printf '%s' "$got" | grep -q "Repeats" && echo 1 || echo 0)" "$got"
@@ -170,6 +181,15 @@ got=$(XDG_DATA_HOME="$fix" SHOOT_APP_ARGS="$fix/second.ics" SHOOT_INJECT="$fix/p
 say "opened on a file, it shows that file and not the whole directory" \
   "$(printf '%s' "$got" | grep -q "The only event in this file" \
      && ! printf '%s' "$got" | grep -q "Morning standup" && echo 1 || echo 0)" "$got"
+
+# THE OTHER DIRECTION IS NOT DRIVEN HERE, and the reason is the harness rather
+# than the app. With the daemon started on a private bus (`dbus-run-session`),
+# the app still reported the service as absent: tauri-driver launches the binary
+# itself, and the bus address this script exports does not reach it. So the
+# service-up path is proved at the wire instead - `dev/scripts/drive-calendar-clock.sh`
+# starts both daemons and reads the alarm out of the clock's own state - and what
+# is not yet proved in pixels is that the sentence below DISAPPEARS when the
+# service answers. Said here rather than left as a missing case.
 
 # German. Six other apps had a defect that only the German render showed - a
 # column sized to an English word, a heading that never adopted the catalogue -
