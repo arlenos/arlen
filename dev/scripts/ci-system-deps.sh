@@ -49,12 +49,11 @@ set -uo pipefail
 #
 # libheif-dev and libheif-plugin-libde265 are the viewer's HEIC decoder;
 # check-linked-libraries.py holds this list against the crates that link them.
-PACKAGES="
-protobuf-compiler build-essential pkg-config cmake nasm
-libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev
-libssl-dev libdbus-1-dev fuse3 libfuse3-dev
-libdav1d-dev libheif-dev zlib1g-dev libheif-plugin-libde265
-"
+# The list lives beside this script, so the workflow's cache key can hash what it
+# is a cache OF. See `ci-system-packages.txt` for why.
+PACKAGE_LIST="$(dirname "$0")/ci-system-packages.txt"
+[ -f "$PACKAGE_LIST" ] || { echo "missing $PACKAGE_LIST" >&2; exit 1; }
+PACKAGES="$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$PACKAGE_LIST" | tr '\n' ' ')"
 
 # Where the workflow's cache step restores to and saves from. A directory the
 # runner user owns, because `/var/cache/apt/archives` is root's and the cache
