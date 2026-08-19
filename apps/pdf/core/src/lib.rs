@@ -26,6 +26,7 @@
 use std::collections::HashSet;
 
 use lopdf::{Document as LoDocument, Object, ObjectId};
+use serde::{Deserialize, Serialize};
 
 /// What went wrong with a document somebody handed us.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +56,7 @@ impl std::error::Error for PdfError {}
 /// Flat, with a `depth`, rather than a tree of children. A reader draws an
 /// indented list and jumps to a page; a tree would have to be flattened at every
 /// use, and the nesting is the only thing the tree carried.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutlineEntry {
     /// The title as the document wrote it.
     pub title: String,
@@ -81,7 +82,7 @@ const MAX_PAGE_TEXT: usize = 8 * 1024 * 1024;
 const SNIPPET_CONTEXT: usize = 60;
 
 /// One place a search found what it was looking for.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hit {
     /// The page it is on, one-based.
     pub page: usize,
@@ -96,7 +97,7 @@ pub struct Hit {
 /// a stream this parser refuses, a page past the decompression ceiling - is not
 /// a page with no matches, and a result list that quietly omits it tells the
 /// reader their document does not contain something it may well contain.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SearchOutcome {
     /// Where the text was found, in page order.
     pub hits: Vec<Hit>,

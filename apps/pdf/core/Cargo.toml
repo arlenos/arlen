@@ -17,4 +17,10 @@ description = "The PDF reader's document model: page count, the outline a table 
 # carry decoders nobody asked for.
 lopdf = { version = "0.44", default-features = false }
 
+# The outline and the search results cross a Tauri command boundary as JSON, so
+# the types the surface reads carry their own derives rather than being mirrored
+# by hand on the other side - a mirrored struct is a second definition that goes
+# stale in silence.
+serde = { version = "1", features = ["derive"] }
+
 [workspace]
