@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 import { t } from "$lib/i18n/messages";
@@ -24,7 +25,7 @@ export type PopoverType =
 /// screenshot-able before its live trigger exists - the general form of the
 /// `?menumock` pattern.
 export const activePopover = writable<PopoverType>(
-  import.meta.env.DEV && typeof location !== "undefined"
+  !tauriAvailable && typeof location !== "undefined"
     ? ((new URLSearchParams(location.search).get("popover") as PopoverType) ?? null)
     : null
 );

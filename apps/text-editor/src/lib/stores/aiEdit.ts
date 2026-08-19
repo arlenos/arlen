@@ -100,7 +100,7 @@ export async function proposeEdit(prompt: string): Promise<void> {
     mocked.set(false);
     unavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       proposal.set({ ...FIXTURE, prompt: prompt || FIXTURE_PROMPT });
       mocked.set(true);
       unavailable.set(false);

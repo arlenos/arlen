@@ -31,11 +31,19 @@ about the build: a debug log, a dev-only route, a `?nowake` query parameter. It 
 refused in a file that also calls `invoke`, because there the branch is about the
 backend and the build mode is standing in for it.
 
-THE BASELINE. The sweep landed in Settings, Files and Knowledge, where the DEV
-fixtures were being read as real. The files below still carry the old shape;
-they are listed below so this gate can hold the line from today rather than wait
-for one large change nobody can verify in a sitting. Remove an entry when you fix
-the file. Adding one needs a reason in the commit.
+The query-parameter case is a carve-out worth naming, because it is the one place
+`import.meta.env.DEV` is not only acceptable but REQUIRED. The clock's `?nowake`
+and the viewer's `?state=` pin a surface into a state so it can be photographed,
+and the gate is the build: a DEV check compiles the branch out of the shipped
+bundle, so a released app cannot be talked into displaying a failure that did not
+happen. `tauriAvailable` would not do that - a release build with no host would
+still honour the parameter. So an occurrence whose own statement reads a query
+parameter is left alone.
+
+THE BASELINE. Every app was swept except the harness, whose frontend is another
+lane's live work - listing it is how the gate stays green without reaching into it.
+Remove the entry when that lane fixes the file. Adding one needs a reason in the
+commit.
 
 Run: dev/scripts/check-host-vs-devbuild.py [repo-root]
 """
@@ -54,22 +62,7 @@ ROOT = (
 #: Every entry is a surface that shows a fixture under `tauri dev` when its
 #: command fails, and reports a failure in a headless release render.
 BASELINE = {
-    "apps/clock/src/lib/stores/clock.ts",
-    "apps/desktop-shell/src/lib/components/topbar/badges/CaptureBadge.svelte",
-    "apps/desktop-shell/src/lib/components/topbar/badges/DictationBadge.svelte",
-    "apps/desktop-shell/src/lib/stores/activePopover.ts",
-    "apps/desktop-shell/src/lib/stores/bluetoothPairing.ts",
-    "apps/desktop-shell/src/lib/stores/consent.ts",
-    "apps/desktop-shell/src/lib/stores/jobs.ts",
-    "apps/desktop-shell/src/lib/stores/printDialog.ts",
-    "apps/desktop-shell/src/lib/stores/sourcePicker.ts",
-    "apps/desktop-shell/src/lib/stores/waypointerAsk.ts",
-    "apps/desktop-shell/src/lib/stores/windowsFile.ts",
     "apps/harness/src/lib/stores/conversation.ts",
-    "apps/meetings/src/lib/stores/meeting.ts",
-    "apps/system-monitor/src/lib/stores/processes.ts",
-    "apps/text-editor/src/lib/stores/aiEdit.ts",
-    "apps/viewers/src/routes/+page.svelte",
 }
 
 DEV = "import.meta.env.DEV"
@@ -88,16 +81,31 @@ def sources(root: pathlib.Path) -> list[pathlib.Path]:
     return out
 
 
+#: A DEV check on a statement that also reads a query parameter is the pin-a-state
+#: switch, which the build is the right gate for. See the carve-out above.
+QUERY_READ = re.compile(r"searchParams|location\.search")
+
+
 def asks_the_build(text: str) -> bool:
     """Does this file branch on the build mode while also calling a command?
 
     Both halves matter. A `console.debug` behind a DEV check is about the build
     and is left alone; the same check in a file that calls `invoke` is standing in
     for "is the backend there", which it cannot answer.
+
+    Occurrences are weighed one at a time rather than by whole file, because a
+    file can legitimately hold both: `apps/clock` pins `?nowake` for the screenshot
+    loop AND answered a failed daemon read with a fixture, and only the second is
+    the defect.
     """
     if DEV not in text:
         return False
-    return re.search(r"\binvoke\s*[<(]", text) is not None
+    if re.search(r"\binvoke\s*[<(]", text) is None:
+        return False
+    for line in text.splitlines():
+        if DEV in line and not QUERY_READ.search(line):
+            return True
+    return False
 
 
 def main() -> int:
@@ -142,8 +150,8 @@ def main() -> int:
         return 1
 
     print(
-        f"{len(files)} app source(s) read: no file outside the {len(BASELINE)} "
-        f"known ones decides a backend question by asking the build mode. "
+        f"{len(files)} app source(s) read: outside the {len(BASELINE)} file(s) still "
+        f"listed, nothing decides a backend question by asking the build mode. "
         f"`tauri dev` has a backend and a headless release build does not, so "
         f"`import.meta.env.DEV` answers neither."
     )

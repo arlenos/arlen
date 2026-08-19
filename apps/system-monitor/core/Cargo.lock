@@ -64,6 +64,7 @@ dependencies = [
  "arlen-system-monitor-mcp",
  "libc",
  "serde",
+ "tempfile",
 ]
 
 [[package]]

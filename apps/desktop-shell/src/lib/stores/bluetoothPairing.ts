@@ -13,6 +13,7 @@
 /// queue or stack requests visually.
 
 import { writable, type Readable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -120,7 +121,7 @@ export async function init(): Promise<void> {
   if (initialised) return;
   initialised = true;
 
-  if (import.meta.env.DEV && typeof location !== "undefined") {
+  if (!tauriAvailable && typeof location !== "undefined") {
     const mock = BT_MOCKS[new URLSearchParams(location.search).get("btmock") ?? ""];
     if (mock) inner.set(mock);
   }

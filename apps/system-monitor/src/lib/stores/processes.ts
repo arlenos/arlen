@@ -127,7 +127,7 @@ export async function load(): Promise<void> {
     loads += 1;
     if (loads >= 2) ratesReady.set(true);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       processes.set(FIXTURE);
       mocked.set(true);
       unavailable.set(false);

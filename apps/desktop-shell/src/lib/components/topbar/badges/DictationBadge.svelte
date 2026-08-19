@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import { tauriAvailable } from "$lib/tauri";
   /// Top-bar dictation indicator (shell-voice-plan.md): the mic-as-audited signal
   /// while you dictate speech into a field. Shown only while dictation runs; a click
   /// stops it. On-device, on only while dictating, audited. Mirrors CaptureBadge.
@@ -36,7 +37,7 @@
       active = s.active;
       target = s.targetLabel ?? "a text field";
     } catch {
-      if (import.meta.env.DEV) {
+      if (!tauriAvailable) {
         active = true;
         target = "Text editor";
       }

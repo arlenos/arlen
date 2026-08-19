@@ -8,6 +8,7 @@
 /// relabel (`meeting_relabel_speaker`) and item updates (`meeting_update_item`) are
 /// coder seams - under vite the fixture stands in and edits apply locally.
 import { writable, get } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import { locale } from "$lib/i18n/messages";
 import type { MeetingNote, Transcript, TranscriptSegment } from "$lib/contract";
@@ -138,7 +139,7 @@ export async function loadMeetings(): Promise<void> {
     meetingsMocked.set(false);
     meetingsUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       meetings.set(MEETINGS_FIXTURE);
       meetingsMocked.set(true);
       meetingsUnavailable.set(false);
@@ -169,7 +170,7 @@ export async function openMeeting(id: string): Promise<void> {
     meeting.set({ humanNotes, note, mocked: false });
     noteUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       meeting.set({ humanNotes: FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
       noteUnavailable.set(false);
       return;
@@ -200,7 +201,7 @@ export async function saveNotes(text: string): Promise<void> {
   try {
     await invoke("meeting_save_notes", { id: get(currentId), text });
   } catch {
-    if (import.meta.env.DEV) return; // no host under vite
+    if (!tauriAvailable) return; // no host to ask
     // Showing the text as saved is how somebody closes the window and loses it.
     meeting.update((m) => (m ? { ...m, humanNotes: before ?? "" } : m));
     editFailed.set(true);
@@ -221,7 +222,7 @@ export async function relabelSpeaker(label: string, name: string): Promise<void>
   try {
     await invoke("meeting_relabel_speaker", { id: get(currentId), label, name: name.trim() });
   } catch {
-    if (import.meta.env.DEV) return;
+    if (!tauriAvailable) return;
     speakerNames.set(beforeNames);
     editFailed.set(true);
   }
@@ -239,7 +240,7 @@ export async function updateItem(index: number, patch: { owner?: string; done?: 
   try {
     await invoke("meeting_update_item", { id: get(currentId), index, ...patch });
   } catch {
-    if (import.meta.env.DEV) return;
+    if (!tauriAvailable) return;
     // A tick that did not persist means the item comes back undone next time,
     // and the owner shown against it is not the one recorded.
     meeting.set(beforeMeeting);
@@ -346,7 +347,7 @@ export async function startCapture(): Promise<void> {
     const forced =
       typeof location !== "undefined" &&
       new URLSearchParams(location.search).get("capture") === "refused";
-    if (!import.meta.env.DEV || forced) {
+    if (tauriAvailable || forced) {
       captureUnavailable.set(true);
       return;
     }
@@ -355,7 +356,7 @@ export async function startCapture(): Promise<void> {
   // DEV only, like every other fixture in this file - and unlike this one, which
   // was not gated. On metal it streamed invented sentences about a KG lens into
   // a real meeting's live transcript while the person watched it fill in.
-  if (!import.meta.env.DEV) return;
+  if (tauriAvailable) return;
   const seg = [...FIXTURE.note.transcript.segments];
   let i = 0;
   streamer = setInterval(() => {
@@ -388,7 +389,7 @@ export async function stopCapture(): Promise<boolean> {
     // capture; the dev stream is a fixture either way. In a real session it
     // means the microphone may still be live, so stay on this surface and say
     // so rather than navigate to a note.
-    if (!import.meta.env.DEV) {
+    if (tauriAvailable) {
       stopFailed.set(true);
       return false;
     }
@@ -405,7 +406,7 @@ export async function stopCapture(): Promise<boolean> {
     noteUnavailable.set(false);
     return true;
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       meeting.set({ humanNotes: notes.trim() || FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
       noteUnavailable.set(false);
       return true;

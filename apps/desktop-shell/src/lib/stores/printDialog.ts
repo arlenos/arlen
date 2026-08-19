@@ -14,6 +14,7 @@
 /// renders and drives.
 
 import { get, writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// How the paper maps to the sheet (matches the Printers panel vocabulary; the
@@ -109,7 +110,7 @@ async function loadPrinters(): Promise<void> {
     defaultPrinter.set(def);
     printersMocked.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       // No backend under vite, so the fixture is what there is to design
       // against, labelled by `printersMocked`.
       printers.set(FIXTURE_PRINTERS);
@@ -138,7 +139,7 @@ export async function openPrintDialog(): Promise<void> {
     req = await invoke<PendingPrint | null>("poll_print_request");
     printersMocked.set(false);
   } catch {
-    req = import.meta.env.DEV ? FIXTURE_REQUEST : null;
+    req = !tauriAvailable ? FIXTURE_REQUEST : null;
   }
   if (!req) return;
   current.set(req);
@@ -154,7 +155,7 @@ export async function submitPrint(settings: PrintSettings): Promise<void> {
   try {
     await invoke("submit_print", { id, settings });
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       current.set(null); // no portal under vite: keep the flow drivable
       return;
     }

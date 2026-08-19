@@ -8,6 +8,7 @@
   /// seam. Under vite dev the badge shows a fixture so the surface renders; on metal
   /// without the command it stays invisible (no cry-wolf), like RecordingBadge.
   import { StatusBadge } from "@arlen/ui-kit/components/topbar";
+  import { tauriAvailable } from "$lib/tauri";
   import { ScreenShare } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
@@ -44,7 +45,7 @@
       app = s.capturingAppLabel ?? "an app";
       startedAt = s.startedAt ?? null;
     } catch {
-      if (import.meta.env.DEV) {
+      if (!tauriAvailable) {
         active = true;
         app = "Meet";
         if (startedAt === null) startedAt = Date.now() - 47_000;
