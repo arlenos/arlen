@@ -23,6 +23,7 @@
     days,
     timelineMocked,
     timelineUnavailable,
+    timelineNoService,
     paused,
     pauseUnavailable,
     pendingMenuAction,
@@ -313,7 +314,11 @@
   <div class="tl-scroll" bind:this={scroller} onscroll={onScroll}>
     {#if empty}
       <!-- "nothing recorded" and "could not read" are the same empty spine. -->
-      <p class="tl-empty">{$timelineUnavailable ? $t("k.tl.unavailable") : $t("k.empty.timeline")}</p>
+      <p class="tl-empty">{$timelineNoService
+          ? $t("k.tl.noService")
+          : $timelineUnavailable
+            ? $t("k.tl.unavailable")
+            : $t("k.empty.timeline")}</p>
     {:else if $days}
       {#each $days as day, i (day.date)}
         <section class="tl-day" data-day={day.date}>

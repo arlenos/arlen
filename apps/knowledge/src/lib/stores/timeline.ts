@@ -67,6 +67,11 @@ export const timelineMocked = writable(false);
 
 /// True when a real session could not read the timeline at all.
 export const timelineUnavailable = writable(false);
+
+/// True when the knowledge service is not running at all, as opposed to running
+/// and failing to answer. Both leave the timeline empty; only one of them tells
+/// the reader what to do about it.
+export const timelineNoService = writable(false);
 /// Recording paused, as the daemon has it.
 ///
 /// `loadPaused` fills this from `graph.toml` when the timeline loads, so the
@@ -258,13 +263,18 @@ export async function loadTimeline(): Promise<void> {
     days.set(groupByDay(items));
     timelineMocked.set(false);
     timelineUnavailable.set(false);
-  } catch {
+  } catch (e) {
     if (!tauriAvailable) {
       days.set(groupByDay(fixture()));
       timelineMocked.set(true);
       timelineUnavailable.set(false);
+      timelineNoService.set(false);
       return;
     }
+    // The daemon's own marker, not a guess at the message: a missing socket is
+    // the normal state of a machine that has not started the service, and it
+    // deserves a different sentence from a read that failed.
+    timelineNoService.set(String(e).includes("knowledge-daemon-not-running"));
     // This is the app's landing view, and the fixture is a week of dated
     // activity attributed to this machine - "ran Terminal", "imported Zotero
     // bridge", "edited Text editor", each with a time. A label above a week of
