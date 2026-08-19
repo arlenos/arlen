@@ -55,13 +55,12 @@ NOT_ON_IMAGE: dict[str, str] = {
         "single-user appliance, not an oversight"
     ),
     "pdf": (
-        "there is no app here yet, only the document model: page count, the author's "
-        "outline for a table of contents, and page text for search. It cannot be "
-        "staged because it has nothing to stage - no host, no binary, no window - and "
-        "the reason the reader stops at the document is that drawing a page needs "
-        "PDFium, a system library whose line in `ci-system-packages.txt` makes every CI "
-        "job cold. That cost gets paid deliberately for the rasteriser, not as a side "
-        "effect of starting. This entry goes when the host lands"
+        "the document half of the reader plus its host, one sitting old: page count, "
+        "the author's outline, page text and search, reachable over Tauri commands. "
+        "It has no frontend yet, so there is nothing for `npm run build` to produce "
+        "and nothing to stage - and it stops short of drawing a page because a "
+        "rasteriser wants a surface to draw on, which is the same missing piece. "
+        "This entry goes when the reader has a window"
     ),
     "calendar": (
         "new on 19 August and one sitting old: it reads the .ics files in "
