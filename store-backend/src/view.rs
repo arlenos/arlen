@@ -50,6 +50,64 @@ impl From<SourceLayer> for Tier {
     }
 }
 
+/// One installable variant of a card, as the app reads it (`store-app.md` §9.1).
+///
+/// The whole point of the design is that one app can be installed from several
+/// sources and each carries its OWN capability footprint and trust - a Flatpak's
+/// `finish-args` is not the forage recipe's `[capabilities]` - so "install the
+/// least-privilege variant" is a real choice rather than a slogan. Flattening to
+/// the default variant, which is what this projection did until 19 August, throws
+/// that away before the app ever sees it.
+///
+/// CAPABILITIES ARE IDENTIFIERS, never prose. `network`, `read:File`: the app
+/// renders each into its own language. A backend that sent "Cannot reach the
+/// network" would be shipping English into a German build, which is the rule the
+/// whole tree is held to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreVariant {
+    /// Which mechanism installs this variant.
+    pub source: Tier,
+    /// Curated or community, from the source layer. This is the TRUST tier and
+    /// not the format: §3 is explicit that the format is invisible to the person
+    /// browsing.
+    pub trust: Trust,
+    /// This variant's capability identifiers, sorted.
+    pub capabilities: Vec<String>,
+    /// Least-privilege sort key: how many capabilities this variant asks for.
+    pub cap_weight: usize,
+    /// This variant carries a verified-publisher signal.
+    pub verified: bool,
+    /// This variant carries a reproducible-build attestation.
+    pub reproducible: bool,
+    /// The version this source offers, as the source states it.
+    pub version: String,
+    /// Whether the store has a route to install THIS variant.
+    pub installable: bool,
+}
+
+/// The trust tier of a variant: what the badge must express.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Trust {
+    /// Curated: an official cookbook, or a source with a verified publisher.
+    Curated,
+    /// Community: anything a person can publish without review.
+    Community,
+}
+
+impl From<SourceLayer> for Trust {
+    fn from(layer: SourceLayer) -> Self {
+        match layer {
+            // The official cookbook and the distribution's own archive are
+            // reviewed; a personal or community cookbook is not, and Flathub is
+            // publisher-self-service, which is the definition of community here.
+            SourceLayer::Official | SourceLayer::Apt | SourceLayer::Native => Self::Curated,
+            SourceLayer::Personal | SourceLayer::Community | SourceLayer::Flatpak => Self::Community,
+        }
+    }
+}
+
 /// One catalog card, flattened for rendering.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,6 +154,13 @@ pub struct StoreCard {
     /// distribution installed, and for a catalog entry that names no package: the
     /// card is real and browsable, the action is not available.
     pub installable: bool,
+    /// Every install variant, highest-precedence first. The fields above describe
+    /// the DEFAULT variant and stay for the surfaces that only need a summary;
+    /// this is what the install picker and the per-variant capability panel read.
+    pub variants: Vec<StoreVariant>,
+    /// Index into [`Self::variants`] of the default: the one installing picks
+    /// unless the person chooses otherwise.
+    pub default_variant: usize,
 }
 
 /// Whether a capability label names a Knowledge Graph scope. `compose` pushes
@@ -172,6 +237,25 @@ pub fn store_card(card: &AppCard, installed: &BTreeSet<String>) -> StoreCard {
         // a DEP-11 component that states no package name. Without this the surface
         // can only find out by trying, and the honest place to know is here.
         installable: default.is_some_and(|v| v.install_handle.is_some()),
+        variants: card
+            .variants
+            .iter()
+            .map(|v| {
+                let mut capabilities = v.capabilities.capabilities.clone();
+                capabilities.sort();
+                StoreVariant {
+                    source: Tier::from(v.layer),
+                    trust: Trust::from(v.layer),
+                    cap_weight: capabilities.len(),
+                    capabilities,
+                    verified: v.trust.verified_publisher.is_some(),
+                    reproducible: v.trust.reproducible_build.is_some(),
+                    version: v.version.clone(),
+                    installable: v.install_handle.is_some(),
+                }
+            })
+            .collect(),
+        default_variant: card.default_variant,
     }
 }
 
@@ -186,6 +270,75 @@ mod tests {
     use crate::catalog::{
         merge_catalog, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, TrustSignals,
     };
+
+    /// The per-source variants must SURVIVE the projection. They are the design's
+    /// centre - one card, N sources, a capability footprint each - and until 19
+    /// August this projection kept only the default variant's summary, so the app
+    /// could not have offered the choice even if it wanted to.
+    #[test]
+    fn every_variant_reaches_the_card_with_its_own_footprint() {
+        let entries = vec![
+            CatalogEntry {
+                id: ComponentId("org.example.editor".into()),
+                layer: SourceLayer::Official,
+                display: DisplayMeta { name: "Editor".into(), ..Default::default() },
+                capabilities: CapabilityFootprint { capabilities: vec!["read:File".into()] },
+                trust: TrustSignals::default(),
+                version: "2.0".into(),
+                install_handle: Some("editor".into()),
+                kind: Default::default(),
+            },
+            CatalogEntry {
+                id: ComponentId("org.example.editor".into()),
+                layer: SourceLayer::Flatpak,
+                display: DisplayMeta { name: "Editor".into(), ..Default::default() },
+                capabilities: CapabilityFootprint {
+                    capabilities: vec!["network".into(), "read:File".into(), "clipboard".into()],
+                },
+                trust: TrustSignals::default(),
+                version: "2.1".into(),
+                install_handle: Some("org.example.Editor".into()),
+                kind: Default::default(),
+            },
+        ];
+        let cards = merge_catalog(entries);
+        let card = store_card(&cards[0], &BTreeSet::new());
+
+        assert_eq!(card.variants.len(), 2, "both sources are offered");
+        let forage = &card.variants[card.default_variant];
+        assert_eq!(forage.source, Tier::Forage);
+        assert_eq!(forage.cap_weight, 1);
+        assert_eq!(forage.trust, Trust::Curated, "the official cookbook is reviewed");
+
+        let flatpak = card.variants.iter().find(|v| v.source == Tier::Flathub).expect("the Flatpak");
+        assert_eq!(flatpak.cap_weight, 3, "its own footprint, not the default's");
+        assert_eq!(flatpak.trust, Trust::Community, "Flathub is publisher-self-service");
+        assert_eq!(flatpak.version, "2.1");
+    }
+
+    /// Capability lines are identifiers here and prose in the app. A backend that
+    /// sent "Cannot reach the network" would put English into every build.
+    #[test]
+    fn a_variant_carries_identifiers_rather_than_sentences() {
+        let entries = vec![CatalogEntry {
+            id: ComponentId("org.example.thing".into()),
+            layer: SourceLayer::Community,
+            display: DisplayMeta { name: "Thing".into(), ..Default::default() },
+            capabilities: CapabilityFootprint {
+                capabilities: vec!["network".into(), "read:File".into()],
+            },
+            trust: TrustSignals::default(),
+            version: String::new(),
+            install_handle: Some("thing".into()),
+            kind: Default::default(),
+        }];
+        let card = store_card(&merge_catalog(entries)[0], &BTreeSet::new());
+        assert_eq!(card.variants[0].capabilities, vec!["network", "read:File"]);
+        assert!(
+            card.variants[0].capabilities.iter().all(|c| !c.contains(' ')),
+            "an identifier has no spaces; a sentence does"
+        );
+    }
 
     /// A distribution package is present and cannot be acted on, and the card has
     /// to say both. Reporting it as not-installed would deny an app the user has;
