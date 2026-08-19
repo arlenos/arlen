@@ -273,6 +273,23 @@ ACKNOWLEDGED: dict[str, str] = {
         "an action, or if a sample chain about a different file stops being an "
         "acceptable answer to 'where is this from?'."
     ),
+    "apps/screenshot/src/routes/+page.svelte:isSample": (
+        "This entry exists because of what it looked like an hour before it was "
+        "written, which is the argument for opening apps rather than reading them. "
+        "The tool asked the host for the screen and answered BOTH 'there is no host' "
+        "and 'a host that cannot capture' with the same invented desktop: a card "
+        "reading 'Signed in as tim@example.com / token: sk-9f2c1a7b4e88', uncaveated, "
+        "with Copy and Save enabled beside it and the thumbnail's Dismiss auto-saving "
+        "it to the screenshots directory unasked. Not a rendering blemish - a picture "
+        "of a machine that does not exist, written to disk and sent to somebody. Now "
+        "`capturePrimary` returns three outcomes instead of two: a real host that "
+        "cannot capture gets an empty surface naming the cause and no way to save "
+        "anything, and this flag is what remains - the browser and the render "
+        "harness, where there is no screen to photograph and a sample IS the answer. "
+        "It is labelled at the claim ('This is an example picture, not your screen.') "
+        "directly above the canvas it describes. Revisit if the fixture ever becomes "
+        "reachable with a host attached, which is the branch that made this a defect."
+    ),
 }
 
 
