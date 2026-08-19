@@ -113,10 +113,32 @@ say "a document opened from the file manager is the one shown" \
 say "the author's headings reach the screen in order" \
   "$(printf '%s' "$dom" | grep -q "Chapter one.*Background.*Method" && echo 1 || echo 0)" "$dom"
 
-# A reader that draws no page and says nothing about it looks broken rather than
-# partial, and this is the sentence that makes the difference.
-say "the reader says which piece of itself is missing" \
-  "$(printf '%s' "$dom" | grep -q "not drawn yet" && echo 1 || echo 0)" "$dom"
+# THE case, and the one that would have caught the two defects this drive found
+# the hard way. It reads the CANVAS, not the DOM: a page that renders as clean
+# white paper is indistinguishable from a page that drew nothing, and both of
+# those happened here - once because the pixmap was allocated with alpha (a
+# fully transparent raster), once because MuPDF was built with no fonts, so a
+# document naming Helvetica got a page with no glyphs and no error. Every other
+# case in this file passed through both.
+ink=$(SHOOT_APP_ARGS="$fix/sample.pdf" SHOOT_INJECT=/dev/stdin "$here/shoot-app.sh" "$app" "" 2>&1 <<'JS' \
+  | sed -n 's/^inject result: //p'
+const c = document.querySelector("canvas");
+if (!c || !c.width) return "no canvas";
+const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+let dark = 0, opaque = 0;
+for (let i = 0; i < d.length; i += 4) {
+  if (d[i + 3] === 255) opaque++;
+  if (d[i] < 128 && d[i + 3] > 0) dark++;
+}
+return `size=${c.width}x${c.height} opaque=${opaque} dark=${dark}`;
+JS
+)
+
+say "the page is drawn as opaque paper rather than a transparent sheet" \
+  "$(printf '%s' "$ink" | grep -qE "opaque=[1-9]" && echo 1 || echo 0)" "$ink"
+
+say "and the document's own text is on it" \
+  "$(printf '%s' "$ink" | grep -qE "dark=[1-9]" && echo 1 || echo 0)" "$ink"
 
 # Nothing here is a fixture string: a document with no contents page and a
 # document that failed to open are different, and the second must not be
