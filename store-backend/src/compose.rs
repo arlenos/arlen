@@ -575,8 +575,7 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
     // Every remote and every suite/component, merged. The dedupe in
     // `merge_catalog` collapses an app carried by two of them into one card.
     for xml in &inputs.flathub_xml {
-        if let Ok(mut es) = flathub_entries(xml) {
-            fuse_flatpak_metadata(&mut es, &inputs.flatpak_metadata);
+        if let Ok(es) = flathub_entries(xml) {
             entries.extend(es);
         }
     }
@@ -593,6 +592,14 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
         fuse_apt_profiles(&mut es, &inputs.apt_profiles);
         entries.extend(es);
     }
+    // AFTER every source, not inside the Flathub branch. It sat there until 19
+    // August, so on a machine with Flatpaks installed and no Flathub catalogue -
+    // which is every machine that has not downloaded one, including this one -
+    // each app's `metadata` was read off disk and then dropped, and the card the
+    // person sees carried no permissions at all. The fuse matches by id and does
+    // not care which source produced the entry: an installed Flatpak that
+    // reached the catalogue through its exported MetaInfo is the same app.
+    fuse_flatpak_metadata(&mut entries, &inputs.flatpak_metadata);
     crate::query::Catalog::new(crate::catalog::merge_catalog(entries))
 }
 
@@ -603,7 +610,7 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
 fn fuse_flatpak_metadata(entries: &mut [CatalogEntry], metadata: &[(String, String)]) {
     for (id, text) in metadata {
         let labels = crate::flatpak::context_labels(text);
-        for entry in entries.iter_mut().filter(|e| e.id.0 == *id) {
+        for entry in entries.iter_mut().filter(|e| same_app(&e.id.0, id)) {
             // READ, and marked so: this app's own `metadata` file is the
             // persisted form of its `finish-args`, so a Flatpak that asks for
             // nothing here has genuinely asked for nothing. Without the flag the
@@ -611,6 +618,18 @@ fn fuse_flatpak_metadata(entries: &mut [CatalogEntry], metadata: &[(String, Stri
             entry.capabilities = CapabilityFootprint::read(labels.clone());
         }
     }
+}
+
+/// Is this AppStream component the same app as this Flatpak ref?
+///
+/// Usually the ids are identical. The exception is the AppStream convention of
+/// suffixing a desktop component with `.desktop` (`org.gnome.gedit.desktop`)
+/// where the Flatpak ref has none (`org.gnome.gedit`) - a naming convention, not
+/// a resemblance, so matching across it is not a guess. Nothing else is
+/// accepted: two ids that merely look alike are two apps.
+fn same_app(component_id: &str, flatpak_id: &str) -> bool {
+    component_id == flatpak_id
+        || component_id.strip_suffix(".desktop").is_some_and(|base| base == flatpak_id)
 }
 
 /// Fill each apt entry's capability footprint from the app's enrolled profile.
@@ -640,6 +659,49 @@ mod tests {
     /// labels. The distinction is what the negative facets rest on: without the
     /// flag, an app we did read keeps its claim withdrawn for ever, which is the
     /// opposite error to the one the flag exists to prevent.
+    /// The whole point of reading a Flatpak's `metadata`: an app that arrived
+    /// through its exported MetaInfo, with no Flathub catalogue anywhere, still
+    /// gets its real permissions. Until 19 August the fuse only ran inside the
+    /// Flathub branch, so on a machine with Flatpaks installed and no catalogue
+    /// downloaded - this one - every file was read and then dropped.
+    #[test]
+    fn an_installed_flatpak_gets_its_permissions_without_a_flathub_catalogue() {
+        let inputs = super::SourceInputs {
+            metainfo_xml: vec![
+                "<component type=\"desktop-application\"><id>com.example.Recorder</id>\
+                 <name>Recorder</name></component>"
+                    .to_string(),
+            ],
+            flatpak_metadata: vec![(
+                "com.example.Recorder".to_string(),
+                "[Application]\nname=com.example.Recorder\n\n[Context]\n\
+                 shared=network;\nfilesystems=home;\n"
+                    .to_string(),
+            )],
+            ..Default::default()
+        };
+        let catalog = super::compose_catalog(inputs);
+        let card = &catalog.search("", &[])[0];
+        let footprint = &card.variants[0].capabilities;
+        assert!(footprint.known, "its own metadata was read");
+        assert!(footprint.capabilities.contains(&"network".to_string()));
+        assert!(footprint.capabilities.contains(&"filesystem".to_string()));
+    }
+
+    /// AppStream suffixes a desktop component with `.desktop` where the Flatpak
+    /// ref has none. That is a naming convention rather than a resemblance, so
+    /// matching across it is sound - and without it, `org.gnome.gedit.desktop`
+    /// never meets `org.gnome.gedit` and the app keeps no permissions at all.
+    #[test]
+    fn the_appstream_desktop_suffix_still_matches_the_flatpak_ref() {
+        assert!(super::same_app("org.gnome.gedit.desktop", "org.gnome.gedit"));
+        assert!(super::same_app("com.obsproject.Studio", "com.obsproject.Studio"));
+        assert!(
+            !super::same_app("org.gnome.gedit.plugin", "org.gnome.gedit"),
+            "only the suffix convention, not any shared prefix"
+        );
+    }
+
     #[test]
     fn a_fused_flatpak_footprint_counts_as_read() {
         let mut entries = vec![super::CatalogEntry {
