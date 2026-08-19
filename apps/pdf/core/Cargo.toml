@@ -1,0 +1,20 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-pdf-core"
+version = "0.1.0"
+edition = "2021"
+description = "The PDF reader's document model: page count, the outline a table of contents is drawn from, and the text an in-document search runs over (quickview-plan.md, PDF reader)"
+
+[dependencies]
+# A pure-Rust parser, deliberately. Rendering a page needs PDFium, which is a
+# system library and therefore a new line in `ci-system-packages.txt` - the file
+# the apt cache key hashes, so adding it makes every CI job cold. Everything in
+# this crate is structure and text, which needs no such thing, so the dependency
+# decision belongs to the rasteriser and not to the reader's spine.
+#
+# Default features off: the defaults pull image decoding and a date library this
+# crate never touches, and a PDF reader's parser is exactly the place not to
+# carry decoders nobody asked for.
+lopdf = { version = "0.44", default-features = false }
+
+[workspace]
