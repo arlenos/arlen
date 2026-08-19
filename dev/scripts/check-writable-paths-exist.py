@@ -47,10 +47,20 @@ ROOT = (
     else pathlib.Path(__file__).resolve().parents[2]
 )
 
-#: Trees systemd or the session guarantee, so a path under one needs no creator.
-#: `%t` and `/run/user/%U` are the runtime directory, which logind makes; `%h`
-#: paths are inside the user's own home.
-GUARANTEED = ("%t", "/run/user/%U", "%h", "/tmp", "/var/tmp")
+#: Paths that exist without anyone creating them. Deliberately short, and they
+#: are whole paths rather than prefixes.
+#:
+#: `%h` was in here as a PREFIX, on the reasoning that a user's home is theirs to
+#: write in. That is true of the home and false of everything inside it, and the
+#: gate passed `installd.service` because of it - the 19 Aug boot log has the same
+#: NAMESPACE death it was written to catch, one unit further down:
+#:
+#:     installd.service: Failed to set up mount namespacing:
+#:       /home/arlen/.local/share/applications: No such file or directory
+#:
+#: Second time this check has been wrong in the permissive direction. The pattern
+#: both times was accepting an ancestor as proof about a descendant.
+GUARANTEED_EXACT = ("%t", "/run/user/%U", "%h", "/tmp", "/var/tmp")
 
 DIRECTIVE = re.compile(r"^(\w+)=(.*)$")
 
@@ -81,6 +91,74 @@ def tmpfiles_paths(root: pathlib.Path) -> set[str]:
             # type path mode user group age argument
             if len(parts) >= 2 and parts[0].lstrip("+").startswith(("d", "D", "Z", "z", "f", "L")):
                 out.add(parts[1])
+    return out
+
+
+#: The image's one user. `%h` in a user unit resolves to this, and the tmpfiles
+#: file and the staged home tree both spell it out, so a comparison that leaves
+#: the specifier unexpanded matches nothing and the gate has to fall back on
+#: prefix reasoning - which is how it passed `installd.service`.
+IMAGE_HOME = "/home/arlen"
+
+#: `%t` and `/run/user/%U` are the same directory written two ways.
+RUNTIME_ROOT = "/run/user/%U"
+
+
+def expand(path: str) -> str:
+    """Resolve the specifiers a unit may write, so paths compare as paths."""
+    path = path.rstrip("/")
+    if path.startswith("%h"):
+        return IMAGE_HOME + path[2:]
+    if path.startswith("%t"):
+        return RUNTIME_ROOT + path[2:]
+    return path
+
+
+def staged_home(root: pathlib.Path) -> set[str]:
+    """Directories the `mkosi.extra` tree places into the image.
+
+    A file staged at `mkosi.extra/home/arlen/.config/arlen/ai.toml` makes
+    `/home/arlen/.config/arlen` exist on the image, which is what satisfies
+    `ReadWritePaths=%h/.config/arlen` for the wallpaper and settings-broker units.
+    Nothing else creates that directory, so leaving this source out would report
+    two working units as broken.
+    """
+    out: set[str] = set()
+    extra = root / "dev/mkosi/mkosi.extra"
+    if not extra.is_dir():
+        return out
+    for node in extra.rglob("*"):
+        rel = "/" + node.relative_to(extra).as_posix()
+        for parent in pathlib.PurePosixPath(rel).parents:
+            if str(parent) != "/":
+                out.add(str(parent))
+        if node.is_dir():
+            out.add(rel)
+    return out
+
+
+def shared_runtime_dirs(all_units: list[pathlib.Path]) -> set[str]:
+    """Runtime directories one unit declares and the others rely on.
+
+    `/run/user/<uid>/arlen` holds every arlen socket, so it is deliberately NOT
+    each daemon's own `RuntimeDirectory=` - systemd would delete it when that one
+    daemon stopped. A few units declare it with `RuntimeDirectoryPreserve=yes` and
+    the rest name it in `ReadWritePaths=`, which is what makes them start today.
+
+    This pools those declarations, and the pooling carries an assumption worth
+    naming: it says SOMETHING creates the directory, not that it is created before
+    the unit that needs it. Ordering is the units' own business and several of them
+    discuss it in their comments.
+    """
+    out: set[str] = set()
+    for unit in all_units:
+        for line in unit.read_text().splitlines():
+            m = DIRECTIVE.match(line.strip())
+            if not m or m.group(1) != "RuntimeDirectory":
+                continue
+            for v in m.group(2).split():
+                out.add(f"{RUNTIME_ROOT}/{v}")
+                out.add(f"/run/{v}")
     return out
 
 
@@ -138,9 +216,10 @@ def covered(path: str, creators: set[str]) -> bool:
     an ancestor and so passed the very unit it was written for, which is the
     permissive direction and the one worth being strict about.
     """
-    if path.startswith(GUARANTEED):
+    path = expand(path)
+    if path in {expand(g) for g in GUARANTEED_EXACT}:
         return True
-    return path.rstrip("/") in {c.rstrip("/") for c in creators}
+    return path in {expand(c) for c in creators}
 
 
 def main() -> int:
@@ -149,7 +228,12 @@ def main() -> int:
         print(f"NOTHING WAS READ: no unit files under {ROOT}", file=sys.stderr)
         return 2
 
-    made_by_tmpfiles = tmpfiles_paths(ROOT) | staged_dirs(ROOT)
+    made_by_tmpfiles = (
+        tmpfiles_paths(ROOT)
+        | staged_dirs(ROOT)
+        | staged_home(ROOT)
+        | shared_runtime_dirs(all_units)
+    )
     findings = []
     checked = 0
 
