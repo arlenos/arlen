@@ -739,7 +739,10 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
             return Ok("connections".to_string());
         }
         // The Settings app, pinned canonically so it resolves to the stable
-        // app_id `settings` (not the spoofable basename). The Living Capability
+        // app_id `dev.arlen.settings` (not the spoofable basename). The comment
+        // here said `settings` for weeks after the id gained its vendor prefix,
+        // which is the kind of drift that gets the WRONG STRING written into a
+        // caller allowlist one crate over. The Living Capability
         // Graph revoke socket op admits only this app id (living-capability-graph.md
         // §6.2, Option A): revoke is user-initiated through Settings, narrowing-only,
         // so a root-owned canonical path is the trust anchor until F3 upgrades it.
