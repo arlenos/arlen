@@ -82,26 +82,71 @@ else
     echo "no package cache yet; this run pays for the download"
 fi
 
-# shellcheck disable=SC2086
-ok=0
-for attempt in 1 2 3; do
-    if timeout 240 sudo apt-get update $APT_OPTS && \
-       timeout 420 sudo apt-get install -y --no-install-recommends $APT_OPTS $PACKAGES
-    then
-        ok=1; break
-    fi
-    echo "apt attempt $attempt stalled or failed; retrying" >&2
-    sleep 5
-done
-[ "$ok" = 1 ] || { echo "apt failed after three attempts" >&2; exit 1; }
-
 # Save whatever apt ended up with, cached or freshly fetched, so the next run
 # starts warm. `apt-get install` leaves the archives in place unless something
 # ran `clean`, and a restored file that was already used is simply copied back
 # unchanged.
-mkdir -p "$CACHE"
-if compgen -G "$ARCHIVES/*.deb" > /dev/null 2>&1; then
-    sudo cp -n "$ARCHIVES"/*.deb "$CACHE"/ || true
-    sudo chown -R "$(id -u):$(id -g)" "$CACHE"
-fi
-echo "package cache holds $(find "$CACHE" -name '*.deb' | wc -l) file(s)"
+#
+# ON THE WAY OUT, WHICHEVER WAY THAT IS. This ran only after a successful
+# install until 19 August, which is exactly backwards: the run that fails is the
+# one whose partial download is worth keeping, and a cache that fills only on
+# success cannot help the failure it exists to prevent. Two CI runs in a row got
+# worse that way - 16 jobs, then 18, every one of them stalled in this step -
+# because each failure left the cache empty for the next.
+#
+# A half-fetched archive is safe to keep: apt checksums what it reuses and
+# re-downloads anything that does not match.
+save_cache() {
+    mkdir -p "$CACHE"
+    if compgen -G "$ARCHIVES/*.deb" > /dev/null 2>&1; then
+        sudo cp -n "$ARCHIVES"/*.deb "$CACHE"/ 2>/dev/null || true
+        sudo chown -R "$(id -u):$(id -g)" "$CACHE" 2>/dev/null || true
+    fi
+    echo "package cache holds $(find "$CACHE" -name '*.deb' 2>/dev/null | wc -l) file(s)"
+}
+trap save_cache EXIT
+
+# THE SCRIPT ENDS BEFORE THE WORKFLOW ENDS IT. Three attempts of 240 + 420
+# seconds is a budget of up to 33 minutes against a step ceiling of 10, so every
+# stall was killed from outside, mid-download - and a step killed from outside
+# runs no trap, saves no archive, and leaves the next run exactly as cold. That
+# is the ratchet: 16 failing jobs, then 18.
+#
+# So the budget is the script's own, and it fits inside the ceiling with room for
+# the save. Each attempt gets what is left rather than a fixed slice, and an
+# attempt is only started if there is enough time for it to mean anything.
+BUDGET="${APT_BUDGET_SECS:-450}"
+deadline=$(( $(date +%s) + BUDGET ))
+remaining() { echo $(( deadline - $(date +%s) )); }
+
+# shellcheck disable=SC2086
+ok=0
+attempt=0
+# Both bounds, because they catch different failures: the budget is for a mirror
+# that hangs, the attempt count for one that refuses instantly - without it a
+# fast, repeatable "no" would spin for the whole budget, retrying something that
+# is not going to change.
+while [ "$attempt" -lt 3 ] && [ "$(remaining)" -gt 60 ]; do
+    attempt=$((attempt + 1))
+    left=$(remaining)
+    # A third of what is left for the index, the rest for the packages: the
+    # install is the long half and the update is worthless on its own.
+    if timeout $(( left / 3 )) sudo apt-get update $APT_OPTS && \
+       timeout $(( left - left / 3 - 5 )) sudo apt-get install -y --no-install-recommends $APT_OPTS $PACKAGES
+    then
+        ok=1; break
+    fi
+    echo "apt attempt $attempt stalled or failed, $(remaining)s of budget left; retrying" >&2
+    sleep 5
+done
+# Which bound stopped us, because the two mean different things to whoever reads
+# the red: three fast refusals is a mirror saying no, and a budget running out is
+# a mirror that never answered.
+[ "$ok" = 1 ] || {
+    if [ "$attempt" -ge 3 ]; then
+        echo "apt failed after three attempts" >&2
+    else
+        echo "apt ran out of its ${BUDGET}s budget after $attempt attempt(s)" >&2
+    fi
+    exit 1
+}

@@ -72,7 +72,7 @@ exit 0
   return { dir, bin, archives, cache };
 }
 
-function run(s) {
+function run(s, extraEnv = {}) {
   const r = spawnSync("bash", [SCRIPT], {
     encoding: "utf8",
     env: {
@@ -80,6 +80,7 @@ function run(s) {
       PATH: `${s.bin}:${process.env.PATH}`,
       APT_CACHE_DIR: s.cache,
       APT_ARCHIVE_DIR: s.archives,
+      ...extraEnv,
     },
   });
   return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
@@ -141,6 +142,20 @@ console.log("ci-system-deps:");
   check(
     "an install that never succeeds is a failure, not a pass",
     r.code === 1 && /failed after three attempts/.test(r.out),
+    r.out,
+  );
+  rmSync(s.dir, { recursive: true, force: true });
+}
+
+// The ratchet the 19 August runs died of: the step is killed from outside, so
+// the archive is never written, so the next run restores nothing and hits the
+// same mirror. The script's own budget is what keeps the ending in its hands.
+{
+  const s = stage({ installFails: 99 });
+  const r = run(s, { APT_BUDGET_SECS: "70" });
+  check(
+    "a run that gives up still leaves its packages behind for the next one",
+    /package cache holds/.test(r.out),
     r.out,
   );
   rmSync(s.dir, { recursive: true, force: true });
