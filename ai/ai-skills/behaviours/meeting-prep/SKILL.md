@@ -9,7 +9,6 @@ trigger:
   event: calendar.event.upcoming
 tools:
   graph.query: []
-  calendar.read: [triggering-event]
 budget:
   max_steps: 10
   max_tokens: 12000
@@ -22,9 +21,15 @@ terminal:
 # meeting-prep
 
 A read-only, Suggest-only behaviour. When a calendar event is upcoming
-(the calendar source emits `calendar.event.upcoming` shortly before), read
-the event and find related files, notes, and past meetings in the
-Knowledge Graph; assemble a compact prep suggestion.
+(`arlen-calendard` emits `calendar.event.upcoming` fifteen minutes before),
+find related files, notes, and past meetings in the Knowledge Graph and
+assemble a compact prep suggestion.
+
+The meeting itself ARRIVES WITH THE RUN - uid, title, location, when it
+starts - so there is no calendar tool to call and none is declared. This
+manifest used to name `calendar.read`, which nothing implemented: a
+declared capability that does not exist reads as a working feature right up
+until somebody depends on it.
 
 Security note (validated in the dry-run): the event's title/description is
 **external content** - anyone can send a calendar invite, so it is a prompt-
