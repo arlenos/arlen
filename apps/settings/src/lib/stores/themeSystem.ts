@@ -202,10 +202,10 @@ export async function resetSys(key: string): Promise<void> {
     return next;
   });
   if (!tauriAvailable) return; // no host to write through
-  const path = SYSTEM_PATHS[key];
-  if (!path) return; // not a field the theme file holds
   try {
-    await invoke("config_reset", { file: "customization", key: path });
+    // `value: null` is the clear, so the field-to-path table lives only in the
+    // backend rather than in two languages that can disagree.
+    await invoke("theme_set_system", { key, value: null });
     sysWriteFailed.set(false);
   } catch {
     if (before !== undefined) overrides.update((o) => ({ ...o, [key]: before }));
@@ -213,41 +213,6 @@ export async function resetSys(key: string): Promise<void> {
   }
 }
 
-/// Where each System field lives in `theme.toml`.
-///
-/// The same map the backend keeps in `system_key_path`, needed here only because
-/// clearing a field goes through the generic `config_reset`, which takes a path
-/// rather than a field name. Kept in agreement by a test that asks the backend
-/// for every key in this map.
-const SYSTEM_PATHS: Record<string, string> = {
-  cursorTheme: "cursor.theme",
-  cursorSize: "cursor.size",
-  iconTheme: "icons.theme",
-  sndNotification: "sounds.notification",
-  sndError: "sounds.error",
-  sndWarning: "sounds.warning",
-  sndAction: "sounds.action",
-  sndDeviceAdded: "sounds.device_added",
-  sndDeviceRemoved: "sounds.device_removed",
-  termFg: "terminal.fg",
-  termBg: "terminal.bg",
-  ansi0: "terminal.ansi.black",
-  ansi1: "terminal.ansi.red",
-  ansi2: "terminal.ansi.green",
-  ansi3: "terminal.ansi.yellow",
-  ansi4: "terminal.ansi.blue",
-  ansi5: "terminal.ansi.magenta",
-  ansi6: "terminal.ansi.cyan",
-  ansi7: "terminal.ansi.white",
-  ansi8: "terminal.ansi.bright_black",
-  ansi9: "terminal.ansi.bright_red",
-  ansi10: "terminal.ansi.bright_green",
-  ansi11: "terminal.ansi.bright_yellow",
-  ansi12: "terminal.ansi.bright_blue",
-  ansi13: "terminal.ansi.bright_magenta",
-  ansi14: "terminal.ansi.bright_cyan",
-  ansi15: "terminal.ansi.bright_white",
-};
 
 /// Clear every terminal-palette override at once (the grid's reset-all).
 ///
@@ -270,27 +235,13 @@ export async function resetTerminal(): Promise<void> {
 /// overridden.
 export async function loadSys(): Promise<void> {
   if (!tauriAvailable) return;
-  let doc: Record<string, unknown>;
   try {
-    doc = (await invoke<Record<string, unknown>>("config_get", {
-      file: "customization",
-      key: null,
-    })) ?? {};
+    // Keyed by the page's own field names: the backend owns the paths, so no
+    // inverse of its table is written here.
+    overrides.set(await invoke<Record<string, string>>("theme_system_overrides"));
   } catch {
-    return; // nothing readable; the page shows the theme's own values
+    // Nothing readable. Leave the store rather than claim nothing is overridden.
   }
-  const found: Record<string, string | number | boolean> = {};
-  for (const [key, path] of Object.entries(SYSTEM_PATHS)) {
-    const value = path.split(".").reduce<unknown>(
-      (node, part) =>
-        node && typeof node === "object" ? (node as Record<string, unknown>)[part] : undefined,
-      doc,
-    );
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      found[key] = value;
-    }
-  }
-  overrides.set(found);
 }
 
 /// What a preview attempt did. The backend answers rather than returning unit,

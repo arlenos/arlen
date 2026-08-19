@@ -400,6 +400,34 @@ fn metric_value(key: &str, value: &str) -> Result<serde_json::Value, String> {
     }
 }
 
+/// The colour overrides `theme.toml` currently holds, keyed by role.
+///
+/// The page needs this to open on what is actually set, and to light the reset
+/// affordance beside a row that is overridden. It is a BACKEND read rather than
+/// the page walking the config itself, because walking it means inverting
+/// [`color_role_path`] on the frontend - a second copy of the rule, in another
+/// language, that drifts silently: a role the inverse misses reads as
+/// not-overridden while the file holds it and the desktop shows it.
+#[tauri::command]
+pub fn theme_color_overrides() -> Result<std::collections::BTreeMap<String, String>, String> {
+    let doc = config_get(ConfigFile::Customization, Some("color".into()))?;
+    let mut out = std::collections::BTreeMap::new();
+    let Some(groups) = doc.as_object() else {
+        return Ok(out); // absent or not a table: nothing is overridden
+    };
+    // Driven from the roles themselves, so this cannot report a key the setter
+    // could not have written.
+    for role in palette_of(&resolve_active_theme()?).into_iter().map(|r| r.role) {
+        let Some(path) = color_role_path(&role) else { continue };
+        let field = path.trim_start_matches("color.");
+        let Some((group, name)) = field.split_once('.') else { continue };
+        if let Some(hex) = groups.get(group).and_then(|g| g.get(name)).and_then(|v| v.as_str()) {
+            out.insert(role, hex.to_string());
+        }
+    }
+    Ok(out)
+}
+
 /// Persist one colour-role override, or clear it when `hex` is `None`.
 ///
 /// The colour pickers had no write path either: `themeColors.ts` held its
@@ -462,8 +490,16 @@ fn color_role_path(role: &str) -> Option<String> {
 /// rather than in TypeScript because the schema does, and a mapping written on the
 /// far side of the bridge drifts from it silently.
 #[tauri::command]
-pub async fn theme_set_system(key: String, value: String) -> Result<(), String> {
+pub async fn theme_set_system(key: String, value: Option<String>) -> Result<(), String> {
     let path = system_key_path(&key).ok_or_else(|| format!("not a system field: {key}"))?;
+    let Some(value) = value else {
+        // Clearing goes through here too, so the field-to-path table stays in one
+        // place. It briefly lived in the store as well, for the generic
+        // `config_reset`, and two copies of a map like this drift silently: a
+        // wrong path does not throw, it deletes nothing, and the row resets on
+        // screen while the file keeps the override.
+        return config_reset(ConfigFile::Customization, Some(path.to_string()));
+    };
     let value = match key.as_str() {
         // The only numeric one; the rest are theme names, cue names and hex.
         "cursorSize" => value
@@ -474,6 +510,72 @@ pub async fn theme_set_system(key: String, value: String) -> Result<(), String> 
     };
     config_set(ConfigFile::Customization, path.to_string(), value).await
 }
+
+/// The System-page overrides `theme.toml` holds, keyed by the page's own field
+/// names, so the page opens on what is set without inverting the path table on
+/// the frontend.
+#[tauri::command]
+pub fn theme_system_overrides() -> Result<std::collections::BTreeMap<String, String>, String> {
+    let doc = config_get(ConfigFile::Customization, None)?;
+    let mut out = std::collections::BTreeMap::new();
+    for key in SYSTEM_FIELDS {
+        let Some(path) = system_key_path(key) else { continue };
+        let mut node = &doc;
+        for part in path.split('.') {
+            match node.get(part) {
+                Some(next) => node = next,
+                None => {
+                    node = &serde_json::Value::Null;
+                    break;
+                }
+            }
+        }
+        // Numbers come back as numbers; the page takes strings either way.
+        match node {
+            serde_json::Value::String(v) => {
+                out.insert(key.to_string(), v.clone());
+            }
+            serde_json::Value::Number(n) => {
+                out.insert(key.to_string(), n.to_string());
+            }
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
+/// Every field the System page owns. Kept beside [`system_key_path`] and pinned
+/// against it by a test, so a field that gains a path but not an entry here is
+/// writable and invisible on load.
+const SYSTEM_FIELDS: &[&str] = &[
+    "cursorTheme",
+    "cursorSize",
+    "iconTheme",
+    "sndNotification",
+    "sndError",
+    "sndWarning",
+    "sndAction",
+    "sndDeviceAdded",
+    "sndDeviceRemoved",
+    "termFg",
+    "termBg",
+    "ansi0",
+    "ansi1",
+    "ansi2",
+    "ansi3",
+    "ansi4",
+    "ansi5",
+    "ansi6",
+    "ansi7",
+    "ansi8",
+    "ansi9",
+    "ansi10",
+    "ansi11",
+    "ansi12",
+    "ansi13",
+    "ansi14",
+    "ansi15",
+];
 
 /// The theme-file path a System field writes to, or `None` if the key names no
 /// field.
@@ -1022,6 +1124,47 @@ mod tests {
                 arrived.to_lowercase(),
                 value.to_lowercase(),
                 "{key} written to {path} did not come back out of the resolver"
+            );
+        }
+    }
+
+    /// The field list the load path walks and the path table the write path uses
+    /// name the same fields.
+    ///
+    /// They are two consts beside each other, which is the smallest form the
+    /// duplication takes: a field with a path but no list entry is writable and
+    /// invisible when the page reopens, which reads as "it did not save".
+    #[test]
+    fn the_system_field_list_and_the_path_table_cover_the_same_fields() {
+        for key in super::SYSTEM_FIELDS {
+            assert!(super::system_key_path(key).is_some(), "{key} is listed with no path");
+        }
+        // And the other direction, from the page's own key set rather than from a
+        // third list: every key the store can send must be in SYSTEM_FIELDS.
+        let store = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/lib/stores/themeSystem.ts"
+        ))
+        .expect("the store is beside the backend");
+        let defaults = store
+            .split("SYS_DEFAULTS: Record<string, string | number | boolean> = {")
+            .nth(1)
+            .expect("SYS_DEFAULTS is gone from the store");
+        let defaults = &defaults[..defaults.find("\n};").expect("terminated")];
+        for line in defaults.lines() {
+            let Some((name, _)) = line.trim().split_once(':') else { continue };
+            let name = name.trim();
+            if name.is_empty() || name.starts_with("//") {
+                continue;
+            }
+            // The two the notification daemon owns are deliberately not fields of
+            // the theme; every other default must be one.
+            if name == "soundsEnabled" || name == "soundTheme" {
+                continue;
+            }
+            assert!(
+                super::SYSTEM_FIELDS.contains(&name),
+                "{name} is a control on the page and the backend cannot save it"
             );
         }
     }
