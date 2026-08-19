@@ -37,12 +37,19 @@
     normHex,
     type ColorRole,
     loadPalette,
+    loadColorOverrides,
+    colorWriteFailed,
     paletteLoaded,
     paletteUnavailable,
   } from "$lib/stores/themeColors";
   import { onMount } from "svelte";
 
-  onMount(() => void loadPalette());
+  onMount(() => {
+    void loadPalette();
+    // And what is already overridden, or the page opens on the theme's own
+    // colours with every reset affordance dark while the file holds edits.
+    void loadColorOverrides();
+  });
 
   const common = COLOR_ROLES.filter((r) => r.tier === "common");
   const full = COLOR_ROLES.filter((r) => r.tier === "full");
@@ -57,6 +64,9 @@
   description={$t("s.col.desc")}
 >
   <SectionGrid>
+    {#if $colorWriteFailed}
+      <p class="note span-full" role="alert">{$t("s.col.writeFailed")}</p>
+    {/if}
     <!-- Said before the rows, because the rows are what the sentence is about: a
          palette that could not be read leaves them empty, and empty swatches on a
          colour editor read as a theme with no colours rather than as silence. -->

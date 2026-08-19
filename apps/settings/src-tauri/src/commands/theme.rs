@@ -7,7 +7,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use super::config::{config_get, config_set, ConfigFile};
+use super::config::{config_get, config_reset, config_set, ConfigFile};
 
 /// Return the current appearance.toml as a JSON object.
 #[tauri::command]
@@ -398,6 +398,55 @@ fn metric_value(key: &str, value: &str) -> Result<serde_json::Value, String> {
         // lengths, durations, easings, font families, shadows.
         _ => Ok(serde_json::Value::String(value.to_string())),
     }
+}
+
+/// Persist one colour-role override, or clear it when `hex` is `None`.
+///
+/// The colour pickers had no write path either: `themeColors.ts` held its
+/// overrides in a store nothing loaded and nothing saved, so the Appearance
+/// palette editor was a colour picker attached to a variable.
+///
+/// Unlike the System page's fields, the path here is DERIVED rather than mapped.
+/// A role name carries its own group (`bg_card` lives at `color.bg.card`,
+/// `border_strong` at `color.border.strong`), so there is one rule instead of two
+/// hand-kept tables that can disagree - and because clearing goes through this
+/// command too, the rule never has to be repeated on the frontend.
+#[tauri::command]
+pub async fn theme_set_color(role: String, hex: Option<String>) -> Result<(), String> {
+    let path = color_role_path(&role).ok_or_else(|| format!("not a colour role: {role}"))?;
+    match hex {
+        None => config_reset(ConfigFile::Customization, Some(path)),
+        Some(hex) => {
+            // Parsed rather than pattern-matched: the resolver drops a value it
+            // cannot read, so an unparseable colour would save, do nothing, and
+            // leave the picker showing a colour the machine never took.
+            if arlen_theme::parse_hex(&hex).is_none() {
+                return Err(format!("{hex:?} is not a colour"));
+            }
+            config_set(ConfigFile::Customization, path, serde_json::Value::String(hex)).await
+        }
+    }
+}
+
+/// The theme-file path a colour role writes to, derived from its own name.
+///
+/// `None` for anything that is not a role, which is what keeps this from being a
+/// general write into the theme file.
+fn color_role_path(role: &str) -> Option<String> {
+    let (group, field) = match role {
+        "accent" | "accent_hover" | "accent_pressed" | "success" | "warning" | "error" | "info" => {
+            ("semantic", role)
+        }
+        _ => {
+            let (prefix, rest) = role.split_once('_')?;
+            match prefix {
+                "bg" | "fg" => (prefix, rest),
+                "border" => ("border", rest),
+                _ => return None,
+            }
+        }
+    };
+    Some(format!("color.{group}.{field}"))
 }
 
 /// Persist one Appearance > System field.
@@ -885,6 +934,48 @@ mod tests {
         // And the string fields take what they are given, since the theme carries
         // them verbatim.
         assert!(super::metric_value("spacing.md", "0.75rem").is_ok());
+    }
+
+    /// Every role the palette reports derives a path the resolver reads back.
+    ///
+    /// Stronger than checking the strings against each other: each derived path
+    /// is written into a theme file and the colour is read back out through the
+    /// real resolver, so a wrong group (`color.semantic.card`) shows up as a
+    /// value that does not arrive rather than as a plausible-looking string.
+    #[test]
+    fn every_palette_role_derives_a_path_the_resolver_reads_back() {
+        let Ok(roles) = super::theme_resolved_palette() else {
+            return; // no resolvable theme here
+        };
+        assert!(!roles.is_empty(), "the palette reported nothing to check");
+        for r in roles {
+            let path = super::color_role_path(&r.role)
+                .unwrap_or_else(|| panic!("{} has no path", r.role));
+            let (section, field) = path.rsplit_once('.').expect("dotted");
+            let doc = format!("[{section}]\n{field} = \"#123456\"\n");
+            let t = arlen_theme::ArlenTheme::resolve(arlen_theme::DARK_TOML, Some(&doc), None)
+                .unwrap_or_else(|e| panic!("{} writes an unresolvable file: {e}", r.role));
+            let arrived = super::palette_of(&t)
+                .into_iter()
+                .find(|p| p.role == r.role)
+                .map(|p| p.hex)
+                .unwrap_or_default();
+            assert_eq!(
+                arrived.to_lowercase(),
+                "#123456",
+                "{} written to {path} did not come back out of the resolver",
+                r.role
+            );
+        }
+    }
+
+    /// A name that is not a role has no path, so the command cannot be talked
+    /// into writing anywhere else in the theme file.
+    #[test]
+    fn a_name_that_is_not_a_role_has_no_path() {
+        for bad in ["", "accent_extra", "radius.card", "bg", "wm_titlebar", "../etc"] {
+            assert!(super::color_role_path(bad).is_none(), "{bad:?} must have no path");
+        }
     }
 
     /// Every field the System page offers has a path, and every path names a

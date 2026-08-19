@@ -124,18 +124,85 @@ export function isOverridden(o: Record<string, string>, key: string): boolean {
   return key in o;
 }
 
-/// Set a per-field colour override.
-export function setColorOverride(key: string, hex: string): void {
+/// True when a colour did not reach `theme.toml`, so the page can say the pick
+/// did not take rather than leave it sitting in the swatch.
+export const colorWriteFailed = writable(false);
+
+/// Set a per-field colour override, in the store and in `theme.toml`.
+///
+/// A refused write puts the previous colour back. A swatch showing a colour the
+/// file does not hold is worse here than elsewhere: the rest of the desktop is
+/// rendering the OLD colour at the same time, so the page contradicts the screen
+/// around it.
+export async function setColorOverride(key: string, hex: string): Promise<void> {
+  const before = get(overrides)[key];
   overrides.update((o) => ({ ...o, [key]: hex }));
+  if (!tauriAvailable) return; // no host to write through
+  try {
+    await invoke("theme_set_color", { role: key, hex });
+    colorWriteFailed.set(false);
+  } catch {
+    overrides.update((o) => {
+      const next = { ...o };
+      if (before === undefined) delete next[key];
+      else next[key] = before;
+      return next;
+    });
+    colorWriteFailed.set(true);
+  }
 }
 
-/// Clear a role's override, falling back to the theme's resolved value.
-export function resetColorOverride(key: string): void {
+/// Clear a role's override, falling back to the theme's resolved value. Removes
+/// it from `theme.toml` too, or the colour returns at the next launch.
+export async function resetColorOverride(key: string): Promise<void> {
+  const before = get(overrides)[key];
   overrides.update((o) => {
     const next = { ...o };
     delete next[key];
     return next;
   });
+  if (!tauriAvailable) return;
+  try {
+    // `hex: null` is the clear: the path is the backend's business either way,
+    // so the rule that turns a role into a path stays in one place.
+    await invoke("theme_set_color", { role: key, hex: null });
+    colorWriteFailed.set(false);
+  } catch {
+    if (before !== undefined) overrides.update((o) => ({ ...o, [key]: before }));
+    colorWriteFailed.set(true);
+  }
+}
+
+/// Read the colour overrides `theme.toml` holds, so the page opens on what is
+/// actually set and the reset affordance beside each row is lit when it should be.
+export async function loadColorOverrides(): Promise<void> {
+  if (!tauriAvailable) return;
+  let doc: Record<string, unknown>;
+  try {
+    doc = (await invoke<Record<string, unknown>>("config_get", {
+      file: "customization",
+      key: null,
+    })) ?? {};
+  } catch {
+    return;
+  }
+  const color = doc.color;
+  if (!color || typeof color !== "object") {
+    overrides.set({});
+    return;
+  }
+  const groups = color as Record<string, unknown>;
+  const found: Record<string, string> = {};
+  for (const [group, fields] of Object.entries(groups)) {
+    if (!fields || typeof fields !== "object") continue;
+    for (const [field, value] of Object.entries(fields as Record<string, unknown>)) {
+      if (typeof value !== "string") continue;
+      // The inverse of the backend's rule: a semantic role keeps its own name,
+      // everything else is prefixed by its group.
+      found[group === "semantic" ? field : `${group}_${field}`] = value;
+    }
+  }
+  overrides.set(found);
 }
 
 // ── WCAG contrast, for the live check ────────────────────────────────────
