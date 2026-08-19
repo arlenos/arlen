@@ -114,6 +114,7 @@ DIR_ALIASES = {
     "anomalyd": "daemons/anomaly-detector",
     "clockd": "daemons/clock",
     "powerd": "daemons/power-daemon",
+    "calendard": "daemons/calendar",
 }
 
 # Components whose source is not in this tree. The compositor is its own repo, so

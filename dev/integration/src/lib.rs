@@ -1392,13 +1392,6 @@ mod module_reachability {
     /// The point of the list is that it cannot grow silently. Removing an entry
     /// once it is wired up is the expected direction of travel.
     const KNOWN_UNREACHED: &[&str] = &[
-        // Built 19 August: which meetings are about to start, and the memory
-        // that says each one once. The emit itself waits on the event's payload
-        // contract - `calendar.event.upcoming` has a consumer (`meeting-prep`
-        // triggers on it) and no producer and no payload type, and inventing the
-        // field names in the emitter rather than in `contracts/event` is how two
-        // components come to disagree about what an event carries.
-        "daemons/calendar/announce",
         // BR-4's `auth`: when a credential must be renewed. Not reachable
         // until the broker seam exists to hand one over. Its sibling `retry`
         // WAS here and is not any more - the sink now reports a typed failure

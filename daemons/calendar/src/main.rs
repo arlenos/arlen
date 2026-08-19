@@ -18,8 +18,11 @@
 
 use std::sync::Arc;
 
+use arlen_calendar::announce;
 use arlen_calendar::registry::{self, Desired};
 use arlen_calendar_core::{reminders, view};
+use os_sdk::{EventEmitter, UnixEventEmitter};
+use prost::Message;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -31,6 +34,14 @@ const OBJECT_PATH: &str = "/org/arlen/Calendar1";
 /// The clock, and where its interface lives.
 const CLOCK_NAME: &str = "org.arlen.Clock1";
 const CLOCK_PATH: &str = "/org/arlen/Clock1";
+
+/// How long before a meeting it is announced on the bus.
+///
+/// `meeting-prep` gathers notes and files for what is about to start, so this is
+/// how much warning that work gets. Fifteen minutes is enough to read what comes
+/// back and short enough that it is still about the next meeting rather than the
+/// day.
+const ANNOUNCE_LEAD_MINUTES: i64 = 15;
 
 /// How far ahead reminders are registered.
 ///
@@ -50,6 +61,12 @@ const RE_DERIVE_SECS: u64 = 60;
 /// What the daemon holds between derivations.
 struct Calendar {
     store: Mutex<arlen_calendar::Store>,
+    /// The occurrences already announced, so a re-read does not say them again.
+    announced: Mutex<announce::Announced>,
+    /// The event bus, when there is one. Absent is a real state: on a machine
+    /// where the bus never came up the agenda and the reminders still work, and
+    /// only the announcements are missing.
+    emitter: Option<UnixEventEmitter>,
 }
 
 /// The interface the app talks to.
@@ -184,6 +201,7 @@ async fn re_derive(calendar: &Calendar, connection: &zbus::Connection) {
         );
     }
     let desired = registry::desired_from(&derived.due, local);
+    announce_upcoming(calendar, &store, now, local).await;
     *calendar.store.lock().await = store;
 
     match apply(connection, &desired).await {
@@ -193,6 +211,53 @@ async fn re_derive(calendar: &Calendar, connection: &zbus::Connection) {
             }
         }
         Err(e) => warn!("could not register reminders with the clock: {e}"),
+    }
+}
+
+/// Tell the bus about meetings that are about to start.
+///
+/// Best-effort and separate from the clock registration on purpose: these are
+/// two different promises. A reminder is a promise to the person and goes to the
+/// clock, which can wake the machine; this is a note to whatever is listening -
+/// today `meeting-prep`, which gathers related notes and files - and losing one
+/// costs a preparation, not an appointment.
+async fn announce_upcoming(
+    calendar: &Calendar,
+    store: &arlen_calendar::Store,
+    now: chrono::DateTime<chrono::Utc>,
+    local: chrono_tz::Tz,
+) {
+    let lead = chrono::Duration::minutes(ANNOUNCE_LEAD_MINUTES);
+    let due = announce::due(&store.events, now, lead, local);
+    let mut said = calendar.announced.lock().await;
+    said.forget_before(now.with_timezone(&local).date_naive());
+    let fresh: Vec<_> = due.into_iter().filter(|u| !said.contains(u)).collect();
+    if fresh.is_empty() {
+        return;
+    }
+    let Some(emitter) = &calendar.emitter else {
+        // No bus to talk to. Not remembered as said, so the announcement is made
+        // when one appears rather than lost for this occurrence.
+        warn!(count = fresh.len(), "meetings are due and there is no event bus to announce them on");
+        return;
+    };
+    for u in fresh {
+        let payload = os_sdk::proto::CalendarEventUpcomingPayload {
+            uid: u.uid.clone(),
+            summary: u.summary.clone(),
+            location: u.location.clone(),
+            starts_at: u.at.timestamp(),
+            recurrence_id: u.recurrence_id.to_string(),
+        };
+        match emitter.emit("calendar.event.upcoming", payload.encode_to_vec()).await {
+            // Remembered only once it is actually out, so a failed emit is
+            // retried on the next pass instead of being silently swallowed.
+            Ok(()) => {
+                info!(uid = %u.uid, "announced an upcoming meeting");
+                said.remember(&u);
+            }
+            Err(e) => warn!("could not announce {}: {e}", u.uid),
+        }
     }
 }
 
@@ -267,7 +332,21 @@ async fn main() {
         )
         .init();
 
-    let calendar = Arc::new(Calendar { store: Mutex::new(arlen_calendar::Store::default()) });
+    // Named, like every other producer: the bus stamps the emitter's identity on
+    // what it publishes, and an event whose producer is "unknown" is one no
+    // consumer can weigh. Constructing it never fails - it dials lazily - so an
+    // absent bus shows up as a failed emit rather than a failed start, which is
+    // the right shape: the agenda and the reminders do not need it.
+    let producer = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
+    let emitter = Some(UnixEventEmitter::for_system_named(
+        "calendard",
+        producer.to_string_lossy().into_owned(),
+    ));
+    let calendar = Arc::new(Calendar {
+        store: Mutex::new(arlen_calendar::Store::default()),
+        announced: Mutex::new(announce::Announced::default()),
+        emitter,
+    });
 
     let connection = match zbus::connection::Builder::session()
         .and_then(|b| b.name(BUS_NAME))
