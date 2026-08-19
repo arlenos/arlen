@@ -134,4 +134,36 @@ grep -q '"blur":"false"' "$work/run3.log" || { echo "!! the boolean metric did n
 grep -q 'weight_bold = 800$' "$XDG_CONFIG_HOME/arlen/theme.toml" \
   || { echo "!! the weight is not a whole number in the file" >&2; exit 1; }
 
-echo "PASS: an appearance edit reaches the file, survives the process and renders"
+# Clearing is the half that fails SILENTLY. `config_reset` does not throw when it
+# deletes nothing, so a wrong path leaves the row reset on screen and the override
+# in the file, and the value returns at the next launch - which reads as a reset
+# button that works sometimes.
+cat > "$work/clear.js" <<'JS'
+const inv = window.__TAURI_INTERNALS__.invoke;
+return inv("theme_set_system", { key: "ansi1", value: null })
+  .then(() => inv("theme_set_color", { role: "accent", hex: null }))
+  .then(() => Promise.all([inv("theme_system_overrides"), inv("theme_color_overrides")]))
+  .then(([sys, col]) => JSON.stringify({ ansi1: sys.ansi1 ?? "cleared", accent: col.accent ?? "cleared" }))
+  .catch((e) => JSON.stringify({ error: String(e) }));
+JS
+
+echo ">> launch 4: clear both and check the file, not just the answer"
+SHOOT_INJECT="$work/clear.js" SHOOT_INJECT_SETTLE=3 \
+  "$root/dev/screenshot/shoot-app.sh" "$app" "" "" 8 \
+  | tee "$work/run4.log" | grep -E "inject result" || true
+
+grep -q '"ansi1":"cleared"' "$work/run4.log" || { echo "!! the ANSI slot did not clear" >&2; exit 1; }
+grep -q '"accent":"cleared"' "$work/run4.log" || { echo "!! the accent did not clear" >&2; exit 1; }
+# `if`, not `grep && exit`: under `set -e` a failing left-hand side of `&&` does
+# not abort, so that form works only by a shell rule subtle enough to misread as
+# an assertion that never fires.
+if grep -q '#ff0055' "$XDG_CONFIG_HOME/arlen/theme.toml"; then
+    echo "!! the file still holds the override the page says is gone" >&2
+    exit 1
+fi
+if grep -q '#00ddaa' "$XDG_CONFIG_HOME/arlen/theme.toml"; then
+    echo "!! the file still holds the accent the page says is gone" >&2
+    exit 1
+fi
+
+echo "PASS: an appearance edit reaches the file, survives the process, renders and clears"
