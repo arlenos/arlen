@@ -22,6 +22,7 @@ const messages: Catalogs = {
     "cal.noFiles": "No calendar files yet. Put .ics files in {$dir} and they show up here.",
     "cal.unreadable": "{$count} of your calendar files could not be read, so events in them are missing.",
     "cal.hostAbsent": "The calendar reads your files through its own host, which is not running here.",
+    "cal.serviceDown": "Showing your files directly: the calendar service is not running, so no reminders are being set for these events.",
     "cal.failed": "Could not read your calendar files: {$reason}",
   },
   de: {
@@ -36,6 +37,7 @@ const messages: Catalogs = {
     "cal.noFiles": "Noch keine Kalenderdateien. Lege .ics-Dateien in {$dir} ab, dann erscheinen sie hier.",
     "cal.unreadable": "{$count} deiner Kalenderdateien konnten nicht gelesen werden, die Termine darin fehlen also.",
     "cal.hostAbsent": "Der Kalender liest deine Dateien über seinen eigenen Host, der hier nicht läuft.",
+    "cal.serviceDown": "Deine Dateien werden direkt gelesen: der Kalenderdienst läuft nicht, deshalb werden für diese Termine keine Erinnerungen gestellt.",
     "cal.failed": "Deine Kalenderdateien konnten nicht gelesen werden: {$reason}",
   },
 };

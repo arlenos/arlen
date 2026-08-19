@@ -32,6 +32,9 @@
     directory_exists: boolean;
     files: number;
     unreadable: number;
+    /// False when the app read the files itself. The same agenda either way; the
+    /// difference is that nothing is arming reminders.
+    service_running: boolean;
   };
 
   let agenda = $state<Agenda | null>(null);
@@ -100,6 +103,14 @@
   {:else if failure}
     <p class="note bad" role="alert">{$t("cal.failed", { reason: failure })}</p>
   {:else if agenda}
+    <!-- Said whenever the service is absent, not only when the list is empty:
+         the rows below are right either way, and what is missing is the arming
+         of reminders, which nothing else on this screen would reveal. Opened on
+         a single file the service is not involved at all, so there is nothing to
+         report. -->
+    {#if !agenda.service_running && !launched}
+      <p class="note bad" role="status">{$t("cal.serviceDown")}</p>
+    {/if}
     {#if agenda.unreadable > 0}
       <p class="note bad" role="alert">{$t("cal.unreadable", { count: agenda.unreadable })}</p>
     {/if}

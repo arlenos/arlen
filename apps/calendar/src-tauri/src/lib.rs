@@ -82,13 +82,37 @@ fn agenda_of_file(path: &std::path::Path) -> Result<Agenda, String> {
 /// events written in different zones against each other needs a zone database
 /// and is a separate step; doing it by string comparison would be a guess
 /// dressed as an answer.
+/// The agenda as the calendar service holds it, or `None` if it did not answer.
+///
+/// Asked FIRST, because the daemon is the thing that also arms the reminders:
+/// when it answers, the agenda on screen and the alarms on the clock came from
+/// one read of one set of files. When it does not, the app reads the files
+/// itself - the same rows, from the same code - and says so, because showing
+/// somebody their calendar while nothing is arming their reminders is the quiet
+/// kind of wrong this app was written against.
+async fn agenda_from_service() -> Option<Agenda> {
+    const NAME: &str = "org.arlen.Calendar1";
+    let connection = zbus::Connection::session().await.ok()?;
+    let proxy = zbus::Proxy::new(&connection, NAME, "/org/arlen/Calendar1", NAME)
+        .await
+        .ok()?;
+    let json: String = proxy.call("Agenda", &()).await.ok()?;
+    serde_json::from_str(&json).ok()
+}
+
 #[tauri::command]
-fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
+async fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
     // Opened ON a file: that file is the whole agenda. Reading the directory too
     // would answer a question the person did not ask - they double-clicked one
     // calendar, and mixing it with everything else would bury it.
     if let Some(path) = file.filter(|p| !p.is_empty()) {
+        // Not through the service: it holds the calendar directory, and a file
+        // somebody opened may be anywhere. Asking it for one would either return
+        // the wrong agenda or nothing at all.
         return agenda_of_file(std::path::Path::new(&path));
+    }
+    if let Some(agenda) = agenda_from_service().await {
+        return Ok(agenda);
     }
     let Some(dir) = calendar_dir() else {
         return Err("this machine has no home directory to read calendars from".into());
