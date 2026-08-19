@@ -117,6 +117,34 @@ pub fn still_valid(keys: &[MessageKey], state: &MailboxState) -> Vec<MessageKey>
         .collect()
 }
 
+/// Something the client means to do to a message but has not done yet.
+///
+/// Kept keyed rather than as a bare uid for the reason the cache is: RFC 4549
+/// says a changed `UIDVALIDITY` obliges the client to empty the local cache AND
+/// **to drop pending actions referring to its UIDs**, and the second half is the
+/// one that gets forgotten. Showing the wrong message is a display bug. Applying
+/// a queued "delete" or "mark read" to whatever now holds that number is a
+/// change to somebody's mailbox that they did not ask for and cannot see coming.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingAction {
+    /// Which message, under the numbering it was queued against.
+    pub key: MessageKey,
+    /// What was meant to happen, in whatever vocabulary the caller uses.
+    pub action: String,
+}
+
+/// The pending actions that still refer to a message that still exists.
+///
+/// The write-side twin of [`still_valid`], and the more dangerous of the two.
+#[must_use]
+pub fn surviving_actions(pending: &[PendingAction], state: &MailboxState) -> Vec<PendingAction> {
+    pending
+        .iter()
+        .filter(|a| a.key.uid_validity == state.uid_validity)
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +202,29 @@ mod tests {
         ];
         let kept = still_valid(&keys, &named("INBOX", 8));
         assert_eq!(kept, vec![MessageKey { uid_validity: 8, uid: 1 }]);
+    }
+
+    #[test]
+    fn a_queued_action_from_a_dead_numbering_is_dropped_rather_than_applied() {
+        // RFC 4549's second obligation, and the one that gets forgotten. Keeping
+        // this would delete or mark-read whatever message now holds that number:
+        // not a display bug, a change to somebody's mailbox they did not ask for.
+        let pending = vec![
+            PendingAction { key: MessageKey { uid_validity: 7, uid: 42 }, action: "delete".into() },
+            PendingAction { key: MessageKey { uid_validity: 8, uid: 42 }, action: "seen".into() },
+        ];
+        let kept = surviving_actions(&pending, &named("INBOX", 8));
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].action, "seen");
+    }
+
+    #[test]
+    fn nothing_queued_survives_a_validity_nobody_is_on() {
+        let pending = vec![PendingAction {
+            key: MessageKey { uid_validity: 7, uid: 1 },
+            action: "delete".into(),
+        }];
+        assert!(surviving_actions(&pending, &named("INBOX", 9)).is_empty());
     }
 
     #[test]
