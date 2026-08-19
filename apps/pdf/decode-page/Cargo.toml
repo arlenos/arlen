@@ -13,30 +13,28 @@ path = "src/main.rs"
 name = "arlen_pdf_decode_page"
 
 [dependencies]
-# MuPDF, built from the vendored C source the -sys crate carries: no system
-# library, so no line in `ci-system-packages.txt` and no cold apt round for the
-# whole matrix. AGPL-3.0, which is what this tree already is.
-#
-# It is also the largest piece of C in the project and it parses files people
-# are sent by strangers, which is the entire reason this is a separate worker
+# This is the largest piece of native code the reader touches and it parses
+# files people are sent by strangers, which is why it is a separate worker
 # binary behind a sandbox rather than a function in the reader.
 #
-# `base14-fonts` is not optional in practice and turning it off is silent: a PDF
-# names Helvetica or Times without embedding it, and with no font to substitute
-# MuPDF draws the page, draws no glyphs, and returns success. The result is
-# clean white paper - not an error, not a warning, just a document with its text
-# missing. Found by looking at the pixels; nothing else would have said so.
-mupdf = { version = "0.8", default-features = false, features = ["base14-fonts"] }
-
-# For the Landlock ruleset the viewer's decoders already use. One reviewed
-# implementation of the confinement rather than a second copy of it here; if it
-# moves to the sdk, both callers move together.
-arlen-viewers-core = { path = "../../viewers/core" }
-
-# The text layer crosses the pipe as JSON: it is a list of strings and boxes
-# rather than a fixed-size raster, so a length-prefixed binary frame would be a
-# format to invent and get wrong for no gain.
+# PDFIUM, NOT MuPDF, AND THE REASON IS THE LICENCE RATHER THAN THE API. This
+# crate shipped on `mupdf` for four commits and that was my mistake: MuPDF and
+# its -sys crate are AGPL-3.0, the tree's licence gate rejects it by name, and
+# the plan for this reader had already ruled it out in one line. I read that
+# line as one option among several and reasoned that AGPL-in-AGPL is fine. It is
+# not a call for me to make on a shipped desktop component, and the gate was
+# right where I was wrong.
+#
+# `pdfium-render` is MIT OR Apache-2.0 over PDFium (BSD-3-Clause), the engine
+# Chrome ships. It binds to a `libpdfium` at RUNTIME rather than vendoring C, so
+# nothing here is compiled from an AGPL source tree - and where that library
+# comes from on the image is a packaging question, named in the report rather
+# than answered by a download in a build script.
+pdfium-render = "0.9"
 arlen-pdf-core = { path = "../core" }
+# For the Landlock ruleset the viewer's decoders already use. One reviewed
+# implementation of the confinement rather than a second copy of it here.
+arlen-viewers-core = { path = "../../viewers/core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

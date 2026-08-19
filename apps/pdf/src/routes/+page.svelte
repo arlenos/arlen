@@ -208,7 +208,7 @@
             {:else}
               <ul>
                 {#each doc.outline as entry, i (i)}
-                  <li style="padding-left: {entry.depth * 12}px">
+                  <li style="padding-inline-start: {entry.depth * 12}px">
                     <!-- An entry whose target this reader could not resolve is
                          still shown, with the jump disabled. Hiding it would
                          lose a heading the document plainly has. -->
@@ -294,7 +294,7 @@
   .pdf-side {
     width: 280px;
     flex-shrink: 0;
-    border-right: 1px solid var(--color-border-default);
+    border-inline-end: 1px solid var(--color-border-default);
     padding: 12px;
     overflow-y: auto;
   }
@@ -337,7 +337,7 @@
   .pdf-hits button {
     display: block;
     width: 100%;
-    text-align: left;
+    text-align: start;
     background: transparent;
     border: 0;
     color: inherit;
