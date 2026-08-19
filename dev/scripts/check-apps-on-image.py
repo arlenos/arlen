@@ -55,12 +55,14 @@ NOT_ON_IMAGE: dict[str, str] = {
         "single-user appliance, not an oversight"
     ),
     "pdf": (
-        "the document half of the reader plus its host, one sitting old: page count, "
-        "the author's outline, page text and search, reachable over Tauri commands. "
-        "It has no frontend yet, so there is nothing for `npm run build` to produce "
-        "and nothing to stage - and it stops short of drawing a page because a "
-        "rasteriser wants a surface to draw on, which is the same missing piece. "
-        "This entry goes when the reader has a window"
+        "the reader is real now - it opens a document, shows the author's contents, "
+        "searches inside it, turns pages and selects text, and it starts under the "
+        "app smoke. What it cannot do on any machine yet is DRAW a page: pdfium-render "
+        "binds to a `libpdfium` at runtime and no distribution in play ships one as a "
+        "package, so staging it would put an app on the image that shows every document "
+        "as a blank sheet. It ships when the engine has a home - a built package, a "
+        "checksummed binary at image-build time, or PDFium from source in the pipeline, "
+        "which is a supply-chain call rather than a coder's"
     ),
     "calendar": (
         "new on 19 August and one sitting old: it reads the .ics files in "
