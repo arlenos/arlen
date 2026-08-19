@@ -488,3 +488,192 @@ mod tests {
         assert_eq!(events[0].summary, "Real");
     }
 }
+
+/// Turning a written time into an instant, which is where the three forms stop
+/// being interchangeable.
+///
+/// Reading an agenda needs no instants: an event is listed on the date it writes
+/// for itself. Asking "what starts in the next fifteen minutes" needs them, and
+/// each form answers differently:
+///
+///   * **UTC** already is one.
+///   * **Zoned** resolves through the zone database. An unknown TZID has no
+///     answer, and guessing the reader's zone for it would move a meeting by
+///     hours - so it is refused rather than approximated.
+///   * **Floating** means the reader's own clock, by definition, so it resolves
+///     against the zone passed in. That IS the definition, not a fallback.
+///   * **All-day** starts at local midnight in that same zone. The alternative,
+///     treating it as an instant at UTC midnight, moves a public holiday into
+///     the previous evening for anyone west of London.
+///
+/// A zone whose rules skip the wall-clock time (the hour that does not exist on
+/// a spring-forward night) has no instant either; a repeated hour resolves to
+/// the earlier of the two, which is the reading a person would give it.
+pub mod when {
+    use super::{CalTime, Event};
+    use chrono::{DateTime, LocalResult, TimeZone, Utc};
+    use chrono_tz::Tz;
+
+    /// The instant a written time falls at, in `local` where the time does not
+    /// name its own zone. `None` when the file names a zone this machine does not
+    /// know, or a wall-clock time its zone skips.
+    pub fn instant(t: &CalTime, local: Tz) -> Option<DateTime<Utc>> {
+        let (naive, zone) = match t {
+            CalTime::Utc(dt) => return Some(Utc.from_utc_datetime(dt)),
+            CalTime::Floating(dt) => (*dt, local),
+            CalTime::Day(d) => (d.and_hms_opt(0, 0, 0)?, local),
+            CalTime::Zoned { at, tzid } => (*at, tzid.parse::<Tz>().ok()?),
+        };
+        match zone.from_local_datetime(&naive) {
+            // The earlier of a repeated hour: the reading a person gives a clock
+            // they are looking at.
+            LocalResult::Single(dt) | LocalResult::Ambiguous(dt, _) => Some(dt.with_timezone(&Utc)),
+            // The hour that does not exist. There is no instant to return and
+            // inventing one would fire an alarm at a time nobody wrote.
+            LocalResult::None => None,
+        }
+    }
+
+    /// The events starting within `lead` seconds after `now`, soonest first.
+    ///
+    /// Strictly ahead: an event that has already started is not upcoming, and
+    /// announcing it would be an alarm for a meeting the person is late for
+    /// rather than one they can still walk to. Events whose instant cannot be
+    /// resolved are left out - a reminder at a guessed time is worse than none.
+    ///
+    /// Recurrence is NOT expanded here either, so a weekly meeting is upcoming
+    /// only on the day the file writes it. Whoever expands `RRULE` feeds the
+    /// expansion in and this needs no change.
+    pub fn upcoming<'a>(
+        events: &'a [Event],
+        now: DateTime<Utc>,
+        local: Tz,
+        lead_seconds: i64,
+    ) -> Vec<(&'a Event, DateTime<Utc>)> {
+        let mut out: Vec<(&Event, DateTime<Utc>)> = events
+            .iter()
+            .filter_map(|e| instant(&e.start, local).map(|i| (e, i)))
+            .filter(|(_, i)| {
+                let ahead = (*i - now).num_seconds();
+                ahead > 0 && ahead <= lead_seconds
+            })
+            .collect();
+        out.sort_by_key(|(_, i)| *i);
+        out
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::parse_events;
+        use chrono::NaiveDate;
+
+        const VIENNA: &str = "Europe/Vienna";
+
+        fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
+            Utc.from_utc_datetime(
+                &NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, min, 0).unwrap(),
+            )
+        }
+
+        /// August in Vienna is UTC+2, so 09:00 there is 07:00 UTC. A resolver
+        /// that ignored the zone would be two hours out, which is the whole
+        /// reason the parser keeps the zone.
+        #[test]
+        fn a_zoned_time_resolves_through_its_own_zone() {
+            let t = CalTime::Zoned {
+                at: NaiveDate::from_ymd_opt(2026, 8, 19).unwrap().and_hms_opt(9, 0, 0).unwrap(),
+                tzid: VIENNA.into(),
+            };
+            assert_eq!(instant(&t, VIENNA.parse().unwrap()), Some(at(2026, 8, 19, 7, 0)));
+        }
+
+        /// A zone this machine has never heard of is refused. Falling back to the
+        /// reader's zone would move the meeting by however far apart they are.
+        #[test]
+        fn an_unknown_zone_has_no_instant() {
+            let t = CalTime::Zoned {
+                at: NaiveDate::from_ymd_opt(2026, 8, 19).unwrap().and_hms_opt(9, 0, 0).unwrap(),
+                tzid: "Mars/Olympus".into(),
+            };
+            assert_eq!(instant(&t, VIENNA.parse().unwrap()), None);
+        }
+
+        /// Floating means the reader's clock. This is the definition, so the same
+        /// file gives a different instant to a reader in another zone - which is
+        /// exactly what "09:00 wherever you are" means.
+        #[test]
+        fn a_floating_time_follows_the_reader() {
+            let t = CalTime::Floating(
+                NaiveDate::from_ymd_opt(2026, 8, 19).unwrap().and_hms_opt(9, 0, 0).unwrap(),
+            );
+            assert_eq!(instant(&t, VIENNA.parse().unwrap()), Some(at(2026, 8, 19, 7, 0)));
+            assert_eq!(
+                instant(&t, "Asia/Tokyo".parse().unwrap()),
+                Some(at(2026, 8, 19, 0, 0)),
+                "Tokyo is UTC+9, so their 09:00 is midnight UTC"
+            );
+        }
+
+        /// An all-day entry starts at local midnight. Treating it as UTC midnight
+        /// would put a holiday in the previous evening for anyone west of London.
+        #[test]
+        fn an_all_day_entry_starts_at_local_midnight() {
+            let t = CalTime::Day(NaiveDate::from_ymd_opt(2026, 8, 20).unwrap());
+            assert_eq!(
+                instant(&t, VIENNA.parse().unwrap()),
+                Some(at(2026, 8, 19, 22, 0)),
+                "midnight in Vienna is 22:00 UTC the day before"
+            );
+        }
+
+        /// The hour that does not exist on a spring-forward night. Vienna moves
+        /// 02:00 to 03:00 on 29 March 2026, so 02:30 was never on any clock.
+        #[test]
+        fn a_wall_clock_time_its_zone_skips_has_no_instant() {
+            let t = CalTime::Floating(
+                NaiveDate::from_ymd_opt(2026, 3, 29).unwrap().and_hms_opt(2, 30, 0).unwrap(),
+            );
+            assert_eq!(instant(&t, VIENNA.parse().unwrap()), None);
+        }
+
+        #[test]
+        fn upcoming_is_the_window_ahead_and_nothing_behind_it() {
+            let ics = "BEGIN:VCALENDAR\n\
+                       BEGIN:VEVENT\nUID:past\nSUMMARY:Started\nDTSTART:20260819T065500Z\nEND:VEVENT\n\
+                       BEGIN:VEVENT\nUID:soon\nSUMMARY:Standup\nDTSTART:20260819T070500Z\nEND:VEVENT\n\
+                       BEGIN:VEVENT\nUID:later\nSUMMARY:Review\nDTSTART:20260819T090000Z\nEND:VEVENT\n\
+                       END:VCALENDAR\n";
+            let events = parse_events(ics).expect("a calendar");
+            let now = at(2026, 8, 19, 7, 0);
+            let soon = upcoming(&events, now, VIENNA.parse().unwrap(), 15 * 60);
+            assert_eq!(soon.len(), 1, "one event is inside the fifteen minutes");
+            assert_eq!(soon[0].0.uid, "soon");
+        }
+
+        /// Soonest first, so whoever announces them does not have to sort.
+        #[test]
+        fn upcoming_comes_back_in_time_order() {
+            let ics = "BEGIN:VCALENDAR\n\
+                       BEGIN:VEVENT\nUID:b\nDTSTART:20260819T075000Z\nEND:VEVENT\n\
+                       BEGIN:VEVENT\nUID:a\nDTSTART:20260819T071000Z\nEND:VEVENT\n\
+                       END:VCALENDAR\n";
+            let events = parse_events(ics).expect("a calendar");
+            let soon = upcoming(&events, at(2026, 8, 19, 7, 0), VIENNA.parse().unwrap(), 3600);
+            assert_eq!(
+                soon.iter().map(|(e, _)| e.uid.as_str()).collect::<Vec<_>>(),
+                vec!["a", "b"]
+            );
+        }
+
+        /// An event whose zone cannot be resolved is left out rather than
+        /// announced at a guessed time.
+        #[test]
+        fn an_unresolvable_event_is_left_out_of_the_window() {
+            let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\n\
+                       DTSTART;TZID=Mars/Olympus:20260819T071000\nEND:VEVENT\nEND:VCALENDAR\n";
+            let events = parse_events(ics).expect("a calendar");
+            assert!(upcoming(&events, at(2026, 8, 19, 7, 0), VIENNA.parse().unwrap(), 3600).is_empty());
+        }
+    }
+}
