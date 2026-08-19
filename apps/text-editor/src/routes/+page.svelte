@@ -113,6 +113,9 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   /// invented name would be the one thing this app must never do.
   let draft = $state<string | null>(null);
   let saveError = $state<string | null>(null);
+  /// The file was written by something else since it was opened. A question,
+  /// not a failure.
+  let changedOnDisk = $state(false);
   let savedAt = $state(0);
   const editable = $derived(!!$openDocument);
   const dirty = $derived(draft !== null && draft !== file.content);
@@ -132,18 +135,31 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   /// A failure is SHOWN. An editor that silently fails to save is worse than one
   /// that cannot save at all, because the user walks away believing their work is
   /// on disk.
-  async function save() {
+  async function save(force = false) {
     const target = $openDocument;
     if (!target || draft === null) return;
     saveError = null;
+    changedOnDisk = false;
     try {
-      await invoke("editor_save", { path: target.path, text: draft });
+      // The stamp goes back with the text: if the file no longer matches it,
+      // something else has written it since this was opened and the host refuses
+      // rather than destroying that silently.
+      const stamp = await invoke<string>("editor_save", {
+        path: target.path,
+        text: draft,
+        seen: target.stamp,
+        force,
+      });
       // The document is now what is on disk, so the buffer is no longer dirty
-      // without having to re-read the file.
-      openDocument.set({ ...target, content: draft });
+      // without having to re-read the file - and the new stamp is what the NEXT
+      // save compares against.
+      openDocument.set({ ...target, content: draft, stamp });
       savedAt = Date.now();
     } catch (e) {
-      saveError = String(e);
+      // Its own state, not an error string: this is a question for the person
+      // rather than a failure, and it has an answer they can give.
+      if (String(e).includes("file-changed-on-disk")) changedOnDisk = true;
+      else saveError = String(e);
     }
   }
   /// What the print portal last said, so the person is told rather than left
@@ -315,6 +331,16 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     <WindowButtons />
   </header>
 
+  {#if changedOnDisk}
+    <div class="disk-bar" role="alert">
+      <span>{$t("te.save.changedOnDisk")}</span>
+      <button type="button" onclick={() => save(true)}>{$t("te.save.overwrite")}</button>
+      <button type="button" class="quiet" onclick={() => (changedOnDisk = false)}>
+        {$t("te.save.keepEditing")}
+      </button>
+    </div>
+  {/if}
+
   <div class="body">
     <main class="editor">
       {#if $openError}
@@ -349,6 +375,34 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
 </div>
 
 <style>
+  /* The changed-on-disk bar: a question, so it sits across the width where the
+     whole sentence fits, rather than in the toolbar strip that truncates it. */
+  .disk-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    background: color-mix(in srgb, var(--color-fg-warning, #eab308) 12%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-warning, #eab308) 35%, transparent);
+    color: var(--color-fg-primary, #fafafa);
+  }
+  .disk-bar span {
+    flex: 1;
+  }
+  .disk-bar button {
+    border: 1px solid var(--color-border-default, #333);
+    background: var(--color-bg-card, #171717);
+    color: inherit;
+    border-radius: 5px;
+    padding: 3px 9px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .disk-bar button.quiet {
+    background: transparent;
+  }
+
 
   .open-failed {
     padding: 2.5rem 2rem;

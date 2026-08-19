@@ -32,6 +32,39 @@ pub struct OpenedFile {
     pub path: String,
     /// The file's contents.
     pub text: String,
+    /// What the file looked like when it was read, to be handed back at save.
+    /// See [`stamp`].
+    pub stamp: String,
+}
+
+/// The marker a save returns when the file changed underneath the editor.
+///
+/// A token rather than a sentence: the wording belongs to the page, where it is
+/// translated.
+pub const CHANGED_ON_DISK: &str = "file-changed-on-disk";
+
+/// A cheap description of a file's current contents.
+///
+/// Modification time and length, not a hash of the contents: reading a large
+/// file again on every save to prove it has not moved costs more than the
+/// problem, and this catches every case a person actually meets - another
+/// editor's save, a `git checkout`, a sync writing over it. Two writes inside
+/// one filesystem timestamp tick with identical length would slip through, which
+/// is a race a human hand cannot produce and a machine writing the file you are
+/// editing has already lost.
+fn stamp(path: &Path) -> String {
+    let Ok(meta) = std::fs::metadata(path) else {
+        // No file: an unsaved new document has nothing to be changed out from
+        // under it, and the empty stamp compares equal to the next one.
+        return String::new();
+    };
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{modified}:{}", meta.len())
 }
 
 /// Reject a path that is not absolute.
@@ -61,7 +94,8 @@ fn editor_open(path: String) -> Result<OpenedFile, String> {
     let bytes = std::fs::read(&p).map_err(|e| format!("{path}: {e}"))?;
     let text = String::from_utf8(bytes)
         .map_err(|_| format!("{path}: not UTF-8 text, so this editor will not open it"))?;
-    Ok(OpenedFile { path, text })
+    let stamp = stamp(&p);
+    Ok(OpenedFile { path, text, stamp })
 }
 
 /// Write the edited text back.
@@ -78,9 +112,23 @@ fn editor_open(path: String) -> Result<OpenedFile, String> {
 /// interrupted save leaves the previous contents intact rather than a truncated
 /// file. The rename is atomic within a filesystem; the temp file is created
 /// beside the target for exactly that reason.
+///
+/// REFUSES A LOST UPDATE. `seen` is the stamp the editor got when it opened or
+/// last saved the file; if the file no longer matches it, something else has
+/// written it since and this save would silently destroy that. The refusal
+/// carries [`CHANGED_ON_DISK`] so the page can say what happened and let the
+/// person choose, and `force` is that choice made deliberately. Passing an empty
+/// `seen` means the caller never read the file, which only a new document does.
 #[tauri::command]
-fn editor_save(path: String, text: String) -> Result<(), String> {
+fn editor_save(path: String, text: String, seen: Option<String>, force: Option<bool>) -> Result<String, String> {
     let p = absolute(&path)?;
+    if !force.unwrap_or(false) {
+        if let Some(seen) = seen.filter(|s| !s.is_empty()) {
+            if stamp(&p) != seen {
+                return Err(CHANGED_ON_DISK.to_string());
+            }
+        }
+    }
     let dir = p.parent().ok_or_else(|| format!("{path}: has no parent directory"))?;
     let tmp = dir.join(format!(
         ".{}.arlen-save",
@@ -91,7 +139,11 @@ fn editor_save(path: String, text: String) -> Result<(), String> {
         // Leave nothing behind on a failed rename: the temp file is ours.
         let _ = std::fs::remove_file(&tmp);
         format!("{path}: {e}")
-    })
+    })?;
+    // The stamp of what was just written, so the next save compares against this
+    // save rather than against the state at open - otherwise the second save of
+    // a session always looks like somebody else's change.
+    Ok(stamp(&p))
 }
 
 /// The file path the editor was launched with (`arlen-text-editor <path>`, or the
@@ -149,7 +201,74 @@ mod tests {
     // themselves are module-private for the same family of reason - on tauri
     // 2.11.5 a `pub` command re-exports its own generated macro and the crate
     // stops compiling - so the tests reach them as siblings.
-    use super::{absolute, editor_open, editor_save};
+    use super::{absolute, editor_open, editor_save, CHANGED_ON_DISK};
+
+    /// The lost update, which is the reason any of this exists: open a file,
+    /// something else writes it, and a save that goes through silently destroys
+    /// the other change. Every editor a person has used guards this; ours wrote
+    /// straight over it until 19 August.
+    #[test]
+    fn a_save_is_refused_when_the_file_changed_underneath_it() {
+        let dir = std::env::temp_dir().join(format!("arlen-editor-clobber-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("shared.md");
+        std::fs::write(&f, "as opened").unwrap();
+        let path = f.to_string_lossy().into_owned();
+        let opened = editor_open(path.clone()).unwrap();
+
+        // Somebody else's save. The sleep is the filesystem's timestamp
+        // granularity, not a race in the code: two writes inside one tick with
+        // the same length are indistinguishable by design, and the test would be
+        // asserting the limitation rather than the guard.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&f, "somebody else's work").unwrap();
+
+        let refused = editor_save(path.clone(), "mine".into(), Some(opened.stamp.clone()), None)
+            .expect_err("a save over someone else's change must be refused");
+        assert_eq!(refused, CHANGED_ON_DISK);
+        assert_eq!(
+            std::fs::read_to_string(&f).unwrap(),
+            "somebody else's work",
+            "the refusal must leave the other change intact"
+        );
+
+        // And the person can still decide to win.
+        editor_save(path.clone(), "mine".into(), Some(opened.stamp), Some(true)).unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "mine");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A second save in one session must not look like somebody else's change,
+    /// which it would if the stamp still described the state at open.
+    #[test]
+    fn saving_twice_in_a_row_is_not_mistaken_for_a_foreign_write() {
+        let dir = std::env::temp_dir().join(format!("arlen-editor-twice-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("notes.md");
+        std::fs::write(&f, "one").unwrap();
+        let path = f.to_string_lossy().into_owned();
+        let opened = editor_open(path.clone()).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let after_first = editor_save(path.clone(), "two".into(), Some(opened.stamp), None).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        editor_save(path.clone(), "three".into(), Some(after_first), None)
+            .expect("the second save compares against the first, not against the open");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "three");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A file that did not exist when the editor started has nothing to be
+    /// clobbered, so a first save must not be refused.
+    #[test]
+    fn a_new_file_saves_without_a_stamp() {
+        let dir = std::env::temp_dir().join(format!("arlen-editor-new-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("fresh.md");
+        let path = f.to_string_lossy().into_owned();
+        editor_save(path, "first".into(), Some(String::new()), None).unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "first");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn a_relative_path_is_refused() {
@@ -176,7 +295,7 @@ mod tests {
         let f = dir.join("notes.md");
         std::fs::write(&f, "before").unwrap();
         let path = f.to_string_lossy().into_owned();
-        editor_save(path.clone(), "after".into()).unwrap();
+        editor_save(path.clone(), "after".into(), None, None).unwrap();
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "after");
         let leftovers: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
