@@ -203,7 +203,16 @@ pub struct CursorSection {
 /// of themes that leave it out get the synthesised projection.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct TerminalSection {
-    pub ansi: Option<TerminalAnsiSection>,
+    /// Foreground, background and cursor. Each optional, and each overriding
+    /// exactly its own synthesised value - the same rule the ANSI slots follow.
+    /// They synthesise from `fg_primary` / `bg_app` / `accent`, which is right
+    /// for a theme and wrong as soon as someone wants a terminal that does not
+    /// match the app chrome. The Appearance terminal editor offers all three and
+    /// had nowhere to write them until 19 Aug.
+    pub fg:     Option<String>,
+    pub bg:     Option<String>,
+    pub cursor: Option<String>,
+    pub ansi:   Option<TerminalAnsiSection>,
 }
 
 /// The authored 16-colour ANSI block. Every slot is optional: a present slot
