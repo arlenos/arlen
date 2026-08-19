@@ -61,10 +61,41 @@ def main() -> int:
     # says nothing about.
     for entry in found:
         text = entry.read_text(encoding="utf-8", errors="replace")
-        if not any(line.startswith("X-Arlen-AppId=") for line in text.splitlines()):
+        declared = next(
+            (
+                line[len("X-Arlen-AppId=") :].strip()
+                for line in text.splitlines()
+                if line.startswith("X-Arlen-AppId=")
+            ),
+            None,
+        )
+        if declared is None:
             problems.append(
                 f"{entry.relative_to(ROOT)}:\n      no X-Arlen-AppId, so nothing states which "
                 "app this is.\n      Every daemon that admits by app id keys on that name."
+            )
+            continue
+        # And it must be the id the app is actually installed under. The image
+        # stages an app at /usr/lib/arlen/apps/<identifier>/, and the resolver
+        # reads that directory name - so an entry naming anything else describes
+        # an app that does not exist, and the launcher and the daemons disagree
+        # about who is running. Compared against `tauri.conf.json` rather than
+        # against the install path, because the identifier is what puts the app
+        # there; re-deriving from the entry's own id would be the tautology the
+        # sdk test's comment records catching.
+        conf = entry.parent.parent / "src-tauri/tauri.conf.json"
+        identifier = None
+        if conf.is_file():
+            for line in conf.read_text(encoding="utf-8", errors="replace").splitlines():
+                stripped = line.strip()
+                if stripped.startswith('"identifier"'):
+                    identifier = stripped.split(":", 1)[1].strip().strip('",').strip()
+                    break
+        if identifier and declared != identifier:
+            problems.append(
+                f"{entry.relative_to(ROOT)}:\n      says X-Arlen-AppId={declared}, but the app "
+                f"installs as {identifier}.\n      The resolver reads the install directory, so "
+                "the entry names an app nothing can be."
             )
 
     validator = shutil.which("desktop-file-validate")
