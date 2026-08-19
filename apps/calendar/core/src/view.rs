@@ -70,6 +70,37 @@ pub struct AgendaEvent {
     pub expanded: bool,
 }
 
+/// One read of a calendar source, and what it could and could not read.
+///
+/// The counts are separate on purpose. No files and no events are different
+/// states - nothing has been put here, versus what is here holds nothing - and a
+/// surface that draws both as empty space tells a first-time reader their
+/// calendar is broken. A file that could not be read is counted rather than
+/// quietly missing, because an agenda short one file with no sign of it is worse
+/// than one that says so.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Agenda {
+    /// The rows to draw.
+    pub events: Vec<AgendaEvent>,
+    /// What was read: the calendar directory, or the single file the app was
+    /// opened on. Carried so the surface can NAME it when there is nothing to
+    /// show - telling somebody to put files "somewhere" is not an instruction.
+    pub directory: String,
+    /// Whether that path is there at all.
+    pub directory_exists: bool,
+    /// How many calendar files were found.
+    pub files: usize,
+    /// How many could not be read or parsed.
+    pub unreadable: usize,
+    /// Whether the calendar service answered.
+    ///
+    /// False means the app read the files itself, which shows the same agenda
+    /// but arms no reminders - the daemon is what registers them with the clock.
+    /// Those are two different facts and the surface has to be able to say the
+    /// second without hiding the first.
+    pub service_running: bool,
+}
+
 /// Which of the three written forms a time is, and its zone when it names one.
 #[must_use]
 pub fn kind_of(t: &CalTime) -> (&'static str, Option<String>) {

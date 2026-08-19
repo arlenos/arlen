@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use arlen_calendar::registry::{self, Desired};
-use arlen_calendar_core::reminders;
+use arlen_calendar_core::{reminders, view};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -70,27 +70,24 @@ impl CalendarInterface {
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<String> {
         admit(&header, connection).await?;
+        let dir = arlen_calendar::calendar_dir().unwrap_or_default();
         let store = self.calendar.store.lock().await;
-        let events: Vec<serde_json::Value> = store
-            .events
-            .iter()
-            .map(|e| {
-                serde_json::json!({
-                    "uid": e.uid,
-                    "summary": e.summary,
-                    "location": e.location,
-                    "date": e.start.date().to_string(),
-                    "repeats": e.repeats(),
-                    "alarms": e.alarms.len(),
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({
-            "events": events,
-            "files": store.files,
-            "unreadable": store.unreadable,
-        })
-        .to_string())
+        // The same rows the app builds for a single file, from the same code:
+        // an agenda whose shape depended on which side answered would be two
+        // calendars wearing one face.
+        let agenda = view::Agenda {
+            events: view::rows(&store.events, chrono::Local::now().date_naive()),
+            directory: dir.display().to_string(),
+            directory_exists: dir.is_dir(),
+            files: store.files,
+            unreadable: store.unreadable,
+            // Answering at all is what makes this true, so it is set here rather
+            // than asked for: a caller holding this value read it from a running
+            // service by definition.
+            service_running: true,
+        };
+        serde_json::to_string(&agenda)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("could not render the agenda: {e}")))
     }
 }
 

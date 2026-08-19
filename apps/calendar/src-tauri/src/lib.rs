@@ -16,8 +16,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use arlen_calendar_core as ics;
-use ics::view::{rows, AgendaEvent};
-use serde::Serialize;
+use ics::view::{rows, Agenda};
 use tauri::Emitter;
 
 /// Where a calendar file is looked for.
@@ -30,29 +29,6 @@ fn calendar_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
     Some(base.join("arlen/calendars"))
-}
-
-/// What one read of the calendar directory found.
-#[derive(Debug, Clone, Serialize)]
-pub struct Agenda {
-    pub events: Vec<AgendaEvent>,
-    /// The directory that was read, so the surface can name it when it is empty
-    /// rather than telling the reader to put files "somewhere".
-    pub directory: String,
-    /// Does that directory exist? Nearly always true, because opening the app
-    /// creates it - the watcher cannot watch a path that is not there, and a
-    /// calendar that names a directory it did not make is asking the reader to
-    /// do its typing.
-    pub directory_exists: bool,
-    /// How many `.ics` files were found. No files and no events are different
-    /// states: the first means nothing has been put here, the second means what
-    /// is here holds nothing. Both name the directory, because "put files
-    /// somewhere" is not an instruction.
-    pub files: usize,
-    /// Files that could not be read or parsed. Counted rather than hidden: an
-    /// agenda quietly missing a file is worse than one that says a file is
-    /// missing from it.
-    pub unreadable: usize,
 }
 
 /// The `.ics` the calendar was opened on, when it was opened on one.
@@ -81,6 +57,9 @@ fn agenda_of_file(path: &std::path::Path) -> Result<Agenda, String> {
         directory_exists: path.is_file(),
         files: 0,
         unreadable: 0,
+        // Set by whoever answered. The file case never involves the service, and
+        // the directory case fills it in from whether the daemon replied.
+        service_running: false,
     };
     let Ok(text) = std::fs::read_to_string(path) else {
         agenda.unreadable = 1;
@@ -120,6 +99,9 @@ fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
         directory_exists: dir.is_dir(),
         files: 0,
         unreadable: 0,
+        // Set by whoever answered. The file case never involves the service, and
+        // the directory case fills it in from whether the daemon replied.
+        service_running: false,
     };
     let mut parsed: Vec<ics::Event> = Vec::new();
     if !agenda.directory_exists {
