@@ -75,7 +75,19 @@ drive() {  # drive <probe-js> <fixture> <out-png>
 
 echo "viewer:"
 
+# POLLED, not slept. This probe read the DOM the instant it was injected, which
+# wins on a warm run and loses on a cold one: the first launch of the suite is
+# the slowest, and a read before the first paint returns an empty body that looks
+# exactly like an app which opened nothing. It failed that way on 19 August in a
+# run whose other seven cases passed. Waiting FOR the content rather than for a
+# guessed number of milliseconds is the difference between a case that is slow
+# and a case that is wrong.
 cat > "$fix/p-open.js" <<'JS'
+for (let i = 0; i < 40; i++) {
+  const level = document.querySelector(".level");
+  if (level && level.textContent.trim()) break;
+  await new Promise(r => setTimeout(r, 100));
+}
 return JSON.stringify({ dock: (document.querySelector(".level")||{}).textContent,
   body: (document.body.innerText||"").replace(/\s+/g," ").trim().slice(0,40) });
 JS
