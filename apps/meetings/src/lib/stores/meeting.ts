@@ -60,6 +60,16 @@ export const meetingsMocked = writable(false);
 /// answered this the same way and for the same reason.
 export const meetingsUnavailable = writable(false);
 
+/// Why the meetings could not be read, when they could not.
+///
+/// The refusal used to say only THAT it failed, because the catch below dropped
+/// the reason on the floor. A reader then cannot tell a daemon that is down from
+/// a store that is corrupt from a permission they do not have - three different
+/// things to do about it, rendered as one sentence. The clock says "the clock
+/// service is not running, so your alarms are not being kept" and that sentence
+/// is worth more than this one precisely because it names the cause.
+export const meetingsFailure = writable<string | null>(null);
+
 /// True when a real session could not read the open meeting's note.
 export const noteUnavailable = writable(false);
 
@@ -138,16 +148,19 @@ export async function loadMeetings(): Promise<void> {
     meetings.set(await invoke<MeetingSummary[]>("meetings_list"));
     meetingsMocked.set(false);
     meetingsUnavailable.set(false);
-  } catch {
+    meetingsFailure.set(null);
+  } catch (e) {
     if (!tauriAvailable) {
       meetings.set(MEETINGS_FIXTURE);
       meetingsMocked.set(true);
       meetingsUnavailable.set(false);
+      meetingsFailure.set(null);
       return;
     }
     meetings.set([]);
     meetingsMocked.set(false);
     meetingsUnavailable.set(true);
+    meetingsFailure.set(String(e));
   }
 }
 
