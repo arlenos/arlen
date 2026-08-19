@@ -44,6 +44,7 @@
 //! and the reader is told the message is malformed rather than shown one of the
 //! two readings as though it were the message.
 
+pub mod alternative;
 pub mod sync;
 
 use std::collections::BTreeSet;
