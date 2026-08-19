@@ -102,7 +102,7 @@ export async function loadCapsules(): Promise<void> {
     capsules.set(await invoke<Capsule[]>("list_capsules"));
     capsulesMocked.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       capsules.set(MOCK_CAPSULES);
       capsulesMocked.set(true);
       capsulesUnavailable.set(false);

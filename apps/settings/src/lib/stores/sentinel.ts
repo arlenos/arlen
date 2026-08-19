@@ -6,6 +6,7 @@
 /// state renders and drives.
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// The detectors the surface configures (mic/cam is status-only, owned by the
 /// capture infrastructure).
@@ -80,7 +81,7 @@ export async function loadSentinel(): Promise<void> {
     sentinel.set(await invoke<SentinelState>("sentinel_get_state"));
     sentinelMocked.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       sentinel.set(structuredClone(FIXTURE));
       sentinelMocked.set(true);
       sentinelUnavailable.set(false);
@@ -123,7 +124,7 @@ export async function setDetector(id: DetectorId, on: boolean): Promise<void> {
   try {
     await invoke("sentinel_set_detector", { id, on });
   } catch {
-    if (import.meta.env.DEV) return; // seam unwired under vite
+    if (!tauriAvailable) return; // no host to write through
     if (before !== undefined) update(id, { on: before });
     sentinelChangeFailed.set(true);
   }
@@ -137,7 +138,7 @@ export async function setAlerts(id: DetectorId, alerts: AlertMode): Promise<void
   try {
     await invoke("sentinel_set_alerts", { id, mode: alerts });
   } catch {
-    if (import.meta.env.DEV) return; // seam unwired under vite
+    if (!tauriAvailable) return; // no host to write through
     if (before !== undefined) update(id, { alerts: before });
     sentinelChangeFailed.set(true);
   }
@@ -152,7 +153,7 @@ export async function setSensitivity(id: DetectorId, level: string): Promise<voi
   try {
     await invoke("sentinel_set_sensitivity", { id, level });
   } catch {
-    if (import.meta.env.DEV) return; // seam unwired under vite
+    if (!tauriAvailable) return; // no host to write through
     if (before !== undefined) update(id, { sensitivity: before });
     sentinelChangeFailed.set(true);
   }
@@ -173,7 +174,7 @@ export async function fixPosture(index: number): Promise<void> {
     // A protection page claiming a machine is secured when nothing was done is
     // the one lie on this surface that costs more than showing nothing, which is
     // what the flag below already says about the detector switches.
-    if (!import.meta.env.DEV) {
+    if (tauriAvailable) {
       sentinelChangeFailed.set(true);
       return;
     }

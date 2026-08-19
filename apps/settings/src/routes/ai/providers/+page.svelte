@@ -11,6 +11,7 @@
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
+  import { tauriAvailable } from "$lib/tauri";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -84,7 +85,7 @@
     try {
       providers.set(parse<Provider[]>(await invoke<string>("ai_providers_list"), []));
     } catch {
-      providers.set(import.meta.env.DEV ? DEV_FIXTURE : []);
+      providers.set(!tauriAvailable ? DEV_FIXTURE : []);
     } finally {
       loaded = true;
     }

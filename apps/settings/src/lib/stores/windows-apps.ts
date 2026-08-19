@@ -14,6 +14,7 @@
 
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// How well-supported the app is - stated honestly.
 export type CompatTier = "curated" | "best-effort";
@@ -159,7 +160,7 @@ export const winActionFailed = writable(false);
 export const defaults = writable<WinDefaults>({
   version: "Wine 9.0",
   bottleMode: "per-app",
-  runtimes: import.meta.env.DEV
+  runtimes: !tauriAvailable
     ? [
         { name: "Wine 9.0", installed: true },
         { name: "Proton 9.0", installed: true },
@@ -176,7 +177,7 @@ export async function load(): Promise<void> {
     const bottles = await invoke<Bottle[]>("list_bottles");
     winApps.set({ bottles, loading: false, mocked: false, unavailable: false });
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       winApps.set({ bottles: FIXTURE, loading: false, mocked: true, unavailable: false });
       return;
     }
@@ -197,7 +198,7 @@ export async function patchBottle(id: string, patch: Partial<Bottle>): Promise<v
   try {
     await invoke("set_bottle_config", { id, patch });
   } catch {
-    if (import.meta.env.DEV) return; // no bottle daemon under vite
+    if (!tauriAvailable) return; // no host, so no daemon to ask
     if (before) {
       winApps.update((s) => ({
         ...s,
@@ -244,7 +245,7 @@ export async function deleteBottle(id: string): Promise<void> {
   try {
     await invoke("delete_bottle", { id });
   } catch {
-    if (import.meta.env.DEV) return;
+    if (!tauriAvailable) return;
     // The app and its prefix are still on disk; a list that hides them is a
     // machine the user thinks is cleaner than it is.
     winApps.update((s) => ({ ...s, bottles: before }));
@@ -260,7 +261,7 @@ export async function patchDefaults(patch: Partial<WinDefaults>): Promise<void> 
   try {
     await invoke("set_windows_defaults", { patch });
   } catch {
-    if (import.meta.env.DEV) return;
+    if (!tauriAvailable) return;
     defaults.set(before);
     winActionFailed.set(true);
   }

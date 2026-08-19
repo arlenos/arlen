@@ -15,6 +15,7 @@
 
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// One semantic colour role.
 export interface ColorRole {
@@ -79,7 +80,7 @@ const RESOLVED_FIXTURE: Record<string, string> = {
 /// The active theme's resolved colours, and the user's per-field overrides
 /// (sparse: only edited roles appear).
 export const resolved = writable<Record<string, string>>(
-  import.meta.env.DEV ? { ...RESOLVED_FIXTURE } : {},
+  !tauriAvailable ? { ...RESOLVED_FIXTURE } : {},
 );
 
 /// True once the palette has been read, either way. Until then the pages have
@@ -102,7 +103,7 @@ export async function loadPalette(): Promise<void> {
     // The fixture is NOT the answer to a failed read. Under vite the initial
     // value already holds it and there is no host to ask, so leave it be; on
     // metal say so rather than colour the page in something invented.
-    if (!import.meta.env.DEV) {
+    if (tauriAvailable) {
       resolved.set({});
       paletteUnavailable.set(true);
     }
