@@ -10,5 +10,6 @@
 //! over bytes and values, so they are tested without spawning anything; the host
 //! owns the process, its confinement and its lifetime.
 
+pub mod host;
 pub mod session;
 pub mod wire;
