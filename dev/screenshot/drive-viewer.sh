@@ -194,5 +194,25 @@ except Exception:
 b, a = d.get('transportBefore'), d.get('transportAfter')
 print(1 if b and a and b != a else 0)")" "$got"
 
+# Printing. The button is the FIRST caller the print portal has ever had: the
+# backend could hand a document to CUPS since it was written and nothing in the
+# system asked it to. Pressing it here goes to the real portal on this machine,
+# so the run may flash a print dialog; the app is killed at the end of the shot,
+# which drops the request.
+cat > "$fix/p-print.js" <<'JS'
+const b = document.querySelector('[aria-label="Print"], [aria-label="Drucken"]');
+if (!b) return "no print control in the dock";
+b.click();
+await new Promise(r => setTimeout(r, 900));
+return JSON.stringify({ status: (document.querySelector('[role="status"]')||{}).innerText,
+  body: (document.body.innerText||"").replace(/\s+/g," ").trim().slice(0,120) });
+JS
+got=$(drive "$fix/p-print.js" a-one.png viewer-print.png)
+# Pending, not printed: the portal answers when a person does, and claiming a
+# document reached a printer before that is exactly the kind of statement this
+# app is not allowed to make.
+say "the print control hands the file to the portal and says the request is pending" \
+  "$(printf '%s' "$got" | grep -qiE "print dialog|Druckdialog" && echo 1 || echo 0)" "$got"
+
 [ "$fail" = 0 ] && echo "every behaviour the plan names answered when it was pressed"
 exit "$fail"

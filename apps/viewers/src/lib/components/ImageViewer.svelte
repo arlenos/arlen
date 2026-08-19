@@ -14,7 +14,7 @@
   /// The decoded raster is the coder's backend; here a gradient stands in.
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "@lucide/svelte";
+  import { ChevronLeft, ChevronRight, Printer, ZoomIn, ZoomOut } from "@lucide/svelte";
   import type { ImageMock } from "$lib/mock";
 
   let {
@@ -22,6 +22,7 @@
     raster = null,
     onnext,
     onprev,
+    onprint,
     quarters = 0,
   }: {
     file: ImageMock;
@@ -31,6 +32,10 @@
     raster?: { width: number; height: number; rgba: number[] } | null;
     onnext?: () => void;
     onprev?: () => void;
+    /// Hand this picture to the print portal. Absent in the harness and the
+    /// browser, where there is no portal to hand it to, and the button is then
+    /// not rendered at all rather than rendered dead.
+    onprint?: () => void;
     /// Quarter turns applied to the view, 0-3, owned by the window so a new file
     /// arrives upright rather than wearing the last one's rotation.
     ///
@@ -230,6 +235,12 @@
     <Button variant="ghost" size="icon-sm" aria-label={$t("v.zoomIn")} onclick={() => setZoom(zoom * 1.25)}>
       <ZoomIn class="size-[16px]" strokeWidth={2} />
     </Button>
+    {#if onprint}
+      <span class="sep"></span>
+      <Button variant="ghost" size="icon-sm" aria-label={$t("v.print")} onclick={() => onprint?.()}>
+        <Printer class="size-[16px]" strokeWidth={2} />
+      </Button>
+    {/if}
   </div>
 </div>
 
