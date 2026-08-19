@@ -426,6 +426,32 @@ Denies the presence_set command without any pre-configured scope.
 <tr>
 <td>
 
+`arlen-shell:allow-print-file`
+
+</td>
+<td>
+
+Enables the print_file command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`arlen-shell:deny-print-file`
+
+</td>
+<td>
+
+Denies the print_file command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `arlen-shell:allow-shortcuts-clear`
 
 </td>

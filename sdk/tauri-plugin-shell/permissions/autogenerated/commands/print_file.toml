@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-print-file"
+description = "Enables the print_file command without any pre-configured scope."
+commands.allow = ["print_file"]
+
+[[permission]]
+identifier = "deny-print-file"
+description = "Denies the print_file command without any pre-configured scope."
+commands.deny = ["print_file"]

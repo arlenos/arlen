@@ -13,7 +13,9 @@ tauri = { version = "2", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync", "time"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+futures-util = "0.3"
 uuid = { version = "1", features = ["v7"] }
 notify = "7"
 os-sdk = { path = "../os-sdk" }
@@ -21,3 +23,6 @@ arlen-theme = { path = "../theme" }
 
 [build-dependencies]
 tauri-plugin = { version = "2", features = ["build"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

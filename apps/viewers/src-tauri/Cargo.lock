@@ -172,15 +172,12 @@ dependencies = [
  "arlen-viewers-core",
  "arlen-viewers-host",
  "env_logger",
- "futures-util",
  "log",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-arlen-shell",
- "tokio",
- "zbus",
 ]
 
 [[package]]
@@ -3922,6 +3919,7 @@ version = "0.1.0"
 dependencies = [
  "arlen-theme",
  "dirs 6.0.0",
+ "futures-util",
  "log",
  "notify 7.0.0",
  "os-sdk",
@@ -3932,6 +3930,7 @@ dependencies = [
  "tokio",
  "toml 0.9.12+spec-1.1.0",
  "uuid",
+ "zbus",
 ]
 
 [[package]]

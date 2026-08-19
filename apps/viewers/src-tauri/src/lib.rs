@@ -4,8 +4,6 @@
 //! in a bwrap jail; this shell exposes that as the `decode_image` / `probe_audio`
 //! commands the frontend calls, and only validated rasters/metadata cross back.
 
-pub mod print;
-
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -397,8 +395,7 @@ pub fn run() {
             file_facts,
             trash_file,
             restore_file,
-            initial_file,
-            print::print_file
+            initial_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-viewers");

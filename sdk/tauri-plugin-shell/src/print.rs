@@ -1,10 +1,15 @@
-//! Printing the open file, through the portal rather than around it.
+//! Printing a file, through the portal rather than around it.
 //!
 //! `daemons/xdg-portal/daemon/src/interfaces/print.rs` has been able to hand a
-//! document to CUPS since it was written, and until now nothing in the system
-//! ever called it: Settings could list printers and set their options, but no
-//! app could print anything. The five operations were reachable and the one
-//! that matters was not.
+//! document to CUPS since it was written, and until 19 August nothing in the
+//! system ever called it: Settings could list printers and set their options,
+//! but no app could print anything. The five operations were reachable and the
+//! one that matters was not.
+//!
+//! IN THE PLUGIN, not in an app, because every app that opens a file has the
+//! same claim on it and the code is fd handling and bus etiquette rather than
+//! anything about pictures or text. The viewer had it first and for one day; a
+//! second copy in the editor would have been the moment to notice that.
 //!
 //! An app does not talk to our backend directly - it talks to the standard
 //! frontend (`org.freedesktop.portal.Desktop`), which authenticates the caller

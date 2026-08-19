@@ -116,5 +116,21 @@ say "typing and saving reaches the file on disk, not just the status line" \
   "$([ "$changed" = yes ] && head -1 "$work/sample.rs" | grep -q "// driven" && echo 1 || echo 0)" \
   "$got (file changed: $changed, first line: $(head -1 "$work/sample.rs"))"
 
+# Printing. The same portal call the viewer makes, from the plugin both share,
+# so a document reaches a printer and not only a picture. The FILE is printed,
+# not the buffer, and this runs against the real portal on this machine - the
+# app is killed at the end of the shot, which drops the request.
+cat > "$work/p-print.js" <<'JS'
+const b = document.querySelector('[aria-label="Print"], [aria-label="Drucken"]');
+if (!b) return "no print control in the toolbar";
+b.click();
+await new Promise(r => setTimeout(r, 900));
+return JSON.stringify({ state: (document.querySelector('[role="status"]')||{}).textContent,
+  body: (document.body.innerText||"").replace(/\s+/g," ").trim().slice(0,120) });
+JS
+got=$(drive "$work/p-print.js" editor-print.png)
+say "the print control hands the open file to the portal and says the request is pending" \
+  "$(printf '%s' "$got" | grep -qiE "print dialog|Druckdialog" && echo 1 || echo 0)" "$got"
+
 [ "$fail" = 0 ] && echo "a real buffer over a real file, a find panel, and a save that lands on disk"
 exit "$fail"

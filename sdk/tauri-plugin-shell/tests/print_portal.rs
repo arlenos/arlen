@@ -9,7 +9,7 @@
 //! desktop, which does not belong in a unit-test run.
 //! `cargo test --test print_portal -- --ignored` drives it.
 
-use arlen_viewers_lib::print::{print_file, PrintOutcome};
+use tauri_plugin_arlen_shell::print::{print_file, PrintOutcome};
 
 /// Is there a portal to talk to at all?
 ///

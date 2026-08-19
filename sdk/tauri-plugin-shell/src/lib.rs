@@ -42,6 +42,7 @@
 
 mod commands;
 pub mod locale;
+pub mod print;
 pub mod theme;
 
 use std::collections::HashMap;
@@ -201,6 +202,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::ambient_clear,
             theme::theme_get,
             locale::locale_get,
+            print::print_file,
         ])
         .setup(|app, _api| {
             // Default the bus identity to the app's bundle identifier (the

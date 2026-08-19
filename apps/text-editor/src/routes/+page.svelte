@@ -16,7 +16,7 @@
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { Sun, PanelRight, Hash } from "lucide-svelte";
+  import { Sun, PanelRight, Hash, Printer } from "lucide-svelte";
 
   // The AI edit is invoked by keyboard (Cmd/Ctrl+K), never a bolted-on titlebar
   // button. Its discoverable home is a future command palette; a text-selection
@@ -146,6 +146,35 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
       saveError = String(e);
     }
   }
+  /// What the print portal last said, so the person is told rather than left
+  /// guessing whether anything happened.
+  let printStatus = $state<string | null>(null);
+
+  /// Hand the open file to the print portal.
+  ///
+  /// The FILE on disk, not the buffer: an unsaved change is not in the file the
+  /// portal reads, and printing a version the person cannot see would be a
+  /// quieter lie than refusing. The status below says which state they are in.
+  async function print() {
+    const target = $openDocument;
+    if (!target) return;
+    printStatus = $t("te.print.pending");
+    try {
+      const r = await invoke<{ outcome: string }>("plugin:arlen-shell|print_file", {
+        path: target.path,
+      });
+      printStatus =
+        r.outcome === "sent"
+          ? $t("te.print.sent")
+          : r.outcome === "cancelled"
+            ? $t("te.print.cancelled")
+            : r.outcome === "refused"
+              ? $t("te.print.refused")
+              : $t("te.print.noAnswer");
+    } catch (e) {
+      printStatus = $t("te.print.failed", { reason: String(e) });
+    }
+  }
   // A launch file names the window even when it failed to open: the alternative
   // is a demo document's name over a pane that says the file could not be read.
   const fileOptions = $derived(
@@ -220,7 +249,11 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
          driving a surface rather than reading it. -->
     {#if editable}
       <span class="savestate" aria-live="polite">
-        {#if saveError}
+        {#if printStatus}
+          <!-- Not `ss-bad`: a cancelled print, or a dialog still open, is not a
+               failure and must not be coloured as one. -->
+          <span class="ss-ok" role="status">{printStatus}</span>
+        {:else if saveError}
           <span class="ss-bad" role="alert">{$t("te.save.failed", { reason: saveError })}</span>
         {:else if dirty}
           <span class="ss-dirty">{$t("te.save.unsaved")}</span>
@@ -258,6 +291,17 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
       ariaLabel={$t("te.asOf.aria")}
       onchange={(v) => (asOf = v)}
     />
+    {#if editable}
+      <button
+        type="button"
+        class="tb-btn icon"
+        aria-label={$t("te.print")}
+        title={$t("te.print")}
+        onclick={() => print()}
+      >
+        <Printer size={15} strokeWidth={2} />
+      </button>
+    {/if}
     <button
       type="button"
       class="tb-btn icon"
