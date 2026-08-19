@@ -64,7 +64,8 @@ try {
   const rows = await invoke("store_search", { query: "", facets: [] });
   const first = rows[0] ?? {};
   wire = `rows=${rows.length} keys=${Object.keys(first).sort().join(",")}` +
-    ` variantKeys=${Object.keys((first.variants ?? [{}])[0] ?? {}).sort().join(",")}`;
+    ` variantKeys=${Object.keys((first.variants ?? [{}])[0] ?? {}).sort().join(",")}` +
+    ` firstId=${first.id ?? "-"}`;
 } catch (e) {
   wire = `invoke threw: ${e}`;
 }
@@ -76,6 +77,10 @@ JS
 
 got=$(SHOOT_INJECT="$run/probe.js" "$here/shoot-app.sh" "$app" "$here/out/store-browse.png" 2>&1 \
   | sed -n 's/^inject result: //p')
+
+# Kept from THIS probe: the search probe below overwrites `got`, and reading the
+# id out of the wrong answer is how a case ends up passing for the wrong reason.
+present_id=$(printf '%s' "$got" | sed -n 's/.*firstId=\([^ ]*\).*/\1/p')
 
 # The backend end. A machine with /usr/share/metainfo has hundreds of components
 # and zero rows would mean discovery, not rendering, is what is broken.
@@ -115,6 +120,75 @@ got=$(SHOOT_INJECT="$run/probe-search.js" "$here/shoot-app.sh" "$app" "$here/out
   | sed -n 's/^inject result: //p')
 say "searching shows the live catalogue" \
   "$(printf '%s' "$got" | grep -qE "CARDS [1-9]" && echo 1 || echo 0)" "$got"
+
+# The two ops the landing view needs, over the same socket. Collections must
+# come back NARROWED - the whole reason they are served rather than compiled in -
+# and a collection with no member here must be gone rather than headed over
+# nothing.
+# Built from an id this machine's catalogue actually returned, rather than one
+# picked by hand: the whole point of the narrowing is that it is checked against
+# a real catalogue, and a fixture id would test the code against itself.
+[ -n "$present_id" ] || present_id="com.example.NothingHere"
+cat > "$run/collections.toml" <<TOML
+[[collection]]
+id = "drive-mixed"
+titles.en = "Some of these are here"
+titles.de = "Manche davon gibt es"
+members = ["$present_id", "com.example.NotOnAnyMachine"]
+
+[[collection]]
+id = "drive-absent"
+titles.en = "None of these are here"
+members = ["com.example.AlsoAbsent"]
+TOML
+
+# The BACKEND reads the curated file, so it is restarted holding the pointer.
+# Setting it on the app would leave the daemon reading the shipped path and the
+# case would pass or fail for the wrong reason.
+kill "$bpid" 2>/dev/null
+wait "$bpid" 2>/dev/null
+rm -f "$run/arlen/store.sock"
+ARLEN_STORE_COLLECTIONS="$run/collections.toml" "$backend" >>"$run/backend.log" 2>&1 &
+bpid=$!
+for _ in $(seq 1 50); do [ -S "$run/arlen/store.sock" ] && break; sleep 0.2; done
+
+cat > "$run/probe-landing.js" <<'JS'
+const invoke = window.__TAURI_INTERNALS__.invoke;
+const out = [];
+try {
+  const c = await invoke("store_collections");
+  out.push("COLL " + c.map(x => `${x.id}:${x.members.length}:${x.titles.de ?? "-"}`).join(" "));
+} catch (e) { out.push(`COLL threw: ${e}`); }
+try {
+  const s = await invoke("store_sources");
+  out.push("SRC " + Object.entries(s).map(([k, v]) => `${k}=${v}`).join(" "));
+} catch (e) { out.push(`SRC threw: ${e}`); }
+return out.join(" || ");
+JS
+got=$(SHOOT_INJECT="$run/probe-landing.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/store-landing.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+# `drive-mixed` names two apps and this host has one of them, so it survives
+# with exactly that one member.
+say "a collection keeps only the members this machine has" \
+  "$(printf '%s' "$got" | grep -q "drive-mixed:1:" && echo 1 || echo 0)" "$got"
+
+# `drive-absent` names nothing this host has. A heading over an empty row is the
+# same defect as the empty landing view, one size smaller.
+say "a collection with nothing here is dropped, not headed over empty space" \
+  "$(printf '%s' "$got" | grep -q "drive-absent" && echo 0 || echo 1)" "$got"
+
+# The curator's own words, per locale, rather than an identifier the app would
+# have to have a string for.
+say "a collection carries the curator's title in each language" \
+  "$(printf '%s' "$got" | grep -q "Manche davon gibt es" && echo 1 || echo 0)" "$got"
+
+# This host HAS metainfo, so the answer must be non-zero. On a fresh image every
+# count is zero, which is what lets the app say "unfurnished" rather than draw
+# the same blank grid it draws for a search that matched nothing.
+say "the machine can say which app sources it actually has" \
+  "$(printf '%s' "$got" | grep -qE "metainfoDocuments=[1-9]" && echo 1 || echo 0)" "$got"
 
 [ "$fail" = 0 ] && echo "the catalogue reaches the grid over a real socket"
 exit "$fail"
