@@ -24,6 +24,9 @@ export type OpenDocument = {
   content: string;
   /// Which canvas treatment: markdown prose or a whole highlighted file.
   type: "markdown" | "code";
+  /// What the file looked like when it was read, handed back at save so a write
+  /// that would clobber somebody else's change is refused instead.
+  stamp: string;
 };
 
 /// The open file, or null when the editor was launched with none.
@@ -55,12 +58,16 @@ export async function openPath(path: string): Promise<void> {
   if (!tauriAvailable) return;
   openTarget.set(path.split("/").pop() || path);
   try {
-    const opened = await invoke<{ path: string; text: string }>("editor_open", { path });
+    const opened = await invoke<{ path: string; text: string; stamp: string }>(
+      "editor_open",
+      { path },
+    );
     openDocument.set({
       path: opened.path,
       name: opened.path.split("/").pop() || opened.path,
       content: opened.text,
       type: canvasType(opened.path),
+      stamp: opened.stamp,
     });
     openError.set(null);
   } catch (e) {

@@ -132,5 +132,40 @@ got=$(drive "$work/p-print.js" editor-print.png)
 say "the print control hands the open file to the portal and says the request is pending" \
   "$(printf '%s' "$got" | grep -qiE "print service|Druckdienst" && echo 1 || echo 0)" "$got"
 
+# The lost update. Open a file, let something else write it, then save: the
+# editor must refuse rather than destroy the other change. Driven because the
+# unit tests prove the host refuses and this proves the SURFACE asks.
+cat > "$work/p-clobber.js" <<'JS'
+await new Promise(r => setTimeout(r, 2500));
+const cm = document.querySelector(".cm-content");
+if (!cm) return "no buffer";
+cm.focus();
+document.execCommand("insertText", false, "// mine\n");
+// The other writer lands during this wait, after the file was opened and
+// before the save - which is exactly the window a lost update lives in.
+// The other writer lands at twelve seconds, after this window opened the file
+// and before it saves - which is exactly where a lost update lives. The gaps are
+// wide because the ordering is by wall clock and the app's launch time varies by
+// seconds between a warm and a cold run: at four seconds this case passed and
+// then failed on the next run, having opened the file AFTER the other writer, so
+// the save was legitimate and the guard had nothing to refuse. The probe runs
+// inside the webview and cannot touch the filesystem to synchronise properly.
+await new Promise(r => setTimeout(r, 11500));
+cm.dispatchEvent(new KeyboardEvent("keydown",
+  { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+await new Promise(r => setTimeout(r, 1200));
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 300);
+JS
+( sleep 12; printf '// somebody else\n' > "$work/sample.rs" ) &
+got=$(drive "$work/p-clobber.js" editor-clobber.png)
+wait
+say "a save over a file that changed on disk is refused, and the page says so" \
+  "$(printf '%s' "$got" | grep -qiE "changed on disk|auf der Festplatte geändert" && echo 1 || echo 0)" "$got"
+# Exactly the other writer's file, not merely containing its line: a save that
+# went through would leave the buffer's text here too, and `grep` would pass.
+say "and the other change is still on disk, untouched" \
+  "$([ "$(cat "$work/sample.rs")" = "// somebody else" ] && echo 1 || echo 0)" \
+  "$(cat "$work/sample.rs")"
+
 [ "$fail" = 0 ] && echo "a real buffer over a real file, a find panel, and a save that lands on disk"
 exit "$fail"
