@@ -1,0 +1,57 @@
+[Unit]
+Description=Arlen calendar daemon (user service)
+Documentation=https://github.com/arlenos/arlen
+# arlen-calendard owns the calendar store and the reminders derived from it. The
+# calendar app is a view onto it and may be closed at any time; calendar-app.md
+# section 2 gives the reason in a line - anything else means reminders die when
+# the window closes.
+#
+# Ordered after the clock, and only ordered - not required. This daemon computes
+# each occurrence's trigger and registers it with org.arlen.Clock1, which owns
+# arming; starting first means the first registration pass finds no clock and
+# logs that it could not register, which the next pass fixes. If the clock never
+# comes up the calendar still serves its agenda and still says so.
+After=arlen-clockd.service
+
+[Service]
+# Type=dbus: started once it owns its bus name, which is what the app connects
+# to.
+Type=dbus
+BusName=org.arlen.Calendar1
+# Production binary path, matching the canonical path_to_app_id entry that
+# resolves this daemon to `calendard` - the id the clock's registrant table keys
+# on when deciding that this caller may touch its own alarms and nobody else's.
+# Installing it anywhere else silently costs every reminder: the resolve fails,
+# the clock refuses, and nothing rings.
+ExecStart=/usr/lib/arlen/libexec/arlen-calendard
+Restart=on-failure
+RestartSec=2
+
+# EAGER, not D-Bus activated, for the same reason the clock is. A lazily
+# activated calendar starts when something asks for it, and nothing asks at
+# 08:45 - the reminder for the 09:00 meeting would never have been registered.
+# WantedBy=default.target below is what makes a reminder real.
+
+# No AmbientCapabilities: this daemon arms nothing itself. It hands a trigger to
+# Clock1, which hands the wake to Power1, which is the single unit carrying
+# CAP_WAKE_ALARM. Three processes, one holder of the authority.
+
+# The mount-namespace options (ProtectSystem, ProtectHome, PrivateTmp,
+# PrivateDevices, ProtectKernel*) are omitted for the measured reason recorded on
+# the clock, the audit daemon and powerd: such a namespace makes a process unable
+# to readlink another process's /proc/<pid>/exe, EACCES, even same-uid. This
+# daemon resolves its callers that way - Calendar1.agenda serves your event
+# titles, locations and who you are meeting, so it has to know who is asking -
+# and would stop being able to.
+#
+# ProtectHome would be wrong here for a second reason worth stating separately:
+# the calendars it exists to read live under $HOME.
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

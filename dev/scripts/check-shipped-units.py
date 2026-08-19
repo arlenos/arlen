@@ -63,6 +63,12 @@ BUILD_STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 # here therefore also stops excusing that daemon's allowlist entries, which is the
 # behaviour you want when it finally ships.
 NOT_YET_DEPLOYED: dict[str, str] = {
+    "arlen-calendard.service": (
+        "it ships with the calendar app, and the app has no image build phase "
+        "yet: nothing on the image writes .ics files, so a calendar daemon "
+        "installed alone would be a process that reliably finds nothing. Both "
+        "land together"
+    ),
     "arlen-accountsd.service": (
         "online-accounts is not part of the image scope yet (15 Aug). The Files "
         "sidebar is the one shipped caller and distinguishes absent from "
@@ -160,13 +166,6 @@ def installed_units() -> set[str]:
 # have a unit somewhere in its own tree, or say below why it has none. A
 # hand-maintained list is strongest exactly where it is needed least.
 NO_UNIT: dict[str, str] = {
-    "calendar": (
-        "no process yet: this is the store half, the part that reads the "
-        "calendar directory and says what it holds. `calendar-app.md` section 2 "
-        "puts it outside the app because reminders must outlive the window, and "
-        "the unit lands with the process that serves `org.arlen.Calendar1` and "
-        "registers triggers with `org.arlen.Clock1`"
-    ),
     "arlen-run": (
         "no unit by design: it is a fork-exec launcher a session invokes per app, "
         "not a service that runs"
