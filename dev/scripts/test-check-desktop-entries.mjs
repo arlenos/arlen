@@ -31,11 +31,18 @@ try {
   haveValidator = false;
 }
 
-function tree(entries) {
+function tree(entries, identifier = "dev.arlen.good") {
   const root = mkdtempSync(join(tmpdir(), "desktop-entries-"));
   for (const [name, body] of Object.entries(entries)) {
     mkdirSync(join(root, "apps", name, "dist"), { recursive: true });
     writeFileSync(join(root, "apps", name, "dist", `arlen-${name}.desktop`), body);
+    // The identifier the app installs under, which is what the entry's app id
+    // has to agree with.
+    mkdirSync(join(root, "apps", name, "src-tauri"), { recursive: true });
+    writeFileSync(
+      join(root, "apps", name, "src-tauri", "tauri.conf.json"),
+      `{\n  "identifier": "${identifier}"\n}\n`,
+    );
   }
   return root;
 }
@@ -79,6 +86,16 @@ if (!haveValidator) {
   const root = tree({ good });
   const rc = run(root);
   rc === 0 ? ok("a clean entry passes") : bad("a clean entry passes", `expected 0, got ${rc}`);
+}
+
+{
+  // The same entry against an app that installs under a different identifier:
+  // valid, nameable, and naming an app nothing can be.
+  const root = tree({ good }, "dev.arlen.somethingelse");
+  const rc = run(root);
+  rc === 1
+    ? ok("an app id that disagrees with the install identifier is caught")
+    : bad("an app id that disagrees with the install identifier is caught", `expected 1, got ${rc}`);
 }
 
 {
