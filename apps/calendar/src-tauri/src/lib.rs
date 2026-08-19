@@ -13,9 +13,11 @@
 //! source exists. This is that source.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use arlen_calendar_core as ics;
 use serde::Serialize;
+use tauri::Emitter;
 
 /// Where a calendar file is looked for.
 ///
@@ -62,9 +64,16 @@ pub struct Agenda {
     /// The directory that was read, so the surface can name it when it is empty
     /// rather than telling the reader to put files "somewhere".
     pub directory: String,
-    /// Does that directory exist? Absent and empty are different states and the
-    /// surface says different things about them.
+    /// Does that directory exist? Nearly always true, because opening the app
+    /// creates it - the watcher cannot watch a path that is not there, and a
+    /// calendar that names a directory it did not make is asking the reader to
+    /// do its typing.
     pub directory_exists: bool,
+    /// How many `.ics` files were found. No files and no events are different
+    /// states: the first means nothing has been put here, the second means what
+    /// is here holds nothing. Both name the directory, because "put files
+    /// somewhere" is not an instruction.
+    pub files: usize,
     /// Files that could not be read or parsed. Counted rather than hidden: an
     /// agenda quietly missing a file is worse than one that says a file is
     /// missing from it.
@@ -115,6 +124,7 @@ fn calendar_agenda() -> Result<Agenda, String> {
         events: Vec::new(),
         directory: dir.display().to_string(),
         directory_exists: dir.is_dir(),
+        files: 0,
         unreadable: 0,
     };
     if !agenda.directory_exists {
@@ -127,6 +137,7 @@ fn calendar_agenda() -> Result<Agenda, String> {
         if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ics")) {
             continue;
         }
+        agenda.files += 1;
         let Ok(text) = std::fs::read_to_string(&path) else {
             agenda.unreadable += 1;
             continue;
@@ -142,6 +153,71 @@ fn calendar_agenda() -> Result<Agenda, String> {
     Ok(agenda)
 }
 
+/// Tell the window when a calendar file changes.
+///
+/// Without this the agenda is whatever the directory held at the moment the
+/// window opened. Someone who edits an `.ics`, or whose sync writes one, sees
+/// the old day until they restart the app - and a calendar showing yesterday's
+/// answer with no sign that it is stale is the quiet kind of wrong this system
+/// is meant not to do.
+///
+/// Failure is logged and left: a machine without inotify watches gets an agenda
+/// that is correct when opened, which is worse than live and much better than
+/// nothing.
+fn spawn_calendar_watcher(app: tauri::AppHandle) {
+    use notify::{EventKind, RecursiveMode, Watcher};
+
+    let Some(dir) = calendar_dir() else { return };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    std::thread::spawn(move || {
+        let last = std::sync::Mutex::new(std::time::Instant::now() - Duration::from_secs(1));
+        let mut watcher = match notify::recommended_watcher(move |ev: Result<notify::Event, _>| {
+            let Ok(ev) = ev else { return };
+            if !matches!(
+                ev.kind,
+                EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
+            ) {
+                return;
+            }
+            if !ev.paths.iter().any(|p| {
+                p.extension().is_some_and(|e| e.eq_ignore_ascii_case("ics"))
+            }) {
+                return;
+            }
+            // An atomic write is a burst of events for one change, and a sync
+            // rewriting a whole directory is a burst of bursts.
+            {
+                let mut l = last.lock().expect("watcher mutex");
+                if l.elapsed() < Duration::from_millis(200) {
+                    return;
+                }
+                *l = std::time::Instant::now();
+            }
+            // Let the writer finish: a rename lands before its contents on some
+            // filesystems, and re-reading too eagerly reads the half of it.
+            std::thread::sleep(Duration::from_millis(50));
+            if let Err(e) = app.emit("arlen://calendar-changed", ()) {
+                log::warn!("calendar watcher: emit failed: {e}");
+            }
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                log::warn!("calendar watcher: could not start: {e}");
+                return;
+            }
+        };
+        if let Err(e) = watcher.watch(&dir, RecursiveMode::NonRecursive) {
+            log::warn!("calendar watcher: could not watch {}: {e}", dir.display());
+            return;
+        }
+        loop {
+            std::thread::sleep(Duration::from_secs(3600));
+        }
+    });
+}
+
 /// Start the calendar window.
 pub fn run() {
     // Not the bare `init()`: it defaults to `error`, which makes an app mute in
@@ -152,6 +228,10 @@ pub fn run() {
     .init();
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
+        .setup(|app| {
+            spawn_calendar_watcher(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![calendar_agenda])
         .run(tauri::generate_context!())
         .expect("error while running arlen-calendar");

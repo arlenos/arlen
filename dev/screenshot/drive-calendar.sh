@@ -123,8 +123,34 @@ await new Promise(r => setTimeout(r, 1000));
 return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 300);
 JS
 got=$(drive "$fix/p-empty.js" "$empty" calendar-no-files.png)
-say "with no calendar directory it names the path to put files in" \
+# Opening the app CREATES the directory (the watcher cannot watch a path that is
+# not there), so what a first-run reader meets is an empty one - and it still has
+# to say where to put files.
+say "with nothing to show it names the path to put files in" \
   "$(printf '%s' "$got" | grep -q "arlen/calendars" && echo 1 || echo 0)" "$got"
+
+# A file written WHILE the window is open. Without the watcher the agenda is
+# whatever the directory held at mount, and a calendar showing yesterday's answer
+# with no sign it is stale is the quiet kind of wrong. The file lands two seconds
+# in, from a background shell, because the probe cannot touch the filesystem.
+cat > "$fix/p-live.js" <<'JS'
+await new Promise(r => setTimeout(r, 5000));
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 400);
+JS
+( sleep 2; cat > "$fix/arlen/calendars/added.ics" <<'ICS'
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:added@arlen
+SUMMARY:Added while the window was open
+DTSTART;TZID=Europe/Vienna:20260819T170000
+END:VEVENT
+END:VCALENDAR
+ICS
+) &
+got=$(drive "$fix/p-live.js" "$fix" calendar-live.png)
+wait
+say "a file written while the window is open appears without a restart" \
+  "$(printf '%s' "$got" | grep -q "Added while the window was open" && echo 1 || echo 0)" "$got"
 
 # German. Six other apps had a defect that only the German render showed - a
 # column sized to an English word, a heading that never adopted the catalogue -
