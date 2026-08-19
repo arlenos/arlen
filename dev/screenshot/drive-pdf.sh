@@ -170,6 +170,37 @@ say "a key turns the page, and turns it back" \
 say "the last page is the last page, not a wrap to the first" \
   "$(printf '%s' "$nav" | grep -q "end=Page 3 of 3 clamped=Page 3 of 3" && echo 1 || echo 0)" "$nav"
 
+# Text selection, the fourth thing the plan names. The canvas is pixels and
+# carries no text a browser can reach, so the page's own lines are laid over it
+# as transparent text - and the case that matters is not "a layer exists" but
+# whether it sits ON the words: a layer positioned beside them selects nothing a
+# reader pointed at and looks identical from the DOM.
+sel=$(SHOOT_APP_ARGS="$fix/sample.pdf" SHOOT_INJECT=/dev/stdin "$here/shoot-app.sh" "$app" "" 2>&1 <<'JS' \
+  | sed -n 's/^inject result: //p'
+const span = document.querySelector(".pdf-text-layer span");
+const canvas = document.querySelector(".pdf-canvas");
+if (!span || !canvas) return "no text layer";
+const s = span.getBoundingClientRect();
+const c = canvas.getBoundingClientRect();
+const inside = s.left >= c.left - 1 && s.right <= c.right + 1 &&
+               s.top >= c.top - 1 && s.bottom <= c.bottom + 1;
+// Selected the way a reader does, then read back what the document says was
+// selected - the browser's own answer, not ours.
+const range = document.createRange();
+range.selectNodeContents(span);
+const sel = window.getSelection();
+sel.removeAllRanges();
+sel.addRange(range);
+return `text=${JSON.stringify(span.textContent)} inside=${inside} area=${Math.round(s.width)}x${Math.round(s.height)} selected=${JSON.stringify(sel.toString())}`;
+JS
+)
+
+say "the page's words are laid over the page, not beside it" \
+  "$(printf '%s' "$sel" | grep -q "inside=true" && echo 1 || echo 0)" "$sel"
+
+say "and selecting them gives back what the document says" \
+  "$(printf '%s' "$sel" | grep -q 'selected="Chapter one begins here with a needle in it"' && echo 1 || echo 0)" "$sel"
+
 # Nothing here is a fixture string: a document with no contents page and a
 # document that failed to open are different, and the second must not be
 # reported as the first.

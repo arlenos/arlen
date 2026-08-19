@@ -33,4 +33,11 @@ mupdf = { version = "0.8", default-features = false, features = ["base14-fonts"]
 # moves to the sdk, both callers move together.
 arlen-viewers-core = { path = "../../viewers/core" }
 
+# The text layer crosses the pipe as JSON: it is a list of strings and boxes
+# rather than a fixed-size raster, so a length-prefixed binary frame would be a
+# format to invent and get wrong for no gain.
+arlen-pdf-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
 [workspace]

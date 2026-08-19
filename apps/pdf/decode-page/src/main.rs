@@ -28,11 +28,18 @@ fn main() {
         eprintln!("arlen-pdf-decode-page: landlock: {e}");
         std::process::exit(1);
     }
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args().skip(1).peekable();
+    // Two things a reader wants from a page: its pixels, and where its words
+    // are. Same document, same page, same scale - so one worker with a mode
+    // rather than two binaries that must agree about coordinates.
+    let want_text = args.peek().map(String::as_str) == Some("--text");
+    if want_text {
+        args.next();
+    }
     let page: usize = match args.next().as_deref().map(str::parse) {
         Some(Ok(n)) => n,
         _ => {
-            eprintln!("usage: arlen-pdf-decode-page <page> [scale] < document.pdf");
+            eprintln!("usage: arlen-pdf-decode-page [--text] <page> [scale] < document.pdf");
             std::process::exit(64);
         }
     };
@@ -44,6 +51,22 @@ fn main() {
     if let Err(e) = std::io::stdin().lock().take(MAX_INPUT_BYTES).read_to_end(&mut input) {
         eprintln!("arlen-pdf-decode-page: read stdin: {e}");
         std::process::exit(1);
+    }
+    if want_text {
+        match arlen_pdf_decode_page::page_text_layer(&input, page, scale) {
+            Ok(lines) => {
+                let json = serde_json::to_vec(&lines).unwrap_or_else(|_| b"[]".to_vec());
+                if let Err(e) = std::io::stdout().lock().write_all(&json) {
+                    eprintln!("arlen-pdf-decode-page: write stdout: {e}");
+                    std::process::exit(1);
+                }
+            }
+            Err(reason) => {
+                eprintln!("arlen-pdf-decode-page: {reason}");
+                std::process::exit(2);
+            }
+        }
+        return;
     }
     match arlen_pdf_decode_page::render_page(&input, page, scale) {
         Ok(raster) => {

@@ -16,6 +16,8 @@
 //! The size is therefore checked BEFORE the raster is allocated rather than
 //! after, which is the difference between a refusal and an out-of-memory kill.
 
+pub use arlen_pdf_core::TextLine;
+
 /// The most pixels one rendered page may cover.
 ///
 /// Sixteen megapixels is a 4000x4000 page, past any paper size at a readable
@@ -57,27 +59,6 @@ impl Raster {
         out.extend_from_slice(&self.rgba);
         out
     }
-}
-
-/// One line of text on a page, and where it sits.
-///
-/// Per LINE rather than per glyph, because that is the granularity a reader
-/// selects in: an overlay of one box per character makes a page of a thousand
-/// invisible elements and selects like one too. Coordinates are in the same
-/// pixel space as the rendered raster at the same scale, so a surface can lay
-/// these straight over the canvas without a second transform to get wrong.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TextLine {
-    /// The line as written.
-    pub text: String,
-    /// Left edge, in pixels from the page's left.
-    pub x: f32,
-    /// Top edge, in pixels from the page's top.
-    pub y: f32,
-    /// Width in pixels.
-    pub width: f32,
-    /// Height in pixels.
-    pub height: f32,
 }
 
 /// The text on page `page` (one-based) of `bytes`, with each line's box.

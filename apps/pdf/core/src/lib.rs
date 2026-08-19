@@ -105,6 +105,27 @@ pub struct SearchOutcome {
     pub unsearchable: Vec<usize>,
 }
 
+/// One line of text on a page, and where it sits.
+///
+/// Per LINE rather than per glyph, because that is the granularity a reader
+/// selects in: an overlay of one box per character makes a page of a thousand
+/// invisible elements and selects like one too. Coordinates are in the same
+/// pixel space as the rendered raster at the same scale, so a surface can lay
+/// these straight over the canvas without a second transform to get wrong.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextLine {
+    /// The line as written.
+    pub text: String,
+    /// Left edge, in pixels from the page's left.
+    pub x: f32,
+    /// Top edge, in pixels from the page's top.
+    pub y: f32,
+    /// Width in pixels.
+    pub width: f32,
+    /// Height in pixels.
+    pub height: f32,
+}
+
 /// A PDF, read for what it says rather than for how it looks.
 #[derive(Debug)]
 pub struct Document {
