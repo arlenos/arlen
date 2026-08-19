@@ -8,6 +8,7 @@
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { isVirtualLocation, type FileEntry } from "@arlen/ui-kit/components/browser";
+import { tauriAvailable } from "$lib/tauri";
 
 export interface SearchHit {
   rel_path: string;
@@ -48,6 +49,13 @@ export const searchTruncated = writable(false);
 /// True when the last search could not run at all, so the empty result list is
 /// not an answer about this folder.
 export const searchFailed = writable(false);
+
+/// True when there is no Tauri host to search with - a browser tab, `vite dev`,
+/// a screenshot run. Kept apart from `searchFailed`, which means the backend was
+/// there and the search did not work: "your search failed" in a window that was
+/// never going to have a backend describes a broken tool to someone looking at a
+/// working one.
+export const searchUnavailable = writable(false);
 
 /// Result ordering, client-side over the hits (the backend walk has
 /// no order contract). "folder" sorts by the hit's containing path.
@@ -137,6 +145,14 @@ export async function runSearch(path: string): Promise<void> {
     searchTruncated.set(false);
     return;
   }
+  // Asked before the try, because "nobody to ask" is not a failure to catch.
+  if (!tauriAvailable) {
+    searchResults.set([]);
+    searchTruncated.set(false);
+    searchFailed.set(false);
+    searchUnavailable.set(true);
+    return;
+  }
   try {
     const outcome = await invoke<SearchOutcome>("files_search", {
       path,
@@ -147,6 +163,7 @@ export async function runSearch(path: string): Promise<void> {
     searchResults.set(outcome.hits.filter((h) => passesFacets(h, now)));
     searchTruncated.set(outcome.truncated);
     searchFailed.set(false);
+    searchUnavailable.set(false);
   } catch {
     // Not `[]`. An empty result list renders as "Nothing matches", and someone
     // who searched for a file they own and read that will conclude it is gone -
@@ -154,6 +171,7 @@ export async function runSearch(path: string): Promise<void> {
     searchResults.set([]);
     searchTruncated.set(false);
     searchFailed.set(true);
+    searchUnavailable.set(false);
   }
 }
 

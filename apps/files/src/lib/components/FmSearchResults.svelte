@@ -15,6 +15,7 @@
     searchAscending,
     searchResults,
     searchFailed,
+    searchUnavailable,
     searchSortKey,
     searchTruncated,
     setSearchSort,
@@ -86,8 +87,16 @@
   {/if}
   {#if sorted && sorted.length === 0}
     <div class="sr-empty">
-      <span class="sr-empty-title">{$searchFailed ? $t("f.results.failedTitle") : $t("f.results.emptyTitle")}</span>
-      <span class="sr-empty-hint">{$searchFailed ? $t("f.results.failedHint") : $t("f.results.emptyHint")}</span>
+      <span class="sr-empty-title">{$searchUnavailable
+          ? $t("f.results.noHostTitle")
+          : $searchFailed
+            ? $t("f.results.failedTitle")
+            : $t("f.results.emptyTitle")}</span>
+      <span class="sr-empty-hint">{$searchUnavailable
+          ? $t("f.results.noHostHint")
+          : $searchFailed
+            ? $t("f.results.failedHint")
+            : $t("f.results.emptyHint")}</span>
     </div>
   {/if}
   {#each sorted ?? [] as hit (hit.rel_path)}
