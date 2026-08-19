@@ -81,6 +81,49 @@ pub struct Event {
     /// The `RRULE` line verbatim, when the event repeats. NOT expanded: see the
     /// module note.
     pub rrule: Option<String>,
+    /// The event's `VALARM` blocks, in file order.
+    ///
+    /// Parsed, never fired. `calendar-app.md` section 4 is explicit that neither
+    /// this app nor a calendar daemon may own the timer: the trigger is computed
+    /// here and registered with `org.arlen.Clock1`, which is the only component
+    /// that can wake a suspended machine. A second timer path inside the
+    /// calendar would reproduce the incumbent failure the doc cites.
+    pub alarms: Vec<Alarm>,
+}
+
+/// Which end of the event a relative trigger counts from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Related {
+    /// The default: relative to `DTSTART`.
+    Start,
+    /// `RELATED=END`: relative to the event's end.
+    End,
+}
+
+/// When an alarm goes off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Trigger {
+    /// A duration from one end of the event. Negative is before it, which is
+    /// what almost every real alarm is.
+    Relative {
+        /// Seconds, signed.
+        seconds: i64,
+        /// Which end it counts from.
+        related: Related,
+    },
+    /// A fixed instant the file states outright.
+    Absolute(CalTime),
+}
+
+/// One `VALARM`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Alarm {
+    /// When it goes off.
+    pub trigger: Trigger,
+    /// The `ACTION` verbatim (`DISPLAY`, `AUDIO`, `EMAIL`), uppercased, when the
+    /// file gave one. Carried rather than interpreted: presentation belongs to
+    /// the notification daemon, and an alarm with no action is still an alarm.
+    pub action: Option<String>,
 }
 
 impl Event {
@@ -225,6 +268,27 @@ fn parse_time(prop: &Property) -> Option<CalTime> {
 /// Returns seconds. Weeks are `P3W` and are exclusive of the rest by the grammar,
 /// but accepting them alongside costs nothing and refusing would drop a real
 /// value.
+/// A `TRIGGER` value: a signed duration from one end of the event, or a fixed
+/// instant.
+///
+/// The default when nothing says otherwise is a duration from `DTSTART`, which
+/// is what RFC 5545 states and what every alarm anybody writes by hand means.
+/// A `VALUE=DATE-TIME` trigger is an instant instead, and one that parses as
+/// neither yields `None` so the alarm is dropped rather than fired at a guess.
+fn parse_trigger(prop: &Property) -> Option<Trigger> {
+    let absolute = prop
+        .param("VALUE")
+        .is_some_and(|v| v.eq_ignore_ascii_case("DATE-TIME") || v.eq_ignore_ascii_case("DATE"));
+    if absolute {
+        return parse_time(prop).map(Trigger::Absolute);
+    }
+    let related = match prop.param("RELATED") {
+        Some(v) if v.eq_ignore_ascii_case("END") => Related::End,
+        _ => Related::Start,
+    };
+    parse_duration(&prop.value).map(|seconds| Trigger::Relative { seconds, related })
+}
+
 fn parse_duration(value: &str) -> Option<i64> {
     let v = value.trim();
     let (sign, v) = match v.strip_prefix('-') {
@@ -307,8 +371,38 @@ pub fn parse_events(text: &str) -> Result<Vec<Event>, IcsError> {
 
     let mut events = Vec::new();
     let mut current: Option<(Option<CalTime>, Option<CalTime>, Option<i64>, Event)> = None;
+    // A VALARM sits INSIDE a VEVENT and carries properties with the same names.
+    // Its `DURATION` is the repeat interval of the alarm, not the length of the
+    // meeting, so reading it as the event's would move the end of an event that
+    // merely has a reminder attached. Tracked as its own state rather than
+    // ignored for that reason.
+    let mut alarm: Option<(Option<Trigger>, Option<String>)> = None;
     for line in lines {
         let trimmed = line.trim();
+        if trimmed.eq_ignore_ascii_case("BEGIN:VALARM") {
+            alarm = Some((None, None));
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("END:VALARM") {
+            // An alarm with no TRIGGER has no time to go off at, and inventing
+            // one would ring at a moment nobody wrote.
+            if let (Some((Some(trigger), action)), Some((_, _, _, ev))) =
+                (alarm.take(), current.as_mut())
+            {
+                ev.alarms.push(Alarm { trigger, action });
+            }
+            continue;
+        }
+        if let Some((trigger, action)) = alarm.as_mut() {
+            if let Some(prop) = parse_property(trimmed) {
+                match prop.name.as_str() {
+                    "TRIGGER" => *trigger = parse_trigger(&prop),
+                    "ACTION" => *action = Some(prop.value.trim().to_ascii_uppercase()),
+                    _ => {}
+                }
+            }
+            continue;
+        }
         if trimmed.eq_ignore_ascii_case("BEGIN:VEVENT") {
             current = Some((
                 None,
@@ -321,6 +415,7 @@ pub fn parse_events(text: &str) -> Result<Vec<Event>, IcsError> {
                     end: None,
                     location: String::new(),
                     rrule: None,
+                    alarms: Vec::new(),
                 },
             ));
             continue;
@@ -364,6 +459,70 @@ pub fn parse_events(text: &str) -> Result<Vec<Event>, IcsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const WITH_ALARM: &str = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a@x\r\n\
+SUMMARY:Standup\r\nDTSTART:20260819T090000Z\r\nDTEND:20260819T091500Z\r\n\
+BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nDURATION:PT5M\r\nREPEAT:3\r\n\
+END:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR";
+
+    #[test]
+    fn an_alarms_own_duration_is_not_the_events_length() {
+        // The trap this parser walked into before VALARM had its own state: a
+        // VALARM's DURATION is how often it repeats, and reading it as the
+        // event's would end a 15-minute standup after 5.
+        let ev = &parse_events(WITH_ALARM).expect("parses")[0];
+        assert_eq!(ev.end, Some(CalTime::Utc(
+            chrono::NaiveDate::from_ymd_opt(2026, 8, 19).unwrap().and_hms_opt(9, 15, 0).unwrap()
+        )));
+        assert_eq!(ev.alarms.len(), 1);
+        assert_eq!(ev.alarms[0].action.as_deref(), Some("DISPLAY"));
+        assert_eq!(
+            ev.alarms[0].trigger,
+            Trigger::Relative { seconds: -900, related: Related::Start }
+        );
+    }
+
+    #[test]
+    fn a_trigger_says_which_end_it_counts_from_and_when_it_is_a_fixed_time() {
+        let ics = |t: &str| format!("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\n\
+DTSTART:20260819T090000Z\r\nDTEND:20260819T100000Z\r\nBEGIN:VALARM\r\n{t}\r\n\
+END:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR");
+        let one = |t: &str| parse_events(&ics(t)).expect("parses")[0].alarms.first().cloned();
+        assert_eq!(
+            one("TRIGGER;RELATED=END:PT5M").map(|a| a.trigger),
+            Some(Trigger::Relative { seconds: 300, related: Related::End })
+        );
+        assert!(matches!(
+            one("TRIGGER;VALUE=DATE-TIME:20260819T083000Z").map(|a| a.trigger),
+            Some(Trigger::Absolute(CalTime::Utc(_)))
+        ));
+        // No TRIGGER is no time to ring at, so the alarm is dropped rather than
+        // given one.
+        assert_eq!(one("ACTION:DISPLAY"), None);
+    }
+
+    #[test]
+    fn an_alarm_is_timed_against_the_occurrence_it_belongs_to() {
+        use chrono::{TimeZone, Utc};
+        let ev = &parse_events(WITH_ALARM).expect("parses")[0];
+        // A LATER occurrence of the same event: the alarm follows it rather than
+        // staying on the one the file wrote.
+        let start = Utc.with_ymd_and_hms(2026, 8, 26, 9, 0, 0).unwrap();
+        let times = when::alarm_times(ev, start, Some(start), chrono_tz::Tz::UTC);
+        assert_eq!(times, vec![Utc.with_ymd_and_hms(2026, 8, 26, 8, 45, 0).unwrap()]);
+    }
+
+    #[test]
+    fn an_end_relative_alarm_on_an_event_with_no_end_is_dropped() {
+        use chrono::{TimeZone, Utc};
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20260819T090000Z\r\n\
+BEGIN:VALARM\r\nTRIGGER;RELATED=END:PT5M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR";
+        let ev = &parse_events(ics).expect("parses")[0];
+        let start = Utc.with_ymd_and_hms(2026, 8, 19, 9, 0, 0).unwrap();
+        // Folding it onto the start would ring at a different time than written.
+        assert!(when::alarm_times(ev, start, None, chrono_tz::Tz::UTC).is_empty());
+    }
+
 
     const SAMPLE: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:a@arlen\r\nSUMMARY:Standup\r\nDTSTART;TZID=Europe/Vienna:20260819T090000\r\nDTEND;TZID=Europe/Vienna:20260819T091500\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 
@@ -512,7 +671,7 @@ mod tests {
 /// a spring-forward night) has no instant either; a repeated hour resolves to
 /// the earlier of the two, which is the reading a person would give it.
 pub mod when {
-    use super::{CalTime, Event};
+    use super::{CalTime, Event, Related, Trigger};
     use chrono::{DateTime, LocalResult, TimeZone, Utc};
     use chrono_tz::Tz;
 
@@ -534,6 +693,39 @@ pub mod when {
             // inventing one would fire an alarm at a time nobody wrote.
             LocalResult::None => None,
         }
+    }
+
+    /// When each of an event's alarms goes off, for ONE occurrence.
+    ///
+    /// `start` and `end` are that occurrence's instants, so a repeating event is
+    /// fed one occurrence at a time and its alarms come back keyed to it. This is
+    /// what `calendar-app.md` section 4 requires of the registration: keyed by
+    /// (UID, recurrence-id) and re-derived on every write, never a free-floating
+    /// timer that outlives the occurrence it was made for.
+    ///
+    /// An alarm relative to the END of an event with no end is DROPPED rather
+    /// than folded onto the start: those are different times, and an alarm that
+    /// rings at the wrong one is worse than one that does not ring.
+    pub fn alarm_times(
+        event: &Event,
+        start: DateTime<Utc>,
+        end: Option<DateTime<Utc>>,
+        local: Tz,
+    ) -> Vec<DateTime<Utc>> {
+        event
+            .alarms
+            .iter()
+            .filter_map(|a| match &a.trigger {
+                Trigger::Relative { seconds, related } => {
+                    let anchor = match related {
+                        Related::Start => Some(start),
+                        Related::End => end,
+                    }?;
+                    anchor.checked_add_signed(chrono::Duration::seconds(*seconds))
+                }
+                Trigger::Absolute(t) => instant(t, local),
+            })
+            .collect()
     }
 
     /// The events starting within `lead` seconds after `now`, soonest first.
