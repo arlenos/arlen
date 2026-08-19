@@ -91,7 +91,46 @@
   }
 
   const title = $derived(doc ? doc.path.split("/").pop() : null);
+
+  /// Move by `delta` pages, stopping at the ends.
+  ///
+  /// Clamped rather than wrapping: a reader who presses Right on the last page
+  /// of a report has reached the end of it, and jumping back to page one reads
+  /// as the document having restarted.
+  function step(delta: number) {
+    if (!doc) return;
+    current = Math.min(Math.max(current + delta, 1), doc.pages);
+  }
+
+  /// Keyboard first, as the viewer conventions have it.
+  ///
+  /// Ignored while the search box has focus, because there Space and the arrows
+  /// belong to the text being typed - a reader mid-word does not expect the page
+  /// to turn under them.
+  function onKey(event: KeyboardEvent) {
+    if (!doc) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.tagName === "INPUT") return;
+    const map: Record<string, () => void> = {
+      ArrowRight: () => step(1),
+      ArrowDown: () => step(1),
+      PageDown: () => step(1),
+      " ": () => step(event.shiftKey ? -1 : 1),
+      ArrowLeft: () => step(-1),
+      ArrowUp: () => step(-1),
+      PageUp: () => step(-1),
+      Home: () => (current = 1),
+      End: () => (current = doc ? doc.pages : 1),
+    };
+    const act = map[event.key];
+    if (act) {
+      event.preventDefault();
+      act();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <div class="pdf-app">
   <header class="pdf-bar" data-tauri-drag-region>
@@ -179,7 +218,9 @@
           <p class="quiet">{$t("pdf.pageFailed", { reason: pageFailure })}</p>
         {/if}
         <canvas bind:this={canvas} class="pdf-canvas" class:hidden={pageFailure !== null}></canvas>
-        <p class="pdf-page-number">{$t("pdf.page", { number: current })}</p>
+        <p class="pdf-page-number">
+          {$t("pdf.pageOf", { number: current, total: doc.pages })}
+        </p>
       </main>
     {/if}
   </div>
