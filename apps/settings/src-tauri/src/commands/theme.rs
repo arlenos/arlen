@@ -384,11 +384,17 @@ fn metric_value(key: &str, value: &str) -> Result<serde_json::Value, String> {
         // Radii are floats; `window_corners` is the four-corner array and is not
         // offered as a metric row, so it needs no case here.
         k if k.starts_with("radius.") => number(value),
-        // Weights are integers in the schema, but a JSON number covers both and
-        // toml_edit writes an integer for a whole value.
-        "typography.weight_normal" | "typography.weight_medium" | "typography.weight_bold" => {
-            number(value)
-        }
+        // Weights are `u32` in the schema and must be written as INTEGERS. This
+        // arm used to share the float path on the reasoning that "a JSON number
+        // covers both and toml_edit writes an integer for a whole value", which is
+        // simply untrue: it wrote `weight_bold = 800.0`, and the resolver then
+        // refused the ENTIRE file with `invalid type: floating point, expected
+        // u32`. One font-weight edit took the whole theme down. Found by writing
+        // one and reading it back through the real resolver, not by reading this.
+        "typography.weight_normal" | "typography.weight_medium" | "typography.weight_bold" => value
+            .parse::<u32>()
+            .map(|n| serde_json::Value::Number(n.into()))
+            .map_err(|_| format!("{key} is a whole number and {value:?} is not one")),
         "depth.blur_enabled" => match value {
             "true" => Ok(serde_json::Value::Bool(true)),
             "false" => Ok(serde_json::Value::Bool(false)),
@@ -1022,6 +1028,22 @@ mod tests {
             let want_bool = key == "depth.blur_enabled";
             assert_eq!(v.is_number(), want_number, "{key} number-ness");
             assert_eq!(v.is_boolean(), want_bool, "{key} bool-ness");
+
+            // The part that matters, and the part number-ness alone missed: write
+            // it the way the command would and hand the file to the RESOLVER. A
+            // font weight went out as `800.0` for a `u32` field and the resolver
+            // refused the whole file - one edit, whole theme gone - while this
+            // test was happily asserting that 800.0 is a number.
+            let (section, field) = key.rsplit_once('.').expect("dotted");
+            // Rendered through the same converter the write path uses. Rendering
+            // it by hand here produced invalid TOML for the font stacks, which
+            // carry their own quotes - the test would have reported a product
+            // failure that was its own.
+            let rendered =
+                arlen_settings_core::config::json_to_toml_edit(v.clone()).to_string();
+            let doc = format!("[{section}]\n{field} = {rendered}\n");
+            arlen_theme::ArlenTheme::resolve(arlen_theme::DARK_TOML, Some(&doc), None)
+                .unwrap_or_else(|e| panic!("{key} written as `{rendered}` breaks the theme: {e}"));
         }
     }
 
