@@ -21,6 +21,7 @@
 //! repeats and it cannot yet say when.
 
 pub mod reminders;
+pub mod view;
 pub mod rrule;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
