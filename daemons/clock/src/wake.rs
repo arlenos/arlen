@@ -61,6 +61,8 @@ mod tests {
             days: vec![],
             enabled,
             fire_late: false,
+            on_date: None,
+            payload: None,
             next_fire_at: due,
         }
     }
