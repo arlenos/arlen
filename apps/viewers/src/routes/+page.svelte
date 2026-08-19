@@ -320,6 +320,36 @@
     }
   }
 
+  /// What the print portal last said, so the person is told rather than left
+  /// guessing whether anything happened.
+  let printStatus = $state<string | null>(null);
+
+  /// Hand the open picture to the print portal.
+  ///
+  /// The portal, not a printer: this app has no idea what printers exist, and
+  /// should not - it hands over a file descriptor and the portal takes it from
+  /// there. `print_file` waits for the answer, so the pending state below is the
+  /// dialog actually being open rather than a guess.
+  async function printCurrent() {
+    if (!tauriAvailable || !currentPath) return;
+    const name = currentPath.split("/").pop() ?? currentPath;
+    printStatus = $t("v.printing");
+    try {
+      const r = await invoke<{ outcome: string }>("print_file", { path: currentPath });
+      printStatus =
+        r.outcome === "sent"
+          ? $t("v.printSent", { name })
+          : r.outcome === "cancelled"
+            ? $t("v.printCancelled")
+            : r.outcome === "refused"
+              ? $t("v.printRefused")
+              : $t("v.printNoAnswer");
+    } catch (e) {
+      printStatus = null;
+      actionError = $t("v.couldNotPrint", { reason: String(e) });
+    }
+  }
+
   /// Put the last deleted file back and show it again.
   async function undoDelete() {
     if (!tauriAvailable || !lastDeleted) return;
@@ -425,6 +455,7 @@
       {quarters}
       onnext={() => step("next")}
       onprev={() => step("previous")}
+      onprint={tauriAvailable ? printCurrent : undefined}
     />
     {#if detailsOpen}
       <DetailsPanel {facts} onclose={() => (detailsOpen = false)} />
@@ -471,7 +502,14 @@
   </main>
 {/if}
 
-{#if actionError}
+{#if printStatus}
+  <!-- Its own bar rather than the error one: a print that was cancelled, or a
+       dialog still waiting, is not a failure and must not be dressed as one. -->
+  <div class="undobar" role="status">
+    <span>{printStatus}</span>
+    <button onclick={() => (printStatus = null)}>{$t("v.close")}</button>
+  </div>
+{:else if actionError}
   <!-- Over whatever is on screen, because that is where the failure happened. The
        load-error branch below cannot serve here: it only renders when nothing is
        loaded, so it is invisible in exactly the case an action fails. -->
