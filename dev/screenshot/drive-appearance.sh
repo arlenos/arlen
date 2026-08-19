@@ -62,6 +62,25 @@ return Promise.all([inv("theme_system_overrides"), inv("theme_color_overrides")]
   .catch((e) => JSON.stringify({ error: String(e) }));
 JS
 
+# One metric of each declared type. The risk on this path is a TYPE: a numeric
+# field written as the wrong kind of number makes theme.toml unparsable, and an
+# unparsable customization file does not lose one row, it takes the whole theme
+# down. A font weight went out as `800.0` for a `u32` field and the resolver
+# refused the entire file - which this drive is how we found out.
+cat > "$work/metrics.js" <<'JS'
+const inv = window.__TAURI_INTERNALS__.invoke;
+return inv("theme_set_metric", { key: "radius.card", value: "18" })
+  .then(() => inv("theme_set_metric", { key: "depth.blur_enabled", value: "false" }))
+  .then(() => inv("theme_set_metric", { key: "spacing.md", value: "0.9rem" }))
+  .then(() => inv("theme_set_metric", { key: "typography.weight_bold", value: "800" }))
+  .then(() => inv("theme_resolved_metrics"))
+  .then((m) => JSON.stringify({
+    card: m["radius.card"], blur: m["depth.blur_enabled"],
+    md: m["spacing.md"], bold: m["typography.weight_bold"],
+  }))
+  .catch((e) => JSON.stringify({ error: String(e) }));
+JS
+
 echo ">> launch 1: write two overrides through the commands the controls call"
 SHOOT_INJECT="$work/goto.js:$work/write.js" SHOOT_INJECT_SETTLE=3 \
   "$root/dev/screenshot/shoot-app.sh" "$app" "$out/appearance-system-written.png" "" 8 \
@@ -100,5 +119,19 @@ if green != (22, 163, 74):
     raise SystemExit(f"!! the neighbouring green moved to {green}; an override must be slot-exact")
 print(f">> preview: red {red} is the override, green {green} is untouched")
 PY
+
+echo ">> launch 3: write one metric of each type and resolve the file again"
+SHOOT_INJECT="$work/metrics.js" SHOOT_INJECT_SETTLE=3 \
+  "$root/dev/screenshot/shoot-app.sh" "$app" "" "" 8 \
+  | tee "$work/run3.log" | grep -E "inject result" || true
+
+# The read is `theme_resolved_metrics`, which RESOLVES the file. A type the schema
+# refuses shows up as `error: resolve: ...` rather than as a wrong value, so the
+# assertion is that all four came back at all.
+grep -q '"bold":"800"' "$work/run3.log" \
+  || { echo "!! the metrics did not survive resolution - a type is wrong" >&2; exit 1; }
+grep -q '"blur":"false"' "$work/run3.log" || { echo "!! the boolean metric did not take" >&2; exit 1; }
+grep -q 'weight_bold = 800$' "$XDG_CONFIG_HOME/arlen/theme.toml" \
+  || { echo "!! the weight is not a whole number in the file" >&2; exit 1; }
 
 echo "PASS: an appearance edit reaches the file, survives the process and renders"
