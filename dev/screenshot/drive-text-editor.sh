@@ -39,8 +39,21 @@ say() {
 }
 
 drive() {  # drive <probe-js> <out-png>
-  printf '%s' "$(SHOOT_APP_ARGS="$work/sample.rs" SHOOT_INJECT="$1" \
-    "$here/shoot-app.sh" "$app" "$here/out/$2" 2>&1 | sed -n 's/^inject result: //p')"
+  local out
+  out="$(SHOOT_APP_ARGS="$work/sample.rs" SHOOT_INJECT="$1" \
+    "$here/shoot-app.sh" "$app" "$here/out/$2" 2>&1)"
+  # A debug binary loads its devUrl, so with nothing serving that port every probe
+  # runs against a connection-refused page and returns nothing. `shoot-app.sh` says
+  # so plainly; this used to keep only the `inject result:` lines, which threw that
+  # sentence away and reported three FEATURES as broken. The cause was one missing
+  # server, and looking for it in the editor is a wasted hour.
+  # `drive` runs inside `$( )`, so an `exit` here would only leave the subshell -
+  # the first attempt printed this three times and still reported three broken
+  # features. The marker file carries the verdict back out.
+  if printf '%s' "$out" | grep -q "SHOT IS AN ERROR PAGE"; then
+    : > "$work/no-frontend"
+  fi
+  printf '%s' "$(printf '%s' "$out" | sed -n 's/^inject result: //p')"
 }
 
 echo "text editor:"
@@ -55,7 +68,15 @@ return JSON.stringify({
   tokens: document.querySelectorAll(".cm-line span").length,
 });
 JS
+rm -f "$work/no-frontend"
 got=$(drive "$work/p-open.js" editor-open.png)
+if [ -e "$work/no-frontend" ]; then
+    echo "  nothing was tested: no frontend is being served, so every probe ran"
+    echo "  against a connection-refused page. A debug binary loads its devUrl."
+    echo "  Build with \`tauri build --no-bundle\`, or serve that port:"
+    echo "    (cd $root/apps/text-editor && npx vite build && npx vite preview --port 1431)"
+    exit 2
+fi
 say "opens a real file into a CodeMirror buffer, with its grammar loaded" \
   "$(printf '%s' "$got" | grep -q '"buffer":true' \
      && printf '%s' "$got" | grep -q 'let greeting' \
