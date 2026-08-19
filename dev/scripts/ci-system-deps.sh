@@ -19,14 +19,14 @@
 # the ones that go red, which is exactly the pattern seen: three jobs one run,
 # six the next, a different set each time.
 #
-# WHAT THE CACHE ACTUALLY REMOVES, stated honestly: the package bodies, not the
-# index. `apt-get update` still talks to the mirror, because a stale index is
-# how you get a 404 on a version that was pruned. That fetch is metadata and a
-# few MB; the 200 MB of `.deb` files is what was on the critical path, and on a
-# warm cache apt finds every one of them already in `/var/cache/apt/archives`
-# and downloads nothing. The retry around the whole call stays, because the
-# index fetch can still be slow and a bounded attempt against a fresh mirror is
-# the answer to that.
+# WHAT THE CACHE REMOVES: the package bodies. The 200 MB of `.deb` files was
+# what sat on the critical path, and on a warm cache apt finds every one of them
+# already in `/var/cache/apt/archives` and downloads nothing.
+#
+# That left the index, and the index turned out to be enough on its own to fail
+# a job - see the warm-first install below, which is the answer to it. A cold
+# run still fetches the index, and the retry around the whole call stays for
+# that: a bounded attempt against a fresh mirror is what a slow index deserves.
 #
 # ONE PACKAGE SET FOR EVERY JOB, deliberately. The lint job needs a strict
 # subset, and installing the extra handful there costs nothing from a cache
@@ -121,11 +121,40 @@ remaining() { echo $(( deadline - $(date +%s) )); }
 # shellcheck disable=SC2086
 ok=0
 attempt=0
+
+# A WARM RUN DOES NOT NEED THE MIRROR, AND UNTIL NOW IT ASKED ANYWAY. On
+# 19 August one job failed with the cache working perfectly: 74 MB restored from
+# an exact key, no package body fetched, and all three attempts still died - in
+# `apt-get update`, the last line printed being an InRelease fetch, then eighty
+# seconds of nothing. The `&&` below is why that was fatal. The index fetch ran
+# first and the install never got to discover it needed nothing.
+#
+# So when the cache gave us packages, try installing them before asking the
+# mirror anything. Every `.deb` is already in apt's archive directory and the
+# runner image ships an index, so the common case resolves locally and the
+# network is off the critical path entirely rather than merely off the large
+# half of it.
+#
+# The staleness the retry loop exists for is unchanged: if the image's index is
+# too old, or missing, or names a version that was pruned, this install fails -
+# quickly, because failing to resolve a package is not a download - and the loop
+# below runs `update` and does it properly. This can cost a few seconds; it
+# cannot cost correctness, because apt either has what it needs or says so.
+if [ "$restored" -gt 0 ] && [ "$(remaining)" -gt 60 ]; then
+    echo "cache is warm; trying the install without touching the mirror"
+    if timeout $(( $(remaining) - 30 )) sudo apt-get install -y --no-install-recommends $APT_OPTS $PACKAGES
+    then
+        ok=1
+    else
+        echo "the image's index was not enough; falling back to update" >&2
+    fi
+fi
+
 # Both bounds, because they catch different failures: the budget is for a mirror
 # that hangs, the attempt count for one that refuses instantly - without it a
 # fast, repeatable "no" would spin for the whole budget, retrying something that
 # is not going to change.
-while [ "$attempt" -lt 3 ] && [ "$(remaining)" -gt 60 ]; do
+while [ "$ok" != 1 ] && [ "$attempt" -lt 3 ] && [ "$(remaining)" -gt 60 ]; do
     attempt=$((attempt + 1))
     left=$(remaining)
     # A third of what is left for the index, the rest for the packages: the

@@ -14,7 +14,16 @@
 //
 // Run: node dev/scripts/test-ci-system-deps.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  chmodSync,
+  rmSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,7 +63,7 @@ function stage({ installFails = 0, archivesPrefilled = [], cached = [] } = {}) {
     join(bin, "apt-get"),
     `#!/bin/sh
 mode="$1"; shift
-if [ "$mode" = update ]; then exit 0; fi
+if [ "$mode" = update ]; then echo called >> "${dir}/update-calls"; exit 0; fi
 n=$(cat "${dir}/attempts"); n=$((n+1)); echo "$n" > "${dir}/attempts"
 echo "$@" >> "${dir}/install-argv"
 if [ "$n" -le ${installFails} ]; then echo "apt-get: mirror said no" >&2; exit 100; fi
@@ -182,6 +191,45 @@ console.log("ci-system-deps:");
   check(
     "a single failed attempt is retried and the run recovers",
     r.code === 0 && /attempt 1 stalled or failed/.test(r.out),
+    r.out,
+  );
+  rmSync(s.dir, { recursive: true, force: true });
+}
+
+// THE CASE THE WARM-FIRST PATH EXISTS FOR. On 19 August a job died in
+// `apt-get update` with every package already restored from the cache. A warm
+// run must not ask the mirror anything it does not need.
+{
+  const s = stage({ cached: ["libgtk-3-dev"] });
+  const r = run(s);
+  check(
+    "a warm run installs without asking the mirror for an index",
+    r.code === 0 && !existsSync(join(s.dir, "update-calls")),
+    r.out,
+  );
+  rmSync(s.dir, { recursive: true, force: true });
+}
+
+// And the fallback the staleness argument rests on: an install the image's
+// index cannot satisfy has to reach `update`, not give up warm.
+{
+  const s = stage({ installFails: 1, cached: ["libgtk-3-dev"] });
+  const r = run(s);
+  check(
+    "a warm install that fails falls back to updating the index",
+    r.code === 0 && existsSync(join(s.dir, "update-calls")),
+    r.out,
+  );
+  rmSync(s.dir, { recursive: true, force: true });
+}
+
+// A cold run has nothing to try, so it must go the long way round.
+{
+  const s = stage({});
+  const r = run(s);
+  check(
+    "a cold run still fetches the index first",
+    r.code === 0 && existsSync(join(s.dir, "update-calls")),
     r.out,
   );
   rmSync(s.dir, { recursive: true, force: true });
