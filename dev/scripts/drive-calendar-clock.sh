@@ -22,9 +22,14 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 fail=0
 
+# DEBUG binaries, and they have to be CURRENT. The first run of the announcement
+# case failed against a daemon built an hour earlier: the code was right, the
+# binary predated it, and the output looked exactly like a feature that does not
+# work. `cargo build` the daemon you changed before reading anything here.
 clock="$root/target/debug/arlen-clockd"
 cal="$root/target/debug/arlen-calendard"
-for bin in "$clock" "$cal"; do
+bus="$root/target/debug/event-bus"
+for bin in "$clock" "$cal" "$bus"; do
   [ -x "$bin" ] || { echo "no binary at $bin - cargo build the daemon first"; exit 2; }
 done
 
@@ -34,6 +39,12 @@ done
 run="$(mktemp -d)"
 trap 'rm -rf "$run"' EXIT
 mkdir -p "$run/data/arlen/calendars" "$run/state" "$run/config"
+
+# A second meeting a few minutes out, so it falls inside the announcement lead
+# while the one above stays a day away. Two windows, two different promises: the
+# clock gets tomorrow's reminder, the bus hears about the one starting now.
+soon_date=$(date -u -d "+4 minutes" +%Y%m%d)
+soon_time=$(date -u -d "+4 minutes" +%H%M%S)
 
 # One event, one alarm, tomorrow, so the trigger is always ahead of now.
 tomorrow=$(date -u -d "+1 day" +%Y%m%d)
@@ -50,6 +61,12 @@ ACTION:DISPLAY
 TRIGGER:-PT15M
 END:VALARM
 END:VEVENT
+BEGIN:VEVENT
+UID:soon@drive
+SUMMARY:Starting shortly
+LOCATION:Room 3
+DTSTART:${soon_date}T${soon_time}Z
+END:VEVENT
 END:VCALENDAR
 ICS
 
@@ -63,18 +80,23 @@ echo "calendar and clock:"
 # temp root so a run cannot touch the developer's own alarms or calendars.
 cat > "$run/run.sh" <<'SH'
 set -u
+# The bus first: the calendar announces on its first pass, and a bus that is not
+# up yet would turn a real announcement into a warning about a missing bus.
+ARLEN_RUNTIME_DIR="$RUN" XDG_RUNTIME_DIR="$RUN" "$BUS" >"$RUN/bus.log" 2>&1 &
+bus_pid=$!
+sleep 1
 "$CLOCKD" >"$RUN/clock.log" 2>&1 &
 clock_pid=$!
 sleep 2
 "$CALD" >"$RUN/calendar.log" 2>&1 &
 cal_pid=$!
 sleep 6
-kill "$cal_pid" "$clock_pid" 2>/dev/null
+kill "$cal_pid" "$clock_pid" "$bus_pid" 2>/dev/null
 wait 2>/dev/null
 SH
-CLOCKD="$clock" CALD="$cal" RUN="$run" \
+CLOCKD="$clock" CALD="$cal" BUS="$bus" RUN="$run" \
   HOME="$run" XDG_DATA_HOME="$run/data" XDG_STATE_HOME="$run/state" \
-  XDG_CONFIG_HOME="$run/config" RUST_LOG=info \
+  XDG_CONFIG_HOME="$run/config" XDG_RUNTIME_DIR="$run" RUST_LOG=info \
   dbus-run-session -- bash "$run/run.sh" >/dev/null 2>&1
 
 # Stripped of terminal formatting first: tracing writes its fields with ANSI
@@ -116,6 +138,19 @@ say "the alarm carries the mark of who registered it" \
 # armed for the next matching wall-clock time rather than the meeting's day.
 say "the alarm belongs to a day rather than to a time of day" \
   "$(printf '%s' "$state" | grep -q '"on_date":"20' && echo 1 || echo 0)" "$state"
+
+# The other promise. `meeting-prep` has triggered on this event since it was
+# written and nothing ever emitted it, so this line is the difference between a
+# behaviour that exists and one that can fire. The daemon says it only after the
+# write to the bus returned, so a bus that refused the connection shows up as a
+# warning instead.
+say "a meeting about to start is announced on the bus" \
+  "$(printf '%s' "$log" | grep -q "announced an upcoming meeting" && echo 1 || echo 0)" "$log"
+
+# And it is said once. The store is re-read on a timer; without the memory this
+# one meeting would wake the agent at every pass.
+say "and only once, however often the store is re-read" \
+  "$([ "$(printf '%s\n' "$log" | grep -c 'announced an upcoming meeting')" = 1 ] && echo 1 || echo 0)" "$log"
 
 [ "$fail" = 0 ] && echo "the two daemons spoke, and an alarm exists that nobody set by hand"
 exit "$fail"
