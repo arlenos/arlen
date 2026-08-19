@@ -23,10 +23,7 @@ const messages: Catalogs = {
     "pdf.nothingOpen": "No document is open. Open a PDF from the file manager, or pass one on the command line.",
     "pdf.failed": "Could not open this document: {$reason}",
     "pdf.hostAbsent": "The reader reads documents through its own host, which is not running here.",
-    // The honest sentence about the half that is missing. A reader showing a
-    // contents list and no page could otherwise look broken rather than partial.
-    "pdf.noPageImage":
-      "The pages are not drawn yet. This reader can tell you what is in the document and find words in it; showing the page itself is the next piece of work.",
+    "pdf.pageFailed": "This page could not be drawn: {$reason}",
   },
   de: {
     "pdf.app.title": "Dokument",
@@ -43,8 +40,7 @@ const messages: Catalogs = {
       "Es ist kein Dokument geöffnet. Öffne ein PDF aus der Dateiverwaltung oder übergib eins auf der Kommandozeile.",
     "pdf.failed": "Dieses Dokument konnte nicht geöffnet werden: {$reason}",
     "pdf.hostAbsent": "Der Reader liest Dokumente über seinen eigenen Host, der hier nicht läuft.",
-    "pdf.noPageImage":
-      "Die Seiten werden noch nicht gezeichnet. Dieser Reader kann sagen, was im Dokument steht, und Wörter darin finden; die Seite selbst zu zeigen ist der nächste Arbeitsschritt.",
+    "pdf.pageFailed": "Diese Seite konnte nicht gezeichnet werden: {$reason}",
   },
 };
 
