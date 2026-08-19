@@ -335,7 +335,7 @@
     const name = currentPath.split("/").pop() ?? currentPath;
     printStatus = $t("v.printing");
     try {
-      const r = await invoke<{ outcome: string }>("print_file", { path: currentPath });
+      const r = await invoke<{ outcome: string }>("plugin:arlen-shell|print_file", { path: currentPath });
       printStatus =
         r.outcome === "sent"
           ? $t("v.printSent", { name })

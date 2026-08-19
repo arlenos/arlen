@@ -487,6 +487,18 @@
           "markdownDescription": "Denies the presence_set command without any pre-configured scope."
         },
         {
+          "description": "Enables the print_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-print-file",
+          "markdownDescription": "Enables the print_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the print_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-print-file",
+          "markdownDescription": "Denies the print_file command without any pre-configured scope."
+        },
+        {
           "description": "Enables the shortcuts_clear command without any pre-configured scope.",
           "type": "string",
           "const": "allow-shortcuts-clear",

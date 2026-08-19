@@ -25,6 +25,8 @@ fn main() {
         "ambient_set",
         "ambient_clear",
         "theme_get",
+        "locale_get",
+        "print_file",
     ])
     .build();
 }

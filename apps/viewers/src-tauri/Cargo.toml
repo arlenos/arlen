@@ -18,9 +18,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-zbus = { version = "5", default-features = false, features = ["tokio"] }
-tokio = { version = "1", features = ["time"] }
-futures-util = "0.3"
 log = "0.4"
 env_logger = "0.11"
 # The sandboxed decode dispatch: detect a file's format, spawn its decoder in a
@@ -33,5 +30,3 @@ arlen-freedesktop-trash = { path = "../../../contracts/freedesktop-trash" }
 # This app is its own standalone crate (its decode workers + host carry their own
 # `[workspace]`), so it is not a member of any parent workspace.
 [workspace]
-[dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
