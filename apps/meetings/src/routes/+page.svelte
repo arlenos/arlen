@@ -5,7 +5,12 @@
   import { goto } from "$app/navigation";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t, dir } from "$lib/i18n/messages";
-  import { meetings, meetingsMocked, meetingsUnavailable } from "$lib/stores/meeting";
+  import {
+    meetings,
+    meetingsMocked,
+    meetingsUnavailable,
+    meetingsFailure,
+  } from "$lib/stores/meeting";
 </script>
 
 <div class="home" dir={$dir}>
@@ -13,7 +18,11 @@
     {#if $meetingsMocked}
       <p class="sample">{$t("mt.sample.list")}</p>
     {:else if $meetingsUnavailable}
-      <p class="sample">{$t("mt.unavailable")}</p>
+      <p class="sample">
+        {$meetingsFailure
+          ? $t("mt.unavailable.why", { reason: $meetingsFailure })
+          : $t("mt.unavailable")}
+      </p>
     {/if}
     <!-- Same three states. When the read failed the sentence above already says
          so, and adding "No meetings yet" underneath would answer a question we

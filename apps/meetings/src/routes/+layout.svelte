@@ -35,6 +35,7 @@
     meetings,
     meetingsMocked,
     meetingsUnavailable,
+    meetingsFailure,
     loadMeetings,
     meeting,
     fmtDate,
@@ -130,7 +131,16 @@
             <!-- Same place, for the same reason, and it is a different sentence:
                  "these are examples" and "I could not read yours" are different
                  facts and only one of them is about this machine. -->
-            <p class="mt-sample">{$t("mt.unavailable")}</p>
+            <!-- And it names its cause when it has one. The catch that sets this
+                 flag used to drop the error on the floor, so the sentence could
+                 not tell a daemon that is down from a permission you do not have
+                 from a store that is corrupt - three different things to do about
+                 it, rendered as one shrug. -->
+            <p class="mt-sample">
+              {$meetingsFailure
+                ? $t("mt.unavailable.why", { reason: $meetingsFailure })
+                : $t("mt.unavailable")}
+            </p>
           {/if}
           <SidebarMenu>
             {#each $meetings as m (m.id)}
