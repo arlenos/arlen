@@ -51,9 +51,11 @@ pub fn forage_entry(
         // A recipe declares no icon reference; the client falls back to a default.
         icon: None,
     };
-    let capabilities = CapabilityFootprint {
-        capabilities: recipe.capabilities.as_ref().map(capability_labels).unwrap_or_default(),
-    };
+    // A recipe's `[capabilities]` IS the declaration: a recipe that asks for
+    // nothing has genuinely asked for nothing, and that is the least-privilege
+    // story the store exists to tell. Read, therefore, not unread.
+    let capabilities =
+        CapabilityFootprint::read(recipe.capabilities.as_ref().map(capability_labels).unwrap_or_default());
     let trust = TrustSignals {
         // The publisher a forage app has IS its cookbook: there is no separate
         // vendor identity to check, so a recipe from a tracked cookbook is
@@ -178,7 +180,7 @@ pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
             id: ComponentId(id.clone()),
             layer: SourceLayer::Flatpak,
             display,
-            capabilities: CapabilityFootprint::default(),
+            capabilities: CapabilityFootprint::unread(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             // A Flathub ref is the component id; this layer is the reason the
@@ -228,7 +230,7 @@ pub fn metainfo_entry(xml: &str) -> Option<CatalogEntry> {
             screenshots: screenshot_urls(&component),
             icon: icon_ref(&component),
         },
-        capabilities: CapabilityFootprint::default(),
+        capabilities: CapabilityFootprint::unread(),
         trust: TrustSignals::default(),
         kind: ItemKind::default(),
         // No install route exists for a distribution package, so the card shows
@@ -498,7 +500,7 @@ pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
             id: ComponentId(id),
             layer: SourceLayer::Apt,
             display,
-            capabilities: CapabilityFootprint::default(),
+            capabilities: CapabilityFootprint::unread(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: dep11_release_version(&comp.releases),

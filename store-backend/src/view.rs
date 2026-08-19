@@ -193,6 +193,18 @@ fn any_variant_requests(card: &AppCard, pred: impl Fn(&str) -> bool) -> bool {
         .any(|v| v.capabilities.capabilities.iter().any(|c| pred(c)))
 }
 
+/// Have this card's variants had their permissions read at all?
+///
+/// The negative facets ("No network", "No graph access") are SAFETY CLAIMS, and
+/// a claim needs a reading behind it. A Flathub component arrives with an empty
+/// footprint because its `finish-args` come from a source section 9.2 has not
+/// wired yet - and an empty list treated as "asks for nothing" made every
+/// Flathub app in the catalogue display as unable to reach the network, and pass
+/// a filter for exactly that. Silence is not evidence.
+fn every_variant_read(card: &AppCard) -> bool {
+    !card.variants.is_empty() && card.variants.iter().all(|v| v.capabilities.known)
+}
+
 /// Flatten one merged card for the app. `installed` is the set of component-ids
 /// the machine reports installed (from installd's `ListInstalled`); an id absent
 /// from it renders as not installed, which is the honest default when the
@@ -202,7 +214,9 @@ pub fn store_card(card: &AppCard, installed: &BTreeSet<String>) -> StoreCard {
     let capabilities = default
         .map(|v| v.capabilities.capabilities.clone())
         .unwrap_or_default();
-    let no_network = !any_variant_requests(card, is_network);
+    // Only a card whose sources have all been read can carry a negative facet.
+    let read = every_variant_read(card);
+    let no_network = read && !any_variant_requests(card, is_network);
 
     StoreCard {
         id: card.id.0.clone(),
@@ -221,7 +235,7 @@ pub fn store_card(card: &AppCard, installed: &BTreeSet<String>) -> StoreCard {
         // because the app shows them as two facets; if a second egress class is
         // ever added, only this line changes.
         offline_only: no_network,
-        no_graph: !any_variant_requests(card, is_graph_scope),
+        no_graph: read && !any_variant_requests(card, is_graph_scope),
         verified: default.is_some_and(|v| v.trust.verified_publisher.is_some()),
         reproducible: default.is_some_and(|v| v.trust.reproducible_build.is_some()),
         // Installed by US, or present as a distribution package. A `Native`
@@ -282,7 +296,7 @@ mod tests {
                 id: ComponentId("org.example.editor".into()),
                 layer: SourceLayer::Official,
                 display: DisplayMeta { name: "Editor".into(), ..Default::default() },
-                capabilities: CapabilityFootprint { capabilities: vec!["read:File".into()] },
+                capabilities: CapabilityFootprint::read(vec!["read:File".into()]),
                 trust: TrustSignals::default(),
                 version: "2.0".into(),
                 install_handle: Some("editor".into()),
@@ -292,9 +306,7 @@ mod tests {
                 id: ComponentId("org.example.editor".into()),
                 layer: SourceLayer::Flatpak,
                 display: DisplayMeta { name: "Editor".into(), ..Default::default() },
-                capabilities: CapabilityFootprint {
-                    capabilities: vec!["network".into(), "read:File".into(), "clipboard".into()],
-                },
+                capabilities: CapabilityFootprint::read(vec!["network".into(), "read:File".into(), "clipboard".into()]),
                 trust: TrustSignals::default(),
                 version: "2.1".into(),
                 install_handle: Some("org.example.Editor".into()),
@@ -324,9 +336,7 @@ mod tests {
             id: ComponentId("org.example.thing".into()),
             layer: SourceLayer::Community,
             display: DisplayMeta { name: "Thing".into(), ..Default::default() },
-            capabilities: CapabilityFootprint {
-                capabilities: vec!["network".into(), "read:File".into()],
-            },
+            capabilities: CapabilityFootprint::read(vec!["network".into(), "read:File".into()]),
             trust: TrustSignals::default(),
             version: String::new(),
             install_handle: Some("thing".into()),
@@ -338,6 +348,73 @@ mod tests {
             card.variants[0].capabilities.iter().all(|c| !c.contains(' ')),
             "an identifier has no spaces; a sentence does"
         );
+    }
+
+    /// A negative facet is a SAFETY CLAIM and needs a reading behind it. A
+    /// Flathub component arrives with an empty footprint because its
+    /// `finish-args` come from a source that is not wired yet - and until 19
+    /// August an empty list read as "asks for nothing", so every Flathub app in
+    /// the catalogue displayed as unable to reach the network and passed a filter
+    /// for exactly that. Nobody had looked.
+    #[test]
+    fn an_unread_source_carries_no_negative_facet() {
+        let entry = CatalogEntry {
+            id: ComponentId("org.example.unknown".into()),
+            layer: SourceLayer::Flatpak,
+            display: DisplayMeta { name: "Unknown".into(), ..Default::default() },
+            capabilities: CapabilityFootprint::unread(),
+            trust: TrustSignals::default(),
+            version: String::new(),
+            install_handle: Some("org.example.Unknown".into()),
+            kind: Default::default(),
+        };
+        let card = store_card(&merge_catalog(vec![entry])[0], &BTreeSet::new());
+        assert!(!card.no_network, "silence is not evidence of no network");
+        assert!(!card.offline_only);
+        assert!(!card.no_graph);
+    }
+
+    /// And a source that WAS read and asks for nothing keeps its facets: that is
+    /// the least-privilege story the store exists to tell, and refusing it would
+    /// be the opposite mistake.
+    #[test]
+    fn a_read_source_that_asks_for_nothing_keeps_its_facets() {
+        let entry = CatalogEntry {
+            id: ComponentId("org.example.clean".into()),
+            layer: SourceLayer::Official,
+            display: DisplayMeta { name: "Clean".into(), ..Default::default() },
+            capabilities: CapabilityFootprint::read(Vec::new()),
+            trust: TrustSignals::default(),
+            version: String::new(),
+            install_handle: Some("clean".into()),
+            kind: Default::default(),
+        };
+        let card = store_card(&merge_catalog(vec![entry])[0], &BTreeSet::new());
+        assert!(card.no_network && card.offline_only && card.no_graph);
+    }
+
+    /// One unread variant is enough to withdraw the claim: the card speaks for
+    /// every way you could install it.
+    #[test]
+    fn one_unread_variant_withdraws_the_claim_for_the_whole_card() {
+        let clean = CatalogEntry {
+            id: ComponentId("org.example.mixed".into()),
+            layer: SourceLayer::Official,
+            display: DisplayMeta { name: "Mixed".into(), ..Default::default() },
+            capabilities: CapabilityFootprint::read(Vec::new()),
+            trust: TrustSignals::default(),
+            version: String::new(),
+            install_handle: Some("mixed".into()),
+            kind: Default::default(),
+        };
+        let unread = CatalogEntry {
+            layer: SourceLayer::Flatpak,
+            capabilities: CapabilityFootprint::unread(),
+            install_handle: Some("org.example.Mixed".into()),
+            ..clean.clone()
+        };
+        let card = store_card(&merge_catalog(vec![clean, unread])[0], &BTreeSet::new());
+        assert!(!card.no_network, "one unread source and the card cannot promise");
     }
 
     /// A distribution package is present and cannot be acted on, and the card has
@@ -375,9 +452,9 @@ mod tests {
                 summary: Some("A demo".into()),
                 ..Default::default()
             },
-            capabilities: CapabilityFootprint {
-                capabilities: caps.iter().map(|c| c.to_string()).collect(),
-            },
+            capabilities: CapabilityFootprint::read(
+                caps.iter().map(|c| c.to_string()).collect(),
+            ),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: String::new(),
