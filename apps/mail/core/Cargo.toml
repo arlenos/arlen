@@ -1,0 +1,10 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-mail-core"
+version = "0.1.0"
+edition = "2021"
+description = "The mail client's stated rules for the parts of MIME that the standard left ambiguous (mail-app.md section 2)"
+
+[dependencies]
+
+[workspace]
