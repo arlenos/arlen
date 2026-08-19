@@ -80,11 +80,19 @@
     const cs = getComputedStyle(document.documentElement);
     swatches = SWATCH_TOKENS.map((t) => ({ token: t, hex: (cs.getPropertyValue(t).trim() || "#ffffff") }));
     color = swatches[0]?.hex ?? color;
-    // Live: the coder's capture command hands back the primary output as a PNG data
-    // URL. Under vite (or when capture is unavailable) the synthetic fixture stands
-    // in so the surface still renders + verifies.
+    // Live: the coder's capture command hands back the primary output as a PNG
+    // data URL. The other two answers are NOT the same answer. Under vite there
+    // is no screen to capture and the fixture is honest, labelled as a sample.
+    // On a host that cannot capture there IS a screen and we did not get it, so
+    // there is nothing to show and nothing to save: inventing a desktop here is
+    // how a person ends up sending a picture of a machine that does not exist.
     const captured = await capturePrimary();
-    base = captured ? await dataUrlToCanvas(captured) : buildFixture();
+    if (captured.kind === "unavailable") {
+      captureFailure = captured.reason;
+      return;
+    }
+    isSample = captured.kind === "hostless";
+    base = captured.kind === "image" ? await dataUrlToCanvas(captured.dataUrl) : buildFixture();
     ctx = canvas.getContext("2d");
     canvas.width = base.width;
     canvas.height = base.height;
@@ -202,6 +210,15 @@
   /// kept the only copy on a canvas they were about to close. The log line is
   /// still there for the path and the reason; this is the half a person sees.
   let actionFailed = $state<"save" | "copy" | null>(null);
+
+  /// Why there is no capture, when a host said it could not take one. Set only on
+  /// the real-host path: it is a statement about this machine, and the browser
+  /// has nothing to say about that.
+  let captureFailure = $state<string | null>(null);
+
+  /// Whether what is on the canvas is a made-up scene rather than your screen.
+  /// True only where a sample is the honest answer - no host, so no screen.
+  let isSample = $state(false);
 
   // Copy / save operate on a given canvas - the annotate canvas for the surface,
   // the untouched base for the thumbnail's quick actions.
@@ -340,7 +357,15 @@
 
 <!-- The annotate surface stays mounted (its canvas is set up on load); the phase
      only shows it once the user opens the capture from the floating thumbnail. -->
-<div class="tool" class:hidden={phase !== "annotate"}>
+<div class="tool" class:hidden={phase !== "annotate" || captureFailure !== null}>
+  {#if isSample}
+    <!-- What is on the canvas is a drawing, not your screen. Said on the surface
+         rather than left to be inferred, for the same reason the meetings list
+         says "example meetings": a sample nobody labelled is indistinguishable
+         from the real thing, and this one has a plausible account card with a
+         plausible token in it. -->
+    <p class="sample-note">{$t("s.sampleShot")}</p>
+  {/if}
   {#if actionFailed}
     <!-- Above the stage rather than over it: the canvas is what the person is
          deciding about, and a refusal that covers the picture is its own
@@ -408,7 +433,17 @@
   </div>
 </div>
 
-{#if phase === "thumbnail" && base}
+{#if captureFailure}
+  <!-- The whole surface, because there is nothing to annotate and nothing to
+       save. The tool above is hidden by its own phase check; this replaces the
+       thumbnail that would otherwise carry a picture of nowhere. It names the
+       cause: a compositor without the screencopy interface and a capture call
+       that threw are different problems with different answers. -->
+  <div class="no-capture" role="alert">
+    <p class="no-capture-what">{$t("s.captureUnavailable")}</p>
+    <p class="no-capture-why">{captureFailure}</p>
+  </div>
+{:else if phase === "thumbnail" && base}
   <FloatingThumbnail
     image={base}
     onAnnotate={() => (phase = "annotate")}
@@ -470,6 +505,43 @@
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--color-error, #f87171);
+  }
+
+  /* Above the canvas, in the warning colour rather than the error one: nothing
+     went wrong, the picture is just not yours. */
+  .sample-note {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-warning, #fbbf24);
+  }
+
+  /* The whole window when there is no capture, because there is no picture to
+     put beside it. */
+  .no-capture {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .no-capture-what {
+    margin: 0;
+    max-width: 32rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--color-fg-primary, #e6e8ee);
+  }
+
+  .no-capture-why {
+    margin: 0;
+    max-width: 32rem;
+    font-size: 0.85rem;
+    color: var(--color-fg-secondary, #9aa4b2);
   }
 
   .board {

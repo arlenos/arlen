@@ -11,16 +11,36 @@ import { invoke } from "@tauri-apps/api/core";
 export const isTauri = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-/// Capture the primary output and return it as a PNG data URL for the annotate
-/// canvas, or `null` when capture is unavailable (no host, or the compositor lacks
-/// the screencopy interface) so the caller can fall back to the fixture.
-export async function capturePrimary(): Promise<string | null> {
-  if (!isTauri()) return null;
+/// What came back when we asked for the screen.
+///
+/// THREE OUTCOMES, NOT TWO, and the split is the point. This used to return
+/// `string | null`, so "there is no host to ask" and "a host is here and it
+/// cannot capture your screen" arrived as the same `null` and the caller
+/// answered both with the same invented desktop. A browser has no screen to
+/// capture and a sample IS the answer there. A shipped app on a compositor
+/// without screencopy has a screen it could not get, and drawing a fake one is
+/// a picture of a machine that does not exist - which the person then annotates,
+/// saves and sends, believing it came off their display.
+export type Capture =
+  /// The real screen, as a PNG data URL.
+  | { kind: "image"; dataUrl: string }
+  /// A host answered and cannot capture. Carries why, because "not supported by
+  /// this compositor" and "the capture call failed" are different things to do
+  /// something about.
+  | { kind: "unavailable"; reason: string }
+  /// No Tauri host at all: plain vite or the render harness.
+  | { kind: "hostless" };
+
+/// Capture the primary output.
+export async function capturePrimary(): Promise<Capture> {
+  if (!isTauri()) return { kind: "hostless" };
   try {
-    if (!(await invoke<boolean>("capture_available"))) return null;
-    return await invoke<string>("capture_output", { index: 0, includeCursor: false });
-  } catch {
-    return null;
+    if (!(await invoke<boolean>("capture_available"))) {
+      return { kind: "unavailable", reason: "no screen capture on this compositor" };
+    }
+    return { kind: "image", dataUrl: await invoke<string>("capture_output", { index: 0, includeCursor: false }) };
+  } catch (e) {
+    return { kind: "unavailable", reason: String(e) };
   }
 }
 
