@@ -29,6 +29,8 @@
     setSys,
     resetSys,
     resetTerminal,
+    loadSys,
+    sysWriteFailed,
     CURSOR_THEMES,
     ICON_THEMES,
     sysOptions,
@@ -58,6 +60,9 @@
   $effect(() => {
     void installedSoundThemes().then((t) => (soundThemes = t));
     void themeCues().then((c) => (cues = c));
+    // What `theme.toml` already holds, so a value set on an earlier launch is
+    // shown as set instead of the page opening on the theme's own defaults.
+    void loadSys();
   });
 
   async function play(eventKey: string, name: string) {
@@ -86,6 +91,9 @@
   description={$t("s.sys.desc")}
 >
   <SectionGrid>
+    {#if $sysWriteFailed}
+      <p class="note span-full" role="alert">{$t("s.sys.writeFailed")}</p>
+    {/if}
     <div class="editor span-full">
     <div class="controls">
       <Section label={$t("s.sys.cursor")}>

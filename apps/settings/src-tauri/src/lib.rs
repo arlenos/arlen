@@ -123,6 +123,7 @@ pub fn run() {
             commands::theme::theme_resolved_terminal,
             commands::theme::theme_resolved_metrics,
             commands::theme::theme_set_metric,
+            commands::theme::theme_set_system,
             commands::theme::theme_resolved_sounds,
             commands::theme::sound_preview,
             commands::theme::sound_themes,

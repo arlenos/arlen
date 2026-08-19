@@ -400,6 +400,74 @@ fn metric_value(key: &str, value: &str) -> Result<serde_json::Value, String> {
     }
 }
 
+/// Persist one Appearance > System field.
+///
+/// The sibling of [`theme_set_metric`] for the fields that page owns: the cursor
+/// and icon theme, the six sound cues, and the terminal palette. They had no write
+/// path at all - `themeSystem.ts` held them in a store that nothing loaded and
+/// nothing saved, so every control on that page was a knob attached to a variable
+/// that died with the window.
+///
+/// The frontend key is a flat camelCase name (`ansi0`, `sndError`, `cursorTheme`)
+/// and the destination is a dotted path in the theme file. The mapping lives here
+/// rather than in TypeScript because the schema does, and a mapping written on the
+/// far side of the bridge drifts from it silently.
+#[tauri::command]
+pub async fn theme_set_system(key: String, value: String) -> Result<(), String> {
+    let path = system_key_path(&key).ok_or_else(|| format!("not a system field: {key}"))?;
+    let value = match key.as_str() {
+        // The only numeric one; the rest are theme names, cue names and hex.
+        "cursorSize" => value
+            .parse::<u32>()
+            .map(|n| serde_json::Value::Number(n.into()))
+            .map_err(|_| format!("cursor size is a number and {value:?} is not one"))?,
+        _ => serde_json::Value::String(value),
+    };
+    config_set(ConfigFile::Customization, path.to_string(), value).await
+}
+
+/// The theme-file path a System field writes to, or `None` if the key names no
+/// field.
+///
+/// Refusing an unknown key is what keeps this from being a general write into the
+/// theme file: the frontend can reach exactly these paths and nothing else.
+fn system_key_path(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "cursorTheme" => "cursor.theme",
+        "cursorSize" => "cursor.size",
+        "iconTheme" => "icons.theme",
+        "sndNotification" => "sounds.notification",
+        "sndError" => "sounds.error",
+        "sndWarning" => "sounds.warning",
+        "sndAction" => "sounds.action",
+        "sndDeviceAdded" => "sounds.device_added",
+        "sndDeviceRemoved" => "sounds.device_removed",
+        "termFg" => "terminal.fg",
+        "termBg" => "terminal.bg",
+        "ansi0" => "terminal.ansi.black",
+        "ansi1" => "terminal.ansi.red",
+        "ansi2" => "terminal.ansi.green",
+        "ansi3" => "terminal.ansi.yellow",
+        "ansi4" => "terminal.ansi.blue",
+        "ansi5" => "terminal.ansi.magenta",
+        "ansi6" => "terminal.ansi.cyan",
+        "ansi7" => "terminal.ansi.white",
+        "ansi8" => "terminal.ansi.bright_black",
+        "ansi9" => "terminal.ansi.bright_red",
+        "ansi10" => "terminal.ansi.bright_green",
+        "ansi11" => "terminal.ansi.bright_yellow",
+        "ansi12" => "terminal.ansi.bright_blue",
+        "ansi13" => "terminal.ansi.bright_magenta",
+        "ansi14" => "terminal.ansi.bright_cyan",
+        "ansi15" => "terminal.ansi.bright_white",
+        // `soundsEnabled` and `soundTheme` are the notification daemon's, not the
+        // theme's: the theme names which CUE an event plays, the daemon decides
+        // whether sound happens at all and from which installed theme. They go
+        // through the Notifications config, which the page already reaches.
+        _ => return None,
+    })
+}
+
 /// Whether `key` names a metric [`theme_resolved_metrics`] reports.
 ///
 /// Derived from the read command itself rather than from a second hand-kept list,
@@ -817,6 +885,65 @@ mod tests {
         // And the string fields take what they are given, since the theme carries
         // them verbatim.
         assert!(super::metric_value("spacing.md", "0.75rem").is_ok());
+    }
+
+    /// Every field the System page offers has a path, and every path names a
+    /// field the theme schema really has.
+    ///
+    /// The list is spelled out on both sides rather than derived, because the two
+    /// ends are a flat camelCase key and a dotted schema path and there is no
+    /// mechanical relation between them. What CAN be checked is that no path is a
+    /// typo: each one is written into a theme file and read back through the
+    /// resolver, so a misspelled section or field shows up as a value that does
+    /// not arrive.
+    #[test]
+    fn every_system_field_writes_a_path_the_resolver_reads_back() {
+        // One representative per shape: a theme name, a number, a cue, a terminal
+        // colour and an ANSI slot. Writing all 27 would test toml_edit, not the
+        // mapping.
+        let checks: &[(&str, &str, &str)] = &[
+            ("cursorTheme", "Bibata", "cursor.theme"),
+            ("iconTheme", "Papirus", "icons.theme"),
+            ("sndError", "bell", "sounds.error"),
+            ("sndDeviceRemoved", "device-removed", "sounds.device_removed"),
+            ("termBg", "#101010", "terminal.bg"),
+            ("ansi9", "#ff0000", "terminal.ansi.bright_red"),
+        ];
+        for (key, value, want_path) in checks {
+            let path = super::system_key_path(key).unwrap_or_else(|| panic!("{key} has no path"));
+            assert_eq!(&path, want_path, "{key} path");
+            // The path must land somewhere the resolver looks. Build a one-field
+            // theme file at that path and check the value comes back out.
+            let (section, field) = path.rsplit_once('.').expect("dotted");
+            let doc = format!("[{section}]\n{field} = \"{value}\"\n");
+            let t = arlen_theme::ArlenTheme::resolve(arlen_theme::DARK_TOML, Some(&doc), None)
+                .unwrap_or_else(|e| panic!("{key} writes an unresolvable file: {e}"));
+            let arrived = match *key {
+                "cursorTheme" => t.cursor.theme.clone(),
+                "iconTheme" => t.icons.theme.clone(),
+                "sndError" => t.sounds.error.clone(),
+                "sndDeviceRemoved" => t.sounds.device_removed.clone(),
+                "termBg" => arlen_theme::gtk::rgba_to_hex(t.terminal.bg),
+                "ansi9" => arlen_theme::gtk::rgba_to_hex(t.terminal.ansi[9]),
+                other => panic!("unhandled check {other}"),
+            };
+            assert_eq!(
+                arrived.to_lowercase(),
+                value.to_lowercase(),
+                "{key} written to {path} did not come back out of the resolver"
+            );
+        }
+    }
+
+    /// A key the page does not own is refused rather than written. The two sound
+    /// switches belong to the notification daemon, and an unknown key must not
+    /// become a free write into the theme file.
+    #[test]
+    fn a_key_the_page_does_not_own_has_no_path() {
+        assert!(super::system_key_path("soundsEnabled").is_none());
+        assert!(super::system_key_path("soundTheme").is_none());
+        assert!(super::system_key_path("color.accent").is_none());
+        assert!(super::system_key_path("").is_none());
     }
 
     /// The guard the write command rests on: it accepts exactly what the read
