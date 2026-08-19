@@ -176,8 +176,15 @@ say "a collection keeps only the members this machine has" \
 
 # `drive-absent` names nothing this host has. A heading over an empty row is the
 # same defect as the empty landing view, one size smaller.
+#
+# PAIRED with evidence that an answer arrived at all. On its own, "the absent
+# collection is not in the output" also holds when there IS no output - a daemon
+# that did not start, an invoke that threw, a page that never rendered - so the
+# case would report ok at the exact moment everything was broken. A negative
+# assertion is only worth what its positive half is worth.
 say "a collection with nothing here is dropped, not headed over empty space" \
-  "$(printf '%s' "$got" | grep -q "drive-absent" && echo 0 || echo 1)" "$got"
+  "$(printf '%s' "$got" | grep -q "COLL " \
+     && ! printf '%s' "$got" | grep -q "drive-absent" && echo 1 || echo 0)" "$got"
 
 # The curator's own words, per locale, rather than an identifier the app would
 # have to have a string for.
