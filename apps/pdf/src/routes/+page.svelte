@@ -23,6 +23,7 @@
   type SearchOutcome = { hits: Hit[]; unsearchable: number[] };
   type DocumentInfo = { path: string; pages: number; outline: OutlineEntry[] };
   type PageImage = { width: number; height: number; rgba: number[] };
+  type TextLine = { text: string; x: number; y: number; width: number; height: number };
 
   let doc = $state<DocumentInfo | null>(null);
   let failure = $state<string | null>(null);
@@ -31,6 +32,14 @@
   let current = $state(1);
   let canvas = $state<HTMLCanvasElement | null>(null);
   let pageFailure = $state<string | null>(null);
+  let lines = $state<TextLine[]>([]);
+
+  /// The zoom the page and its words are both drawn at.
+  ///
+  /// One constant for both on purpose: the boxes come back in the raster's own
+  /// pixel space, so a page rendered at one scale and a text layer fetched at
+  /// another would put every box beside its word instead of on it.
+  const SCALE = 1.5;
 
   /// Draw the current page.
   ///
@@ -40,7 +49,7 @@
   async function drawPage() {
     if (!doc || !canvas) return;
     try {
-      const img = await invoke<PageImage>("pdf_page_image", { page: current, scale: 1.5 });
+      const img = await invoke<PageImage>("pdf_page_image", { page: current, scale: SCALE });
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext("2d");
@@ -48,8 +57,14 @@
       const data = new ImageData(new Uint8ClampedArray(img.rgba), img.width, img.height);
       ctx.putImageData(data, 0, 0);
       pageFailure = null;
+      // Selectable text is a nicety over a drawn page, so a text layer that
+      // will not come back leaves the page shown rather than taking it down
+      // with it. A scan has no text and that is not a failure either.
+      lines = await invoke<TextLine[]>("pdf_text_layer", { page: current, scale: SCALE })
+        .catch(() => []);
     } catch (e) {
       pageFailure = String(e);
+      lines = [];
     }
   }
 
@@ -217,7 +232,27 @@
           <FileText size={28} aria-hidden="true" />
           <p class="quiet">{$t("pdf.pageFailed", { reason: pageFailure })}</p>
         {/if}
-        <canvas bind:this={canvas} class="pdf-canvas" class:hidden={pageFailure !== null}></canvas>
+        <div class="pdf-sheet" class:hidden={pageFailure !== null}>
+          <canvas bind:this={canvas} class="pdf-canvas"></canvas>
+          <!-- The words, invisible, laid exactly over the ones in the picture.
+               This is what makes a rendered page selectable at all: the canvas
+               is pixels and carries no text a browser can reach, so the page's
+               own lines are placed over it as transparent text and the ordinary
+               selection works on those. -->
+          <!-- `data-selectable` because the app shell turns selection OFF for
+               everything by default - dragging across a button label reads as a
+               bug - and opts back in through this attribute. The text layer was
+               positioned correctly and selected nothing until it carried it,
+               which is the difference between a layer that exists and one that
+               works. -->
+          <div class="pdf-text-layer" data-selectable>
+            {#each lines as line, i (i)}
+              <span
+                style="left: {line.x}px; top: {line.y}px; width: {line.width}px; height: {line.height}px; font-size: {line.height * 0.8}px"
+              >{line.text}</span>
+            {/each}
+          </div>
+        </div>
         <p class="pdf-page-number">
           {$t("pdf.pageOf", { number: current, total: doc.pages })}
         </p>
@@ -328,12 +363,38 @@
     display: block;
     font-size: 12px;
   }
-  .pdf-canvas {
+  .pdf-sheet {
+    position: relative;
     max-width: 100%;
     max-height: calc(100vh - 100px);
-    object-fit: contain;
-    background: #fff;
     box-shadow: var(--shadow-lg);
+  }
+  .pdf-canvas {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 100px);
+    background: #fff;
+  }
+  /* Transparent, but selectable: `color: transparent` keeps the glyphs in the
+     document for selection and search while the canvas underneath is what a
+     reader actually sees. Sized per line rather than per glyph, so the text is
+     stretched to its box - the selection highlight then follows the words
+     closely enough to read as theirs. */
+  .pdf-text-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  .pdf-text-layer span {
+    position: absolute;
+    color: transparent;
+    white-space: pre;
+    transform-origin: 0 0;
+    cursor: text;
+    line-height: 1;
+  }
+  .pdf-text-layer span::selection {
+    background: color-mix(in srgb, var(--color-accent) 40%, transparent);
   }
   .hidden {
     display: none;

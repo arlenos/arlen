@@ -15,7 +15,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use arlen_pdf_core::{Document, OutlineEntry, PdfError, SearchOutcome};
+use arlen_pdf_core::{Document, OutlineEntry, PdfError, SearchOutcome, TextLine};
 use serde::Serialize;
 
 /// The file the reader was launched with, when it was launched with one.
@@ -185,6 +185,34 @@ fn pdf_page_image(page: usize, scale: f32, state: tauri::State<'_, Open>) -> Res
     decode_frame(&frame)
 }
 
+/// Where the words are on a page, so a reader can select them.
+///
+/// Same worker, same page, same scale as [`pdf_page_image`] - the boxes are in
+/// the raster's own pixel space, so the surface lays them over the canvas
+/// without a second transform to get wrong.
+///
+/// # Errors
+/// When no document is open, or the worker refused the page.
+#[tauri::command]
+fn pdf_text_layer(page: usize, scale: f32, state: tauri::State<'_, Open>) -> Result<Vec<TextLine>, String> {
+    let bytes = {
+        let held = state.0.lock().map_err(|_| lock_lost())?;
+        held.as_ref().ok_or_else(no_document)?.bytes.clone()
+    };
+    let dir = worker_dir();
+    let out = arlen_worker_sandbox::run_confined_worker(
+        &dir.to_string_lossy(),
+        "arlen-pdf-decode-page",
+        arlen_worker_sandbox::WorkerProfile::SINGLE_THREADED,
+        &["--text".to_string(), page.to_string(), scale.to_string()],
+        &bytes,
+    )?;
+    // Parsed rather than trusted, like the raster frame: the worker is the piece
+    // this design assumes can be compromised, and a text layer is markup that
+    // ends up positioned over the page.
+    serde_json::from_slice(&out).map_err(|e| format!("the page renderer sent a text layer that will not read: {e}"))
+}
+
 /// Read the worker's frame: `RGBA`, width, height, then the body.
 ///
 /// Checked rather than trusted. The worker is the component this design assumes
@@ -251,6 +279,7 @@ pub fn run() {
             pdf_page_text,
             pdf_search,
             pdf_page_image,
+            pdf_text_layer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
