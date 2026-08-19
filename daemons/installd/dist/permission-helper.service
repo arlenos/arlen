@@ -15,7 +15,19 @@ ProtectSystem=strict
 # identity registry (F3 Rung B); without the identity path here ProtectSystem
 # makes it read-only and every RecordIdentity fails EROFS, so the inode gate
 # would gate nothing in deployment.
-ReadWritePaths=/var/lib/arlen/permissions /var/lib/arlen/identity
+# StateDirectory rather than a bare ReadWritePaths, and the difference is the
+# whole unit: under ProtectSystem=strict a ReadWritePaths entry that does not
+# EXIST fails namespace setup, so on a fresh image this unit died at boot with
+# "Failed to set up mount namespacing: /var/lib/arlen/identity: No such file or
+# directory" - before its first line ran. Found on 19 Aug by booting the first
+# image that carried it; nothing short of a boot would have shown it, because the
+# paths exist on any machine where the helper has ever run.
+#
+# StateDirectory creates both under /var/lib before the namespace is built and
+# grants write access to them, so it replaces the ReadWritePaths line rather than
+# joining it. The helper still makes its own per-uid subdirectories at the modes
+# F3 needs (0755 base, 0711 per-uid); this only guarantees the parents are there.
+StateDirectory=arlen/permissions arlen/identity
 ProtectHome=true
 PrivateTmp=true
 
