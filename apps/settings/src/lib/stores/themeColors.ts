@@ -175,34 +175,19 @@ export async function resetColorOverride(key: string): Promise<void> {
 
 /// Read the colour overrides `theme.toml` holds, so the page opens on what is
 /// actually set and the reset affordance beside each row is lit when it should be.
+///
+/// The backend answers keyed by ROLE. Walking the config here would mean writing
+/// the inverse of its role-to-path rule in TypeScript, and a role the inverse
+/// missed would read as not-overridden while the file held it and the desktop
+/// showed it.
 export async function loadColorOverrides(): Promise<void> {
   if (!tauriAvailable) return;
-  let doc: Record<string, unknown>;
   try {
-    doc = (await invoke<Record<string, unknown>>("config_get", {
-      file: "customization",
-      key: null,
-    })) ?? {};
+    overrides.set(await invoke<Record<string, string>>("theme_color_overrides"));
   } catch {
-    return;
+    // Nothing readable. Leave the store as it is rather than claiming no role is
+    // overridden, which the reset affordances would then render as fact.
   }
-  const color = doc.color;
-  if (!color || typeof color !== "object") {
-    overrides.set({});
-    return;
-  }
-  const groups = color as Record<string, unknown>;
-  const found: Record<string, string> = {};
-  for (const [group, fields] of Object.entries(groups)) {
-    if (!fields || typeof fields !== "object") continue;
-    for (const [field, value] of Object.entries(fields as Record<string, unknown>)) {
-      if (typeof value !== "string") continue;
-      // The inverse of the backend's rule: a semantic role keeps its own name,
-      // everything else is prefixed by its group.
-      found[group === "semantic" ? field : `${group}_${field}`] = value;
-    }
-  }
-  overrides.set(found);
 }
 
 // ── WCAG contrast, for the live check ────────────────────────────────────

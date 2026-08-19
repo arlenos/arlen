@@ -125,6 +125,8 @@ pub fn run() {
             commands::theme::theme_set_metric,
             commands::theme::theme_set_system,
             commands::theme::theme_set_color,
+            commands::theme::theme_color_overrides,
+            commands::theme::theme_system_overrides,
             commands::theme::theme_resolved_sounds,
             commands::theme::sound_preview,
             commands::theme::sound_themes,
