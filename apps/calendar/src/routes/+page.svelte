@@ -1,0 +1,214 @@
+<script lang="ts">
+  /// The agenda: what is in your calendar files, grouped by the day each event
+  /// writes for itself.
+  ///
+  /// Every empty-looking state here is a DIFFERENT state and says so. No host is
+  /// not no files; no files is not no events; and a file that could not be read
+  /// is counted out loud rather than quietly missing from the list. Three kinds
+  /// of nothing rendered as one is the defect this app was written after.
+  import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { CalendarDays, MapPin, Repeat } from "@lucide/svelte";
+  import { tauriAvailable } from "$lib/tauri";
+  import { t, locale } from "$lib/i18n/messages";
+
+  type AgendaEvent = {
+    uid: string;
+    summary: string;
+    location: string;
+    date: string;
+    time: string | null;
+    end_time: string | null;
+    kind: string;
+    tzid: string | null;
+    repeats: boolean;
+  };
+  type Agenda = {
+    events: AgendaEvent[];
+    directory: string;
+    directory_exists: boolean;
+    unreadable: number;
+  };
+
+  let agenda = $state<Agenda | null>(null);
+  let failure = $state<string | null>(null);
+
+  onMount(async () => {
+    // Asked before the try, because "nobody to ask" is not a failure to catch.
+    if (!tauriAvailable) return;
+    try {
+      agenda = await invoke<Agenda>("calendar_agenda");
+    } catch (e) {
+      failure = String(e);
+    }
+  });
+
+  /// Events under their day, in the order the host sorted them.
+  const days = $derived.by(() => {
+    const out: { date: string; events: AgendaEvent[] }[] = [];
+    for (const e of agenda?.events ?? []) {
+      const last = out[out.length - 1];
+      if (last && last.date === e.date) last.events.push(e);
+      else out.push({ date: e.date, events: [e] });
+    }
+    return out;
+  });
+
+  /// The day heading, through Intl off the shared locale - never a catalogue
+  /// string, so a German build says "Mittwoch, 19. August" rather than an
+  /// English order with German words in it.
+  function dayLabel(date: string): string {
+    const [y, m, d] = date.split("-").map(Number);
+    return new Intl.DateTimeFormat($locale, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(new Date(y, m - 1, d));
+  }
+</script>
+
+<main class="page">
+  <header class="bar">
+    <CalendarDays size={16} strokeWidth={2} />
+    <h1>{$t("cal.agenda")}</h1>
+    <span class="spacer"></span>
+    <WindowButtons />
+  </header>
+
+  {#if !tauriAvailable}
+    <p class="note">{$t("cal.hostAbsent")}</p>
+  {:else if failure}
+    <p class="note bad" role="alert">{$t("cal.failed", { reason: failure })}</p>
+  {:else if agenda}
+    {#if agenda.unreadable > 0}
+      <p class="note bad" role="alert">{$t("cal.unreadable", { count: agenda.unreadable })}</p>
+    {/if}
+    {#if !agenda.directory_exists || (agenda.events.length === 0 && agenda.unreadable === 0)}
+      <!-- Names the directory: "put files somewhere" is not an instruction. -->
+      <p class="note">
+        {agenda.directory_exists
+          ? $t("cal.empty")
+          : $t("cal.noFiles", { dir: agenda.directory })}
+      </p>
+    {/if}
+    <ul class="days">
+      {#each days as day (day.date)}
+        <li class="day">
+          <h2>{dayLabel(day.date)}</h2>
+          <ul class="events">
+            {#each day.events as e (e.uid + e.date + (e.time ?? ""))}
+              <li class="event">
+                <span class="when">
+                  {#if e.time}
+                    {e.time}{#if e.end_time}<span class="dash">–</span>{e.end_time}{/if}
+                  {:else}
+                    {$t("cal.allDay")}
+                  {/if}
+                </span>
+                <span class="what">
+                  <span class="summary">{e.summary}</span>
+                  {#if e.tzid}<span class="tz">{e.tzid}</span>{/if}
+                  {#if e.location}
+                    <span class="where"><MapPin size={12} strokeWidth={2} />{e.location}</span>
+                  {/if}
+                  {#if e.repeats}
+                    <!-- Said out loud: the rule is parsed but not worked out, so
+                         showing this one occurrence silently would be a claim
+                         about the others. -->
+                    <span class="repeat" title={$t("cal.repeatsUnexpanded")}>
+                      <Repeat size={12} strokeWidth={2} />{$t("cal.repeats")}
+                    </span>
+                  {/if}
+                </span>
+              </li>
+            {/each}
+          </ul>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+</main>
+
+<style>
+  :global(body) {
+    margin: 0;
+  }
+  .page {
+    min-height: 100vh;
+    background: var(--color-bg-app, #0f0f0f);
+    color: var(--color-fg-primary, #fafafa);
+    font-family: "Inter Variable", Inter, system-ui, sans-serif;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border-default, #262626);
+  }
+  .bar h1 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .note {
+    margin: 16px 14px;
+    font-size: 13px;
+    color: var(--color-fg-secondary, #a3a3a3);
+  }
+  .note.bad {
+    color: var(--color-fg-warning, #eab308);
+  }
+  .days,
+  .events {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .day {
+    padding: 10px 14px 4px;
+  }
+  .day h2 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-fg-secondary, #a3a3a3);
+    margin: 0 0 6px;
+  }
+  .event {
+    display: flex;
+    gap: 12px;
+    padding: 7px 0;
+    border-top: 1px solid var(--color-border-subtle, #1f1f1f);
+    font-size: 13px;
+  }
+  .when {
+    min-width: 96px;
+    color: var(--color-fg-secondary, #a3a3a3);
+    font-variant-numeric: tabular-nums;
+  }
+  .dash {
+    padding: 0 2px;
+  }
+  .what {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .summary {
+    font-weight: 500;
+  }
+  .tz,
+  .where,
+  .repeat {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--color-fg-secondary, #a3a3a3);
+  }
+</style>

@@ -1,0 +1,12 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-calendar-core"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen calendar: reading iCalendar without deciding what time means - the three date-time forms kept apart, folding and escaping undone, recurrence flagged rather than expanded."
+authors = ["Arlen"]
+
+[lib]
+
+[dependencies]
+chrono = "0.4"

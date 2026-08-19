@@ -30,6 +30,7 @@ SETTLE="${SMOKE_SETTLE:-8}"
 # The binary each app builds. Kept as data so `check-smoke-coverage.py` can
 # compare it to the tree and notice an app nobody added here.
 APPS=(
+    "arlen-calendar-app"
     "arlen-clock-app"
     "arlen-files"
     "arlen-knowledge-app"
