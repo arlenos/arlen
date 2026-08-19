@@ -1640,6 +1640,8 @@ mod crate_reachability {
          "Built recently, consumer still to come."),
         ("daemons/sentinel-detect",
          "The pure detector core for an `org.arlen.Sentinel1` daemon that does not exist yet."),
+        ("apps/text-editor/core",
+         "The LSP client core, built 19 August: framing, the handshake state machine and the process seam, tested against a real rust-analyzer. The editor's Tauri host does not dial it yet, and that wiring is not a small one - it needs a long-lived session per project in app state, diagnostics pushed to the frontend as events, and a decision about CONFINEMENT that the core deliberately does not make: a language server reads the whole project and, for Rust, runs its build scripts and proc macros, which is arbitrary code from the tree you opened. `arlen-run` is the answer to that shape of problem and wiring it means saying which paths a server may read and whether it may reach the network for dependencies."),
         ("ai/ai-explanation",
          "System Explanation Mode, genuinely replaced rather than merely uncalled: `daemons/ai-engine-daemon/src/explain_iface.rs` serves `org.arlen.AI1.explain_system` by running the built-in explain skill on an ephemeral confined pi, and its own doc gives retiring this path as a reason it exists. The feature is alive; this implementation of it is the one awaiting removal."),
     ];
