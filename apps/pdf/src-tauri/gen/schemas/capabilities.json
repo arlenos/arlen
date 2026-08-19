@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default permissions for the Arlen document reader","local":true,"windows":["main"],"permissions":["core:default","core:event:default","core:window:default"]}}
