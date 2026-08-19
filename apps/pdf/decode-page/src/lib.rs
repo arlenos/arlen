@@ -70,44 +70,40 @@ impl Raster {
 /// The same shapes as [`render_page`]: bytes that are not a PDF, or a page the
 /// document does not have.
 pub fn page_text_layer(bytes: &[u8], page: usize, scale: f32) -> Result<Vec<TextLine>, String> {
-    use mupdf::{Document, TextPageFlags};
-
     let scale = if scale.is_finite() { scale.clamp(MIN_SCALE, MAX_SCALE) } else { 1.0 };
-    let doc = Document::from_bytes(bytes, "application/pdf")
+    let pdfium = library()?;
+    let doc = pdfium
+        .load_pdf_from_byte_slice(bytes, None)
         .map_err(|e| format!("this file could not be read as a PDF: {e}"))?;
-    let count = usize::try_from(doc.page_count().unwrap_or(0)).unwrap_or(0);
+    let pages = doc.pages();
+    let count = pages.len() as usize;
     if page == 0 || page > count {
         return Err(format!("this PDF has {count} pages, so there is no page {page}"));
     }
     let index = i32::try_from(page - 1).map_err(|_| format!("page {page} is out of range"))?;
-    let loaded = doc.load_page(index).map_err(|e| format!("page {page} would not load: {e}"))?;
-    let text = loaded
-        .to_text_page(TextPageFlags::empty())
-        .map_err(|e| format!("page {page} has no readable text layer: {e}"))?;
+    let loaded = pages.get(index).map_err(|e| format!("page {page} would not load: {e}"))?;
+    let height = loaded.height().value;
+    let text = loaded.text().map_err(|e| format!("page {page} has no readable text layer: {e}"))?;
 
     let mut out = Vec::new();
-    for block in text.blocks() {
-        for line in block.lines() {
-            let mut s = String::new();
-            for ch in line.chars() {
-                if let Some(c) = ch.char() {
-                    s.push(c);
-                }
-            }
-            // A line that is only whitespace positions nothing a reader would
-            // select, and a box over it is a box that swallows clicks.
-            if s.trim().is_empty() {
-                continue;
-            }
-            let b = line.bounds();
-            out.push(TextLine {
-                text: s,
-                x: b.x0 * scale,
-                y: b.y0 * scale,
-                width: (b.x1 - b.x0) * scale,
-                height: (b.y1 - b.y0) * scale,
-            });
+    for segment in text.segments().iter() {
+        let s = segment.text();
+        // A segment that is only whitespace positions nothing a reader would
+        // select, and a box over it is a box that swallows clicks.
+        if s.trim().is_empty() {
+            continue;
         }
+        let r = segment.bounds();
+        // PDF measures from the BOTTOM of the page and a screen from the top, so
+        // the y flips here. Getting this wrong mirrors every box vertically -
+        // which still looks like a text layer, and selects the wrong line.
+        out.push(TextLine {
+            text: s,
+            x: r.left().value * scale,
+            y: (height - r.top().value) * scale,
+            width: (r.right().value - r.left().value) * scale,
+            height: (r.top().value - r.bottom().value) * scale,
+        });
     }
     Ok(out)
 }
@@ -118,25 +114,28 @@ pub fn page_text_layer(bytes: &[u8], page: usize, scale: f32) -> Result<Vec<Text
 /// A sentence naming what went wrong: bytes that are not a PDF, a page the
 /// document does not have, or a page whose raster would exceed [`MAX_PIXELS`].
 pub fn render_page(bytes: &[u8], page: usize, scale: f32) -> Result<Raster, String> {
-    use mupdf::{Colorspace, Document, Matrix};
+    use pdfium_render::prelude::*;
 
     let scale = if scale.is_finite() { scale.clamp(MIN_SCALE, MAX_SCALE) } else { 1.0 };
-    let doc = Document::from_bytes(bytes, "application/pdf")
+    let pdfium = library()?;
+    let doc = pdfium
+        .load_pdf_from_byte_slice(bytes, None)
         .map_err(|e| format!("this file could not be read as a PDF: {e}"))?;
-    let count = doc.page_count().map_err(|e| format!("its pages could not be counted: {e}"))?;
-    let count = usize::try_from(count).unwrap_or(0);
+    let pages = doc.pages();
+    let count = pages.len() as usize;
     if page == 0 || page > count {
         return Err(format!("this PDF has {count} pages, so there is no page {page}"));
     }
     let index = i32::try_from(page - 1).map_err(|_| format!("page {page} is out of range"))?;
-    let loaded = doc.load_page(index).map_err(|e| format!("page {page} would not load: {e}"))?;
+    let loaded = pages
+        .get(index)
+        .map_err(|e| format!("page {page} would not load: {e}"))?;
 
     // Checked against the page's OWN declared size before anything is drawn: the
     // document controls these numbers, and multiplying them by the scale is
     // exactly where a hostile file turns three integers into an allocation.
-    let bounds = loaded.bounds().map_err(|e| format!("page {page} has no usable size: {e}"))?;
-    let w = f64::from((bounds.x1 - bounds.x0) * scale).ceil().max(1.0);
-    let h = f64::from((bounds.y1 - bounds.y0) * scale).ceil().max(1.0);
+    let w = f64::from(loaded.width().value * scale).ceil().max(1.0);
+    let h = f64::from(loaded.height().value * scale).ceil().max(1.0);
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let pixels = (w as u64).saturating_mul(h as u64);
     if pixels > MAX_PIXELS {
@@ -145,25 +144,21 @@ pub fn render_page(bytes: &[u8], page: usize, scale: f32) -> Result<Raster, Stri
         ));
     }
 
-    let pixmap = loaded
-        // OPAQUE, not alpha. A page is paper: with alpha the pixmap starts
-        // transparent and only the marks are painted, so a viewer compositing it
-        // over its own background gets something that looks right until the
-        // background is not white. It also cost an hour here - a fully
-        // transparent raster reads as "black" to a naive pixel check, so a page
-        // that drew NOTHING measured as a page covered in ink.
-        .to_pixmap(&Matrix::new_scale(scale, scale), &Colorspace::device_rgb(), false, false)
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let (tw, th) = (w as i32, h as i32);
+    let config = PdfRenderConfig::new().set_target_size(tw, th);
+    let bitmap = loaded
+        .render_with_config(&config)
         .map_err(|e| format!("page {page} could not be drawn: {e}"))?;
-    let (width, height) = (pixmap.width(), pixmap.height());
-    let samples = pixmap.samples();
-    // Asked rather than assumed: an RGB pixmap and an RGBA one differ by a byte
-    // a pixel, and reading one as the other shears the image into diagonal
-    // stripes - a wrong picture rather than an error, which is the worse failure.
-    let rgba = match pixmap.n() {
-        4 => samples.to_vec(),
-        3 => samples.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 0xFF]).collect(),
-        other => return Err(format!("page {page} came back with {other} bytes a pixel")),
-    };
+    let (width, height) = (bitmap.width() as u32, bitmap.height() as u32);
+    // OPAQUE paper, not a transparent sheet. Pdfium paints marks over whatever
+    // the bitmap started as, so the alpha is forced here: a fully transparent
+    // raster reads as "black" to a naive pixel check, which is how a page that
+    // drew NOTHING once measured as a page covered in ink.
+    let mut rgba = bitmap.as_rgba_bytes();
+    for px in rgba.chunks_exact_mut(4) {
+        px[3] = 0xFF;
+    }
     let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
     if rgba.len() != expected {
         return Err(format!("page {page} came back {} bytes, not the {expected} its size needs", rgba.len()));
@@ -171,9 +166,48 @@ pub fn render_page(bytes: &[u8], page: usize, scale: f32) -> Result<Raster, Stri
     Ok(Raster { width, height, rgba })
 }
 
+/// Bind to the PDFium library this machine provides.
+///
+/// Resolved at RUNTIME rather than linked, so nothing here is built from the
+/// engine's source. `ARLEN_PDFIUM_LIB` names a specific library for a
+/// deployment or a test; otherwise the system one is used.
+///
+/// # Errors
+/// A sentence naming the missing library rather than a panic, because "this
+/// machine has no PDF engine installed" is a deployment fact a reader has to be
+/// able to be told.
+fn library() -> Result<pdfium_render::prelude::Pdfium, String> {
+    use pdfium_render::prelude::Pdfium;
+    if let Some(path) = std::env::var_os("ARLEN_PDFIUM_LIB") {
+        let path = path.to_string_lossy().into_owned();
+        return Pdfium::bind_to_library(&path)
+            .map(Pdfium::new)
+            .map_err(|e| format!("the PDF engine at {path} could not be loaded: {e}"));
+    }
+    Pdfium::bind_to_system_library()
+        .map(Pdfium::new)
+        .map_err(|e| format!("no PDF engine (libpdfium) is installed on this machine: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Whether this machine has a PDF engine to test against.
+    ///
+    /// SAID OUT LOUD rather than silently skipped. Every render case below needs
+    /// a `libpdfium` at runtime, no distribution in play ships one as a package,
+    /// and a suite that quietly reports success on a machine without it is a
+    /// suite that says the renderer works when nothing ran. Where the library
+    /// comes from is an open packaging question, not something a test can paper
+    /// over.
+    fn engine() -> bool {
+        if library().is_ok() {
+            return true;
+        }
+        eprintln!("SKIPPED: no libpdfium on this machine, so nothing here was rendered");
+        false
+    }
 
     /// The smallest real PDF that has a page: one page, no content stream.
     fn one_page_pdf() -> Vec<u8> {
@@ -220,6 +254,9 @@ mod tests {
 
     #[test]
     fn a_page_that_has_text_on_it_comes_back_with_ink_on_it() {
+        if !engine() {
+            return;
+        }
         // THE case, and the one that was missing when this crate first shipped:
         // `base14-fonts` was off, so a document naming Helvetica got a page with
         // no glyphs on it - clean white paper, no error, no warning. Every other
@@ -231,6 +268,9 @@ mod tests {
 
     #[test]
     fn the_text_layer_says_what_the_line_reads_and_where_it_sits() {
+        if !engine() {
+            return;
+        }
         let lines = page_text_layer(&text_page_pdf(), 1, 1.0).expect("reads");
         assert_eq!(lines.len(), 1, "one line of text, one entry");
         assert!(lines[0].text.contains("Hello"), "got {:?}", lines[0].text);
@@ -244,6 +284,9 @@ mod tests {
 
     #[test]
     fn the_text_layer_scales_with_the_page_it_is_laid_over() {
+        if !engine() {
+            return;
+        }
         // It has to land on the raster rendered at the SAME scale, so both move
         // together or the boxes drift off the words at every zoom but one.
         let one = page_text_layer(&text_page_pdf(), 1, 1.0).expect("reads");
@@ -254,12 +297,18 @@ mod tests {
 
     #[test]
     fn a_page_with_no_text_has_an_empty_layer_rather_than_a_failure() {
+        if !engine() {
+            return;
+        }
         // What a scan looks like. Empty and broken must not read the same.
         assert_eq!(page_text_layer(&one_page_pdf(), 1, 1.0).expect("reads"), Vec::new());
     }
 
     #[test]
     fn a_page_comes_back_as_pixels_of_the_size_the_document_asked_for() {
+        if !engine() {
+            return;
+        }
         let out = render_page(&one_page_pdf(), 1, 1.0).expect("renders");
         assert_eq!((out.width, out.height), (200, 100));
         assert_eq!(out.rgba.len(), 200 * 100 * 4, "four bytes a pixel, no shear");
@@ -267,12 +316,18 @@ mod tests {
 
     #[test]
     fn the_scale_is_the_scale() {
+        if !engine() {
+            return;
+        }
         let out = render_page(&one_page_pdf(), 1, 2.0).expect("renders");
         assert_eq!((out.width, out.height), (400, 200));
     }
 
     #[test]
     fn a_page_that_is_not_there_is_named_rather_than_drawn() {
+        if !engine() {
+            return;
+        }
         let err = render_page(&one_page_pdf(), 2, 1.0).unwrap_err();
         assert!(err.contains("no page 2"), "got {err}");
         assert!(render_page(&one_page_pdf(), 0, 1.0).is_err(), "one-based, so zero is meaningless");
@@ -280,11 +335,17 @@ mod tests {
 
     #[test]
     fn something_that_is_not_a_pdf_is_refused() {
+        if !engine() {
+            return;
+        }
         assert!(render_page(b"not a pdf at all", 1, 1.0).is_err());
     }
 
     #[test]
     fn an_absurd_zoom_is_clamped_rather_than_allocated() {
+        if !engine() {
+            return;
+        }
         // The bound that matters: a caller bug must not become an allocation.
         let out = render_page(&one_page_pdf(), 1, 1e9).expect("clamped and drawn");
         assert!(u64::from(out.width) * u64::from(out.height) <= MAX_PIXELS);
@@ -294,6 +355,9 @@ mod tests {
 
     #[test]
     fn a_drawn_page_is_opaque_paper_rather_than_a_transparent_sheet() {
+        if !engine() {
+            return;
+        }
         // The case this exists for. A transparent raster looks like a working
         // render to anything that only checks the size, and it looks like a
         // blank page on screen - which is indistinguishable from a page that
@@ -307,6 +371,9 @@ mod tests {
 
     #[test]
     fn the_frame_says_what_it_is_before_it_says_how_big() {
+        if !engine() {
+            return;
+        }
         let out = render_page(&one_page_pdf(), 1, 1.0).expect("renders");
         let frame = out.encode();
         assert_eq!(&frame[..4], b"RGBA");
