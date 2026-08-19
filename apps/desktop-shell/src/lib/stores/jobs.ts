@@ -156,7 +156,7 @@ export async function pollJobs(): Promise<void> {
     jobs.set(await invoke<Job[]>("list_jobs"));
     mocked.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       jobs.set(MOCK_JOBS);
       mocked.set(true);
       return;

@@ -12,6 +12,7 @@
 /// streams a canned answer so the pane is drivable; live without a reachable
 /// engine the pane says the agent is unreachable.
 import { get, writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// What the capability line renders (the harness `ai_capability` shape).
@@ -67,7 +68,7 @@ export async function loadAskCapability(): Promise<void> {
   try {
     askCapability.set(await invoke<AskCapability>("ai_capability"));
   } catch {
-    askCapability.set(import.meta.env.DEV ? FIXTURE_CAPABILITY : null);
+    askCapability.set(!tauriAvailable ? FIXTURE_CAPABILITY : null);
   } finally {
     askCapabilityLoaded.set(true);
   }
@@ -96,7 +97,7 @@ export async function ask(prompt: string): Promise<void> {
     sessionId = answer.session;
     appendToAgentTurn(answer.text, true);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       streamFixture();
     } else {
       askTurns.update((t) => t.slice(0, -2));
@@ -137,7 +138,7 @@ function streamFixture(): void {
 /// Ctrl+J: open the harness on this session (full fidelity). The session id, not
 /// the transcript, travels - both surfaces are thin clients of the same daemon.
 export async function escalate(): Promise<void> {
-  if (sessionId === null && !import.meta.env.DEV) return;
+  if (sessionId === null && tauriAvailable) return;
   try {
     await invoke("open_harness_session", { id: sessionId ?? "dev-session" });
   } catch {

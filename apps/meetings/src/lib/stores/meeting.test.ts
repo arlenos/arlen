@@ -7,11 +7,15 @@
 /// stopped and puts the laptop down. The fix is behavioural, not cosmetic: stay
 /// here, and say it.
 ///
-/// The dev branch is part of the contract rather than a shortcut. Under vite no
-/// command has a host, so a rejection says nothing about the microphone and the
-/// stream is a fixture either way; in a real build the same rejection means it
-/// may still be live. Both are pinned, because a test written against only one
-/// of them passes while the other is wrong.
+/// The no-host branch is part of the contract rather than a shortcut. With no
+/// Tauri host no command has a backend, so a rejection says nothing about the
+/// microphone and the stream is a fixture either way; with a host the same
+/// rejection means it may still be live. Both are pinned, because a test written
+/// against only one of them passes while the other is wrong.
+///
+/// These cases used to flip `vi.stubEnv("DEV", ...)`, back when the store asked
+/// the build mode. That was the wrong question - `tauri dev` is a DEV build WITH
+/// a microphone - so the flag is now the host, and so is the stub.
 ///
 /// No `beforeEach` mock reset here on purpose: a reset makes a rejection set
 /// after it escape the code's own catch (isolated while testing the greeter this
@@ -22,6 +26,15 @@ import { get } from "svelte/store";
 
 const invoke = vi.fn((..._args: unknown[]) => Promise.resolve(null as unknown));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
+
+/// A getter, not a value: the store reads `tauriAvailable` when the function
+/// runs, so each case can set it without re-importing the module.
+let hostPresent = true;
+vi.mock("$lib/tauri", () => ({
+  get tauriAvailable() {
+    return hostPresent;
+  },
+}));
 
 const { stopCapture, stopFailed, currentId, meeting, liveNotes, liveTranscript } =
   await import("./meeting");
@@ -37,7 +50,7 @@ function capturing() {
 
 describe("stopCapture", () => {
   it("in a real build, a refused stop reports failure and does not open a note", async () => {
-    vi.stubEnv("DEV", false);
+    hostPresent = true;
     capturing();
     invoke.mockImplementation(() => Promise.reject(new Error("the daemon refused")));
 
@@ -53,7 +66,7 @@ describe("stopCapture", () => {
   });
 
   it("a stop the daemon accepted goes on to the note", async () => {
-    vi.stubEnv("DEV", false);
+    hostPresent = true;
     capturing();
     invoke.mockImplementation((cmd) =>
       cmd === "meeting_summarize"
@@ -71,7 +84,7 @@ describe("stopCapture", () => {
   });
 
   it("under vite, the same rejection is not read as a live microphone", async () => {
-    vi.stubEnv("DEV", true);
+    hostPresent = false;
     capturing();
     invoke.mockImplementation(() => Promise.reject(new Error("no host")));
 
@@ -84,7 +97,7 @@ describe("stopCapture", () => {
   });
 
   it("keeps the human notes when it walks to the note", async () => {
-    vi.stubEnv("DEV", false);
+    hostPresent = true;
     capturing();
     liveNotes.set("only my typing survived");
     invoke.mockImplementation((cmd) =>

@@ -18,7 +18,16 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 // Say there IS a runtime. The store tells a mock (no backend at all - keep the
 // optimistic fixture) apart from a real refusal by this flag, so a test about
 // what happens when the backend REFUSES has to be on the runtime side of it.
-vi.mock("$lib/tauri", () => ({ tauriAvailable: true }));
+/// A getter, not a value: the store now asks the HOST rather than the build, so
+/// each case sets whether one is there. It used to flip `vi.stubEnv("DEV", ...)`,
+/// which asked whether this is a development build - a different question, and
+/// one that says yes in `tauri dev`, where the backend is real.
+let hostPresent = true;
+vi.mock("$lib/tauri", () => ({
+  get tauriAvailable() {
+    return hostPresent;
+  },
+}));
 
 const { processes, unavailable, mocked, load, pidsOf, pauseRow, limitRow } = await import("./processes");
 const { get } = await import("svelte/store");
@@ -29,6 +38,7 @@ const ONE = [
 
 beforeEach(() => {
   invoke.mockReset();
+  hostPresent = true;
   processes.set([]);
   unavailable.set(false);
   mocked.set(false);
@@ -43,8 +53,8 @@ describe("load", () => {
     expect(get(mocked)).toBe(false);
   });
 
-  it("under vite, shows the fixture and says it is a fixture", async () => {
-    vi.stubEnv("DEV", true);
+  it("with no host, shows the fixture and says it is a fixture", async () => {
+    hostPresent = false;
     invoke.mockRejectedValue(new Error("no backend"));
     await load();
     expect(get(processes).length).toBeGreaterThan(0);
@@ -54,7 +64,7 @@ describe("load", () => {
   });
 
   it("in a real build, empties the list and says the read failed", async () => {
-    vi.stubEnv("DEV", false);
+    hostPresent = true;
     invoke.mockRejectedValue(new Error("no backend"));
     await load();
     expect(get(processes)).toHaveLength(0);
@@ -68,7 +78,7 @@ describe("load", () => {
     await load();
     expect(get(processes)).toHaveLength(1);
 
-    vi.stubEnv("DEV", false);
+    hostPresent = true;
     invoke.mockRejectedValue(new Error("backend went away"));
     await load();
     expect(get(processes)).toHaveLength(0);

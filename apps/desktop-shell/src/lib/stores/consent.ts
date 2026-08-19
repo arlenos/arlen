@@ -10,6 +10,7 @@
 /// bluetooth modals onto the broker is a later coder step.
 
 import { writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// The eleven request classes (contracts/consent-contract ConsentClass).
@@ -107,7 +108,7 @@ export const current = writable<PendingView | null>(null);
 // screenshot loop can address every state by URL; without it the first one
 // shows. Same pattern as the waypointer's `?askmock`.
 let mockIndex = 0;
-if (import.meta.env.DEV && typeof location !== "undefined") {
+if (!tauriAvailable && typeof location !== "undefined") {
   const pinned = Number(new URLSearchParams(location.search).get("consentmock"));
   if (Number.isInteger(pinned) && pinned >= 0) mockIndex = pinned;
 }
@@ -139,7 +140,7 @@ export async function pollConsent(): Promise<void> {
     }
     current.set(view);
   } catch {
-    current.set(import.meta.env.DEV ? MOCK_PENDING[mockIndex % MOCK_PENDING.length] : null);
+    current.set(!tauriAvailable ? MOCK_PENDING[mockIndex % MOCK_PENDING.length] : null);
   }
 }
 

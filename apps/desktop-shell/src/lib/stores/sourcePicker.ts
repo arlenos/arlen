@@ -11,6 +11,7 @@
 /// fixture so the surface renders.
 
 import { writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// The app asking to capture, from the portal request.
@@ -108,7 +109,7 @@ export async function openSourcePicker(request: SourceRequest): Promise<void> {
     sourcesMocked.set(false);
     sourcesUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       // No backend under vite: the fixture is the honest thing to render for
       // design work, and `sourcesMocked` labels it.
       sources.set(FIXTURE_SOURCES);
@@ -140,7 +141,7 @@ export async function share(choice: ShareChoice): Promise<void> {
   try {
     await invoke("start_screencast", { ...choice });
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       current.set(null); // no portal under vite: the flow stays drivable
       return;
     }

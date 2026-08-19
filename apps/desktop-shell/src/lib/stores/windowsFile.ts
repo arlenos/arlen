@@ -11,6 +11,7 @@
 /// vite the store serves a fixture so the surface renders.
 
 import { writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// How well-supported the app is, stated honestly (never "just works").
@@ -87,7 +88,7 @@ export const launchFailed = writable(false);
 // invited it is indistinguishable from the app doing something wrong, and it
 // hides whatever was actually being looked at.
 const wanted = (() => {
-  if (!import.meta.env.DEV || typeof location === "undefined") return null;
+  if (tauriAvailable || typeof location === "undefined") return null;
   const raw = new URLSearchParams(location.search).get("wfmock");
   if (raw === null) return null;
   const pinned = Number(raw);
@@ -103,12 +104,12 @@ export async function openWindowsFile(): Promise<void> {
   try {
     current.set(await invoke<PendingWindowsFile | null>("windows_file_request"));
   } catch {
-    // `import.meta.env.DEV` is spelled out here rather than left inside
+    // `!tauriAvailable` is spelled out here rather than left inside
     // `wanted` so `check-fixture-on-failure` can see the guard it is looking
     // for; both halves are real, and the second one is what keeps the fixture
     // off every dev route that did not ask for it.
     current.set(
-      import.meta.env.DEV && wanted !== null ? MOCK[mockIndex % MOCK.length] : null,
+      !tauriAvailable && wanted !== null ? MOCK[mockIndex % MOCK.length] : null,
     );
   }
 }
@@ -119,7 +120,7 @@ export async function run(id: number): Promise<void> {
   try {
     await invoke("windows_file_run", { id });
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       current.set(null); // no bottle daemon under vite
       return;
     }
@@ -135,7 +136,7 @@ export async function install(id: number): Promise<void> {
   try {
     await invoke("windows_file_install", { id });
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       current.set(null);
       return;
     }

@@ -7,6 +7,7 @@
 /// commands are invoke-with-fixture-catch; under vite the fixture stands in
 /// and actions apply locally so the whole flow drives.
 import { derived, get, writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// One alarm as the daemon serves it. `days` are 0..6 with 0 = Monday (the
@@ -164,7 +165,7 @@ export async function loadClock(): Promise<void> {
     clockMocked.set(false);
     clockUnavailable.set(false);
   } catch {
-    if (import.meta.env.DEV) {
+    if (!tauriAvailable) {
       const s = fixtureState(Date.now());
       clock.set(forceNoWake ? { ...s, wake_capable: false } : s);
       clockMocked.set(true);
@@ -206,7 +207,7 @@ async function send(cmd: string, args?: Record<string, unknown>): Promise<void> 
     await invoke(cmd, args);
     await loadClock();
   } catch {
-    if (import.meta.env.DEV) return; // daemon unwired under vite
+    if (!tauriAvailable) return; // no host, so no daemon to ask
     // None of the clock commands has a host yet, so this is every real session:
     // an alarm shown as set that will not ring, a timer counting down in the UI
     // and nowhere else. Put the state back and say so.
