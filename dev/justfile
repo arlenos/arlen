@@ -430,15 +430,23 @@ provision-agent-profile:
 # Not in the PR matrix, like `integration-smoke`: it wants a display and built
 # apps, and it ends processes and moves files under $HOME.
 #
-# Press the four Stage-2 apps and read what came back (19 cases).
+# Press every app that has a drive script and read what came back.
+#
+# The list is the DIRECTORY, not a list here. It named four apps while seven
+# scripts existed - calendar, knowledge and appearance had been written and were
+# never in it - so three suites only ran when somebody remembered them, which is
+# the same as not having them. A new `drive-<app>.sh` is picked up by existing.
 drive-apps:
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
-    for app in viewer system-monitor text-editor files; do
-        "{{ROOT}}/dev/screenshot/drive-$app.sh" || fail=1
+    ran=0
+    for script in "{{ROOT}}"/dev/screenshot/drive-*.sh; do
+        [ -x "$script" ] || continue
+        ran=$((ran + 1))
+        "$script" || fail=1
     done
-    [ "$fail" = 0 ] && echo "every behaviour these four plans name answered when it was pressed"
+    [ "$fail" = 0 ] && echo "$ran app suite(s) answered when they were pressed"
     exit "$fail"
 
 # Headless terminal round-trip smoke (#3 PR-2): build the prod-asset terminal
