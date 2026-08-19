@@ -24,6 +24,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const GATE = join(ROOT, "dev/scripts/check-writable-paths-exist.py");
@@ -101,24 +103,38 @@ check(
   const r = spawnSync("python3", [GATE], { encoding: "utf8" });
   check("the gate passes on the tree as it stands", r.status === 0, (r.stderr || "").trim());
 
-  const conf = join(ROOT, "dev/mkosi/mkosi.extra/etc/tmpfiles.d/arlen-home.conf");
-  const original = spawnSync("cat", [conf], { encoding: "utf8" }).stdout;
-  const withoutIt = original
-    .split("\n")
-    .filter((l) => !l.startsWith("d /home/arlen/.local/share/applications"))
-    .join("\n");
-  spawnSync("cp", [conf, `${conf}.bak`]);
-  try {
-    spawnSync("tee", [conf], { input: withoutIt, encoding: "utf8", stdio: ["pipe", "ignore", "ignore"] });
-    const red = spawnSync("python3", [GATE], { encoding: "utf8" });
-    check(
-      "removing the applications dir turns the gate red again",
-      red.status === 1 && (red.stderr || "").includes("applications"),
-      "the boot failure this fixes would not be caught",
-    );
-  } finally {
-    spawnSync("mv", [`${conf}.bak`, conf]);
+  // The red case runs against a COPY, never the tree.
+  //
+  // It used to edit `arlen-home.conf` in place and restore it in a `finally`.
+  // The gates run concurrently, so for as long as that window was open a sibling
+  // reading the same file saw a tree with the line removed - and
+  // `check-writable-paths-exist` is one of those siblings. That is what happened
+  // twice on 19 August: the gate failed inside a commit, naming a real-looking
+  // uncreated path, and passed the moment it ran again by hand. A control that
+  // mutates what its neighbours are reading manufactures the failure it exists to
+  // detect.
+  const scratch = mkdtempSync(join(tmpdir(), "writable-paths-"));
+  for (const rel of [
+    "dev/mkosi/mkosi.extra/etc/tmpfiles.d/arlen-home.conf",
+    "daemons/installd/dist/installd.service",
+  ]) {
+    mkdirSync(join(scratch, dirname(rel)), { recursive: true });
+    copyFileSync(join(ROOT, rel), join(scratch, rel));
   }
+  const conf = join(scratch, "dev/mkosi/mkosi.extra/etc/tmpfiles.d/arlen-home.conf");
+  writeFileSync(
+    conf,
+    readFileSync(conf, "utf8")
+      .split("\n")
+      .filter((l) => !l.startsWith("d /home/arlen/.local/share/applications"))
+      .join("\n"),
+  );
+  const red = spawnSync("python3", [GATE, scratch], { encoding: "utf8" });
+  check(
+    "removing the applications dir turns the gate red again",
+    red.status === 1 && (red.stdout + red.stderr).includes("applications"),
+    "the boot failure this fixes would not be caught",
+  );
 }
 
 console.log(
