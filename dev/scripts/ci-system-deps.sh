@@ -141,6 +141,23 @@ attempt=0
 # below runs `update` and does it properly. This can cost a few seconds; it
 # cannot cost correctness, because apt either has what it needs or says so.
 if [ "$restored" -gt 0 ] && [ "$(remaining)" -gt 60 ]; then
+    # WHAT IS STILL MISSING, NAMED. On 19 August a job failed with the cache
+    # HITTING - 174 packages restored - and then six minutes passing before the
+    # budget ran out, which rules out the download this cache was built to avoid
+    # and leaves "something else went to the mirror". `--print-uris` resolves the
+    # install and prints what it WOULD fetch without fetching any of it, so the
+    # next red run says whether the answer is one uncached package or an index,
+    # instead of leaving it to be inferred from a timestamp.
+    #
+    # Resolved once and reused: a second resolution would be a second thing that
+    # can be slow in the step whose slowness is under investigation. Timed and
+    # non-fatal, because instrumentation that can fail the step it is diagnosing
+    # is worse than none.
+    wants="$(timeout 60 sudo apt-get install -y --no-install-recommends --print-uris $APT_OPTS $PACKAGES 2>/dev/null \
+        | grep "^'" || true)"
+    echo "after the restore, apt still wants $(printf '%s' "$wants" | grep -c . || true) file(s) from the mirror"
+    printf '%s' "$wants" | head -5 | sed 's/^/  wants: /'
+
     echo "cache is warm; trying the install without touching the mirror"
     if timeout $(( $(remaining) - 30 )) sudo apt-get install -y --no-install-recommends $APT_OPTS $PACKAGES
     then

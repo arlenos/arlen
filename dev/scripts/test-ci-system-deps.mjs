@@ -64,6 +64,9 @@ function stage({ installFails = 0, archivesPrefilled = [], cached = [] } = {}) {
     `#!/bin/sh
 mode="$1"; shift
 if [ "$mode" = update ]; then echo called >> "${dir}/update-calls"; exit 0; fi
+# A resolution is not an installation: --print-uris prints what it would
+# fetch and installs nothing, so it must not consume an attempt here either.
+case " $* " in *" --print-uris "*) exit 0;; esac
 n=$(cat "${dir}/attempts"); n=$((n+1)); echo "$n" > "${dir}/attempts"
 echo "$@" >> "${dir}/install-argv"
 if [ "$n" -le ${installFails} ]; then echo "apt-get: mirror said no" >&2; exit 100; fi
