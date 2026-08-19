@@ -20,7 +20,13 @@ name = "arlen_pdf_decode_page"
 # It is also the largest piece of C in the project and it parses files people
 # are sent by strangers, which is the entire reason this is a separate worker
 # binary behind a sandbox rather than a function in the reader.
-mupdf = { version = "0.8", default-features = false }
+#
+# `base14-fonts` is not optional in practice and turning it off is silent: a PDF
+# names Helvetica or Times without embedding it, and with no font to substitute
+# MuPDF draws the page, draws no glyphs, and returns success. The result is
+# clean white paper - not an error, not a warning, just a document with its text
+# missing. Found by looking at the pixels; nothing else would have said so.
+mupdf = { version = "0.8", default-features = false, features = ["base14-fonts"] }
 
 # For the Landlock ruleset the viewer's decoders already use. One reviewed
 # implementation of the confinement rather than a second copy of it here; if it

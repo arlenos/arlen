@@ -93,7 +93,13 @@ pub fn render_page(bytes: &[u8], page: usize, scale: f32) -> Result<Raster, Stri
     }
 
     let pixmap = loaded
-        .to_pixmap(&Matrix::new_scale(scale, scale), &Colorspace::device_rgb(), true, false)
+        // OPAQUE, not alpha. A page is paper: with alpha the pixmap starts
+        // transparent and only the marks are painted, so a viewer compositing it
+        // over its own background gets something that looks right until the
+        // background is not white. It also cost an hour here - a fully
+        // transparent raster reads as "black" to a naive pixel check, so a page
+        // that drew NOTHING measured as a page covered in ink.
+        .to_pixmap(&Matrix::new_scale(scale, scale), &Colorspace::device_rgb(), false, false)
         .map_err(|e| format!("page {page} could not be drawn: {e}"))?;
     let (width, height) = (pixmap.width(), pixmap.height());
     let samples = pixmap.samples();
@@ -124,6 +130,50 @@ mod tests {
             "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] >>\nendobj\n",
         );
         format!("%PDF-1.5\n{body}trailer\n<< /Size 4 /Root 1 0 R >>\n%%EOF\n").into_bytes()
+    }
+
+    /// A page with one line of text in a font it does NOT embed - the ordinary
+    /// case, and the one that needs the base-14 set to draw at all.
+    fn text_page_pdf() -> Vec<u8> {
+        let stream = b"BT /F1 24 Tf 20 40 Td (Hello) Tj ET";
+        let mut out = Vec::from(&b"%PDF-1.5\n"[..]);
+        let mut offsets = Vec::new();
+        let mut add = |out: &mut Vec<u8>, offsets: &mut Vec<usize>, body: Vec<u8>| {
+            offsets.push(out.len());
+            out.extend_from_slice(format!("{} 0 obj\n", offsets.len()).as_bytes());
+            out.extend_from_slice(&body);
+            out.extend_from_slice(b"\nendobj\n");
+        };
+        add(&mut out, &mut offsets, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
+        add(&mut out, &mut offsets, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec());
+        add(&mut out, &mut offsets,
+            b"<< /Type /Page /Parent 2 0 R /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> /MediaBox [0 0 200 100] >>".to_vec());
+        let mut content = format!("<< /Length {} >>\nstream\n", stream.len()).into_bytes();
+        content.extend_from_slice(stream);
+        content.extend_from_slice(b"\nendstream");
+        add(&mut out, &mut offsets, content);
+        add(&mut out, &mut offsets,
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
+        let startxref = out.len();
+        out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len() + 1).as_bytes());
+        for off in &offsets {
+            out.extend_from_slice(format!("{off:010} 00000 n \n").as_bytes());
+        }
+        out.extend_from_slice(
+            format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{startxref}\n%%EOF\n",
+                    offsets.len() + 1).as_bytes());
+        out
+    }
+
+    #[test]
+    fn a_page_that_has_text_on_it_comes_back_with_ink_on_it() {
+        // THE case, and the one that was missing when this crate first shipped:
+        // `base14-fonts` was off, so a document naming Helvetica got a page with
+        // no glyphs on it - clean white paper, no error, no warning. Every other
+        // test here passed. Only counting dark pixels says otherwise.
+        let out = render_page(&text_page_pdf(), 1, 1.0).expect("renders");
+        let dark = out.rgba.chunks_exact(4).filter(|p| p[0] < 128).count();
+        assert!(dark > 20, "a page with text on it drew {dark} dark pixels");
     }
 
     #[test]
@@ -158,6 +208,19 @@ mod tests {
         assert!(u64::from(out.width) * u64::from(out.height) <= MAX_PIXELS);
         let tiny = render_page(&one_page_pdf(), 1, -5.0).expect("clamped up");
         assert!(tiny.width >= 1 && tiny.height >= 1);
+    }
+
+    #[test]
+    fn a_drawn_page_is_opaque_paper_rather_than_a_transparent_sheet() {
+        // The case this exists for. A transparent raster looks like a working
+        // render to anything that only checks the size, and it looks like a
+        // blank page on screen - which is indistinguishable from a page that
+        // failed to draw. Every pixel must carry full alpha.
+        let out = render_page(&one_page_pdf(), 1, 1.0).expect("renders");
+        assert!(
+            out.rgba.chunks_exact(4).all(|p| p[3] == 0xFF),
+            "a page with a transparent pixel is a page that drew nothing"
+        );
     }
 
     #[test]

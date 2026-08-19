@@ -36,6 +36,14 @@ struct Open(Mutex<Option<Held>>);
 struct Held {
     path: PathBuf,
     doc: Document,
+    /// The file as read.
+    ///
+    /// Kept because the page renderer is a separate process that takes the
+    /// document on stdin: it holds no file capability of its own, by design, so
+    /// the host is what hands it the bytes. Re-reading the file per page would
+    /// also mean rendering a different document than the one whose outline is on
+    /// screen, if it changed underneath.
+    bytes: Vec<u8>,
 }
 
 /// What the surface needs to draw a reader around a document.
@@ -86,7 +94,7 @@ fn pdf_open(path: String, state: tauri::State<'_, Open>) -> Result<DocumentInfo,
         pages: doc.page_count(),
         outline: doc.outline(),
     };
-    *state.0.lock().map_err(|_| lock_lost())? = Some(Held { path, doc });
+    *state.0.lock().map_err(|_| lock_lost())? = Some(Held { path, doc, bytes });
     Ok(info)
 }
 
@@ -124,6 +132,83 @@ fn pdf_search(query: String, state: tauri::State<'_, Open>) -> Result<SearchOutc
     let held = state.0.lock().map_err(|_| lock_lost())?;
     let held = held.as_ref().ok_or_else(no_document)?;
     Ok(held.doc.search(&query))
+}
+
+/// One page, drawn.
+#[derive(Debug, Clone, Serialize)]
+pub struct PageImage {
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// Row-major RGBA, four bytes a pixel.
+    pub rgba: Vec<u8>,
+}
+
+/// Where the sandboxed page renderer lives: `ARLEN_PDF_WORKER_DIR` if set (the
+/// dev and dist override), else the directory of the running reader, beside
+/// which it ships.
+fn worker_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("ARLEN_PDF_WORKER_DIR") {
+        return PathBuf::from(dir);
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Draw one page and hand back its pixels.
+///
+/// The document goes to a separate process that can neither reach the network
+/// nor read a file - it gets the bytes on stdin and writes a frame back - so a
+/// bug in the renderer costs this page rather than the reader. MuPDF is
+/// single-threaded here, which is the tight syscall profile.
+///
+/// # Errors
+/// When no document is open, or the worker refused: a page that is not there,
+/// a raster past the bound, or a document it could not read.
+#[tauri::command]
+fn pdf_page_image(page: usize, scale: f32, state: tauri::State<'_, Open>) -> Result<PageImage, String> {
+    let bytes = {
+        let held = state.0.lock().map_err(|_| lock_lost())?;
+        held.as_ref().ok_or_else(no_document)?.bytes.clone()
+    };
+    let dir = worker_dir();
+    let frame = arlen_worker_sandbox::run_confined_worker(
+        &dir.to_string_lossy(),
+        "arlen-pdf-decode-page",
+        arlen_worker_sandbox::WorkerProfile::SINGLE_THREADED,
+        &[page.to_string(), scale.to_string()],
+        &bytes,
+    )?;
+    decode_frame(&frame)
+}
+
+/// Read the worker's frame: `RGBA`, width, height, then the body.
+///
+/// Checked rather than trusted. The worker is the component this design assumes
+/// can be compromised, so a frame whose header is wrong, whose dimensions do not
+/// match its body, or that is short is refused - drawing whatever arrived is how
+/// a broken renderer becomes a rendering bug nobody can find.
+fn decode_frame(frame: &[u8]) -> Result<PageImage, String> {
+    if frame.len() < 12 || &frame[..4] != b"RGBA" {
+        return Err("the page renderer sent something that is not a frame".to_string());
+    }
+    let width = u32::from_le_bytes(frame[4..8].try_into().map_err(|_| "short frame")?);
+    let height = u32::from_le_bytes(frame[8..12].try_into().map_err(|_| "short frame")?);
+    let body = &frame[12..];
+    let expected = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|n| n.checked_mul(4))
+        .ok_or("the page renderer claimed a size that cannot exist")?;
+    if body.len() != expected {
+        return Err(format!(
+            "the page renderer sent {} bytes for a {width} by {height} page, which needs {expected}",
+            body.len()
+        ));
+    }
+    Ok(PageImage { width, height, rgba: body.to_vec() })
 }
 
 /// What to say when a command arrives with nothing open.
@@ -165,6 +250,7 @@ pub fn run() {
             pdf_open,
             pdf_page_text,
             pdf_search,
+            pdf_page_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

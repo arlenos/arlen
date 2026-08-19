@@ -7,10 +7,10 @@
   /// not read half the pages. The last one is why `unsearchable` is carried all
   /// the way from the parser to this screen rather than dropped on the way.
   ///
-  /// The page image is missing and the surface says which piece is missing rather
-  /// than showing an empty frame. A reader that draws nothing and explains
-  /// nothing reads as broken; one that says what it cannot do yet reads as
-  /// partial, which is what it is.
+  /// The page itself is drawn by a separate confined process and put on a canvas
+  /// here. A page that will not render says so WHERE THE PAGE WOULD BE: a reader
+  /// looking at a blank frame cannot tell a genuinely blank page from a renderer
+  /// that refused, and those are different facts about their document.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
@@ -22,12 +22,44 @@
   type Hit = { page: number; snippet: string };
   type SearchOutcome = { hits: Hit[]; unsearchable: number[] };
   type DocumentInfo = { path: string; pages: number; outline: OutlineEntry[] };
+  type PageImage = { width: number; height: number; rgba: number[] };
 
   let doc = $state<DocumentInfo | null>(null);
   let failure = $state<string | null>(null);
   let query = $state("");
   let results = $state<SearchOutcome | null>(null);
   let current = $state(1);
+  let canvas = $state<HTMLCanvasElement | null>(null);
+  let pageFailure = $state<string | null>(null);
+
+  /// Draw the current page.
+  ///
+  /// A page that will not render is reported where the page would be, not
+  /// swallowed: a reader looking at a blank frame has no way to tell a scanned
+  /// blank page from a renderer that refused.
+  async function drawPage() {
+    if (!doc || !canvas) return;
+    try {
+      const img = await invoke<PageImage>("pdf_page_image", { page: current, scale: 1.5 });
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const data = new ImageData(new Uint8ClampedArray(img.rgba), img.width, img.height);
+      ctx.putImageData(data, 0, 0);
+      pageFailure = null;
+    } catch (e) {
+      pageFailure = String(e);
+    }
+  }
+
+  // Redrawn when the page changes or a document arrives, which is also what a
+  // contents-entry click and a search hit do.
+  $effect(() => {
+    void current;
+    void doc;
+    void drawPage();
+  });
 
   onMount(() => {
     if (!tauriAvailable) return;
@@ -142,9 +174,12 @@
       </aside>
 
       <main class="pdf-page">
-        <FileText size={28} aria-hidden="true" />
+        {#if pageFailure}
+          <FileText size={28} aria-hidden="true" />
+          <p class="quiet">{$t("pdf.pageFailed", { reason: pageFailure })}</p>
+        {/if}
+        <canvas bind:this={canvas} class="pdf-canvas" class:hidden={pageFailure !== null}></canvas>
         <p class="pdf-page-number">{$t("pdf.page", { number: current })}</p>
-        <p class="quiet">{$t("pdf.noPageImage")}</p>
       </main>
     {/if}
   </div>
@@ -251,6 +286,16 @@
   .pdf-hit-text {
     display: block;
     font-size: 12px;
+  }
+  .pdf-canvas {
+    max-width: 100%;
+    max-height: calc(100vh - 100px);
+    object-fit: contain;
+    background: #fff;
+    box-shadow: var(--shadow-lg);
+  }
+  .hidden {
+    display: none;
   }
   .pdf-page {
     flex: 1;

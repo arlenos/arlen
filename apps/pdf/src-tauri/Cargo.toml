@@ -19,6 +19,9 @@ tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 arlen-pdf-core = { path = "../core" }
+# The shared box the page renderer runs in: bwrap, a seccomp allowlist, a
+# watchdog and a bounded frame back. The viewer's decoders use the same one.
+arlen-worker-sandbox = { path = "../../../sdk/worker-sandbox" }
 log = "0.4"
 env_logger = "0.11"
 
