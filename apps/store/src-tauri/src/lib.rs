@@ -18,7 +18,8 @@ mod url;
 use std::collections::BTreeSet;
 
 use arlen_store_backend::{
-    request_default, store_card, store_cards, CapabilityFacet, Collection, ComponentId, ObservedStatus,
+    request_default, store_card, store_cards, CapabilityFacet, CatalogSources, Collection,
+    ComponentId, ObservedStatus,
     PendingUpdate, Request, Response, SortOrder, SourceLayer, StoreCard, TrustSignals, Variant,
 };
 use serde::Serialize;
@@ -232,6 +233,23 @@ async fn store_collections() -> Result<Vec<Collection>, String> {
     }
 }
 
+/// Which app-metadata sources this machine actually has.
+///
+/// An empty grid has two causes that look identical: nothing matched, or there
+/// is no catalog on this machine at all. The second is the state of a fresh
+/// image - it ships no MetaInfo, no Flatpak remote and no DEP-11 - and drawing
+/// both as blank space tells somebody their store is broken when it is only
+/// unfurnished. Counts rather than flags, because one document and eight hundred
+/// are both "present" and only one of them is a furnished store.
+#[tauri::command]
+async fn store_sources() -> Result<CatalogSources, String> {
+    match ask(Request::Sources).await? {
+        Response::Sources(s) => Ok(s),
+        Response::Error(e) => Err(e),
+        other => Err(format!("unexpected store response: {other:?}")),
+    }
+}
+
 /// Route a frontend log line into the backend's stdout (Tim cannot open the
 /// webview devtools; this is the diagnostic channel).
 #[tauri::command]
@@ -260,6 +278,7 @@ pub fn run() {
             store_outdated,
             store_skip_update,
             store_collections,
+            store_sources,
             frontend_log,
         ])
         .run(tauri::generate_context!())

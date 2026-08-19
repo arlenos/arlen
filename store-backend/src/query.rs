@@ -290,6 +290,51 @@ pub enum Request {
     /// could name apps it cannot show, which is the failure this op exists to
     /// end.
     Collections,
+    /// Which app-metadata sources this machine actually has.
+    ///
+    /// The store's grid is empty for two very different reasons: nothing matched
+    /// what you asked for, or there is no catalog on this machine at all. The
+    /// second is the state of a fresh image, which ships no MetaInfo, no Flatpak
+    /// remote and no DEP-11, and an app that renders both as blank space tells
+    /// somebody their store is broken when it is merely unfurnished.
+    Sources,
+}
+
+/// Which app-metadata sources were found, and how much each yielded.
+///
+/// Counts rather than booleans: "one MetaInfo document" and "eight hundred" are
+/// both "present" and only one of them means the store is furnished. The names
+/// are the source kinds rather than the paths, because a path is deployment
+/// detail and this crosses to a translated app that must not render it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogSources {
+    /// Flatpak remote catalogs (one per configured remote).
+    pub flatpak_catalogs: usize,
+    /// Debian DEP-11 catalogs.
+    pub dep11_catalogs: usize,
+    /// MetaInfo documents the distribution installed.
+    pub metainfo_documents: usize,
+    /// Flatpak apps installed locally.
+    pub flatpak_apps: usize,
+    /// Permission profiles for apps enrolled under confinement.
+    pub enrolled_profiles: usize,
+}
+
+impl CatalogSources {
+    /// Whether any source at all was found.
+    ///
+    /// False is the honest "there is no catalog here", which an app should say
+    /// in words rather than draw as an empty grid.
+    #[must_use]
+    pub fn any(&self) -> bool {
+        self.flatpak_catalogs
+            + self.dep11_catalogs
+            + self.metainfo_documents
+            + self.flatpak_apps
+            + self.enrolled_profiles
+            > 0
+    }
 }
 
 /// What the store can honestly say about an app's observed-vs-declared standing
@@ -361,6 +406,9 @@ pub enum Response {
     /// The editorial collections, already narrowed to members this catalog has.
     /// Empty means there is nothing curated to show, not that the read failed.
     Collections(Vec<Collection>),
+    /// Which app-metadata sources this machine has, so an empty grid can say
+    /// whether it is unfurnished or merely unmatched.
+    Sources(CatalogSources),
     /// A request the backend could not satisfy (unknown id/variant, ...).
     Error(String),
 }
@@ -432,6 +480,19 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
             };
             let present = |id: &ComponentId| catalog.card(id).is_some();
             Response::Collections(crate::collections::resolve(&curated, &present))
+        }
+        // Read at request time rather than remembered from the last compose: a
+        // remote added or a package installed since startup changes the answer,
+        // and reporting the state at boot would be a claim about now.
+        Request::Sources => {
+            let found = crate::discover::discover(&crate::discover::SourceRoots::default());
+            Response::Sources(CatalogSources {
+                flatpak_catalogs: found.flathub_xml.len(),
+                dep11_catalogs: found.dep11_yaml.len(),
+                metainfo_documents: found.metainfo_xml.len(),
+                flatpak_apps: found.flatpak_metadata.len(),
+                enrolled_profiles: found.apt_profiles.len(),
+            })
         }
         // The lock is the authority on what is installed, so it is read here
         // rather than accepted from the request. Absent or unreadable yields an
@@ -517,6 +578,16 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn no_source_at_all_is_distinguishable_from_a_furnished_catalog() {
+        // The whole reason this type carries counts. A fresh image has none of
+        // these, and the app must be able to say so instead of drawing the same
+        // empty grid it draws for a search that matched nothing.
+        assert!(!super::CatalogSources::default().any());
+        assert!(super::CatalogSources { metainfo_documents: 1, ..Default::default() }.any());
+        assert!(super::CatalogSources { enrolled_profiles: 1, ..Default::default() }.any());
+    }
+
     use super::*;
     use std::collections::BTreeMap;
     use crate::catalog::{merge_catalog, CapabilityFootprint, CatalogEntry, DisplayMeta, ItemKind};
