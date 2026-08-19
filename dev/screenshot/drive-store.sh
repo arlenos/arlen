@@ -163,8 +163,22 @@ try {
   const s = await invoke("store_sources");
   out.push("SRC " + Object.entries(s).map(([k, v]) => `${k}=${v}`).join(" "));
 } catch (e) { out.push(`SRC threw: ${e}`); }
+// The update path. Whether anything is pending depends on what this host has
+// installed, so the count is REPORTED and the assertions below are about the
+// op answering rather than about a number nobody controls.
+try {
+  const u = await invoke("store_outdated");
+  out.push(`UPD n=${u.length} ` + u.map(x => x.id ?? "?").join(","));
+} catch (e) { out.push(`UPD threw: ${e}`); }
+try {
+  const o = await invoke("store_observed_vs_declared", { id: FIRST_ID });
+  out.push("OBS " + JSON.stringify(o));
+} catch (e) { out.push(`OBS threw: ${e}`); }
 return out.join(" || ");
 JS
+# The probe needs a real id from the catalogue rather than an invented one, so
+# the observed-vs-declared answer is about an app the machine actually carries.
+sed -i "s/FIRST_ID/\"$present_id\"/" "$run/probe-landing.js"
 got=$(SHOOT_INJECT="$run/probe-landing.js" \
   "$here/shoot-app.sh" "$app" "$here/out/store-landing.png" 2>&1 \
   | sed -n 's/^inject result: //p')
@@ -196,6 +210,38 @@ say "a collection carries the curator's title in each language" \
 # the same blank grid it draws for a search that matched nothing.
 say "the machine can say which app sources it actually has" \
   "$(printf '%s' "$got" | grep -qE "metainfoDocuments=[1-9]" && echo 1 || echo 0)" "$got"
+
+# The Updates tab has to be able to say "nothing pending" as an ANSWER rather
+# than as a failure it swallowed. Asserting on the count would be asserting on
+# what this host happens to have installed, so this asserts the op answered and
+# prints the count for whoever reads the run.
+say "the machine can say what is waiting to be updated" \
+  "$(printf '%s' "$got" | grep -qE "UPD n=[0-9]" && echo 1 || echo 0)" "$got"
+
+# Skipping needs something to skip. Rather than a case that passes because
+# nothing was pending - the shape that made three drives lie today - this says
+# out loud when the host gave it nothing to work with.
+if printf '%s' "$got" | grep -qE "UPD n=[1-9]"; then
+  skip_id=$(printf '%s' "$got" | sed -n 's/.*UPD n=[0-9]* \([^ |]*\).*/\1/p' | cut -d, -f1)
+  cat > "$run/probe-skip.js" <<JS
+const invoke = window.__TAURI_INTERNALS__.invoke;
+const before = await invoke("store_outdated");
+const after = await invoke("store_skip_update", { id: "$skip_id" });
+return \`SKIP before=\${before.length} after=\${after.length} gone=\${!after.some(x => x.id === "$skip_id")}\`;
+JS
+  s=$(SHOOT_INJECT="$run/probe-skip.js" "$here/shoot-app.sh" "$app" "$here/out/store-updates.png" 2>&1 \
+    | sed -n 's/^inject result: //p')
+  say "skipping an update takes it off the list and says what is left" \
+    "$(printf '%s' "$s" | grep -q "gone=true" && echo 1 || echo 0)" "$s"
+else
+  echo "  --   skipping an update: nothing pending on this host, not exercised"
+fi
+
+# store-app.md section 8.2: the panel must not read as a clean bill of health
+# the system cannot give, so "no feed yet" and "nothing observed" are different
+# answers and the op has to carry which one it means.
+say "the app can tell an unobserved app from a clean one" \
+  "$(printf '%s' "$got" | grep -q "OBS {" && echo 1 || echo 0)" "$got"
 
 [ "$fail" = 0 ] && echo "the catalogue reaches the grid over a real socket"
 exit "$fail"
