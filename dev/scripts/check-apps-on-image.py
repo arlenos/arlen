@@ -54,6 +54,13 @@ NOT_ON_IMAGE: dict[str, str] = {
         "The app is real; shipping it is a decision about whether this image stays a "
         "single-user appliance, not an oversight"
     ),
+    "mail": (
+        "one file old: the stated rule for the two MIME headers the standard left "
+        "ambiguous, which is where `mail-app.md` section 2 starts because a parser "
+        "with no written rule has an accidental one. There is no client yet - no "
+        "IMAP, no store, no window - so there is nothing to stage. This entry goes "
+        "when there is an app rather than a rule"
+    ),
     "pdf": (
         "the reader is real now - it opens a document, shows the author's contents, "
         "searches inside it, turns pages and selects text, and it starts under the "
