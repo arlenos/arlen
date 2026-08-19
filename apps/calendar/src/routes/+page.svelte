@@ -8,6 +8,7 @@
   /// of nothing rendered as one is the defect this app was written after.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { CalendarDays, MapPin, Repeat } from "@lucide/svelte";
   import { tauriAvailable } from "$lib/tauri";
@@ -28,20 +29,30 @@
     events: AgendaEvent[];
     directory: string;
     directory_exists: boolean;
+    files: number;
     unreadable: number;
   };
 
   let agenda = $state<Agenda | null>(null);
   let failure = $state<string | null>(null);
 
-  onMount(async () => {
-    // Asked before the try, because "nobody to ask" is not a failure to catch.
-    if (!tauriAvailable) return;
+  async function read() {
     try {
       agenda = await invoke<Agenda>("calendar_agenda");
+      failure = null;
     } catch (e) {
       failure = String(e);
     }
+  }
+
+  onMount(() => {
+    // Asked before the try, because "nobody to ask" is not a failure to catch.
+    if (!tauriAvailable) return;
+    void read();
+    // A file edited or synced while this window is open changes the answer, and
+    // an agenda that keeps showing the old one gives no sign that it is stale.
+    const stop = listen("arlen://calendar-changed", () => void read());
+    return () => void stop.then((un) => un());
   });
 
   /// Events under their day, in the order the host sorted them.
@@ -84,12 +95,14 @@
     {#if agenda.unreadable > 0}
       <p class="note bad" role="alert">{$t("cal.unreadable", { count: agenda.unreadable })}</p>
     {/if}
-    {#if !agenda.directory_exists || (agenda.events.length === 0 && agenda.unreadable === 0)}
-      <!-- Names the directory: "put files somewhere" is not an instruction. -->
+    {#if agenda.events.length === 0 && agenda.unreadable === 0}
+      <!-- Both name the directory: "put files somewhere" is not an instruction.
+           No files and no events are different states - nothing has been put
+           there, versus what is there holds nothing. -->
       <p class="note">
-        {agenda.directory_exists
-          ? $t("cal.empty")
-          : $t("cal.noFiles", { dir: agenda.directory })}
+        {agenda.files === 0
+          ? $t("cal.noFiles", { dir: agenda.directory })
+          : $t("cal.empty", { dir: agenda.directory })}
       </p>
     {/if}
     <ul class="days">
