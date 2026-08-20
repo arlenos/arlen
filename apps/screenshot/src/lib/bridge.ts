@@ -31,6 +31,46 @@ export type Capture =
   /// No Tauri host at all: plain vite or the render harness.
   | { kind: "hostless" };
 
+/// One display output the compositor offers.
+export type Output = { index: number; name: string | null; width: number; height: number };
+
+/// One toplevel window the compositor offers.
+export type Window = { index: number; title: string | null; app_id: string | null };
+
+/// What this machine can be asked to photograph.
+///
+/// Empty lists are an honest answer and not a failure: a compositor that
+/// advertises no toplevels has none open, and the picker then offers the screen
+/// alone rather than an empty list with no explanation.
+export async function captureSources(): Promise<{ outputs: Output[]; windows: Window[] }> {
+  if (!isTauri()) return { outputs: [], windows: [] };
+  const [outputs, windows] = await Promise.all([
+    invoke<Output[]>("list_outputs").catch(() => []),
+    invoke<Window[]>("list_windows").catch(() => []),
+  ]);
+  return { outputs, windows };
+}
+
+/// Capture one window by the index `list_windows` gave it.
+export async function captureWindow(index: number): Promise<Capture> {
+  if (!isTauri()) return { kind: "hostless" };
+  try {
+    return { kind: "image", dataUrl: await invoke<string>("capture_window", { index, includeCursor: false }) };
+  } catch (e) {
+    return { kind: "unavailable", reason: String(e) };
+  }
+}
+
+/// Capture one output by the index `list_outputs` gave it.
+export async function captureOutput(index: number): Promise<Capture> {
+  if (!isTauri()) return { kind: "hostless" };
+  try {
+    return { kind: "image", dataUrl: await invoke<string>("capture_output", { index, includeCursor: false }) };
+  } catch (e) {
+    return { kind: "unavailable", reason: String(e) };
+  }
+}
+
 /// Capture the primary output.
 export async function capturePrimary(): Promise<Capture> {
   if (!isTauri()) return { kind: "hostless" };

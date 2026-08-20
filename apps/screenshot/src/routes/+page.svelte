@@ -28,7 +28,19 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import FloatingThumbnail from "$lib/components/FloatingThumbnail.svelte";
   import { drawShape, rectOf, type Shape, type ShapeKind, type ToolKind, type Point } from "$lib/annotate";
-  import { isTauri, capturePrimary, saveScreenshot, copyPng, frontendLog, canvasPngBase64 } from "$lib/bridge";
+  import {
+    isTauri,
+    capturePrimary,
+    captureSources,
+    captureOutput,
+    captureWindow,
+    saveScreenshot,
+    copyPng,
+    frontendLog,
+    canvasPngBase64,
+    type Output,
+    type Window as CaptureWindow,
+  } from "$lib/bridge";
 
   // The capture handoff: a fresh capture floats as a thumbnail (ignore -> auto-save,
   // click -> annotate); the annotate surface stays mounted so its canvas is ready.
@@ -92,6 +104,12 @@
       return;
     }
     isSample = captured.kind === "hostless";
+    // What else could be photographed, for the picker. Asked after the first
+    // capture so the picture arrives first and this never delays it.
+    void captureSources().then((s) => {
+      outputs = s.outputs;
+      windows = s.windows;
+    });
     base = captured.kind === "image" ? await dataUrlToCanvas(captured.dataUrl) : buildFixture();
     ctx = canvas.getContext("2d");
     canvas.width = base.width;
@@ -215,6 +233,44 @@
   /// the real-host path: it is a statement about this machine, and the browser
   /// has nothing to say about that.
   let captureFailure = $state<string | null>(null);
+
+  /// The screens and windows this machine can be asked to photograph.
+  ///
+  /// `screenshot-capture-plan.md` names the modes: region, window, full-screen,
+  /// current-monitor versus all. The backend has had `list_outputs`,
+  /// `list_windows`, `capture_window` and `capture_region` all along and no
+  /// surface reached them, so the app could take exactly one kind of picture.
+  /// This is the picking half; region needs a drag overlay and is separate.
+  let outputs = $state<Output[]>([]);
+  let windows = $state<CaptureWindow[]>([]);
+
+  /// What is currently on the canvas, so the picker can show which.
+  let source = $state<string>("screen:0");
+
+  /// Re-capture from a chosen source and redraw.
+  ///
+  /// The app still captures the primary output on open - the floating-thumbnail
+  /// handoff the plan is built around depends on a picture existing immediately,
+  /// so picking is a change of mind rather than a step before the first shot.
+  async function pickSource(value: string) {
+    const [kind, idx] = value.split(":");
+    const n = Number(idx);
+    const shot = kind === "window" ? await captureWindow(n) : await captureOutput(n);
+    if (shot.kind !== "image") {
+      // A source that will not capture is reported where the picture would be,
+      // not swallowed: a picker that silently keeps the old image is one that
+      // says you photographed something you did not.
+      captureFailure = shot.kind === "unavailable" ? shot.reason : "no host to capture with";
+      return;
+    }
+    source = value;
+    captureFailure = null;
+    base = await dataUrlToCanvas(shot.dataUrl);
+    canvas.width = base.width;
+    canvas.height = base.height;
+    shapes = [];
+    redraw();
+  }
 
   /// Whether what is on the canvas is a made-up scene rather than your screen.
   /// True only where a sample is the honest answer - no host, so no screen.
@@ -398,6 +454,34 @@
     </div>
   </div>
 
+  <!-- The capture source. Only shown when there is a choice: on a machine with
+       one screen and no toplevels there is nothing to pick between, and a
+       control with one entry is furniture. -->
+  {#if outputs.length + windows.length > 1}
+    <div class="source">
+      <label class="source-label" for="capture-source">{$t("s.source")}</label>
+      <select
+        id="capture-source"
+        class="source-select"
+        value={source}
+        onchange={(e) => void pickSource((e.currentTarget as HTMLSelectElement).value)}
+      >
+        {#each outputs as o (o.index)}
+          <option value={`screen:${o.index}`}>
+            {$t("s.source.screenSized", { name: o.name ?? String(o.index + 1), w: o.width, h: o.height })}
+          </option>
+        {/each}
+        {#each windows as w (w.index)}
+          <option value={`window:${w.index}`}>
+            {w.title
+              ? $t("s.source.window", { title: w.title })
+              : $t("s.source.windowUntitled")}
+          </option>
+        {/each}
+      </select>
+    </div>
+  {/if}
+
   <div class="palette">
     <!-- The loop variable is not `t`: that is the translator store, and shadowing
          it here made `$t` resolve to the tool instead. -->
@@ -509,6 +593,27 @@
 
   /* Above the canvas, in the warning colour rather than the error one: nothing
      went wrong, the picture is just not yours. */
+  .source {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+  }
+  .source-label {
+    color: var(--color-fg-secondary, #9aa4b2);
+  }
+  .source-select {
+    max-width: 22rem;
+    padding: 2px 6px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--color-fg-primary, #e6e8ee);
+    background: var(--color-bg-card, #171717);
+    border: 1px solid var(--color-border-default, #2a2a2a);
+    border-radius: 6px;
+  }
+
   .sample-note {
     margin: 0 0 0.5rem;
     font-size: 0.85rem;
