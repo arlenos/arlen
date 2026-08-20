@@ -228,7 +228,15 @@
       cropDrag = null;
       // A stray click is not a crop. Below this the result would be a few pixels
       // of nothing, and the person meant to put the tool down.
-      if (r.w < 8 || r.h < 8) {
+      //
+      // Written as "must be at least 8" rather than "must not be under 8" so a
+      // NaN rectangle lands in the reject branch. `toCanvas` divides by the
+      // canvas's laid-out width, so a canvas with no layout size hands back NaN
+      // points, `NaN < 8` is false, and the old form let exactly that case
+      // through to `commitCrop`, which sized the canvas to NaN and blanked the
+      // picture. The one input worse than too small must not be the one that
+      // gets past a smallness check.
+      if (!(r.w >= 8 && r.h >= 8)) {
         redraw();
         return;
       }
