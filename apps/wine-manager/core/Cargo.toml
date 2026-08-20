@@ -7,5 +7,9 @@ description = "What a Wine prefix reaches by default, and the drive map a capabi
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+# The bottle IS a confinement, so the bwrap spec comes from the one crate that
+# already builds them rather than a second hand-rolled argv. It also means the
+# drive check below reads the real argv, not a private copy of it.
+arlen-confiner = { path = "../../../sdk/confiner" }
 
 [workspace]
