@@ -13,6 +13,20 @@
 # picture of the screen is an act the user authorises rather than a capability an app
 # holds. Recording it here so the next reader does not mistake a small profile for a
 # small reach.
+# WHAT NO SECTION BELOW EXPRESSES: this app reads the pixels of every window on
+# the screen, including windows belonging to other apps and to other people's
+# sessions of the same uid. The grants here cover where the PNG is WRITTEN. There
+# is no field for what it may LOOK at, and the model has none to offer.
+#
+# The mediation is the compositor's, not this file's. `sdk/screen-capture` drives
+# `ext-image-copy-capture-v1` directly and says why: the portal exists to mediate
+# capture for UNTRUSTED apps, and a first-party tool is not routed through it. So
+# whether a second app could bind that global and take the same pixels is a
+# question about the compositor's binding policy, which lives in another
+# repository and which this profile cannot answer. Stated rather than assumed:
+# I have not audited it, and a reader of this file should not conclude from the
+# grants below that anything here restricts capture.
+
 [info]
 app_id = "dev.arlen.screenshot"
 tier = "first-party"

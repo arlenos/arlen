@@ -12,6 +12,24 @@
 # for cd/picker). It reads no File data and never writes, so there is no File
 # scope, no write, no relations. Erring narrow: a missing scope degrades the
 # picker; an extra scope leaks.
+# WHAT THIS PROFILE DOES NOT COVER, and here it is the whole app. Everything
+# below is about a four-field Project read and three event-bus topics; the
+# terminal's actual reach is a SHELL, in which a person runs whatever they like
+# with their own uid - every file they can read, every file they can write. No
+# section here expresses that, and none can: the model grants an app paths, not a
+# child process the user drives.
+#
+# The consequence is worth stating before it bites. There is no `[filesystem]`
+# section, so the day `shell.toml [launcher] confined` is turned on, a confined
+# terminal gets the app's own directories and nothing else - a shell that cannot
+# see the home directory of the person typing in it. That is not a bug in the
+# launcher; it is this file being silent about a requirement. Whoever flips that
+# switch decides what a terminal is granted, and this note is where to start.
+#
+# Left unwritten deliberately: a `home = true` here would widen reach on a file
+# that nothing enforces yet, which is a grant made ahead of the decision that
+# needs it.
+
 [info]
 app_id = "dev.arlen.terminal"
 tier = "first-party"
