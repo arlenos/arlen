@@ -1595,12 +1595,41 @@ fn files_config_path() -> Result<std::path::PathBuf, String> {
         .join("files.toml"))
 }
 
-fn read_files_config() -> FilesConfig {
-    files_config_path()
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| toml::from_str(&s).ok())
-        .unwrap_or_default()
+/// The persisted FM state, or why it could not be read.
+///
+/// ABSENT IS NOT UNREADABLE, and the difference is the whole reason this returns
+/// a `Result`. It used to end in `.unwrap_or_default()`, which folded three
+/// outcomes into one empty config: no file yet (ordinary, first run), a file that
+/// cannot be opened, and a file that will not parse. The three write paths below
+/// are read-modify-write - add a bookmark, remove one, save the smart folders -
+/// so on either failure the empty default went straight back to disk and took the
+/// other list with it. One corrupt byte in `files.toml` plus one pin, and every
+/// smart folder is gone; the call returns Ok.
+///
+/// That is the shape `check-default-then-write.py` exists to catch, and it did
+/// not, because the read is one function away from the write rather than beside
+/// it - the same blind spot `check-optimistic-write` had before it learned to
+/// follow a same-file helper.
+fn read_files_config() -> Result<FilesConfig, String> {
+    let path = files_config_path()?;
+    files_config_from(std::fs::read_to_string(&path), &path)
+}
+
+/// The decision the function above rests on, kept apart from the IO so it can be
+/// tested without a filesystem: which read outcomes are the ordinary empty state
+/// and which must never be written back over.
+fn files_config_from(
+    read: std::io::Result<String>,
+    path: &std::path::Path,
+) -> Result<FilesConfig, String> {
+    match read {
+        Ok(text) => toml::from_str(&text)
+            .map_err(|e| format!("{} could not be read: {e}", path.display())),
+        // Nothing saved yet is the ordinary first-run state, and the empty
+        // default IS the answer for it.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(FilesConfig::default()),
+        Err(e) => Err(format!("{} could not be read: {e}", path.display())),
+    }
 }
 
 fn write_files_config(config: &FilesConfig) -> Result<(), String> {
@@ -1621,6 +1650,7 @@ fn write_files_config(config: &FilesConfig) -> Result<(), String> {
 #[tauri::command]
 fn files_bookmarks() -> Vec<Place> {
     read_files_config()
+        .unwrap_or_default()
         .bookmarks
         .iter()
         .map(|p| Place {
@@ -1639,7 +1669,7 @@ fn files_bookmarks() -> Vec<Place> {
 /// Pin a folder; idempotent.
 #[tauri::command]
 fn files_bookmark_add(path: String) -> Result<(), String> {
-    let mut config = read_files_config();
+    let mut config = read_files_config()?;
     if !config.bookmarks.contains(&path) {
         config.bookmarks.push(path);
         write_files_config(&config)?;
@@ -1650,7 +1680,7 @@ fn files_bookmark_add(path: String) -> Result<(), String> {
 /// Unpin a folder; idempotent.
 #[tauri::command]
 fn files_bookmark_remove(path: String) -> Result<(), String> {
-    let mut config = read_files_config();
+    let mut config = read_files_config()?;
     config.bookmarks.retain(|p| p != &path);
     write_files_config(&config)
 }
@@ -1659,7 +1689,7 @@ fn files_bookmark_remove(path: String) -> Result<(), String> {
 /// Empty when none are saved or the config is unreadable.
 #[tauri::command]
 fn files_smart_folders() -> Vec<SmartFolder> {
-    read_files_config().smart_folders
+    read_files_config().unwrap_or_default().smart_folders
 }
 
 /// Persist the full Smart Folder list (the frontend sends the whole set on each
@@ -1667,7 +1697,7 @@ fn files_smart_folders() -> Vec<SmartFolder> {
 /// is preserved.
 #[tauri::command]
 fn files_smart_folders_save(folders: Vec<SmartFolder>) -> Result<(), String> {
-    let mut config = read_files_config();
+    let mut config = read_files_config()?;
     config.smart_folders = folders;
     write_files_config(&config)
 }
@@ -2356,6 +2386,27 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    /// A config that cannot be read must not become the empty default, because
+    /// three commands here are read-modify-write and would put that emptiness back
+    /// on disk. Absent is the exception: nothing saved yet IS the empty state.
+    #[test]
+    fn an_unreadable_config_refuses_rather_than_reading_as_empty() {
+        use std::io::{Error, ErrorKind};
+        let p = std::path::Path::new("/tmp/files.toml");
+
+        assert!(super::files_config_from(Ok("bookmarks = [".into()), p).is_err(), "corrupt");
+        assert!(
+            super::files_config_from(Err(Error::new(ErrorKind::PermissionDenied, "no")), p).is_err(),
+            "unreadable - which is also what a confined launch sees, since the \
+             launcher masks ~/.config/arlen",
+        );
+        let absent = super::files_config_from(Err(Error::new(ErrorKind::NotFound, "no")), p)
+            .expect("nothing saved yet is the ordinary state");
+        assert!(absent.bookmarks.is_empty() && absent.smart_folders.is_empty());
+        let real = super::files_config_from(Ok("bookmarks = [\"/home/u\"]".into()), p).unwrap();
+        assert_eq!(real.bookmarks, vec!["/home/u".to_string()]);
+    }
+
     use super::{
         abs, coarse_when, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops,
         disambiguate_entries, projects_from_rows, provenance_to_woher, recent_from_rows,
