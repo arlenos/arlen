@@ -572,6 +572,14 @@ pub struct SourceInputs {
     /// profile belongs to, is local state it has no business guessing at. Same
     /// split as `outdated()` taking the installed set from its caller.
     pub apt_profiles: Vec<(String, String)>,
+    /// The ODRS ratings document, when one has been fetched.
+    ///
+    /// Supplied by the caller for the same reason the profiles are: this
+    /// composer maps catalog files, and whether the machine has talked to
+    /// `odrs.gnome.org` recently is not its business to decide. `None` means
+    /// nobody has asked, which the card renders as no row rather than as a bad
+    /// score.
+    pub odrs: Option<crate::odrs::Ratings>,
 }
 
 /// Compose the merged [`Catalog`] from every configured source. Best-effort: a source
@@ -616,6 +624,14 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
     // rather than through a DEP-11 document, is the same app and its profile is
     // the same declaration. Matching is by id either way.
     fuse_apt_profiles(&mut entries, &inputs.apt_profiles);
+    // Last, and over every source: an app carried by Debian and by Flathub is
+    // one card, and what other people made of it does not depend on which one
+    // of them the machine happened to read.
+    if let Some(ratings) = &inputs.odrs {
+        for entry in &mut entries {
+            entry.trust.odrs_score = ratings.score_for(&entry.id.0);
+        }
+    }
     crate::query::Catalog::new(crate::catalog::merge_catalog(entries))
 }
 
@@ -836,8 +852,49 @@ Name:
     /// SC-3's apt half end to end: a Debian card's footprint comes from the
     /// enrolled profile, so the capability panel is no longer blank.
     #[test]
+    fn a_rating_reaches_the_card_whatever_source_carried_the_app() {
+        // The fuse runs after every source for the same reason the others do: an
+        // app carried by Debian and by Flathub is one card, and what other
+        // people made of it does not depend on which catalogue the machine
+        // happened to read.
+        let ratings = crate::odrs::Ratings::parse(
+            r#"{"org.gnome.gedit": {"star0": 1, "star5": 3, "total": 4}}"#,
+        )
+        .unwrap();
+        let catalog = compose_catalog(SourceInputs {
+            odrs: Some(ratings),
+            dep11_yaml: vec![DEP11_YAML.into()],
+            ..Default::default()
+        });
+        let card = catalog
+            .card(&ComponentId("org.gnome.gedit".into()))
+            .expect("the dep11 fixture carries gedit");
+        // Trust lives per VARIANT: the same app can be carried by two layers and
+        // each says its own thing about provenance. A rating is about the app, so
+        // every variant of it reports the same one.
+        assert!(
+            card.variants.iter().all(|v| v.trust.odrs_score == Some(5.0)),
+            "three five-star ratings and one unrated"
+        );
+    }
+
+    #[test]
+    fn an_app_with_no_rating_carries_no_score_rather_than_a_zero() {
+        let catalog = compose_catalog(SourceInputs {
+            odrs: Some(crate::odrs::Ratings::parse("{}").unwrap()),
+            dep11_yaml: vec![DEP11_YAML.into()],
+            ..Default::default()
+        });
+        let card = catalog
+            .card(&ComponentId("org.gnome.gedit".into()))
+            .expect("the dep11 fixture carries gedit");
+        assert!(card.variants.iter().all(|v| v.trust.odrs_score.is_none()));
+    }
+
+    #[test]
     fn an_apt_entry_takes_its_footprint_from_the_enrolled_profile() {
         let catalog = compose_catalog(SourceInputs {
+            odrs: None,
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
@@ -857,6 +914,7 @@ Name:
     #[test]
     fn an_apt_entry_without_a_profile_keeps_an_empty_footprint() {
         let catalog = compose_catalog(SourceInputs {
+            odrs: None,
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
@@ -874,6 +932,7 @@ Name:
     #[test]
     fn an_unparseable_profile_leaves_the_footprint_empty() {
         let catalog = compose_catalog(SourceInputs {
+            odrs: None,
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
