@@ -18,6 +18,20 @@
 # source; `file.opened` is what it registered for on the 14 Aug boot
 # (`consumer registered app_id="code-indexer" ... subscribed=["file.opened"]`),
 # which is how it learns there is something to index.
+# WHERE ITS FILE READS ARE BOUNDED, since this profile does not bound them. The
+# indexer opens source files by path (`main.rs:186`), and the paths come from
+# `file.opened` - so its reach is every file the person has opened. There is no
+# `[filesystem]` section here and one would be inert anyway: this is a systemd
+# user service, not an `arlen-run` launch, and filesystem grants are the
+# launcher's mechanism.
+#
+# The real bound is its unit: `ProtectSystem=strict` and `ProtectHome=read-only`
+# (`daemons/code-indexer/dist/arlen-code-indexer.service`), which is read-only
+# access to the home it indexes and no write anywhere outside its own state. That
+# is the right shape for an indexer, and it is written here because a reader of
+# this file would otherwise see only an event-bus grant and conclude the daemon
+# touches no files at all.
+
 [info]
 app_id = "code-indexer"
 tier = "first-party"
