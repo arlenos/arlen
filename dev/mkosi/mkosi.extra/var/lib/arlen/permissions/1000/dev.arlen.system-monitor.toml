@@ -18,6 +18,22 @@
 # has no reason to write there. Verified against a confined run - the subtree is
 # readable, it is not writable, and `/sys` as a whole stays refused.
 
+# WHAT THIS FILE CANNOT SAY, which matters more here than in any other app's
+# profile. This one ENDS other processes (SIGTERM), FREEZES them (SIGSTOP /
+# SIGCONT) and CHANGES THEIR PRIORITY - and the permission model has no field for
+# any of that. `SystemPermissions` covers autostart, background and power actions;
+# there is no "may signal another process". So a reviewer reading the grants below
+# would conclude this app's reach is a read-only `/sys/block`, and would be wrong.
+#
+# The containment for those powers is the kernel's, not this file's: a process may
+# only signal processes of its own uid, and raising a priority needs CAP_SYS_NICE,
+# which an ordinary session does not have - the app is refused and says so, which
+# `drive-system-monitor.sh` asserts. That is real containment, but it lives
+# somewhere a reader of this file cannot see, so it is written here.
+#
+# If the model ever grows a way to express it, this comment is the specification:
+# end, freeze and re-nice, same-uid only, no privilege escalation.
+
 [info]
 app_id = "dev.arlen.system-monitor"
 tier = "first-party"
