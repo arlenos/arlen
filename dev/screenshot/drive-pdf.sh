@@ -30,6 +30,29 @@ fix="$HOME/.cache/arlen-drive-pdf"
 fail=0
 
 [ -x "$app" ] || { echo "no reader binary at $app"; exit 2; }
+
+# THE BINARY, NOT THE SOURCE. On 20 August every render case below passed while
+# the engine the source names could not load at all: the `target/release` worker
+# on disk was still the MuPDF build from four commits earlier, so the drive was
+# reporting on an engine the tree had removed - and on an AGPL one, which is the
+# reason it was removed. The licence gate reads manifests and cannot see a stale
+# binary; a drive that never asks what it is running cannot either.
+worker="$root/target/release/arlen-pdf-decode-page"
+if [ -x "$worker" ] && strings "$worker" 2>/dev/null | grep -qi mupdf; then
+  echo "  FAIL the worker on disk is a MuPDF build, which the tree removed on licence grounds"
+  echo "       rebuild it: cargo build --release --manifest-path apps/pdf/decode-page/Cargo.toml"
+  exit 1
+fi
+
+# Whether this machine can draw a page at all. `pdfium-render` binds to a
+# `libpdfium` at RUNTIME and no distribution in play ships one, so the render
+# cases below are skipped rather than failed where there is no engine - said out
+# loud, in the same words the crate's own tests use, because a silent skip is how
+# a suite comes to report success for something that never ran.
+engine=1
+if ! "$worker" 1 1.0 < "$fix/sample.pdf" > /dev/null 2>&1; then
+  engine=0
+fi
 rm -rf "$fix"
 mkdir -p "$fix"
 
@@ -134,11 +157,15 @@ return `size=${c.width}x${c.height} opaque=${opaque} dark=${dark}`;
 JS
 )
 
+if [ "$engine" = 0 ]; then
+  echo "  --   drawing a page: no libpdfium on this machine, so nothing was rendered"
+else
 say "the page is drawn as opaque paper rather than a transparent sheet" \
   "$(printf '%s' "$ink" | grep -qE "opaque=[1-9]" && echo 1 || echo 0)" "$ink"
 
 say "and the document's own text is on it" \
   "$(printf '%s' "$ink" | grep -qE "dark=[1-9]" && echo 1 || echo 0)" "$ink"
+fi
 
 # Page navigation, the third thing `quickview-plan.md` names for this reader and
 # the last one to arrive. Pressed as a key on the window rather than clicked,
@@ -195,11 +222,67 @@ return `text=${JSON.stringify(span.textContent)} inside=${inside} area=${Math.ro
 JS
 )
 
+if [ "$engine" = 0 ]; then
+  echo "  --   laying the words over the page: same reason, the boxes are in the raster's own pixel space"
+else
 say "the page's words are laid over the page, not beside it" \
   "$(printf '%s' "$sel" | grep -q "inside=true" && echo 1 || echo 0)" "$sel"
 
 say "and selecting them gives back what the document says" \
   "$(printf '%s' "$sel" | grep -q 'selected="Chapter one begins here with a needle in it"' && echo 1 || echo 0)" "$sel"
+fi
+
+# SEARCH. The word `needle` was planted on page one when this fixture was
+# written and nothing had ever looked for it, so the search - the one feature
+# that reads the whole document rather than the page in front of you - shipped
+# undriven. It matters more than it looks: a search that quietly finds nothing
+# is indistinguishable from a document that does not contain the word, and a
+# reader believes the second.
+cat > "$fix/p-search.js" <<'JS'
+const box = document.querySelector('input[type=search]');
+if (!box) return "no search box";
+const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+set.call(box, "needle");
+box.dispatchEvent(new Event("input", { bubbles: true }));
+for (let i = 0; i < 60; i++) {
+  await new Promise((r) => setTimeout(r, 100));
+  if (document.querySelectorAll(".pdf-hits li").length) break;
+}
+const hits = [...document.querySelectorAll(".pdf-hits li")].map((li) => li.innerText.replace(/\s+/g, " ").trim());
+// Jump to the hit and report which page the reader is on afterwards, since a
+// result list nobody can act on is a list, not a search.
+const before = (document.querySelector(".pdf-page-indicator, [class*=indicator]")?.innerText ?? "").trim();
+document.querySelector(".pdf-hits button")?.click();
+await new Promise((r) => setTimeout(r, 600));
+const dom = document.body.innerText.replace(/\s+/g, " ").trim();
+// And a word that is not in the document, to prove the first answer was about
+// the document rather than about the search always saying yes.
+set.call(box, "zzzznotpresent");
+box.dispatchEvent(new Event("input", { bubbles: true }));
+for (let i = 0; i < 40; i++) {
+  await new Promise((r) => setTimeout(r, 100));
+  if (!document.querySelectorAll(".pdf-hits li").length) break;
+}
+const absent = document.body.innerText.replace(/\s+/g, " ").trim();
+return `hits=${JSON.stringify(hits.join(" | ").slice(0, 200))} after=${JSON.stringify(dom.slice(0, 200))} `
+  + `absent=${JSON.stringify(absent.slice(0, 160))} before=${JSON.stringify(before)}`;
+JS
+found=$(SHOOT_APP_ARGS="$fix/sample.pdf" SHOOT_INJECT="$fix/p-search.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/pdf-search.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+# One hit, and on the page the word is actually on. A search that returned every
+# page would also be "not empty".
+say "a word in the document is found on the page that has it" \
+  "$(printf '%s' "$found" | grep -qE 'hits="[^"]*needle' && echo 1 || echo 0)" "$found"
+
+say "and only on that page" \
+  "$(printf '%s' "$found" | grep -q "|" && echo 0 || echo 1)" "$found"
+
+# A word nobody wrote must be answered, not ignored. This is the sentence that
+# stops an empty result reading as a broken search.
+say "a word that is not there is answered rather than left blank" \
+  "$(printf '%s' "$found" | grep -qE 'absent="[^"]*(No page contains that)' && echo 1 || echo 0)" "$found"
 
 # Nothing here is a fixture string: a document with no contents page and a
 # document that failed to open are different, and the second must not be
