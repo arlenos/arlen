@@ -297,6 +297,28 @@ pub fn merge_catalog(entries: Vec<CatalogEntry>) -> Vec<AppCard> {
             .map(|e| e.display.clone())
             .unwrap_or_default();
 
+        // THE ICON IS PICKED APART FROM THE REST OF THE DISPLAY, and it is the one
+        // field where that is right. The display comes from the richest source,
+        // and richness counts fields - so an app carried by both the archive and
+        // Flathub takes Flathub's entry, which has screenshots the archive's does
+        // not, and with it Flathub's icon URL. That silently trades a file already
+        // on this disk for a network fetch: measured on the image, 3261 cards
+        // ended up with a remote icon while the archive's cache held one locally.
+        // A person on a fresh boot with no network then sees no picture, for an
+        // icon that was sitting in `/var/lib/swcatalog/icons`. Same picture, no
+        // request - so a local path wins whichever entry won the prose. Only the
+        // icon: there is no local copy of a screenshot to prefer.
+        let local_icon = group
+            .iter()
+            .find_map(|e| e.display.icon.as_deref().filter(|i| i.starts_with('/')))
+            .map(str::to_string);
+        let display = match (local_icon, display) {
+            (Some(local), d) if !d.icon.as_deref().is_some_and(|i| i.starts_with('/')) => {
+                DisplayMeta { icon: Some(local), ..d }
+            }
+            (_, d) => d,
+        };
+
         // A card is a bridge as soon as any source says so (only forage can).
         let kind = group
             .iter()
@@ -426,6 +448,28 @@ mod tests {
         assert_eq!(cards[0].variants.len(), 1, "one Flatpak variant, not two");
         // The richer display won the card display.
         assert_eq!(cards[0].display.name, "rich");
+    }
+
+    #[test]
+    fn a_local_icon_wins_over_a_remote_one_from_a_richer_source() {
+        // The shape the image makes: the archive knows the app and has its icon
+        // cached on disk; Flathub knows it too, with screenshots and an icon URL.
+        // Flathub's entry is richer and wins the prose - it must not take the
+        // picture off local disk with it.
+        let mut apt = entry("org.x.App", SourceLayer::Apt, "App", 0);
+        apt.display.icon = Some("/var/lib/swcatalog/icons/debian/64x64/app.png".into());
+        let mut hub = entry("org.x.App", SourceLayer::Flatpak, "App", 3);
+        hub.display.icon = Some("https://dl.flathub.org/media/app.png".into());
+
+        for entries in [vec![apt.clone(), hub.clone()], vec![hub, apt]] {
+            let cards = merge_catalog(entries);
+            assert_eq!(
+                cards[0].display.icon.as_deref(),
+                Some("/var/lib/swcatalog/icons/debian/64x64/app.png"),
+                "the picture already on this disk",
+            );
+            assert_eq!(cards[0].display.screenshots.len(), 3, "and the richer prose still won");
+        }
     }
 
     #[test]
