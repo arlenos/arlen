@@ -66,6 +66,17 @@ pub struct Discovered {
     pub flathub_xml: Vec<PathBuf>,
     /// Debian DEP-11 catalogs (`.yml.gz`), one per component/suite.
     pub dep11_yaml: Vec<PathBuf>,
+    /// `(origin, path)` per composed AppStream catalog in XML form (`.xml[.gz]`),
+    /// the origin being the filename stem.
+    ///
+    /// The same catalogue DEP-11 carries, in the other serialisation the AppStream
+    /// spec defines, sitting in the sibling `xml/` directory. It is here because
+    /// `appstreamcli compose` cannot write YAML at all, so anything this system
+    /// composes for itself - a forage cookbook's apps - arrives in this form or
+    /// not at all. The origin comes from the filename because compose does not
+    /// write the `origin` attribute into the document it produces, verified
+    /// against appstreamcli 1.1.5.
+    pub catalog_xml: Vec<(String, PathBuf)>,
     /// `(app-id, metadata path)` per installed Flatpak app. The id comes from
     /// Flatpak's own directory layout, so it is read, not guessed.
     pub flatpak_metadata: Vec<(String, PathBuf)>,
@@ -113,6 +124,15 @@ pub fn discover(roots: &SourceRoots) -> Discovered {
             if entry.is_file() && (name.ends_with(".yml") || name.ends_with(".yml.gz")) {
                 found.dep11_yaml.push(entry);
             }
+        }
+        // `<root>/xml/<origin>.xml[.gz]`, flat, beside the YAML form.
+        for entry in read_dir_sorted(&dir.join("xml")) {
+            let name = entry.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !entry.is_file() || !(name.ends_with(".xml") || name.ends_with(".xml.gz")) {
+                continue;
+            }
+            let origin = name.trim_end_matches(".gz").trim_end_matches(".xml");
+            found.catalog_xml.push((origin.to_string(), entry));
         }
     }
 
@@ -248,6 +268,19 @@ mod tests {
 
         let found = discover(&roots_in(dir.path()));
         assert_eq!(found.dep11_yaml.len(), 2, "{:?}", found.dep11_yaml);
+    }
+
+    #[test]
+    fn xml_catalogs_are_found_beside_the_yaml_and_named_by_their_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        let xml = dir.path().join("swcatalog/xml");
+        touch(&xml.join("forage-official.xml.gz"));
+        touch(&xml.join("forage-personal.xml"));
+        touch(&xml.join("README"));
+
+        let found = discover(&roots_in(dir.path()));
+        let origins: Vec<&str> = found.catalog_xml.iter().map(|(o, _)| o.as_str()).collect();
+        assert_eq!(origins, ["forage-official", "forage-personal"], "{found:?}");
     }
 
     #[test]
