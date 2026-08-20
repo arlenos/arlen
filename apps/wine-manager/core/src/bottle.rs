@@ -63,6 +63,9 @@ pub struct Bottle {
     pub grants: Vec<PathGrant>,
     /// What it may reach on the network.
     pub egress: Egress,
+    /// What it needs beyond its grants: a display, a GPU, the font rules.
+    #[serde(default)]
+    pub plumbing: crate::plumbing::Plumbing,
 }
 
 /// A bottle turned into something runnable.
@@ -107,6 +110,7 @@ pub fn bottle_run(
     bottle: &Bottle,
     usr: &Path,
     env: BTreeMap<String, String>,
+    plumbing: Vec<arlen_confiner::Bind>,
 ) -> Result<BottleRun, BottleError> {
     if !bottle.prefix_root.is_absolute() {
         return Err(BottleError::PrefixNotAbsolute(bottle.prefix_root.clone()));
@@ -128,7 +132,9 @@ pub fn bottle_run(
         .map_err(BottleError::Confiner)?;
 
     // Read-only grants are not app dirs (the confiner binds those read-write), so
-    // they are added as their own binds when the skeleton is completed.
+    // they are added as their own binds when the skeleton is completed, alongside
+    // the plumbing the caller resolved against this host.
+    let mut extra: Vec<arlen_confiner::Bind> = plumbing;
     let read_only: Vec<arlen_confiner::Bind> = drives
         .iter()
         .filter(|d| d.access == Access::ReadOnly)
@@ -138,8 +144,9 @@ pub fn bottle_run(
         })
         .collect();
 
+    extra.extend(read_only);
     Ok(BottleRun {
-        confinement: skeleton.complete(read_only, Vec::new()),
+        confinement: skeleton.complete(extra, Vec::new()),
         drives,
     })
 }
@@ -241,11 +248,12 @@ mod tests {
                 PathGrant { host: PathBuf::from("/srv/reference"), access: Access::ReadOnly },
             ],
             egress: Egress::None,
+            plumbing: Default::default(),
         }
     }
 
     fn run() -> BottleRun {
-        bottle_run(&bottle(), Path::new("/usr"), BTreeMap::new()).unwrap()
+        bottle_run(&bottle(), Path::new("/usr"), BTreeMap::new(), vec![]).unwrap()
     }
 
     #[test]
@@ -301,7 +309,7 @@ mod tests {
     fn a_bottle_with_no_grants_still_has_its_prefix() {
         let mut b = bottle();
         b.grants.clear();
-        let r = bottle_run(&b, Path::new("/usr"), BTreeMap::new()).unwrap();
+        let r = bottle_run(&b, Path::new("/usr"), BTreeMap::new(), vec![]).unwrap();
         assert!(r.drives.is_empty());
         assert_eq!(
             reachable(&r.confinement.bwrap_args(), &b.prefix_root),
@@ -335,7 +343,7 @@ mod tests {
         let mut b = bottle();
         b.prefix_root = PathBuf::from("pfx");
         assert!(matches!(
-            bottle_run(&b, Path::new("/usr"), BTreeMap::new()),
+            bottle_run(&b, Path::new("/usr"), BTreeMap::new(), vec![]),
             Err(BottleError::PrefixNotAbsolute(_))
         ));
     }
