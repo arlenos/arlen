@@ -1,0 +1,28 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Mail
+Name[de]=E-Mail
+Comment=Read a message file, and what it says about itself
+Comment[de]=Eine Nachrichtendatei lesen, und was sie über sich selbst sagt
+Exec=arlen-mail %f
+Icon=arlen-mail
+Terminal=false
+# One main category only. Naming two is what `desktop-file-validate` reports as
+# a hint, and a hint is a failure here.
+Categories=Office;Email;
+Keywords=mail;email;message;eml;
+Keywords[de]=mail;email;nachricht;eml;
+StartupNotify=true
+
+# `message/rfc822` is claimed because opening one file WORKS: launched with a
+# path, the window shows that message's headers, its text part and what the
+# message says about itself. It is NOT a mail client and claims no account
+# protocol - registering for the type an app cannot open is how a file manager
+# comes to hand a document to something that ignores it.
+MimeType=message/rfc822;
+
+# The id the resolver derives from the installed binary, stated here so the
+# launcher and every daemon that admits by app id cannot disagree about who this
+# app is.
+X-Arlen-AppId=dev.arlen.mail
