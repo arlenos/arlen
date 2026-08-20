@@ -1194,6 +1194,23 @@ fn resolve_app_icon_cached(app_id: &str) -> Option<String> {
 
 /// Actual filesystem walk. Kept separate so tests can exercise it
 /// without going through the cache.
+/// Where a symbolic icon of this name could live under one theme.
+///
+/// Every category the theme defines, because the name does not say which one it is
+/// filed under and neither does the caller. Pure, so the path SHAPE is checkable
+/// without a machine that happens to have Adwaita installed - which is the part
+/// that was wrong.
+fn symbolic_candidates(base: &str, theme: &str, name: &str) -> Vec<String> {
+    const CATEGORIES: &[&str] = &[
+        "status", "actions", "apps", "devices", "categories", "emblems", "emotes",
+        "mimetypes", "places", "ui", "legacy",
+    ];
+    CATEGORIES
+        .iter()
+        .map(|category| format!("{base}/{theme}/symbolic/{category}/{name}.svg"))
+        .collect()
+}
+
 fn resolve_app_icon_uncached(app_id: &str) -> Option<String> {
     // If the icon_name is an absolute path, read it directly.
     if app_id.starts_with('/') {
@@ -1249,7 +1266,30 @@ fn resolve_app_icon_uncached(app_id: &str) -> Option<String> {
         }
     }
 
-    // Pass 3: pixmaps.
+    // Pass 3: the symbolic tree.
+    //
+    // Adwaita files symbolic icons as `<theme>/symbolic/<category>/<name>.svg`,
+    // not under `apps/`, so every passes above misses a `-symbolic` name - which is
+    // most of them, since that is what a GTK-era app puts in a notification. The
+    // clock's reminder asks for `alarm-symbolic`, the file is on the image at
+    // `Adwaita/symbolic/status/alarm-symbolic.svg`, and the shell logged
+    // `resolve_icon: NOT FOUND` while it sat there. A reminder that rings without
+    // its icon is the small end of the same fault as a card with a broken image.
+    //
+    // Every category the theme defines, because the name does not say which one it
+    // is in and the caller cannot know either.
+    for base in &base_dirs {
+        for theme in &themes {
+            for path in symbolic_candidates(base, theme, app_id) {
+                if let Some(url) = read_as_data_url(&path, "image/svg+xml") {
+                    log::debug!("resolve_app_icon: FOUND (symbolic) \"{path}\"");
+                    return Some(url);
+                }
+            }
+        }
+    }
+
+    // Pass 4: pixmaps.
     let pixmap_exts: &[(&str, &str)] = &[("png", "image/png"), ("svg", "image/svg+xml")];
     for (ext, mime) in pixmap_exts {
         let path = format!("/usr/share/pixmaps/{app_id}.{ext}");
@@ -1393,5 +1433,24 @@ mod icon_cache_tests {
         assert!(icon_cache_len() >= 1);
         icon_cache_clear();
         assert_eq!(icon_cache_len(), 0);
+    }
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::symbolic_candidates;
+
+    #[test]
+    fn a_symbolic_name_is_looked_for_where_the_theme_actually_files_it() {
+        let paths = symbolic_candidates("/usr/share/icons", "Adwaita", "alarm-symbolic");
+        // The exact file the clock's reminder needs, which the resolver missed
+        // while it sat on the image: the passes above only look under `apps/`.
+        assert!(
+            paths.contains(&"/usr/share/icons/Adwaita/symbolic/status/alarm-symbolic.svg".to_string()),
+            "{paths:?}",
+        );
+        // Not only status: a symbolic name says nothing about its category.
+        assert!(paths.iter().any(|p| p.contains("/symbolic/actions/")));
+        assert!(paths.iter().all(|p| p.ends_with(".svg")));
     }
 }
