@@ -1124,42 +1124,6 @@ def main():
                 if os.path.exists(denied) and os.path.getsize(denied) > 0:
                     break
                 time.sleep(0.1)
-        if args.click:
-            # Coordinates are given against the 1280x800 layout and scaled to the
-            # real frame, like the consent click below.
-            from PIL import Image
-            fw, fh = Image.open(out).size
-            # A frame from immediately before the clicks, because the main
-            # screenshot is not a usable baseline for them. Measured on 10 August:
-            # a run that clicked a top-bar indicator had a consent card covering
-            # the screen at main-capture time, so both frames were about the
-            # consent surface and the diff between them read as 99.995% - which
-            # says nothing whatever about the popover that was the subject. This
-            # capture happens after the consent flow above has resolved, so it is
-            # the state the clicks actually start from.
-            preclick = out + ".preclick.png"
-            capture(f, preclick, x_display)
-            for _ in range(50):
-                if os.path.exists(preclick) and os.path.getsize(preclick) > 0:
-                    break
-                time.sleep(0.1)
-            for spec in args.click:
-                cx, cy = (int(v) for v in spec.split(","))
-                qmp_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
-                time.sleep(1.5)
-            clicked = out + ".clicked.png"
-            # Long enough for the surface to have ANSWERED, not merely repainted.
-            # Two seconds was not: a pane whose read is still in flight shows its
-            # empty label, and I read that as "the read returned nothing" and had
-            # to withdraw it. A screenshot is only evidence about a load if the
-            # load has resolved by the time it is taken.
-            time.sleep(args.click_settle)
-            capture(f, clicked, x_display)
-            for _ in range(50):
-                if os.path.exists(clicked) and os.path.getsize(clicked) > 0:
-                    break
-                time.sleep(0.1)
-            print(f"after-click screenshot: {clicked}")
         if args.approve_consent:
             # Click "Allow once" (lower-right of the centered consent card, fixed
             # 1280x800 layout), then capture an after-shot so the dialog-dismissed
@@ -1216,6 +1180,49 @@ def main():
         # which is worse than not checking at all. Walked into exactly that on the
         # 13 Aug run: VERIFY FAIL, nothing wrong with the image.
         linger = args.linger
+        # CONSENT FIRST, THEN CLICKS. These were the other way round, and the
+        # order is not cosmetic: the dogfood consent card covers the middle of the
+        # screen, which is exactly where an app window is, so a run given both
+        # flags aimed its clicks at whatever the card happened to be showing. A
+        # click that lands on a dialog nobody meant to answer is the same failure
+        # as the blind approve click that once dismissed the screenshot app's
+        # thumbnail. Resolving the card first means the clicks land on the app.
+        if args.click:
+            # Coordinates are given against the 1280x800 layout and scaled to the
+            # real frame, like the consent click below.
+            from PIL import Image
+            fw, fh = Image.open(out).size
+            # A frame from immediately before the clicks, because the main
+            # screenshot is not a usable baseline for them. Measured on 10 August:
+            # a run that clicked a top-bar indicator had a consent card covering
+            # the screen at main-capture time, so both frames were about the
+            # consent surface and the diff between them read as 99.995% - which
+            # says nothing whatever about the popover that was the subject. This
+            # capture happens after the consent flow above has resolved, so it is
+            # the state the clicks actually start from.
+            preclick = out + ".preclick.png"
+            capture(f, preclick, x_display)
+            for _ in range(50):
+                if os.path.exists(preclick) and os.path.getsize(preclick) > 0:
+                    break
+                time.sleep(0.1)
+            for spec in args.click:
+                cx, cy = (int(v) for v in spec.split(","))
+                qmp_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
+                time.sleep(1.5)
+            clicked = out + ".clicked.png"
+            # Long enough for the surface to have ANSWERED, not merely repainted.
+            # Two seconds was not: a pane whose read is still in flight shows its
+            # empty label, and I read that as "the read returned nothing" and had
+            # to withdraw it. A screenshot is only evidence about a load if the
+            # load has resolved by the time it is taken.
+            time.sleep(args.click_settle)
+            capture(f, clicked, x_display)
+            for _ in range(50):
+                if os.path.exists(clicked) and os.path.getsize(clicked) > 0:
+                    break
+                time.sleep(0.1)
+            print(f"after-click screenshot: {clicked}")
         if probe_shipped_so_far(serial) and linger < PROBE_ROUND_GAP:
             print(
                 f"the image ships the knowledge probe, which answers at ~{PROBE_ROUND_GAP}s; "
