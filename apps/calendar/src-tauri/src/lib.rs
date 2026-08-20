@@ -100,6 +100,60 @@ async fn agenda_from_service() -> Option<Agenda> {
     serde_json::from_str(&json).ok()
 }
 
+/// What happened when a person asked to keep an opened calendar.
+#[derive(serde::Serialize)]
+struct ImportResult {
+    /// Where it now lives, when it was copied.
+    path: Option<String>,
+    /// Why it was not, in a sentence the surface can show.
+    error: Option<String>,
+}
+
+/// Copy an opened `.ics` into the calendar directory, so it is still there
+/// tomorrow and the reminder daemon can see it.
+///
+/// WHY THIS IS AN ACTION AND NOT AUTOMATIC. Opening a file reads it in place, on
+/// purpose: somebody who double-clicks one invitation wants to see that
+/// invitation, and quietly merging it into their calendar would be an edit they
+/// did not ask for. But without SOME way in, the directory is empty on every
+/// machine, the agenda is empty for everyone, and the reminder daemon watches a
+/// folder that never gains a file - which is why neither shipped. This is the
+/// smallest way in that keeps the choice with the person: they opened it, they
+/// can see what is in it, and then they say keep it.
+///
+/// Refuses to overwrite. A calendar already at that name is somebody's data, and
+/// silently replacing it is exactly the edit this design is avoiding.
+#[tauri::command]
+async fn calendar_import(path: String) -> ImportResult {
+    let src = std::path::PathBuf::from(&path);
+    let Some(name) = src.file_name() else {
+        return ImportResult { path: None, error: Some("that path does not name a file".into()) };
+    };
+    let Some(dir) = calendar_dir() else {
+        return ImportResult {
+            path: None,
+            error: Some("this machine has no home directory to keep calendars in".into()),
+        };
+    };
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        return ImportResult {
+            path: None,
+            error: Some(format!("could not make {}: {e}", dir.display())),
+        };
+    }
+    let dest = dir.join(name);
+    if dest.exists() {
+        return ImportResult {
+            path: None,
+            error: Some(format!("a calendar called {} is already kept", name.to_string_lossy())),
+        };
+    }
+    match std::fs::copy(&src, &dest) {
+        Ok(_) => ImportResult { path: Some(dest.display().to_string()), error: None },
+        Err(e) => ImportResult { path: None, error: Some(format!("could not keep it: {e}")) },
+    }
+}
+
 #[tauri::command]
 async fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
     // Opened ON a file: that file is the whole agenda. Reading the directory too
@@ -237,7 +291,7 @@ pub fn run() {
         .manage(LaunchFile(
             std::env::args().skip(1).find(|a| !a.starts_with('-')),
         ))
-        .invoke_handler(tauri::generate_handler![calendar_agenda, launch_file])
+        .invoke_handler(tauri::generate_handler![calendar_agenda, launch_file, calendar_import])
         .run(tauri::generate_context!())
         .expect("error while running arlen-calendar");
 }

@@ -44,6 +44,24 @@
   /// is an argument, not a setting, and it cannot change while the window lives.
   let launched = $state<string | null>(null);
 
+  /// The result of a keep, when one has been asked for. `null` before, so the
+  /// button is the resting state rather than an empty sentence being one.
+  let kept = $state<{ path: string | null; error: string | null } | null>(null);
+
+  /// Copy the opened file into the calendar directory, then read the directory
+  /// rather than the file - the point of keeping it is that it is now one of
+  /// yours, and the reminder daemon watches that folder.
+  async function keep() {
+    if (!launched) return;
+    kept = await invoke<{ path: string | null; error: string | null }>("calendar_import", {
+      path: launched,
+    }).catch((e) => ({ path: null, error: String(e) }));
+    if (kept.path) {
+      launched = null;
+      await read();
+    }
+  }
+
   async function read() {
     try {
       agenda = await invoke<Agenda>("calendar_agenda", { file: launched });
@@ -110,6 +128,19 @@
          report. -->
     {#if !agenda.service_running && !launched}
       <p class="note bad" role="status">{$t("cal.serviceDown")}</p>
+    {/if}
+    {#if launched}
+      <!-- The only way a calendar gets onto this machine today. Opening a file
+           reads it where it lies, deliberately; without this the directory stays
+           empty on every install, the agenda is empty for everyone, and the
+           reminder daemon watches a folder that never gains a file. An action
+           rather than an automatic copy, so the merge stays the person's. -->
+      <p class="keep">
+        <button type="button" onclick={keep}>{$t("cal.keep")}</button>
+      </p>
+    {/if}
+    {#if kept?.error}
+      <p class="note bad" role="alert">{kept.error}</p>
     {/if}
     {#if agenda.unreadable > 0}
       <p class="note bad" role="alert">{$t("cal.unreadable", { count: agenda.unreadable })}</p>
@@ -204,6 +235,22 @@
   }
   .note.bad {
     color: var(--color-fg-warning, #eab308);
+  }
+  .keep {
+    margin: 16px 14px 0;
+  }
+  .keep button {
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-fg-primary, #e6e8ee);
+    background: var(--color-bg-card, #171717);
+    border: 1px solid var(--color-border-default, #2a2a2a);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .keep button:hover {
+    border-color: var(--color-border-strong, #3a3a3a);
   }
   .days,
   .events {
