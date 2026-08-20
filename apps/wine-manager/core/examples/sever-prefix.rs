@@ -30,7 +30,8 @@ fn main() -> std::io::Result<()> {
         );
         std::process::exit(1);
     }
-    let steps = plan(&prefix, &links);
+    // Nothing is granted at severing time: the drive table is written after.
+    let steps = plan(&prefix, &links, &[]);
     for step in &steps {
         match step {
             Sever::Remove(p) => println!("remove  {}", p.display()),
