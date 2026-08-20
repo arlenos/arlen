@@ -150,7 +150,18 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
 /// another process or came from a menu item in this one. A separate label like
 /// "internal" would make the shell's own launches the one kind nobody can grep
 /// for by application.
-const SELF_CALLER: &str = "desktop-shell";
+///
+/// IT SAID `desktop-shell` UNTIL 20 AUGUST AND THE SENTENCE ABOVE WAS FALSE. The
+/// image installs the shell at
+/// `/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/arlen-desktop-shell`, which
+/// the resolver answers as `dev.arlen.desktop-shell` - so the ledger carried two
+/// names for one application, and a socket-arrived launch and a menu-item launch
+/// from the SAME shell were filed under different callers. Nothing refused
+/// anything, which is why it survived: the only symptom is that the grep this
+/// comment exists to protect quietly returns half the launches.
+///
+/// The test below pins it to the resolver rather than to itself.
+const SELF_CALLER: &str = "dev.arlen.desktop-shell";
 
 /// The shell asking on its own behalf.
 ///
@@ -520,6 +531,31 @@ fn spawn(launch: &Launch) -> Result<(), String> {
     Ok(())
 }
 
+
+#[cfg(test)]
+mod self_caller_tests {
+    use super::*;
+
+    #[test]
+    fn the_shells_own_name_is_the_one_the_resolver_gives_its_binary() {
+        // Pinned to the RESOLVER, not to itself. The obvious test - assert
+        // `self_caller()` is `Named(SELF_CALLER)` - compares the constant with
+        // itself and passes whatever it says, which is how this spent months
+        // filing the shell's own launches under a name no peer would ever
+        // resolve to.
+        let installed = std::path::Path::new(
+            "/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/arlen-desktop-shell",
+        );
+        let resolved = arlen_permissions::identity::path_to_app_id(installed)
+            .expect("the resolver names the installed shell");
+        assert_eq!(
+            resolved, SELF_CALLER,
+            "a launch the shell asks for itself would be filed under `{SELF_CALLER}` while \
+             the same shell arriving over the socket is `{resolved}` - one application, \
+             two names, and the ledger grep this constant exists for returns half"
+        );
+    }
+}
 
 #[cfg(test)]
 mod minted_tests {
