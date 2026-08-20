@@ -45,3 +45,9 @@ __pycache__/
 # anyone reproducing that job). Each app ignores its own copy; the root had no
 # rule because nothing used to install here.
 /node_modules/
+
+# SvelteKit's generated tree. Every app ignores its own; a `svelte-kit sync` run
+# from the wrong directory drops one at the repo root, where nothing ignored it
+# and the next `git add -A` would have swept it in. Root-anchored, since the app
+# copies are already covered where they live.
+/.svelte-kit/
