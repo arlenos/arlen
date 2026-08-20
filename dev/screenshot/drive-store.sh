@@ -211,6 +211,50 @@ say "a collection carries the curator's title in each language" \
 say "the machine can say which app sources it actually has" \
   "$(printf '%s' "$got" | grep -qE "metainfoDocuments=[1-9]" && echo 1 || echo 0)" "$got"
 
+# THE CATALOGUE, AND THE PICTURE THAT GOES WITH IT. A store is populated or it is
+# not, and the difference is one file: with Debian's DEP-11 at
+# `/var/lib/swcatalog` this host served 2531 apps, without it 43. So this asks
+# whether a catalogue is present at all, and if it is, whether the icon each card
+# names can actually be opened - which is the half a screenshot of a grid cannot
+# show, because a card with a broken picture and a card with none look identical
+# once the layout has settled.
+#
+# Skipped rather than failed where no catalogue is staged: a developer host is
+# not an image, and a case that is red on every machine except one gets ignored
+# on all of them.
+catalogue=""
+for root in /var/lib/swcatalog "$HOME/.local/share/swcatalog"; do
+  [ -d "$root/yaml" ] && catalogue="$root" && break
+done
+
+if [ -z "$catalogue" ]; then
+  echo "  --   the catalogue and its icons: no DEP-11 staged on this host, so there is nothing to resolve"
+else
+  cat > "$run/probe-icons.js" <<'JS'
+  const inv = window.__TAURI_INTERNALS__.invoke;
+  const cards = await inv("store_search", { query: "e", facets: [], sort: null });
+  const icons = cards.map((c) => c.icon).filter(Boolean);
+  return `cards=${cards.length} icons=${icons.length} first=${JSON.stringify(icons.slice(0, 3))}`;
+JS
+  # A NAME OF ITS OWN. The first cut reused `got`, which the update and
+  # observation cases below still read - so adding two passing cases turned two
+  # unrelated ones red, with my probe output as their evidence.
+  cat_out=$(SHOOT_INJECT="$run/probe-icons.js" "$here/shoot-app.sh" "$app" "" 2>&1     | sed -n 's/^inject result: //p')
+
+  say "a staged catalogue puts more than the installed apps in the store"     "$(printf '%s' "$cat_out" | grep -qE "cards=[0-9]{3,}" && echo 1 || echo 0)" "$cat_out"
+
+  # Every icon a card names must be a file. The names are flat DEP-11 `cached`
+  # entries, so they resolve under the origin directory - and the store preferred
+  # the `remote` form until 20 August, which is a path relative to a MediaBaseUrl
+  # nothing reads. That version would pass the case above and fail this one.
+  missing=0
+  for name in $(printf '%s' "$cat_out" | sed -n 's/.*first=\[\(.*\)\].*/\1/p' | tr -d '"' | tr ',' ' '); do
+    [ -n "$name" ] || continue
+    find "$catalogue/icons" -name "$name" -print -quit 2>/dev/null | grep -q . || missing=1
+  done
+  say "and the icon each card names is a file on this machine" "$([ "$missing" = 0 ] && echo 1 || echo 0)" "$cat_out"
+fi
+
 # The Updates tab has to be able to say "nothing pending" as an ANSWER rather
 # than as a failure it swallowed. Asserting on the count would be asserting on
 # what this host happens to have installed, so this asserts the op answered and
