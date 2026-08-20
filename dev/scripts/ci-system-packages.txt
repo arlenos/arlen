@@ -35,4 +35,12 @@ zlib1g-dev
 # `appstreamcli compose`, which the forage pipeline runs to give a package its
 # own AppStream catalogue and icon cache. Without it that step skips itself and
 # the test that proves a built package carries a catalogue would prove nothing.
+#
+# BOTH packages. Debian splits the compose half out: `appstream` gives you
+# `/usr/bin/appstreamcli` and `appstream-compose` gives you the
+# `/usr/libexec/appstreamcli-compose` the `compose` subcommand runs. With only the
+# first, `appstreamcli` exists and `appstreamcli compose` does not work - which is
+# how the catalogue test came to fail on the runner and pass on a machine where
+# the two ship together.
 appstream
+appstream-compose

@@ -628,23 +628,34 @@ bin = ["app"]
 
         // And the composed catalogue beside it, which is what puts the app in the
         // store's list rather than only in its own directory. Conditional on the
-        // tool because the step skips itself without it, and a test that asserted
-        // regardless would fail for a reason that is not about this code. CI
-        // installs `appstream` so the assertion is real there; a machine without
-        // it says so rather than passing quietly.
+        // tool, because the step skips itself without it and a test that asserted
+        // regardless would fail for a reason that is not about this code.
+        //
+        // THE GUARD ASKS WHETHER COMPOSE WORKS, NOT WHETHER A BINARY SPAWNED. It
+        // used to be `Command::new("appstreamcli").arg("--version").output().is_ok()`,
+        // and `output()` is `Ok` the moment a process starts, whatever it exits
+        // with. Debian splits the tool in two - `appstream` carries
+        // `/usr/bin/appstreamcli`, `appstream-compose` carries the
+        // `/usr/libexec/appstreamcli-compose` the subcommand runs - so on a runner
+        // with only the first, `appstreamcli` existed, the guard admitted the run,
+        // `compose` did not work, and the test demanded a catalogue nothing could
+        // have written. It passed here because this machine has both.
         let catalogue = extracted.path().join("share/swcatalog/xml/forage.xml.gz");
-        if std::process::Command::new("appstreamcli")
-            .arg("--version")
+        let compose_works = std::process::Command::new("appstreamcli")
+            .args(["compose", "--help"])
             .output()
-            .is_ok()
-        {
+            .is_ok_and(|o| o.status.success());
+        if compose_works {
             assert!(
                 catalogue.exists(),
                 "the package carries its own catalogue at {}",
                 catalogue.display(),
             );
         } else {
-            eprintln!("no appstreamcli here, so the catalogue half of this test did not run");
+            eprintln!(
+                "`appstreamcli compose` does not work here, so the catalogue half of this \
+                 test did not run. On Debian that means the `appstream-compose` package"
+            );
         }
     }
 
