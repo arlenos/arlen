@@ -159,15 +159,25 @@ fn load_source_inputs() -> SourceInputs {
 /// it" alike. A document that will not parse is also absent rather than fatal -
 /// a corrupt cache must cost the ratings row, not the catalogue.
 fn odrs_ratings() -> Option<arlen_store_backend::odrs::Ratings> {
-    let path = std::env::var_os("ARLEN_STORE_ODRS_JSON")
-        .map(PathBuf::from)
-        .or_else(|| {
-            let base = std::env::var_os("XDG_STATE_HOME")
-                .map(PathBuf::from)
-                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
-            Some(base.join("arlen/store/odrs-ratings.json"))
-        })?;
-    let text = std::fs::read_to_string(&path).ok()?;
+    // The user's own copy first, then the one the image was built with. The order
+    // is what lets a refresher land later without touching this: whatever writes
+    // the state file wins over the shipped document, and until something does, the
+    // shipped one is what a fresh install reads.
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(p) = std::env::var_os("ARLEN_STORE_ODRS_JSON") {
+        candidates.push(PathBuf::from(p));
+    } else {
+        if let Some(base) = std::env::var_os("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))
+        {
+            candidates.push(base.join("arlen/store/odrs-ratings.json"));
+        }
+        candidates.push(PathBuf::from("/usr/share/arlen/store/odrs-ratings.json"));
+    }
+    let (path, text) = candidates
+        .into_iter()
+        .find_map(|p| Some((p.clone(), std::fs::read_to_string(&p).ok()?)))?;
     match arlen_store_backend::odrs::Ratings::parse(&text) {
         Ok(r) => {
             eprintln!("store-backend: odrs ratings for {} app(s)", r.len());
