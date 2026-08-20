@@ -13,6 +13,7 @@ pub mod compose;
 pub mod discover;
 pub mod flatpak;
 
+pub mod odrs;
 pub mod query;
 pub mod serve;
 pub mod view;

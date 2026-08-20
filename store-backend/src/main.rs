@@ -126,6 +126,44 @@ fn load_source_inputs() -> SourceInputs {
         // so a test or a bespoke deployment can point at its own tree.
         flatpak_metadata: read_pairs(&found.flatpak_metadata),
         apt_profiles: read_pairs(&found.apt_profiles),
+        // What other people made of an app, from a document somebody else
+        // fetched. THE DAEMON DOES NOT FETCH IT, and that is a posture rather
+        // than an omission: the header of this file says the backend performs no
+        // network I/O and its unit denies egress outright, so the first request
+        // out of here is a change to what this daemon may reach - and it lands
+        // with the allowlist that permits it, not ahead of it. Until then a
+        // cached document at `ARLEN_STORE_ODRS_JSON`, or under the state dir a
+        // future refresher writes to, is read if present and nothing is claimed
+        // if it is absent.
+        odrs: odrs_ratings(),
+    }
+}
+
+/// The ODRS ratings document, if this machine has one.
+///
+/// Absent is the ordinary case and not an error: an app with no score shows no
+/// row, which is the honest rendering of "nobody asked" and of "nobody rated
+/// it" alike. A document that will not parse is also absent rather than fatal -
+/// a corrupt cache must cost the ratings row, not the catalogue.
+fn odrs_ratings() -> Option<arlen_store_backend::odrs::Ratings> {
+    let path = std::env::var_os("ARLEN_STORE_ODRS_JSON")
+        .map(PathBuf::from)
+        .or_else(|| {
+            let base = std::env::var_os("XDG_STATE_HOME")
+                .map(PathBuf::from)
+                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
+            Some(base.join("arlen/store/odrs-ratings.json"))
+        })?;
+    let text = std::fs::read_to_string(&path).ok()?;
+    match arlen_store_backend::odrs::Ratings::parse(&text) {
+        Ok(r) => {
+            eprintln!("store-backend: odrs ratings for {} app(s)", r.len());
+            Some(r)
+        }
+        Err(e) => {
+            eprintln!("store-backend: ignoring the odrs cache at {}: {e}", path.display());
+            None
+        }
     }
 }
 
