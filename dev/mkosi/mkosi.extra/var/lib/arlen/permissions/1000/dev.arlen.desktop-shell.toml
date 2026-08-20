@@ -20,6 +20,19 @@
 # the readable set, so App.id and File.id are granted for the traversal. No write,
 # no relations. Erring narrow; confirm the exact readable-label/rel-type gate
 # semantics if a query is unexpectedly refused.
+# WHAT THIS PROFILE DOES NOT DESCRIBE, and for this app it is most of what it
+# does. The scope below is a knowledge-graph READ. The shell also launches every
+# other app on the machine (`launch_app`, through `sh -c` or `arlen-run`), reads
+# `.desktop` files and icon themes out of `/usr/share`, drives the compositor over
+# its own protocol, owns the tray, and speaks to a dozen daemons over D-Bus. No
+# section here expresses any of that, and none is meant to: this is the shell, the
+# thing the launcher would confine other apps FROM, and the model has no vocabulary
+# for "may start arbitrary programs".
+#
+# Written down because a reader who takes this file as the shell's reach will be
+# wrong by the whole desktop, and because the read scope being narrow and careful
+# could otherwise be mistaken for the app being narrow.
+
 [info]
 app_id = "dev.arlen.desktop-shell"
 tier = "first-party"
