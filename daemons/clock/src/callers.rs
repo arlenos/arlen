@@ -21,7 +21,21 @@
 //! reach by construction rather than by a list that could go stale.
 
 /// The clock app itself: the caller this daemon exists for.
-pub const CLOCK_APP: &str = "clock";
+///
+/// `dev.arlen.clock`, which is what the RESOLVER answers for the app as the
+/// image installs it - `/usr/lib/arlen/apps/dev.arlen.clock/bin/arlen-clock`,
+/// rule (3), the directory name. It said `clock` until 20 August, which was true
+/// of an earlier `/usr/bin/` layout and false of every built image since: the
+/// app asked the daemon for its state, the daemon resolved the caller to
+/// `dev.arlen.clock`, found no match and refused - and the window said "Cannot
+/// read your saved clock data right now" while the daemon it could not reach was
+/// running and healthy two processes away.
+///
+/// Found by opening the clock on a booted image. Nothing else could show it: on
+/// a developer host the daemon is usually absent, so the same sentence is
+/// correct, and every unit test on both sides passes either way because neither
+/// knows where the other is installed.
+pub const CLOCK_APP: &str = "dev.arlen.clock";
 
 /// Components allowed to register alarms, and the payload source each owns.
 ///
@@ -92,6 +106,24 @@ mod tests {
     #[test]
     fn the_clock_app_reaches_everything_and_a_stranger_reaches_nothing() {
         assert_eq!(reach_of(CLOCK_APP), Reach::Full);
+    }
+
+    #[test]
+    fn the_admitted_id_is_the_one_the_image_actually_produces() {
+        // THE test that would have caught the 20 August defect, and the reason
+        // the one above could not: it compares the constant with itself, so it
+        // passes whatever the constant says. This compares it with the RESOLVER,
+        // against the path the image installs the app at - which is the only
+        // thing that decides who the daemon thinks is calling.
+        let installed = std::path::Path::new("/usr/lib/arlen/apps/dev.arlen.clock/bin/arlen-clock");
+        let resolved = arlen_permissions::identity::path_to_app_id(installed)
+            .expect("the resolver names the installed clock");
+        assert_eq!(
+            resolved, CLOCK_APP,
+            "the daemon admits `{CLOCK_APP}` and the image produces `{resolved}`; \
+             the app would be refused by its own daemon and the window would say \
+             it cannot read your clock data"
+        );
         assert_eq!(reach_of("files"), Reach::None);
         assert!(may_touch(Reach::Full, None));
         assert!(!may_touch(Reach::None, Some(CAL)));
