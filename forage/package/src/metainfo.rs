@@ -58,14 +58,21 @@ fn push_elem(out: &mut String, tag: &str, value: &str) {
 }
 
 /// The AppStream component type for a package, from what it installs: a `.desktop`
-/// entry makes it a `desktop-application`; otherwise an installed binary makes it a
-/// `console-application`. A package with neither (a library/data-only package) falls
-/// back to `desktop-application`, the store's primary browse type. Pure.
+/// entry makes it a `desktop-application`; anything else is a `console-application`.
+///
+/// The fallback used to be `desktop-application`, on the reasoning that it is the
+/// store's primary browse type. That claims a GUI application on no evidence, and
+/// the claim does not survive contact with `appstreamcli compose`: a
+/// desktop-application with no desktop entry and no icon is rejected outright with
+/// `gui-app-without-icon`, and the catalogue comes out empty. Checked against
+/// appstreamcli 1.1.5. So the type that made the app more visible was the type that
+/// kept it out of the composed catalogue entirely. A package that installs no
+/// desktop entry is not a desktop application, and saying so is both honest and the
+/// version that composes. Pure.
 pub fn component_type(artifacts: Option<&Artifacts>) -> &'static str {
     match artifacts {
         Some(a) if a.desktop.is_some() => "desktop-application",
-        Some(a) if !a.bin.is_empty() => "console-application",
-        _ => "desktop-application",
+        _ => "console-application",
     }
 }
 
@@ -231,7 +238,7 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
     #[test]
     fn synthesizes_a_full_component() {
         let xml = synthesize_metainfo(&meta(), None);
-        assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<component type=\"desktop-application\">"));
+        assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<component type=\"console-application\">"));
         assert!(xml.contains("<id>org.example.hello</id>"));
         assert!(xml.contains("<name>Hello</name>"));
         assert!(xml.contains("<summary>a greeter</summary>"));
@@ -363,8 +370,10 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         let cli = with_artifacts("bin = [\"hello\"]");
         assert_eq!(component_type(cli.artifacts.as_ref()), "console-application");
         let lib = with_artifacts("lib = [\"libhello.so\"]");
-        assert_eq!(component_type(lib.artifacts.as_ref()), "desktop-application");
-        assert_eq!(component_type(None), "desktop-application");
+        // Neither a desktop entry nor a binary: not a desktop application, and
+        // typing it as one gets it rejected by compose rather than listed.
+        assert_eq!(component_type(lib.artifacts.as_ref()), "console-application");
+        assert_eq!(component_type(None), "console-application");
         // The synthesized document carries the derived type.
         assert!(synthesize_metainfo(&meta(), cli.artifacts.as_ref())
             .contains("<component type=\"console-application\">"));
