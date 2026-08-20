@@ -218,6 +218,8 @@ jobs:
           python3 dev/scripts/check-comment-paths.py
           python3 dev/scripts/check-dbus-method-names.py
           python3 dev/scripts/check-spawned-binaries.py
+          python3 dev/scripts/check-spawned-tools-classified.py
+          node dev/scripts/test-check-spawned-tools-classified.mjs
           python3 dev/scripts/check-shared-files.py
           python3 dev/scripts/check-smoke-coverage.py
           python3 dev/scripts/check-executor-gate.py
