@@ -23,16 +23,27 @@ fn shell_toml_path() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".config/arlen/shell.toml"))
 }
 
-/// Read the existing shell.toml as a generic table so app-settings
-/// can mutate fields without forcing the rest of the schema.
-fn read_shell_table() -> toml::Table {
-    let Ok(path) = shell_toml_path() else {
-        return toml::Table::new();
-    };
-    let Ok(content) = fs::read_to_string(&path) else {
-        return toml::Table::new();
-    };
-    toml::from_str(&content).unwrap_or_default()
+/// The existing `shell.toml` as a generic table, or why it could not be read, so
+/// app-settings can mutate one field without forcing the rest of the schema.
+///
+/// ABSENT IS NOT UNREADABLE, and this file is the one where that matters most.
+/// `write_shell_table` writes the WHOLE table back, and three commands here are
+/// read-modify-write over it - so answering an unreadable or corrupt `shell.toml`
+/// with an empty table meant one flick of the night-light switch replaced the
+/// person's night light, brightness, layout, focus and launcher settings with a
+/// file containing only night light. Every other section, gone, and the call
+/// returned Ok. The same damage `compositor.toml` had from the gaps slider, in
+/// the file next to it.
+fn read_shell_table() -> Result<toml::Table, String> {
+    let path = shell_toml_path()?;
+    match fs::read_to_string(&path) {
+        Ok(text) => toml::from_str(&text)
+            .map_err(|e| format!("{} could not be read: {e}", path.display())),
+        // No shell.toml yet: the empty table IS the state, and the write creates
+        // the file with just this section in it.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(toml::Table::new()),
+        Err(e) => Err(format!("{} could not be read: {e}", path.display())),
+    }
 }
 
 /// Write the table back atomically. Tempfile + rename so a partial
@@ -64,7 +75,9 @@ fn night_light_section_mut(table: &mut toml::Table) -> &mut toml::Table {
 /// file or section is missing — same defaults desktop-shell uses.
 #[tauri::command]
 pub fn night_light_get_state() -> NightLightState {
-    let table = read_shell_table();
+    // Read-only: nothing is written back, so an unreadable file renders as
+    // the defaults rather than refusing to show the page.
+    let table = read_shell_table().unwrap_or_default();
     let nl = table
         .get("night_light")
         .and_then(|v| v.as_table())
@@ -111,7 +124,7 @@ pub fn night_light_get_state() -> NightLightState {
 /// and let the watcher relay to the compositor.
 #[tauri::command]
 pub fn night_light_set(enabled: bool, temperature: u16) -> Result<(), String> {
-    let mut table = read_shell_table();
+    let mut table = read_shell_table()?;
     {
         let nl = night_light_section_mut(&mut table);
         nl.insert("enabled".into(), toml::Value::Boolean(enabled));
@@ -135,7 +148,7 @@ pub fn night_light_set_schedule(
     if !matches!(schedule.as_str(), "manual" | "sunset_sunrise" | "custom") {
         return Err(format!("unknown schedule '{schedule}'"));
     }
-    let mut table = read_shell_table();
+    let mut table = read_shell_table()?;
     {
         let nl = night_light_section_mut(&mut table);
         nl.insert("schedule".into(), toml::Value::String(schedule));
@@ -155,7 +168,7 @@ pub fn night_light_set_schedule(
 /// sunset/sunrise schedule mode.
 #[tauri::command]
 pub fn night_light_set_location(latitude: f64, longitude: f64) -> Result<(), String> {
-    let mut table = read_shell_table();
+    let mut table = read_shell_table()?;
     {
         let nl = night_light_section_mut(&mut table);
         nl.insert("latitude".into(), toml::Value::Float(latitude));

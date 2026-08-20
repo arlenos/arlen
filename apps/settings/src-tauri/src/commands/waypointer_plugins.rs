@@ -121,11 +121,22 @@ impl WaypointerSection {
     }
 }
 
-fn read_modules_config(path: &std::path::Path) -> ModulesConfig {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|c| toml::from_str(&c).ok())
-        .unwrap_or_default()
+/// The modules config, or why it could not be read.
+///
+/// ABSENT IS NOT UNREADABLE. `write_modules_config` writes the whole file, and
+/// the toggle below is read-modify-write over it - so an unreadable or corrupt
+/// `modules.toml` became an empty config, and one plugin switch wrote that back
+/// over the filesystem-module list in the same file. The test beside it asserts
+/// that section survives a toggle; this is what makes that true when the read
+/// fails rather than only when it succeeds.
+fn read_modules_config(path: &std::path::Path) -> Result<ModulesConfig, String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => toml::from_str(&text)
+            .map_err(|e| format!("{} could not be read: {e}", path.display())),
+        // Nothing configured yet: the empty config IS the state.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ModulesConfig::default()),
+        Err(e) => Err(format!("{} could not be read: {e}", path.display())),
+    }
 }
 
 fn write_modules_config(path: &std::path::Path, cfg: &ModulesConfig) -> Result<(), String> {
@@ -165,7 +176,8 @@ pub fn waypointer_list_plugins() -> Vec<PluginSummary> {
         }
     };
 
-    let disabled = read_modules_config(&modules_config_path())
+    // Read-only: nothing is written back from the listing.
+    let disabled = read_modules_config(&modules_config_path()).unwrap_or_default()
         .waypointer
         .disabled_plugins;
 
@@ -200,7 +212,7 @@ pub fn waypointer_list_plugins() -> Vec<PluginSummary> {
 #[tauri::command]
 pub fn waypointer_set_plugin_enabled(id: String, enabled: bool) -> Result<bool, String> {
     let path = modules_config_path();
-    let mut cfg = read_modules_config(&path);
+    let mut cfg = read_modules_config(&path)?;
 
     let list = &mut cfg.waypointer.disabled_plugins;
     list.retain(|p| p != &id);
@@ -249,7 +261,7 @@ prefix = "="
         )
         .unwrap();
 
-        let mut cfg = read_modules_config(&path);
+        let mut cfg = read_modules_config(&path).unwrap();
         // Toggle core.unicode on, core.calculator off.
         cfg.waypointer.disabled_plugins.retain(|p| p != "core.unicode");
         cfg.waypointer.disabled_plugins.push("core.calculator".into());
