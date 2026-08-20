@@ -90,14 +90,24 @@ impl From<&OutputInfo> for OutputInfoMeta {
     }
 }
 
-fn read_sidecar() -> SidecarFile {
-    let Ok(path) = profiles_meta_path() else {
-        return SidecarFile::default();
-    };
-    let Ok(text) = fs::read_to_string(&path) else {
-        return SidecarFile::default();
-    };
-    toml::from_str(&text).unwrap_or_default()
+/// The profile sidecar, or why it could not be read.
+///
+/// ABSENT IS NOT UNREADABLE, and four callers below are read-modify-write over a
+/// file `write_sidecar` rewrites whole. Answering any failure with the empty
+/// default meant one unreadable or corrupt sidecar plus one save, rename, delete
+/// or apply put an empty list back - and every other display profile lost its
+/// label and its last-used time, which is how the list stops recognising the
+/// arrangement somebody set up for their desk.
+fn read_sidecar() -> Result<SidecarFile, String> {
+    let path = profiles_meta_path()?;
+    match fs::read_to_string(&path) {
+        Ok(text) => toml::from_str(&text)
+            .map_err(|e| format!("{} could not be read: {e}", path.display())),
+        // Nothing saved yet is the ordinary state, and the empty default is its
+        // answer: the write then creates the file.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SidecarFile::default()),
+        Err(e) => Err(format!("{} could not be read: {e}", path.display())),
+    }
 }
 
 fn write_sidecar(sidecar: &SidecarFile) -> Result<(), String> {
@@ -207,7 +217,8 @@ pub fn list_profiles(live_set: &[OutputInfo]) -> Vec<ProfileSummary> {
         Err(_) => return Vec::new(),
     };
     let cfg = displays_toml::load(&path);
-    let sidecar = read_sidecar();
+    // Read-only: nothing is written back from the listing.
+    let sidecar = read_sidecar().unwrap_or_default();
     let live_meta: Vec<OutputInfoMeta> = live_set.iter().map(OutputInfoMeta::from).collect();
 
     let mut out = Vec::with_capacity(cfg.config.len());
@@ -266,7 +277,7 @@ pub fn save_profile(
     cfg.config.insert(live_set.clone(), live_outputs);
     displays_toml::save(&path, &cfg).map_err(|e| e.to_string())?;
 
-    let mut sidecar = read_sidecar();
+    let mut sidecar = read_sidecar()?;
     let meta_set: Vec<OutputInfoMeta> = live_set.iter().map(OutputInfoMeta::from).collect();
     let now = Utc::now();
     if let Some(existing) = sidecar
@@ -317,7 +328,7 @@ pub fn load_profile_for_apply(
     // Bump the sidecar timestamp so list ordering and auto-apply
     // tie-breaking reflect this apply.
     let meta_set: Vec<OutputInfoMeta> = output_set.iter().map(OutputInfoMeta::from).collect();
-    let mut sidecar = read_sidecar();
+    let mut sidecar = read_sidecar()?;
     if let Some(e) = sidecar
         .profiles
         .iter_mut()
@@ -360,7 +371,7 @@ pub fn delete_profile(id: &str) -> Result<(), String> {
     }
     displays_toml::save(&path, &cfg).map_err(|e| e.to_string())?;
 
-    let mut sidecar = read_sidecar();
+    let mut sidecar = read_sidecar()?;
     sidecar
         .profiles
         .retain(|e| !removed_meta_sets.contains(&e.output_set));
@@ -387,7 +398,7 @@ pub fn rename_profile(id: &str, new_label: String) -> Result<(), String> {
         .ok_or_else(|| format!("profile '{id}' not found"))?;
     let meta_set: Vec<OutputInfoMeta> = target_set.iter().map(OutputInfoMeta::from).collect();
 
-    let mut sidecar = read_sidecar();
+    let mut sidecar = read_sidecar()?;
     if let Some(e) = sidecar
         .profiles
         .iter_mut()

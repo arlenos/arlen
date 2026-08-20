@@ -88,13 +88,25 @@ struct DisabledSection {
     modules: Vec<String>,
 }
 
-fn load_disabled_list() -> Vec<String> {
+/// The disabled-module list, or why it could not be read.
+///
+/// ABSENT IS NOT UNREADABLE. `save_disabled_list` rewrites the file whole, and
+/// `modules_uninstall` is read-modify-write over it - so answering an unreadable
+/// or corrupt `modules.toml` with an empty list meant one uninstall silently
+/// re-enabled every module the person had switched off. The same shape was in
+/// `forage module disable` and is written out in `daemons/modulesd/src/enabled.rs`,
+/// which got it right first.
+fn load_disabled_list() -> Result<Vec<String>, String> {
     let path = modules_config_path();
-    std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|c| toml::from_str::<ModulesConfig>(&c).ok())
-        .map(|c| c.disabled.modules)
-        .unwrap_or_default()
+    match std::fs::read_to_string(&path) {
+        Ok(text) => toml::from_str::<ModulesConfig>(&text)
+            .map(|c| c.disabled.modules)
+            .map_err(|e| format!("{} could not be read: {e}", path.display())),
+        // Nothing disabled yet: the empty list IS the answer, and a write creates
+        // the file.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(format!("{} could not be read: {e}", path.display())),
+    }
 }
 
 fn save_disabled_list(disabled: Vec<String>) -> Result<(), String> {
@@ -302,7 +314,9 @@ fn load_one(
 /// User modules with the same id override system modules.
 #[tauri::command]
 pub fn modules_list() -> Vec<ModuleSummary> {
-    let disabled = load_disabled_list();
+    // Read-only: the listing writes nothing back, so an unreadable list is
+    // rendered as nothing disabled rather than refusing to list the modules.
+    let disabled = load_disabled_list().unwrap_or_default();
     let sys_dir = system_modules_dir();
     let usr_dir = user_modules_dir();
     log::info!(
@@ -399,7 +413,7 @@ pub fn modules_uninstall(id: String) -> Result<(), String> {
 
     // Also clean up the disabled list so a reinstall of the same id
     // starts fresh.
-    let mut disabled = load_disabled_list();
+    let mut disabled = load_disabled_list()?;
     disabled.retain(|d| d != &id);
     save_disabled_list(disabled)?;
 
