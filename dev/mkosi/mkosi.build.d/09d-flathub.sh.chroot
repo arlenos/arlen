@@ -1,0 +1,44 @@
+#!/bin/sh
+# Phase 9d (CHROOT): Flathub's composed catalogue, so the store's Flatpak layer is
+# there rather than an empty half of the three-layer table.
+#
+# WHAT IT IS AND WHY CURL IS ENOUGH. Flathub publishes the same composed AppStream
+# document `flatpak update --appstream` would pull, at a plain URL. Its components
+# carry ABSOLUTE media URLs on `dl.flathub.org` - icons and screenshots both - so
+# unlike the Debian catalogue there is no icon cache to stage beside it and no base
+# URL to reconstruct. Measured on the host, 20 Aug: 4061 cards, 3309 with an icon,
+# 3327 with screenshots, and a sampled icon and screenshot both fetch.
+#
+# WHERE IT GOES. `store-backend/src/discover.rs` looks for
+# `<root>/appstream/<remote>/<arch>/active/appstream.xml[.gz]`, which is flatpak's
+# own layout. Writing it there means the reader needs no special case, and a real
+# `flatpak update --appstream` later overwrites this file in place rather than
+# competing with it.
+#
+# WHAT THIS DOES NOT DO. It does not put flatpak on the image. The store RESOLVES
+# an install handle and the caller acts on it, so a Flatpak variant here is a real
+# card whose install route needs a runtime this image does not carry. That is a
+# packaging decision, not one to smuggle in beside a catalogue fetch.
+#
+# Non-fatal, like the two steps beside it.
+set -eu
+
+out="$DESTDIR/var/lib/flatpak/appstream/flathub/x86_64/active"
+mkdir -p "$out"
+
+if ! curl -sfL --retry 3 --max-time 300 -o "$out/appstream.xml.gz" \
+        "https://dl.flathub.org/repo/appstream/x86_64/appstream.xml.gz"; then
+    echo "!! could not fetch the Flathub catalogue; the store shows no Flatpak layer" >&2
+    rm -f "$out/appstream.xml.gz"
+    exit 0
+fi
+
+# A truncated download is a gzip that will not open, and the reader would drop the
+# whole source without anything saying why. Better to ship nothing.
+if ! gzip -t "$out/appstream.xml.gz" 2>/dev/null; then
+    echo "!! the Flathub catalogue did not decompress; dropping it" >&2
+    rm -f "$out/appstream.xml.gz"
+    exit 0
+fi
+
+echo ">> flathub catalogue staged ($(wc -c < "$out/appstream.xml.gz") bytes)"
