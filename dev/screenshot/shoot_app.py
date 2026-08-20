@@ -194,10 +194,23 @@ def warn_if_error_page(base, sid):
     for probe in ("Connection refused", "ERR_CONNECTION", "Unable to load page",
                   "did not respond"):
         if probe in html:
+            # NAME THE PORT when the page carries it. "the port in its
+            # tauri.conf.json" sends a reader to look something up that this
+            # already knows, and it left the drive sweep unable to fix itself:
+            # the sweep serves whatever port a failure names, so a message
+            # without one meant that suite stayed red on a machine that could
+            # have served it in six seconds.
+            m = re.search(r"localhost:(\d+)", html)
+            where = (f"run `npx vite preview --port {m.group(1)}` in that app"
+                     if m else
+                     "run the app's `vite preview` on the port in its tauri.conf.json")
             print(
                 f"SHOT IS AN ERROR PAGE ({probe!r}): the binary loaded its devUrl "
-                f"and nothing was serving it. Either build with --release, or run "
-                f"the app's `vite preview` on the port in its tauri.conf.json.",
+                f"at http://localhost:{m.group(1)} and nothing was serving it. "
+                f"Either build with --release, or {where}."
+                if m else
+                f"SHOT IS AN ERROR PAGE ({probe!r}): the binary loaded its devUrl "
+                f"and nothing was serving it. Either build with --release, or {where}.",
                 file=sys.stderr,
             )
             return 1

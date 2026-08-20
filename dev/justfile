@@ -437,15 +437,53 @@ provision-agent-profile:
 # scripts existed - calendar, knowledge and appearance had been written and were
 # never in it - so three suites only ran when somebody remembered them, which is
 # the same as not having them. A new `drive-<app>.sh` is picked up by existing.
+#
+# THREE OF THEM NEED A FRONTEND SERVED, and this used to leave them red. An app
+# built as a DEBUG binary loads its `devUrl`, so with nothing on that port every
+# probe reads a connection-refused page - knowledge, settings (which the
+# appearance suite drives) and store are in that state today. The drive scripts
+# say so and print the port; this now reads that line, finds the app whose
+# `tauri.conf.json` claims the port, builds its frontend, serves it and runs the
+# suite again. No table to keep: the port comes from the failure and the app from
+# the port, so a fourth app in the same state fixes itself here.
 drive-apps:
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
     ran=0
+    served=()
+    serve_for() {  # serve_for <port> - build and preview the app that claims it
+        local port="$1" conf app
+        for conf in "{{ROOT}}"/apps/*/src-tauri/tauri.conf.json; do
+            grep -q "localhost:$port" "$conf" || continue
+            app="$(dirname "$(dirname "$conf")")"
+            echo ">> serving $(basename "$app") on $port for its drive"
+            (cd "$app" && npx vite build >/dev/null 2>&1) || return 1
+            (cd "$app" && setsid npx vite preview --port "$port" --strictPort \
+                >/dev/null 2>&1 < /dev/null &)
+            sleep 6
+            served+=("$port")
+            return 0
+        done
+        return 1
+    }
     for script in "{{ROOT}}"/dev/screenshot/drive-*.sh; do
         [ -x "$script" ] || continue
         ran=$((ran + 1))
-        "$script" || fail=1
+        out="$("$script" 2>&1)"
+        rc=$?
+        # The hint the scripts print when the binary loaded its devUrl and nothing
+        # answered. Serve it once and press the same suite again.
+        port="$(printf '%s' "$out" | grep -oE "localhost:[0-9]+" | head -1 | cut -d: -f2)"
+        if [ "$rc" != 0 ] && [ -n "$port" ] && serve_for "$port"; then
+            out="$("$script" 2>&1)"
+            rc=$?
+        fi
+        printf '%s\n' "$out"
+        [ "$rc" = 0 ] || fail=1
+    done
+    for port in "${served[@]:-}"; do
+        [ -n "$port" ] && pkill -f "vite preview --port $port" >/dev/null 2>&1
     done
     [ "$fail" = 0 ] && echo "$ran app suite(s) answered when they were pressed"
     exit "$fail"
