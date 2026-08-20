@@ -44,6 +44,14 @@ fn main() {
             .arg("-u")
             .env("WINEPREFIX", prefix)
             .env("WINEDEBUG", "-all")
+            // Without this the first boot sits forever. `wineboot` offers to
+            // install Mono and Gecko through a dialog, and a bottle being created
+            // has no display to show it on, so the prompt waits for an answer that
+            // cannot arrive. Measured on this machine: over ten minutes and still
+            // running, against ten seconds with the two overrides set. A bottle
+            // that needs .NET gets Mono installed deliberately, which is a
+            // decision with a reason rather than a modal nobody can see.
+            .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()

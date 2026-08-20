@@ -203,6 +203,19 @@ mod tests {
     }
 
     #[test]
+    fn the_written_file_reads_like_every_other_arlen_config() {
+        // Enum spellings go through serde, and the first written bottle came out
+        // with `access = "ReadWrite"` beside `egress = "none"`. A config file that
+        // switches conventions mid-table is one a person has to guess at.
+        let d = dir("spelling");
+        let path = save_bottle(&d, &bottle("spelled")).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("access = \"read_write\""), "{text}");
+        assert!(text.contains("egress = \"none\""), "{text}");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
     fn a_corrupt_bottle_is_refused_and_left_on_disk() {
         // The whole point. A default here would be a bottle with no grants, and the
         // next save would write that over what the person configured.

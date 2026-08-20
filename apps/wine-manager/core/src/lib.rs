@@ -42,6 +42,7 @@ use serde::{Deserialize, Serialize};
 
 /// Where a symlink found inside a prefix actually points.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Reach {
     /// Stays inside the prefix. `dosdevices/c: -> ../drive_c` is this, and it is
     /// the only one of the defaults that is fine as it stands.
@@ -138,6 +139,7 @@ pub fn escapes(prefix_root: &Path, links: &[(PathBuf, PathBuf)]) -> Vec<Escape> 
 
 /// Whether a grant may write, or only read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Access {
     /// The program sees the files and cannot change them.
     ReadOnly,
