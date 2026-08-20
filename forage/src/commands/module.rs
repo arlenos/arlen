@@ -30,11 +30,23 @@ fn modules_config_path() -> PathBuf {
 }
 
 /// Read the disabled list from modules.toml.
-fn read_disabled() -> Vec<String> {
+/// The disabled list, or why it could not be read.
+///
+/// ABSENT IS NOT UNREADABLE. This used to answer any failure with an empty list,
+/// and both callers are read-modify-write over a file `write_disabled` rewrites
+/// whole - so one unreadable or corrupt `modules.toml` plus one `forage module
+/// disable X` wrote a list containing only X, silently re-enabling every module
+/// the person had switched off. "I turned that extension off" is not a statement
+/// a tool may reverse behind somebody's back, and the same reasoning is written
+/// out in `daemons/modulesd/src/enabled.rs::persist`, which got this right first.
+fn read_disabled() -> Result<Vec<String>, String> {
     let path = modules_config_path();
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return Vec::new(),
+        // Nothing disabled yet: the empty list IS the answer, and a write creates
+        // the file.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("{} could not be read: {e}", path.display())),
     };
 
     #[derive(serde::Deserialize, Default)]
@@ -50,7 +62,7 @@ fn read_disabled() -> Vec<String> {
 
     toml::from_str::<Config>(&content)
         .map(|c| c.disabled.modules)
-        .unwrap_or_default()
+        .map_err(|e| format!("{} could not be read: {e}", path.display()))
 }
 
 /// Write the disabled list to modules.toml.
@@ -154,7 +166,9 @@ pub fn register(path: &Path, force: bool) {
 
 /// List all installed modules.
 pub fn list() {
-    let disabled = read_disabled();
+    // Read-only: a list that cannot be read is not a reason to refuse to
+    // show the modules, and nothing is written back from here.
+    let disabled = read_disabled().unwrap_or_default();
 
     println!(
         "{:<35} {:<20} {:<10} {:<12} {:<8} {}",
@@ -230,7 +244,9 @@ pub fn info(id: &str) {
         std::process::exit(1);
     });
 
-    let disabled = read_disabled();
+    // Read-only: a list that cannot be read is not a reason to refuse to
+    // show the modules, and nothing is written back from here.
+    let disabled = read_disabled().unwrap_or_default();
     let enabled = !disabled.contains(&id.to_string());
 
     println!("{}: {}", "ID".bold(), manifest.module.id);
@@ -280,7 +296,15 @@ pub fn remove(id: &str) {
 
 /// Enable a module (remove from disabled list).
 pub fn enable(id: &str) {
-    let mut disabled = read_disabled();
+    let mut disabled = match read_disabled() {
+        Ok(d) => d,
+        // Refuse rather than rewrite: the file holds the person's other choices.
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            eprintln!("       nothing was changed, so the list is still there to fix");
+            return;
+        }
+    };
     disabled.retain(|m| m != id);
     write_disabled(&disabled);
     println!("{} enabled {}", "ok:".green().bold(), id);
@@ -288,7 +312,14 @@ pub fn enable(id: &str) {
 
 /// Disable a module (add to disabled list).
 pub fn disable(id: &str) {
-    let mut disabled = read_disabled();
+    let mut disabled = match read_disabled() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            eprintln!("       nothing was changed, so the list is still there to fix");
+            return;
+        }
+    };
     if !disabled.contains(&id.to_string()) {
         disabled.push(id.to_string());
     }
