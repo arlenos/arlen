@@ -150,11 +150,24 @@ impl PrintBackend for CupsBackend {
             .send(op)
             .await
             .map_err(|e| PrintError::Backend(e.to_string()))?;
-        if !resp.header().status_code().is_success() {
-            return Err(PrintError::Backend(format!(
-                "cups-get-printers: {}",
-                resp.header().status_code()
-            )));
+        // AN EMPTY CUPS IS NOT A BROKEN CUPS. A cupsd with no queues answers
+        // CUPS-Get-Printers with `client-error-not-found` rather than an empty
+        // list, and treating every non-success status as a failure made the
+        // commonest real machine - the service running, nothing set up yet -
+        // report itself as unreachable. Settings has two sentences for exactly
+        // this pair ("you have no printers" and "the print service could not be
+        // reached") and the collapse happened here, before the surface could
+        // choose between them. `default_printer` below already got this right;
+        // this call sits eight lines above it and did not.
+        //
+        // Any OTHER non-success status stays an error, because a cupsd that is
+        // genuinely wrong must not read as a tidy empty machine.
+        let status = resp.header().status_code();
+        if status == StatusCode::ClientErrorNotFound {
+            return Ok(Vec::new());
+        }
+        if !status.is_success() {
+            return Err(PrintError::Backend(format!("cups-get-printers: {status}")));
         }
         // Materialise into owned printers before `resp` (which the group iterator
         // borrows) goes out of scope.
