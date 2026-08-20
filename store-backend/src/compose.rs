@@ -498,7 +498,8 @@ pub fn dep11_entries(input: &CatalogInput) -> Vec<CatalogEntry> {
     // The header document declares the origin the icon cache is filed under. Read
     // it rather than deriving one from the filename: `trixie_main.yml.gz` is filed
     // under `debian-trixie-main`, so a filename-derived guess would miss every icon.
-    let origin = dep11_origin(yaml);
+    let origin = dep11_header_field(yaml, "Origin");
+    let media_base = dep11_header_field(yaml, "MediaBaseUrl");
     use serde::Deserialize;
     let mut entries = Vec::new();
     for doc in serde_yaml::Deserializer::from_str(yaml) {
@@ -520,6 +521,7 @@ pub fn dep11_entries(input: &CatalogInput) -> Vec<CatalogEntry> {
                 .unwrap_or_default()
                 .into_iter()
                 .filter_map(|s| s.source_image.and_then(|i| i.url))
+                .map(|u| absolute_media_url(u, media_base.as_deref()))
                 .collect(),
             icon: comp.icon.and_then(|i| {
                 dep11_icon(i, input.root.as_deref(), origin.as_deref())
@@ -542,14 +544,15 @@ pub fn dep11_entries(input: &CatalogInput) -> Vec<CatalogEntry> {
     entries
 }
 
-/// The `Origin` from a DEP-11 catalogue's header document.
+/// A top-level scalar from a DEP-11 catalogue's header document.
 ///
 /// Read with a line scan rather than by deserialising the header: the header is the
 /// first document of a multi-document stream and carries no `ID`, so the record loop
 /// already skips it, and a second full parse to reach one scalar is not worth it. The
-/// scan stops at the first record separator so a component field named `Origin` in a
-/// later document cannot be mistaken for it.
-fn dep11_origin(yaml: &str) -> Option<String> {
+/// scan stops at the first record separator, so a component field of the same name in
+/// a later document cannot be mistaken for it.
+fn dep11_header_field(yaml: &str, field: &str) -> Option<String> {
+    let prefix = format!("{field}:");
     let mut seen_body = false;
     for line in yaml.lines() {
         if line.trim() == "---" {
@@ -559,7 +562,7 @@ fn dep11_origin(yaml: &str) -> Option<String> {
             continue;
         }
         seen_body = true;
-        if let Some(rest) = line.strip_prefix("Origin:") {
+        if let Some(rest) = line.strip_prefix(&prefix) {
             let v = rest.trim().trim_matches('"').trim_matches('\'');
             if !v.is_empty() {
                 return Some(v.to_string());
@@ -567,6 +570,24 @@ fn dep11_origin(yaml: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Make a DEP-11 media reference loadable: its URLs are RELATIVE to the header's
+/// `MediaBaseUrl`, and every screenshot in the Debian archive is one of these
+/// (`org/gnome/World.Secrets/d0219.../screenshots/image-1_orig.png`). Without the
+/// base a renderer has a path with nothing in front of it.
+///
+/// An already-absolute URL is left alone, and so is a relative one with no base to
+/// put in front of it - there is nothing better to do with it than hand it on, and
+/// dropping it would lose a picture that a caller with its own base could still use.
+fn absolute_media_url(url: String, base: Option<&str>) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        return url;
+    }
+    match base {
+        Some(b) => format!("{}/{}", b.trim_end_matches('/'), url.trim_start_matches('/')),
+        None => url,
+    }
 }
 
 /// The icon a card should show for a DEP-11 component: the cached file's path when
@@ -1685,11 +1706,53 @@ Name:
     }
 
     #[test]
+    fn a_relative_screenshot_gets_the_base_the_header_declares() {
+        // The shape EVERY screenshot in the Debian archive has: a path relative to
+        // the header's `MediaBaseUrl`. Handed on as-is it is a URL with nothing in
+        // front of it, which is a broken image on every detail page that has one.
+        let yaml = r#"File: DEP-11
+Version: '1.0'
+Origin: debian-trixie-main
+MediaBaseUrl: https://appstream.debian.org/media/trixie
+---
+Type: desktop-application
+ID: org.gnome.Secrets
+Name:
+  C: Secrets
+Screenshots:
+- default: true
+  source-image:
+    url: org/gnome/Secrets/d02/screenshots/image-1_orig.png
+"#;
+        let entries = dep11_entries(&yaml.into());
+        assert_eq!(
+            entries[0].display.screenshots,
+            vec!["https://appstream.debian.org/media/trixie/org/gnome/Secrets/d02/screenshots/image-1_orig.png"],
+        );
+    }
+
+    #[test]
+    fn an_absolute_screenshot_is_left_alone_and_a_baseless_one_is_kept() {
+        assert_eq!(
+            absolute_media_url("https://elsewhere/a.png".into(), Some("https://base")),
+            "https://elsewhere/a.png",
+        );
+        // Nothing better to do than hand it on: a caller with its own base can
+        // still use it, and dropping it would lose the picture outright.
+        assert_eq!(absolute_media_url("a/b.png".into(), None), "a/b.png");
+        // One slash, whichever side wrote one.
+        assert_eq!(absolute_media_url("/a.png".into(), Some("https://base/")), "https://base/a.png");
+    }
+
+    #[test]
     fn an_origin_the_filename_would_have_got_wrong_comes_off_the_header() {
         // `trixie_main.yml.gz` is filed under `debian-trixie-main`. Anything derived
         // from the filename misses every icon in the archive.
-        assert_eq!(dep11_origin(DEP11_YAML).as_deref(), Some("debian-bookworm-main"));
-        assert_eq!(dep11_origin("File: DEP-11\nVersion: '1.0'\n"), None);
+        assert_eq!(
+            dep11_header_field(DEP11_YAML, "Origin").as_deref(),
+            Some("debian-bookworm-main"),
+        );
+        assert_eq!(dep11_header_field("File: DEP-11\nVersion: '1.0'\n", "Origin"), None);
     }
 
     #[test]
