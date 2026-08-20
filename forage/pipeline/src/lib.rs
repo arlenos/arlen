@@ -28,8 +28,8 @@ use arlen_forage_extract::{extract_tar, ExtractError, ExtractLimits};
 use arlen_forage_patch::{apply_patches, PatchError, PatchLimits};
 use arlen_forage_fetch::{fetch_source, Downloader, FetchError, GitFetcher, ReleaseResolver};
 use arlen_forage_package::{
-    collect_artifacts, synthesize_manifest, write_lunpkg, Collection, ManifestError, PackageError,
-    WriteError,
+    collect_artifacts, find_upstream_metainfo, synthesize_manifest, write_lunpkg, write_metainfo,
+    Collection, ManifestError, PackageError, WriteError,
 };
 use arlen_forage_recipe::{Recipe, Source, SourceType};
 use arlen_forage_store::{ContentHash, Store, StoreError};
@@ -190,7 +190,27 @@ pub async fn build_recipe(
     let staging = tempfile::tempdir()?;
     let collection = collect_artifacts(build_dir.path(), artifacts, staging.path())?;
 
-    // 5. Synthesise the manifest and write the signed .lunpkg.
+    // 5. Give the package its AppStream component, so a forage app can land in
+    //    the same composed catalog as an apt or Flatpak one rather than being a
+    //    special case the store has to know about.
+    //
+    //    THIS STEP WAS MISSING AND ITS ABSENCE WAS INVISIBLE. `write_metainfo`
+    //    has existed since the harvest work, and its own doc says "the forage
+    //    pipeline calls this after collecting artifacts" - which nothing did, so
+    //    every package this pipeline has ever produced went out with no
+    //    component in it. Nothing failed: a `.lunpkg` without metainfo installs
+    //    fine and simply never appears in the store.
+    //
+    //    Upstream's own document wins when the source ships one: it is what the
+    //    project wrote about itself, screenshots and all, where the synthesized
+    //    one carries only what a recipe declares. Best-effort - a package that
+    //    cannot be described is still a package worth installing, so a failure
+    //    here costs the store row and not the build.
+    if let Err(e) = describe_package(staging.path(), build_dir.path(), recipe) {
+        eprintln!("forage: could not write the AppStream component: {e}");
+    }
+
+    // 6. Synthesise the manifest and write the signed .lunpkg.
     std::fs::create_dir_all(out_dir)?;
     let manifest = synthesize_manifest(recipe, &collection)?;
     let lunpkg = out_dir.join(format!("{}.lunpkg", recipe.recipe.id));
@@ -388,6 +408,50 @@ bin = ["app"]
     }
 
     #[tokio::test]
+    async fn a_built_package_carries_an_appstream_component() {
+        // THE case for step 5, and the one whose absence was invisible: a
+        // `.lunpkg` with no metainfo installs perfectly and simply never appears
+        // in the store, so nothing anywhere failed while every package this
+        // pipeline produced was undescribable.
+        let store_dir = tempfile::tempdir().unwrap();
+        let store = Store::open(store_dir.path()).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let tarball = source_tarball();
+        let recipe = recipe_for(ContentHash::of(&tarball).as_str());
+
+        let outcome = build_recipe(
+            &recipe,
+            out.path(),
+            &store,
+            &CannedDownloader(tarball),
+            &UnusedGit,
+            &UnusedResolver,
+            &ArtifactWritingRunner { rel: "app".into() },
+            &BuildContext { source_date_epoch: 0, jobs: 1, build_dir: None },
+            &SigningKey::from_bytes(&[9u8; 32]),
+            out.path(),
+            &PipelineLimits::default(),
+        )
+        .await
+        .expect("pipeline succeeds end to end");
+
+        let bytes = std::fs::read(&outcome.lunpkg).unwrap();
+        let extracted = tempfile::tempdir().unwrap();
+        extract_tar(&bytes, extracted.path(), &ExtractLimits::default()).unwrap();
+        let doc = extracted
+            .path()
+            .join(format!("share/metainfo/{}.metainfo.xml", recipe.recipe.id));
+        assert!(doc.exists(), "the package describes itself at {}", doc.display());
+        let xml = std::fs::read_to_string(&doc).unwrap();
+        // The id in the document has to be the id the store will key on, or the
+        // component and the package are two different apps as far as it knows.
+        assert!(
+            xml.contains(&format!("<id>{}</id>", recipe.recipe.id)),
+            "the component declares the recipe's own id: {xml}"
+        );
+    }
+
+    #[tokio::test]
     async fn missing_phases_are_rejected() {
         let store_dir = tempfile::tempdir().unwrap();
         let store = Store::open(store_dir.path()).unwrap();
@@ -506,4 +570,60 @@ bin = ["app"]
         assert!(Path::new(from).is_absolute(), "the real build dir is absolute: {from}");
         assert_eq!(to, "/build", "mapped to the canonical mount");
     }
+}
+
+/// Put an AppStream component into the staged package.
+///
+/// Upstream's own `metainfo.xml` if the source ships one - it is what the project
+/// wrote about itself, with screenshots and a real description, where the
+/// synthesized document carries only what a recipe declares. Otherwise the
+/// synthesized fallback, so every forage package describes itself somehow.
+///
+/// The search walks the BUILD tree rather than the staging one: staging holds only
+/// the declared artifacts, and a project's metainfo lives in its source unless the
+/// recipe happened to collect it.
+fn describe_package(
+    staging_root: &Path,
+    build_dir: &Path,
+    recipe: &Recipe,
+) -> std::io::Result<PathBuf> {
+    let candidates = walk_files(build_dir, 6);
+    if let Some(upstream) = find_upstream_metainfo(&candidates) {
+        let dir = staging_root.join("share/metainfo");
+        std::fs::create_dir_all(&dir)?;
+        // Named for the recipe id rather than kept under upstream's filename: the
+        // store keys on the component id, and a document whose name disagrees
+        // with the id it declares is the kind of mismatch that reads as two apps.
+        let dest = dir.join(format!("{}.metainfo.xml", recipe.recipe.id));
+        std::fs::copy(&upstream, &dest)?;
+        return Ok(dest);
+    }
+    write_metainfo(staging_root, &recipe.recipe, recipe.artifacts.as_ref())
+}
+
+/// Every file under `root`, to a bounded depth.
+///
+/// Bounded because a build tree is somebody else's, and an unbounded walk over a
+/// source that vendors a dependency tree is a lot of directory reads for a file
+/// that lives near the top if it exists at all.
+fn walk_files(root: &Path, depth: usize) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, level)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if level < depth {
+                    stack.push((path, level + 1));
+                }
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
 }
