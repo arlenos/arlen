@@ -488,9 +488,19 @@ pub fn app_runtime_profile(
         .collect::<Result<_, _>>()?;
     let mut binds = vec![Bind::ReadOnly(usr, "/usr".into())];
     let mut post_mask_binds = Vec::new();
+    // `/tmp` is masked unconditionally below, so it belongs in the under-mask test
+    // as much as the caller's own masks do. Without it, an app dir under /tmp is
+    // bound before the mask and then hidden by it, and the app is handed a path it
+    // was granted and cannot see. Found by the Wine bottle work, where the grant
+    // under test happened to live in a scratch directory under /tmp.
+    let all_masks: Vec<String> = masked_abs
+        .iter()
+        .cloned()
+        .chain(std::iter::once("/tmp".to_string()))
+        .collect();
     for dir in app_dirs {
         let d = checked_abs(dir)?;
-        let under_mask = masked_abs
+        let under_mask = all_masks
             .iter()
             .any(|m| Path::new(&d).starts_with(Path::new(m)));
         let bind = Bind::ReadWrite(d.clone(), d);
@@ -771,6 +781,33 @@ mod tests {
         assert!(matches!(skel.network(), NetworkPolicy::Unrestricted));
         let args = skel.complete(vec![], vec![]).bwrap_args();
         assert!(!args.contains(&"--unshare-net".to_string()));
+    }
+
+    #[test]
+    fn an_app_dir_under_tmp_survives_the_private_tmp() {
+        // /tmp is masked for every app, so a dir granted under it used to be bound
+        // and then hidden: the app held a path it could not open. The bind now
+        // lands after the mask, like any other under-mask carve-out. Removing the
+        // /tmp entry from the mask list makes this fail, which is how it was
+        // checked.
+        let skel = app_runtime_profile(
+            Path::new("/usr"),
+            &[Path::new("/tmp/work/session")],
+            &[],
+            env(),
+            NetworkPolicy::None,
+        )
+        .unwrap();
+        let args = skel.complete(vec![], vec![]).bwrap_args();
+        let tmpfs_at = args.iter().position(|a| a == "--tmpfs").unwrap();
+        let bind_at = args
+            .iter()
+            .position(|a| a == "/tmp/work/session")
+            .expect("the granted dir is bound at all");
+        assert!(
+            bind_at > tmpfs_at,
+            "a bind before the /tmp mask is a directory the app was given and cannot see"
+        );
     }
 
     #[test]
