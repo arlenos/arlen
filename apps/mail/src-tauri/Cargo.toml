@@ -1,0 +1,23 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-mail-app"
+version = "0.1.0"
+description = "Arlen OS mail - one message file, read honestly"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_mail_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
+serde = { version = "1", features = ["derive"] }
+arlen-mail-core = { path = "../core" }
+
+# This app is its own standalone crate (not a member of a parent workspace).
+[workspace]

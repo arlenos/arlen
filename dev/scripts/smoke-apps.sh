@@ -34,6 +34,7 @@ APPS=(
     "arlen-clock-app"
     "arlen-files"
     "arlen-knowledge-app"
+    "arlen-mail-app"
     "arlen-meetings"
     "arlen-pdf-app"
     "arlen-screenshot"
