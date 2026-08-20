@@ -63,11 +63,21 @@ fn history_path() -> PathBuf {
         .join("arlen/app-history.json")
 }
 
-fn read_history(path: &std::path::Path) -> HistoryFile {
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|c| serde_json::from_str::<HistoryFile>(&c).ok())
-        .unwrap_or_default()
+/// The launch history, or why it could not be read.
+///
+/// ABSENT IS NOT UNREADABLE. `record_launch_at` is read-modify-write and
+/// `write_history` writes the whole file, so answering a corrupt or unreadable
+/// history with the empty default meant the next app launch replaced the whole
+/// list with one entry - and the launcher's "recent" ordering, which is built
+/// from months of use, was gone on the first launch after a bad write.
+fn read_history(path: &std::path::Path) -> Result<HistoryFile, String> {
+    match fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str::<HistoryFile>(&text)
+            .map_err(|e| format!("{} could not be read: {e}", path.display())),
+        // Nothing launched yet is the ordinary first-run state.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HistoryFile::default()),
+        Err(e) => Err(format!("{} could not be read: {e}", path.display())),
+    }
 }
 
 fn write_history(path: &std::path::Path, h: &HistoryFile) -> Result<(), String> {
@@ -91,7 +101,7 @@ fn record_launch_at(path: &std::path::Path, exec: &str, now: i64) -> Result<(), 
     if exec.trim().is_empty() {
         return Ok(()); // No-op — don't persist empty keys.
     }
-    let mut history = read_history(path);
+    let mut history = read_history(path)?;
 
     // Find existing entry; bump timestamp + counter and move to front.
     if let Some(pos) = history.entries.iter().position(|e| e.exec == exec) {
@@ -134,7 +144,9 @@ pub fn record_app_launch(exec: String) {
 /// history file is absent or unparseable.
 #[tauri::command]
 pub fn get_recent_apps(limit: u32) -> Vec<String> {
-    let history = read_history(&history_path());
+    // Read-only: an unreadable history is rendered as no history rather than
+    // refusing to answer, and nothing is written back from here.
+    let history = read_history(&history_path()).unwrap_or_default();
     history
         .entries
         .into_iter()
@@ -158,7 +170,7 @@ mod tests {
         let dir = tmp();
         let path = dir.path().join("history.json");
         record_launch_at(&path, "firefox", 1_000).unwrap();
-        let h = read_history(&path);
+        let h = read_history(&path).unwrap();
         assert_eq!(h.entries.len(), 1);
         assert_eq!(h.entries[0].exec, "firefox");
         assert_eq!(h.entries[0].launch_count, 1);
@@ -172,7 +184,7 @@ mod tests {
         record_launch_at(&path, "kitty", 2_000).unwrap();
         record_launch_at(&path, "firefox", 3_000).unwrap();
 
-        let h = read_history(&path);
+        let h = read_history(&path).unwrap();
         assert_eq!(h.entries.len(), 2);
         assert_eq!(h.entries[0].exec, "firefox");
         assert_eq!(h.entries[0].launch_count, 2);
@@ -187,7 +199,7 @@ mod tests {
         for i in 0..(MAX_ENTRIES + 10) {
             record_launch_at(&path, &format!("app{i}"), i as i64).unwrap();
         }
-        let h = read_history(&path);
+        let h = read_history(&path).unwrap();
         assert_eq!(h.entries.len(), MAX_ENTRIES);
         // Newest-first ordering: app(MAX+9) at front, app(10) at end.
         assert_eq!(h.entries[0].exec, format!("app{}", MAX_ENTRIES + 9));
@@ -200,23 +212,36 @@ mod tests {
         let path = dir.path().join("history.json");
         record_launch_at(&path, "", 1).unwrap();
         record_launch_at(&path, "   ", 2).unwrap();
-        assert_eq!(read_history(&path).entries.len(), 0);
+        assert_eq!(read_history(&path).unwrap().entries.len(), 0);
     }
 
     #[test]
     fn read_on_missing_file_returns_default() {
         let dir = tmp();
         let path = dir.path().join("nonexistent.json");
-        let h = read_history(&path);
+        let h = read_history(&path).unwrap();
         assert!(h.entries.is_empty());
     }
 
+    /// This test asserted the opposite until 20 August - that a corrupt history
+    /// reads as the empty default - which is exactly the behaviour that let one
+    /// launch write that emptiness back over months of use. The safe answer is a
+    /// refusal, and the file stays on disk for a person to fix.
     #[test]
-    fn read_on_corrupt_file_returns_default() {
+    fn a_corrupt_history_is_refused_and_left_on_disk() {
         let dir = tmp();
         let path = dir.path().join("bad.json");
         fs::write(&path, "{not valid json").unwrap();
-        let h = read_history(&path);
-        assert!(h.entries.is_empty());
+
+        assert!(read_history(&path).is_err(), "unreadable is not empty");
+        assert!(
+            record_launch_at(&path, "app.desktop", 1).is_err(),
+            "and a launch does not write over what it could not read",
+        );
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "{not valid json",
+            "the file is still there to be fixed by hand",
+        );
     }
 }
