@@ -363,6 +363,14 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
           onsave={() => void save()}
         />
       {:else}
+        <!-- SAY IT IS A SAMPLE. The picker shows `the-kg-lens.md` and the lens
+             beside it answers real queries about a file of that name, which finds
+             nothing - so without this line the window reads as a document on this
+             machine that the graph happens to know nothing about. It is not on the
+             machine at all. The app already says this about a sample lens and a
+             sample proposal; the document it is written about deserves the same
+             sentence. -->
+        <p class="demo-note">{$t("te.demoDoc")}</p>
         <Canvas doc={file.content} fileType={file.type} {focusMode} {lineNumbers} />
       {/if}
     </main>
@@ -404,6 +412,11 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   }
 
 
+  .demo-note {
+    margin: 0 0 var(--space-3);
+    color: var(--color-fg-secondary);
+    font-size: var(--text-sm);
+  }
   .open-failed {
     padding: 2.5rem 2rem;
     max-width: 34rem;
