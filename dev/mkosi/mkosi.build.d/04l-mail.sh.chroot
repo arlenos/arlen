@@ -1,0 +1,88 @@
+#!/bin/sh
+# Phase 4l (CHROOT): the mail app (arlen-mail, a Tauri 2 app). Same two-step as
+# the other apps: build the SvelteKit frontend (vite -> ../build, the tauri
+# frontendDist), then the Tauri Rust backend, which embeds it.
+#
+# IT IS NOT A MAIL CLIENT AND THE DESKTOP ENTRY SAYS SO. There is no account, no
+# IMAP and no store; what it does is open ONE `message/rfc822` file and show the
+# headers, the text part, what the two parts say differently and which headers
+# ask to phone home. That is worth staging because a machine gains `.eml` files
+# the ordinary way - saved attachments - and until now nothing on the image
+# could open one at all.
+#
+# WHAT IT DELIBERATELY CANNOT DO is render the HTML part. `mail-app.md` section
+# 3 makes that architectural: a Tauri app on Linux gets no WebKitGTK sandbox by
+# default (this tree forces one via WEBKIT_FORCE_SANDBOX), and containing the
+# renderer is not the property that matters anyway - EFAIL's channels phone out
+# from a perfectly contained process. So the window says the HTML part exists
+# and is not shown, which is a fact about the message rather than a missing
+# feature, and staging it does not quietly trade that away.
+#
+# The install path is load-bearing: `/usr/lib/arlen/apps/dev.arlen.mail/` is what
+# the resolver maps to the app id, which is what a daemon's caller gate will
+# admit. Installed elsewhere the app still runs and the gate refuses it, so this
+# line and `X-Arlen-AppId=dev.arlen.mail` in the desktop entry have to keep
+# saying the same thing.
+#
+# rustup + node + the -dev libs were installed by phases 1-2; network is on via
+# WithNetwork=yes.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-mail-app"  # own dir; app is a separate workspace
+export CXXFLAGS="-include cstdint"
+export LIBGL_ALWAYS_SOFTWARE=1                     # llvmpipe, harmless at build time
+export npm_config_cache="$cache/npm"               # persist the npm cache across builds
+mkdir -p "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen/apps/mail"
+# Reuse a complete + current node_modules instead of re-running npm ci (the chroot
+# overlay's per-file fchown EINVAL makes a fresh npm ci pathologically slow); the
+# repo is bind-mounted via BuildSources, so a host-prepared node_modules is visible
+# here. Fall back to a quieted npm ci with the audit/fund round-trips skipped.
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+
+# Production build, not a plain cargo build: a debug build leaves the webview
+# pointed at the dev URL, so the packaged app would show a connection-refused page
+# instead of the agenda. --no-bundle: we want the binary, not a .deb/AppImage.
+echo ">> tauri build --no-bundle (production) arlen-mail"
+./node_modules/.bin/tauri build --no-bundle
+
+# The crate is `arlen-mail-app`, so that is what cargo emits; the image installs
+# it as `arlen-mail`, which is what the desktop entry's Exec names. Searching
+# for the INSTALLED name rather than the crate name is what failed the whole image
+# build when the clock step was written; the same trap is here verbatim.
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-mail-app' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! arlen-mail-app not found after build" >&2; exit 1; }
+# The app lives under its own id, which is what makes the id: the resolver's
+# rule (3) reads the directory name below `/usr/lib/arlen/apps/`, so an app
+# installed to `/usr/bin/` took rule (2) - the system-daemon rule - and resolved
+# to the bare basename instead. The `/usr/bin` symlink keeps `Exec=` and PATH
+# working; `/proc/<pid>/exe` resolves through it to the real path, so identity
+# comes from the app directory either way.
+install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/apps/dev.arlen.mail/bin/arlen-mail"
+mkdir -p "$DESTDIR/usr/bin"
+ln -sf "../lib/arlen/apps/dev.arlen.mail/bin/arlen-mail" "$DESTDIR/usr/bin/arlen-mail"
+# The launcher enumerates /usr/share/applications; without an entry there the app
+# is installed and undiscoverable, which reads as a broken launcher rather than a
+# missing file. The entry and the icon live with the app, so they are staged by
+# the same step that stages the binary and cannot drift from it.
+install -Dm644 "$SRCDIR/arlen/apps/mail/dist/arlen-mail.desktop" \
+        "$DESTDIR/usr/share/applications/arlen-mail.desktop"
+install -Dm644 "$SRCDIR/arlen/apps/mail/src-tauri/icons/128x128.png" \
+        "$DESTDIR/usr/share/icons/hicolor/128x128/apps/arlen-mail.png"
+echo ">> staged arlen-mail into the image"
