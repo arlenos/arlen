@@ -167,7 +167,7 @@ def run_and_assert(base, sid, command, expect, selector):
     return ok
 
 
-def warn_if_error_page(base, sid):
+def warn_if_error_page(base, sid, binary=None):
     """Fail if what got photographed was the webview's own error page.
 
     A debug Tauri binary loads `build.devUrl`, not the bundled frontend, so a
@@ -200,21 +200,42 @@ def warn_if_error_page(base, sid):
             # the sweep serves whatever port a failure names, so a message
             # without one meant that suite stayed red on a machine that could
             # have served it in six seconds.
-            m = re.search(r"localhost:(\d+)", html)
-            where = (f"run `npx vite preview --port {m.group(1)}` in that app"
-                     if m else
-                     "run the app's `vite preview` on the port in its tauri.conf.json")
+            url = dev_url_for(binary) if binary else None
+            where = (f"nothing is serving {url} - either build with --release, or "
+                     f"run `npx vite preview --port {url.rsplit(':', 1)[-1]}` in that app"
+                     if url else
+                     "nothing was serving it. Either build with --release, or run "
+                     "the app's `vite preview` on the port in its tauri.conf.json")
             print(
-                f"SHOT IS AN ERROR PAGE ({probe!r}): the binary loaded its devUrl "
-                f"at http://localhost:{m.group(1)} and nothing was serving it. "
-                f"Either build with --release, or {where}."
-                if m else
-                f"SHOT IS AN ERROR PAGE ({probe!r}): the binary loaded its devUrl "
-                f"and nothing was serving it. Either build with --release, or {where}.",
+                f"SHOT IS AN ERROR PAGE ({probe!r}): the binary loaded its devUrl and "
+                f"{where}.",
                 file=sys.stderr,
             )
             return 1
     return 0
+
+
+def dev_url_for(binary: str) -> str | None:
+    """The `devUrl` the app owning this binary is configured for, if it can be found.
+
+    The same walk `wrong_app` does, lifted out because the error-page warning needs
+    it too: that message used to say "the port in its tauri.conf.json", which sends
+    a reader to look up something this already knows - and left the drive sweep,
+    which serves whatever port a failure names, unable to help a suite it could
+    have served in six seconds. Reading the port off the rendered error page does
+    not work: WebKit's connection-refused page does not carry the URL, measured on
+    20 August against the settings binary.
+    """
+    root = Path(__file__).resolve().parents[2]
+    name = Path(binary).name
+    for cargo in (root / "apps").glob("*/src-tauri/Cargo.toml"):
+        if not re.search(rf'^name\s*=\s*"{re.escape(name)}"', cargo.read_text(), re.M):
+            continue
+        conf = cargo.parent / "tauri.conf.json"
+        if not conf.is_file():
+            return None
+        return json.loads(conf.read_text()).get("build", {}).get("devUrl") or None
+    return None
 
 
 def wrong_app(binary: str, loaded: str) -> str | None:
@@ -347,7 +368,7 @@ def main():
         # until somebody opened it". A nonzero exit does not delete a file, and
         # the file is what the next reader finds.
         if args.out:
-            err = warn_if_error_page(base, sid)
+            err = warn_if_error_page(base, sid, args.app)
             if err:
                 print("No screenshot written.", file=sys.stderr)
                 return err
