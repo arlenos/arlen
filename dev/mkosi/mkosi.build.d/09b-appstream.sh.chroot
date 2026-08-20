@@ -1,0 +1,63 @@
+#!/bin/sh
+# Phase 9b (CHROOT): Debian's AppStream catalogue, so the store is populated
+# before the user has installed anything.
+#
+# WHY THIS IS A BUILD STEP AND NOT LEFT TO THE APT HOOK. Installing `appstream`
+# registers `/etc/apt/apt.conf.d/50appstream`, which makes a later `apt update`
+# fetch DEP-11 alongside the package lists. That is how a running Debian machine
+# gets it, and it is not a promise about what happens inside mkosi's package
+# pass. A catalogue that silently is not there is exactly the shape that had the
+# store looking empty: `store-backend/src/discover.rs` has read
+# `/var/lib/swcatalog` all along, so nothing would have reported a fault - the
+# window would just have shown the handful of components the installed apps ship.
+# Measured on the host, 20 Aug: 43 apps without this file, 2531 with it.
+#
+# WHAT IT STAGES, and why both halves:
+#
+#   yaml/   the component metadata. Named `<suite>_<component>.yml.gz`, which is
+#           the flat layout `discover.rs` looks for.
+#   icons/  the icon cache, under the catalogue's own `Origin`
+#           (`debian-trixie-main`). The DEP-11 records name icons two ways - a
+#           `cached` flat filename and a `remote` path relative to the
+#           `MediaBaseUrl` - and the store now prefers `cached` precisely so the
+#           picture comes off this directory rather than over the network per
+#           card.
+#
+# Screenshots are NOT staged. They are `MediaBaseUrl`-relative and the archive
+# publishes no equivalent tarball; fetching them from the aggregator at render
+# time is the design (`store-app.md` section 1 rules out hotlinking the
+# developer's own server, not the aggregator).
+#
+# Non-fatal by design. An image that builds without a catalogue is a store with
+# fewer apps in it; an image that fails to build because a mirror was slow is a
+# machine nobody has. The step says which happened.
+set -eu
+
+mirror="https://deb.debian.org/debian/dists/trixie/main/dep11"
+origin="debian-trixie-main"
+out="$DESTDIR/var/lib/swcatalog"
+
+mkdir -p "$out/yaml" "$out/icons/$origin"
+
+if ! curl -sfL --retry 3 --max-time 300 -o "$out/yaml/trixie_main.yml.gz" \
+        "$mirror/Components-amd64.yml.gz"; then
+    echo "!! could not fetch the DEP-11 catalogue; the store will show only installed components" >&2
+    rm -f "$out/yaml/trixie_main.yml.gz"
+    exit 0
+fi
+
+# Both sizes the archive publishes that a card might want. 64 is what a list row
+# uses and 128 what a detail header does; taking only one would leave the other
+# scaling a bitmap.
+for size in 64x64 128x128; do
+    tarball="$(mktemp)"
+    if curl -sfL --retry 3 --max-time 300 -o "$tarball" "$mirror/icons-$size.tar.gz"; then
+        mkdir -p "$out/icons/$origin/$size"
+        tar -xzf "$tarball" -C "$out/icons/$origin/$size"
+    else
+        echo "!! could not fetch the $size icon cache; cards at that size have no picture" >&2
+    fi
+    rm -f "$tarball"
+done
+
+echo ">> staged the AppStream catalogue: $(du -sh "$out" | cut -f1), $(ls "$out/icons/$origin" | tr '\n' ' ')"
