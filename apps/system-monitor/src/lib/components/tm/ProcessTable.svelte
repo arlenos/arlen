@@ -227,7 +227,14 @@
     list.length && $ratesReady ? `${formatDecimal(totals.cpu, 0, $locale)}%` : "",
   );
   const totalMem = $derived(list.length ? mem(totals.memMB) : "");
-  const totalDisk = $derived(list.length ? rate(totals.diskKBs) || "0" : "");
+  // No `|| "0"`. It was there, and it undid the rule three lines above it: `rate()`
+  // renders a zero as blank on purpose, and putting a nought back in the header
+  // makes a claim the sum cannot support. Per-process disk comes from
+  // `/proc/<pid>/io`, which a process you do not own refuses to answer, and the
+  // reader falls back to 0 - so a summed zero is "nothing was moved OR nothing
+  // could be read", and the two are not distinguishable here. Seen on a booted
+  // image, where the header read `DISK 0` beside `NETWORK not measured`.
+  const totalDisk = $derived(list.length ? rate(totals.diskKBs) : "");
   /// Whether per-process network is measured at all on this system.
   ///
   /// It is not, today: `/proc` carries no per-process byte counters, the backend
