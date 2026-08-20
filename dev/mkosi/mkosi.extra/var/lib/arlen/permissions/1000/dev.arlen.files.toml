@@ -16,6 +16,21 @@
 # read_provenance, facet_query reads File path/last_accessed). It never writes,
 # so there are no `relations` and no write scope. Erring narrow is the safe
 # direction: a missing scope degrades a read-feature, an extra scope is a leak.
+# WHAT THE GRANTS BELOW DO NOT COVER: this app drives BLOCK DEVICES. The Devices
+# sidebar mounts, unmounts and powers off a disk by spawning `udisksctl`
+# (lib.rs:1528), and no field in this model expresses "may act on hardware" - the
+# sections here are about paths, and a path grant says nothing about spinning a
+# disk down.
+#
+# The mediation is udisks2's own polkit rules, which decide whether this uid may
+# act on that device. That is a real boundary and it is not this file's; a reader
+# should not take the path list below as the whole of what this app can do.
+#
+# On the image as it ships, that surface is inert: `udisksctl` is in the ABSENT
+# list in `check-spawned-tools-classified.py` ("mounting a removable disk from the
+# file manager"), so the buttons are there and the tool is not. That is tracked
+# where absences are tracked rather than fixed here.
+
 [info]
 app_id = "dev.arlen.files"
 tier = "first-party"
