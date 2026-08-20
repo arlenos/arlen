@@ -180,6 +180,14 @@ pub fn catalog_entries(
     handle_from_id: bool,
 ) -> Result<Vec<CatalogEntry>, ComposeError> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| ComposeError::Xml(e.to_string()))?;
+    // The same base a DEP-11 header carries, in the attribute the XML form uses.
+    // Flathub's catalogue states absolute URLs and needs none, so this is dormant
+    // against what ships today - but it is the identical hole one serialisation
+    // over, and the version that reads it costs a line.
+    let media_base = doc
+        .root_element()
+        .attribute("media_baseurl")
+        .map(str::to_string);
     let mut entries = Vec::new();
     for component in doc
         .descendants()
@@ -193,7 +201,15 @@ pub fn catalog_entries(
             name,
             summary: default_localized(&component, "summary"),
             description: description_text(&component),
-            screenshots: screenshot_urls(&component),
+            screenshots: screenshot_urls(&component)
+                .into_iter()
+                .map(|u| absolute_media_url(u, media_base.as_deref()))
+                .collect(),
+            // NOT the icon. `icon_ref` may hand back a CACHED NAME rather than a
+            // URL, and a cached name resolves against the icons directory, not
+            // against the media base - putting a base in front of one would turn
+            // `app.png` into a URL that names nothing. The cached case is resolved
+            // where the catalogue's own root is known, in `compose_catalog`.
             icon: icon_ref(&component),
         };
         entries.push(CatalogEntry {
@@ -1441,6 +1457,33 @@ commit = "0000000000000000000000000000000000000000"
     </categories>
   </component>
 </components>"#;
+
+    #[test]
+    fn an_xml_catalogue_screenshot_gets_the_base_the_document_declares() {
+        // The XML form states the base as an attribute on `<components>` where
+        // DEP-11 states it in its header. Flathub's file needs none - its URLs
+        // are absolute - so this guards the case a mirrored catalogue would make.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<components version="1.0" media_baseurl="https://media.example/base">
+  <component type="desktop-application">
+    <id>org.example.demo</id>
+    <name>Demo</name>
+    <icon type="cached">org.example.demo.png</icon>
+    <screenshots>
+      <screenshot type="default">
+        <image type="source">shots/one.png</image>
+      </screenshot>
+    </screenshots>
+  </component>
+</components>"#;
+        let entries = catalog_entries(xml, SourceLayer::Apt, false).unwrap();
+        assert_eq!(
+            entries[0].display.screenshots,
+            vec!["https://media.example/base/shots/one.png"],
+        );
+        // The cached icon is a NAME and must not be turned into a URL by it.
+        assert_eq!(entries[0].display.icon.as_deref(), Some("org.example.demo.png"));
+    }
 
     #[test]
     fn a_composed_catalogue_lands_at_its_origin_layer_with_a_local_icon() {
