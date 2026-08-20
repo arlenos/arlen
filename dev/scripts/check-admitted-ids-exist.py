@@ -64,11 +64,6 @@ NOT_PACKAGED_YET = {
     "dev.arlen.store": "the store app has no image build phase; INSTALL_CALLERS was written for it",
     "dev.arlen.settings": "Settings has no image build phase, so its Remove button cannot reach installd",
     "dev.arlen.harness": "the harness is bootstrap-only and not staged",
-    "dev.arlen.calendar": (
-        "the calendar app has no image build phase yet: it stays off the image "
-        "until something on it writes calendar files, so its daemon's allowlist "
-        "names an app the image does not stage"
-    ),
     "org.arlen.calendar": "shared-entity writer for an app that does not exist yet",
     "org.arlen.contacts": "shared-entity writer for an app that does not exist yet",
     "org.arlen.places": "shared-entity writer for an app that does not exist yet",
