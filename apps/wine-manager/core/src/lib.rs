@@ -29,6 +29,8 @@
 //! reading a prefix's links for where they actually go ([`reach`], [`escapes`]),
 //! and turning a grant list into drive letters ([`map_drives`]).
 
+pub mod bottle;
+
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
