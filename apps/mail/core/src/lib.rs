@@ -47,6 +47,7 @@
 pub mod alternative;
 pub mod exfiltration;
 pub mod sync;
+pub mod message;
 
 use std::collections::BTreeSet;
 
