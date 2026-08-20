@@ -15,7 +15,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use arlen_pdf_core::{Document, OutlineEntry, PdfError, SearchOutcome, TextLine};
+use arlen_pdf_core::{Document, OutlineEntry, SearchOutcome, TextLine};
 use serde::Serialize;
 
 /// The file the reader was launched with, when it was launched with one.
@@ -32,9 +32,13 @@ struct LaunchFile(Option<String>);
 #[derive(Default)]
 struct Open(Mutex<Option<Held>>);
 
-/// An open document and where it came from.
+/// An open document.
+///
+/// It used to carry the file's path as well, read by one error message in a
+/// `pdf_page_text` command nothing ever called. Both went on 20 August: an
+/// unused field is a claim that something needs it, and the surface names the
+/// document from the `DocumentInfo` it got when it opened it.
 struct Held {
-    path: PathBuf,
     doc: Document,
     /// The file as read.
     ///
@@ -94,30 +98,8 @@ fn pdf_open(path: String, state: tauri::State<'_, Open>) -> Result<DocumentInfo,
         pages: doc.page_count(),
         outline: doc.outline(),
     };
-    *state.0.lock().map_err(|_| lock_lost())? = Some(Held { path, doc, bytes });
+    *state.0.lock().map_err(|_| lock_lost())? = Some(Held { doc, bytes });
     Ok(info)
-}
-
-/// The text on one page of the open document, one-based.
-///
-/// Here for selection and for a reader that wants to read a scanned-free
-/// document as text. An empty string means the page carries no text, which is
-/// what a scan looks like, and is not an error.
-///
-/// # Errors
-/// When no document is open, or the page is outside it.
-#[tauri::command]
-fn pdf_page_text(page: usize, state: tauri::State<'_, Open>) -> Result<String, String> {
-    let held = state.0.lock().map_err(|_| lock_lost())?;
-    let held = held.as_ref().ok_or_else(no_document)?;
-    held.doc.page_text(page).map_err(|e| match e {
-        // The one case worth rewording: the core says "this PDF has no page 9",
-        // and the surface can say which document that was.
-        PdfError::NoSuchPage(n) => {
-            format!("{} has {} pages, so there is no page {n}", held.path.display(), held.doc.page_count())
-        }
-        other => other.to_string(),
-    })
 }
 
 /// Find a word in the open document.
@@ -276,7 +258,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             launch_file,
             pdf_open,
-            pdf_page_text,
             pdf_search,
             pdf_page_image,
             pdf_text_layer,
