@@ -325,6 +325,51 @@ def _blank_pointer(img, at, w, h):
     return patch
 
 
+def consent_card_box(png):
+    """Where the consent card is in this frame, or `None` if it is not there.
+
+    FOUND, NOT REMEMBERED. The approve click used to go to a coordinate computed
+    from the frame size on the assumption of a fixed 1280x800 layout. That is a
+    guess about where a window will be, and on 20 August it guessed onto the
+    screenshot app's floating thumbnail: the run captured a screen, the thumbnail
+    appeared under the remembered point, and the click dismissed it - which
+    auto-saves a file. Nothing was harmed on a VM whose disk is discarded, but a
+    harness that clicks blind will eventually press something that matters.
+
+    The card is located by its own top border, which is the one warm strip on an
+    otherwise dark desktop, and the bottom by following the card's centre column
+    down until it returns to the desktop colour.
+    """
+    from PIL import Image
+
+    img = Image.open(png).convert("RGB")
+    w, h = img.size
+    px = img.load()
+    warm = lambda c: c[0] > 180 and c[1] > 120 and c[2] < 90
+    top = next(
+        (y for y in range(h) if sum(1 for x in range(0, w, 4) if warm(px[x, y])) > 20),
+        None,
+    )
+    if top is None:
+        return None
+    xs = [x for x in range(w) if warm(px[x, top])]
+    left, right = min(xs), max(xs)
+    centre = (left + right) // 2
+    desktop = px[10, h // 2]
+    bottom = top
+    for y in range(top, h):
+        c = px[centre, y]
+        if sum(abs(a - b) for a, b in zip(c, desktop)) > 12:
+            bottom = y
+    return (left, top, right, bottom)
+
+
+#: Where "Allow once" sits inside the card, as a fraction of the card's own box.
+#: Measured off a real frame rather than assumed: the button centre at (797, 489)
+#: in a card spanning x 418-861, y 272-529.
+ALLOW_ONCE_IN_CARD = (0.856, 0.844)
+
+
 def consent_dialog_state(before_png, after_png, pointer_at=None):
     """Did the consent card go away between the two frames? Returns
     (verdict, detail) with verdict one of `present`, `dismissed`, `inconclusive`.
@@ -1081,7 +1126,31 @@ def main():
             uncovered_frame = approved
             from PIL import Image
             fw, fh = Image.open(out).size
-            qmp_click(f, round(fw * 797 / 1280), round(fh * 489 / 800), fw, fh)
+            # A FRESH frame to look at, not `out`. That one was captured earlier
+            # in the run and the card may have been raised, covered or repainted
+            # since - the first version of this reused it and refused to click on
+            # a run where the card was up, because the older frame did not have
+            # it. What we need is where the card is NOW.
+            locate = out + ".locate.png"
+            capture(f, locate, x_display)
+            for _ in range(50):
+                if os.path.exists(locate) and os.path.getsize(locate) > 0:
+                    break
+                time.sleep(0.1)
+            box = consent_card_box(locate) or consent_card_box(out)
+            if box is None:
+                # Refuse rather than click somewhere. There is no card in this
+                # frame, so any coordinate is a guess about somebody else's
+                # window - which is how this pressed an app's own button once.
+                print("VERIFY FAIL: --approve-consent found no consent card in the frame, "
+                      "so there was nothing to approve and nothing was clicked")
+                print(f"  frame: {out}")
+                return 1
+            left, top, right, bottom = box
+            cx = round(left + (right - left) * ALLOW_ONCE_IN_CARD[0])
+            cy = round(top + (bottom - top) * ALLOW_ONCE_IN_CARD[1])
+            print(f"consent card at {box}; clicking 'Allow once' at ({cx}, {cy})")
+            qmp_click(f, cx, cy, fw, fh)
             time.sleep(3)                  # let the shell poll + hide the resolved dialog
             capture(f, approved, x_display)
             for _ in range(50):
