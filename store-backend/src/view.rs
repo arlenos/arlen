@@ -245,11 +245,15 @@ pub fn store_card(card: &AppCard, installed: &BTreeSet<String>) -> StoreCard {
         // the user their editor is missing while they have it open.
         installed: installed.contains(&card.id.0)
             || card.variants.iter().any(|v| v.layer == SourceLayer::Native),
-        // Whether the store can act, which is not the same as whether the app
-        // exists. A distribution package has no `install_handle` because there is
-        // no route to install, update or remove it from here; the same is true of
-        // a DEP-11 component that states no package name. Without this the surface
-        // can only find out by trying, and the honest place to know is here.
+        // Whether there is a route to hand the caller, which is not the same as
+        // whether the app exists - and not, on its own, a promise that the install
+        // will work. `Request::Install` RESOLVES a handle; acting on it is the
+        // caller's, so this says a handle exists and the machine's ability to use
+        // one is the caller's to know. A distribution package has no
+        // `install_handle` because there is no route to install, update or remove
+        // it from here; the same is true of a DEP-11 component that states no
+        // package name. Without this the surface can only find out by trying, and
+        // the honest place to know is here.
         installable: default.is_some_and(|v| v.install_handle.is_some()),
         variants: card
             .variants
