@@ -53,6 +53,15 @@ say "the terminal surface is there at all" \
 say "a shell started and drew its prompt" \
   "$(printf '%s' "$opening" | grep -qE 'prompt="[^"]*~' && echo 1 || echo 0)" "$opening"
 
+# AND IT IS THE CURATED ONE. A `~` alone is satisfied by the plain Debian
+# `arlen@arlen:~$` too, which is exactly what the terminal falls back to when zsh
+# is missing - the state found on the booted image on 20 August, where the
+# curated config is installed and nothing can read it. The clock on the right is
+# the starship `right_format`, so it is present for the curated prompt and absent
+# for the fallback, and with it the block-mode marks that only fire under zsh.
+say "and it is the curated prompt, not the fallback shell's" \
+  "$(printf '%s' "$opening" | grep -qE 'prompt="[^"]*[0-9]{2}:[0-9]{2}' && echo 1 || echo 0)" "$opening"
+
 # THE case: type a command, press Enter, read the output back off the grid.
 # Everything else here is scenery if this does not work.
 typed=$(SHOOT_INJECT=/dev/stdin "$here/shoot-app.sh" "$app" "$here/out/terminal-ran.png" 2>&1 <<'JS' \
