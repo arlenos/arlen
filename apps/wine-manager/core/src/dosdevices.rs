@@ -109,6 +109,9 @@ pub fn write_drives(prefix_root: &Path, drives: &[Drive]) -> Result<DriveChanges
         // Remove first: a symlink cannot be repointed in place, and a grant that
         // moved to another directory has to stop pointing at the old one.
         match std::fs::symlink_metadata(&link) {
+            // A directory can sit here if a prefix was made by hand. Removing the
+            // file would fail with EISDIR and take the whole drive table with it.
+            Ok(m) if m.is_dir() => std::fs::remove_dir_all(&link)?,
             Ok(_) => std::fs::remove_file(&link)?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),

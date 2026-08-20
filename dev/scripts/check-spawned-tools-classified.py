@@ -76,6 +76,8 @@ ABSENT: dict[str, str] = {
     "zenity": "the GTK fallback file/dialog picker",
     "kdialog": "the KDE fallback picker, tried before zenity",
     "man": "the terminal's `#` man-page lookup",
+    "wineboot": "making a Wine bottle at all: the prefix, and with it every Windows program",
+    "wineserver": "stopping the server a bottle's boot left running, so the next launch does not inherit it",
     "glib-compile-schemas": "compiling a GSettings schema an installed app ships",
     "arlen-settings": "four call sites open Settings; it has no image build step",
     "arlen-harness": "the terminal's share-a-block entry launches it; no image build step",

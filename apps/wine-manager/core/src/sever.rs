@@ -54,11 +54,29 @@ impl Sever {
 /// Split from [`apply`] so the decision can be shown to someone before it is
 /// made: creating a bottle deletes things inside a directory the user may have
 /// been using as a plain prefix, and that is worth being able to preview.
-pub fn plan(prefix_root: &Path, links: &[(PathBuf, PathBuf)]) -> Vec<Sever> {
+///
+/// `granted` is the same list [`still_escaping`] takes, for the same reason.
+pub fn plan(prefix_root: &Path, links: &[(PathBuf, PathBuf)], granted: &[PathBuf]) -> Vec<Sever> {
     escapes(prefix_root, links)
         .into_iter()
+        // A granted drive points out of the prefix because someone asked it to.
+        // Without this, running the pass a second time on a bottle that already
+        // has drives would delete the drive table and leave empty directories
+        // where the letters were.
+        .filter(|e| !granted.iter().any(|g| e.target.starts_with(g)))
         .filter_map(|e| match e.reach {
             Reach::Filesystem => Some(Sever::Remove(e.link)),
+            // A drive letter and a shell folder are cut differently, and the
+            // difference is what the program expects to find afterwards. An
+            // ungranted letter must simply not be there: putting an empty
+            // directory in its place would give the program a drive that mounts
+            // nothing, which is worse than a drive that is absent. A shell folder
+            // has to exist, because a program that cannot find My Documents fails
+            // to save. Found by a bottle whose creation then failed at the drive
+            // table, which tried to remove a letter that had become a directory.
+            Reach::Host(_) if e.link.parent().is_some_and(|d| d.ends_with("dosdevices")) => {
+                Some(Sever::Remove(e.link))
+            }
             Reach::Host(_) => Some(Sever::Replace(e.link)),
             // Left alone deliberately; see the module documentation.
             Reach::Device(_) => None,
@@ -160,7 +178,7 @@ mod tests {
             (root.join("drive_c/users/u/Documents"), PathBuf::from("/home/u/Documents")),
         ];
         assert_eq!(
-            plan(&root, &links),
+            plan(&root, &links, &[]),
             vec![
                 Sever::Remove(root.join("dosdevices/z:")),
                 Sever::Replace(root.join("drive_c/users/u/Documents")),
@@ -182,7 +200,7 @@ mod tests {
         std::os::unix::fs::symlink("/dev/ttyS0", dos.join("com1")).unwrap();
         std::os::unix::fs::symlink(std::env::temp_dir(), user.join("Documents")).unwrap();
 
-        let steps = plan(&tmp, &prefix_links(&tmp).unwrap());
+        let steps = plan(&tmp, &prefix_links(&tmp).unwrap(), &[]);
         assert_eq!(apply(&steps).unwrap().len(), 2);
         assert_eq!(still_escaping(&tmp, &[]).unwrap(), Vec::<PathBuf>::new());
 
@@ -195,8 +213,42 @@ mod tests {
         assert!(dos.join("com1").symlink_metadata().unwrap().file_type().is_symlink());
 
         // A second pass finds nothing to do and does not fail.
-        assert_eq!(apply(&plan(&tmp, &prefix_links(&tmp).unwrap())).unwrap(), Vec::<PathBuf>::new());
+        assert_eq!(
+            apply(&plan(&tmp, &prefix_links(&tmp).unwrap(), &[])).unwrap(),
+            Vec::<PathBuf>::new()
+        );
         std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn an_ungranted_drive_letter_is_removed_and_not_replaced_by_a_directory() {
+        let root = PathBuf::from("/p");
+        let links = vec![
+            (root.join("dosdevices/y:"), PathBuf::from("/etc")),
+            (root.join("drive_c/users/u/Documents"), PathBuf::from("/home/u/Documents")),
+        ];
+        assert_eq!(
+            plan(&root, &links, &[]),
+            vec![
+                Sever::Remove(root.join("dosdevices/y:")),
+                Sever::Replace(root.join("drive_c/users/u/Documents")),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_second_pass_does_not_eat_the_drive_table() {
+        // A granted drive is a symlink out of the prefix, so a repair pass that
+        // did not know about grants would replace every drive letter with an
+        // empty directory and call it isolation.
+        let root = PathBuf::from("/p");
+        let links = vec![(root.join("dosdevices/d:"), PathBuf::from("/srv/share"))];
+        assert_eq!(plan(&root, &links, &[PathBuf::from("/srv/share")]), vec![]);
+        assert_eq!(
+            plan(&root, &links, &[]),
+            vec![Sever::Remove(root.join("dosdevices/d:"))],
+            "an ungranted letter goes away rather than becoming an empty directory"
+        );
     }
 
     #[test]
