@@ -108,5 +108,20 @@ say "a message that contradicts itself about its format is refused, not guessed 
   "$(printf '%s' "$amb" | grep -q "contradicts itself" \
      && printf '%s' "$amb" | grep -q "Content-Type" && echo 1 || echo 0)" "$amb"
 
-[ "$fail" = 0 ] && echo "the window says what the message is doing, including the half it will not show"
+# LAUNCHED WITH NOTHING, which is what the launcher gives a person. Nothing here
+# opened that state, and it is where three apps drifted into three different
+# sentences: this window cannot open a message itself, so naming a file extension
+# and no route reads as an instruction it gives you no way to follow.
+cat > "$fix/p-bare.js" <<'JS'
+await new Promise(r => setTimeout(r, 2000));
+return document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 200);
+JS
+
+bare=$(SHOOT_INJECT="$fix/p-bare.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-no-file.png" 2>&1 | sed -n 's/^inject result: //p')
+
+say "launched with no message, it says where one comes from" \
+  "$(printf '%s' "$bare" | grep -qE "file manager|Dateiverwaltung" && echo 1 || echo 0)" "$bare"
+
+[ "$fail" = 0 ] && echo "the window says what the message is doing, including the half it will not show, and an empty one says where to get a message"
 exit "$fail"
