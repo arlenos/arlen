@@ -88,12 +88,25 @@ async fn write_response<S>(stream: &mut S, response: &Response) -> Result<(), Se
 where
     S: AsyncWriteExt + Unpin,
 {
-    let body = serde_json::to_vec(response).map_err(|e| ServeError::Codec(e.to_string()))?;
-    if body.is_empty() || body.len() > MAX_RESPONSE_FRAME {
-        return Err(ServeError::Frame(format!(
-            "response length {} out of range (1..={MAX_RESPONSE_FRAME})",
+    let mut body = serde_json::to_vec(response).map_err(|e| ServeError::Codec(e.to_string()))?;
+    if body.len() > MAX_RESPONSE_FRAME {
+        // SAY SO INSTEAD OF HANGING UP. This used to return an error, which ends
+        // the connection with nothing written - so the caller sees a socket that
+        // closed and the reason exists only in this daemon's log. On a catalogue
+        // that outgrew the frame, that reads to a person as a broken store rather
+        // than a large one, and the store's own window has no way to tell the
+        // difference. Measured on the 20 August image: one browse response is
+        // 11.2 MB of a 16 MB frame, most of it screenshots, so this is a cliff the
+        // catalogue is walking toward rather than a theoretical branch.
+        let said = Response::Error(format!(
+            "the catalogue is too large to send in one response: {} bytes, and the \
+             limit is {MAX_RESPONSE_FRAME}",
             body.len()
-        )));
+        ));
+        body = serde_json::to_vec(&said).map_err(|e| ServeError::Codec(e.to_string()))?;
+    }
+    if body.is_empty() {
+        return Err(ServeError::Frame("response encoded to nothing".to_string()));
     }
     let len = u32::try_from(body.len())
         .map_err(|_| ServeError::Frame("response exceeds u32 length".to_string()))?;
@@ -257,6 +270,28 @@ mod tests {
         assert!(matches!(read_response(&mut client).await, Response::Cards(c) if c.len() == 1));
         listener.abort();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_response_too_large_to_send_says_so_instead_of_hanging_up() {
+        // A card whose description alone passes the frame. The point is not the
+        // size but what the caller receives: an answer it can render, rather than
+        // a closed socket whose reason lives in this daemon's log.
+        let mut card = fixture_catalog().search("", &[]).remove(0);
+        card.display.description = Some("x".repeat(MAX_RESPONSE_FRAME + 1));
+        let (mut client, mut server) = tokio::io::duplex(1 << 20);
+        let write = tokio::spawn(async move {
+            write_response(&mut server, &Response::Cards(vec![card])).await
+        });
+        let got = read_response(&mut client).await;
+        write.await.unwrap().expect("the write succeeds - it sends the refusal");
+        match got {
+            Response::Error(why) => {
+                assert!(why.contains("too large"), "{why}");
+                assert!(why.contains(&MAX_RESPONSE_FRAME.to_string()), "{why}");
+            }
+            other => panic!("wanted an error the caller can read, got {other:?}"),
+        }
     }
 
     #[tokio::test]
