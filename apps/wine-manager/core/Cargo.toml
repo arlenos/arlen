@@ -11,5 +11,7 @@ serde = { version = "1", features = ["derive"] }
 # already builds them rather than a second hand-rolled argv. It also means the
 # drive check below reads the real argv, not a private copy of it.
 arlen-confiner = { path = "../../../sdk/confiner" }
+# The bottle description on disk. Same format as every other Arlen config.
+toml = "0.8"
 
 [workspace]
