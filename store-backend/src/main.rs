@@ -103,6 +103,9 @@ fn load_source_inputs() -> SourceInputs {
         dep11_yaml: read_env("ARLEN_STORE_DEP11_YAML")
             .map(|yaml| vec![yaml])
             .unwrap_or_else(|| read_all(&found.dep11_yaml)),
+        // No env override: this one is discovered by origin name, and a single
+        // file with no name to carry could not say which layer it belongs to.
+        catalog_xml: read_pairs(&found.catalog_xml),
         // `ARLEN_STORE_METAINFO_DIR` REPLACES the discovered roots, like the other
         // source overrides, and exists for the same reason they do: without it
         // there is no way to run this daemon against a known catalog. The other

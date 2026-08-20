@@ -152,13 +152,31 @@ pub enum ComposeError {
     Xml(String),
 }
 
-/// Parse a Flathub composed-AppStream catalog (`<components>` of `<component>`) into
-/// one `CatalogEntry` per desktop app (`layer = Flatpak`). Display comes from the
-/// AppStream fields (the UNLOCALIZED default element, ignoring `xml:lang` variants);
-/// the capability footprint (Flatpak `finish-args`) and the trust signals (Flathub
-/// verification / stats, ODRS) come from SEPARATE sources per section 9.2 and stay
-/// empty here. A `<component>` with no id is skipped, not guessed.
+/// Parse a Flathub composed-AppStream catalog into one `CatalogEntry` per app.
+///
+/// A thin call into [`catalog_entries`]: a Flathub ref IS the component id, so the
+/// install handle can be derived, which is not true of any other catalogue.
 pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
+    catalog_entries(xml, SourceLayer::Flatpak, true)
+}
+
+/// Parse a composed-AppStream catalog (`<components>` of `<component>`) into one
+/// `CatalogEntry` per app, at `layer`. Display comes from the AppStream fields (the
+/// UNLOCALIZED default element, ignoring `xml:lang` variants); the capability
+/// footprint and the trust signals come from SEPARATE sources per section 9.2 and
+/// stay empty here. A `<component>` with no id is skipped, not guessed.
+///
+/// `handle_from_id` says whether the component id is also the string that installs
+/// the thing, which is true of Flathub alone. Otherwise the handle is the
+/// component's own `<pkgname>` when it has one - an archive catalogue names the
+/// package it came from - and nothing when it does not. A catalogue composed from
+/// a staging tree has no package, so a forage app's entry carries no handle and
+/// contributes pictures and prose to a variant the recipe made installable.
+pub fn catalog_entries(
+    xml: &str,
+    layer: SourceLayer,
+    handle_from_id: bool,
+) -> Result<Vec<CatalogEntry>, ComposeError> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| ComposeError::Xml(e.to_string()))?;
     let mut entries = Vec::new();
     for component in doc
@@ -178,14 +196,16 @@ pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
         };
         entries.push(CatalogEntry {
             id: ComponentId(id.clone()),
-            layer: SourceLayer::Flatpak,
+            layer,
             display,
             capabilities: CapabilityFootprint::unread(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
-            // A Flathub ref is the component id; this layer is the reason the
-            // handle went unnoticed, since deriving it happens to work here.
-            install_handle: Some(id),
+            install_handle: if handle_from_id {
+                Some(id)
+            } else {
+                child_text(&component, "pkgname")
+            },
             version: latest_release_version(&component),
         });
     }
@@ -534,6 +554,26 @@ fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
         .or_else(|| icon.remote.and_then(|r| r.into_iter().find_map(|i| i.url)))
 }
 
+/// Which layer a composed XML catalogue's apps belong to, from its origin name.
+///
+/// The origin is the filename stem, because `appstreamcli compose` does not write
+/// an `origin` attribute into the document (checked against 1.1.5). That is fine:
+/// the thing that installs a catalogue chooses its filename, so the name is a
+/// statement by whoever put it there rather than a guess about its contents.
+///
+/// A forage cookbook composes one catalogue per tier, so the tier is in the name.
+/// Anything else in a system catalogue directory is the archive's own catalogue in
+/// the XML serialisation - the same content DEP-11 carries - and gets the layer
+/// DEP-11 gets, so the two forms of one catalogue cannot become two variants.
+pub fn layer_for_catalog_origin(origin: &str) -> SourceLayer {
+    match origin {
+        "forage-personal" => SourceLayer::Personal,
+        "forage-community" => SourceLayer::Community,
+        "forage-official" => SourceLayer::Official,
+        _ => SourceLayer::Apt,
+    }
+}
+
 // --- compose orchestration (section 9.3: "produces the one merged model") --------
 
 /// The already-read source contents the compose step merges. Held as text (not file
@@ -552,6 +592,9 @@ pub struct SourceInputs {
     /// The Debian DEP-11 catalog YAML, one per suite/component file. See
     /// [`SourceInputs::flathub_xml`] for why this is a list.
     pub dep11_yaml: Vec<String>,
+    /// `(origin, catalog XML text)` per composed AppStream catalogue in XML form.
+    /// The origin decides the layer, per [`layer_for_catalog_origin`].
+    pub catalog_xml: Vec<(String, String)>,
     /// One MetaInfo document per app the distribution installed, from
     /// `/usr/share/metainfo`. Not an availability catalog: see [`metainfo_entry`].
     pub metainfo_xml: Vec<String>,
@@ -610,6 +653,13 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
     for yaml in &inputs.dep11_yaml {
         // Best-effort per record: a corrupt document is skipped inside, never fatal.
         entries.extend(dep11_entries(yaml));
+    }
+    // Same best-effort rule as the others: an unparseable catalogue costs its own
+    // apps and nothing else.
+    for (origin, xml) in &inputs.catalog_xml {
+        if let Ok(es) = catalog_entries(xml, layer_for_catalog_origin(origin), false) {
+            entries.extend(es);
+        }
     }
     // AFTER every source, not inside the Flathub branch. It sat there until 19
     // August, so on a machine with Flatpaks installed and no Flathub catalogue -
@@ -895,6 +945,7 @@ Name:
     fn an_apt_entry_takes_its_footprint_from_the_enrolled_profile() {
         let catalog = compose_catalog(SourceInputs {
             odrs: None,
+            catalog_xml: Vec::new(),
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
@@ -915,6 +966,7 @@ Name:
     fn an_apt_entry_without_a_profile_keeps_an_empty_footprint() {
         let catalog = compose_catalog(SourceInputs {
             odrs: None,
+            catalog_xml: Vec::new(),
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
@@ -933,6 +985,7 @@ Name:
     fn an_unparseable_profile_leaves_the_footprint_empty() {
         let catalog = compose_catalog(SourceInputs {
             odrs: None,
+            catalog_xml: Vec::new(),
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
@@ -1210,6 +1263,96 @@ commit = "0000000000000000000000000000000000000000"
         let cards = merge_catalog(entries);
         assert_eq!(cards.len(), 1, "one id is one card");
         assert_eq!(cards[0].variants[cards[0].default_variant].layer, SourceLayer::Flatpak);
+    }
+
+    /// A real `appstreamcli compose` product, copied verbatim off the tool
+    /// (1.1.5) rather than written to look like one. Note what is NOT here: no
+    /// `origin` attribute, though the run was given `--origin=forage`, and no
+    /// `<pkgname>`, because a catalogue composed from a staging tree has no
+    /// package. Both are why the reader takes the origin from the filename and
+    /// leaves the install route to the recipe.
+    const COMPOSED_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<components version="1.0">
+  <component type="desktop-application">
+    <id>org.example.demo</id>
+    <name>Demo</name>
+    <summary>A demo</summary>
+    <project_license>MIT</project_license>
+    <description>
+      <p>Demo app.</p>
+    </description>
+    <launchable type="desktop-id">org.example.demo.desktop</launchable>
+    <icon type="cached" width="64" height="64">org.example.demo.png</icon>
+    <icon type="stock">org.example.demo</icon>
+    <categories>
+      <category>Utility</category>
+    </categories>
+  </component>
+</components>"#;
+
+    #[test]
+    fn a_composed_catalogue_lands_at_its_origin_layer_with_a_local_icon() {
+        let entries = catalog_entries(COMPOSED_XML, SourceLayer::Official, false).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].layer, SourceLayer::Official);
+        assert_eq!(entries[0].display.name, "Demo");
+        assert_eq!(
+            entries[0].display.icon.as_deref(),
+            Some("org.example.demo.png"),
+            "the cached icon, which is the one on local disk",
+        );
+        assert!(
+            entries[0].install_handle.is_none(),
+            "no package in the document, so no install route to claim",
+        );
+    }
+
+    #[test]
+    fn an_origin_names_the_layer_and_an_unknown_one_is_the_archive() {
+        assert_eq!(layer_for_catalog_origin("forage-personal"), SourceLayer::Personal);
+        assert_eq!(layer_for_catalog_origin("forage-community"), SourceLayer::Community);
+        assert_eq!(layer_for_catalog_origin("forage-official"), SourceLayer::Official);
+        // The same layer DEP-11 gets, so the two serialisations of one archive
+        // catalogue cannot show up as two variants of the same app.
+        assert_eq!(layer_for_catalog_origin("debian_main"), SourceLayer::Apt);
+    }
+
+    #[test]
+    fn a_composed_catalogue_gives_a_recipe_its_pictures_without_taking_the_install() {
+        let catalog = compose_catalog(SourceInputs {
+            odrs: None,
+            catalog_xml: vec![("forage-official".into(), COMPOSED_XML.into())],
+            forage: vec![(
+                r#"
+[recipe]
+id = "org.example.demo"
+name = "Demo"
+maintainer = "key1"
+
+[[source]]
+type = "git"
+url = "https://github.com/example/demo"
+commit = "0000000000000000000000000000000000000000"
+"#
+                .into(),
+                SourceLayer::Official,
+                None,
+            )],
+            flathub_xml: Vec::new(),
+            dep11_yaml: Vec::new(),
+            flatpak_metadata: Vec::new(),
+            apt_profiles: Vec::new(),
+            metainfo_xml: Vec::new(),
+        });
+        let card = catalog
+            .card(&ComponentId("org.example.demo".into()))
+            .expect("one card for the app");
+        assert_eq!(card.variants.len(), 1, "one Official variant, not two");
+        assert_eq!(card.display.icon.as_deref(), Some("org.example.demo.png"));
+        assert!(
+            card.variants[0].install_handle.is_some(),
+            "the recipe still says how to install it",
+        );
     }
 
     #[test]
