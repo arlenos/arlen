@@ -744,6 +744,12 @@ def main():
                          "serial shows the probe unit starting, so an image that "
                          "ships the probe is held to it without being asked; pass "
                          "this to demand it from an image that may not.")
+    ap.add_argument("--preload", action="append", default=None, metavar="SRC:/DEST",
+                    help="copy a host file into the guest before boot, into the "
+                         "throwaway overlay rather than the image. For state that "
+                         "has to exist BEFORE the session starts - a calendar file "
+                         "whose alarm the daemon reads at startup, a config a "
+                         "first-run path branches on. Repeatable.")
     ap.add_argument("--linger", type=int, default=0, metavar="SECONDS",
                     help="stay alive this long after the checks pass, before the "
                          "shutdown. Pair with --keep to get a journal that covers "
@@ -822,6 +828,42 @@ def main():
         check=True,
         stdout=subprocess.DEVNULL,
     )
+
+    # Files the run wants in the guest before anything boots.
+    #
+    # WHY THIS EXISTS. Some things can only be verified against state that is
+    # already there when the session starts: a reminder rings because a calendar
+    # file with an alarm in it was on disk before the daemon read it, and there is
+    # no clicking your way to "this existed at boot". Writing into the OVERLAY keeps
+    # the promise the overlay makes - the raw image stays untouched and the next run
+    # starts pristine.
+    if args.preload:
+        pairs = []
+        for spec in args.preload:
+            src, _, dest = spec.partition(":")
+            if not src or not dest or not dest.startswith("/"):
+                print(f"VERIFY FAIL: --preload wants SRC:/absolute/dest, got {spec!r}", file=sys.stderr)
+                return 2
+            if not os.path.isfile(src):
+                print(f"VERIFY FAIL: --preload source {src} is not a file", file=sys.stderr)
+                return 2
+            pairs.append((src, dest))
+        script = ["run", "mount /dev/sda2 /"]
+        for src, dest in pairs:
+            script.append(f"mkdir-p {os.path.dirname(dest)}")
+            script.append(f"upload {src} {dest}")
+        # `guestfish` over the qcow2 overlay, so the writes land in the throwaway.
+        r = subprocess.run(
+            ["guestfish", "--rw", "-a", overlay],
+            input="\n".join(script) + "\n",
+            text=True,
+            capture_output=True,
+        )
+        if r.returncode != 0:
+            print(f"VERIFY FAIL: could not preload into the overlay: {r.stderr.strip()}", file=sys.stderr)
+            return 2
+        for _, dest in pairs:
+            print(f"preloaded {dest}")
 
     # The virgl path has no CPU-side framebuffer for QMP to dump, so QEMU must
     # draw into something we can grab: an Xvfb of our own, with QEMU's GTK display
