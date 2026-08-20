@@ -31,6 +31,7 @@
 
 pub mod bottle;
 pub mod dosdevices;
+pub mod plumbing;
 pub mod sever;
 
 use std::path::{Path, PathBuf};
