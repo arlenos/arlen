@@ -14,19 +14,32 @@
 #                                filesystem surface: `calendar_agenda` reads the
 #                                `.ics` files in it and the watcher watches it.
 #
-# NOT `home = true`, which every other file-reading app here has. This one has no
-# file picker and no argument: it only ever looks in the directory it created
-# itself, so a home-wide grant would be permission for something the code cannot
-# do.
+#   home = true                  `run()` takes ONE path from argv - the desktop
+#                                entry's `%f`, and the entry claims
+#                                `text/calendar` - and `agenda_of_file` opens
+#                                exactly that file. An invitation arrives the
+#                                ordinary way, as a saved attachment, so it can
+#                                be anywhere under the home directory.
 #
-# NO write anywhere. The app has never written a calendar file - there is no
-# create, no edit, no sync - and when those arrive they land as a write grant
-# decided then, against a feature that exists.
+# THAT LINE WAS MISSING AND THE COMMENT HERE SAID THE OPPOSITE. It read "this one
+# has no file picker and no argument: it only ever looks in the directory it
+# created itself", which was not true when it was written - `agenda_of_file` has
+# always read an arbitrary path - and became visibly untrue when the app grew a
+# way to keep an opened invitation. Under a confined launch the profile would
+# have refused the file the person had just double-clicked, which is the app's
+# headline way in, and nothing would have said why. Found while writing the mail
+# profile next door, which needed the same grant for the same reason.
+#
+# The calendar directory stays named explicitly even though `home` covers it:
+# `custom` entries are bound writable, and keeping an invitation writes there.
+#
+# NO write anywhere ELSE, and no network, and no `[graph]`.
 [info]
 app_id = "dev.arlen.calendar"
 tier = "first-party"
 
 [filesystem]
+home = true
 custom = [
     "$HOME/.local/share/arlen/calendars",
 ]
