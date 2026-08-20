@@ -186,6 +186,15 @@ def ocr(png, psm=6, crop=None, scale=1):
     try:
         return subprocess.run(["tesseract", target, "-", "--psm", str(psm)],
                               capture_output=True, text=True, timeout=30).stdout.strip()
+    except FileNotFoundError:
+        # NONE, NOT "". The two are different answers and this returned the same
+        # one for both until 20 August: on a host with no tesseract every OCR
+        # read came back empty, which made `--require-app-text` fail for an app
+        # that had drawn perfectly AND made the console-text guard - which fails
+        # a boot where the getty is still on screen - pass by finding no markers
+        # in a string nothing had looked at. Wrong in both directions, silently.
+        # Callers must decide what to do with "I could not look".
+        return None
     except Exception:
         return ""
 
@@ -851,6 +860,9 @@ def main():
         # Set when the poll actually saw the bar, so a modal covering the final
         # frame cannot erase that evidence.
         bar_seen_while_polling = False
+        # Set only when a modal was dismissed and a fresh shot taken; see the note
+        # at the app-text check for why the two frames are not interchangeable.
+        uncovered_frame = None
         bar_gate_only = args.require_bar and not (
             args.app or args.press_super or args.deny_consent or args.approve_consent
             or args.click
@@ -1066,6 +1078,7 @@ def main():
             # 1280x800 layout), then capture an after-shot so the dialog-dismissed
             # check can confirm the shell resolved the request against the broker.
             approved = out + ".approved.png"
+            uncovered_frame = approved
             from PIL import Image
             fw, fh = Image.open(out).size
             qmp_click(f, round(fw * 797 / 1280), round(fh * 489 / 800), fw, fh)
@@ -1459,6 +1472,18 @@ def main():
         sys.exit("no screenshot captured")
     rendered, summary = inspect(out)
     text = ocr(out)               # whole frame (psm 6) - mainly the console-text guard
+    # THE FRAME A PERSON WOULD BE LOOKING AT. The dogfood consent dialog comes up
+    # on every boot of this image and sits in the middle of the screen, so `out`
+    # is a picture of that dialog rather than of whatever `--app` opened - three
+    # app verifications in a row OCR'd a consent prompt and reported the app as
+    # not having drawn. `--approve-consent` already captures an after-shot with
+    # the dialog dismissed; this is what makes the app checks read it. The
+    # console-text guard above deliberately keeps using the first frame: it is a
+    # statement about the boot, not about what is on top of it.
+    app_text = text
+    if uncovered_frame and os.path.exists(uncovered_frame) and os.path.getsize(uncovered_frame) > 0:
+        app_text = ocr(uncovered_frame)
+        print(f"app frame: reading {os.path.basename(uncovered_frame)} (the consent dialog was dismissed)")
     bar_verdict, bar_rgb, bar_detail = top_bar_state(out)
     bar_present = bar_verdict == "present"
     print(f"screenshot: {out} ({summary})")
@@ -1491,9 +1516,12 @@ def main():
     # A frame full of kernel-console / login text means cosmic-comp never took the
     # scanout (VT/DRM-master conflict) - the getty/console is still on screen, not
     # the compositor. Treat that as failure even though it is "non-black".
-    lower = text.lower()
+    if text is None:
+        print("OCR: tesseract is not installed here, so nothing in this frame was read. "
+              "The console-text guard and any --require-app-text check cannot run.")
+    lower = (text or "").lower()
     console_markers = ("login:", "systemd", "audit:", "debian gnu/linux", "kernel")
-    if any(m in lower for m in console_markers):
+    if text is not None and any(m in lower for m in console_markers):
         print("VERIFY FAIL: the frame is the kernel/login console, not the compositor")
         print(f"  serial log: {serial}")
         return 1
@@ -1551,7 +1579,14 @@ def main():
             return 1
         if args.require_app_text:
             want = args.require_app_text.lower()
-            if want not in lower:
+            if app_text is None:
+                # Not "the app did not show it": nothing looked. Saying the first
+                # would send somebody hunting a rendering bug that is not there.
+                print(f"VERIFY FAIL: --require-app-text needs tesseract and this host has none, "
+                      f"so '{args.require_app_text}' was never looked for")
+                print(f"  the frame is at {uncovered_frame or out} if you want to look yourself")
+                return 1
+            if want not in app_text.lower():
                 print(f"VERIFY FAIL: --app {args.app} did not show '{args.require_app_text}' "
                       f"(OCR of the frame)")
                 print(f"  serial log: {serial}")
