@@ -71,13 +71,6 @@ NOT_ON_IMAGE: dict[str, str] = {
         "checksummed binary at image-build time, or PDFium from source in the pipeline, "
         "which is a supply-chain call rather than a coder's"
     ),
-    "calendar": (
-        "new on 19 August and one sitting old: it reads the .ics files in "
-        "`$XDG_DATA_HOME/arlen/calendars` and shows an agenda, which is worth "
-        "shipping, but nothing writes those files yet - no sync, no import, no "
-        "way to add an event - so on the image today it would be an app that is "
-        "empty for everyone. It ships when something puts a calendar there"
-    ),
     "settings": (
         "arlen-ui's live work; the coder does not stage it. It is the largest app with no "
         "image step (49 Rust files, 71 components), so if it is meant to be reachable on "

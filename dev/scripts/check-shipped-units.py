@@ -63,12 +63,6 @@ BUILD_STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 # here therefore also stops excusing that daemon's allowlist entries, which is the
 # behaviour you want when it finally ships.
 NOT_YET_DEPLOYED: dict[str, str] = {
-    "arlen-calendard.service": (
-        "it ships with the calendar app, and the app has no image build phase "
-        "yet: nothing on the image writes .ics files, so a calendar daemon "
-        "installed alone would be a process that reliably finds nothing. Both "
-        "land together"
-    ),
     "arlen-accountsd.service": (
         "online-accounts is not part of the image scope yet (15 Aug). The Files "
         "sidebar is the one shipped caller and distinguishes absent from "

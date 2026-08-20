@@ -162,6 +162,11 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     // them in the system table would not have failed loudly - `app_id_for_unit`
     // would keep answering for a unit no system manager runs, while
     // `app_id_for_user_unit` returned None for the one that does.
+    // `calendard`, matching the permission profile the image ships and the id the
+    // clock admits when the calendar registers a reminder's wake. It installs at
+    // `/usr/lib/arlen/libexec/`, so the path rules alone resolve it to the bare
+    // basename `arlen-calendard` and the two would disagree.
+    ("arlen-calendard.service", "calendard"),
     ("arlen-clockd.service", "clockd"),
     ("arlen-code-indexer.service", "code-indexer"),
     ("arlen-consent-broker.service", "consent-broker"),
