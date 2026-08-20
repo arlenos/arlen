@@ -50,6 +50,14 @@
             <div class="prov-when">{step.when}</div>
           </div>
         </div>
+      {:else}
+        <!-- SAID, not left blank. The Related section next door has an empty
+             sentence and this one did not, so on a real machine with nothing
+             recorded the panel showed one heading over a sentence and another
+             over nothing at all - and a reader cannot tell "no provenance" from
+             "not loaded yet". Seen on the booted image, where the graph is real
+             and this file genuinely has no history. -->
+        <p class="empty">{$t("te.lens.provenance.empty")}</p>
       {/each}
     </div>
   </section>
