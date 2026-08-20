@@ -223,6 +223,62 @@ pub async fn build_recipe(
     })
 }
 
+/// Put an AppStream component into the staged package.
+///
+/// Upstream's own `metainfo.xml` if the source ships one - it is what the project
+/// wrote about itself, with screenshots and a real description, where the
+/// synthesized document carries only what a recipe declares. Otherwise the
+/// synthesized fallback, so every forage package describes itself somehow.
+///
+/// The search walks the BUILD tree rather than the staging one: staging holds only
+/// the declared artifacts, and a project's metainfo lives in its source unless the
+/// recipe happened to collect it.
+fn describe_package(
+    staging_root: &Path,
+    build_dir: &Path,
+    recipe: &Recipe,
+) -> std::io::Result<PathBuf> {
+    let candidates = walk_files(build_dir, 6);
+    if let Some(upstream) = find_upstream_metainfo(&candidates) {
+        let dir = staging_root.join("share/metainfo");
+        std::fs::create_dir_all(&dir)?;
+        // Named for the recipe id rather than kept under upstream's filename: the
+        // store keys on the component id, and a document whose name disagrees
+        // with the id it declares is the kind of mismatch that reads as two apps.
+        let dest = dir.join(format!("{}.metainfo.xml", recipe.recipe.id));
+        std::fs::copy(&upstream, &dest)?;
+        return Ok(dest);
+    }
+    write_metainfo(staging_root, &recipe.recipe, recipe.artifacts.as_ref())
+}
+
+/// Every file under `root`, to a bounded depth.
+///
+/// Bounded because a build tree is somebody else's, and an unbounded walk over a
+/// source that vendors a dependency tree is a lot of directory reads for a file
+/// that lives near the top if it exists at all.
+fn walk_files(root: &Path, depth: usize) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, level)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if level < depth {
+                    stack.push((path, level + 1));
+                }
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,60 +626,4 @@ bin = ["app"]
         assert!(Path::new(from).is_absolute(), "the real build dir is absolute: {from}");
         assert_eq!(to, "/build", "mapped to the canonical mount");
     }
-}
-
-/// Put an AppStream component into the staged package.
-///
-/// Upstream's own `metainfo.xml` if the source ships one - it is what the project
-/// wrote about itself, with screenshots and a real description, where the
-/// synthesized document carries only what a recipe declares. Otherwise the
-/// synthesized fallback, so every forage package describes itself somehow.
-///
-/// The search walks the BUILD tree rather than the staging one: staging holds only
-/// the declared artifacts, and a project's metainfo lives in its source unless the
-/// recipe happened to collect it.
-fn describe_package(
-    staging_root: &Path,
-    build_dir: &Path,
-    recipe: &Recipe,
-) -> std::io::Result<PathBuf> {
-    let candidates = walk_files(build_dir, 6);
-    if let Some(upstream) = find_upstream_metainfo(&candidates) {
-        let dir = staging_root.join("share/metainfo");
-        std::fs::create_dir_all(&dir)?;
-        // Named for the recipe id rather than kept under upstream's filename: the
-        // store keys on the component id, and a document whose name disagrees
-        // with the id it declares is the kind of mismatch that reads as two apps.
-        let dest = dir.join(format!("{}.metainfo.xml", recipe.recipe.id));
-        std::fs::copy(&upstream, &dest)?;
-        return Ok(dest);
-    }
-    write_metainfo(staging_root, &recipe.recipe, recipe.artifacts.as_ref())
-}
-
-/// Every file under `root`, to a bounded depth.
-///
-/// Bounded because a build tree is somebody else's, and an unbounded walk over a
-/// source that vendors a dependency tree is a lot of directory reads for a file
-/// that lives near the top if it exists at all.
-fn walk_files(root: &Path, depth: usize) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let mut stack = vec![(root.to_path_buf(), 0usize)];
-    while let Some((dir, level)) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if level < depth {
-                    stack.push((path, level + 1));
-                }
-            } else {
-                out.push(path);
-            }
-        }
-    }
-    out.sort();
-    out
 }
