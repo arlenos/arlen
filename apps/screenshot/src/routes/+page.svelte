@@ -83,6 +83,19 @@
   let draft: Shape | null = null;
   let drawing = false;
 
+  /// The rectangle being dragged with the crop tool.
+  ///
+  /// NOT a `Shape`: `ShapeKind` excludes crop because cropping is not something
+  /// drawn onto the picture, it changes what the picture IS. Kept separate for
+  /// that reason rather than squeezed into the shape list.
+  ///
+  /// The tool has been in the palette since the app was written, with an icon
+  /// and the `C` shortcut, and `onDown` returned early for it - so selecting it
+  /// and dragging did nothing at all. A button that performs no action is the
+  /// same lie as a sentence that states no fact, and this one sat next to nine
+  /// tools that work.
+  let cropDrag = $state<{ start: Point; end: Point } | null>(null);
+
   // A text box being typed, positioned over the canvas.
   let textEdit = $state<{ x: number; y: number; value: string } | null>(null);
 
@@ -139,6 +152,22 @@
     ctx.drawImage(base, 0, 0);
     for (const s of shapes) drawShape(ctx, s, base);
     if (draft) drawShape(ctx, draft, base);
+    if (cropDrag) {
+      // Dim everything outside the selection so the kept region is the bright
+      // one - the convention every screenshot tool uses, and the thing that
+      // makes a drag read as "this part" rather than "a box drawn here".
+      const r = rectOf(cropDrag.start, cropDrag.end);
+      ctx.save();
+      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.beginPath();
+      ctx.rect(0, 0, canvas.width, canvas.height);
+      ctx.rect(r.x, r.y, r.w, r.h);
+      ctx.fill("evenodd");
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.restore();
+    }
   }
 
   function toCanvas(e: PointerEvent): Point {
@@ -159,7 +188,16 @@
       push({ id: ++seq, kind: "number", color, size, start: p, end: p, n: stepN++ });
       return;
     }
-    if (tool === "select" || tool === "crop") return;
+    if (tool === "crop") {
+      cropDrag = { start: p, end: p };
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture unavailable; the drag still tracks */
+      }
+      return;
+    }
+    if (tool === "select") return;
     drawing = true;
     // Capture keeps the drag alive if the pointer leaves the canvas; a failure
     // (no active pointer on some inputs) must not abort the draw.
@@ -172,6 +210,11 @@
   }
 
   function onMove(e: PointerEvent) {
+    if (cropDrag) {
+      cropDrag = { start: cropDrag.start, end: toCanvas(e) };
+      redraw();
+      return;
+    }
     if (!drawing || !draft) return;
     const p = toCanvas(e);
     draft.end = p;
@@ -180,6 +223,18 @@
   }
 
   function onUp() {
+    if (cropDrag) {
+      const r = rectOf(cropDrag.start, cropDrag.end);
+      cropDrag = null;
+      // A stray click is not a crop. Below this the result would be a few pixels
+      // of nothing, and the person meant to put the tool down.
+      if (r.w < 8 || r.h < 8) {
+        redraw();
+        return;
+      }
+      commitCrop(r);
+      return;
+    }
     if (!drawing || !draft) return;
     drawing = false;
     const s = draft;
@@ -191,6 +246,33 @@
       return;
     }
     push(s);
+  }
+
+  /// Cut the picture down to `r`, keeping what has been drawn on it.
+  ///
+  /// The annotations move with the picture rather than being thrown away: a
+  /// person who arrowed at something and then cropped to it means to keep the
+  /// arrow. They are translated by the crop origin, which is why this touches
+  /// the shape list at all.
+  function commitCrop(r: { x: number; y: number; w: number; h: number }) {
+    if (!base) return;
+    const cut = document.createElement("canvas");
+    cut.width = Math.round(r.w);
+    cut.height = Math.round(r.h);
+    cut.getContext("2d")!.drawImage(base, -Math.round(r.x), -Math.round(r.y));
+    base = cut;
+    shapes = shapes.map((s) => ({
+      ...s,
+      start: { x: s.start.x - r.x, y: s.start.y - r.y },
+      end: { x: s.end.x - r.x, y: s.end.y - r.y },
+      points: s.points?.map((p) => ({ x: p.x - r.x, y: p.y - r.y })),
+    }));
+    // A crop is not undoable by the shape stack, so it clears the redo branch
+    // rather than leaving entries that would be replayed onto other pixels.
+    redoStack = [];
+    canvas.width = cut.width;
+    canvas.height = cut.height;
+    redraw();
   }
 
   function push(s: Shape) {
