@@ -31,7 +31,7 @@ use arlen_forage_package::{
     collect_artifacts, find_upstream_metainfo, synthesize_manifest, write_lunpkg, write_metainfo,
     Collection, ManifestError, PackageError, WriteError,
 };
-use arlen_forage_recipe::{Recipe, Source, SourceType};
+use arlen_forage_recipe::{Recipe, Source, SourceType, CATALOG_ORIGIN};
 use arlen_forage_store::{ContentHash, Store, StoreError};
 use ed25519_dalek::SigningKey;
 use thiserror::Error;
@@ -210,6 +210,12 @@ pub async fn build_recipe(
         eprintln!("forage: could not write the AppStream component: {e}");
     }
 
+    // 5b. Compose the package's own AppStream catalogue, so the store has the
+    //     app's icon on local disk instead of a name with nothing behind it. The
+    //     result rides inside the package under `share/swcatalog`, which installd
+    //     copies verbatim, so it arrives and departs with the package.
+    compose_catalogue(staging.path())?;
+
     // 6. Synthesise the manifest and write the signed .lunpkg.
     std::fs::create_dir_all(out_dir)?;
     let manifest = synthesize_manifest(recipe, &collection)?;
@@ -221,6 +227,113 @@ pub async fn build_recipe(
         source: source_hash,
         collection,
     })
+}
+
+/// Compose the staged package's own AppStream catalogue into `share/swcatalog`.
+///
+/// `appstreamcli compose` turns the component document plus the package's desktop
+/// entry and icon files into the catalogue form the store reads, and - the part
+/// nothing else does - extracts and scales the icon into a cache the store can show
+/// without a network round trip.
+///
+/// Composed into a temporary directory and copied in afterwards, never in place:
+/// the tool SCANS the tree it is given, and writing its output inside that tree
+/// while it walks it invites it to read its own product back.
+///
+/// Never fatal, but never silent either. A refused component (compose is strict: no
+/// description, no category on a GUI app, a desktop entry with no icon) means this
+/// package will install and never appear in the store, and the maintainer building
+/// it is the only person who can fix that - so the reason is printed, naming the
+/// consequence. What it does NOT do is stop the build: the package is installable
+/// and useful, and refusing to produce it over a store listing would be a poor
+/// trade. The mistake the missing metainfo step made was saying nothing at all, not
+/// failing to abort.
+fn compose_catalogue(staging_root: &Path) -> Result<(), PipelineError> {
+    let out = tempfile::tempdir()?;
+    let result = std::process::Command::new("appstreamcli")
+        .arg("compose")
+        .arg(format!("--origin={CATALOG_ORIGIN}"))
+        // The staging tree is the package's own prefix: `share/...`, no `usr`.
+        .arg("--prefix=/")
+        .arg(format!("--result-root={}", out.path().display()))
+        .arg(format!("--data-dir={}", out.path().join("xml").display()))
+        .arg(format!("--icons-dir={}", out.path().join("icons").display()))
+        // A build must not reach the network to describe what it just built.
+        .arg("--no-net")
+        .arg(staging_root)
+        .output();
+    let output = match result {
+        Ok(o) => o,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("forage: appstreamcli is not installed, so this package ships no catalogue");
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    };
+    if !output.status.success() {
+        // Its own hint lines, which name the component and the reason. The colour
+        // escapes go with them: this is going into a build log, not a terminal.
+        let out_text = String::from_utf8_lossy(&output.stdout);
+        let why: Vec<String> = out_text
+            .lines()
+            .filter(|l| l.contains("E: ") || l.contains("W: "))
+            .map(|l| strip_ansi(l.trim()))
+            .collect();
+        let why = if why.is_empty() {
+            String::from_utf8_lossy(&output.stderr).trim().to_string()
+        } else {
+            why.join("; ")
+        };
+        eprintln!(
+            "forage: this package will not appear in the store, because its AppStream \
+             component was refused: {why}"
+        );
+        return Ok(());
+    }
+    let dest = staging_root.join("share/swcatalog");
+    std::fs::create_dir_all(&dest)?;
+    for name in ["xml", "icons"] {
+        let from = out.path().join(name);
+        if from.exists() {
+            copy_tree(&from, &dest.join(name))?;
+        }
+    }
+    Ok(())
+}
+
+/// Drop ANSI colour escapes, so a hint line reads in a log file.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        // `ESC [ ... <letter>`: skip to the terminating letter.
+        for c in chars.by_ref() {
+            if c.is_ascii_alphabetic() {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Copy a directory tree, creating what it needs. Small and local because the one
+/// tree this moves is the compose result, which is a handful of files.
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_tree(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// Put an AppStream component into the staged package.
@@ -505,6 +618,27 @@ bin = ["app"]
             xml.contains(&format!("<id>{}</id>", recipe.recipe.id)),
             "the component declares the recipe's own id: {xml}"
         );
+
+        // And the composed catalogue beside it, which is what puts the app in the
+        // store's list rather than only in its own directory. Conditional on the
+        // tool because the step skips itself without it, and a test that asserted
+        // regardless would fail for a reason that is not about this code. CI
+        // installs `appstream` so the assertion is real there; a machine without
+        // it says so rather than passing quietly.
+        let catalogue = extracted.path().join("share/swcatalog/xml/forage.xml.gz");
+        if std::process::Command::new("appstreamcli")
+            .arg("--version")
+            .output()
+            .is_ok()
+        {
+            assert!(
+                catalogue.exists(),
+                "the package carries its own catalogue at {}",
+                catalogue.display(),
+            );
+        } else {
+            eprintln!("no appstreamcli here, so the catalogue half of this test did not run");
+        }
     }
 
     #[tokio::test]
