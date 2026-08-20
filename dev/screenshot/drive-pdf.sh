@@ -290,5 +290,20 @@ say "a word that is not there is answered rather than left blank" \
 say "opening a document did not leave it saying nothing is open" \
   "$(printf '%s' "$dom" | grep -q "No document is open" && echo 0 || echo 1)" "$dom"
 
-[ "$fail" = 0 ] && echo "the reader opens a real document and says what is in it"
+# LAUNCHED WITH NOTHING, the state the launcher gives a person. This reader cannot
+# open a document itself - it takes a path from `%f` or argv - and its sentence is
+# the one the mail and viewer windows were brought up to, so it is worth holding in
+# place rather than trusting that it stays.
+cat > "$fix/p-bare.js" <<'JS'
+await new Promise(r => setTimeout(r, 2000));
+return document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 200);
+JS
+
+bare=$(SHOOT_INJECT="$fix/p-bare.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/pdf-no-file.png" 2>&1 | sed -n 's/^inject result: //p')
+
+say "launched with no document, it says where one comes from" \
+  "$(printf '%s' "$bare" | grep -qE "file manager|Dateiverwaltung" && echo 1 || echo 0)" "$bare"
+
+[ "$fail" = 0 ] && echo "the reader opens a real document, says what is in it, and an empty window says where to get one"
 exit "$fail"
