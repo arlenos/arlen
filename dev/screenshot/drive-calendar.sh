@@ -182,6 +182,64 @@ say "opened on a file, it shows that file and not the whole directory" \
   "$(printf '%s' "$got" | grep -q "The only event in this file" \
      && ! printf '%s' "$got" | grep -q "Morning standup" && echo 1 || echo 0)" "$got"
 
+# KEEPING IT. Opening a file reads it where it lies, deliberately - so until
+# there was a way to say "keep this one", the calendar directory was empty on
+# every machine, the agenda was empty for everyone, and the reminder daemon had
+# nothing to watch. That is why neither the app nor the daemon was on the image.
+# This is the way in, so it is driven: press the button, and the file must be in
+# the directory afterwards AND the view must switch from the-file to the-folder.
+cat > "$fix/p-keep.js" <<'JS'
+for (let i = 0; i < 40; i++) {
+  await new Promise((r) => setTimeout(r, 100));
+  if (document.querySelector(".keep button")) break;
+}
+const btn = document.querySelector(".keep button");
+if (!btn) return "no keep button";
+btn.click();
+// The button going away IS the state change: keeping it drops the launched file
+// and re-reads the directory, so a view still offering to keep is one that did
+// not switch.
+for (let i = 0; i < 50; i++) {
+  await new Promise((r) => setTimeout(r, 100));
+  if (!document.querySelector(".keep button")) break;
+}
+return `stillOffering=${document.querySelector(".keep button") ? 1 : 0} `
+  + `body=${JSON.stringify(document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 240))}`;
+JS
+keepdir="$fix/keep"
+rm -rf "$keepdir" && mkdir -p "$keepdir"
+cat > "$keepdir/invitation.ics" <<'ICS'
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//arlen//drive//EN
+BEGIN:VEVENT
+UID:kept@drive
+DTSTAMP:20260820T050000Z
+DTSTART:20260821T090000Z
+DTEND:20260821T100000Z
+SUMMARY:An invitation somebody opened
+END:VEVENT
+END:VCALENDAR
+ICS
+got=$(XDG_DATA_HOME="$keepdir/data" SHOOT_APP_ARGS="$keepdir/invitation.ics" SHOOT_INJECT="$fix/p-keep.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/calendar-keep.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+# The file is on the machine now. This is the assertion the image steps rest on:
+# without it, staging the daemon is staging a process that watches an empty
+# folder forever.
+say "keeping an opened invitation puts it in the calendar directory" \
+  "$([ -f "$keepdir/data/arlen/calendars/invitation.ics" ] && echo 1 || echo 0)" \
+  "$(ls -la "$keepdir/data/arlen/calendars/" 2>&1 | tail -3) || $got"
+
+say "and the view stops being about that one file" \
+  "$(printf '%s' "$got" | grep -q "stillOffering=0" && echo 1 || echo 0)" "$got"
+
+# The event survived the move: a copy that lands but does not parse is the same
+# empty calendar with more steps.
+say "and the event is still there, read from the folder" \
+  "$(printf '%s' "$got" | grep -q "An invitation somebody opened" && echo 1 || echo 0)" "$got"
+
 # THE OTHER DIRECTION IS NOT DRIVEN HERE, and the reason is the harness rather
 # than the app. With the daemon started on a private bus (`dbus-run-session`),
 # the app still reported the service as absent: tauri-driver launches the binary
