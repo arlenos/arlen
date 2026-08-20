@@ -12,7 +12,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
   import { Applet, AppletBadge } from "@arlen/ui-kit/components/topbar";
-  import { Wifi, WifiOff, Cable, Shield, Plane } from "lucide-svelte";
+  import { Wifi, WifiOff, WifiZero, Cable, Shield, Plane } from "lucide-svelte";
   import { listen } from "@tauri-apps/api/event";
   import { t } from "$lib/i18n/messages";
   import { onMount } from "svelte";
@@ -28,13 +28,29 @@
   let status = $state<NetworkStatus | null>(null);
   let airplaneMode = $state(false);
 
+  /// True when the network state could not be read at all.
+  ///
+  /// NOT THE SAME AS DISCONNECTED, and this indicator drew them identically
+  /// until 20 August: a failed read became `status = null`, and `!status` chose
+  /// the same `WifiOff` as `!status.connected`. On the shipped image, where
+  /// `nmcli` is not installed, that made the bar claim the machine was offline
+  /// while systemd-networkd had it online - a confident wrong statement in the
+  /// most-glanced-at pixel on the screen. The popover beside this has always
+  /// been careful about it (`sh.net.stateUnknown`, and no toggle when the radio
+  /// state is unknown, because "a toggle renders a POSITION"); the icon was the
+  /// part that guessed.
+  let unknown = $state(false);
+
   async function poll() {
     const [air, net] = await Promise.all([
       invoke<boolean>("get_airplane_mode").catch(() => false),
-      invoke<NetworkStatus>("get_network_status").catch(() => null),
+      invoke<NetworkStatus>("get_network_status")
+        .then((n) => n as NetworkStatus | null)
+        .catch(() => undefined),
     ]);
     airplaneMode = air;
-    status = air ? null : net;
+    unknown = net === undefined;
+    status = air ? null : (net ?? null);
   }
 
   poll();
@@ -60,6 +76,10 @@
   const Icon = $derived(
     airplaneMode
       ? Plane
+      // Empty bars rather than the slash: the slash is a statement that there is
+      // no connection, and this is the state where nobody knows.
+      : unknown
+        ? WifiZero
       : !status || !status.connected
         ? WifiOff
         : status.connection_type === "ethernet"
