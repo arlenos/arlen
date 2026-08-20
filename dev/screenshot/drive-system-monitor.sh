@@ -594,10 +594,18 @@ got=$(drive "$probes/p-advanced.js" sysmon-advanced.png)
 if printf '%s' "$got" | grep -q '"skipped"'; then
   echo "  --   the advanced priority menu: $got"
 else
+  # The menu must tick EXACTLY ONE level, and it must be one the menu offers -
+  # that is what proves the tick is read back from the kernel rather than drawn
+  # from the click. It used to require that level to be "Normal", which asserts
+  # the MACHINE: the process this samples is whatever sits on top of a CPU-sorted
+  # list, and on a busy host that is often something already niced. Seen failing
+  # with `tickedFirst:["Low"]` on a box running an image build, where every other
+  # part of the assertion held.
   say "priority sits behind Advanced, takes effect, and says so when it is refused" \
     "$(printf '%s' "$got" | grep -q '"took":true' \
        && printf '%s' "$got" | grep -q '"refused":true' \
-       && printf '%s' "$got" | grep -q '"tickedFirst":\["Normal"\]' && echo 1 || echo 0)" "$got"
+       && printf '%s' "$got" | grep -qE '"tickedFirst":\["(Highest|High|Normal|Low|Lowest)"\]' \
+       && echo 1 || echo 0)" "$got"
 fi
 
 
