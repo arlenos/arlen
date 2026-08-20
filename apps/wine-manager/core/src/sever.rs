@@ -128,14 +128,20 @@ pub fn apply(plan: &[Sever]) -> std::io::Result<Vec<PathBuf>> {
     Ok(done)
 }
 
-/// Every link that still leaves the prefix, for asserting after [`apply`].
+/// Every link that still leaves the prefix without having been granted.
 ///
-/// Devices excluded, since they are deliberately kept and would otherwise make
-/// this never return empty.
-pub fn still_escaping(prefix_root: &Path) -> std::io::Result<Vec<PathBuf>> {
+/// `granted` is what the drive table was written from. Once drives exist, most of
+/// what leaves the prefix leaves it on purpose, and a check that could only be run
+/// before the bottle was usable is a check that would never be run again. So this
+/// answers the question that stays interesting: what reaches out of here that
+/// nobody asked for.
+///
+/// Devices are excluded for the reason given at the top of the module.
+pub fn still_escaping(prefix_root: &Path, granted: &[PathBuf]) -> std::io::Result<Vec<PathBuf>> {
     Ok(escapes(prefix_root, &prefix_links(prefix_root)?)
         .into_iter()
         .filter(|e| !matches!(e.reach, Reach::Device(_)))
+        .filter(|e| !granted.iter().any(|g| e.target.starts_with(g)))
         .map(|e| e.link)
         .collect())
 }
@@ -178,7 +184,7 @@ mod tests {
 
         let steps = plan(&tmp, &prefix_links(&tmp).unwrap());
         assert_eq!(apply(&steps).unwrap().len(), 2);
-        assert_eq!(still_escaping(&tmp).unwrap(), Vec::<PathBuf>::new());
+        assert_eq!(still_escaping(&tmp, &[]).unwrap(), Vec::<PathBuf>::new());
 
         // The shell folder is now a real directory a program can save into, not a
         // hole where My Documents used to be.
@@ -190,6 +196,21 @@ mod tests {
 
         // A second pass finds nothing to do and does not fail.
         assert_eq!(apply(&plan(&tmp, &prefix_links(&tmp).unwrap())).unwrap(), Vec::<PathBuf>::new());
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn a_drive_pointing_at_a_granted_directory_is_not_an_escape() {
+        let tmp = std::env::temp_dir().join(format!("arlen-granted-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("dosdevices")).unwrap();
+        std::os::unix::fs::symlink("/srv/share", tmp.join("dosdevices/d:")).unwrap();
+        std::os::unix::fs::symlink("/srv/other", tmp.join("dosdevices/e:")).unwrap();
+        assert_eq!(
+            still_escaping(&tmp, &[PathBuf::from("/srv/share")]).unwrap(),
+            vec![tmp.join("dosdevices/e:")],
+            "the granted one is expected; the one nobody asked for is the finding"
+        );
         std::fs::remove_dir_all(&tmp).unwrap();
     }
 

@@ -43,7 +43,8 @@ fn main() -> std::io::Result<()> {
     let done = apply(&steps)?;
     println!("{} link(s) cut", done.len());
 
-    let left = still_escaping(&prefix)?;
+    // Nothing is granted yet at severing time: the drive table is written after.
+    let left = still_escaping(&prefix, &[])?;
     if left.is_empty() {
         println!("nothing in the prefix reaches out of it any more");
     } else {
