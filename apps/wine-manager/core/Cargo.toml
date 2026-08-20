@@ -1,0 +1,11 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-wine-core"
+version = "0.1.0"
+edition = "2021"
+description = "What a Wine prefix reaches by default, and the drive map a capability-scoped bottle replaces it with (wine-proton-plan.md)"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[workspace]
