@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use arlen_store_backend::{compose_catalog, serve, SourceInputs, SourceLayer};
+use arlen_store_backend::{compose_catalog, serve, CatalogInput, SourceInputs, SourceLayer};
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
@@ -101,11 +101,21 @@ fn load_source_inputs() -> SourceInputs {
             .map(|xml| vec![xml])
             .unwrap_or_else(|| read_all(&found.flathub_xml)),
         dep11_yaml: read_env("ARLEN_STORE_DEP11_YAML")
-            .map(|yaml| vec![yaml])
-            .unwrap_or_else(|| read_all(&found.dep11_yaml)),
+            .map(|yaml| vec![yaml.into()])
+            .unwrap_or_else(|| read_catalogs(&found.dep11_yaml)),
         // No env override: this one is discovered by origin name, and a single
         // file with no name to carry could not say which layer it belongs to.
-        catalog_xml: read_pairs(&found.catalog_xml),
+        catalog_xml: found
+            .catalog_xml
+            .iter()
+            .filter_map(|(origin, path)| {
+                Some(CatalogInput {
+                    text: arlen_store_backend::discover::read_catalog(path)?,
+                    root: swcatalog_root(path),
+                    origin: Some(origin.clone()),
+                })
+            })
+            .collect(),
         // `ARLEN_STORE_METAINFO_DIR` REPLACES the discovered roots, like the other
         // source overrides, and exists for the same reason they do: without it
         // there is no way to run this daemon against a known catalog. The other
@@ -171,6 +181,28 @@ fn odrs_ratings() -> Option<arlen_store_backend::odrs::Ratings> {
 }
 
 /// Read every discovered catalog, dropping any that cannot be read.
+/// Read each catalogue, remembering the `swcatalog` directory it sits in so the
+/// icon names inside it can be resolved to files. Unreadable files are skipped, the
+/// same best-effort rule the rest of discovery follows.
+fn read_catalogs(paths: &[std::path::PathBuf]) -> Vec<CatalogInput> {
+    paths
+        .iter()
+        .filter_map(|p| {
+            Some(CatalogInput {
+                text: arlen_store_backend::discover::read_catalog(p)?,
+                root: swcatalog_root(p),
+                origin: None,
+            })
+        })
+        .collect()
+}
+
+/// The `swcatalog` directory a catalogue file sits under: both forms live one
+/// directory down (`<root>/yaml/x.yml.gz`, `<root>/xml/x.xml.gz`).
+fn swcatalog_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    path.parent().and_then(|d| d.parent()).map(|d| d.to_path_buf())
+}
+
 fn read_all(paths: &[std::path::PathBuf]) -> Vec<String> {
     paths.iter().filter_map(|p| arlen_store_backend::discover::read_catalog(p)).collect()
 }

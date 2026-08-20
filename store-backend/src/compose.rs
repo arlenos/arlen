@@ -8,6 +8,8 @@
 //! carries the same AppStream metadata a client renders (`recipe.md` ST-1), so a
 //! forage app is a first-class catalog citizen, not a second-class listing.
 
+use std::path::{Path, PathBuf};
+
 use arlen_forage_recipe::{Capabilities, Recipe, ReproducibleStatus};
 
 /// Which tracked cookbook a forage recipe came from.
@@ -491,7 +493,12 @@ struct Dep11Image {
 /// keeping the rest. A real DEP-11 catalog carries thousands of components, so one
 /// bad record must not drop every Debian app from the store. There is no whole-stream
 /// error: an entirely unparseable input simply yields no entries.
-pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
+pub fn dep11_entries(input: &CatalogInput) -> Vec<CatalogEntry> {
+    let yaml = input.text.as_str();
+    // The header document declares the origin the icon cache is filed under. Read
+    // it rather than deriving one from the filename: `trixie_main.yml.gz` is filed
+    // under `debian-trixie-main`, so a filename-derived guess would miss every icon.
+    let origin = dep11_origin(yaml);
     use serde::Deserialize;
     let mut entries = Vec::new();
     for doc in serde_yaml::Deserializer::from_str(yaml) {
@@ -514,7 +521,9 @@ pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
                 .into_iter()
                 .filter_map(|s| s.source_image.and_then(|i| i.url))
                 .collect(),
-            icon: comp.icon.and_then(dep11_icon_ref),
+            icon: comp.icon.and_then(|i| {
+                dep11_icon(i, input.root.as_deref(), origin.as_deref())
+            }),
         };
         entries.push(CatalogEntry {
             id: ComponentId(id),
@@ -533,26 +542,77 @@ pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
     entries
 }
 
-/// The best icon reference from a DEP-11 `Icon` block: the CACHED name if there
-/// is one, else a remote URL.
+/// The `Origin` from a DEP-11 catalogue's header document.
 ///
-/// THE ORDER WAS THE OTHER WAY ROUND AND THAT MADE THE FIELD UNUSABLE. Debian's
-/// remote entries are relative to the `MediaBaseUrl` in the catalog's own header
-/// document - `org/gnome/gitg/8f3ac.../icons/128x128/gitg_org.gnome.gitg.png` -
-/// and nothing here reads that header, so the card carried a path with no base
-/// and no way for a caller to tell it apart from a name. A renderer given that
-/// string can only guess.
-///
-/// Preferring `cached` also gets the picture off local disk, which is the point
-/// of shipping Debian's icon cache on the image at all: the cached name is flat
-/// (`gitg_org.gnome.gitg.png`) and matches the layout of the `icons-*.tar.gz`
-/// the archive publishes, so it resolves under `/var/lib/swcatalog/icons/`
-/// without a network round trip per card.
-fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
-    icon.cached
-        .and_then(|c| c.into_iter().find_map(|i| i.name))
-        .or_else(|| icon.remote.and_then(|r| r.into_iter().find_map(|i| i.url)))
+/// Read with a line scan rather than by deserialising the header: the header is the
+/// first document of a multi-document stream and carries no `ID`, so the record loop
+/// already skips it, and a second full parse to reach one scalar is not worth it. The
+/// scan stops at the first record separator so a component field named `Origin` in a
+/// later document cannot be mistaken for it.
+fn dep11_origin(yaml: &str) -> Option<String> {
+    let mut seen_body = false;
+    for line in yaml.lines() {
+        if line.trim() == "---" {
+            if seen_body {
+                return None; // Past the header and nothing declared.
+            }
+            continue;
+        }
+        seen_body = true;
+        if let Some(rest) = line.strip_prefix("Origin:") {
+            let v = rest.trim().trim_matches('"').trim_matches('\'');
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
 }
+
+/// The icon a card should show for a DEP-11 component: the cached file's path when
+/// it can be found on disk, else the remote URL, else nothing.
+fn dep11_icon(icon: Dep11Icon, root: Option<&Path>, origin: Option<&str>) -> Option<String> {
+    let cached = icon
+        .cached
+        .as_ref()
+        .and_then(|c| c.iter().find_map(|i| i.name.clone()));
+    if let (Some(name), Some(root), Some(origin)) = (cached.as_deref(), root, origin) {
+        if let Some(path) = cached_icon_path(root, origin, name) {
+            return Some(path);
+        }
+    }
+    // No cache on this machine (a fixture, an env override, a catalogue whose icon
+    // tarballs were never fetched): the remote URL is the only thing a renderer can
+    // actually use. A bare cached name would render as a broken image.
+    icon.remote.and_then(|r| r.into_iter().find_map(|i| i.url))
+}
+
+/// Turn a cached icon NAME into the path of the file it names, or `None` when there
+/// is no such file.
+///
+/// `<root>/icons/<origin>/<size>/<name>` is the layout both halves of the catalogue
+/// use: it is how Debian's `icons-*.tar.gz` unpacks, and the forage pipeline passes
+/// `appstreamcli compose` an icons directory shaped the same way so there is one
+/// rule here and not two.
+///
+/// 128 before 64. Both are published and a card wants both - a list row and a detail
+/// header - but the field holds one string, so the choice is which mistake to make.
+/// A 128 scaled down to a row looks like the picture; a 64 scaled up to a header
+/// looks like a mistake.
+///
+/// `None` rather than the bare name when nothing is there, because a name no one can
+/// resolve is not better than no icon: it renders as a broken image instead of as
+/// the blank the card already handles.
+fn cached_icon_path(root: &Path, origin: &str, name: &str) -> Option<String> {
+    for size in ["128x128", "64x64"] {
+        let p = root.join("icons").join(origin).join(size).join(name);
+        if p.is_file() {
+            return Some(p.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
 
 /// Which layer a composed XML catalogue's apps belong to, from its origin name and
 /// the recipes the store already knows about.
@@ -586,6 +646,38 @@ pub fn layer_for_catalog_origin(
 
 // --- compose orchestration (section 9.3: "produces the one merged model") --------
 
+/// One catalogue file, with enough about where it came from to find its pictures.
+///
+/// The text alone is not enough. A cached icon in either serialisation is a bare
+/// flat name (`gitg_org.gnome.gitg.png`); the file it names lives at
+/// `<root>/icons/<origin>/<size>/<name>`, and neither the root nor the origin is
+/// recoverable from the document by anything downstream. The store read the file,
+/// so the store is the one party that knows - which is why this carries it rather
+/// than leaving a renderer to reconstruct a directory by guesswork.
+#[derive(Debug, Default, Clone)]
+pub struct CatalogInput {
+    /// The catalogue document.
+    pub text: String,
+    /// The `swcatalog` directory the file was found under, when it came off disk.
+    /// `None` for a fixture or an env override, and then icons stay bare names.
+    pub root: Option<PathBuf>,
+    /// The origin, for the XML form whose filename carries it. DEP-11 documents
+    /// declare their own in the header, so this stays `None` for them.
+    pub origin: Option<String>,
+}
+
+impl From<String> for CatalogInput {
+    fn from(text: String) -> Self {
+        Self { text, ..Default::default() }
+    }
+}
+
+impl From<&str> for CatalogInput {
+    fn from(text: &str) -> Self {
+        Self { text: text.to_string(), ..Default::default() }
+    }
+}
+
 /// The already-read source contents the compose step merges. Held as text (not file
 /// paths) so the orchestration is pure and testable; the daemon reads the files.
 #[derive(Debug, Default)]
@@ -601,10 +693,10 @@ pub struct SourceInputs {
     pub flathub_xml: Vec<String>,
     /// The Debian DEP-11 catalog YAML, one per suite/component file. See
     /// [`SourceInputs::flathub_xml`] for why this is a list.
-    pub dep11_yaml: Vec<String>,
-    /// `(origin, catalog XML text)` per composed AppStream catalogue in XML form.
-    /// The origin decides the layer, per [`layer_for_catalog_origin`].
-    pub catalog_xml: Vec<(String, String)>,
+    pub dep11_yaml: Vec<CatalogInput>,
+    /// One composed AppStream catalogue in XML form per file. Its `origin` decides
+    /// the layer, per [`layer_for_catalog_origin`].
+    pub catalog_xml: Vec<CatalogInput>,
     /// One MetaInfo document per app the distribution installed, from
     /// `/usr/share/metainfo`. Not an availability catalog: see [`metainfo_entry`].
     pub metainfo_xml: Vec<String>,
@@ -678,18 +770,25 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
         })
         .map(|e| (e.id.clone(), e.layer))
         .collect();
-    for (origin, xml) in &inputs.catalog_xml {
+    for input in &inputs.catalog_xml {
+        let origin = input.origin.clone().unwrap_or_default();
         // The layer is per component, so parse at a placeholder and restamp: only
         // the id in the document can say which recipe it belongs to.
-        let Ok(es) = catalog_entries(xml, SourceLayer::Apt, false) else {
+        let Ok(es) = catalog_entries(&input.text, SourceLayer::Apt, false) else {
             continue;
         };
         for mut e in es {
-            let Some(layer) = layer_for_catalog_origin(origin, recipe_layers.get(&e.id).copied())
+            let Some(layer) = layer_for_catalog_origin(&origin, recipe_layers.get(&e.id).copied())
             else {
                 continue; // A forage catalogue for an app no cookbook offers.
             };
             e.layer = layer;
+            // A cached icon here is a bare name too, under the same layout.
+            if let (Some(root), Some(name)) = (input.root.as_deref(), e.display.icon.as_deref()) {
+                if !name.contains('/') {
+                    e.display.icon = cached_icon_path(root, &origin, name);
+                }
+            }
             entries.push(e);
         }
     }
@@ -898,7 +997,7 @@ Package: example-thing
 Name:
   C: Thing
 ";
-        let entries = dep11_entries(yaml);
+        let entries = dep11_entries(&yaml.into());
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].install_handle.as_deref(), Some("example-thing"));
     }
@@ -913,7 +1012,7 @@ ID: org.example.Thing
 Name:
   C: Thing
 ";
-        let entries = dep11_entries(yaml);
+        let entries = dep11_entries(&yaml.into());
         assert_eq!(entries.len(), 1);
         assert!(
             entries[0].install_handle.is_none(),
@@ -1211,7 +1310,7 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn a_dep11_component_takes_its_newest_stable_release() {
         let yaml = "---\nID: org.example.App\nName:\n  C: App\nReleases:\n  - version: '9.0'\n    type: development\n    unix_timestamp: 1800000000\n  - version: '2.0'\n    unix_timestamp: 1700000000\n  - version: '1.0'\n    unix_timestamp: 1600000000\n";
-        let entries = dep11_entries(yaml);
+        let entries = dep11_entries(&yaml.into());
         assert_eq!(entries.len(), 1, "{entries:?}");
         assert_eq!(entries[0].version, "2.0");
     }
@@ -1371,11 +1470,15 @@ commit = "0000000000000000000000000000000000000000"
         use std::io::Write;
 
         let dir = tempfile::tempdir().unwrap();
-        let app = dir.path().join("apps/org.example.demo/share/swcatalog/xml");
-        std::fs::create_dir_all(&app).unwrap();
+        let sw = dir.path().join("apps/org.example.demo/share/swcatalog");
+        std::fs::create_dir_all(sw.join("xml")).unwrap();
         let mut enc = GzEncoder::new(Vec::new(), Compression::default());
         enc.write_all(COMPOSED_XML.as_bytes()).unwrap();
-        std::fs::write(app.join("forage.xml.gz"), enc.finish().unwrap()).unwrap();
+        std::fs::write(sw.join("xml/forage.xml.gz"), enc.finish().unwrap()).unwrap();
+        // The icon compose extracted, where compose puts it.
+        let icons = sw.join("icons/forage/64x64");
+        std::fs::create_dir_all(&icons).unwrap();
+        std::fs::write(icons.join("org.example.demo.png"), b"png").unwrap();
 
         let roots = crate::discover::SourceRoots {
             flatpak_dirs: vec![],
@@ -1385,10 +1488,16 @@ commit = "0000000000000000000000000000000000000000"
             apps_dir: dir.path().join("apps"),
         };
         let found = crate::discover::discover(&roots);
-        let catalog_xml: Vec<(String, String)> = found
+        let catalog_xml: Vec<CatalogInput> = found
             .catalog_xml
             .iter()
-            .filter_map(|(o, p)| Some((o.clone(), crate::discover::read_catalog(p)?)))
+            .filter_map(|(o, p)| {
+                Some(CatalogInput {
+                    text: crate::discover::read_catalog(p)?,
+                    root: p.parent().and_then(|d| d.parent()).map(|d| d.to_path_buf()),
+                    origin: Some(o.clone()),
+                })
+            })
             .collect();
         assert_eq!(catalog_xml.len(), 1, "found and read: {found:?}");
 
@@ -1420,7 +1529,11 @@ commit = "0000000000000000000000000000000000000000"
         let card = catalog
             .card(&ComponentId("org.example.demo".into()))
             .expect("the installed app has a card");
-        assert_eq!(card.display.icon.as_deref(), Some("org.example.demo.png"));
+        assert_eq!(
+            card.display.icon.as_deref(),
+            Some(icons.join("org.example.demo.png").to_string_lossy().as_ref()),
+            "the name in the document, resolved to the file it names",
+        );
         assert_eq!(card.variants.len(), 1);
         assert_eq!(card.variants[0].layer, SourceLayer::Community);
     }
@@ -1429,7 +1542,11 @@ commit = "0000000000000000000000000000000000000000"
     fn a_forage_catalogue_for_an_app_no_cookbook_offers_is_left_out() {
         let catalog = compose_catalog(SourceInputs {
             odrs: None,
-            catalog_xml: vec![(arlen_forage_recipe::CATALOG_ORIGIN.into(), COMPOSED_XML.into())],
+            catalog_xml: vec![CatalogInput {
+                text: COMPOSED_XML.into(),
+                origin: Some(arlen_forage_recipe::CATALOG_ORIGIN.into()),
+                ..Default::default()
+            }],
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: Vec::new(),
@@ -1447,7 +1564,11 @@ commit = "0000000000000000000000000000000000000000"
     fn a_composed_catalogue_gives_a_recipe_its_pictures_without_taking_the_install() {
         let catalog = compose_catalog(SourceInputs {
             odrs: None,
-            catalog_xml: vec![(arlen_forage_recipe::CATALOG_ORIGIN.into(), COMPOSED_XML.into())],
+            catalog_xml: vec![CatalogInput {
+                text: COMPOSED_XML.into(),
+                origin: Some(arlen_forage_recipe::CATALOG_ORIGIN.into()),
+                ..Default::default()
+            }],
             forage: vec![(
                 r#"
 [recipe]
@@ -1520,7 +1641,7 @@ Name:
 
     #[test]
     fn dep11_reader_maps_the_c_locale_fields() {
-        let entries = dep11_entries(DEP11_YAML);
+        let entries = dep11_entries(&DEP11_YAML.into());
         // Header doc + the id-less record are both skipped.
         assert_eq!(entries.len(), 1);
         let e = &entries[0];
@@ -1530,13 +1651,45 @@ Name:
         assert_eq!(e.display.summary.as_deref(), Some("Edit text files"));
         assert_eq!(e.display.description.as_deref(), Some("<p>A GNOME text editor.</p>"));
         assert_eq!(e.display.screenshots, vec!["https://debian.example/shot.png"]);
-        // The CACHED name wins over the remote URL, and the order is the point.
-        // Debian's remote entries are relative to the `MediaBaseUrl` in the
-        // catalog header, which nothing here reads - so preferring them handed
-        // every card a path with no base. The cached name is flat and matches
-        // the layout of the archive's `icons-*.tar.gz`, so it resolves off local
-        // disk.
-        assert_eq!(e.display.icon.as_deref(), Some("org.gnome.gedit.png"));
+        // No icon cache to look in (this is a fixture, so the input carries no
+        // root), and a bare cached name is not something a renderer can open. The
+        // remote URL is what is left, and it is at least loadable.
+        assert_eq!(e.display.icon.as_deref(), Some("https://debian.example/gedit.png"));
+    }
+
+    #[test]
+    fn a_dep11_cached_icon_becomes_the_path_of_the_file_it_names() {
+        let dir = tempfile::tempdir().unwrap();
+        // The layout the archive's `icons-*.tar.gz` unpacks into, and the one the
+        // image carries: `<root>/icons/<origin>/<size>/<name>`. Both sizes, to show
+        // 128 wins.
+        for size in ["64x64", "128x128"] {
+            let d = dir.path().join("icons/debian-bookworm-main").join(size);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("org.gnome.gedit.png"), b"png").unwrap();
+        }
+        let entries = dep11_entries(&CatalogInput {
+            text: DEP11_YAML.into(),
+            root: Some(dir.path().to_path_buf()),
+            origin: None, // Read from the header, not passed in.
+        });
+        assert_eq!(
+            entries[0].display.icon.as_deref(),
+            Some(
+                dir.path()
+                    .join("icons/debian-bookworm-main/128x128/org.gnome.gedit.png")
+                    .to_string_lossy()
+                    .as_ref()
+            ),
+        );
+    }
+
+    #[test]
+    fn an_origin_the_filename_would_have_got_wrong_comes_off_the_header() {
+        // `trixie_main.yml.gz` is filed under `debian-trixie-main`. Anything derived
+        // from the filename misses every icon in the archive.
+        assert_eq!(dep11_origin(DEP11_YAML).as_deref(), Some("debian-bookworm-main"));
+        assert_eq!(dep11_origin("File: DEP-11\nVersion: '1.0'\n"), None);
     }
 
     #[test]
@@ -1560,14 +1713,14 @@ ID: good.three
 Name:
   C: Good Three
 "#;
-        let entries = dep11_entries(yaml);
+        let entries = dep11_entries(&yaml.into());
         let ids: Vec<&str> = entries.iter().map(|e| e.id.0.as_str()).collect();
         assert_eq!(ids, vec!["good.one", "good.three"], "the corrupt record is skipped, the rest kept");
     }
 
     #[test]
     fn dep11_entries_flow_through_the_merge() {
-        let cards = merge_catalog(dep11_entries(DEP11_YAML));
+        let cards = merge_catalog(dep11_entries(&DEP11_YAML.into()));
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].variants[0].layer, SourceLayer::Apt);
     }
@@ -1614,7 +1767,7 @@ commit = "0000000000000000000000000000000000000000"
         let inputs = SourceInputs {
             forage: vec![(FORAGE_TOML.to_string(), SourceLayer::Community, None)],
             flathub_xml: vec![FLATHUB_XML.to_string()],
-            dep11_yaml: vec![DEP11_YAML.to_string()],
+            dep11_yaml: vec![DEP11_YAML.into()],
             ..Default::default()
         };
         let catalog = compose_catalog(inputs);
@@ -1631,7 +1784,7 @@ commit = "0000000000000000000000000000000000000000"
     fn every_dep11_document_contributes_its_apps() {
         let second = DEP11_YAML.replace("org.gnome.gedit", "org.gnome.Maps");
         let inputs = SourceInputs {
-            dep11_yaml: vec![DEP11_YAML.to_string(), second],
+            dep11_yaml: vec![DEP11_YAML.into(), second.into()],
             ..Default::default()
         };
         let catalog = compose_catalog(inputs);
@@ -1647,7 +1800,7 @@ commit = "0000000000000000000000000000000000000000"
         let inputs = SourceInputs {
             forage: vec![("this is not valid toml {{{".to_string(), SourceLayer::Personal, None)],
             flathub_xml: vec!["<not xml".to_string()],
-            dep11_yaml: vec![DEP11_YAML.to_string()],
+            dep11_yaml: vec![DEP11_YAML.into()],
             ..Default::default()
         };
         // The bad forage + bad XML are skipped; the good DEP-11 app still lands.
@@ -1678,7 +1831,7 @@ commit = "0000000000000000000000000000000000000000"
     fn foreign_sources_default_to_app() {
         let flathub = flathub_entries(FLATHUB_XML).unwrap();
         assert!(flathub.iter().all(|e| e.kind == ItemKind::App));
-        let dep11 = dep11_entries(DEP11_YAML);
+        let dep11 = dep11_entries(&DEP11_YAML.into());
         assert!(dep11.iter().all(|e| e.kind == ItemKind::App));
     }
 
