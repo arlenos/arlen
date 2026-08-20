@@ -513,12 +513,25 @@ pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
     entries
 }
 
-/// The best icon reference from a DEP-11 `Icon` block: a remote URL the store can
-/// fetch if present, else the first cached icon's name.
+/// The best icon reference from a DEP-11 `Icon` block: the CACHED name if there
+/// is one, else a remote URL.
+///
+/// THE ORDER WAS THE OTHER WAY ROUND AND THAT MADE THE FIELD UNUSABLE. Debian's
+/// remote entries are relative to the `MediaBaseUrl` in the catalog's own header
+/// document - `org/gnome/gitg/8f3ac.../icons/128x128/gitg_org.gnome.gitg.png` -
+/// and nothing here reads that header, so the card carried a path with no base
+/// and no way for a caller to tell it apart from a name. A renderer given that
+/// string can only guess.
+///
+/// Preferring `cached` also gets the picture off local disk, which is the point
+/// of shipping Debian's icon cache on the image at all: the cached name is flat
+/// (`gitg_org.gnome.gitg.png`) and matches the layout of the `icons-*.tar.gz`
+/// the archive publishes, so it resolves under `/var/lib/swcatalog/icons/`
+/// without a network round trip per card.
 fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
-    icon.remote
-        .and_then(|r| r.into_iter().find_map(|i| i.url))
-        .or_else(|| icon.cached.and_then(|c| c.into_iter().find_map(|i| i.name)))
+    icon.cached
+        .and_then(|c| c.into_iter().find_map(|i| i.name))
+        .or_else(|| icon.remote.and_then(|r| r.into_iter().find_map(|i| i.url)))
 }
 
 // --- compose orchestration (section 9.3: "produces the one merged model") --------
@@ -1189,8 +1202,13 @@ Name:
         assert_eq!(e.display.summary.as_deref(), Some("Edit text files"));
         assert_eq!(e.display.description.as_deref(), Some("<p>A GNOME text editor.</p>"));
         assert_eq!(e.display.screenshots, vec!["https://debian.example/shot.png"]);
-        // The remote icon URL wins over the cached name.
-        assert_eq!(e.display.icon.as_deref(), Some("https://debian.example/gedit.png"));
+        // The CACHED name wins over the remote URL, and the order is the point.
+        // Debian's remote entries are relative to the `MediaBaseUrl` in the
+        // catalog header, which nothing here reads - so preferring them handed
+        // every card a path with no base. The cached name is flat and matches
+        // the layout of the archive's `icons-*.tar.gz`, so it resolves off local
+        // disk.
+        assert_eq!(e.display.icon.as_deref(), Some("org.gnome.gedit.png"));
     }
 
     #[test]
