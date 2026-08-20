@@ -45,7 +45,13 @@ ARGS = [a for a in sys.argv[1:] if a != "--unprovided"]
 LIST_ONLY = "--unprovided" in sys.argv[1:]
 ROOT = Path(ARGS[0]).resolve() if ARGS else Path(__file__).resolve().parents[2]
 
-SCAN = ("apps", "daemons", "sdk", "ai")
+# EVERY Rust area, not the four I first thought of. `store-backend` sits at the
+# repository root rather than under `daemons`, so it was outside this scan while it
+# read `/usr/share/arlen/store/odrs-ratings.json` - a component asking the image for
+# a file that nothing checked the image provides, which is the exact hole this
+# exists to close. `forage` and `contracts` are in for the same reason: being a
+# top-level directory is not a statement about whether the code inside reads assets.
+SCAN = ("apps", "daemons", "sdk", "ai", "store-backend", "forage", "contracts")
 STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 EXTRA = {
     "share": ROOT / "dev/mkosi/mkosi.extra/usr/share/arlen",
@@ -63,6 +69,14 @@ NOT_PROVIDED: dict[str, str] = {
         "path is inert on a real machine. Shipping a key is a signing-infrastructure "
         "decision - whose key, generated where, rotated how - and not an install line to "
         "guess at"
+    ),
+    "etc:permissions": (
+        "the store's LAST-RESORT profiles directory (`store-backend/src/discover.rs`, "
+        "`/etc/arlen/permissions`). It is reached only when `HOME` is unset, which for a "
+        "user service it never is - every real session reads "
+        "`~/.config/permissions` instead. An absent directory there means no enrolled "
+        "profiles were found, which the capability panel already renders as not-read "
+        "rather than as no-permissions, so nothing states something it did not measure"
     ),
     "share:defaults": (
         "the system-defaults layer of the config system (`sdk/config`: "

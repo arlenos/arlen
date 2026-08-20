@@ -1,0 +1,43 @@
+#!/bin/sh
+# Phase 9c (CHROOT): the ODRS ratings document, so a fresh install shows what
+# other people made of an app without the machine having to ask anyone.
+#
+# WHY AT BUILD TIME. The store daemon's unit is `RestrictAddressFamilies=AF_UNIX`
+# and `IPAddressDeny=any`, deliberately: it composes from local files and has no
+# business dialling out. Fetching one public, anonymous, per-app ratings document
+# while the image is being built keeps that posture exactly as it is and still
+# meets the standard the store is held to - open it on a fresh install and the
+# cards carry ratings. A refresher that keeps the file current is a later piece
+# and needs its own decision about who does the fetching; this is the half that
+# does not.
+#
+# WHAT IT IS. `odrs.gnome.org` publishes one JSON object keyed by desktop-id,
+# each value the star histogram (`star1`..`star5`, plus `star0` for a review with
+# no stars, and `total`). Read-only, anonymous, no per-user identifier in the
+# request, no account. Measured on the host, 20 Aug: 10700 apps in the document,
+# 1675 of the image's 2515 cards get a score from it.
+#
+# Non-fatal, like the catalogue step next door. An image without ratings is a
+# store with a quieter card; an image that fails to build because a host was slow
+# is a machine nobody has.
+set -eu
+
+out="$DESTDIR/usr/share/arlen/store"
+mkdir -p "$out"
+
+if ! curl -sfL --retry 3 --max-time 120 -o "$out/odrs-ratings.json" \
+        "https://odrs.gnome.org/1.0/reviews/api/ratings"; then
+    echo "!! could not fetch the ODRS ratings; cards will show no rating" >&2
+    rm -f "$out/odrs-ratings.json"
+    exit 0
+fi
+
+# A truncated download parses as nothing and would be read every boot. Better to
+# have no file than a file that is silently ignored.
+if ! head -c 1 "$out/odrs-ratings.json" | grep -q '{'; then
+    echo "!! the ODRS response was not a JSON object; dropping it" >&2
+    rm -f "$out/odrs-ratings.json"
+    exit 0
+fi
+
+echo ">> odrs ratings staged ($(wc -c < "$out/odrs-ratings.json") bytes)"
