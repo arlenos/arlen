@@ -9,7 +9,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "ml.app.title": "Mail",
-    "ml.nothingOpen": "No message is open. Open a .eml file to read one.",
+    "ml.nothingOpen": "No message is open. Open a message from the file manager, or pass one on the command line.",
     "ml.failed": "Could not read that message: {$reason}",
     "ml.from": "From",
     "ml.subject": "Subject",
@@ -26,7 +26,7 @@ const messages: Catalogs = {
   },
   de: {
     "ml.app.title": "E-Mail",
-    "ml.nothingOpen": "Keine Nachricht geöffnet. Öffne eine .eml-Datei, um eine zu lesen.",
+    "ml.nothingOpen": "Keine Nachricht geöffnet. Öffne eine aus der Dateiverwaltung, oder übergib eine auf der Kommandozeile.",
     "ml.failed": "Diese Nachricht war nicht lesbar: {$reason}",
     "ml.from": "Von",
     "ml.subject": "Betreff",
