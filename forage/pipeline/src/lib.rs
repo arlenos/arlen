@@ -257,7 +257,14 @@ fn compose_catalogue(staging_root: &Path) -> Result<(), PipelineError> {
         .arg("--prefix=/")
         .arg(format!("--result-root={}", out.path().display()))
         .arg(format!("--data-dir={}", out.path().join("xml").display()))
-        .arg(format!("--icons-dir={}", out.path().join("icons").display()))
+        // `icons/<origin>/<size>/<name>`, the layout Debian's `icons-*.tar.gz`
+        // unpacks into, so the store resolves a cached name the same way for a
+        // forage package as for an archive one. Compose leaves out the origin level
+        // when handed an icons directory, so it is put here.
+        .arg(format!(
+            "--icons-dir={}",
+            out.path().join("icons").join(CATALOG_ORIGIN).display()
+        ))
         // A build must not reach the network to describe what it just built.
         .arg("--no-net")
         .arg(staging_root)

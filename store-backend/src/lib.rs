@@ -23,7 +23,8 @@ pub use catalog::{
     SourceAttestation, SourceLayer, TrustSignals, Variant,
 };
 pub use compose::{
-    compose_catalog, dep11_entries, flathub_entries, forage_entry, CookbookOrigin, SourceInputs,
+    compose_catalog, dep11_entries, flathub_entries, forage_entry, CatalogInput, CookbookOrigin,
+    SourceInputs,
 };
 pub use client::{request as store_request, request_default, ClientError};
 pub use collections::{load_collections, parse_collections, Collection, CollectionError};
