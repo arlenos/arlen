@@ -313,8 +313,22 @@ pub fn merge_catalog(entries: Vec<CatalogEntry>) -> Vec<AppCard> {
         });
         let mut variants: Vec<Variant> = Vec::new();
         for e in group {
-            if variants.last().is_some_and(|v| v.layer == e.layer) {
-                continue; // A poorer duplicate for the same layer; already have it.
+            if let Some(kept) = variants.last_mut().filter(|v| v.layer == e.layer) {
+                // A poorer duplicate for the same layer; we already have it. But
+                // "poorer" is measured on DISPLAY alone, and the two facts that
+                // decide whether the app can be installed at all are not display.
+                // A composed AppStream catalogue carries an icon and screenshots
+                // and no install handle, so on richness it beats the source that
+                // knows how to install the thing - and dropping it whole would
+                // leave a beautiful card with no route to install it. Take what
+                // the richer entry lacks rather than throwing the duplicate away.
+                if kept.install_handle.is_none() {
+                    kept.install_handle = e.install_handle;
+                }
+                if kept.version.is_empty() {
+                    kept.version = e.version;
+                }
+                continue;
             }
             variants.push(Variant {
                 layer: e.layer,
@@ -412,6 +426,34 @@ mod tests {
         assert_eq!(cards[0].variants.len(), 1, "one Flatpak variant, not two");
         // The richer display won the card display.
         assert_eq!(cards[0].display.name, "rich");
+    }
+
+    #[test]
+    fn a_richer_duplicate_does_not_take_the_install_route_with_it() {
+        // The shape a composed AppStream catalogue makes: pictures and no handle,
+        // beside the source that knows how to install the thing. Both orders,
+        // because the merge sorts by richness and the bug only shows in one.
+        let mut composed = entry("org.x.App", SourceLayer::Official, "App", 3);
+        composed.install_handle = None;
+        composed.version = String::new();
+        let mut recipe = entry("org.x.App", SourceLayer::Official, "App", 0);
+        recipe.install_handle = Some("app-recipe".into());
+        recipe.version = "2.1".into();
+
+        for entries in [
+            vec![composed.clone(), recipe.clone()],
+            vec![recipe.clone(), composed.clone()],
+        ] {
+            let cards = merge_catalog(entries);
+            assert_eq!(cards[0].variants.len(), 1, "one Official variant, not two");
+            assert_eq!(cards[0].display.screenshots.len(), 3, "the pictures survive");
+            assert_eq!(
+                cards[0].variants[0].install_handle.as_deref(),
+                Some("app-recipe"),
+                "and the app is still installable",
+            );
+            assert_eq!(cards[0].variants[0].version, "2.1");
+        }
     }
 
     /// All permutations of `items` (Heap's algorithm), for the order-independence
