@@ -38,6 +38,14 @@ say() {
   if [ "$ok" = 1 ]; then echo "  ok   $name"; else echo "  FAIL $name"; echo "       $got"; fail=1; fi
 }
 
+drive_bare() {  # drive_bare <probe-js> <out-png> - launched with NO file
+  # The state a person gets from the launcher, which nothing here used to open.
+  # Every drive in this directory hands the app a file, so the empty state went
+  # unphotographed - and three apps drifted into three different sentences for it.
+  SHOOT_INJECT="$1" "$here/shoot-app.sh" "$app" "$here/out/$2" 2>&1 \
+    | sed -n 's/^inject result: //p'
+}
+
 drive() {  # drive <probe-js> <out-png>
   local out
   out="$(SHOOT_APP_ARGS="$work/sample.rs" SHOOT_INJECT="$1" \
@@ -167,5 +175,24 @@ say "and the other change is still on disk, untouched" \
   "$([ "$(cat "$work/sample.rs")" = "// somebody else" ] && echo 1 || echo 0)" \
   "$(cat "$work/sample.rs")"
 
-[ "$fail" = 0 ] && echo "a real buffer over a real file, a find panel, and a save that lands on disk"
+cat > "$work/p-bare.js" <<'JS'
+await new Promise(r => setTimeout(r, 2000));
+return document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 220);
+JS
+
+bare=$(drive_bare "$work/p-bare.js" editor-no-file.png)
+
+# WITH NO FILE, THE WINDOW SHOWS A DOCUMENT THAT IS NOT ON THE MACHINE. The two
+# demos describe the editor itself and cannot be saved, which is careful - but the
+# picker shows a filename and the lens beside it answers real queries about that
+# name and comes back empty, which reads as a file this machine has and the graph
+# knows nothing about. It is not here at all, and the window has to say so.
+say "launched with no file, it says the document is an example" \
+  "$(printf '%s' "$bare" | grep -q "Example document" && echo 1 || echo 0)" "$bare"
+
+# And it must not offer to save invented text under an invented name.
+say "and offers no save over it" \
+  "$(printf '%s' "$bare" | grep -qE 'Save|Speichern' && echo 0 || echo 1)" "$bare"
+
+[ "$fail" = 0 ] && echo "a real buffer over a real file, a find panel, a save that lands on disk, and a sample that says it is one"
 exit "$fail"
