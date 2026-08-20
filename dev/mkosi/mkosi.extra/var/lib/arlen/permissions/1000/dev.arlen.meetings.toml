@@ -1,14 +1,28 @@
 # The meetings app's profile.
 #
-# Empty of grants on purpose, and the emptiness is honest rather than lazy: the
-# meeting list and the note surface both render from a labelled sample today
-# ("Example note - not a real meeting"), so nothing here reads the graph, the
-# filesystem or the network. Its own state and webview data land in the app
-# directory the launcher always grants.
+# Still empty of grants, but NOT for the reason this file used to give. It said
+# the surfaces render from a labelled sample and that nothing reads the graph.
+# Both were true when it was written and neither is now: `meetings_list` and
+# `meeting_note` read the knowledge graph through the os-sdk client, and the app
+# writes notes back.
 #
-# When the surfaces are wired to real meetings, this file is where the read scope
-# goes, and it should be written from what the code reads rather than from what
-# the feature sounds like it needs.
+# THE ABSENT `[graph]` SECTION IS STILL CORRECT, and the reason is worth writing
+# down so nobody adds a scope to be helpful. The daemon's meeting op (`0x0C`) is
+# admitted by an APP-ID ALLOWLIST (`meeting_caller_admitted`), not by the read
+# scope in a profile - so a `[graph]` section here would grant nothing, deny
+# nothing, and mislead the next reader about how that op is gated. If the
+# allowlist is ever replaced by scope-based admission, this is the file that has
+# to change on the same day.
+#
+# The note document is app-owned and lands in the app's own directory, which the
+# launcher always grants, so it needs no filesystem section either.
+#
+# NOT REACHED TODAY, and the one to watch: on-device capture. Both
+# `meeting_start_capture` and `meeting_stop_capture` return "requires the ASR
+# engine (not yet provisioned)", so no microphone is opened by this app at all.
+# The day that engine lands, a meeting recorder becomes an app that listens to a
+# room, and the grant for it is decided then - against a feature that exists,
+# with a surface that says when it is on.
 
 [info]
 app_id = "dev.arlen.meetings"
