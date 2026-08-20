@@ -460,8 +460,26 @@ impl AppProfileSkeleton {
     /// (the Wayland socket, PipeWire, a filtered session D-Bus, fonts, ...).
     /// The launcher still applies Landlock and the network host-filter on top.
     pub fn complete(mut self, plumbing: Vec<Bind>, tmpfs: Vec<String>) -> Confinement {
-        self.inner.binds.extend(plumbing);
         self.inner.tmpfs.extend(tmpfs);
+        // A plumbing bind whose destination lies under a mask has to be applied
+        // AFTER it, for the same reason an app dir does: bwrap walks argv in
+        // order, so a bind emitted before the covering `--tmpfs` is simply not
+        // there when the program looks. This is not hypothetical - the X11 socket
+        // lives at `/tmp/.X11-unix`, and `/tmp` is masked for every app, so an
+        // XWayland client bound the old way found no socket and drew nothing.
+        // Checked against real bwrap: with the bind first, `ls /tmp/.X11-unix`
+        // answers "No such file or directory"; with it after the mask, `X0`.
+        let masks = self.inner.tmpfs.clone();
+        for bind in plumbing {
+            let dest = match &bind {
+                Bind::ReadOnly(_, d) | Bind::ReadWrite(_, d) => d.clone(),
+            };
+            if masks.iter().any(|m| Path::new(&dest).starts_with(Path::new(m))) {
+                self.inner.post_mask_binds.push(bind);
+            } else {
+                self.inner.binds.push(bind);
+            }
+        }
         self.inner
     }
 }
@@ -781,6 +799,27 @@ mod tests {
         assert!(matches!(skel.network(), NetworkPolicy::Unrestricted));
         let args = skel.complete(vec![], vec![]).bwrap_args();
         assert!(!args.contains(&"--unshare-net".to_string()));
+    }
+
+    #[test]
+    fn a_plumbing_bind_under_a_mask_lands_after_it() {
+        // The X11 socket is the case that matters: /tmp/.X11-unix under a masked
+        // /tmp. Bound before the mask it is not there at all, which a client reads
+        // as "no display" rather than as an error anyone can act on.
+        let skel =
+            app_runtime_profile(Path::new("/usr"), &[], &[], env(), NetworkPolicy::None).unwrap();
+        let args = skel
+            .complete(
+                vec![Bind::ReadWrite(
+                    "/tmp/.X11-unix".into(),
+                    "/tmp/.X11-unix".into(),
+                )],
+                vec![],
+            )
+            .bwrap_args();
+        let tmpfs_at = args.iter().position(|a| a == "--tmpfs").unwrap();
+        let bind_at = args.iter().position(|a| a == "/tmp/.X11-unix").unwrap();
+        assert!(bind_at > tmpfs_at);
     }
 
     #[test]
