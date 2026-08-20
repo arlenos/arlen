@@ -30,6 +30,7 @@
 //! and turning a grant list into drive letters ([`map_drives`]).
 
 pub mod bottle;
+pub mod sever;
 
 use std::path::{Path, PathBuf};
 
@@ -65,13 +66,41 @@ pub struct Escape {
     pub reach: Reach,
 }
 
-/// Classify one link target against the prefix it was found in.
+/// Resolve a link target the way the kernel would, without following anything.
+///
+/// `dosdevices/c:` is `../drive_c`, a RELATIVE target, so a target cannot be
+/// classified without knowing where the link sits. This is lexical on purpose:
+/// `canonicalize` would resolve symlinks along the way, and a scan meant to find
+/// out what a link reaches must not walk through other links to answer.
+///
+/// The residual is stated rather than closed: if `drive_c` were itself replaced
+/// by a link out of the prefix, this returns "contained" and the confinement, not
+/// this scan, is what still bounds the program. The severing is the second line.
+pub fn resolve_target(link: &Path, target: &Path) -> PathBuf {
+    if target.is_absolute() {
+        return target.to_path_buf();
+    }
+    let mut out = link.parent().unwrap_or(Path::new("/")).to_path_buf();
+    for part in target.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Classify one link against the prefix it was found in.
 ///
 /// Both paths are compared by components, never as strings: `/home/u/.wine-old`
 /// begins with `/home/u/.wine` as text and is a different directory on disk, so a
 /// string prefix test would report an escape as contained. That is the wrong way
 /// round for a boundary check, which is why this is a test below and not a note.
-pub fn reach(prefix_root: &Path, target: &Path) -> Reach {
+pub fn reach(prefix_root: &Path, link: &Path, target: &Path) -> Reach {
+    let target = resolve_target(link, target);
     if target.starts_with(prefix_root) {
         return Reach::Contained;
     }
@@ -79,9 +108,9 @@ pub fn reach(prefix_root: &Path, target: &Path) -> Reach {
         return Reach::Filesystem;
     }
     if target.starts_with("/dev") {
-        return Reach::Device(target.to_path_buf());
+        return Reach::Device(target);
     }
-    Reach::Host(target.to_path_buf())
+    Reach::Host(target)
 }
 
 /// Every link in `links` that leaves `prefix_root`, in the order given.
@@ -93,7 +122,7 @@ pub fn escapes(prefix_root: &Path, links: &[(PathBuf, PathBuf)]) -> Vec<Escape> 
     links
         .iter()
         .filter_map(|(link, target)| {
-            let reach = reach(prefix_root, target);
+            let reach = reach(prefix_root, link, target);
             (reach != Reach::Contained).then(|| Escape {
                 link: link.clone(),
                 target: target.clone(),
@@ -244,7 +273,8 @@ mod tests {
     /// thirty-two, since they are all the same shape.
     fn default_prefix_links() -> Vec<(PathBuf, PathBuf)> {
         vec![
-            (p("/home/u/.wine/dosdevices/c:"), p("/home/u/.wine/drive_c")),
+            // Relative, as wineboot actually writes it.
+            (p("/home/u/.wine/dosdevices/c:"), p("../drive_c")),
             (p("/home/u/.wine/dosdevices/z:"), p("/")),
             (p("/home/u/.wine/dosdevices/com1"), p("/dev/ttyS0")),
             (p("/home/u/.wine/drive_c/users/u/Desktop"), p("/home/u/Desktop")),
@@ -281,10 +311,27 @@ mod tests {
         let all = default_prefix_links();
         let contained: Vec<_> = all
             .iter()
-            .filter(|(_, t)| reach(&p("/home/u/.wine"), t) == Reach::Contained)
+            .filter(|(l, t)| reach(&p("/home/u/.wine"), l, t) == Reach::Contained)
             .collect();
         assert_eq!(contained.len(), 1);
         assert!(contained[0].0.ends_with("c:"));
+    }
+
+    #[test]
+    fn the_system_drive_is_relative_and_resolving_it_wrong_would_delete_the_prefix() {
+        // `dosdevices/c: -> ../drive_c`. Read as an absolute path it does not
+        // begin with the prefix, so it classifies as an escape into the host, and
+        // the severing pass would replace the system drive with an empty
+        // directory. A real prefix on disk caught this; the fixture had written
+        // c: as absolute, which no wineboot has ever done.
+        assert_eq!(
+            reach(
+                &p("/home/u/.wine"),
+                &p("/home/u/.wine/dosdevices/c:"),
+                &p("../drive_c")
+            ),
+            Reach::Contained
+        );
     }
 
     #[test]
@@ -293,7 +340,7 @@ mod tests {
         // here would report a link into a different prefix as safely inside this
         // one, which is the wrong direction for a boundary check to be wrong in.
         assert_eq!(
-            reach(&p("/home/u/.wine"), &p("/home/u/.wine-old/drive_c")),
+            reach(&p("/home/u/.wine"), &p("/home/u/.wine/dosdevices/d:"), &p("/home/u/.wine-old/drive_c")),
             Reach::Host(p("/home/u/.wine-old/drive_c"))
         );
     }
@@ -301,7 +348,7 @@ mod tests {
     #[test]
     fn serial_devices_are_not_reported_as_reaching_the_users_files() {
         assert_eq!(
-            reach(&p("/home/u/.wine"), &p("/dev/ttyS0")),
+            reach(&p("/home/u/.wine"), &p("/home/u/.wine/dosdevices/com1"), &p("/dev/ttyS0")),
             Reach::Device(p("/dev/ttyS0"))
         );
     }
