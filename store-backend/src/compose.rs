@@ -554,15 +554,6 @@ fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
         .or_else(|| icon.remote.and_then(|r| r.into_iter().find_map(|i| i.url)))
 }
 
-/// The origin name a forage package's own composed catalogue carries.
-///
-/// It says which KIND of catalogue this is and nothing more. It deliberately does
-/// not name a cookbook tier: the tier is a property of the cookbook a recipe came
-/// from, the builder that runs `appstreamcli compose` has no cookbook (a local
-/// `forage build` has none at all), and a name that must be guessed at build time
-/// would be wrong on every locally built package.
-pub const FORAGE_ORIGIN: &str = "forage";
-
 /// Which layer a composed XML catalogue's apps belong to, from its origin name and
 /// the recipes the store already knows about.
 ///
@@ -588,7 +579,7 @@ pub fn layer_for_catalog_origin(
     recipe_layer: Option<SourceLayer>,
 ) -> Option<SourceLayer> {
     match origin {
-        FORAGE_ORIGIN => recipe_layer,
+        arlen_forage_recipe::CATALOG_ORIGIN => recipe_layer,
         _ => Some(SourceLayer::Apt),
     }
 }
@@ -1351,11 +1342,11 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn a_forage_catalogue_takes_its_layer_from_the_recipe_and_an_unknown_one_is_the_archive() {
         assert_eq!(
-            layer_for_catalog_origin(FORAGE_ORIGIN, Some(SourceLayer::Community)),
+            layer_for_catalog_origin(arlen_forage_recipe::CATALOG_ORIGIN, Some(SourceLayer::Community)),
             Some(SourceLayer::Community),
         );
         assert_eq!(
-            layer_for_catalog_origin(FORAGE_ORIGIN, None),
+            layer_for_catalog_origin(arlen_forage_recipe::CATALOG_ORIGIN, None),
             None,
             "no cookbook offers it, so there is no install route to file it under",
         );
@@ -1369,11 +1360,76 @@ commit = "0000000000000000000000000000000000000000"
         );
     }
 
+    /// The whole way across: an installed app's directory, laid out the way
+    /// installd lays one out, with the catalogue gzipped the way
+    /// `appstreamcli compose` writes it. Everything before this fed compose a
+    /// fixture STRING, which cannot catch a path that is never scanned or a `.gz`
+    /// that is never decompressed.
+    #[test]
+    fn an_installed_app_reaches_the_catalogue_from_disk() {
+        use flate2::{write::GzEncoder, Compression};
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path().join("apps/org.example.demo/share/swcatalog/xml");
+        std::fs::create_dir_all(&app).unwrap();
+        let mut enc = GzEncoder::new(Vec::new(), Compression::default());
+        enc.write_all(COMPOSED_XML.as_bytes()).unwrap();
+        std::fs::write(app.join("forage.xml.gz"), enc.finish().unwrap()).unwrap();
+
+        let roots = crate::discover::SourceRoots {
+            flatpak_dirs: vec![],
+            dep11_dirs: vec![],
+            metainfo_dirs: vec![],
+            profiles_dir: dir.path().join("permissions"),
+            apps_dir: dir.path().join("apps"),
+        };
+        let found = crate::discover::discover(&roots);
+        let catalog_xml: Vec<(String, String)> = found
+            .catalog_xml
+            .iter()
+            .filter_map(|(o, p)| Some((o.clone(), crate::discover::read_catalog(p)?)))
+            .collect();
+        assert_eq!(catalog_xml.len(), 1, "found and read: {found:?}");
+
+        let catalog = compose_catalog(SourceInputs {
+            odrs: None,
+            catalog_xml,
+            forage: vec![(
+                r#"
+[recipe]
+id = "org.example.demo"
+name = "Demo"
+maintainer = "key1"
+
+[[source]]
+type = "git"
+url = "https://github.com/example/demo"
+commit = "0000000000000000000000000000000000000000"
+"#
+                .into(),
+                SourceLayer::Community,
+                None,
+            )],
+            flathub_xml: Vec::new(),
+            dep11_yaml: Vec::new(),
+            flatpak_metadata: Vec::new(),
+            apt_profiles: Vec::new(),
+            metainfo_xml: Vec::new(),
+        });
+        let card = catalog
+            .card(&ComponentId("org.example.demo".into()))
+            .expect("the installed app has a card");
+        assert_eq!(card.display.icon.as_deref(), Some("org.example.demo.png"));
+        assert_eq!(card.variants.len(), 1);
+        assert_eq!(card.variants[0].layer, SourceLayer::Community);
+    }
+
     #[test]
     fn a_forage_catalogue_for_an_app_no_cookbook_offers_is_left_out() {
         let catalog = compose_catalog(SourceInputs {
             odrs: None,
-            catalog_xml: vec![(FORAGE_ORIGIN.into(), COMPOSED_XML.into())],
+            catalog_xml: vec![(arlen_forage_recipe::CATALOG_ORIGIN.into(), COMPOSED_XML.into())],
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: Vec::new(),
@@ -1391,7 +1447,7 @@ commit = "0000000000000000000000000000000000000000"
     fn a_composed_catalogue_gives_a_recipe_its_pictures_without_taking_the_install() {
         let catalog = compose_catalog(SourceInputs {
             odrs: None,
-            catalog_xml: vec![(FORAGE_ORIGIN.into(), COMPOSED_XML.into())],
+            catalog_xml: vec![(arlen_forage_recipe::CATALOG_ORIGIN.into(), COMPOSED_XML.into())],
             forage: vec![(
                 r#"
 [recipe]
