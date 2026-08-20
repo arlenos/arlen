@@ -67,6 +67,15 @@ say() {
   if [ "$ok" = 1 ]; then echo "  ok   $name"; else echo "  FAIL $name"; echo "       $got"; fail=1; fi
 }
 
+drive_bare() {  # drive_bare <probe-js> <out-png> - launched with NO file
+  # What the launcher gives a person. Every drive in this directory hands its app
+  # a file, so the empty state was never opened here - and that is how the viewer,
+  # the editor and mail came to answer the same situation three different ways.
+  printf '%s' "$(SHOOT_INJECT="$1" \
+    "$here/shoot-app.sh" "$app" "$here/out/$2" 2>&1 \
+    | sed -n 's/^inject result: //p')"
+}
+
 drive() {  # drive <probe-js> <fixture> <out-png>
   printf '%s' "$(SHOOT_APP_ARGS="$fix/$2" SHOOT_INJECT="$1" \
     "$here/shoot-app.sh" "$app" "$here/out/$3" 2>&1 \
@@ -226,5 +235,23 @@ got=$(drive "$fix/p-print.js" a-one.png viewer-print.png)
 say "the print control hands the file to the portal and says the request is pending" \
   "$(printf '%s' "$got" | grep -qiE "print service|Druckdienst" && echo 1 || echo 0)" "$got"
 
-[ "$fail" = 0 ] && echo "every behaviour the plan names answered when it was pressed"
+cat > "$fix/p-bare.js" <<'JS'
+await new Promise(r => setTimeout(r, 2000));
+return document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 200);
+JS
+
+bare=$(drive_bare "$fix/p-bare.js" viewer-no-file.png)
+
+# OPENED WITH NOTHING, IT MUST SAY WHERE A FILE COMES FROM. This window cannot
+# open one itself - it takes a path from `%f` or argv - so "No file is open." on
+# its own tells a person nothing they can act on. And the demo track the browser
+# preview shows must not be here: a shipped viewer once showed "Nightswim" with a
+# playhead at 1:13 of 3:40, none of which exists.
+say "launched with no file, it says where a file comes from" \
+  "$(printf '%s' "$bare" | grep -qE "file manager|Dateiverwaltung" && echo 1 || echo 0)" "$bare"
+
+say "and shows no invented track" \
+  "$(printf '%s' "$bare" | grep -q "Nightswim" && echo 0 || echo 1)" "$bare"
+
+[ "$fail" = 0 ] && echo "every behaviour the plan names answered when it was pressed, and an empty window that says what to do"
 exit "$fail"
