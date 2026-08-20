@@ -81,7 +81,8 @@ pub fn component_type(artifacts: Option<&Artifacts>) -> &'static str {
 /// (reverse-DNS, validated at recipe parse) is the component id; `name` and `summary`
 /// are required by AppStream, the rest are emitted only when present. The plain
 /// recipe `description` is wrapped in a single `<p>` (AppStream descriptions are rich
-/// text; one paragraph is the honest representation of a one-field description). Pure.
+/// text; one paragraph is the honest representation of a one-field description), and
+/// falls back to the summary when the recipe wrote no description. Pure.
 pub fn synthesize_metainfo(meta: &RecipeMeta, artifacts: Option<&Artifacts>) -> String {
     let mut out = String::new();
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -94,7 +95,13 @@ pub fn synthesize_metainfo(meta: &RecipeMeta, artifacts: Option<&Artifacts>) -> 
     if let Some(summary) = present(&meta.summary) {
         push_elem(&mut out, "summary", summary);
     }
-    if let Some(desc) = present(&meta.description) {
+    // The summary stands in when there is no description, because AppStream requires
+    // a description for a catalogue component and `appstreamcli compose` refuses the
+    // whole component without one - so a recipe that wrote only a summary would
+    // install and never be seen in the store. This invents nothing: the summary is
+    // the maintainer's own sentence about their own package, promoted to the only
+    // paragraph there is.
+    if let Some(desc) = present(&meta.description).or_else(|| present(&meta.summary)) {
         out.push_str("  <description><p>");
         out.push_str(&xml_escape(desc));
         out.push_str("</p></description>\n");
@@ -233,6 +240,17 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         )
         .expect("parses");
         recipe.recipe
+    }
+
+    #[test]
+    fn a_recipe_with_only_a_summary_still_describes_itself() {
+        let mut m = meta();
+        m.description = None;
+        let xml = synthesize_metainfo(&m, None);
+        assert!(
+            xml.contains("<description><p>a greeter</p></description>"),
+            "without one, compose refuses the component and the app is never listed: {xml}",
+        );
     }
 
     #[test]

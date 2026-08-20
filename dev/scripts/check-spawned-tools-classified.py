@@ -45,6 +45,10 @@ SHIPPED = {
     "sh", "sleep", "uname", "systemctl", "systemd-cat", "systemd-inhibit", "journalctl",
     "lsblk", "findmnt", "fusermount", "dpkg", "bwrap", "fc-list", "xdg-user-dirs-update",
     "arlen-run",
+    # From the `appstream` package, which mkosi.conf installs for the store's
+    # catalogue; the forage pipeline runs `appstreamcli compose` to give a built
+    # package its own catalogue and icon cache.
+    "appstreamcli",
 }
 
 #: NOT on the image, measured the same way, each with what stops working. The value

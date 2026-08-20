@@ -31,3 +31,8 @@ libdav1d-dev
 libheif-dev
 libheif-plugin-libde265
 zlib1g-dev
+
+# `appstreamcli compose`, which the forage pipeline runs to give a package its
+# own AppStream catalogue and icon cache. Without it that step skips itself and
+# the test that proves a built package carries a catalogue would prove nothing.
+appstream

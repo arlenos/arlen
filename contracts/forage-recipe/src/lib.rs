@@ -36,6 +36,16 @@ pub enum RecipeError {
     Validation(String),
 }
 
+/// The AppStream catalogue origin a forage package's own composed catalogue
+/// carries, shared by the builder that writes it and the store that reads it.
+///
+/// It names the KIND of catalogue and nothing more. It deliberately carries no
+/// cookbook tier: the tier belongs to the cookbook a recipe came from, the builder
+/// has no cookbook (a local `forage build` has none at all), and the store already
+/// knows each recipe's tier from its own cookbook registry. It lives in this crate
+/// because this is the vocabulary the builder and the store already share.
+pub const CATALOG_ORIGIN: &str = "forage";
+
 /// A fatal schema violation: the recipe cannot be built as written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationError {
