@@ -1,0 +1,50 @@
+# The mail window's profile, under the uid it applies to, like every other app.
+#
+# Each grant below was read out of the source, not assumed.
+#
+#   home = true    `run()` (src-tauri/src/lib.rs) takes ONE path from argv - the
+#                  desktop entry's `%f` - and `mail_read` opens exactly that file.
+#                  A message file arrives the ordinary way, as a saved
+#                  attachment, so it can be anywhere under the home directory and
+#                  a narrower grant would refuse the file the person just
+#                  double-clicked. This is the same shape as the viewers app,
+#                  which opens whatever it is handed.
+#
+# NO write anywhere. The window has never written a byte: there is no reply, no
+# draft, no store, and no "keep this message". When one of those arrives it
+# lands as a write grant decided then, against a feature that exists.
+#
+# NO network, and it is the interesting one. This app deliberately does not
+# render the HTML part, precisely because `mail-app.md` section 3 finds that mail
+# exfiltration is a client-architecture problem - remote content, CSS `@import`,
+# certificate traffic. The absent `[network]` section is that decision written
+# where a launcher can enforce it rather than only where a reviewer can read it:
+# even if something in the renderer changed, this profile grants nothing to
+# reach out with.
+#
+# NO `[graph]`. Reading a message does not touch the knowledge graph today, and
+# whether it should is a design question rather than a grant to make in advance.
+[info]
+app_id = "dev.arlen.mail"
+tier = "first-party"
+
+[filesystem]
+home = true
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# NOTHING IS PUBLISHED: there is no emitter in this app.
+#
+# The subscribe list is not this app's own code: `sdk/tauri-plugin-shell`
+# subscribes these three from inside every Tauri process, and declaring any
+# subscribe list drops the system-tier exemption - so omitting them would
+# silently switch off the topbar menu, the toolbar and the shortcuts while the
+# subscribe still returns Ok.
+[event_bus]
+publish = []
+subscribe = [
+    "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]

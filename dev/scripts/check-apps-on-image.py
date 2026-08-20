@@ -54,18 +54,7 @@ NOT_ON_IMAGE: dict[str, str] = {
         "The app is real; shipping it is a decision about whether this image stays a "
         "single-user appliance, not an oversight"
     ),
-    "mail": (
-        "there is a window now, one sitting old and not yet driven: it opens one "
-        "`.eml` and shows the headers, the text part, what the two parts say "
-        "differently and which headers ask to phone home. It deliberately does "
-        "not render the HTML part - `mail-app.md` section 3 makes that an "
-        "architectural constraint, and EFAIL's finding is that containing the "
-        "renderer does not stop the message calling home. What is missing before "
-        "staging is not features but evidence: no drive has opened it, and the "
-        "calendar next door only shipped once its way in was proved end to end. "
-        "It ships when a drive says what it does"
-    ),
-    "pdf": (
+   "pdf": (
         "the reader is real now - it opens a document, shows the author's contents, "
         "searches inside it, turns pages and selects text, and it starts under the "
         "app smoke. What it cannot do on any machine yet is DRAW a page: pdfium-render "
