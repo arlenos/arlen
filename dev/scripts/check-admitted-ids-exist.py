@@ -69,6 +69,18 @@ NOT_PACKAGED_YET = {
     "org.arlen.places": "shared-entity writer for an app that does not exist yet",
     "system": "the daemons' own reserved principal, not a binary on disk",
     "ai-daemon": "no image build phase stages the ai-daemon binary and it carries no unit",
+    "ai-engine": (
+        "not an admission at all: `ENGINE_APP_ID` is the identity actions are ATTRIBUTED to "
+        "under an engine session, placed in the capability's `autonomous_apps`, and nothing "
+        "peer-authenticates against it. The engine's own binary resolves to `ai-agent`, so the "
+        "two strings do differ - but whether they should be one is a question about the "
+        "capability model rather than a typo, and it is dormant while `executor_live` is off"
+    ),
+    "org.arlen.accounts.rclone": (
+        "online-accounts is not part of the image scope (15 Aug), and `rclone` - the binary this "
+        "id names a launcher for - is not on the image either. Both halves absent, so the id "
+        "names a caller that cannot exist yet"
+    ),
 }
 
 #: Lists whose entries are development ids by construction.
@@ -78,6 +90,24 @@ LIST_CONST = re.compile(
     r"const\s+([A-Z0-9_]*(?:ADMITTED|CALLERS|WRITERS|READERS)[A-Z0-9_]*)\s*"
     r":\s*&\[&str\]\s*=\s*&\[(.*?)\];",
     re.S,
+)
+#: A caller id written as ONE constant rather than a list. Added 20 August, after
+#: two live cases in a morning that this check could not see: the clock daemon
+#: admitted `clock` while the image produces `dev.arlen.clock`, so the clock app
+#: was refused by its own daemon and said "cannot read your saved clock data"; and
+#: the shell filed its own launches under `desktop-shell` while a peer resolves it
+#: to `dev.arlen.desktop-shell`, so the ledger carried two names for one
+#: application. Both were single `&str` constants, so `LIST_CONST` walked past
+#: them.
+#:
+#: Narrow on purpose. Only names ending in the four suffixes below, and only
+#: values shaped like an app id - a `&str` const with a plausible name is a much
+#: wider net than a list, and a check that reports thirty strings nobody meant as
+#: allowlists is one nobody reads. Seven matches tree-wide when this was written,
+#: all of them genuinely caller ids.
+SINGLE_CONST = re.compile(
+    r"const\s+([A-Z0-9_]*(?:_APP|_APP_ID|_CALLER|_CLIENT_ID))\s*:\s*&str\s*=\s*"
+    r'"([a-z][a-z0-9.@_-]*)"'
 )
 #: `"/some/path" => { return Ok("id".to_string()); }` - rule (1) in the resolver.
 STRICT_RULE = re.compile(
@@ -108,11 +138,16 @@ def admitted(root: pathlib.Path) -> dict[str, str]:
         for p in (root / area).rglob("*.rs"):
             if SKIP_DIRS & set(p.parts) or BASENAME_CHECKS & set(p.parts):
                 continue
-            for name, body in LIST_CONST.findall(strip_comments(p.read_text(errors="replace"))):
+            text = strip_comments(p.read_text(errors="replace"))
+            for name, body in LIST_CONST.findall(text):
                 if DEV_LIST.search(name):
                     continue
                 for entry in re.findall(r'"([^"]+)"', body):
                     out.setdefault(entry, f"{p.relative_to(root)}:{name}")
+            for name, entry in SINGLE_CONST.findall(text):
+                if DEV_LIST.search(name):
+                    continue
+                out.setdefault(entry, f"{p.relative_to(root)}:{name}")
     return out
 
 

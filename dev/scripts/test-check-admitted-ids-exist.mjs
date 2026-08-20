@@ -82,10 +82,19 @@ print(",".join(sorted(d)))
   );
   const src = readFileSync(GATE, "utf8");
   const ack = src.slice(src.indexOf("NOT_PACKAGED_YET"), src.indexOf("}", src.indexOf("NOT_PACKAGED_YET")));
+  // KEYS, not prose. This matched any mention of the name anywhere in the block,
+  // which is over-broad in a way that bites: a good reason for a DIFFERENT id
+  // often has to name the deferred daemon as context - "online-accounts is not
+  // part of the image scope, and the binary this id names a launcher for is not
+  // on the image either" - and that is one decision explained, not two decisions
+  // written down. What "repeated" means is the same KEY acknowledged in both
+  // places, so that is what this now compares.
+  const keys = [...ack.matchAll(/^\s*"([^"]+)":/gm)].map((m) => m[1]);
+  const repeated = keys.filter((k) => got.split(",").includes(k));
   check(
     "and are not repeated in this gate's own acknowledgements",
-    !ack.includes("transferd") && !ack.includes("online-accounts"),
-    "the same decision is written down twice",
+    repeated.length === 0,
+    `the same decision is written down twice: ${repeated.join(", ")}`,
   );
 }
 
