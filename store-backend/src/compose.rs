@@ -554,23 +554,42 @@ fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
         .or_else(|| icon.remote.and_then(|r| r.into_iter().find_map(|i| i.url)))
 }
 
-/// Which layer a composed XML catalogue's apps belong to, from its origin name.
+/// The origin name a forage package's own composed catalogue carries.
+///
+/// It says which KIND of catalogue this is and nothing more. It deliberately does
+/// not name a cookbook tier: the tier is a property of the cookbook a recipe came
+/// from, the builder that runs `appstreamcli compose` has no cookbook (a local
+/// `forage build` has none at all), and a name that must be guessed at build time
+/// would be wrong on every locally built package.
+pub const FORAGE_ORIGIN: &str = "forage";
+
+/// Which layer a composed XML catalogue's apps belong to, from its origin name and
+/// the recipes the store already knows about.
 ///
 /// The origin is the filename stem, because `appstreamcli compose` does not write
 /// an `origin` attribute into the document (checked against 1.1.5). That is fine:
-/// the thing that installs a catalogue chooses its filename, so the name is a
-/// statement by whoever put it there rather than a guess about its contents.
+/// whatever installs a catalogue chooses its filename, so the name is a statement
+/// by whoever put it there rather than a guess about its contents.
 ///
-/// A forage cookbook composes one catalogue per tier, so the tier is in the name.
-/// Anything else in a system catalogue directory is the archive's own catalogue in
-/// the XML serialisation - the same content DEP-11 carries - and gets the layer
-/// DEP-11 gets, so the two forms of one catalogue cannot become two variants.
-pub fn layer_for_catalog_origin(origin: &str) -> SourceLayer {
+/// For a forage package's own catalogue the layer comes from the recipe with the
+/// same component id, since the store enumerates cookbooks and already knows each
+/// recipe's tier. A component with no such recipe yields `None` and is skipped: it
+/// is an app on the machine that no cookbook offers, so there is no install route
+/// to put behind it, and its metainfo already lists it.
+///
+/// The lookup is scoped to a forage catalogue on purpose. Matching by id in general
+/// would drag an archive catalogue's entry for an app that ALSO has a recipe onto
+/// the cookbook layer, inventing a forage install for a package that came from apt.
+/// Anything else is the archive's own catalogue in the XML serialisation, the same
+/// content DEP-11 carries, so it gets the layer DEP-11 gets and the two forms of one
+/// catalogue cannot become two variants.
+pub fn layer_for_catalog_origin(
+    origin: &str,
+    recipe_layer: Option<SourceLayer>,
+) -> Option<SourceLayer> {
     match origin {
-        "forage-personal" => SourceLayer::Personal,
-        "forage-community" => SourceLayer::Community,
-        "forage-official" => SourceLayer::Official,
-        _ => SourceLayer::Apt,
+        FORAGE_ORIGIN => recipe_layer,
+        _ => Some(SourceLayer::Apt),
     }
 }
 
@@ -655,10 +674,32 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
         entries.extend(dep11_entries(yaml));
     }
     // Same best-effort rule as the others: an unparseable catalogue costs its own
-    // apps and nothing else.
+    // apps and nothing else. Read LAST, because a forage package's catalogue takes
+    // its layer from the recipe entry for the same app, which must already be in
+    // hand - the recipe knows the cookbook, the composed document cannot.
+    let recipe_layers: std::collections::HashMap<ComponentId, SourceLayer> = entries
+        .iter()
+        .filter(|e| {
+            matches!(
+                e.layer,
+                SourceLayer::Personal | SourceLayer::Community | SourceLayer::Official
+            )
+        })
+        .map(|e| (e.id.clone(), e.layer))
+        .collect();
     for (origin, xml) in &inputs.catalog_xml {
-        if let Ok(es) = catalog_entries(xml, layer_for_catalog_origin(origin), false) {
-            entries.extend(es);
+        // The layer is per component, so parse at a placeholder and restamp: only
+        // the id in the document can say which recipe it belongs to.
+        let Ok(es) = catalog_entries(xml, SourceLayer::Apt, false) else {
+            continue;
+        };
+        for mut e in es {
+            let Some(layer) = layer_for_catalog_origin(origin, recipe_layers.get(&e.id).copied())
+            else {
+                continue; // A forage catalogue for an app no cookbook offers.
+            };
+            e.layer = layer;
+            entries.push(e);
         }
     }
     // AFTER every source, not inside the Flathub branch. It sat there until 19
@@ -1308,20 +1349,49 @@ commit = "0000000000000000000000000000000000000000"
     }
 
     #[test]
-    fn an_origin_names_the_layer_and_an_unknown_one_is_the_archive() {
-        assert_eq!(layer_for_catalog_origin("forage-personal"), SourceLayer::Personal);
-        assert_eq!(layer_for_catalog_origin("forage-community"), SourceLayer::Community);
-        assert_eq!(layer_for_catalog_origin("forage-official"), SourceLayer::Official);
+    fn a_forage_catalogue_takes_its_layer_from_the_recipe_and_an_unknown_one_is_the_archive() {
+        assert_eq!(
+            layer_for_catalog_origin(FORAGE_ORIGIN, Some(SourceLayer::Community)),
+            Some(SourceLayer::Community),
+        );
+        assert_eq!(
+            layer_for_catalog_origin(FORAGE_ORIGIN, None),
+            None,
+            "no cookbook offers it, so there is no install route to file it under",
+        );
         // The same layer DEP-11 gets, so the two serialisations of one archive
-        // catalogue cannot show up as two variants of the same app.
-        assert_eq!(layer_for_catalog_origin("debian_main"), SourceLayer::Apt);
+        // catalogue cannot show up as two variants of the same app. The recipe
+        // layer is ignored here on purpose: an app that has both a recipe and a
+        // .deb must not have its apt entry filed as a cookbook install.
+        assert_eq!(
+            layer_for_catalog_origin("debian_main", Some(SourceLayer::Official)),
+            Some(SourceLayer::Apt),
+        );
+    }
+
+    #[test]
+    fn a_forage_catalogue_for_an_app_no_cookbook_offers_is_left_out() {
+        let catalog = compose_catalog(SourceInputs {
+            odrs: None,
+            catalog_xml: vec![(FORAGE_ORIGIN.into(), COMPOSED_XML.into())],
+            forage: vec![],
+            flathub_xml: Vec::new(),
+            dep11_yaml: Vec::new(),
+            flatpak_metadata: Vec::new(),
+            apt_profiles: Vec::new(),
+            metainfo_xml: Vec::new(),
+        });
+        assert!(
+            catalog.card(&ComponentId("org.example.demo".into())).is_none(),
+            "a card with no install route is worse than no card",
+        );
     }
 
     #[test]
     fn a_composed_catalogue_gives_a_recipe_its_pictures_without_taking_the_install() {
         let catalog = compose_catalog(SourceInputs {
             odrs: None,
-            catalog_xml: vec![("forage-official".into(), COMPOSED_XML.into())],
+            catalog_xml: vec![(FORAGE_ORIGIN.into(), COMPOSED_XML.into())],
             forage: vec![(
                 r#"
 [recipe]

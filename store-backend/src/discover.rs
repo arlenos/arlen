@@ -32,6 +32,10 @@ pub struct SourceRoots {
     pub metainfo_dirs: Vec<PathBuf>,
     /// Where enrolled permission profiles live.
     pub profiles_dir: PathBuf,
+    /// Where installd puts a `.lunpkg`'s files, one directory per app. Each app
+    /// carries its own composed catalogue under `share/swcatalog`, because the
+    /// package is what was composed and the package is what gets removed again.
+    pub apps_dir: PathBuf,
 }
 
 impl Default for SourceRoots {
@@ -53,8 +57,15 @@ impl Default for SourceRoots {
             dep11_dirs,
             metainfo_dirs,
             profiles_dir: home
+                .clone()
                 .map(|h| h.join(".config/permissions"))
                 .unwrap_or_else(|| PathBuf::from("/etc/arlen/permissions")),
+            // The same env var installd reads, so a harness that redirects the
+            // install root does not leave the store reading the real one.
+            apps_dir: std::env::var_os("ARLEN_USER_APPS_DIR")
+                .map(PathBuf::from)
+                .or_else(|| home.map(|h| h.join(".local/share/arlen/apps")))
+                .unwrap_or_else(|| PathBuf::from("/var/lib/arlen/apps")),
         }
     }
 }
@@ -136,6 +147,20 @@ pub fn discover(roots: &SourceRoots) -> Discovered {
         }
     }
 
+    // Each installed app's own catalogue, composed when the package was built.
+    // Scanned here rather than added to `dep11_dirs` because the set is not known
+    // until the directory is read, and `SourceRoots` is paths a caller can state.
+    for app in read_dir_sorted(&roots.apps_dir) {
+        for entry in read_dir_sorted(&app.join("share/swcatalog/xml")) {
+            let name = entry.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !entry.is_file() || !(name.ends_with(".xml") || name.ends_with(".xml.gz")) {
+                continue;
+            }
+            let origin = name.trim_end_matches(".gz").trim_end_matches(".xml");
+            found.catalog_xml.push((origin.to_string(), entry));
+        }
+    }
+
     for dir in &roots.metainfo_dirs {
         // Flat: `<root>/<component-id>.metainfo.xml` (and the older
         // `.appdata.xml`, still shipped by plenty of packages).
@@ -188,6 +213,7 @@ mod tests {
             dep11_dirs: vec![dir.join("swcatalog")],
             metainfo_dirs: vec![dir.join("metainfo")],
             profiles_dir: dir.join("permissions"),
+            apps_dir: dir.join("apps"),
         }
     }
 
@@ -281,6 +307,17 @@ mod tests {
         let found = discover(&roots_in(dir.path()));
         let origins: Vec<&str> = found.catalog_xml.iter().map(|(o, _)| o.as_str()).collect();
         assert_eq!(origins, ["forage-official", "forage-personal"], "{found:?}");
+    }
+
+    #[test]
+    fn an_installed_app_carries_its_own_composed_catalogue() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("apps/org.example.App/share/swcatalog/xml/forage.xml.gz"));
+        touch(&dir.path().join("apps/org.example.App/bin/app"));
+
+        let found = discover(&roots_in(dir.path()));
+        assert_eq!(found.catalog_xml.len(), 1, "{found:?}");
+        assert_eq!(found.catalog_xml[0].0, "forage");
     }
 
     #[test]
