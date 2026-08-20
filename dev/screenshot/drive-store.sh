@@ -70,9 +70,26 @@ try {
   wire = `invoke threw: ${e}`;
 }
 await new Promise(r => setTimeout(r, 2500));
+// REVEAL THE COMMUNITY TIER BEFORE COUNTING, or this asserts the machine rather
+// than the grid. The browse view hides community-tier apps until asked (§8.1,
+// default-safe), and `Trust::from` files Flathub under community - so on a host
+// whose only catalogue is Flathub's, EVERY row is hidden and an empty grid is the
+// correct rendering of what it was given. Measured here: 43 rows on the wire, 0
+// cards, and "Show community apps" sitting in the DOM. Pressing it first makes the
+// question "does the grid draw what it was handed" instead of "does this machine
+// happen to have a curated catalogue".
+const reveal = [...document.querySelectorAll("button")]
+  .find((b) => /community/i.test(b.innerText || ""));
+let pressed = "no-button";
+if (reveal) {
+  pressed = `before=${reveal.getAttribute("aria-pressed")}`;
+  reveal.click();
+  await new Promise(r => setTimeout(r, 800));
+  pressed += ` after=${reveal.getAttribute("aria-pressed")}`;
+}
 const dom = (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 300);
 const cards = document.querySelectorAll("[data-store-card], article, .card").length;
-return `WIRE ${wire} || CARDS ${cards} || DOM ${dom}`;
+return `WIRE ${wire} || CARDS ${cards} || REVEAL ${pressed} || DOM ${dom}`;
 JS
 
 got=$(SHOOT_INJECT="$run/probe.js" "$here/shoot-app.sh" "$app" "$here/out/store-browse.png" 2>&1 \
