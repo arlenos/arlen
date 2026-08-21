@@ -17,14 +17,8 @@
 //! only confinement; the `--seccomp <fd>` BPF filter (and the wider profile for
 //! the C-linked AVIF/HEIC decoders) is the hardening follow-up.
 
-use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
-use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::sync::Arc;
 use std::time::Duration;
 
 use arlen_worker_sandbox::WorkerProfile;
