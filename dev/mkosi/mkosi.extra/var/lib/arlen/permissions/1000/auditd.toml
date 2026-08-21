@@ -19,6 +19,18 @@
 # single event whose loss would leave tamper evidence unreported, which is worth
 # stating because "the audit daemon can no longer report tampering" is a
 # security failure that looks like silence.
+# WHAT THIS PROFILE DOES NOT DESCRIBE, and here it is the whole point of the
+# daemon. The grant below is one bus topic. The daemon itself holds the HMAC key
+# the ledger is chained with - a 0600 file it generates once with the OS CSPRNG -
+# appends every audited action to that chain, and serves the read API the anomaly
+# detector polls. It is the root of tamper-evidence for everything else in the
+# system, and no field in this model can say so.
+#
+# Its unit says so on purpose in the other direction: the sandbox directives are
+# deliberately absent because the integrity claim rests on the hash chain rather
+# than on filesystem isolation (`dist/arlen-auditd.service`). Both halves are
+# worth knowing together, and neither is visible from this file alone.
+
 [info]
 app_id = "auditd"
 tier = "first-party"
