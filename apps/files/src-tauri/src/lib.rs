@@ -1525,6 +1525,25 @@ fn files_devices() -> Vec<arlen_file_browser_core::devices::MountedDevice> {
     }
 }
 
+/// Turn a failure to START `udisksctl` into something a person can act on.
+///
+/// NOT the raw errno. `No such file or directory (os error 2)` on a spawn is
+/// about the TOOL, and somebody reading it under a disk they just clicked will
+/// read it as the disk being gone. udisks is recorded as absent from the image
+/// (`runtime-deps.tsv`), so on the machine we ship this is the ordinary case
+/// rather than a broken one.
+///
+/// Its own function so the branch can be tested on a machine that HAS udisks.
+/// The first version of this test called the real helper and passed here for the
+/// wrong reason: the spawn succeeded and udisksctl complained about the device.
+fn udisks_spawn_error(e: &std::io::Error) -> String {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        "udisks is not installed, so disks cannot be mounted from here".to_string()
+    } else {
+        format!("could not run udisksctl: {e}")
+    }
+}
+
 /// Run a `udisksctl` verb on a block device for the Devices sidebar. Spawned
 /// without a shell (the device path is one inert argv element), and the device
 /// must be a `/dev/` node, so the caller cannot smuggle a command. udisks2's
@@ -1536,18 +1555,7 @@ fn udisksctl(verb: &str, device: &str) -> Result<(), String> {
     let out = std::process::Command::new("udisksctl")
         .args([verb, "-b", device])
         .output()
-        .map_err(|e| {
-            // NOT the raw errno. `No such file or directory (os error 2)` on a
-            // spawn is about the TOOL, and a person reading it under a disk they
-            // just clicked will read it as the disk being gone. udisks2 is
-            // recorded as absent from the image (`runtime-deps.tsv`), so this is
-            // the ordinary case there rather than a broken machine.
-            if e.kind() == std::io::ErrorKind::NotFound {
-                "udisks is not installed, so disks cannot be mounted from here".to_string()
-            } else {
-                format!("could not run udisksctl: {e}")
-            }
-        })?;
+        .map_err(|e| udisks_spawn_error(&e))?;
     if out.status.success() {
         Ok(())
     } else {
@@ -2397,18 +2405,21 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::udisksctl;
+    use super::{udisks_spawn_error, udisksctl};
 
     #[test]
     fn a_disk_action_names_the_missing_tool_and_not_the_disk() {
-        // On a machine without udisks the spawn fails with `No such file or
-        // directory`, which under a disk somebody just clicked reads as the disk
-        // being gone. The image ships no udisks, so this is the ordinary case
-        // there rather than a broken machine.
-        let err = udisksctl("mount", "/dev/zzz-not-a-device").unwrap_err();
-        if err.contains("os error 2") || err.contains("No such file or directory") {
-            panic!("the raw errno reached the caller: {err}");
-        }
+        // Synthesised rather than provoked, because this machine HAS udisks: the
+        // first version called the real helper and passed because the spawn
+        // succeeded and udisksctl complained about the device, which is a
+        // different sentence entirely.
+        let absent = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+        let said = udisks_spawn_error(&absent);
+        assert!(said.contains("udisks is not installed"), "{said}");
+        assert!(!said.contains("os error"), "the errno must not reach a person: {said}");
+
+        let other = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "nope");
+        assert!(udisks_spawn_error(&other).contains("could not run udisksctl"));
     }
 
     #[test]
