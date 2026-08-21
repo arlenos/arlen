@@ -265,7 +265,7 @@
 
 <style>
   .today {
-    margin-left: 8px;
+    margin-inline-start: 8px;
     padding: 1px 6px;
     border-radius: 4px;
     font-size: 11px;

@@ -1,4 +1,5 @@
 apps/desktop-shell/src/lib/components/ui/dialog/dialog-content.svelte	left-
+apps/mail/src/routes/+page.svelte	padding-left
 apps/settings/src/lib/components/AppSidebar.svelte	border-r
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	left-
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	right-
