@@ -40,11 +40,29 @@ pub struct Divergence {
     pub only_in_html: Vec<String>,
 }
 
+/// How many differing words a reader is shown. Enough to recognise a swapped
+/// domain or an added footer, few enough that a notice stays a notice.
+const SAMPLE: usize = 5;
+
 impl Divergence {
     /// Whether the two halves agree, as far as this can see.
     #[must_use]
     pub fn agree(&self) -> bool {
         self.only_in_text.is_empty() && self.only_in_html.is_empty()
+    }
+
+    /// A few of the words that appear only in the text half, for a reader to
+    /// judge by. Bounded, because a wholly different pair of parts would
+    /// otherwise print the whole message into a notice.
+    #[must_use]
+    pub fn sample_text(&self) -> Vec<String> {
+        self.only_in_text.iter().take(SAMPLE).cloned().collect()
+    }
+
+    /// The same for the formatted half.
+    #[must_use]
+    pub fn sample_html(&self) -> Vec<String> {
+        self.only_in_html.iter().take(SAMPLE).cloned().collect()
     }
 
     /// What to tell a reader, or `None` when the halves agree.
@@ -90,9 +108,20 @@ pub fn compare(text: &str, html: &str) -> Divergence {
     }
 }
 
-/// The words of a string, lowercased, punctuation dropped.
+/// The words of a string, lowercased, with punctuation trimmed off the ends.
+///
+/// SPLIT ON WHITESPACE, not on every non-alphanumeric character, and the reason
+/// is what the reader is shown. Splitting on punctuation turns `example.com`
+/// into `example` and `com`, so a message whose text says `example.com` while
+/// its formatting says `evil.com` was reported as differing by "com" and
+/// "collector" - noise, on the one surface whose whole job is to let somebody
+/// judge a mismatch. Kept whole, the same message differs by `example.com` and
+/// `evil.com`, which is the actual finding and the actual phishing shape.
+///
+/// Punctuation still comes off the ENDS, so `Friday.` and `Friday` are one word.
 fn words(s: &str) -> BTreeSet<String> {
-    s.split(|c: char| !c.is_alphanumeric())
+    s.split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
         .filter(|w| !w.is_empty())
         .map(str::to_lowercase)
         .collect()
@@ -161,6 +190,31 @@ fn find_ci(haystack: &str, needle: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A domain stays one word, because a domain swap is the thing this is for.
+    ///
+    /// With punctuation splitting, this pair differed by "example" and "evil"
+    /// and AGREED on "com", so the reader was shown fragments. Whole tokens make
+    /// the finding the two domains themselves.
+    #[test]
+    fn a_swapped_domain_reads_as_two_domains() {
+        let d = compare(
+            "Please pay at example.com before Friday.",
+            "<p>Please pay at evil.com before Friday.</p>",
+        );
+        assert_eq!(d.only_in_text, vec!["example.com".to_string()]);
+        assert_eq!(d.only_in_html, vec!["evil.com".to_string()]);
+        let notice = d.notice().expect("the halves differ");
+        assert!(notice.contains("example.com"), "{notice}");
+        assert!(notice.contains("evil.com"), "{notice}");
+    }
+
+    /// Trailing punctuation is not a difference.
+    #[test]
+    fn a_full_stop_does_not_make_a_word_different() {
+        assert!(compare("pay on Friday.", "<p>pay on Friday</p>").agree());
+    }
+
     use super::*;
 
     #[test]
