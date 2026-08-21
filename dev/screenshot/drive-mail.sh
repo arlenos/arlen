@@ -112,6 +112,12 @@ say "but the reader is told the two parts disagree, in the differing words" \
 say "and what it shows as the message is the text part" \
   "$(printf '%s' "$out" | grep -q 'shown="Please pay at example.com before Friday.' && echo 1 || echo 0)" "$out"
 
+# The date is the reader's, not the machine's. This window printed
+# `2026-08-19T09:00:00Z` until 21 August, in every language.
+say "the date is written the way a reader writes one" \
+  "$(printf '%s' "$out" | grep -q "August 19, 2026" \
+     && ! printf '%s' "$out" | grep -q "2026-08-19T09" && echo 1 || echo 0)" "$out"
+
 say "a header that asks to report back is named" \
   "$(printf '%s' "$out" | grep -q "Disposition-Notification-To" && echo 1 || echo 0)" "$out"
 

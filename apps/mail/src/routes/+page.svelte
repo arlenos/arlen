@@ -26,6 +26,27 @@
       notation: "compact",
       maximumFractionDigits: 1,
     }).format(n);
+
+  /// When the message says it was sent, written the way the reader writes a date.
+  ///
+  /// The core hands over an RFC 3339 string, and the window was printing it
+  /// verbatim: `2026-08-19T09:00:00Z` in front of a person, in every language.
+  /// Every other app on this image formats through `Intl` off the shared locale -
+  /// the calendar's own profile note makes it a house rule - and mail was the one
+  /// surface still showing machine text.
+  ///
+  /// A DATE LINE IS WHATEVER THE SENDER WROTE, so this can fail, and when it does
+  /// the string is shown exactly as it arrived rather than replaced by a guess or
+  /// by nothing. The raw value stays on the element either way, so a person
+  /// checking a suspicious message can still read the header as sent.
+  function formatSent(raw: string, loc: string): string {
+    const at = new Date(raw);
+    if (Number.isNaN(at.getTime())) return raw;
+    return new Intl.DateTimeFormat(loc, {
+      dateStyle: "long",
+      timeStyle: "short",
+    }).format(at);
+  }
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
 
   type Message = {
@@ -98,7 +119,9 @@
       <dt>{$t("ml.subject")}</dt>
       <dd>{message.subject ?? "-"}</dd>
       <dt>{$t("ml.date")}</dt>
-      <dd>{message.date ?? "-"}</dd>
+      <dd title={message.date ?? ""}>
+        {message.date ? formatSent(message.date, $locale) : "-"}
+      </dd>
       {#if message.to.length > 0}
         <dt>{$t("ml.to")}</dt>
         <dd>{message.to.join(", ")}</dd>
