@@ -131,29 +131,34 @@ fn view(b: &Bottle) -> BottleView {
 /// in costs one `PATH` lookup.
 #[derive(Debug, Serialize)]
 pub struct Runtime {
-    /// Whether `wine` is on this machine.
+    /// Whether the Wine a launch would use is on this machine. The exact binary
+    /// `launch_argv` names, so this answer and a launch cannot disagree.
     pub wine: bool,
     /// Where this user's bottles live, when there is a home to keep them in.
     pub bottles_dir: Option<String>,
 }
 
-/// Whether a program named `name` is on `PATH`.
+/// Whether the Wine a launch would actually use is on this machine.
 ///
-/// Deliberately not `Command::new(name).spawn()`: asking whether a thing exists by
-/// running it is a different question, and running `wine` to find out whether Wine
-/// is installed starts a wineserver on a machine that has one.
-fn on_path(name: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| dir.join(name).is_file())
+/// **The path the launcher names, not `PATH`.** This asked whether `wine` was
+/// anywhere on `PATH` while `launch_argv` hardcodes `/usr/bin/wine` inside the
+/// sandbox, so a machine with Wine at `/usr/local/bin` had a window saying yes
+/// and a launch that would refuse. Two places answering the same question two
+/// ways is how a control ends up promising what the machine will not do; they
+/// now share `launch::WINE`.
+///
+/// Deliberately not `Command::new(...).spawn()`: asking whether a thing exists
+/// by running it is a different question, and running `wine` to find out whether
+/// Wine is installed starts a wineserver on a machine that has one.
+fn wine_present() -> bool {
+    std::path::Path::new(arlen_wine_core::launch::WINE).is_file()
 }
 
 /// What this machine can do with a bottle.
 #[tauri::command]
 fn wine_runtime() -> Runtime {
     Runtime {
-        wine: on_path("wine"),
+        wine: wine_present(),
         // Named so the empty window can say where a bottle would GO. Every other
         // app on this image tells a person that: the calendar names the folder to
         // drop `.ics` files in, mail says a message comes from the file manager.
