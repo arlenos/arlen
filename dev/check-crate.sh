@@ -37,11 +37,19 @@ case "$mode" in
     # with no error line", and each time the reason was sitting in the raw log
     # while the run summary said nothing. A red nobody can read gets re-run
     # rather than fixed.
+    # STREAMED, not captured into a variable. A `$(...)` capture prints nothing
+    # until the command returns, so a step that is KILLED - out of memory, out of
+    # disk, a runner that goes away - leaves an empty log and the only evidence is
+    # the step's duration. That is what a red on `dev/integration` looked like on
+    # 20 August: four minutes, FAILURE, and nothing to read. `tee` gives the live
+    # log to whoever opens the run and keeps the copy this script needs.
+    log=$(mktemp)
     set +e
-    out=$(cargo check --all-targets --manifest-path "$manifest" 2>&1)
-    rc=$?
+    cargo check --all-targets --manifest-path "$manifest" 2>&1 | tee "$log"
+    rc=${PIPESTATUS[0]}
     set -e
-    printf '%s\n' "$out"
+    out=$(cat "$log")
+    rm -f "$log"
     if [ "$rc" -ne 0 ]; then
       if [ -n "${GITHUB_ACTIONS:-}" ]; then
         # cargo's own first error, or an honest admission that it exited without
@@ -72,11 +80,16 @@ case "$mode" in
     # So capture, stream, and on failure repeat WHAT failed at the end, where a
     # reader looks. Under GitHub Actions also emit an annotation, so the reason
     # reaches the run summary rather than only the raw log.
+    # Streamed for the reason the `check` arm above gives: a captured log is lost
+    # when the step is killed, and a compile that dies from memory or disk is
+    # exactly the failure that gets killed rather than reported.
+    log=$(mktemp)
     set +e
-    out=$(cargo test --manifest-path "$manifest" --no-fail-fast "${extra[@]}" 2>&1)
-    rc=$?
+    cargo test --manifest-path "$manifest" --no-fail-fast "${extra[@]}" 2>&1 | tee "$log"
+    rc=${PIPESTATUS[0]}
     set -e
-    printf '%s\n' "$out"
+    out=$(cat "$log")
+    rm -f "$log"
     if [ "$rc" -ne 0 ]; then
       echo
       echo "=== $crate: the failing targets, repeated because --no-fail-fast buries them ==="
