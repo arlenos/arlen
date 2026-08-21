@@ -18,7 +18,12 @@
     try {
       const s = await invoke<{ mode: string }>("get_layout_state");
       mode = s.mode;
-    } catch {}
+    } catch (e) {
+      // Keeps the last known mode rather than inventing one, which is right -
+      // but a poll that has been failing for an hour looks identical to a layout
+      // that has not changed, so it says so in the log.
+      invoke("log_frontend", { message: `[layout] mode could not be read: ${e}` }).catch(() => {});
+    }
   }
 
   poll();
