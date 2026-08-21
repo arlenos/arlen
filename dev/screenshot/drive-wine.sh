@@ -93,7 +93,29 @@ say "and the window offers to close it" \
 say "a bottle with no network says so" \
   "$(printf '%s' "$got" | grep -q "not allowed" && echo 1 || echo 0)" "$got"
 
-# 3. German, because a person reading this in German is reading about their own
+# 3. THE MIRROR CASE. A grant that is in the description and NOT in the prefix is
+# the other way for a bottle to lie: the window would list a folder the program
+# cannot actually see. Same fixture, one letter removed from `dosdevices`.
+missing="$fix/missing"
+mkdir -p "$missing/arlen/bottles/notepad" "$fix/prefix2/dosdevices" "$fix/prefix2/drive_c" "$fix/docs2"
+ln -sfn ../drive_c "$fix/prefix2/dosdevices/c:"
+cat > "$missing/arlen/bottles/notepad/bottle.toml" <<TOML
+id = "notepad"
+prefix_root = "$fix/prefix2"
+egress = "none"
+
+[[grants]]
+host = "$fix/docs2"
+access = "read_only"
+TOML
+
+got=$(SHOOT_APP_ENV="XDG_DATA_HOME=$missing" SHOOT_INJECT="$fix/probe.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/wine-missing-drive.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+say "a granted folder the prefix does not have is named too" \
+  "$(printf '%s' "$got" | grep -q "granted here and not in the prefix" && echo 1 || echo 0)" "$got"
+
+# 4. German, because a person reading this in German is reading about their own
 # disk and the words have to be theirs.
 cfg="$fix/config-de"
 mkdir -p "$cfg/arlen"
