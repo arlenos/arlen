@@ -33,6 +33,12 @@ const messages: Catalogs = {
     "wn.driveUnexpected": "{$letters} is in the prefix and was never granted. Something else wrote it, and it reaches wherever it points.",
     "wn.escaped": "Something in this bottle reaches out of it without a grant behind it: {$paths}",
     "wn.notBooted": "This bottle has no prefix yet, so nothing has been set up in it.",
+    "wn.repair": "Put this bottle back",
+    // Said on the button's own line, because "repair" invites the fear that it
+    // will throw away what is inside.
+    "wn.repairNote": "Closes the doors that were opened and restores the folder letters. Nothing inside the bottle is touched.",
+    "wn.repaired": "This bottle matches what it says again.",
+    "wn.repairFailed": "This bottle could not be put back: {$reason}",
   },
   de: {
     "wn.app.title": "Windows-Programme",
@@ -51,6 +57,10 @@ const messages: Catalogs = {
     "wn.driveUnexpected": "{$letters} steht im Prefix und wurde nie freigegeben. Etwas anderes hat es geschrieben, und es reicht dorthin, wohin es zeigt.",
     "wn.escaped": "Etwas in dieser Flasche reicht ohne Freigabe aus ihr heraus: {$paths}",
     "wn.notBooted": "Diese Flasche hat noch kein Prefix, es ist also nichts darin eingerichtet.",
+    "wn.repair": "Flasche zurücksetzen",
+    "wn.repairNote": "Schließt die geöffneten Türen und stellt die Ordnerbuchstaben wieder her. Am Inhalt der Flasche wird nichts angerührt.",
+    "wn.repaired": "Diese Flasche stimmt wieder mit dem überein, was sie sagt.",
+    "wn.repairFailed": "Diese Flasche war nicht zurückzusetzen: {$reason}",
   },
 };
 

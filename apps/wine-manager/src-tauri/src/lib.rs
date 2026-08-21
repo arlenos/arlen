@@ -179,12 +179,33 @@ fn wine_bottles() -> Result<BottleList, String> {
     })
 }
 
+/// Bring one bottle back to what its description says.
+///
+/// The window can already say a prefix disagrees; this is the answer to it. Only
+/// the doors change - the drive table and the links out - and nothing inside
+/// `drive_c` is touched, so a program's own files and settings survive a repair.
+/// Returns the reading taken afterwards rather than a success flag, because
+/// "what is it now" is the useful answer and "it worked" is not.
+#[tauri::command]
+fn wine_repair(id: String) -> Result<HealthView, String> {
+    let bottles = dir()?;
+    let bottle = arlen_wine_core::registry::load_bottle(&bottles, &id).map_err(|e| e.to_string())?;
+    let health = arlen_wine_core::health::repair_bottle(&bottle).map_err(|e| e.to_string())?;
+    Ok(HealthView {
+        agrees: health.agrees(),
+        missing: health.missing.iter().map(|c| format!("{c}:")).collect(),
+        unexpected: health.unexpected.iter().map(|c| format!("{c}:")).collect(),
+        escapes: health.escapes.iter().map(|p| p.display().to_string()).collect(),
+        booted: arlen_wine_core::health::is_booted(&bottle.prefix_root),
+    })
+}
+
 /// Start the window.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
-        .invoke_handler(tauri::generate_handler![wine_bottles, wine_runtime])
+        .invoke_handler(tauri::generate_handler![wine_bottles, wine_runtime, wine_repair])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
