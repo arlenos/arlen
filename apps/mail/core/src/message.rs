@@ -61,6 +61,18 @@ pub struct Message {
     pub refusal: Option<String>,
     /// Headers that are themselves a way out of the machine.
     pub channels: Vec<String>,
+    /// The scheme this message is sealed with, when it is sealed.
+    ///
+    /// A PGP or S/MIME message has no readable text part, so without this the
+    /// window said "this message has no text" over two attachments with names
+    /// like `encrypted.asc` - which describes an empty message rather than a
+    /// sealed one. Nothing here decrypts anything; this only says which kind of
+    /// seal is on it, so the surface can stop pretending it read the message.
+    ///
+    /// A SIGNED message is deliberately not in here: its text part is readable
+    /// and is read, and calling it unreadable would hide a message somebody can
+    /// have.
+    pub sealed: Option<Sealed>,
     /// The invitation the message carries, when it carries one.
     ///
     /// NAMED, NOT READ. A `text/calendar` part is an invitation, a cancellation
@@ -80,6 +92,19 @@ pub struct Message {
     /// surface simply did not mention. Nothing is extracted and nothing is
     /// written to disk by reading this.
     pub attachments: Vec<Attachment>,
+}
+
+/// How a message is sealed, as the message describes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sealed {
+    /// PGP/MIME: a `multipart/encrypted` whose protocol names PGP.
+    Pgp,
+    /// S/MIME: an `application/pkcs7-mime` enveloped part.
+    Smime,
+    /// A `multipart/encrypted` whose protocol is something else, or absent. Named
+    /// rather than guessed at: the message says it is sealed and does not say
+    /// with what this reader recognises.
+    Unknown,
 }
 
 /// A calendar part, as the message describes it.
@@ -183,6 +208,28 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
     // first: a message can carry a plain body, an HTML body and an invitation,
     // and an invitation is often not flagged as an attachment, so the attachment
     // list above does not necessarily mention it.
+    // SEALED, not empty. Checked over every part rather than the top level alone,
+    // because an S/MIME message carries its envelope as the body part and a
+    // PGP/MIME one declares it on the message itself.
+    let sealed = parsed.parts.iter().find_map(|part| {
+        let ct = part.content_type()?;
+        let ctype = ct.ctype();
+        let subtype = ct.subtype().unwrap_or_default();
+        if ctype.eq_ignore_ascii_case("multipart") && subtype.eq_ignore_ascii_case("encrypted") {
+            let protocol = ct.attribute("protocol").unwrap_or_default().to_ascii_lowercase();
+            return Some(if protocol.contains("pgp") { Sealed::Pgp } else { Sealed::Unknown });
+        }
+        if ctype.eq_ignore_ascii_case("application")
+            && subtype.eq_ignore_ascii_case("pkcs7-mime")
+        {
+            // `signed-data` is a signature wrapper, not a seal a reader must give
+            // up on - but its content is still not text this app can show, so it
+            // is named too rather than left as an empty message.
+            return Some(Sealed::Smime);
+        }
+        None
+    });
+
     let calendar_part = parsed.parts.iter().position(|part| {
         part.content_type().is_some_and(|ct| {
             ct.ctype().eq_ignore_ascii_case("text")
@@ -244,6 +291,7 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
         has_html: html.is_some(),
         only_in_text,
         only_in_html,
+        sealed,
         invitation,
         refusal: headers.refusal(),
         channels: exfiltration::header_channels(&raw_headers)
@@ -520,6 +568,42 @@ Content-Disposition: attachment; filename=menu.pdf\r\n\r\n%PDF-1.4\r\n--b--\r\n"
         assert!(m.invitation.is_some());
         assert_eq!(m.attachments.len(), 1);
         assert_eq!(m.attachments[0].name.as_deref(), Some("menu.pdf"));
+    }
+
+    #[test]
+    fn a_pgp_message_is_named_as_sealed_rather_than_empty() {
+        let raw = b"From: ada@example.org\r\nSubject: Secret\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=b\r\n\r\n\
+--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n\
+--b\r\nContent-Type: application/octet-stream; name=encrypted.asc\r\n\r\n\
+-----BEGIN PGP MESSAGE-----\r\n-----END PGP MESSAGE-----\r\n--b--\r\n";
+        let m = read(raw).unwrap();
+        assert_eq!(m.sealed, Some(Sealed::Pgp));
+        // The point of the field: the text really is absent, and without the
+        // seal the window would report an empty message.
+        assert!(m.text.is_none());
+    }
+
+    #[test]
+    fn an_smime_envelope_is_named_too() {
+        let raw = b"From: a@b\r\nMIME-Version: 1.0\r\n\
+Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name=smime.p7m\r\n\
+Content-Transfer-Encoding: base64\r\n\r\nMIAGCSqGSIb3DQEHA6CA\r\n";
+        assert_eq!(read(raw).unwrap().sealed, Some(Sealed::Smime));
+    }
+
+    #[test]
+    fn a_signed_message_is_not_called_sealed() {
+        // Its text is readable and IS read. Calling this unreadable would hide a
+        // message somebody can have, which is the opposite mistake.
+        let raw = b"From: a@b\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/signed; protocol=\"application/pgp-signature\"; boundary=b\r\n\r\n\
+--b\r\nContent-Type: text/plain\r\n\r\nHello, this is readable.\r\n\
+--b\r\nContent-Type: application/pgp-signature\r\n\r\n\
+-----BEGIN PGP SIGNATURE-----\r\n--b--\r\n";
+        let m = read(raw).unwrap();
+        assert_eq!(m.sealed, None);
+        assert_eq!(m.text.as_deref(), Some("Hello, this is readable."));
     }
 
     #[test]

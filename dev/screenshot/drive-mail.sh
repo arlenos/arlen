@@ -167,6 +167,32 @@ say "the invitation is not listed a second time as an unnamed file" \
 say "the method is not printed raw at the reader" \
   "$(printf '%s' "$inv" | grep -q "REQUEST" && echo 0 || echo 1)" "$inv"
 
+# A SEALED MESSAGE. PGP and S/MIME messages have no readable text part, so the
+# window said "this message has no text part" over two attachments named things
+# like `encrypted.asc` - which describes an empty message rather than a sealed
+# one. Nothing here decrypts anything; the point is that it stops implying it
+# read the message.
+: > "$fix/sealed.eml"
+{
+  printf 'From: ada@example.org\r\n'
+  printf 'Subject: Secret\r\n'
+  printf 'MIME-Version: 1.0\r\n'
+  printf 'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary=b\r\n\r\n'
+  printf -- '--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n'
+  printf -- '--b\r\nContent-Type: application/octet-stream; name=encrypted.asc\r\n\r\n'
+  printf -- '-----BEGIN PGP MESSAGE-----\r\n-----END PGP MESSAGE-----\r\n'
+  printf -- '--b--\r\n'
+} >> "$fix/sealed.eml"
+
+sealed=$(SHOOT_APP_ARGS="$fix/sealed.eml" SHOOT_INJECT="$fix/probe.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-sealed.png" 2>&1 | sed -n 's/^inject result: //p')
+
+say "an encrypted message says it is encrypted" \
+  "$(printf '%s' "$sealed" | grep -q "encrypted with PGP" && echo 1 || echo 0)" "$sealed"
+
+say "and does not report itself as a message with no text" \
+  "$(printf '%s' "$sealed" | grep -q "no text part" && echo 0 || echo 1)" "$sealed"
+
 amb=$(SHOOT_APP_ARGS="$fix/ambiguous.eml" SHOOT_INJECT="$fix/probe.js" \
   "$here/shoot-app.sh" "$app" "$here/out/mail-ambiguous.png" 2>&1 | sed -n 's/^inject result: //p')
 

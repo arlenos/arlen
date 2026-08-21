@@ -18,6 +18,9 @@ const messages: Catalogs = {
     "ml.cc": "Copied",
     "ml.unsigned": "as written by the sender, not verified",
     "ml.noText": "This message has no plain-text part.",
+    "ml.sealed.pgp": "This message is encrypted with PGP. Nothing here can open it, so there is nothing to show.",
+    "ml.sealed.smime": "This message is sealed with S/MIME. Nothing here can open it, so there is nothing to show.",
+    "ml.sealed.unknown": "This message says it is encrypted, in a way this app does not recognise, so there is nothing to show.",
     // Not a missing feature, and the sentence says which. See the module note in
     // the app's lib.rs: containing the renderer does not stop the message
     // calling home, so nothing renders it yet.
@@ -62,6 +65,9 @@ const messages: Catalogs = {
     "ml.cc": "Kopie",
     "ml.unsigned": "so geschrieben von der absendenden Seite, nicht geprüft",
     "ml.noText": "Diese Nachricht hat keinen reinen Textteil.",
+    "ml.sealed.pgp": "Diese Nachricht ist mit PGP verschlüsselt. Hier kann sie nichts öffnen, es gibt also nichts zu zeigen.",
+    "ml.sealed.smime": "Diese Nachricht ist mit S/MIME versiegelt. Hier kann sie nichts öffnen, es gibt also nichts zu zeigen.",
+    "ml.sealed.unknown": "Diese Nachricht sagt, sie sei verschlüsselt, auf eine Art, die diese App nicht kennt. Es gibt also nichts zu zeigen.",
     "ml.htmlNotShown": "Diese Nachricht hat auch einen HTML-Teil. Er wird nicht gezeigt: ihn sicher darzustellen ist noch nicht gebaut, und ihn unsicher zu zeigen würde der Nachricht erlauben zu melden, dass du sie gelesen hast.",
     "ml.divergenceBoth": "Der Textteil und der formatierte Teil dieser Nachricht unterscheiden sich. Nur im Text: {$text}. Nur in der Formatierung: {$html}.",
     "ml.divergenceText": "Der Textteil sagt Dinge, die der formatierte Teil nicht sagt: {$text}.",
