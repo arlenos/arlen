@@ -76,7 +76,6 @@ NOT_ON_IMAGE: dict[str, str] = {
         "entry by nature. It still belongs in `/usr/bin` if the trash flow is meant to work "
         "from a shell, which is a separate question from this check"
     ),
-    "wine-manager": "an empty placeholder: the directory holds a .gitignore and nothing else",
 }
 
 INSTALLS_APP = re.compile(r"\$DESTDIR/usr/lib/arlen/apps/")
@@ -118,8 +117,9 @@ def main() -> int:
         return 1
 
     apps = {d.name for d in APPS.iterdir() if is_app(d)}
-    # wine-manager holds only a .gitignore, so `is_app` says no - but it is named in
-    # NOT_ON_IMAGE and that entry should not rot silently either.
+    # A directory named in NOT_ON_IMAGE may hold nothing `is_app` recognises yet
+    # (wine-manager was a lone .gitignore until 21 August), and that entry should
+    # not rot silently either.
     apps |= {name for name in NOT_ON_IMAGE if (APPS / name).is_dir()}
     if not apps:
         print("no apps found; the layout moved and this check did not")

@@ -1,0 +1,65 @@
+# The bottle window's profile, under the uid it applies to, like every other app.
+#
+# NARROW ON PURPOSE, and narrower than the app will end up being. Today this
+# window READS: it lists the bottles and says what each one may reach. Making a
+# bottle, launching a program in one and revoking a grant all exist in
+# `arlen-wine-core` and are exercised by examples, and none of them is wired to a
+# command here yet. The grants below cover what the code does, not what the plan
+# describes - a profile written against a feature that has not landed is a grant
+# nobody can point at a caller for.
+#
+# Each grant below was read out of the source, not assumed:
+#
+#   custom = the bottles dir    `dir()` (src-tauri/src/lib.rs) resolves
+#                               `$XDG_DATA_HOME/arlen/bottles`, falling back to
+#                               `~/.local/share`, and `wine_bottles` reads the
+#                               `bottle.toml` in each subdirectory. That one
+#                               directory is the whole filesystem surface of the
+#                               window as it stands.
+#
+# WHAT IS DELIBERATELY ABSENT, and what it will cost when the rest lands:
+#
+# NO home grant. The window shows the granted paths as text and never opens one.
+# Picking a folder to grant is a portal job when it arrives, not a home bind.
+#
+# NO network. Nothing here reaches out. A bottle's own egress is a property of
+# the bottle and is enforced by the launcher around the Windows program, not by
+# this window.
+#
+# NO `[graph]`. Which bottle exists and what it may reach is recorded in
+# `bottle.toml`, not in the knowledge graph. Whether a capability browser should
+# see bottles through the graph instead is a design question in
+# `living-capability-graph.md`, and answering it with a grant here in advance
+# would be answering it silently.
+#
+# NOT YET GRANTED, and named so the gap is visible rather than discovered: making
+# a bottle spawns `wineboot`, and launching one spawns `bwrap` around `wine`.
+# Both are absent from the image (`runtime-deps.tsv` says so), and neither is
+# called from this process yet. When the daemon that does it exists, its grants
+# are decided against that code.
+[info]
+app_id = "dev.arlen.wine-manager"
+tier = "first-party"
+
+[filesystem]
+custom = [
+    "$HOME/.local/share/arlen/bottles",
+]
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# NOTHING IS PUBLISHED: there is no emitter in this app.
+#
+# The subscribe list is not this app's own code: `sdk/tauri-plugin-shell`
+# subscribes these three from inside every Tauri process, and declaring any
+# subscribe list drops the system-tier exemption - so omitting them would
+# silently switch off the topbar menu, the toolbar and the shortcuts while the
+# subscribe still returns Ok.
+[event_bus]
+publish = []
+subscribe = [
+    "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]
