@@ -1115,13 +1115,19 @@ pub fn set_notification_input_region(app: tauri::AppHandle, expanded: bool) {
 #[tauri::command]
 pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
     let was = POPOVER_ACTIVE.swap(expanded, Ordering::SeqCst);
-    if was == expanded {
-        return;
-    }
+    // Logged BEFORE the no-op return, and that is the whole point of the line.
+    // With the log after it, a call that changed nothing left no trace at all,
+    // so a boot log could not distinguish "the frontend never asked" from "the
+    // frontend asked for a state it was already in". On 21 August I read an
+    // absent line as proof that a top-bar click never reached its handler and
+    // spent two rounds on the wrong half of the system.
     log::info!(
         "set_popover_input_region: expanded={} (was {})",
         expanded, was,
     );
+    if was == expanded {
+        return;
+    }
     update_input_region(&app);
 }
 
