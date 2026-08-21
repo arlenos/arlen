@@ -26,9 +26,12 @@ use std::path::{Path, PathBuf};
 use arlen_forage_build::{execute_plan, plan_build, BuildContext, BuildError, StepRunner};
 use arlen_forage_extract::{extract_tar, ExtractError, ExtractLimits};
 use arlen_forage_patch::{apply_patches, PatchError, PatchLimits};
-use arlen_forage_fetch::{fetch_source, Downloader, FetchError, GitFetcher, ReleaseResolver};
+use arlen_forage_fetch::{
+    fetch_screenshot, fetch_source, Downloader, FetchError, GitFetcher, ReleaseResolver,
+};
 use arlen_forage_package::{
-    collect_artifacts, find_upstream_metainfo, synthesize_manifest, write_lunpkg, write_metainfo,
+    collect_artifacts, find_upstream_metainfo, screenshot_verdicts, synthesize_manifest,
+    write_lunpkg, write_metainfo, ScreenshotVerdict,
     Collection, ManifestError, PackageError, WriteError,
 };
 use arlen_forage_recipe::{Recipe, Source, SourceType, CATALOG_ORIGIN};
@@ -206,8 +209,22 @@ pub async fn build_recipe(
     //    one carries only what a recipe declares. Best-effort - a package that
     //    cannot be described is still a package worth installing, so a failure
     //    here costs the store row and not the build.
-    if let Err(e) = describe_package(staging.path(), build_dir.path(), recipe) {
-        eprintln!("forage: could not write the AppStream component: {e}");
+    match describe_package(staging.path(), build_dir.path(), recipe) {
+        Ok(metainfo) => {
+            // 5a-ii. Bring the package's own pictures with it. `coder-jobs.md` 1e:
+            //        whatever caches a build caches that build's images too, so an
+            //        official package arrives with its screenshots the way it
+            //        arrives with its binary and a person on a fresh boot with no
+            //        network sees pictures rather than three blank frames. Only
+            //        from a host the recipe already made you talk to; a third
+            //        party's image stays a URL. Best-effort throughout: a picture
+            //        that will not fetch costs the local copy, not the build.
+            if let Err(e) = mirror_screenshots(&metainfo, staging.path(), recipe, downloader).await
+            {
+                eprintln!("forage: could not cache this package's screenshots: {e}");
+            }
+        }
+        Err(e) => eprintln!("forage: could not write the AppStream component: {e}"),
     }
 
     // 5b. Compose the package's own AppStream catalogue, so the store has the
@@ -308,6 +325,71 @@ fn compose_catalogue(staging_root: &Path) -> Result<(), PipelineError> {
     Ok(())
 }
 
+/// Fetch the screenshots this package is allowed to bring with it, and point the
+/// component at the local copies.
+///
+/// Runs over the metainfo document on disk rather than over the recipe, so it
+/// covers both ways a component gets there: the synthesized one from a recipe's
+/// `[metadata]`, and upstream's own document when the source ships one. Those are
+/// the same problem once the file is written, and handling them apart would mean
+/// the richer of the two - upstream's, the one with real screenshots - was the one
+/// left out.
+///
+/// The rewrite is a replacement of the exact URL text. The document is one this
+/// pipeline just wrote or copied, the URL was read out of it, and an image element
+/// carries nothing else that could match, so there is no parse to get wrong.
+async fn mirror_screenshots(
+    metainfo: &Path,
+    staging_root: &Path,
+    recipe: &Recipe,
+    downloader: &dyn Downloader,
+) -> std::io::Result<()> {
+    let mut text = std::fs::read_to_string(metainfo)?;
+    let urls = image_urls(&text);
+    if urls.is_empty() {
+        return Ok(());
+    }
+    let sources: Vec<String> = recipe.source.iter().filter_map(|s| s.url.clone()).collect();
+    let dir = staging_root.join("share/swcatalog/screenshots");
+    for verdict in screenshot_verdicts(&sources, &urls) {
+        let ScreenshotVerdict::Fetch(url) = verdict else {
+            continue;
+        };
+        match fetch_screenshot(&url, downloader).await {
+            Ok(image) => {
+                std::fs::create_dir_all(&dir)?;
+                std::fs::write(dir.join(&image.file_name), &image.bytes)?;
+                // Relative, because the package does not know where it will be
+                // installed; whoever reads the catalogue knows the root and
+                // resolves it. Checked against appstreamcli 1.1.5: compose carries
+                // a non-URL `<image>` through unchanged.
+                text = text.replace(&url, &image.file_name);
+            }
+            Err(e) => eprintln!("forage: {url} stays a remote screenshot: {e}"),
+        }
+    }
+    std::fs::write(metainfo, text)?;
+    Ok(())
+}
+
+/// Every `<image>` body in a metainfo document, in order.
+fn image_urls(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("<image") {
+        rest = &rest[start..];
+        let Some(open_end) = rest.find('>') else { break };
+        let body = &rest[open_end + 1..];
+        let Some(close) = body.find("</image>") else { break };
+        let url = body[..close].trim();
+        if !url.is_empty() && !out.iter().any(|u| u == url) {
+            out.push(url.to_string());
+        }
+        rest = &body[close..];
+    }
+    out
+}
+
 /// Drop ANSI colour escapes, so a hint line reads in a log file.
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -404,6 +486,88 @@ mod tests {
     use super::*;
     use arlen_forage_build::BuildCommand;
     use async_trait::async_trait;
+
+    #[test]
+    fn every_image_body_is_found_once_and_in_order() {
+        let doc = r#"<screenshots>
+      <screenshot type="default"><image>https://a.example/1.png</image></screenshot>
+      <screenshot><image width="800" height="600">https://a.example/2.png</image></screenshot>
+      <screenshot><image>https://a.example/1.png</image></screenshot>
+    </screenshots>"#;
+        assert_eq!(
+            image_urls(doc),
+            ["https://a.example/1.png", "https://a.example/2.png"],
+            "the same picture listed twice is one fetch",
+        );
+    }
+
+    #[test]
+    fn a_document_with_no_screenshots_yields_nothing() {
+        assert!(image_urls("<component><id>x</id></component>").is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_source_hosts_picture_is_cached_and_a_strangers_is_left_alone() {
+        let staging = tempfile::tempdir().unwrap();
+        let dir = staging.path().join("share/metainfo");
+        std::fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("org.example.demo.metainfo.xml");
+        std::fs::write(
+            &doc,
+            r#"<component><id>org.example.demo</id><screenshots>
+      <screenshot type="default"><image>https://downloads.example.org/a.png</image></screenshot>
+      <screenshot><image>https://cdn.stranger.net/b.png</image></screenshot>
+    </screenshots></component>"#,
+        )
+        .unwrap();
+
+        let recipe = arlen_forage_recipe::parse(
+            r#"
+[recipe]
+id = "org.example.demo"
+name = "Demo"
+maintainer = "key1"
+
+[[source]]
+type = "tarball"
+url = "https://downloads.example.org/demo-1.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+"#,
+        )
+        .unwrap();
+
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        png.extend_from_slice(b"pixels");
+        mirror_screenshots(&doc, staging.path(), &recipe, &FixedBody(png))
+            .await
+            .unwrap();
+
+        let text = std::fs::read_to_string(&doc).unwrap();
+        assert!(
+            !text.contains("https://downloads.example.org/a.png"),
+            "the source host's picture is now a local name: {text}"
+        );
+        assert!(
+            text.contains("https://cdn.stranger.net/b.png"),
+            "and a stranger's is left exactly as it was: {text}"
+        );
+        let shots: Vec<_> = std::fs::read_dir(staging.path().join("share/swcatalog/screenshots"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(shots.len(), 1, "one picture fetched, not two: {shots:?}");
+        assert!(text.contains(&shots[0]), "and the document names it: {text}");
+    }
+
+    /// Serves the same body whatever is asked for.
+    struct FixedBody(Vec<u8>);
+
+    #[async_trait::async_trait]
+    impl Downloader for FixedBody {
+        async fn get(&self, _url: &str, _max: u64) -> Result<Vec<u8>, FetchError> {
+            Ok(self.0.clone())
+        }
+    }
 
     /// A downloader that returns a fixed tar archive (a source tree).
     struct CannedDownloader(Vec<u8>);
