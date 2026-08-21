@@ -55,7 +55,16 @@ fn main() {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                // Not the errno. Wine is absent from the image by record, so "no
+                // such file" is the ordinary answer here and it names a file
+                // nobody asked about rather than the thing that cannot happen.
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "no bottle can be made: wine is not installed on this machine".to_string()
+                } else {
+                    format!("no bottle can be made: wineboot could not be run ({e})")
+                }
+            })?;
         if !status.success() {
             return Err(format!("wineboot exited with {status}"));
         }
