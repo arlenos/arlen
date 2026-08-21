@@ -24,6 +24,9 @@
     kind: string;
     tzid: string | null;
     repeats: boolean;
+    every: string | null;
+    every_n: number;
+    on_days: string[];
     expanded: boolean;
   };
   type Agenda = {
@@ -105,6 +108,42 @@
       day: "numeric",
       month: "long",
     }).format(new Date(y, m - 1, d));
+  }
+
+  /// What the repeat chip says.
+  ///
+  /// "Repeats" alone was true of a standup every weekday and of a birthday every
+  /// year, which is the same as saying nothing. The event carries the frequency,
+  /// the interval and the weekdays as keys, and the sentence is written here so
+  /// it is written in the reader's language.
+  ///
+  /// A rule the calendar refuses carries no frequency, and then the chip goes
+  /// back to the bare word: better vague than wrong about somebody's week.
+  const DAY_KEY: Record<string, string> = {
+    mon: "cal.dayMon",
+    tue: "cal.dayTue",
+    wed: "cal.dayWed",
+    thu: "cal.dayThu",
+    fri: "cal.dayFri",
+    sat: "cal.daySat",
+    sun: "cal.daySun",
+  };
+  const EVERY_KEY: Record<string, string> = {
+    daily: "cal.everyDaily",
+    weekly: "cal.everyWeekly",
+    monthly: "cal.everyMonthly",
+    yearly: "cal.everyYearly",
+  };
+
+  function repeatLabel(e: { every: string | null; every_n: number; on_days: string[] }): string {
+    const key = e.every ? EVERY_KEY[e.every] : undefined;
+    if (!key) return $t("cal.repeats");
+    const every = $t(key, { n: e.every_n });
+    if (e.on_days.length === 0) return every;
+    const days = e.on_days
+      .map((d) => (DAY_KEY[d] ? $t(DAY_KEY[d]) : d))
+      .join(", ");
+    return $t("cal.onDays", { every, days });
   }
 </script>
 
@@ -190,7 +229,7 @@
                       class="repeat"
                       title={e.expanded ? $t("cal.repeatsShown") : $t("cal.repeatsUnexpanded")}
                     >
-                      <Repeat size={12} strokeWidth={2} />{$t("cal.repeats")}
+                      <Repeat size={12} strokeWidth={2} />{repeatLabel(e)}
                     </span>
                   {/if}
                 </span>

@@ -263,7 +263,8 @@ got=$(XDG_DATA_HOME="$fix" XDG_CONFIG_HOME="$cfg" SHOOT_INJECT="$fix/p-agenda.js
 say "the German build says the German words, dates included" \
   "$(printf '%s' "$got" | grep -q "Mittwoch, 19. August" \
      && printf '%s' "$got" | grep -q "Ganztägig" \
-     && printf '%s' "$got" | grep -q "Wiederholt sich" && echo 1 || echo 0)" "$got"
+     && printf '%s' "$got" | grep -q "Jede Woche" \
+     && printf '%s' "$got" | grep -q "Mo, Di, Mi, Do, Fr" && echo 1 || echo 0)" "$got"
 # The titles come from the FILE and stay as written: translating someone's own
 # event would be a worse bug than leaving it.
 say "and leaves the events' own titles alone" \
