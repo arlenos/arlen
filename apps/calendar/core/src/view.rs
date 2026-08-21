@@ -16,7 +16,7 @@
 //! different zones against each other needs the zone database and is its own
 //! step; doing it by string comparison would be a guess dressed as an answer.
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Weekday};
 use serde::{Deserialize, Serialize};
 
 use crate::{rrule, CalTime, Event};
@@ -63,6 +63,20 @@ pub struct AgendaEvent {
     pub tzid: Option<String>,
     /// True when the event carries an RRULE.
     pub repeats: bool,
+    /// How often it repeats, when the rule is one this understands: `daily`,
+    /// `weekly`, `monthly` or `yearly`. Absent when the event does not repeat or
+    /// when its rule is refused.
+    ///
+    /// DATA, not a sentence, for the same reason mail's divergence notice is:
+    /// "Repeats" alone told a reader nothing they could act on - a standup every
+    /// weekday and a birthday every year both said it - and the sentence that
+    /// makes it useful has to be written in their language, not in Rust.
+    pub every: Option<String>,
+    /// The `INTERVAL` of that rule: every 1 week, every 2 weeks. 1 unless the
+    /// file says otherwise.
+    pub every_n: u32,
+    /// The weekdays a weekly rule fires on, as `mon`..`sun`, when it names any.
+    pub on_days: Vec<String>,
     /// True when THIS row is one the calendar worked out from the rule. False on
     /// a repeating event whose rule `rrule` refuses - that row is the one date
     /// the file names, and the surface has to say so rather than implying the
@@ -134,10 +148,39 @@ pub fn occurrences(e: &Event, today: NaiveDate) -> Vec<NaiveDate> {
     }
 }
 
+/// The stable key for a frequency, for a surface to translate.
+fn freq_key(f: rrule::Freq) -> &'static str {
+    match f {
+        rrule::Freq::Daily => "daily",
+        rrule::Freq::Weekly => "weekly",
+        rrule::Freq::Monthly => "monthly",
+        rrule::Freq::Yearly => "yearly",
+    }
+}
+
+/// The stable key for a weekday. Not a name: a name is the surface's job and
+/// depends on the reader's language.
+fn weekday_key(d: Weekday) -> &'static str {
+    match d {
+        Weekday::Mon => "mon",
+        Weekday::Tue => "tue",
+        Weekday::Wed => "wed",
+        Weekday::Thu => "thu",
+        Weekday::Fri => "fri",
+        Weekday::Sat => "sat",
+        Weekday::Sun => "sun",
+    }
+}
+
 /// One event as the row for `on`.
 #[must_use]
 pub fn flatten(e: &Event, on: NaiveDate, expanded: bool) -> AgendaEvent {
     let (kind, tzid) = kind_of(&e.start);
+    // Parsed here rather than carried from `rows`, because a row is also built
+    // for an event whose rule `rrule` refuses - and a refused rule must leave
+    // these fields empty rather than guessed at, which `parse_rule` does by
+    // returning `None`.
+    let rule = e.rrule.as_deref().and_then(rrule::parse_rule);
     AgendaEvent {
         uid: e.uid.clone(),
         summary: e.summary.clone(),
@@ -152,6 +195,12 @@ pub fn flatten(e: &Event, on: NaiveDate, expanded: bool) -> AgendaEvent {
         kind: kind.to_string(),
         tzid,
         repeats: e.repeats(),
+        every: rule.as_ref().map(|r| freq_key(r.freq).to_string()),
+        every_n: rule.as_ref().map_or(1, |r| r.interval),
+        on_days: rule
+            .as_ref()
+            .map(|r| r.by_day.iter().map(|d| weekday_key(*d).to_string()).collect())
+            .unwrap_or_default(),
         expanded,
     }
 }
@@ -178,6 +227,45 @@ pub fn rows(events: &[Event], today: NaiveDate) -> Vec<AgendaEvent> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A weekday standup says which days, not merely that it repeats.
+    #[test]
+    fn a_weekly_rule_names_its_days() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:s@x\r\nSUMMARY:Standup\r\n\
+DTSTART;TZID=Europe/Vienna:20260819T090000\r\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE\r\n\
+END:VEVENT\r\nEND:VCALENDAR";
+        let events = parse_events(ics).expect("parses");
+        let rows = rows(&events, day(2026, 8, 19));
+        assert_eq!(rows[0].every.as_deref(), Some("weekly"));
+        assert_eq!(rows[0].every_n, 1);
+        assert_eq!(rows[0].on_days, vec!["mon".to_string(), "wed".to_string()]);
+    }
+
+    /// An interval survives to the surface, because "every 2 weeks" and "weekly"
+    /// are different facts about somebody's month.
+    #[test]
+    fn an_interval_reaches_the_row() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r@x\r\nSUMMARY:Retro\r\n\
+DTSTART:20260819T090000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=2\r\nEND:VEVENT\r\n\
+END:VCALENDAR";
+        let events = parse_events(ics).expect("parses");
+        let rows = rows(&events, day(2026, 8, 19));
+        assert_eq!(rows[0].every_n, 2);
+        assert!(rows[0].on_days.is_empty(), "the rule names no days");
+    }
+
+    /// A rule this cannot work out leaves the fields EMPTY rather than guessed.
+    #[test]
+    fn a_refused_rule_says_nothing_about_how_often() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:o@x\r\nSUMMARY:Board\r\n\
+DTSTART:20260819T090000Z\r\nRRULE:FREQ=MONTHLY;BYDAY=WE;BYSETPOS=3\r\nEND:VEVENT\r\n\
+END:VCALENDAR";
+        let events = parse_events(ics).expect("parses");
+        let rows = rows(&events, day(2026, 8, 19));
+        assert!(rows[0].repeats, "it does repeat");
+        assert_eq!(rows[0].every, None, "but how often is not known");
+    }
+
     use super::*;
     use crate::parse_events;
 
