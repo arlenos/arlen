@@ -23,6 +23,19 @@ function tree(src) {
   const root = mkdtempSync(join(tmpdir(), "spawned-"));
   mkdirSync(join(root, "apps/thing/src"), { recursive: true });
   writeFileSync(join(root, "apps/thing/src/lib.rs"), src);
+  // The classification is READ from here now rather than kept in the check, so a
+  // fixture has to carry one. Two rows are enough for every case below: one the
+  // image has and one it does not.
+  mkdirSync(join(root, "dev/scripts"), { recursive: true });
+  writeFileSync(
+    join(root, "dev/scripts/runtime-deps.tsv"),
+    [
+      "# tool\tpackage\tcomponent\tstate\tnote",
+      "systemctl\tsystemd\tshell\tbase\tstarting and stopping units",
+      "sh\tdash\tshell\tbase\trunning a desktop entry's Exec",
+      "nmcli\tnetwork-manager\tshell\tabsent\tthe whole network popover",
+    ].join("\n") + "\n",
+  );
   return root;
 }
 
