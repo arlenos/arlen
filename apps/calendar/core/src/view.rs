@@ -140,12 +140,17 @@ pub fn occurrences(e: &Event, today: NaiveDate) -> Vec<NaiveDate> {
     };
     let from = today - chrono::Duration::days(REPEAT_BACK_DAYS);
     let to = today + chrono::Duration::days(REPEAT_AHEAD_DAYS);
-    match rrule::expand(rule, start, from, to) {
+    let dates = match rrule::expand(rule, start, from, to) {
         Some(dates) if !dates.is_empty() => dates,
         // Refused, or a series that has ended before the window: the event is
         // still real and still says it repeats.
         _ => vec![start],
-    }
+    };
+    // The file's own corrections. An EXDATE is the calendar saying "not that
+    // week", and an agenda that draws it anyway is showing a meeting somebody
+    // cancelled. Applied to the refused case too: the one date shown there is
+    // the date the file names, and the same file may have called it off.
+    dates.into_iter().filter(|d| !e.exdates.contains(d)).collect()
 }
 
 /// The stable key for a frequency, for a surface to translate.
@@ -227,6 +232,31 @@ pub fn rows(events: &[Event], today: NaiveDate) -> Vec<AgendaEvent> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The week somebody called off is not on the agenda.
+    #[test]
+    fn an_excluded_date_is_left_out_of_the_series() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:s@x\r\nSUMMARY:Standup\r\n\
+DTSTART:20260819T090000Z\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\nEXDATE:20260826T090000Z\r\n\
+END:VEVENT\r\nEND:VCALENDAR";
+        let events = parse_events(ics).expect("parses");
+        let rows = rows(&events, day(2026, 8, 19));
+        let dates: Vec<&str> = rows.iter().map(|r| r.date.as_str()).collect();
+        assert!(dates.contains(&"2026-08-19"), "the first is still there");
+        assert!(!dates.contains(&"2026-08-26"), "the excluded week is not");
+        assert!(dates.contains(&"2026-09-02"), "and the series carries on after it");
+    }
+
+    /// Several dates on one line, which is how a file usually writes them.
+    #[test]
+    fn a_list_of_excluded_dates_is_read_whole() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:s@x\r\nSUMMARY:Standup\r\n\
+DTSTART;VALUE=DATE:20260819\r\nRRULE:FREQ=DAILY;COUNT=4\r\n\
+EXDATE;VALUE=DATE:20260820,20260821\r\nEND:VEVENT\r\nEND:VCALENDAR";
+        let rows = rows(&parse_events(ics).expect("parses"), day(2026, 8, 19));
+        let dates: Vec<&str> = rows.iter().map(|r| r.date.as_str()).collect();
+        assert_eq!(dates, vec!["2026-08-19", "2026-08-22"]);
+    }
 
     /// A weekday standup says which days, not merely that it repeats.
     #[test]

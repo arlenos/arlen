@@ -105,6 +105,26 @@ END:VEVENT
 END:VCALENDAR
 ICS
 
+# A WEEK SOMEBODY CALLED OFF. The rule expands correctly and the file then says
+# "not that one" with an EXDATE; until 21 August that line was dropped on the
+# floor and the agenda showed a meeting that had been cancelled. Dated from today
+# so both the kept and the excluded week are inside the window.
+skip=$(date -d "+7 days" +%Y%m%d 2>/dev/null || date -v+7d +%Y%m%d)
+keep=$(date -d "+14 days" +%Y%m%d 2>/dev/null || date -v+14d +%Y%m%d)
+cat > "$fix/arlen/calendars/cancelled.ics" <<ICS
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Arlen//drive//EN
+BEGIN:VEVENT
+UID:offweek@drive
+DTSTART:${today}T150000Z
+RRULE:FREQ=WEEKLY;COUNT=3
+EXDATE:${skip}T150000Z
+SUMMARY:A meeting with one week called off
+END:VEVENT
+END:VCALENDAR
+ICS
+
 say() {  # say <name> <ok> <got>
   local name="$1" ok="$2" got="$3"
   if [ "$ok" = 1 ]; then echo "  ok   $name"; else echo "  FAIL $name"; echo "       $got"; fail=1; fi
@@ -141,6 +161,20 @@ say "today is marked as today" \
 say "a repetition the calendar cannot work out says so in the row" \
   "$(printf '%s' "$got" | grep -q "A rule this calendar does not model" \
      && printf '%s' "$got" | grep -q "only this date" && echo 1 || echo 0)" "$got"
+
+# Its own probe, with no slice. The count below is over the WHOLE agenda and the
+# 1200-character reader above already cut three cases off once; asserting a count
+# against a truncated string measures the slice, not the app.
+cat > "$fix/p-all.js" <<'JS'
+await new Promise(r => setTimeout(r, 1200));
+return (document.body.innerText || "").replace(/\s+/g, " ").trim();
+JS
+all=$(drive "$fix/p-all.js" "$fix" calendar-exdate.png)
+
+# Three weekly occurrences, one called off: the title must appear exactly twice.
+say "a week the file calls off is not on the agenda" \
+  "$(printf '%s' "$all" | grep -o "A meeting with one week called off" | wc -l | grep -qx 2 \
+     && echo 1 || echo 0)" "$(printf '%s' "$all" | grep -o "A meeting with one week called off" | wc -l) occurrence(s)"
 
 say "the events in the file are shown, grouped under their own day" \
   "$(printf '%s' "$got" | grep -q "Wednesday, August 19" \

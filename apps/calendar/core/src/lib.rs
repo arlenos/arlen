@@ -83,6 +83,18 @@ pub struct Event {
     /// The `RRULE` line verbatim, when the event repeats. NOT expanded: see the
     /// module note.
     pub rrule: Option<String>,
+    /// The dates the file EXCLUDES from the series, from its `EXDATE` lines.
+    ///
+    /// The date only, whatever form the file wrote: a cancelled occurrence is
+    /// cancelled for the whole day it falls on as far as an agenda row is
+    /// concerned, and matching a wall-clock time against a zone would decide
+    /// which timezone the reader is in - which this crate refuses to do
+    /// everywhere else.
+    ///
+    /// Without this, a weekly meeting with one week called off showed that week
+    /// as happening. The engine expanded the rule correctly and the file's own
+    /// correction was dropped on the floor.
+    pub exdates: Vec<chrono::NaiveDate>,
     /// The event's `VALARM` blocks, in file order.
     ///
     /// Parsed, never fired. `calendar-app.md` section 4 is explicit that neither
@@ -171,6 +183,7 @@ fn unfold(text: &str) -> Vec<String> {
 }
 
 /// A property line split into its name, parameters and value.
+#[derive(Clone)]
 struct Property {
     name: String,
     params: Vec<(String, String)>,
@@ -425,6 +438,7 @@ pub fn parse_events(text: &str) -> Result<Vec<Event>, IcsError> {
                     end: None,
                     location: String::new(),
                     rrule: None,
+                    exdates: Vec::new(),
                     alarms: Vec::new(),
                 },
             ));
@@ -457,6 +471,19 @@ pub fn parse_events(text: &str) -> Result<Vec<Event>, IcsError> {
             "SUMMARY" => ev.summary = unescape(&prop.value),
             "LOCATION" => ev.location = unescape(&prop.value),
             "RRULE" => ev.rrule = Some(prop.value.trim().to_string()),
+            // A comma-separated LIST, and a file may carry several EXDATE lines,
+            // so this appends rather than assigns. A value that will not parse is
+            // skipped rather than failing the event: the rest of the exclusions
+            // are still the file's own statement.
+            "EXDATE" => {
+                for one in prop.value.split(',') {
+                    let mut part = prop.clone();
+                    part.value = one.trim().to_string();
+                    if let Some(t) = parse_time(&part) {
+                        ev.exdates.push(t.date());
+                    }
+                }
+            }
             "DTSTART" => *start = parse_time(&prop),
             "DTEND" => *end = parse_time(&prop),
             "DURATION" => *duration = parse_duration(&prop.value),
