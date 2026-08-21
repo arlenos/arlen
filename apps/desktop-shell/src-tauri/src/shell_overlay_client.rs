@@ -135,7 +135,14 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
                 let notif = Region::create_rectangle(&RectangleInt::new(
                     notif_x, 36, notif_w, 300,
                 ));
-                r.union(&notif);
+                // A union that fails leaves the region SMALLER than intended,
+                // which reads exactly like a click that does not land - the
+                // failure I spent a morning chasing from the other end. Cairo
+                // only fails this on an invalid status, so it is not expected;
+                // dropping the answer is what would make it unfindable.
+                if let Err(e) = r.union(&notif) {
+                    log::warn!("input region: the notification area was not merged in: {e}");
+                }
                 r
             }
             InputRegionMode::WithPopover => {
@@ -146,7 +153,9 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
                 let popover = Region::create_rectangle(&RectangleInt::new(
                     0, 36, 32767, 500,
                 ));
-                r.union(&popover);
+                if let Err(e) = r.union(&popover) {
+                    log::warn!("input region: the popover area was not merged in: {e}");
+                }
                 r
             }
         };
@@ -160,7 +169,12 @@ fn set_input_region(app: &tauri::AppHandle, mode: InputRegionMode) {
         if let Ok(rects) = WINDOW_HEADER_RECTS.lock() {
             for r in rects.iter() {
                 let hdr = Region::create_rectangle(&RectangleInt::new(r.x, r.y, r.w, r.h));
-                region.union(&hdr);
+                if let Err(e) = region.union(&hdr) {
+                    log::warn!(
+                        "input region: a window header at ({}, {}) was not merged in: {e}",
+                        r.x, r.y
+                    );
+                }
             }
             if !rects.is_empty() {
                 log::debug!(
