@@ -43,6 +43,31 @@ pub struct Message {
     pub refusal: Option<String>,
     /// Headers that are themselves a way out of the machine.
     pub channels: Vec<String>,
+    /// What the message CARRIES, named and measured, never opened.
+    ///
+    /// Same principle as `has_html`: say what is there without acting on it. A
+    /// message with three files attached and one with none looked identical in
+    /// the window until 21 August, which is a fact about somebody's mail that the
+    /// surface simply did not mention. Nothing is extracted and nothing is
+    /// written to disk by reading this.
+    pub attachments: Vec<Attachment>,
+}
+
+/// One part the message carries, as the message describes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attachment {
+    /// The filename as written by the sender, or `None` when it named none.
+    ///
+    /// UNVERIFIED and not a path: a sender chooses this string, and the two
+    /// oldest tricks with it are a traversal (`../../.ssh/authorized_keys`) and a
+    /// second extension (`invoice.pdf.exe`). Nothing here opens or saves the
+    /// part, so neither trick has a target yet - but whoever adds a save button
+    /// takes the name as a suggestion and not as a destination.
+    pub name: Option<String>,
+    /// The media type the message claims, as written.
+    pub media_type: Option<String>,
+    /// How many bytes the part decodes to.
+    pub bytes: usize,
 }
 
 /// Read one message.
@@ -96,6 +121,20 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
         _ => None,
     };
 
+    // Named and measured, never opened: `contents()` is the decoded bytes and the
+    // only thing taken from them is the length.
+    let attachments: Vec<Attachment> = parsed
+        .attachments()
+        .map(|part| Attachment {
+            name: part.attachment_name().map(str::to_string),
+            media_type: part.content_type().map(|c| match c.subtype() {
+                Some(sub) => format!("{}/{}", c.ctype(), sub),
+                None => c.ctype().to_string(),
+            }),
+            bytes: part.contents().len(),
+        })
+        .collect();
+
     Ok(Message {
         from: parsed.from().and_then(|a| a.first()).and_then(|a| a.address().map(str::to_string)),
         subject: parsed.subject().map(str::to_string),
@@ -108,6 +147,7 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
             .into_iter()
             .map(|f| f.header)
             .collect(),
+        attachments,
     })
 }
 
@@ -127,6 +167,56 @@ fn header_text(raw: &[u8], header: &mail_parser::Header) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_message_says_what_it_carries_without_opening_it() {
+        let raw = b"From: a@example.org\r\n\
+Subject: with a file\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=b1\r\n\
+\r\n\
+--b1\r\n\
+Content-Type: text/plain\r\n\
+\r\n\
+see attached\r\n\
+--b1\r\n\
+Content-Type: application/pdf; name=\"invoice.pdf\"\r\n\
+Content-Disposition: attachment; filename=\"invoice.pdf\"\r\n\
+\r\n\
+%PDF-1.4 pretend\r\n\
+--b1--\r\n";
+        let m = read(raw).unwrap();
+        assert_eq!(m.attachments.len(), 1);
+        assert_eq!(m.attachments[0].name.as_deref(), Some("invoice.pdf"));
+        assert_eq!(m.attachments[0].media_type.as_deref(), Some("application/pdf"));
+        assert!(m.attachments[0].bytes > 0, "measured, not guessed");
+        assert_eq!(m.text.as_deref().map(str::trim), Some("see attached"));
+    }
+
+    #[test]
+    fn a_message_with_nothing_attached_says_so_by_carrying_none() {
+        let m = read(b"From: a@example.org\r\nSubject: plain\r\n\r\njust text\r\n").unwrap();
+        assert!(m.attachments.is_empty());
+    }
+
+    #[test]
+    fn a_sender_chosen_filename_is_kept_verbatim_and_is_not_a_path() {
+        // The name is a claim, not a destination. Kept as written so a surface can
+        // show what the sender actually called it; whoever adds a save button
+        // treats this as a suggestion.
+        let raw = b"From: a@example.org\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=b1\r\n\
+\r\n\
+--b1\r\n\
+Content-Type: application/octet-stream\r\n\
+Content-Disposition: attachment; filename=\"../../.ssh/authorized_keys\"\r\n\
+\r\n\
+ssh-rsa AAAA\r\n\
+--b1--\r\n";
+        let m = read(raw).unwrap();
+        assert_eq!(m.attachments[0].name.as_deref(), Some("../../.ssh/authorized_keys"));
+    }
     use super::*;
 
     fn msg(extra: &str, body: &str) -> Vec<u8> {

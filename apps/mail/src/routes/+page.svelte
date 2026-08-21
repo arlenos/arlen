@@ -9,7 +9,23 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Mail, TriangleAlert } from "@lucide/svelte";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+
+  /// A size written the way the reader writes one: `16 kB` in English, `16 kB`
+  /// with a comma decimal in German, and the unit from the reader's locale rather
+  /// than from a hardcoded table.
+  ///
+  /// Local rather than in the kit because `sdk/ui-kit` is arlen-ui's, and a
+  /// second app that needs this is the moment to move it there - `formatDecimal`
+  /// lives in the kit for exactly this reason and a byte size belongs beside it.
+  const formatBytes = (n: number, loc: string) =>
+    new Intl.NumberFormat(loc, {
+      style: "unit",
+      unit: "byte",
+      unitDisplay: "narrow",
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(n);
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
 
   type Message = {
@@ -21,6 +37,7 @@
     divergence: string | null;
     refusal: string | null;
     channels: string[];
+    attachments: { name: string | null; media_type: string | null; bytes: number }[];
     path: string;
   };
 
@@ -93,6 +110,21 @@
       </p>
     {/if}
 
+    {#if message.attachments.length > 0}
+      <p class="note">{$t("ml.carries", { count: message.attachments.length })}</p>
+      <ul class="carried">
+        {#each message.attachments as file, i (i)}
+          <li>
+            {$t("ml.attachment", {
+              name: file.name ?? $t("ml.unnamedAttachment"),
+              type: file.media_type ?? "?",
+              size: formatBytes(file.bytes, $locale),
+            })}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
     {#if message.text}
       <pre class="body">{message.text}</pre>
     {:else}
@@ -157,6 +189,13 @@
   }
   .quiet {
     color: var(--color-fg-secondary, #a3a3a3);
+  }
+  .carried {
+    margin: 0.25rem 0 0.75rem;
+    padding-left: 1.1rem;
+  }
+  .carried li {
+    opacity: 0.85;
   }
   .body {
     margin: 8px 14px 14px;
