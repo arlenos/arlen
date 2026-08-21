@@ -541,7 +541,9 @@ pub async fn connect_wifi(ssid: String) -> Result<(), String> {
         .args(["dev", "wifi", "connect", &ssid])
         .output()
         .await
-        .map_err(|e| format!("nmcli connect failed: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("nmcli", "the network cannot be changed from here", &e)
+        })?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
@@ -587,7 +589,9 @@ pub async fn connect_wifi_password(ssid: String, password: String) -> Result<(),
         .args(["dev", "wifi", "connect", &ssid, "password", &password])
         .output()
         .await
-        .map_err(|e| format!("nmcli connect failed: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("nmcli", "the network cannot be changed from here", &e)
+        })?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
@@ -755,7 +759,13 @@ pub async fn get_airplane_mode() -> Result<bool, String> {
         .args(["--json"])
         .output()
         .await
-        .map_err(|e| format!("rfkill not found: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error(
+                "rfkill",
+                "airplane mode cannot be switched from here",
+                &e,
+            )
+        })?;
     all_radios_blocked(&String::from_utf8_lossy(&output.stdout))
 }
 
@@ -771,7 +781,13 @@ pub async fn set_airplane_mode(app: tauri::AppHandle, enabled: bool) -> Result<(
         .args([action, "all"])
         .status()
         .await
-        .map_err(|e| format!("rfkill {action} failed: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error(
+                "rfkill",
+                "airplane mode cannot be switched from here",
+                &e,
+            )
+        })?;
     if !status.success() {
         return Err(format!("rfkill {action} all returned non-zero"));
     }
@@ -1032,7 +1048,9 @@ pub async fn forget_network(ssid: String) -> Result<(), String> {
         .args(["connection", "delete", &ssid])
         .status()
         .await
-        .map_err(|e| format!("nmcli: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("nmcli", "the network cannot be changed from here", &e)
+        })?;
     if !status.success() {
         return Err(format!("Failed to forget {ssid}"));
     }
@@ -1055,7 +1073,9 @@ pub async fn connect_hidden_network(ssid: String, password: String) -> Result<()
         ])
         .output()
         .await
-        .map_err(|e| format!("nmcli: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("nmcli", "the network cannot be changed from here", &e)
+        })?;
 
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
@@ -1108,7 +1128,9 @@ pub async fn connect_vpn(name: String) -> Result<(), String> {
         .args(["connection", "up", &name])
         .status()
         .await
-        .map_err(|e| format!("nmcli: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("nmcli", "the network cannot be changed from here", &e)
+        })?;
     if !status.success() {
         return Err(format!("Failed to connect VPN {name}"));
     }
@@ -1122,7 +1144,9 @@ pub async fn disconnect_vpn(name: String) -> Result<(), String> {
         .args(["connection", "down", &name])
         .status()
         .await
-        .map_err(|e| format!("nmcli: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("nmcli", "the network cannot be changed from here", &e)
+        })?;
     if !status.success() {
         return Err(format!("Failed to disconnect VPN {name}"));
     }

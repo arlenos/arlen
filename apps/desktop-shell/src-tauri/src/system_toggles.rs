@@ -168,7 +168,9 @@ pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, St
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .map_err(|e| format!("failed to start wf-recorder: {e}"))?;
+            .map_err(|e| {
+                crate::missing_tool::tool_error("wf-recorder", "the screen cannot be recorded from here", &e)
+            })?;
 
         // A spawn only proves the binary exists. `wf-recorder` speaks
         // `zwlr_screencopy_v1`, which this compositor does not implement - it
