@@ -57,6 +57,23 @@ impl std::fmt::Display for RegistryError {
     }
 }
 
+impl RegistryError {
+    /// The reason WITHOUT the path.
+    ///
+    /// `Display` names the file, which is right when the error is shown on its
+    /// own and wrong when the caller is already showing the path in the same
+    /// sentence. The first render of the bottle window said the path twice and
+    /// "could not be read" twice, because it composed its own message around a
+    /// string that already contained one.
+    pub fn detail(&self) -> String {
+        match self {
+            RegistryError::Unreadable(_, why) => why.clone(),
+            RegistryError::NoSuchBottle(_) => "there is no bottle there".into(),
+            other => other.to_string(),
+        }
+    }
+}
+
 impl std::error::Error for RegistryError {}
 
 impl From<std::io::Error> for RegistryError {
@@ -160,7 +177,7 @@ pub fn list_bottles(bottles_dir: &Path) -> Result<Listing, RegistryError> {
         match load_bottle(bottles_dir, &name) {
             Ok(b) => listing.bottles.push(b),
             Err(RegistryError::Io(e)) => return Err(RegistryError::Io(e)),
-            Err(e) => listing.unreadable.push((path, e.to_string())),
+            Err(e) => listing.unreadable.push((path, e.detail())),
         }
     }
     listing.bottles.sort_by(|a, b| a.id.cmp(&b.id));
@@ -245,6 +262,21 @@ mod tests {
         assert_eq!(listing.bottles[0].id, "good");
         assert_eq!(listing.unreadable.len(), 1, "telling someone their bottle is gone is worse than telling them it is broken");
         assert_eq!(listing.unreadable[0].0, bad);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn the_listing_reason_does_not_repeat_the_path_the_caller_already_has() {
+        let d = dir("detail");
+        let bad = save_bottle(&d, &bottle("bad")).unwrap();
+        std::fs::write(&bad, "id = ").unwrap();
+        let listing = list_bottles(&d).unwrap();
+        let (path, reason) = &listing.unreadable[0];
+        assert_eq!(path, &bad);
+        assert!(
+            !reason.contains(&bad.display().to_string()),
+            "the caller shows the path; saying it again reads as two different files: {reason}"
+        );
         std::fs::remove_dir_all(&d).unwrap();
     }
 
