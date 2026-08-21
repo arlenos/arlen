@@ -39,6 +39,8 @@ const messages: Catalogs = {
     "wn.repairNote": "Closes the doors that were opened and restores the folder letters. Nothing inside the bottle is touched.",
     "wn.repaired": "This bottle matches what it says again.",
     "wn.repairFailed": "This bottle could not be put back: {$reason}",
+    "wn.revoke": "Take this back",
+    "wn.revokeFailed": "{$letter} could not be taken back: {$reason}",
   },
   de: {
     "wn.app.title": "Windows-Programme",
@@ -61,6 +63,8 @@ const messages: Catalogs = {
     "wn.repairNote": "Schließt die geöffneten Türen und stellt die Ordnerbuchstaben wieder her. Am Inhalt der Flasche wird nichts angerührt.",
     "wn.repaired": "Diese Flasche stimmt wieder mit dem überein, was sie sagt.",
     "wn.repairFailed": "Diese Flasche war nicht zurückzusetzen: {$reason}",
+    "wn.revoke": "Zurücknehmen",
+    "wn.revokeFailed": "{$letter} war nicht zurückzunehmen: {$reason}",
   },
 };
 

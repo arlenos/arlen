@@ -103,6 +103,30 @@ pub fn repair_bottle(bottle: &Bottle) -> std::io::Result<Health> {
     check_bottle(bottle)
 }
 
+/// Take one drive letter's grant away from a bottle.
+///
+/// Returns the bottle as it now is, for the caller to save. The drive table is
+/// NOT written here: writing the prefix and writing the description are two
+/// failures that must not half-happen together, and the caller decides the order.
+/// [`crate::dosdevices::write_drives`] is a replacement, so writing it from the
+/// returned grants is what actually removes the letter.
+///
+/// A letter no grant carries is not an error. Revoking twice, or revoking
+/// something the prefix grew on its own, both end with the person having what
+/// they asked for: no grant behind that letter.
+pub fn revoke_grant(bottle: &Bottle, letter: char) -> Bottle {
+    let letter = letter.to_ascii_uppercase();
+    let keep: Vec<PathBuf> = map_drives(&bottle.grants)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|d| d.letter != letter)
+        .map(|d| d.host)
+        .collect();
+    let mut out = bottle.clone();
+    out.grants.retain(|g| keep.contains(&g.host));
+    out
+}
+
 /// Whether `path` is a bottle prefix that has been booted.
 pub fn is_booted(prefix_root: &Path) -> bool {
     prefix_root.join("dosdevices").is_dir()
@@ -180,6 +204,28 @@ mod tests {
         let h = check_bottle(&b).unwrap();
         assert!(!h.escapes.is_empty(), "{h:?}");
         assert!(h.escapes[0].ends_with("z:"));
+    }
+
+    #[test]
+    fn revoking_a_letter_drops_that_grant_and_keeps_the_rest() {
+        let (b, _d) = bottle("revoke", vec![grant("/srv/a"), grant("/srv/b")]);
+        let after = revoke_grant(&b, 'D');
+        assert_eq!(after.grants.len(), 1);
+        assert_eq!(after.grants[0].host, PathBuf::from("/srv/b"));
+        // And the survivor keeps the letter it had, because the mapping is by
+        // sorted host path and dropping the first does not renumber the second.
+        assert_eq!(map_drives(&after.grants).unwrap()[0].letter, 'D');
+    }
+
+    #[test]
+    fn revoking_a_letter_no_grant_carries_changes_nothing() {
+        // Pressing it twice, or on a letter the prefix grew by itself. Either way
+        // the person ends with what they asked for.
+        let (b, _d) = bottle("twice", vec![grant("/srv/a")]);
+        let once = revoke_grant(&b, 'D');
+        assert!(once.grants.is_empty());
+        assert_eq!(revoke_grant(&once, 'D').grants.len(), 0);
+        assert_eq!(revoke_grant(&b, 'M').grants.len(), 1, "an ungranted letter takes nothing away");
     }
 
     #[test]
