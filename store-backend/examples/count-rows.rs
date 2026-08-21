@@ -40,6 +40,12 @@ fn main() {
     });
 
     let cards = catalog.search("", &[]);
+    let store = arlen_store_backend::view::store_cards(&cards, &Default::default());
+    let mut tiers: std::collections::BTreeMap<String, usize> = Default::default();
+    for c in &store {
+        *tiers.entry(format!("{:?}", c.tier)).or_default() += 1;
+    }
+    println!("badges the grid would show: {tiers:?}");
     let with_icon = cards.iter().filter(|c| c.display.icon.is_some()).count();
     let with_shots = cards.iter().filter(|c| !c.display.screenshots.is_empty()).count();
     println!("cards the grid would show: {}", cards.len());
