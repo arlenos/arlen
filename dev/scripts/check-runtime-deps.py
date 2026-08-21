@@ -42,7 +42,11 @@ ROOT = (
 )
 TSV = pathlib.Path(__file__).resolve().parent / "runtime-deps.tsv"
 MKOSI = ROOT / "dev/mkosi/mkosi.conf"
-SCAN = ("apps", "daemons", "sdk", "ai", "contracts")
+# `forage` and `store-backend` were missing until 21 August, which is how
+# `appstreamcli` came to be classified as shipped in one list and absent from
+# this one: the forage pipeline spawns it and nothing here looked there. A tool
+# this cannot see is a tool the image is not asked to carry.
+SCAN = ("apps", "daemons", "sdk", "ai", "contracts", "forage", "store-backend")
 
 VALID = {"ships", "own", "base", "absent"}
 

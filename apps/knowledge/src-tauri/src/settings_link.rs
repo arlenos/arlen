@@ -45,7 +45,16 @@ pub async fn open_settings_route(route: String) -> Result<(), String> {
         .arg("--panel")
         .arg(panel)
         .spawn()
-        .map_err(|e| format!("could not open Settings: {e}"))?;
+        .map_err(|e| {
+            // Not staged on the image, so absent is the ordinary case and the
+            // errno names a file rather than the thing that cannot happen.
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "Settings is not installed on this machine, so it cannot be opened from here"
+                    .to_string()
+            } else {
+                format!("Settings could not be opened: {e}")
+            }
+        })?;
     Ok(())
 }
 
