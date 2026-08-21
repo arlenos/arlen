@@ -5,7 +5,7 @@
 // The positive control for check-runtime-deps, including the one the directive
 // named: removing a package from the image must turn it red.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,6 +88,23 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const dir = mkdtempSync(join(tmpdir(), "runtime-deps-empty-"));
   check("a tree with no sources is an error, not a pass", run(dir).code === 2);
   rmSync(dir, { recursive: true, force: true });
+}
+
+{
+  // The two checks ask opposite directions of one question - is every spawn
+  // classified, is every classification still spawned - so a tree only one of
+  // them reads is a place where a tool can slip through either way. That is not
+  // hypothetical: `appstreamcli` was classified in one and missing from the
+  // other because `forage` was in one list and not the other.
+  const scan = readFileSync(join(HERE, "check-runtime-deps.py"), "utf8");
+  const trees = readFileSync(join(HERE, "check-spawned-tools-classified.py"), "utf8");
+  const one = [...(scan.match(/SCAN = \(([^)]*)\)/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const two = [...(trees.match(/TREES = \[([^\]]*)\]/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  if (one.length === 0 || one.join(",") !== two.join(",")) {
+    console.log(`       runtime-deps: ${one.join(",")}`);
+    console.log(`       classified:   ${two.join(",")}`);
+  }
+  check("both checks scan the same trees", one.length > 0 && one.join(",") === two.join(","));
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");

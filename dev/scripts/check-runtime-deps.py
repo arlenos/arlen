@@ -47,6 +47,8 @@ MKOSI = ROOT / "dev/mkosi/mkosi.conf"
 # this one: the forage pipeline spawns it and nothing here looked there. A tool
 # this cannot see is a tool the image is not asked to carry.
 SCAN = ("apps", "daemons", "sdk", "ai", "contracts", "forage", "store-backend")
+#: Kept identical to `check-spawned-tools-classified.py`'s TREES; the control
+#: below asserts it, because a tree only one of them reads is a hole in both.
 
 VALID = {"ships", "own", "base", "absent"}
 
