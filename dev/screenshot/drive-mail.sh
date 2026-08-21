@@ -126,6 +126,40 @@ say "a header that asks to report back is named" \
 say "and the html part's absence is said out loud" \
   "$(printf '%s' "$out" | grep -q "also has an HTML part" && echo 1 || echo 0)" "$out"
 
+# AN INVITATION, which is the seam with the calendar (section 4). The load-bearing
+# part is that the window says the part is there AND says nobody read it: this app
+# does not do iTIP, so a sentence that sounded like it had understood the meeting
+# would be a claim it cannot back. The calendar part is deliberately NOT marked as
+# an attachment here, which is the ordinary shape and the reason it was invisible
+# before - the "carries N files" line never mentioned it.
+: > "$fix/invite.eml"
+{
+  printf 'From: ada@example.org\r\n'
+  printf 'Subject: Lunch on Friday\r\n'
+  printf 'Date: Fri, 21 Aug 2026 09:15:00 +0200\r\n'
+  printf 'MIME-Version: 1.0\r\n'
+  printf 'Content-Type: multipart/alternative; boundary=b\r\n\r\n'
+  printf -- '--b\r\nContent-Type: text/plain\r\n\r\n'
+  printf 'Lunch on Friday?\r\n'
+  printf -- '--b\r\nContent-Type: text/calendar; method=REQUEST; charset=utf-8\r\n\r\n'
+  printf 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Lunch\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n'
+  printf -- '--b--\r\n'
+} >> "$fix/invite.eml"
+
+inv=$(SHOOT_APP_ARGS="$fix/invite.eml" SHOOT_INJECT="$fix/probe.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-invitation.png" 2>&1 | sed -n 's/^inject result: //p')
+
+say "an invitation in a message is named" \
+  "$(printf '%s' "$inv" | grep -q "carries an invitation" && echo 1 || echo 0)" "$inv"
+
+# The second half of the same sentence, and the one that keeps it honest.
+say "and the window says it did not read it" \
+  "$(printf '%s' "$inv" | grep -q "Nothing here has read it" && echo 1 || echo 0)" "$inv"
+
+# The protocol token stays out of the window: REQUEST is for the machine.
+say "the method is not printed raw at the reader" \
+  "$(printf '%s' "$inv" | grep -q "REQUEST" && echo 0 || echo 1)" "$inv"
+
 amb=$(SHOOT_APP_ARGS="$fix/ambiguous.eml" SHOOT_INJECT="$fix/probe.js" \
   "$here/shoot-app.sh" "$app" "$here/out/mail-ambiguous.png" 2>&1 | sed -n 's/^inject result: //p')
 
