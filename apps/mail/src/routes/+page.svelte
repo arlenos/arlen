@@ -34,7 +34,8 @@
     date: string | null;
     text: string | null;
     has_html: boolean;
-    divergence: string | null;
+    only_in_text: string[];
+    only_in_html: string[];
     refusal: string | null;
     to: string[];
     cc: string[];
@@ -108,9 +109,18 @@
       {/if}
     </dl>
 
-    {#if message.divergence}
+    {#if message.only_in_text.length > 0 || message.only_in_html.length > 0}
       <p class="note bad" role="status">
-        {$t("ml.divergence", { detail: message.divergence })}
+        {#if message.only_in_text.length > 0 && message.only_in_html.length > 0}
+          {$t("ml.divergenceBoth", {
+            text: message.only_in_text.join(", "),
+            html: message.only_in_html.join(", "),
+          })}
+        {:else if message.only_in_text.length > 0}
+          {$t("ml.divergenceText", { text: message.only_in_text.join(", ") })}
+        {:else}
+          {$t("ml.divergenceHtml", { html: message.only_in_html.join(", ") })}
+        {/if}
       </p>
     {/if}
 

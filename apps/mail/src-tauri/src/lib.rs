@@ -56,8 +56,11 @@ pub struct MessageDto {
     to: Vec<String>,
     cc: Vec<String>,
     has_html: bool,
-    /// What the two parts say differently, when both exist.
-    divergence: Option<String>,
+    /// The words that appear in only one of the two parts, when both exist.
+    /// Data rather than a sentence: the window writes the sentence in the
+    /// reader's language around these.
+    only_in_text: Vec<String>,
+    only_in_html: Vec<String>,
     /// Why the message was refused, when its own headers contradict each other.
     refusal: Option<String>,
     /// Headers that are a way out of this machine.
@@ -93,7 +96,8 @@ fn mail_read(path: String) -> Result<MessageDto, String> {
         to: m.to,
         cc: m.cc,
         has_html: m.has_html,
-        divergence: m.divergence,
+        only_in_text: m.only_in_text,
+        only_in_html: m.only_in_html,
         refusal: m.refusal,
         channels: m.channels,
         attachments: m
