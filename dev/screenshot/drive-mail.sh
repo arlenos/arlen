@@ -39,18 +39,37 @@ say() {  # say <name> <ok> <detail>
 # A message whose two halves disagree about where the money goes, carrying a read
 # receipt. Written as a literal file rather than through a library so the message
 # the window opens is the message this script describes.
-printf 'From: billing@example.com\r\nSubject: Your invoice is ready\r\n\
-Date: Tue, 19 Aug 2026 09:00:00 +0000\r\nMIME-Version: 1.0\r\n\
-Disposition-Notification-To: watcher@example.com\r\n\
-Content-Type: multipart/alternative; boundary=b\r\n\r\n\
---b\r\nContent-Type: text/plain\r\n\r\nPlease pay at example.com before Friday.\r\n\
---b\r\nContent-Type: text/html\r\n\r\n<p>Please pay at evil-collector.example before Friday.</p>\r\n--b--\r\n' \
-  > "$fix/invoice.eml"
+# Appended line by line rather than one quoted format string spanning several
+# lines. A trailing backslash inside single quotes is NOT a continuation - it is
+# a literal backslash - so the old version put a stray `\` line inside the text
+# part, and the window faithfully showed it. The fixture was malformed and the
+# screenshot was right.
+: > "$fix/invoice.eml"
+{
+  printf 'From: billing@example.com\r\n'
+  printf 'To: you@example.com, treasury@example.com\r\n'
+  printf 'Cc: audit@example.com\r\n'
+  printf 'Subject: Your invoice is ready\r\n'
+  printf 'Date: Tue, 19 Aug 2026 09:00:00 +0000\r\n'
+  printf 'MIME-Version: 1.0\r\n'
+  printf 'Disposition-Notification-To: watcher@example.com\r\n'
+  printf 'Content-Type: multipart/alternative; boundary=b\r\n\r\n'
+  printf -- '--b\r\nContent-Type: text/plain\r\n\r\n'
+  printf 'Please pay at example.com before Friday.\r\n'
+  printf -- '--b\r\nContent-Type: text/html\r\n\r\n'
+  printf '<p>Please pay at evil-collector.example before Friday.</p>\r\n'
+  printf -- '--b--\r\n'
+} >> "$fix/invoice.eml"
 
 # And one that contradicts itself about its own format, which the rules refuse.
-printf 'From: someone@example.com\r\nSubject: Which am I\r\n\
-Content-Type: text/plain\r\nContent-Type: text/html\r\n\r\nPick one.\r\n' \
-  > "$fix/ambiguous.eml"
+: > "$fix/ambiguous.eml"
+{
+  printf 'From: someone@example.com\r\n'
+  printf 'Subject: Which am I\r\n'
+  printf 'Content-Type: text/plain\r\n'
+  printf 'Content-Type: text/html\r\n\r\n'
+  printf 'Pick one.\r\n'
+} >> "$fix/ambiguous.eml"
 
 cat > "$fix/probe.js" <<'JS'
 await new Promise((r) => setTimeout(r, 2000));
@@ -81,9 +100,12 @@ say "the sender is shown as a claim rather than as identity" \
 say "the html part's sentence is not on the screen" \
   "$(printf '%s' "$out" | grep -q "pay at evil-collector.example before Friday" && echo 0 || echo 1)" "$out"
 
+# The words are named WHOLE. This used to check for "collector", which is a
+# fragment of `evil-collector.example` produced by splitting on punctuation, so
+# the assertion passed on the noise it was meant to catch.
 say "but the reader is told the two parts disagree, in the differing words" \
-  "$(printf '%s' "$out" | grep -q "do not say the same thing" \
-     && printf '%s' "$out" | grep -q "collector" && echo 1 || echo 0)" "$out"
+  "$(printf '%s' "$out" | grep -q "versions of this message differ" \
+     && printf '%s' "$out" | grep -q "evil-collector.example" && echo 1 || echo 0)" "$out"
 
 # What the reader is shown AS the message is the text part, verbatim. A window
 # that showed neither would pass the case above.
