@@ -32,6 +32,7 @@
 pub mod bottle;
 pub mod create;
 pub mod dosdevices;
+pub mod forget;
 pub mod health;
 pub mod launch;
 pub mod plumbing;

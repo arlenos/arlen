@@ -13,6 +13,10 @@ serde = { version = "1", features = ["derive"] }
 arlen-confiner = { path = "../../../sdk/confiner" }
 # The bottle description on disk. Same format as every other Arlen config.
 toml = "0.8"
+# Forgetting a bottle moves its prefix to the trash rather than unlinking it: the
+# directory holds whatever the person installed and saved in there, and a window
+# button that destroys that with no way back is not a button worth shipping.
+arlen-freedesktop-trash = { path = "../../../contracts/freedesktop-trash" }
 
 [dev-dependencies]
 # The examples build the launch argv, which needs the compat roots this crate

@@ -28,6 +28,10 @@
 
   let list = $state<BottleList | null>(null);
   let repaired = $state<Record<string, string>>({});
+  // Page-level, not per card. The forget notice used to live inside the card, and
+  // the press removes that card - so the sentence saying where the files went was
+  // rendered into an element that no longer existed. Nobody was told anything.
+  let notice = $state<string | null>(null);
   let runtime = $state<Runtime | null>(null);
   let failure = $state<string | null>(null);
 
@@ -42,6 +46,9 @@
 </script>
 
 <main>
+  {#if notice}
+    <p class="notice">{notice}</p>
+  {/if}
   {#if failure}
     <p class="failure">{$t("wn.failed", { reason: failure })}</p>
   {:else if list}
@@ -116,6 +123,25 @@
             <span>{$t("wn.repairNote")}</span>
           </p>
         {/if}
+        <p class="repair">
+          <button
+            onclick={async () => {
+              try {
+                const where = await invoke<string>("wine_forget", { id: bottle.id });
+                // Drawn from what came back: the row goes only once the files
+                // have actually moved.
+                if (list) list.bottles = list.bottles.filter((b) => b.id !== bottle.id);
+                notice = where
+                  ? $t("wn.forgotten", { path: where })
+                  : $t("wn.forgottenNoFiles");
+              } catch (e) {
+                // The bottle is still here, so this one belongs on its card.
+                repaired[bottle.id] = $t("wn.forgetFailed", { reason: String(e) });
+              }
+            }}>{$t("wn.forget")}</button
+          >
+          <span>{$t("wn.forgetNote")}</span>
+        </p>
         {#if repaired[bottle.id]}
           <p class="repaired">{repaired[bottle.id]}</p>
         {/if}
@@ -205,6 +231,13 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
+  }
+  .notice {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    opacity: 0.9;
   }
   .repaired {
     margin: 0.35rem 0 0;

@@ -41,6 +41,12 @@ const messages: Catalogs = {
     "wn.repairFailed": "This bottle could not be put back: {$reason}",
     "wn.revoke": "Take this back",
     "wn.revokeFailed": "{$letter} could not be taken back: {$reason}",
+    "wn.forget": "Forget this bottle",
+    // Says where the files go, because "forget" sounds final and this is not.
+    "wn.forgetNote": "Moves this bottle's files to the trash, where you can put them back.",
+    "wn.forgotten": "Moved to the trash: {$path}",
+    "wn.forgottenNoFiles": "This bottle had no files, so only the record was removed.",
+    "wn.forgetFailed": "This bottle was kept: {$reason}",
   },
   de: {
     "wn.app.title": "Windows-Programme",
@@ -65,6 +71,11 @@ const messages: Catalogs = {
     "wn.repairFailed": "Diese Flasche war nicht zurückzusetzen: {$reason}",
     "wn.revoke": "Zurücknehmen",
     "wn.revokeFailed": "{$letter} war nicht zurückzunehmen: {$reason}",
+    "wn.forget": "Flasche vergessen",
+    "wn.forgetNote": "Verschiebt die Dateien dieser Flasche in den Papierkorb, wo du sie zurückholen kannst.",
+    "wn.forgotten": "In den Papierkorb verschoben: {$path}",
+    "wn.forgottenNoFiles": "Diese Flasche hatte keine Dateien, es wurde nur der Eintrag entfernt.",
+    "wn.forgetFailed": "Diese Flasche wurde behalten: {$reason}",
   },
 };
 
