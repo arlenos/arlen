@@ -32,6 +32,8 @@
   let current = $state(1);
   let canvas = $state<HTMLCanvasElement | null>(null);
   let pageFailure = $state<string | null>(null);
+  /// The page's text, shown only when the page itself could not be drawn.
+  let pageWords = $state("");
   let lines = $state<TextLine[]>([]);
 
   /// The zoom the page and its words are both drawn at.
@@ -57,6 +59,7 @@
       const data = new ImageData(new Uint8ClampedArray(img.rgba), img.width, img.height);
       ctx.putImageData(data, 0, 0);
       pageFailure = null;
+      pageWords = "";
       // Selectable text is a nicety over a drawn page, so a text layer that
       // will not come back leaves the page shown rather than taking it down
       // with it. A scan has no text and that is not a failure either.
@@ -65,6 +68,10 @@
     } catch (e) {
       pageFailure = String(e);
       lines = [];
+      // The page could not be drawn, so ask for its words instead. This read is
+      // `lopdf` in the host and needs no engine, which is the whole point: it is
+      // the path that still works on a machine with no rasteriser.
+      pageWords = await invoke<string>("pdf_page_text", { page: current }).catch(() => "");
     }
   }
 
@@ -231,6 +238,15 @@
         {#if pageFailure}
           <FileText size={28} aria-hidden="true" />
           <p class="quiet">{$t("pdf.pageFailed", { reason: pageFailure })}</p>
+          <!-- The words, when the picture cannot be had. Said to be the text and
+               not the page, because it has none of the layout: a table comes
+               back as its cells in reading order and a two-column article reads
+               straight through. Better than an empty sheet, and only if the
+               reader is told which one they are looking at. -->
+          {#if pageWords}
+            <p class="quiet">{$t("pdf.textInstead")}</p>
+            <pre class="pdf-words" data-selectable>{pageWords}</pre>
+          {/if}
         {/if}
         <div class="pdf-sheet" class:hidden={pageFailure !== null}>
           <canvas bind:this={canvas} class="pdf-canvas"></canvas>
@@ -262,6 +278,19 @@
 </div>
 
 <style>
+  .pdf-words {
+    max-width: 62ch;
+    margin: 8px auto 0;
+    padding: 12px 14px;
+    border-radius: 6px;
+    background: var(--color-bg-card, #171717);
+    color: var(--color-fg-primary, #e5e5e5);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
   .pdf-app {
     display: flex;
     flex-direction: column;

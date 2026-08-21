@@ -167,6 +167,31 @@ fn pdf_page_image(page: usize, scale: f32, state: tauri::State<'_, Open>) -> Res
     decode_frame(&frame)
 }
 
+/// The words on a page, when the page itself cannot be drawn.
+///
+/// NOT a fallback that pretends: what comes back is the document's text in
+/// reading order, with none of the layout, and the window says so above it. That
+/// is worth having, because on every machine in play today there is no
+/// `libpdfium` to rasterise with - so without this the reader can open a
+/// document, list its contents, search inside it, and never see a word of it.
+///
+/// Read here in-process rather than through the page worker, deliberately: this
+/// path is `lopdf` over bytes already in memory, the same code the search uses,
+/// and it needs no engine. The worker exists to keep a rasteriser away from the
+/// reader, and there is no rasteriser in this.
+///
+/// A `pdf_page_text` command was removed on 20 August for having no caller. This
+/// is the caller.
+///
+/// # Errors
+/// When no document is open, or the page is not in it.
+#[tauri::command]
+fn pdf_page_text(page: usize, state: tauri::State<'_, Open>) -> Result<String, String> {
+    let held = state.0.lock().map_err(|_| lock_lost())?;
+    let doc = &held.as_ref().ok_or_else(no_document)?.doc;
+    doc.page_text(page).map_err(|e| e.to_string())
+}
+
 /// Where the words are on a page, so a reader can select them.
 ///
 /// Same worker, same page, same scale as [`pdf_page_image`] - the boxes are in
@@ -261,6 +286,7 @@ pub fn run() {
             pdf_search,
             pdf_page_image,
             pdf_text_layer,
+            pdf_page_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

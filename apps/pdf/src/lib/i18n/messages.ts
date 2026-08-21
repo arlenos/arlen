@@ -25,6 +25,7 @@ const messages: Catalogs = {
     "pdf.failed": "Could not open this document: {$reason}",
     "pdf.hostAbsent": "The reader reads documents through its own host, which is not running here.",
     "pdf.pageFailed": "This page could not be drawn: {$reason}",
+    "pdf.textInstead": "The text of this page, without its layout:",
   },
   de: {
     "pdf.app.title": "Dokument",
@@ -43,6 +44,7 @@ const messages: Catalogs = {
     "pdf.failed": "Dieses Dokument konnte nicht geöffnet werden: {$reason}",
     "pdf.hostAbsent": "Der Reader liest Dokumente über seinen eigenen Host, der hier nicht läuft.",
     "pdf.pageFailed": "Diese Seite konnte nicht gezeichnet werden: {$reason}",
+    "pdf.textInstead": "Der Text dieser Seite, ohne ihr Layout:",
   },
 };
 
