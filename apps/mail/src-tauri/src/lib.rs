@@ -51,6 +51,9 @@ pub struct InvitationView {
     /// The `method` parameter, lowercased, or `None` when the part named none.
     method: Option<String>,
     bytes: usize,
+    /// The part's filename, when it had one, so the window can tell that this
+    /// and a row in `attachments` are the same part rather than two things.
+    filename: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -127,6 +130,7 @@ fn mail_read(path: String) -> Result<MessageDto, String> {
         invitation: m.invitation.map(|i| InvitationView {
             method: i.method,
             bytes: i.bytes,
+            filename: i.filename,
         }),
         path,
     })

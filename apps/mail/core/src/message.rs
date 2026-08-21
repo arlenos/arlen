@@ -93,6 +93,17 @@ pub struct Invitation {
     /// How many bytes the part decodes to. The same measured-not-opened rule as
     /// an attachment.
     pub bytes: usize,
+    /// The filename the part gave, when it gave one.
+    ///
+    /// Present so a surface can tell that the invitation and one of the rows in
+    /// `attachments` are THE SAME PART. The common shape from Outlook is a
+    /// `text/calendar` part with `Content-Disposition: attachment;
+    /// filename=invite.ics`, and it lands in both lists - measured, not guessed
+    /// at. Both statements are true, and a window that wants to avoid saying
+    /// "carries an invitation" and "carries one file" about one thing needs a
+    /// way to join them up, which is this rather than matching on media type and
+    /// hoping.
+    pub filename: Option<String>,
 }
 
 /// One part the message carries, as the message describes it.
@@ -191,6 +202,7 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
         is_calendar.then(|| Invitation {
             method: ct.attribute("method").map(|m| m.to_ascii_lowercase()),
             bytes: part.contents().len(),
+            filename: part.attachment_name().map(str::to_string),
         })
     });
 
@@ -456,6 +468,24 @@ BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n";
         // No method means the surface may say the message carries a calendar
         // part and may NOT say what it is asking for.
         assert_eq!(inv.method, None);
+    }
+
+    #[test]
+    fn a_calendar_part_sent_as_an_attachment_is_both_and_says_so() {
+        // The Outlook shape. It lands in `attachments` AND in `invitation`,
+        // which is not a mistake - the part really is both - but a surface
+        // cannot see that they are one part unless something joins them.
+        let raw = b"From: ada@example.org\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\n\
+Lunch?\r\n--b\r\nContent-Type: text/calendar; method=REQUEST; name=invite.ics\r\n\
+Content-Disposition: attachment; filename=invite.ics\r\n\r\n\
+BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n--b--\r\n";
+        let m = read(raw).unwrap();
+        let inv = m.invitation.expect("an invitation");
+        assert_eq!(inv.filename.as_deref(), Some("invite.ics"));
+        assert_eq!(m.attachments.len(), 1);
+        assert_eq!(m.attachments[0].name.as_deref(), Some("invite.ics"));
+        assert_eq!(m.attachments[0].bytes, inv.bytes, "one part, measured once");
     }
 
     #[test]
