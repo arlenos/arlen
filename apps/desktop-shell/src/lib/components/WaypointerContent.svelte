@@ -487,6 +487,13 @@
   // these stores drive.
   const inlineResult = writable<InlineEvalResult | null>(null);
 
+  /// The message id for a module action that would not run, or null.
+  ///
+  /// Held here rather than raised as a toast because a toast renders in THIS
+  /// window and this window is the one that closes; the launcher stays open on a
+  /// failure so the sentence has somewhere to be.
+  const moduleActionError = writable<string | null>(null);
+
   const specialMode = writable<SpecialMode>(null);
   const specialArg = writable<string>("");
 
@@ -890,6 +897,10 @@
         <!-- CommandEmpty is unusable with shouldFilter={false} because
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
+        {#if $moduleActionError}
+          <div class="wp-empty">{$t($moduleActionError)}</div>
+        {/if}
+
         {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
           <!-- Two different sentences, because they are two different facts.
                Every provider's failure leaves its store empty, which is also
@@ -1224,14 +1235,42 @@
               <CommandItem
                 value={`module:${result.id}`}
                 onSelect={async () => {
+                  // A refusal used to be swallowed AND the launcher closed on top
+                  // of it, so pressing Enter on a module result could copy
+                  // nothing, open nothing or run nothing with the surface that
+                  // could have said so already gone. The toast channel does not
+                  // help here - it renders in this window, which is the one being
+                  // hidden - so a failure keeps the launcher open and says it.
+                  let ok = true;
                   if (result.action.type === "copy") {
-                    try { await navigator.clipboard.writeText(result.action.text); } catch {}
+                    try {
+                      await navigator.clipboard.writeText(result.action.text);
+                    } catch {
+                      ok = false;
+                      moduleActionError.set("sh.wp.errCopy");
+                    }
                   } else if (result.action.type === "open_url") {
-                    try { await invoke("open_url", { url: result.action.url }); } catch {}
+                    try {
+                      await invoke("open_url", { url: result.action.url });
+                    } catch {
+                      ok = false;
+                      moduleActionError.set("sh.wp.errOpenUrl");
+                    }
                   } else if (result.action.type === "execute") {
-                    try { await invoke("execute_shell_command", { command: result.action.command, inTerminal: false }); } catch {}
+                    try {
+                      await invoke("execute_shell_command", {
+                        command: result.action.command,
+                        inTerminal: false,
+                      });
+                    } catch {
+                      ok = false;
+                      moduleActionError.set("sh.wp.errRun");
+                    }
                   }
-                  closeWaypointer();
+                  if (ok) {
+                    moduleActionError.set(null);
+                    closeWaypointer();
+                  }
                 }}
               >
                 <WaypointerResult
