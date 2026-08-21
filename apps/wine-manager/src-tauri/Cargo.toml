@@ -1,0 +1,23 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-wine-manager-app"
+version = "0.1.0"
+description = "Arlen OS Wine manager - Windows programs in capability-scoped bottles"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_wine_manager_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
+serde = { version = "1", features = ["derive"] }
+arlen-wine-core = { path = "../core" }
+
+# This app is its own standalone crate (not a member of a parent workspace).
+[workspace]
