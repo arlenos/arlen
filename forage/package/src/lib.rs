@@ -29,7 +29,8 @@ mod metainfo;
 mod writer;
 
 pub use metainfo::{
-    component_type, find_upstream_metainfo, synthesize_metainfo, write_metainfo,
+    component_type, find_upstream_metainfo, screenshot_verdicts, synthesize_metainfo,
+    write_metainfo, ScreenshotVerdict,
 };
 
 pub use writer::{
