@@ -178,15 +178,24 @@ pub fn render_page(bytes: &[u8], page: usize, scale: f32) -> Result<Raster, Stri
 /// able to be told.
 fn library() -> Result<pdfium_render::prelude::Pdfium, String> {
     use pdfium_render::prelude::Pdfium;
+    // THE SENTENCE CARRIES NO LIBRARY DETAIL, and that is deliberate. This is the
+    // line a reader sees in the window - the worker's stderr is what the host
+    // surfaces when a decode refuses - and `pdfium-render`'s load error formats
+    // as a pretty-printed struct across six lines. Appended, it put
+    // "no PDF engine (libpdfium) is installed on this machine: LoadLibraryError("
+    // in front of somebody. The detail goes to the next line instead, where the
+    // journal keeps it and the window does not.
     if let Some(path) = std::env::var_os("ARLEN_PDFIUM_LIB") {
         let path = path.to_string_lossy().into_owned();
-        return Pdfium::bind_to_library(&path)
-            .map(Pdfium::new)
-            .map_err(|e| format!("the PDF engine at {path} could not be loaded: {e}"));
+        return Pdfium::bind_to_library(&path).map(Pdfium::new).map_err(|e| {
+            eprintln!("  detail: {e}");
+            format!("the PDF engine at {path} could not be loaded")
+        });
     }
-    Pdfium::bind_to_system_library()
-        .map(Pdfium::new)
-        .map_err(|e| format!("no PDF engine (libpdfium) is installed on this machine: {e}"))
+    Pdfium::bind_to_system_library().map(Pdfium::new).map_err(|e| {
+        eprintln!("  detail: {e}");
+        "no PDF engine (libpdfium) is installed on this machine".to_string()
+    })
 }
 
 #[cfg(test)]
