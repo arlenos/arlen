@@ -136,6 +136,16 @@ pub fn show(app: &AppHandle) {
         let Some(toplevel) = webview.inner().toplevel() else { return };
         let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else { return };
 
+        // Armed from the raise, and the alternative was tried and thrown away.
+        // On 21 August I raised it with an EMPTY region and armed it when the
+        // page reported the card painted (two animation frames) with a 2s
+        // backstop. It does not work: the page's report is about a DOM update,
+        // not about pixels, and the surface presents its first frame seconds
+        // later - `show: raised` at 131.2s, armed at 133.2s, card visible
+        // somewhere before 15s. So the machinery moved the swallowing window
+        // without closing it and cost a command, a timer and a frontend call to
+        // do it. The presentation delay is the real defect and it is not this
+        // function's to fix.
         let full = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 32767));
         gtk_window.input_shape_combine_region(Some(&full));
         // Re-asserted on every raise rather than trusted from creation: the
@@ -144,6 +154,14 @@ pub fn show(app: &AppHandle) {
         gtk_window.set_keyboard_mode(KeyboardMode::Exclusive);
         gtk_window.show_all();
         gtk_window.queue_draw();
+        // The WEBVIEW is redrawn too, not only its GTK container. A second
+        // request queued while the surface was down comes up mapped and blank
+        // otherwise: measured on 21 August, `show: raised` at 131.2s and the
+        // frame at 134.7s had no card on it while the surface was taking every
+        // press on the desktop. An invisible modal is worse than a visible one,
+        // so the redraw is asked for at the one place that knows the surface
+        // just came back.
+        webview.inner().queue_draw();
     });
     log::info!("consent_window::show: raised");
 }
@@ -154,17 +172,38 @@ pub fn hide(app: &AppHandle) {
     let _ = w.with_webview(move |webview| {
         use gtk::cairo::{RectangleInt, Region};
         use gtk::prelude::{Cast, WidgetExt};
-        use gtk_layer_shell::LayerShell;
-
         let Some(toplevel) = webview.inner().toplevel() else { return };
         let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else { return };
 
         let empty = Region::create_rectangle(&RectangleInt::new(0, 0, 0, 0));
         gtk_window.input_shape_combine_region(Some(&empty));
-        // Keyboard interactivity is deliberately NOT lowered here. Unmapping the
-        // surface releases the focus anyway, and leaving it Exclusive is what
-        // makes the next show correct by construction.
-        let _ = gtk_window.is_layer_window();
+        // KEYBOARD INTERACTIVITY IS LOWERED HERE, and the comment this replaces
+        // said the opposite: that unmapping releases the focus anyway, so leaving
+        // it Exclusive made the next show correct by construction. The first half
+        // of that is not true on this compositor, and the whole desktop paid for
+        // it - after a request was answered the top bar took hover and refused
+        // every click, on the image, for weeks.
+        //
+        // What the machine said, once the frontend log carried a window label:
+        //   [FRONTEND] [consent] first pointerdown at 1257,17 on DIV.fixed.inset-0
+        //   COVERS THE SCREEN slot=dialog-overlay
+        // A press aimed at the top bar was arriving at the CONSENT surface. The
+        // empty input region above sends motion to the bar underneath (so the bar
+        // hovers, which is why this read as a dead frontend for so long), while
+        // the button press follows the keyboard focus this window never gave up.
+        //
+        // Hidden at the GTK level, not only through Tauri. `w.hide()` below left
+        // the layer surface mapped, which is the best explanation for the boots
+        // where an answered card stayed painted on screen.
+        //
+        // The keyboard mode is deliberately NOT touched here, and that is a
+        // correction of my own change from earlier today: I lowered it to None
+        // on the way out, which is both dead (interactivity is read when a
+        // surface MAPS - see the note on the deleted `set_main_keyboard_grab`)
+        // and unsafe, because `show` calls Tauri's `show()` before the closure
+        // re-asserts Exclusive, so a lowered mode could be the one read at the
+        // next map and the card would come up unable to take Escape.
+        gtk_window.hide();
     });
     let _ = w.hide();
     log::info!("consent_window::hide: dropped");
