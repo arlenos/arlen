@@ -82,6 +82,7 @@
     channels: string[];
     attachments: { name: string | null; media_type: string | null; bytes: number }[];
     invitation: { method: string | null; bytes: number; filename: string | null } | null;
+    sealed: string | null;
     path: string;
   };
 
@@ -194,6 +195,12 @@
 
     {#if message.text}
       <pre class="body">{message.text}</pre>
+    {:else if message.sealed === "pgp"}
+      <p class="note">{$t("ml.sealed.pgp")}</p>
+    {:else if message.sealed === "smime"}
+      <p class="note">{$t("ml.sealed.smime")}</p>
+    {:else if message.sealed}
+      <p class="note">{$t("ml.sealed.unknown")}</p>
     {:else}
       <p class="note">{$t("ml.noText")}</p>
     {/if}

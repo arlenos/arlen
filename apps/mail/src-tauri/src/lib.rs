@@ -82,6 +82,10 @@ pub struct MessageDto {
     channels: Vec<String>,
     /// What the message carries, named and measured, never opened.
     attachments: Vec<AttachmentView>,
+    /// Which seal is on the message, as `pgp`, `smime` or `unknown`, when there
+    /// is one. A word rather than a sentence: the window says it in the reader's
+    /// language, and nothing here decrypts anything.
+    sealed: Option<&'static str>,
     /// The calendar part, when there is one. The window says it is there and
     /// opens it in the calendar; nothing here reads it.
     invitation: Option<InvitationView>,
@@ -127,6 +131,11 @@ fn mail_read(path: String) -> Result<MessageDto, String> {
                 bytes: a.bytes,
             })
             .collect(),
+        sealed: m.sealed.map(|s| match s {
+            arlen_mail_core::message::Sealed::Pgp => "pgp",
+            arlen_mail_core::message::Sealed::Smime => "smime",
+            arlen_mail_core::message::Sealed::Unknown => "unknown",
+        }),
         invitation: m.invitation.map(|i| InvitationView {
             method: i.method,
             bytes: i.bytes,
