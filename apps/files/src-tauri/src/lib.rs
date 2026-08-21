@@ -1315,10 +1315,19 @@ async fn files_open(path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?
     {
         arlen_launch_contract::LaunchOutcome::Started { .. } => {}
-        // Reported as-is: "you have not chosen a handler for this" is a thing the
-        // person can act on, and collapsing it into a generic failure is what
-        // makes a missing default look like a broken file manager.
-        other => return Err(describe_launch(&other)),
+        // THE OUTCOME, not a sentence about it. This used to return
+        // `describe_launch(&other)` - an English sentence built here - which the
+        // window then threw away in a `catch` whose comment promised a status
+        // line "later". Two faults in one line: the reader saw nothing at all,
+        // and had they seen it, a German reader would have seen it in English.
+        //
+        // Serialised as the contract's own tagged JSON, so the window can pick
+        // the sentence for the kind in the reader's language and still show the
+        // mime type or app id the outcome names.
+        other => {
+            return Err(serde_json::to_string(&other)
+                .unwrap_or_else(|_| describe_launch(&other)))
+        }
     }
     announce_file_opened(&path).await;
     Ok(())

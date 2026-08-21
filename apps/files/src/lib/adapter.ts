@@ -3,6 +3,7 @@
 /// surface, so paths are absolute and the root is `/`.
 
 import { invoke } from "@tauri-apps/api/core";
+import { openFailure, launchProblem } from "$lib/stores/openFailure";
 import { get } from "svelte/store";
 import type {
   BrowserAdapter,
@@ -85,11 +86,22 @@ export const fmAdapter: BrowserAdapter = {
 };
 
 /// Open a non-directory entry with the system handler.
+///
+/// A REFUSAL IS SHOWN, and the comment this replaces is why it has to be said
+/// out loud: it swallowed the error because "the opener is honest about failure
+/// elsewhere (status line later)", and later never came. Measured on the image,
+/// 21 August: pressing Enter on a PDF - which nothing on the image opens - did
+/// nothing whatever, with no message anywhere, while the host had already built
+/// the sentence and sent it.
+///
+/// The host sends the launch OUTCOME as JSON rather than a sentence, so the
+/// words are chosen here in the reader's language; anything unparseable is
+/// shown as it arrived rather than dropped.
 export async function openPath(path: string): Promise<void> {
   try {
     await invoke("files_open", { path });
-  } catch {
-    // The opener is honest about failure elsewhere (status line later);
-    // an unopenable file must not crash the browser.
+    openFailure.set(null);
+  } catch (e) {
+    openFailure.set(launchProblem(String(e)));
   }
 }
