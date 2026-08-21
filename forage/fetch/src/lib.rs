@@ -89,6 +89,91 @@ pub trait Downloader: Send + Sync {
     async fn get(&self, url: &str, max_bytes: u64) -> Result<Vec<u8>, FetchError>;
 }
 
+/// The most a screenshot may be, in bytes.
+///
+/// Small on purpose. A screenshot is a picture of a window; anything past a few
+/// megabytes is either a mistake or someone using the store's cache as storage,
+/// and the cost of refusing a legitimate oversized one is that a person sees the
+/// remote copy instead of a local one.
+pub const MAX_SCREENSHOT_BYTES: u64 = 8 * 1024 * 1024;
+
+/// A screenshot fetched and named by what it contains.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchedImage {
+    /// The URL it came from, kept so the component can still name the original.
+    pub url: String,
+    /// `<sha256>.<ext>`: content-addressed, so two packages shipping the same
+    /// picture share one file and a changed picture is a different name rather
+    /// than a stale cache entry.
+    pub file_name: String,
+    /// The bytes.
+    pub bytes: Vec<u8>,
+}
+
+/// Fetch one screenshot, refusing anything that is not an image.
+///
+/// The format is decided by what arrived, not by the URL: a caller that trusted
+/// the extension would let `shot.png` be an HTML error page, which then sits in
+/// the cache as a picture the store hands to a renderer. So the magic bytes
+/// decide, and a body that is not one of the formats AppStream screenshots use
+/// is refused with what it looked like instead.
+pub async fn fetch_screenshot(
+    url: &str,
+    downloader: &dyn Downloader,
+) -> Result<FetchedImage, FetchError> {
+    let bytes = downloader.get(url, MAX_SCREENSHOT_BYTES).await?;
+    let ext = image_extension(&bytes).ok_or_else(|| {
+        FetchError::Local(format!(
+            "{url} did not return an image (first bytes: {})",
+            first_bytes(&bytes)
+        ))
+    })?;
+    let digest = ContentHash::of(&bytes).as_str().to_string();
+    Ok(FetchedImage {
+        url: url.to_string(),
+        file_name: format!("{digest}.{ext}"),
+        bytes,
+    })
+}
+
+/// The extension for a body, from its magic bytes, or `None` if it is not an
+/// image format an AppStream screenshot uses.
+fn image_extension(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        return Some("png");
+    }
+    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        return Some("jpg");
+    }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Some("webp");
+    }
+    // SVG is deliberately absent. It is a document with script and remote
+    // references in it, and caching one as a screenshot puts an executable
+    // picture in front of a person browsing a catalogue.
+    None
+}
+
+/// A short, printable look at what came back instead of an image.
+fn first_bytes(bytes: &[u8]) -> String {
+    let head: String = bytes
+        .iter()
+        .take(16)
+        .map(|b| {
+            if b.is_ascii_graphic() || *b == b' ' {
+                (*b as char).to_string()
+            } else {
+                format!("\\x{b:02x}")
+            }
+        })
+        .collect();
+    if head.is_empty() {
+        "empty".into()
+    } else {
+        head
+    }
+}
+
 /// Clones a git repository pinned to a commit and returns a deterministic
 /// archive of that commit's tree. Behind a trait so the fetch logic can be
 /// tested without real git or network.
@@ -1676,5 +1761,84 @@ mod tests {
         std::os::unix::fs::symlink("a", dir.path().join("link")).unwrap();
         // 5 + 3 bytes; the symlink contributes nothing.
         assert_eq!(dir_size(dir.path()).unwrap(), 8);
+    }
+}
+
+#[cfg(test)]
+mod screenshot_tests {
+    use super::*;
+
+    struct Serves(Vec<u8>);
+
+    #[async_trait]
+    impl Downloader for Serves {
+        async fn get(&self, _url: &str, _max: u64) -> Result<Vec<u8>, FetchError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    fn png() -> Vec<u8> {
+        let mut b = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        b.extend_from_slice(b"and then some pixels");
+        b
+    }
+
+    #[tokio::test]
+    async fn a_picture_is_named_by_what_it_contains() {
+        let got = fetch_screenshot("https://example.org/a.png", &Serves(png()))
+            .await
+            .unwrap();
+        assert!(got.file_name.ends_with(".png"));
+        assert_eq!(got.file_name.len(), 64 + 4);
+        // The same bytes under a different URL are the same file, which is the
+        // point of content-addressing: two packages shipping one picture share it.
+        let again = fetch_screenshot("https://elsewhere.org/b.png", &Serves(png()))
+            .await
+            .unwrap();
+        assert_eq!(got.file_name, again.file_name);
+        assert_ne!(got.url, again.url);
+    }
+
+    #[tokio::test]
+    async fn an_error_page_that_calls_itself_a_png_is_refused() {
+        // The URL said `.png` and the server sent HTML. A caller trusting the
+        // extension would put that in the cache as a picture and hand it to a
+        // renderer.
+        let err = fetch_screenshot("https://example.org/a.png", &Serves(b"<!DOCTYPE html>".to_vec()))
+            .await
+            .unwrap_err();
+        assert!(format!("{err}").contains("did not return an image"), "{err}");
+        assert!(format!("{err}").contains("<!DOCTYPE html>"), "and says what it got: {err}");
+    }
+
+    #[tokio::test]
+    async fn an_svg_is_not_a_screenshot() {
+        // A document with script and remote references in it. Caching one as a
+        // picture puts an executable image in front of somebody browsing.
+        let err = fetch_screenshot("https://example.org/a.svg", &Serves(b"<svg xmlns=...".to_vec()))
+            .await
+            .unwrap_err();
+        assert!(format!("{err}").contains("did not return an image"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn jpeg_and_webp_are_recognised_by_their_bytes() {
+        let jpg = fetch_screenshot("https://example.org/a", &Serves(vec![0xff, 0xd8, 0xff, 0xe0, 1, 2]))
+            .await
+            .unwrap();
+        assert!(jpg.file_name.ends_with(".jpg"));
+        let mut w = b"RIFF".to_vec();
+        w.extend_from_slice(&[0, 0, 0, 0]);
+        w.extend_from_slice(b"WEBPmore");
+        let webp = fetch_screenshot("https://example.org/b", &Serves(w)).await.unwrap();
+        assert!(webp.file_name.ends_with(".webp"));
+    }
+
+    #[tokio::test]
+    async fn an_empty_body_says_so_rather_than_printing_nothing() {
+        let err = fetch_screenshot("https://example.org/a.png", &Serves(vec![]))
+            .await
+            .unwrap_err();
+        assert!(format!("{err}").contains("empty"), "{err}");
     }
 }
