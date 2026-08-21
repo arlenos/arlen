@@ -651,6 +651,33 @@ fn cached_icon_path(root: &Path, origin: &str, name: &str) -> Option<String> {
 }
 
 
+/// A screenshot a package shipped with itself, resolved to where it now sits.
+///
+/// A composed component records such a picture as a RELATIVE path rather than an
+/// absolute one, because at build time a package does not know where it will be
+/// installed: the same `.lunpkg` lands under `/usr/lib/arlen/apps` for a system
+/// install and under `~/.local/share/arlen/apps` for a user one. The catalogue is
+/// found at a known place inside that tree, so whoever read the catalogue knows
+/// the root and can say where the picture is; the package cannot.
+///
+/// Anything with a scheme is left alone: that is a remote screenshot, which is
+/// what a third-party host's picture stays as. Existence is checked, so a
+/// component naming a file the package did not ship keeps its original string
+/// rather than becoming a path to nothing.
+fn local_screenshot_path(root: &Path, rel: &str) -> Option<String> {
+    if rel.contains("://") || rel.starts_with('/') {
+        return None;
+    }
+    // No climbing out of the catalogue directory. The string comes from a
+    // document inside a package, and a package that ships `../../../etc/shadow`
+    // as a screenshot is describing a file it does not own.
+    if Path::new(rel).components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return None;
+    }
+    let p = root.join("screenshots").join(rel);
+    p.is_file().then(|| p.to_string_lossy().into_owned())
+}
+
 /// Which layer a composed XML catalogue's apps belong to, from its origin name and
 /// the recipes the store already knows about.
 ///
@@ -824,6 +851,15 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
             if let (Some(root), Some(name)) = (input.root.as_deref(), e.display.icon.as_deref()) {
                 if !name.contains('/') {
                     e.display.icon = cached_icon_path(root, &origin, name);
+                }
+            }
+            // And a screenshot the package shipped with itself, which is a
+            // relative path for the reason `local_screenshot_path` gives.
+            if let Some(root) = input.root.as_deref() {
+                for shot in e.display.screenshots.iter_mut() {
+                    if let Some(local) = local_screenshot_path(root, shot) {
+                        *shot = local;
+                    }
                 }
             }
             entries.push(e);
@@ -1458,6 +1494,20 @@ commit = "0000000000000000000000000000000000000000"
   </component>
 </components>"#;
 
+    /// A recipe for the fixture component, so a composed catalogue for it has an
+    /// install route and is not dropped as an app no cookbook offers.
+    const FORAGE_RECIPE: &str = r#"
+[recipe]
+id = "org.example.demo"
+name = "Demo"
+maintainer = "key1"
+
+[[source]]
+type = "git"
+url = "https://github.com/example/demo"
+commit = "0000000000000000000000000000000000000000"
+"#;
+
     #[test]
     fn an_xml_catalogue_screenshot_gets_the_base_the_document_declares() {
         // The XML form states the base as an attribute on `<components>` where
@@ -1521,6 +1571,61 @@ commit = "0000000000000000000000000000000000000000"
             layer_for_catalog_origin("debian_main", Some(SourceLayer::Official)),
             Some(SourceLayer::Apt),
         );
+    }
+
+    #[test]
+    fn a_package_ships_its_own_screenshots_and_a_third_party_one_stays_a_url() {
+        // The two halves of the mirroring rule, side by side in one component:
+        // an image the package brought with it resolves to the file on disk, and
+        // one from a host nobody made you talk to stays exactly what it was.
+        let dir = tempfile::tempdir().unwrap();
+        let sw = dir.path().join("share/swcatalog");
+        std::fs::create_dir_all(sw.join("screenshots")).unwrap();
+        std::fs::write(sw.join("screenshots/abc123.png"), b"png").unwrap();
+
+        let xml = COMPOSED_XML.replace(
+            "  </component>",
+            "    <screenshots>\n      <screenshot type=\"default\"><image>abc123.png</image></screenshot>\n      <screenshot><image>https://cdn.elsewhere.net/b.png</image></screenshot>\n      <screenshot><image>missing.png</image></screenshot>\n    </screenshots>\n  </component>",
+        );
+        let catalog = compose_catalog(SourceInputs {
+            odrs: None,
+            catalog_xml: vec![CatalogInput {
+                text: xml,
+                root: Some(sw.clone()),
+                origin: Some(arlen_forage_recipe::CATALOG_ORIGIN.into()),
+            }],
+            forage: vec![(FORAGE_RECIPE.into(), SourceLayer::Community, None)],
+            flathub_xml: Vec::new(),
+            dep11_yaml: Vec::new(),
+            flatpak_metadata: Vec::new(),
+            apt_profiles: Vec::new(),
+            metainfo_xml: Vec::new(),
+        });
+        let card = catalog
+            .card(&ComponentId("org.example.demo".into()))
+            .expect("the app has a card");
+        assert_eq!(
+            card.display.screenshots[0],
+            sw.join("screenshots/abc123.png").to_string_lossy(),
+            "the picture the package shipped, where it now sits",
+        );
+        assert_eq!(
+            card.display.screenshots[1], "https://cdn.elsewhere.net/b.png",
+            "a third party's picture is left where it is",
+        );
+        assert_eq!(
+            card.display.screenshots[2], "missing.png",
+            "a file the package did not ship keeps its string rather than becoming a path to nothing",
+        );
+    }
+
+    #[test]
+    fn a_screenshot_path_cannot_climb_out_of_the_catalogue_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("screenshots")).unwrap();
+        assert_eq!(local_screenshot_path(dir.path(), "../../../etc/hostname"), None);
+        assert_eq!(local_screenshot_path(dir.path(), "/etc/hostname"), None);
+        assert_eq!(local_screenshot_path(dir.path(), "https://x/y.png"), None);
     }
 
     /// The whole way across: an installed app's directory, laid out the way
