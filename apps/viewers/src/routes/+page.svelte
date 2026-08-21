@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { trashProblem } from "$lib/trashProblem";
   import { t } from "$lib/i18n/messages";
   /// The viewer routes one window to one file by media type. When launched on a
   /// real file (`viewer <path>`, the `.desktop` `%f`, or a double-click) it loads
@@ -305,7 +306,25 @@
       });
       lastDeleted = { ...t, name };
     } catch (e) {
-      actionError = $t("v.couldNotDelete", { reason: String(e) });
+      // The host names WHICH refusal; the sentence is written here so it is in
+      // the reader's language. An answer this does not model is shown as it came.
+      const p = trashProblem(String(e));
+      actionError =
+        p.key === "v.couldNotDelete"
+          ? $t("v.couldNotDelete", { reason: p.detail })
+          : p.key === "v.trash.noTrashHere"
+            ? $t("v.trash.noTrashHere", { why: p.detail })
+            : p.key === "v.trash.io"
+              ? $t("v.trash.io", { message: p.detail })
+              : p.key === "v.trash.crossDevice"
+                ? $t("v.trash.crossDevice")
+                : p.key === "v.trash.notFound"
+                  ? $t("v.trash.notFound")
+                  : p.key === "v.trash.unsupported"
+                    ? $t("v.trash.unsupported")
+                    : p.key === "v.trash.noSlot"
+                      ? $t("v.trash.noSlot")
+                      : $t("v.trash.nonCanonical");
       return;
     }
     if (neighbour && neighbour !== doomed) {
