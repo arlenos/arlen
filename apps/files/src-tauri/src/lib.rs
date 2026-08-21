@@ -288,7 +288,17 @@ struct ProvenanceStep {
     relation: Option<String>,
     actor: String,
     origin: HaloOrigin,
-    when: String,
+    /// WHEN, as an instant rather than as an English phrase.
+    ///
+    /// This used to be a ready-made string from a hand-rolled ladder in this
+    /// file - "12 hours ago", "last week" - which the window then interpolated
+    /// into a translated sentence. In German that produced half a sentence in
+    /// each language. `Intl.RelativeTimeFormat` already knows every language's
+    /// wording, so the instant travels and the window writes the words.
+    ///
+    /// Epoch MILLIseconds, because that is what a `Date` takes on the other
+    /// side; `0` keeps its meaning as "no timestamp" and is not a date.
+    when_ms: i64,
     fidelity: Fidelity,
     #[serde(skip_serializing_if = "Option::is_none")]
     attested: Option<bool>,
@@ -319,24 +329,6 @@ struct ProvenanceChain {
     incomplete: bool,
 }
 
-/// A coarse, human "when" from an epoch-micros timestamp, never finer than the
-/// honesty contract wants (no false precision on an unsigned DB fact). `0` (the
-/// no-timestamp sentinel) and a future stamp both read as "recently" rather than
-/// an invented past. Pure, so the buckets are testable without a clock.
-fn coarse_when(micros: i64, now_micros: i64) -> String {
-    let secs = (now_micros - micros) / 1_000_000;
-    match secs {
-        s if s < 0 => "recently".to_string(),
-        s if s < 90 => "just now".to_string(),
-        s if s < 3_600 => format!("{} minutes ago", (s / 60).max(1)),
-        s if s < 86_400 => format!("{} hours ago", s / 3_600),
-        s if s < 172_800 => "yesterday".to_string(),
-        s if s < 604_800 => format!("{} days ago", s / 86_400),
-        s if s < 2_592_000 => "last week".to_string(),
-        s if s < 31_536_000 => format!("{} months ago", (s / 2_592_000).max(1)),
-        s => format!("{} years ago", (s / 31_536_000).max(1)),
-    }
-}
 
 /// Stitch a file's provenance chain from what the graph knows: its project
 /// membership (`FILE_PART_OF`) and the caller-scoped access view (0x04). Pure, so
@@ -375,7 +367,7 @@ fn stitch_file_provenance(
             origin: HaloOrigin::Graph,
             // The membership edge's own `created_at`: when the file joined the
             // project, which is what "Part of ..." is dated by.
-            when: coarse_when(p.since_micros, now_micros),
+            when_ms: p.since_micros / 1_000,
             fidelity: Fidelity::Resolved,
             attested: None,
         });
@@ -386,7 +378,7 @@ fn stitch_file_provenance(
                 relation: Some("Last opened by".to_string()),
                 actor: actor.clone(),
                 origin: HaloOrigin::Graph,
-                when: coarse_when(last_accessed_micros, now_micros),
+                when_ms: last_accessed_micros / 1_000,
                 // pid->app attribution, not a signed identity.
                 fidelity: Fidelity::Pid,
                 attested: None,
@@ -398,7 +390,7 @@ fn stitch_file_provenance(
                 // Never named: the daemon summarises a foreign co-tenant.
                 actor: "another app".to_string(),
                 origin: HaloOrigin::Graph,
-                when: coarse_when(last_accessed_micros, now_micros),
+                when_ms: last_accessed_micros / 1_000,
                 fidelity: Fidelity::Proxy,
                 attested: None,
             });
@@ -440,7 +432,8 @@ async fn read_project_memberships(
                 .filter_map(|r| {
                     let name = r.get("name").and_then(|v| v.as_str())?.to_string();
                     // A membership with no recorded time reads "recently" via
-                    // `coarse_when(0, ...)`, never an invented past.
+                    // a zero instant, which the window says is "recently", never an
+                    // invented past.
                     let since = r.get("since").and_then(|v| v.as_i64()).unwrap_or(0);
                     Some(ProjectMembership {
                         name,
@@ -453,7 +446,7 @@ async fn read_project_memberships(
 }
 
 /// Read a file's `last_accessed` (epoch micros) from the File node. `0` when the
-/// node is absent or out of scope, which `coarse_when` reads as "recently".
+/// node is absent or out of scope, which the window reads as "recently".
 async fn read_last_accessed(client: &os_sdk::graph::UnixGraphClient, path: &str) -> i64 {
     let cypher = format!(
         "MATCH (f:File {{id: '{}'}}) RETURN f.last_accessed AS t LIMIT 1",
@@ -2451,7 +2444,7 @@ mod tests {
     }
 
     use super::{
-        abs, coarse_when, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops,
+        abs, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops,
         disambiguate_entries, projects_from_rows, provenance_to_woher, recent_from_rows,
         recent_to_entry,
         stitch_file_provenance, touched_apps_from_rows, trash_to_entry, verwandt_from_rows,
@@ -2741,20 +2734,6 @@ mod tests {
         assert!(!lines.iter().any(|l| l.detail.contains("co-tenant")));
     }
 
-    #[test]
-    fn coarse_when_buckets_without_false_precision() {
-        let now = 1_000_000_000_000_000i64; // arbitrary epoch-micros "now"
-        let ago = |secs: i64| now - secs * 1_000_000;
-        assert_eq!(coarse_when(ago(10), now), "just now");
-        assert_eq!(coarse_when(ago(120), now), "2 minutes ago");
-        assert_eq!(coarse_when(ago(7200), now), "2 hours ago");
-        assert_eq!(coarse_when(ago(90_000), now), "yesterday");
-        assert_eq!(coarse_when(ago(300_000), now), "3 days ago");
-        assert_eq!(coarse_when(ago(1_000_000), now), "last week");
-        // A future or zero stamp must not become an invented past.
-        assert_eq!(coarse_when(now + 5_000_000, now), "recently");
-        assert_eq!(coarse_when(0, now), format!("{} years ago", 0i64.max(now / 1_000_000 / 31_536_000)));
-    }
 
     #[test]
     fn a_stitched_chain_is_never_attested_and_never_complete() {
@@ -2776,7 +2755,14 @@ mod tests {
         let chain =
             stitch_file_provenance("budget.xlsx", &projects, Some(&view), now - 7200 * 1_000_000, now, true);
         let part_of = chain.steps.iter().find(|s| s.relation.as_deref() == Some("Part of")).unwrap();
-        assert_eq!(part_of.when, "3 days ago", "the membership step is dated by when the file joined the project");
+        // The INSTANT, not a phrase: the words are the window's now, and what this
+        // has to hold is that the step is dated by the membership rather than by
+        // the access.
+        assert_eq!(
+            part_of.when_ms,
+            (now - 3 * 86_400 * 1_000_000) / 1_000,
+            "the membership step is dated by when the file joined the project"
+        );
 
         assert!(!chain.mocked, "live lineage must never claim to be a sample");
         assert_eq!(chain.horizon, Horizon::DeeperGated);

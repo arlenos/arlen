@@ -14,7 +14,7 @@
 /// S18-A content-origin persistence + the ebpf pid->app resolution are coder seams.
 
 import { invoke } from "@tauri-apps/api/core";
-import type { Translate } from "@arlen/ui-kit/i18n";
+import { relativeTime, type Translate } from "@arlen/ui-kit/i18n";
 
 /// How Arlen came to record a step (daemons/knowledge provenance.rs).
 export type Provenance = "user" | "graph" | "external" | "model" | "agent";
@@ -32,7 +32,15 @@ export interface ProvenanceStep {
   relation?: "partOf" | "lastOpenedBy" | "downloadedFrom";
   actor: string;
   origin: Provenance;
-  /// A coarse, human "when" ("2 hours ago", "last week").
+  /// WHEN, as epoch milliseconds rather than as a phrase.
+  ///
+  /// The host used to send "2 hours ago" ready-made, and this window then
+  /// interpolated that English into a translated sentence - so a German reader
+  /// got half a sentence in each language. `Intl.RelativeTimeFormat` knows every
+  /// language's wording, so the instant travels and the words are written here.
+  ///
+  /// `0` means the host had no timestamp, and reads as "recently" rather than as
+  /// 1970.
   ///
   /// Still a rendered string rather than a timestamp, so it arrives in whatever
   /// language wrote it - the fixtures write English and it shows through beside
@@ -40,7 +48,7 @@ export interface ProvenanceStep {
   /// formatter over `Intl.RelativeTimeFormat`; there are three hand-rolled copies
   /// of that in the tree already (harness, settings, this), so it wants doing
   /// once in the kit rather than a fourth time here.
-  when: string;
+  when_ms: number;
   fidelity: Fidelity;
   /// Only true when a C2PA content credential actually backs the external origin.
   attested?: boolean;
@@ -67,23 +75,29 @@ export interface ProvenanceChain {
   incomplete?: boolean;
 }
 
+/// The sample chain's own clock. A fixture with real instants would drift with
+/// the day it is read on, and a screenshot of it would never match twice.
+const SAMPLE_NOW = Date.parse("2026-08-14T09:00:00Z");
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
 const FIXTURES: Record<string, ProvenanceChain> = {
   default: {
     subject: "budget-2026.xlsx",
     steps: [
-      { origin: "user", actor: "you", when: "last week", fidelity: "resolved" },
+      { origin: "user", actor: "you", when_ms: SAMPLE_NOW - 7 * DAY, fidelity: "resolved" },
       {
         relation: "partOf",
         origin: "graph",
         actor: "project Atlas",
-        when: "3 days ago",
+        when_ms: SAMPLE_NOW - 3 * DAY,
         fidelity: "resolved",
       },
       {
         relation: "lastOpenedBy",
         origin: "graph",
         actor: "",
-        when: "2 hours ago",
+        when_ms: SAMPLE_NOW - 2 * HOUR,
         fidelity: "pid",
       },
     ],
@@ -96,7 +110,7 @@ const FIXTURES: Record<string, ProvenanceChain> = {
         relation: "downloadedFrom",
         origin: "external",
         actor: "example.com",
-        when: "yesterday",
+        when_ms: SAMPLE_NOW - DAY,
         fidelity: "resolved",
       },
     ],
@@ -108,7 +122,7 @@ const FIXTURES: Record<string, ProvenanceChain> = {
       {
         origin: "external",
         actor: "an Acme camera",
-        when: "in 2024",
+        when_ms: Date.parse("2024-06-01T12:00:00Z"),
         fidelity: "resolved",
         attested: true,
       },
@@ -121,7 +135,7 @@ const FIXTURES: Record<string, ProvenanceChain> = {
       {
         origin: "model",
         actor: "the assistant",
-        when: "10 minutes ago",
+        when_ms: SAMPLE_NOW - 10 * 60_000,
         fidelity: "resolved",
       },
     ],
@@ -133,7 +147,7 @@ const FIXTURES: Record<string, ProvenanceChain> = {
       {
         origin: "agent",
         actor: "the idle curator",
-        when: "overnight",
+        when_ms: SAMPLE_NOW - 6 * HOUR,
         fidelity: "resolved",
       },
     ],
@@ -168,9 +182,24 @@ function honestActor(t: Translate, s: ProvenanceStep): string {
 /// The translator is a parameter: this is called from a render site, and a
 /// function reading the store itself would pin whichever language was current
 /// when it first ran.
-export function stepLine(t: Translate, s: ProvenanceStep): string {
+/// How long ago, in the reader's language.
+///
+/// `relativeTime` is the kit's wrapper over `Intl.RelativeTimeFormat`, which
+/// already knows every language's wording - including the ones with a word for
+/// "yesterday" - so no catalogue entry is needed per unit and adding a language
+/// does not add six strings to write.
+///
+/// A ZERO or FUTURE instant is not a date. Zero is the host saying it had no
+/// timestamp, and a stamp in the future is a clock disagreement; both read as
+/// "recently" rather than as 1970 or as "in three hours".
+function whenWords(t: Translate, ms: number, loc: string): string {
+  if (!Number.isFinite(ms) || ms <= 0 || ms > Date.now()) return t("f.prov.recently");
+  return relativeTime(ms, loc);
+}
+
+export function stepLine(t: Translate, s: ProvenanceStep, loc: string): string {
   const actor = honestActor(t, s);
-  const when = s.when;
+  const when = whenWords(t, s.when_ms, loc);
   switch (s.origin) {
     case "user":
       return t("f.prov.user", { when });

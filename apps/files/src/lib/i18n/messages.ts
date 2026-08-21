@@ -25,6 +25,7 @@ const messages: Catalogs = {
     // sentence, not appended to it, so a translation cannot drop it or move it
     // somewhere it reads as an afterthought.
     "f.prov.user": "Arlen recorded this as yours, {$when}.",
+    "f.prov.recently": "recently",
     "f.prov.partOf": "Part of {$actor}, {$when}. Recorded from what Arlen observed.",
     "f.prov.lastOpenedBy": "Last opened by {$actor}, {$when}. Recorded from what Arlen observed.",
     "f.prov.attested": "Verified as from {$actor}, {$when}, by a content credential.",
@@ -348,6 +349,7 @@ const messages: Catalogs = {
     "f.loc.searchFor": "Suche: {$query}",
     "f.loc.filtered": "Gefiltert",
     "f.prov.user": "Arlen hat das als deins erfasst, {$when}.",
+    "f.prov.recently": "vor Kurzem",
     "f.prov.partOf": "Teil von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
     "f.prov.lastOpenedBy": "Zuletzt ge\u00f6ffnet von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
     "f.prov.attested": "Best\u00e4tigt als von {$actor}, {$when}, durch ein Inhaltszertifikat.",
