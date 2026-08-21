@@ -45,7 +45,7 @@ function check(name, ok, detail) {
 //
 // The install shim writes a `.deb` per named package into apt's archive
 // directory, which is what the real one does and what the save step reads.
-function stage({ installFails = 0, archivesPrefilled = [], cached = [] } = {}) {
+function stage({ installFails = 0, archivesPrefilled = [], cached = [], fourOhFour = false, uris = [] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ci-deps-"));
   const bin = join(dir, "bin");
   const archives = join(dir, "archives");
@@ -55,6 +55,7 @@ function stage({ installFails = 0, archivesPrefilled = [], cached = [] } = {}) {
   mkdirSync(cache, { recursive: true });
   for (const p of archivesPrefilled) writeFileSync(join(archives, `${p}.deb`), "body");
   for (const p of cached) writeFileSync(join(cache, `${p}.deb`), "body");
+  if (uris.length) writeFileSync(join(dir, "uris"), uris.map((u) => `'http://m/${u}.deb' ${u}.deb 1 SHA\n`).join(""));
 
   writeFileSync(join(bin, "sudo"), '#!/bin/sh\nexec "$@"\n');
   // A counter file, so "fail the first N attempts" is expressible.
@@ -66,10 +67,15 @@ mode="$1"; shift
 if [ "$mode" = update ]; then echo called >> "${dir}/update-calls"; exit 0; fi
 # A resolution is not an installation: --print-uris prints what it would
 # fetch and installs nothing, so it must not consume an attempt here either.
-case " $* " in *" --print-uris "*) exit 0;; esac
+case " $* " in *" --print-uris "*) cat "${dir}/uris" 2>/dev/null; exit 0;; esac
 n=$(cat "${dir}/attempts"); n=$((n+1)); echo "$n" > "${dir}/attempts"
 echo "$@" >> "${dir}/install-argv"
-if [ "$n" -le ${installFails} ]; then echo "apt-get: mirror said no" >&2; exit 100; fi
+if [ "$n" -le ${installFails} ]; then
+  ${fourOhFour
+    ? 'echo "E: Failed to fetch mirror+file:/pool/universe/libh/libheif/libheif-dev_1.17.6-1ubuntu4.6_amd64.deb  404  Not Found" >&2'
+    : 'echo "apt-get: mirror said no" >&2'}
+  exit 100
+fi
 for a in "$@"; do
   case "$a" in
     -*|*=*) ;;
@@ -243,6 +249,36 @@ console.log("ci-system-deps:");
 {
   const s = stage({ installFails: 9, cached: ["libgtk-3-dev"] });
   const r = run(s);
+  {
+    // A 404 is the runner image's index naming a version the archive has
+    // superseded. Retrying against the same index cannot fix it, and the cached
+    // copy of the dead version would otherwise ride along for every future run,
+    // since the key rolls only when the package list or the image changes.
+    const s = stage({
+      installFails: 1,
+      fourOhFour: true,
+      cached: ["libheif-dev_1.17.6-1ubuntu4.6_amd64", "libssl-dev_3.0.2-0ubuntu1_amd64"],
+      uris: ["libssl-dev_3.0.2-0ubuntu1_amd64"],
+    });
+    const r = run(s);
+    check(
+      "a 404 is named as a stale index rather than a slow mirror",
+      r.out.includes("stale, not slow"),
+      r.out,
+    );
+    const left = debs(s.cache);
+    check(
+      "and the superseded package is dropped from the cache",
+      !left.some((f) => f.startsWith("libheif-dev_1.17.6")),
+      left.join(" "),
+    );
+    check(
+      "while what the archive still offers is kept",
+      left.some((f) => f.startsWith("libssl-dev_3.0.2")),
+      left.join(" "),
+    );
+  }
+
   check("a warm cache does not turn a failed install green", r.code === 1, r.out);
   rmSync(s.dir, { recursive: true, force: true });
 }

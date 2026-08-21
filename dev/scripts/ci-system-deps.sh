@@ -95,6 +95,42 @@ fi
 #
 # A half-fetched archive is safe to keep: apt checksums what it reuses and
 # re-downloads anything that does not match.
+# Drop cached `.deb` files the archive no longer offers.
+#
+# The cache key rolls only when the package list or the runner image changes, so
+# without this a superseded version stays in the cache indefinitely and every run
+# restores it, hands it to apt and watches apt ignore it. Harmless per file and
+# unbounded over time, and it hides the real state: a cache full of versions
+# nobody can fetch looks exactly like a warm cache.
+#
+# Keyed on what apt asks for AFTER a fresh index, since that is the only list
+# that reflects the archive rather than the image.
+prune_stale_cache() {
+    compgen -G "$CACHE/*.deb" > /dev/null 2>&1 || return 0
+    timeout $(( $(remaining) / 4 )) sudo apt-get update $APT_OPTS >/dev/null 2>&1 || return 0
+    wanted="$(timeout 60 sudo apt-get install -y --no-install-recommends --print-uris $APT_OPTS $PACKAGES 2>/dev/null \
+        | grep "^'" | sed "s|.*/||; s|'.*||" || true)"
+    [ -n "$wanted" ] || return 0
+    dropped=0
+    for deb in "$CACHE"/*.deb; do
+        name="$(basename "$deb")"
+        printf '%s\n' "$wanted" | grep -qxF "$name" && continue
+        # Keep anything already INSTALLED and merely absent from the fresh
+        # resolution: apt does not ask again for what is on the machine, and
+        # dropping those would cold-start the next run for no reason.
+        dpkg-query -W -f='${Status}' "${name%%_*}" 2>/dev/null | grep -q "install ok installed" && continue
+        # BOTH copies, or this does nothing. The restore step already put this
+        # file into apt's archive directory, and `save_cache` copies that
+        # directory back on the way out, so dropping only the cached one hands it
+        # straight back to the next run.
+        rm -f "$deb"
+        sudo rm -f "$ARCHIVES/$name"
+        dropped=$((dropped + 1))
+    done
+    [ "$dropped" -gt 0 ] && echo "dropped $dropped cached package(s) the archive no longer offers"
+    return 0
+}
+
 save_cache() {
     mkdir -p "$CACHE"
     if compgen -G "$ARCHIVES/*.deb" > /dev/null 2>&1; then
@@ -159,12 +195,31 @@ if [ "$restored" -gt 0 ] && [ "$(remaining)" -gt 60 ]; then
     printf '%s' "$wants" | head -5 | sed 's/^/  wants: /'
 
     echo "cache is warm; trying the install without touching the mirror"
-    if timeout $(( $(remaining) - 30 )) sudo apt-get install -y --no-install-recommends $APT_OPTS $PACKAGES
+    attempt_log="$(mktemp)"
+    if timeout $(( $(remaining) - 30 )) sudo apt-get install -y --no-install-recommends $APT_OPTS $PACKAGES 2>&1 | tee "$attempt_log"
     then
         ok=1
     else
-        echo "the image's index was not enough; falling back to update" >&2
+        # A 404 IS NOT A SLOW MIRROR, AND SAYING SO MATTERS. The other failures
+        # here are a mirror that hangs or refuses; this one is the runner image's
+        # apt index naming a version the archive has superseded, e.g.
+        # `libheif-dev_1.17.6-1ubuntu4.6_amd64.deb 404 Not Found` on 21 August.
+        # It is not transient and no number of retries against the same index
+        # will fix it, so it is named as what it is and the index is refreshed
+        # rather than retried into.
+        if grep -q "404  *Not Found" "$attempt_log"; then
+            echo "the index names a version the archive no longer has (404), so it is stale, not slow" >&2
+            # And drop the cached copies of what the index no longer wants, so a
+            # dead version cannot ride along in the saved cache for every future
+            # run. `--print-uris` names exactly the files the CURRENT resolution
+            # asks for; anything else in the cache is from a resolution that no
+            # longer happens.
+            prune_stale_cache
+        else
+            echo "the image's index was not enough; falling back to update" >&2
+        fi
     fi
+    rm -f "$attempt_log"
 fi
 
 # Both bounds, because they catch different failures: the budget is for a mirror
