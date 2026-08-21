@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { initTheme } from "$lib/theme";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
@@ -174,6 +175,48 @@
   );
 
   onMount(() => {
+    // ONE line, once, the first time a pointer is pressed anywhere on the bar.
+    //
+    // The shell could not answer "did a click reach me at all" from a boot log,
+    // and on 21 August that question cost a night: the top bar takes hover and
+    // opens no panel on the image, and with no signal here I could not tell a
+    // press that never arrived from a press the webview swallowed. Capture
+    // phase, so it fires even if something downstream stops propagation, and
+    // once, so a normal session pays a single line.
+    let sawPointer = false;
+    const firstPointer = (e: PointerEvent) => {
+      if (sawPointer) return;
+      sawPointer = true;
+      // The tag alone was not enough: the first run of this said DIV, which
+      // names no element in a bar built of buttons. The class and two ancestors
+      // are what identify the thing actually taking the press.
+      const path: string[] = [];
+      let n: Element | null = e.target instanceof Element ? e.target : null;
+      while (n && path.length < 3) {
+        const cls = typeof n.className === "string" ? n.className.split(" ").slice(0, 2).join(".") : "";
+        path.push(n.tagName + (cls ? "." + cls : ""));
+        n = n.parentElement;
+      }
+      // When the press lands on something that covers the whole screen, say WHAT
+      // it is. A full-viewport element over the shell swallows every click while
+      // the bar underneath still shows hover, which is the exact state that cost
+      // a night on 21 August: hover worked, no panel ever opened, and the target
+      // logged only as "DIV".
+      let covering = "";
+      if (e.target instanceof Element) {
+        const r = e.target.getBoundingClientRect();
+        if (r.width >= window.innerWidth * 0.9 && r.height >= window.innerHeight * 0.9) {
+          const slot = e.target.getAttribute("data-slot") ?? "";
+          const cls = typeof e.target.className === "string" ? e.target.className : "";
+          covering = ` COVERS THE SCREEN slot=${slot || "none"} class=${cls.slice(0, 70)}`;
+        }
+      }
+      invoke("log_frontend", {
+        message: `[input] first pointerdown at ${Math.round(e.clientX)},${Math.round(e.clientY)} on ${path.join(" < ") || "nothing"}${covering}`,
+      }).catch(() => {});
+    };
+    window.addEventListener("pointerdown", firstPointer, { capture: true });
+
     // Every store init now returns a disposer. Collecting them lets
     // onMount's return closure tear down every Tauri listener on
     // unmount, preventing the "every HMR adds another listener" leak
@@ -207,6 +250,7 @@
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {
       document.removeEventListener("contextmenu", suppressBrowserContextMenu);
+      window.removeEventListener("pointerdown", firstPointer, { capture: true });
       for (const dispose of disposers) dispose();
     };
   });
