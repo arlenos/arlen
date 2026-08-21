@@ -302,6 +302,25 @@ say "a word that is not there is answered rather than left blank" \
 say "opening a document did not leave it saying nothing is open" \
   "$(printf '%s' "$dom" | grep -q "No document is open" && echo 0 || echo 1)" "$dom"
 
+# A DOCUMENT WITH A PASSWORD ON IT. Bank statements and payslips arrive like
+# this, and until 22 August the window said "Could not open this document: this
+# file could not be read as a PDF" - which sends a person looking for a corrupt
+# download. The fixture is the core's own, written by `qpdf --encrypt`.
+locked="$root/apps/pdf/core/testdata/user-locked.pdf"
+if [ -f "$locked" ]; then
+  cat > "$fix/p-locked.js" <<'JS'
+await new Promise(r => setTimeout(r, 2000));
+return document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 300);
+JS
+  lk=$(SHOOT_APP_ARGS="$locked" SHOOT_INJECT="$fix/p-locked.js" \
+    "$here/shoot-app.sh" "$app" "$here/out/pdf-locked.png" 2>&1 | sed -n 's/^inject result: //p')
+  say "a document with a password says so, and does not call itself damaged" \
+    "$(printf '%s' "$lk" | grep -q "locked with a password" \
+       && ! printf '%s' "$lk" | grep -q "could not be read as a PDF" && echo 1 || echo 0)" "$lk"
+else
+  say "the locked fixture is where the core keeps it" 0 "missing $locked"
+fi
+
 # LAUNCHED WITH NOTHING, the state the launcher gives a person. This reader cannot
 # open a document itself - it takes a path from `%f` or argv - and its sentence is
 # the one the mail and viewer windows were brought up to, so it is worth holding in
