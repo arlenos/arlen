@@ -115,7 +115,9 @@
         }, 10_000);
       }
       await load();
-    } catch {}
+    } catch {
+      error = "sh.bt.errScan";
+    }
   }
 
   async function handleClick(dev: BluetoothDevice) {
@@ -138,7 +140,11 @@
   }
 
   async function disconnect(path: string) {
-    try { await invoke("disconnect_bluetooth_device", { path }); } catch {}
+    // The same command `handleClick` runs, and that one says when it fails. This
+    // is the context-menu route to it and swallowed the refusal, so a person
+    // pressing Disconnect there watched the device stay connected with no word.
+    try { await invoke("disconnect_bluetooth_device", { path }); }
+    catch { error = "sh.bt.errDisconnect"; }
     await load();
   }
 
@@ -150,7 +156,11 @@
   }
 
   async function setTrusted(path: string, trusted: boolean) {
-    try { await invoke("set_device_trusted", { path, trusted }); } catch {}
+    // Trusting a device is a standing permission for it to connect on its own,
+    // so a refusal that says nothing leaves a person believing they granted or
+    // withdrew something they did not.
+    try { await invoke("set_device_trusted", { path, trusted }); }
+    catch { error = trusted ? "sh.bt.errTrust" : "sh.bt.errUntrust"; }
     await load();
   }
 
