@@ -200,12 +200,42 @@ fn wine_repair(id: String) -> Result<HealthView, String> {
     })
 }
 
+/// Take one drive letter's grant away and make the prefix agree.
+///
+/// The order is the point. The prefix is written FIRST, because that is what the
+/// program actually meets; only once the letter is really gone does the
+/// description change to say so. The other order would leave a bottle whose record
+/// says a folder is no longer reachable while the symlink is still there - which
+/// is the shape a capability browser must never produce, since the whole promise
+/// is that pressing revoke revokes.
+///
+/// Returns the bottle as the window should now show it, so nothing is drawn from
+/// an assumption about what the press did.
+#[tauri::command]
+fn wine_revoke(id: String, letter: String) -> Result<BottleView, String> {
+    let bottles = dir()?;
+    let bottle = arlen_wine_core::registry::load_bottle(&bottles, &id).map_err(|e| e.to_string())?;
+    let letter = letter
+        .chars()
+        .next()
+        .ok_or("no drive letter was named")?;
+    let narrowed = arlen_wine_core::health::revoke_grant(&bottle, letter);
+
+    if arlen_wine_core::health::is_booted(&narrowed.prefix_root) {
+        let drives = arlen_wine_core::map_drives(&narrowed.grants).map_err(|e| e.to_string())?;
+        arlen_wine_core::dosdevices::write_drives(&narrowed.prefix_root, &drives)
+            .map_err(|e| e.to_string())?;
+    }
+    arlen_wine_core::registry::save_bottle(&bottles, &narrowed).map_err(|e| e.to_string())?;
+    Ok(view(&narrowed))
+}
+
 /// Start the window.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
-        .invoke_handler(tauri::generate_handler![wine_bottles, wine_runtime, wine_repair])
+        .invoke_handler(tauri::generate_handler![wine_bottles, wine_runtime, wine_repair, wine_revoke])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

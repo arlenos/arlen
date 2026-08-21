@@ -62,6 +62,27 @@
                 <code>{drive.letter}</code>
                 <code>{drive.host}</code>
                 <span>{drive.writable ? $t("wn.writable") : $t("wn.readOnly")}</span>
+                <button
+                  class="revoke"
+                  onclick={async () => {
+                    try {
+                      // The card is replaced from what came BACK, never from what
+                      // the press asked for: a revoke that failed must not leave a
+                      // window showing a folder as gone while the letter is there.
+                      const after = await invoke<BottleView>("wine_revoke", {
+                        id: bottle.id,
+                        letter: drive.letter.replace(":", ""),
+                      });
+                      const at = list?.bottles.findIndex((b) => b.id === bottle.id) ?? -1;
+                      if (list && at >= 0) list.bottles[at] = after;
+                    } catch (e) {
+                      repaired[bottle.id] = $t("wn.revokeFailed", {
+                        letter: drive.letter,
+                        reason: String(e),
+                      });
+                    }
+                  }}>{$t("wn.revoke")}</button
+                >
               </li>
             {/each}
           </ul>
@@ -165,6 +186,16 @@
     align-items: baseline;
     flex-wrap: wrap;
     margin: 0.5rem 0 0;
+  }
+  .revoke {
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
   }
   .repair button {
     font: inherit;
