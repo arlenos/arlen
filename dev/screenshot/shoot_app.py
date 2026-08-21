@@ -304,6 +304,15 @@ def main():
                          "WebDriver screenshot endpoint - needed for an app that "
                          "never reaches paint-idle (a live terminal repaints "
                          "continuously), where /screenshot hangs")
+    ap.add_argument("--locale", default=None,
+                    help="render in this language by reloading the page with "
+                         "`?locale=<tag>`, which the kit's `applyDevLocale` "
+                         "honours. The translated half of a surface is the half "
+                         "no English render can check, and four defects on 17 "
+                         "August were only visible at `?locale=de`: two columns "
+                         "measured against English text, a crumb that never went "
+                         "through a catalog, and a greeter that shipped a German "
+                         "catalog it never loaded")
     ap.add_argument("--app-arg", action="append",
                     help="argument passed to the app binary (repeatable), e.g. a "
                          "file path for an app launched on a file")
@@ -360,6 +369,49 @@ def main():
                 return 1
         except Exception as e:  # a driver that cannot answer must not fail the shot
             print(f"loaded url: unknown ({e})")
+
+        # A language is chosen by reloading rather than by starting the app
+        # differently, because the app reads it from Settings through a Tauri
+        # command and this is the one hook that does not need Settings to exist.
+        # The reload discards the page, so it happens before anything is typed,
+        # injected or photographed.
+        if args.locale:
+            try:
+                text = "return document.body ? document.body.innerText : '';"
+                before = rq(base, "POST", f"/session/{sid}/execute/sync",
+                            {"script": text, "args": []})["value"]
+                rq(base, "POST", f"/session/{sid}/execute/sync",
+                   {"script": "location.search = '?locale=' + arguments[0]; return null;",
+                    "args": [args.locale]})
+                time.sleep(args.settle)
+                shown = rq(base, "POST", f"/session/{sid}/execute/sync",
+                           {"script": "return location.search;", "args": []})["value"]
+                after = rq(base, "POST", f"/session/{sid}/execute/sync",
+                           {"script": text, "args": []})["value"]
+                print(f"locale: reloaded at {shown or '(no query)'}")
+                # THE QUERY IS NOT THE PROOF. `applyDevLocale` is gated on
+                # `import.meta.env.DEV`, so against a built bundle - which is what
+                # `vite preview` and a `tauri build` frontend both serve - the hook
+                # is inert and the page comes back in the same language with the
+                # query sitting in the URL. The first version of this flag printed
+                # "reloaded at ?locale=de" over an English screenshot, which is the
+                # tool telling the same kind of lie the flag exists to catch. So
+                # the check is whether the words changed.
+                if args.locale not in (shown or ""):
+                    print("LOCALE NOT APPLIED: the page did not come back with the "
+                          "query, so this shot is in whatever language it was.",
+                          file=sys.stderr)
+                    return 1
+                if before and after and before == after:
+                    print("LOCALE NOT APPLIED: the query is in the URL and not one "
+                          "word on the page changed. `applyDevLocale` only runs "
+                          "under a DEV build, so serve the app with `npx vite dev "
+                          "--port <port>` rather than `vite preview`, which serves "
+                          "the built bundle.", file=sys.stderr)
+                    return 1
+            except Exception as e:
+                print(f"LOCALE NOT APPLIED: {e}", file=sys.stderr)
+                return 1
 
         # BEFORE the capture, not after it. This used to run once the PNG was
         # already written and "wrote <path>" already printed, so a run against a

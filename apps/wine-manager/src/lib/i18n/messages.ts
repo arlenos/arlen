@@ -17,7 +17,9 @@ const messages: Catalogs = {
     "wn.writable": "may write",
     "wn.readOnly": "read only",
     "wn.egress": "Network",
-    "wn.egressNone": "no network",
+    // Reads under the "Network" label, so it must not repeat it: the first render
+    // said "Network no network", and "Netzwerk kein Netzwerk" in German.
+    "wn.egressNone": "not allowed",
     // Said out loud rather than hidden, because a bottle missing from this list
     // sends someone looking on disk for something that is sitting right there.
     "wn.unreadable": "{$path} could not be read, so that bottle is not shown above: {$reason}",
@@ -32,7 +34,7 @@ const messages: Catalogs = {
     "wn.writable": "darf schreiben",
     "wn.readOnly": "nur lesen",
     "wn.egress": "Netzwerk",
-    "wn.egressNone": "kein Netzwerk",
+    "wn.egressNone": "nicht erlaubt",
     "wn.unreadable": "{$path} war nicht lesbar, diese Flasche fehlt deshalb oben: {$reason}",
   },
 };
