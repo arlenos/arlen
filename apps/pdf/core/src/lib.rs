@@ -595,4 +595,29 @@ mod tests {
         assert_eq!(toc[0].page, Some(1), "one-based, so it reads as a page number");
         assert_eq!(toc[2].page, Some(2));
     }
+
+    /// A document somebody put a password on is REFUSED, and named.
+    ///
+    /// The fixture is a one-page PDF encrypted with `qpdf --encrypt` at 256 bits
+    /// with a user password. Kept as a file rather than built here because the
+    /// thing under test is what a real encryptor writes, and a hand-assembled
+    /// `/Encrypt` dictionary would be testing my idea of one.
+    #[test]
+    fn a_document_locked_with_a_user_password_is_named_as_locked() {
+        let bytes = include_bytes!("../testdata/user-locked.pdf");
+        assert!(matches!(Document::open(bytes), Err(PdfError::Locked)));
+    }
+
+    /// And the case that must NOT be refused: the same document with an owner
+    /// password and an EMPTY user password. A person can read this one - every
+    /// reader opens it - and it declares encryption all the same. The check
+    /// distinguishes them because lopdf decrypts what it can at load time and
+    /// clears `/Encrypt`, which is the whole reason `is_encrypted()` is the right
+    /// question to ask after the load rather than before it.
+    #[test]
+    fn a_document_only_the_owner_is_restricted_from_still_opens() {
+        let bytes = include_bytes!("../testdata/owner-only.pdf");
+        let doc = Document::open(bytes).expect("readable by anyone");
+        assert_eq!(doc.page_count(), 1);
+    }
 }
