@@ -37,7 +37,13 @@ from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
-TREES = ["apps", "daemons", "sdk", "ai", "forage", "store-backend"]
+#: The trees scanned for spawns. Kept identical to `check-runtime-deps.py`'s
+#: SCAN, and asserted equal by that check's control: the two ask opposite
+#: directions of one question, so a tree only one of them reads is a place where
+#: a tool can be spawned and never classified, or listed and never found. That is
+#: how `appstreamcli` came to be classified here and missing there - `forage` was
+#: in this list and not in that one.
+TREES = ["apps", "daemons", "sdk", "ai", "contracts", "forage", "store-backend"]
 SPAWN = re.compile(r'Command::new\("([a-z][a-z0-9_.-]*)"')
 
 #: What the image carries, READ from `runtime-deps.tsv` rather than kept here.
