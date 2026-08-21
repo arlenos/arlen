@@ -67,6 +67,25 @@ END:VEVENT
 END:VCALENDAR
 ICS
 
+# One event dated TODAY, written by the script rather than pinned in the fixture
+# above. The agenda starts at the first day that has something on it, so without
+# this the first heading is whatever date the fixture names and a reader cannot
+# tell it apart from now. A hardcoded date would also make the case rot the day
+# after it was written.
+today=$(date +%Y%m%d)
+cat > "$fix/arlen/calendars/today.ics" <<ICS
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Arlen//drive//EN
+BEGIN:VEVENT
+UID:today@drive
+DTSTART:${today}T113000Z
+DTEND:${today}T120000Z
+SUMMARY:An event on the current day
+END:VEVENT
+END:VCALENDAR
+ICS
+
 say() {  # say <name> <ok> <got>
   local name="$1" ok="$2" got="$3"
   if [ "$ok" = 1 ]; then echo "  ok   $name"; else echo "  FAIL $name"; echo "       $got"; fail=1; fi
@@ -89,6 +108,14 @@ await new Promise(r => setTimeout(r, 1200));
 return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1200);
 JS
 got=$(drive "$fix/p-agenda.js" "$fix" calendar-agenda.png)
+
+# The day the reader is standing on is marked as such.
+# Case-insensitive, and the fixture's own title deliberately avoids the word:
+# the marker is styled uppercase, so a case-sensitive check would be asserting a
+# CSS rule, and a title containing "today" would pass without any marker at all.
+say "today is marked as today" \
+  "$(printf '%s' "$got" | grep -q "An event on the current day" \
+     && printf '%s' "$got" | grep -qi "today" && echo 1 || echo 0)" "$got"
 
 say "the events in the file are shown, grouped under their own day" \
   "$(printf '%s' "$got" | grep -q "Wednesday, August 19" \
