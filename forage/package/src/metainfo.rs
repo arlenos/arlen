@@ -213,6 +213,69 @@ pub fn write_metainfo(
     Ok(path)
 }
 
+/// Whether a screenshot may be fetched and cached with the package.
+///
+/// The rule is `coder-jobs.md` 1e, and it is narrower than "no remote images"
+/// and wider than "any URL in the metainfo":
+///
+/// A recipe already made you talk to the host its source comes from. Refusing
+/// that host's screenshot protects nothing and costs the person the picture, so
+/// an image served from a source host is fetchable. A THIRD party the recipe
+/// never made you talk to is the thing the rule is against, and an image from
+/// one stays a remote URL: the store can still render it if the machine has a
+/// network and the person allows it, and nothing was fetched at build time on
+/// that host's behalf.
+///
+/// Host comparison is exact and case-folded, never a suffix test: `evil-github.com`
+/// ends with nothing useful, but `github.com.attacker.net` ends with the attacker's
+/// own name and a suffix test on the other side would admit `notgithub.com`. An
+/// image on a subdomain of a source host is a different host and is treated as one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScreenshotVerdict {
+    /// Fetch it and cache it beside the artifact.
+    Fetch(String),
+    /// Leave it as a remote URL, with the host that made it third-party.
+    LeaveRemote { url: String, host: String },
+    /// Not a URL this can reason about at all.
+    Unusable(String),
+}
+
+/// The host of an `https` URL, lower-cased, or `None` if it is not one.
+///
+/// Deliberately `https` only. A screenshot fetched over plain http is a picture
+/// anyone on the path can replace, and a build that caches it has laundered it
+/// into a local file the store then trusts.
+fn https_host(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("https://")?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    // Credentials in a URL are not a host we can reason about, and an image URL
+    // has no business carrying any.
+    if authority.contains('@') || authority.is_empty() {
+        return None;
+    }
+    let host = authority.split(':').next()?;
+    if host.is_empty() {
+        return None;
+    }
+    Some(host.to_ascii_lowercase())
+}
+
+/// Decide each screenshot against the hosts this recipe already fetches from.
+pub fn screenshot_verdicts(source_urls: &[String], screenshots: &[String]) -> Vec<ScreenshotVerdict> {
+    let sources: Vec<String> = source_urls.iter().filter_map(|u| https_host(u)).collect();
+    screenshots
+        .iter()
+        .map(|shot| match https_host(shot) {
+            None => ScreenshotVerdict::Unusable(shot.clone()),
+            Some(host) if sources.contains(&host) => ScreenshotVerdict::Fetch(shot.clone()),
+            Some(host) => ScreenshotVerdict::LeaveRemote {
+                url: shot.clone(),
+                host,
+            },
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,5 +470,85 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         assert!(xml.contains("<description><p>line1\n\tline2end</p></description>"));
         // No forbidden control byte survives into the document.
         assert!(!xml.contains('\u{0}') && !xml.contains('\u{7}') && !xml.contains('\u{c}'));
+    }
+}
+
+#[cfg(test)]
+mod screenshot_tests {
+    use super::*;
+
+    fn shots(sources: &[&str], shots: &[&str]) -> Vec<ScreenshotVerdict> {
+        screenshot_verdicts(
+            &sources.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            &shots.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        )
+    }
+
+    #[test]
+    fn an_image_from_a_host_the_recipe_already_uses_is_fetched() {
+        let v = shots(
+            &["https://downloads.example.org/app-1.2.tar.gz"],
+            &["https://downloads.example.org/shot.png"],
+        );
+        assert_eq!(v, vec![ScreenshotVerdict::Fetch("https://downloads.example.org/shot.png".into())]);
+    }
+
+    #[test]
+    fn an_image_from_a_host_nobody_asked_you_to_talk_to_stays_remote() {
+        let v = shots(
+            &["https://downloads.example.org/app.tar.gz"],
+            &["https://cdn.tracker.net/shot.png"],
+        );
+        assert_eq!(
+            v,
+            vec![ScreenshotVerdict::LeaveRemote {
+                url: "https://cdn.tracker.net/shot.png".into(),
+                host: "cdn.tracker.net".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_subdomain_is_a_different_host() {
+        // Not a suffix test in either direction: `img.example.org` is not
+        // `example.org`, and `notexample.org` must not pass because it ends with
+        // the same letters.
+        let v = shots(
+            &["https://example.org/app.tar.gz"],
+            &["https://img.example.org/a.png", "https://notexample.org/b.png"],
+        );
+        assert!(matches!(v[0], ScreenshotVerdict::LeaveRemote { .. }));
+        assert!(matches!(v[1], ScreenshotVerdict::LeaveRemote { .. }));
+    }
+
+    #[test]
+    fn the_host_comparison_ignores_case_and_a_port() {
+        let v = shots(
+            &["https://Example.ORG:443/app.tar.gz"],
+            &["https://example.org/shot.png"],
+        );
+        assert!(matches!(v[0], ScreenshotVerdict::Fetch(_)));
+    }
+
+    #[test]
+    fn plain_http_is_never_fetched() {
+        // A picture anyone on the path can replace, laundered into a local file
+        // the store then treats as the package's own.
+        let v = shots(&["http://example.org/app.tar.gz"], &["http://example.org/shot.png"]);
+        assert_eq!(v, vec![ScreenshotVerdict::Unusable("http://example.org/shot.png".into())]);
+    }
+
+    #[test]
+    fn a_url_carrying_credentials_is_not_a_host_we_reason_about() {
+        let v = shots(&["https://example.org/a.tar.gz"], &["https://u:p@example.org/s.png"]);
+        assert!(matches!(v[0], ScreenshotVerdict::Unusable(_)));
+    }
+
+    #[test]
+    fn a_recipe_with_no_https_source_fetches_nothing() {
+        // A personal cookbook pointing at a git+ssh remote, say. Nothing is
+        // fetched on its behalf and every image stays where it is.
+        let v = shots(&["git@codeberg.org:me/app.git"], &["https://codeberg.org/shot.png"]);
+        assert!(matches!(v[0], ScreenshotVerdict::LeaveRemote { .. }));
     }
 }
