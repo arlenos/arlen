@@ -89,6 +89,38 @@ fn view(b: &Bottle) -> BottleView {
     }
 }
 
+/// Whether this machine can run a Windows program at all.
+///
+/// The empty list is the reason this exists. "No bottles yet" invites someone to
+/// make one, and on an image without Wine there is nothing behind that invitation:
+/// `runtime-deps.tsv` records `wineboot` as absent, so a machine can be in a state
+/// where the window is correct, the list is honestly empty, and the sentence under
+/// it is a promise the system cannot keep. Saying which of the two states you are
+/// in costs one `PATH` lookup.
+#[derive(Debug, Serialize)]
+pub struct Runtime {
+    /// Whether `wine` is on this machine.
+    pub wine: bool,
+}
+
+/// Whether a program named `name` is on `PATH`.
+///
+/// Deliberately not `Command::new(name).spawn()`: asking whether a thing exists by
+/// running it is a different question, and running `wine` to find out whether Wine
+/// is installed starts a wineserver on a machine that has one.
+fn on_path(name: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|dir| dir.join(name).is_file())
+}
+
+/// What this machine can do with a bottle.
+#[tauri::command]
+fn wine_runtime() -> Runtime {
+    Runtime { wine: on_path("wine") }
+}
+
 /// Where bottles live for this user.
 fn dir() -> Result<PathBuf, String> {
     let data = std::env::var_os("XDG_DATA_HOME")
@@ -120,7 +152,7 @@ fn wine_bottles() -> Result<BottleList, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
-        .invoke_handler(tauri::generate_handler![wine_bottles])
+        .invoke_handler(tauri::generate_handler![wine_bottles, wine_runtime])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -130,6 +162,15 @@ mod tests {
     use super::*;
     use arlen_wine_core::bottle::Egress;
     use arlen_wine_core::{Access, PathGrant};
+
+    #[test]
+    fn a_program_is_found_on_the_path_without_being_run() {
+        // `sh` is on every machine this runs on, and a name nothing provides is
+        // not. The point of the test is the pair: a lookup that always said yes
+        // or always said no would read the same on this machine.
+        assert!(on_path("sh"));
+        assert!(!on_path("there-is-no-such-program-arlen"));
+    }
 
     #[test]
     fn a_bottle_shows_the_letters_its_program_will_see() {
