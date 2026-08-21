@@ -159,6 +159,18 @@ JS
 
 if [ "$engine" = 0 ]; then
   echo "  --   drawing a page: no libpdfium on this machine, so nothing was rendered"
+  # And THAT case is the one every machine is in today, so what the reader does
+  # instead is the case worth holding: the page's words, said to be the text and
+  # not the page.
+  words=$(SHOOT_APP_ARGS="$fix/sample.pdf" SHOOT_INJECT=/dev/stdin "$here/shoot-app.sh" "$app" "$here/out/pdf-reader.png" 2>&1 <<'JS' \
+  | sed -n 's/^inject result: //p'
+await new Promise((r) => setTimeout(r, 2500));
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 400);
+JS
+)
+  say "a page it cannot draw still shows the words" \
+    "$(printf '%s' "$words" | grep -q "without its layout" \
+       && printf '%s' "$words" | grep -q "Chapter one begins here" && echo 1 || echo 0)" "$words"
 else
 say "the page is drawn as opaque paper rather than a transparent sheet" \
   "$(printf '%s' "$ink" | grep -qE "opaque=[1-9]" && echo 1 || echo 0)" "$ink"
