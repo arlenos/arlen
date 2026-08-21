@@ -23,6 +23,17 @@
 # One topic, and nothing heard: the daemon is a pure producer on the bus. Its
 # other consumers are pull-side (the `org.arlen.Power1` properties the shell and
 # the SDK read), which do not go through here.
+#
+# AND THE FIELDS BELOW DESCRIBE ALMOST NOTHING OF WHAT IT CAN DO. A publish list
+# is a statement about one bus topic. This daemon also asks logind to Suspend,
+# Hibernate, SuspendThenHibernate, HybridSleep, PowerOff and Reboot when an idle
+# rule fires, and writes the backlight brightness on every display. Turning a
+# machine off is the largest single thing any component here does, and no field
+# in this model can say so - logind's own polkit rules are what decide whether it
+# may, and that boundary is real and is not this file's.
+#
+# Written down because the profile is short and reads as a small daemon. It is
+# not: it is the one that can end the session.
 [info]
 app_id = "powerd"
 tier = "first-party"
