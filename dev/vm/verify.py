@@ -436,6 +436,43 @@ def consent_dialog_state(before_png, after_png, pointer_at=None):
             f"(spread {card_after} vs desktop {desk_after})")
 
 
+def window_top(png):
+    """The y of the app window's top edge in FRAME pixels, or None.
+
+    A `--click X,Y` is a bet that the window is where it was last time, and on
+    21 August that bet lost twice: the same click that had opened `spec.pdf` on
+    two boots opened the `work` folder on two others, because the window sat 33
+    pixels lower and the rows are 32 pixels apart. Nobody positions that window
+    and nothing promises it will land twice in the same place, so a coordinate
+    measured off one screenshot is only good for the screenshot it came from.
+
+    This finds the edge instead. The desktop under an app is one flat colour, so
+    a column down the middle of the screen leaves it exactly once: at the top of
+    the window. Four rows in a row must differ, which steps over the soft shadow
+    and over a stray pointer pixel.
+
+    Returns None rather than a guess when the column never leaves the desktop -
+    no window, or a window that fills the screen - and the caller refuses.
+    """
+    from PIL import Image
+
+    im = Image.open(png).convert("RGB")
+    w, h = im.size
+    px = im.load()
+    # The left margin, well below the bar: desktop in every placement seen so far.
+    ref = px[int(w * 0.02), int(h * 0.5)]
+    col = int(w * 0.5)
+    run = 0
+    for y in range(int(h * 0.06), h):
+        if max(abs(a - b) for a, b in zip(px[col, y], ref)) > 25:
+            run += 1
+            if run >= 4:
+                return y - 3
+        else:
+            run = 0
+    return None
+
+
 def frame_change(a, b):
     """Fraction of pixels that differ between two frames (0..1) - used to confirm
     an input event (e.g. Super -> waypointer) actually changed what is on screen."""
@@ -690,6 +727,12 @@ def main():
                          "empty is empty because the read found nothing or because it "
                          "ran before the data existed - clicking away and back "
                          "re-mounts the view without rebuilding the image")
+    ap.add_argument("--click-in-window", dest="click_in_window", action="append",
+                    default=None, metavar="X,DY",
+                    help="click X (screen) at DY BELOW the app window's top edge, "
+                         "found in the pre-click frame. Use this for anything "
+                         "inside a window: the placement moves between boots and "
+                         "a fixed --click lands on the wrong row when it does.")
     ap.add_argument("--key", action="append", default=None, metavar="NAME",
                     help="a QMP key name pressed after the clicks, e.g. `ret` to open"
                          " the row a click just selected")
@@ -961,7 +1004,7 @@ def main():
         uncovered_frame = None
         bar_gate_only = args.require_bar and not (
             args.app or args.press_super or args.deny_consent or args.approve_consent
-            or args.click
+            or args.click or args.click_in_window
         )
         if bar_gate_only:
             deadline = time.monotonic() + args.wait
@@ -1196,7 +1239,7 @@ def main():
         # click that lands on a dialog nobody meant to answer is the same failure
         # as the blind approve click that once dismissed the screenshot app's
         # thumbnail. Resolving the card first means the clicks land on the app.
-        if args.click:
+        if args.click or args.click_in_window:
             # Coordinates are given against the 1280x800 layout and scaled to the
             # real frame, like the consent click below.
             from PIL import Image
@@ -1226,10 +1269,21 @@ def main():
                 if os.path.exists(preclick) and os.path.getsize(preclick) > 0:
                     break
                 time.sleep(0.1)
-            for spec in args.click:
+            for spec in args.click or []:
                 cx, cy = (int(v) for v in spec.split(","))
                 qmp_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
                 time.sleep(1.5)
+            if args.click_in_window:
+                top = window_top(preclick)
+                if top is None:
+                    sys.exit("--click-in-window: no window edge in the pre-click "
+                             "frame, so there was nothing to measure from and "
+                             "nothing was clicked (see %s)" % preclick)
+                print(f"window top at y={top} in the frame; clicks measured from there")
+                for spec in args.click_in_window:
+                    cx, dy = (int(v) for v in spec.split(","))
+                    qmp_click(f, round(fw * cx / 1280), top + round(fh * dy / 800), fw, fh)
+                    time.sleep(1.5)
             # Keys AFTER the clicks, because the pair is how a person opens a
             # thing: one click puts the selection on it and Enter opens it. A
             # double-click cannot be expressed here - the loop above sleeps 1.5s
