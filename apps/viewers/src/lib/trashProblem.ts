@@ -46,3 +46,32 @@ export function trashProblem(raw: string): TrashProblem {
       return { key: "v.couldNotDelete", detail: raw };
   }
 }
+
+/// Why a RESTORE did not happen. Same rule, a different set of words: the layer
+/// below answers with a rename error, and the one a person meets is "something
+/// is using that name again", which the window has to say rather than print
+/// `DestinationExists` at them.
+export function restoreProblem(raw: string): TrashProblem {
+  const start = raw.indexOf("{");
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    parsed = start >= 0 ? (JSON.parse(raw.slice(start)) as Record<string, unknown>) : null;
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || typeof parsed.problem !== "string") {
+    return { key: "v.couldNotRestore", detail: raw };
+  }
+  switch (parsed.problem) {
+    case "destination-exists":
+      return { key: "v.restore.nameTaken", detail: "" };
+    case "unsupported":
+      return { key: "v.restore.unsupported", detail: "" };
+    case "cross-device":
+      return { key: "v.restore.crossDevice", detail: "" };
+    case "other":
+      return { key: "v.couldNotRestore", detail: String(parsed.message ?? "") };
+    default:
+      return { key: "v.couldNotRestore", detail: raw };
+  }
+}
