@@ -19,7 +19,7 @@
     incompleteLine,
     type ProvenanceChain,
   } from "$lib/stores/provenance";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
 
   let { fileRef }: { fileRef: string } = $props();
 
@@ -48,7 +48,7 @@
       <div class="ph-subject">{$chain.subject}</div>
       <div class="ph-steps">
         {#each $chain.steps as s, i (i)}
-          <p class="ph-step" class:attested={s.attested}>{stepLine($t, s)}</p>
+          <p class="ph-step" class:attested={s.attested}>{stepLine($t, s, $locale)}</p>
         {/each}
       </div>
       {#if incompleteLine($t, $chain)}
