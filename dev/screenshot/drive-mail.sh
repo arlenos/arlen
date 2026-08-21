@@ -156,6 +156,13 @@ say "an invitation in a message is named" \
 say "and the window says it did not read it" \
   "$(printf '%s' "$inv" | grep -q "Nothing here has read it" && echo 1 || echo 0)" "$inv"
 
+# ONE PART, ONE MENTION. The parser returns a text/calendar part as an attachment
+# whether or not the sender marked it as one, so the window used to say "carries
+# an invitation" and "carries one file, not opened: a file the sender did not
+# name" about the same bytes.
+say "the invitation is not listed a second time as an unnamed file" \
+  "$(printf '%s' "$inv" | grep -q "carries one file" && echo 0 || echo 1)" "$inv"
+
 # The protocol token stays out of the window: REQUEST is for the machine.
 say "the method is not printed raw at the reader" \
   "$(printf '%s' "$inv" | grep -q "REQUEST" && echo 0 || echo 1)" "$inv"
