@@ -27,6 +27,7 @@
   type Runtime = { wine: boolean };
 
   let list = $state<BottleList | null>(null);
+  let repaired = $state<Record<string, string>>({});
   let runtime = $state<Runtime | null>(null);
   let failure = $state<string | null>(null);
 
@@ -79,6 +80,23 @@
           {#if bottle.health.escapes.length}
             <p class="warn">{$t("wn.escaped", { paths: bottle.health.escapes.join(", ") })}</p>
           {/if}
+          <p class="repair">
+            <button
+              onclick={async () => {
+                try {
+                  const after = await invoke<HealthView>("wine_repair", { id: bottle.id });
+                  bottle.health = after;
+                  repaired[bottle.id] = after.agrees ? $t("wn.repaired") : "";
+                } catch (e) {
+                  repaired[bottle.id] = $t("wn.repairFailed", { reason: String(e) });
+                }
+              }}>{$t("wn.repair")}</button
+            >
+            <span>{$t("wn.repairNote")}</span>
+          </p>
+        {/if}
+        {#if repaired[bottle.id]}
+          <p class="repaired">{repaired[bottle.id]}</p>
         {/if}
         <p class="egress">
           <span>{$t("wn.egress")}</span>
@@ -140,6 +158,26 @@
   .path span {
     opacity: 0.7;
     font-size: 0.85rem;
+  }
+  .repair {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    flex-wrap: wrap;
+    margin: 0.5rem 0 0;
+  }
+  .repair button {
+    font: inherit;
+    padding: 0.25rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .repaired {
+    margin: 0.35rem 0 0;
+    opacity: 0.8;
   }
   .warn {
     color: var(--destructive, #b3261e);

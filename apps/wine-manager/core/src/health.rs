@@ -73,6 +73,36 @@ pub fn check_bottle(bottle: &Bottle) -> std::io::Result<Health> {
     Ok(health)
 }
 
+/// Bring a prefix back to what its description says.
+///
+/// Three things, and each is one already-tested step: cut every link that leaves
+/// the prefix without a grant behind it, write the drive table from the grants
+/// again (which removes a letter nobody granted and restores one that went
+/// missing), and read the result back so the caller is told what it is now rather
+/// than what it was asked to be.
+///
+/// IT DOES NOT TOUCH `drive_c`. Everything a person or a program put inside the
+/// bottle stays; what changes is the set of doors out of it and the names the
+/// granted folders are reached by. A repair that could delete somebody's saved
+/// file would be a worse answer than a bottle that disagrees with its record.
+pub fn repair_bottle(bottle: &Bottle) -> std::io::Result<Health> {
+    if !is_booted(&bottle.prefix_root) {
+        return Ok(Health::default());
+    }
+    let granted: Vec<PathBuf> = bottle.grants.iter().map(|g| g.host.clone()).collect();
+    let links = sever::prefix_links(&bottle.prefix_root)?;
+    sever::apply(&sever::plan(&bottle.prefix_root, &links, &granted))?;
+
+    if let Ok(drives) = map_drives(&bottle.grants) {
+        // A grant list too long to map leaves the table alone rather than emptying
+        // it: refusing to change anything is the honest answer to a description
+        // that cannot be realised.
+        dosdevices::write_drives(&bottle.prefix_root, &drives)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+    }
+    check_bottle(bottle)
+}
+
 /// Whether `path` is a bottle prefix that has been booted.
 pub fn is_booted(prefix_root: &Path) -> bool {
     prefix_root.join("dosdevices").is_dir()
@@ -150,6 +180,46 @@ mod tests {
         let h = check_bottle(&b).unwrap();
         assert!(!h.escapes.is_empty(), "{h:?}");
         assert!(h.escapes[0].ends_with("z:"));
+    }
+
+    #[test]
+    fn a_repair_shuts_the_doors_and_leaves_the_contents_alone() {
+        let (b, _d) = bottle("repair", vec![grant("/srv/a")]);
+        // A drive nobody granted, the filesystem drive put back, and a file
+        // somebody saved inside the bottle.
+        std::os::unix::fs::symlink("/etc", b.prefix_root.join("dosdevices/m:")).unwrap();
+        std::os::unix::fs::symlink("/", b.prefix_root.join("dosdevices/z:")).unwrap();
+        let saved = b.prefix_root.join("drive_c/users/u/Documents");
+        std::fs::create_dir_all(&saved).unwrap();
+        std::fs::write(saved.join("letter.txt"), b"mine").unwrap();
+
+        let after = repair_bottle(&b).unwrap();
+        assert!(after.agrees(), "{after:?}");
+        assert!(!b.prefix_root.join("dosdevices/z:").exists(), "the filesystem drive is gone");
+        assert!(!b.prefix_root.join("dosdevices/m:").exists(), "and so is the letter nobody granted");
+        assert_eq!(
+            std::fs::read_link(b.prefix_root.join("dosdevices/d:")).unwrap(),
+            PathBuf::from("/srv/a"),
+            "while the granted folder has its letter",
+        );
+        assert_eq!(
+            std::fs::read_to_string(saved.join("letter.txt")).unwrap(),
+            "mine",
+            "and nothing inside the bottle was touched",
+        );
+    }
+
+    #[test]
+    fn repairing_an_unbooted_bottle_does_nothing_rather_than_failing() {
+        let dir = scratch("repair-unbooted");
+        let b = Bottle {
+            id: "x".into(),
+            prefix_root: dir.join("pfx"),
+            grants: vec![grant("/srv/a")],
+            egress: Egress::None,
+            plumbing: Default::default(),
+        };
+        assert_eq!(repair_bottle(&b).unwrap(), Health::default());
     }
 
     #[test]
