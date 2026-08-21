@@ -101,6 +101,24 @@
   /// The day heading, through Intl off the shared locale - never a catalogue
   /// string, so a German build says "Mittwoch, 19. August" rather than an
   /// English order with German words in it.
+  /// Whether a row's day is the reader's today.
+  ///
+  /// The agenda starts at the first day that HAS something on it, which is not
+  /// necessarily today - so the first heading could be next Tuesday and read as
+  /// if it were now. Marking the day the reader is standing on is the difference
+  /// between a list of dates and an agenda.
+  ///
+  /// Compared as the reader's own local date rather than through UTC, because
+  /// "today" is a fact about the reader's clock and an event's `date` is already
+  /// in its own local terms.
+  function isToday(date: string): boolean {
+    const now = new Date();
+    const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate(),
+    ).padStart(2, "0")}`;
+    return date === local;
+  }
+
   function dayLabel(date: string): string {
     const [y, m, d] = date.split("-").map(Number);
     return new Intl.DateTimeFormat($locale, {
@@ -197,7 +215,10 @@
     <ul class="days">
       {#each days as day (day.date)}
         <li class="day">
-          <h2>{dayLabel(day.date)}</h2>
+          <h2>
+            {dayLabel(day.date)}
+            {#if isToday(day.date)}<span class="today">{$t("cal.today")}</span>{/if}
+          </h2>
           <ul class="events">
             {#each day.events as e (e.uid + e.date + (e.time ?? ""))}
               <li class="event">
@@ -243,6 +264,18 @@
 </main>
 
 <style>
+  .today {
+    margin-left: 8px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-bg-app, #0f0f0f);
+    background: var(--color-accent, #6366f1);
+    vertical-align: middle;
+  }
   :global(body) {
     margin: 0;
   }
