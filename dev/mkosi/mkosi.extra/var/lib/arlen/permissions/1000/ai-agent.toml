@@ -18,6 +18,18 @@
 # all-instances scope, or the write socket refuses the relation as unanchored).
 # The [info] block also lets the profile parse under ConnectionAuth (the agent
 # connects to the audit daemon too).
+# WHAT THE FOUR READ FIELDS DO NOT SAY: where their contents GO. This is the one
+# component that takes what it read out of the graph and puts it in a prompt. A
+# path and a project name leave this process for a model - through `ai-proxy`, to
+# whatever provider `ai.toml` names, which may be on this machine and may not. No
+# field in this model distinguishes "may read this" from "may read this and send
+# it somewhere", and for every other principal here that difference never arises.
+#
+# The other half of the same point: the relation below is what the executor writes
+# with, and it writes at all only under `[agent] executor_live`, which is off. So
+# this file describes a capability held and not exercised - the right state for
+# it, and not one a reader could infer from the grant.
+
 [info]
 app_id = "ai-agent"
 tier = "first-party"
