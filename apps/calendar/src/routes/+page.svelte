@@ -252,6 +252,9 @@
                     >
                       <Repeat size={12} strokeWidth={2} />{repeatLabel(e)}
                     </span>
+                    {#if !e.expanded}
+                      <span class="unexpanded">{$t("cal.onlyThisOne")}</span>
+                    {/if}
                   {/if}
                 </span>
               </li>
@@ -365,6 +368,11 @@
   }
   .tz,
   .where,
+  .unexpanded {
+    font-size: 0.75rem;
+    opacity: 0.75;
+  }
+
   .repeat {
     display: inline-flex;
     align-items: center;

@@ -31,6 +31,12 @@ const messages: Catalogs = {
     "cal.daySun": "Sun",
     "cal.repeatsUnexpanded": "This event repeats, and its rule is one the calendar cannot work out yet, so only this one is shown.",
     "cal.repeatsShown": "One of a repeating series.",
+    // The SHORT form of the caveat above, rendered in the row rather than hidden
+    // in a tooltip. A title attribute is not a statement to a reader: it needs a
+    // pointer that hovers, so a person reading the agenda at a glance, or driving
+    // it from the keyboard, is told nothing at all - and what they are not told
+    // here is that the later dates of this series are missing from their agenda.
+    "cal.onlyThisOne": "only this date",
     "cal.empty": "The calendar files in {$dir} have no events in them.",
     "cal.noFiles": "No calendar files yet. Put .ics files in {$dir} and they show up here.",
     "cal.keep": "Keep this calendar",
@@ -60,6 +66,7 @@ const messages: Catalogs = {
     "cal.daySun": "So",
     "cal.repeatsUnexpanded": "Dieser Termin wiederholt sich, und seine Regel kann der Kalender noch nicht ausrechnen, deshalb steht hier nur dieser eine.",
     "cal.repeatsShown": "Einer aus einer Wiederholungsreihe.",
+    "cal.onlyThisOne": "nur dieses Datum",
     "cal.empty": "Die Kalenderdateien in {$dir} enthalten keine Termine.",
     "cal.noFiles": "Noch keine Kalenderdateien. Lege .ics-Dateien in {$dir} ab, dann erscheinen sie hier.",
     "cal.keep": "Diesen Kalender behalten",

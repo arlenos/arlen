@@ -86,6 +86,25 @@ END:VEVENT
 END:VCALENDAR
 ICS
 
+# A RULE THE ENGINE REFUSES, dated today so it lands in the same first screen.
+# `rrule` models FREQ, INTERVAL, weekly BYDAY, COUNT and UNTIL and refuses the
+# rest, so this monthly-by-monthday event comes back as ONE date - and every
+# later occurrence is missing from the reader's agenda. Until 21 August the only
+# sign of that was a `title` attribute, which is not a statement to somebody
+# reading at a glance or driving from the keyboard.
+cat > "$fix/arlen/calendars/monthly.ics" <<ICS
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Arlen//drive//EN
+BEGIN:VEVENT
+UID:rent@drive
+DTSTART:${today}T090000Z
+SUMMARY:A rule this calendar does not model
+RRULE:FREQ=MONTHLY;BYMONTHDAY=1,15
+END:VEVENT
+END:VCALENDAR
+ICS
+
 say() {  # say <name> <ok> <got>
   local name="$1" ok="$2" got="$3"
   if [ "$ok" = 1 ]; then echo "  ok   $name"; else echo "  FAIL $name"; echo "       $got"; fail=1; fi
@@ -116,6 +135,12 @@ got=$(drive "$fix/p-agenda.js" "$fix" calendar-agenda.png)
 say "today is marked as today" \
   "$(printf '%s' "$got" | grep -q "An event on the current day" \
      && printf '%s' "$got" | grep -qi "today" && echo 1 || echo 0)" "$got"
+
+# The caveat is IN THE ROW. The core has always known this row was not worked
+# out (`expanded: false`); the window kept it in a tooltip.
+say "a repetition the calendar cannot work out says so in the row" \
+  "$(printf '%s' "$got" | grep -q "A rule this calendar does not model" \
+     && printf '%s' "$got" | grep -q "only this date" && echo 1 || echo 0)" "$got"
 
 say "the events in the file are shown, grouped under their own day" \
   "$(printf '%s' "$got" | grep -q "Wednesday, August 19" \
@@ -287,6 +312,9 @@ printf '[locale]\nui = "de"\n' > "$cfg/arlen/locale.toml"
 got=$(XDG_DATA_HOME="$fix" XDG_CONFIG_HOME="$cfg" SHOOT_INJECT="$fix/p-agenda.js" \
   "$here/shoot-app.sh" "$app" "$here/out/calendar-agenda-de.png" 2>&1 \
   | sed -n 's/^inject result: //p')
+say "and the caveat is German too" \
+  "$(printf '%s' "$got" | grep -q "nur dieses Datum" && echo 1 || echo 0)" "$got"
+
 say "the German build says the German words, dates included" \
   "$(printf '%s' "$got" | grep -q "Mittwoch, 19. August" \
      && printf '%s' "$got" | grep -q "Ganztägig" \
