@@ -41,6 +41,18 @@ pub struct AttachmentView {
     bytes: usize,
 }
 
+/// A calendar part the message carries, named and not read.
+///
+/// The core deliberately does not parse the payload (its section-4 note says
+/// why), so this carries what the message CLAIMS about the part and nothing
+/// derived from its contents.
+#[derive(serde::Serialize)]
+pub struct InvitationView {
+    /// The `method` parameter, lowercased, or `None` when the part named none.
+    method: Option<String>,
+    bytes: usize,
+}
+
 #[derive(Serialize)]
 pub struct MessageDto {
     /// The sender as written. Unverified: a display name is whatever the sender
@@ -67,6 +79,9 @@ pub struct MessageDto {
     channels: Vec<String>,
     /// What the message carries, named and measured, never opened.
     attachments: Vec<AttachmentView>,
+    /// The calendar part, when there is one. The window says it is there and
+    /// opens it in the calendar; nothing here reads it.
+    invitation: Option<InvitationView>,
     /// The file this came from, for the surface to name.
     path: String,
 }
@@ -109,6 +124,10 @@ fn mail_read(path: String) -> Result<MessageDto, String> {
                 bytes: a.bytes,
             })
             .collect(),
+        invitation: m.invitation.map(|i| InvitationView {
+            method: i.method,
+            bytes: i.bytes,
+        }),
         path,
     })
 }

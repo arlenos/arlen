@@ -61,6 +61,17 @@ pub struct Message {
     pub refusal: Option<String>,
     /// Headers that are themselves a way out of the machine.
     pub channels: Vec<String>,
+    /// The invitation the message carries, when it carries one.
+    ///
+    /// NAMED, NOT READ. A `text/calendar` part is an invitation, a cancellation
+    /// or a reply depending on its `method`, and turning one into an event means
+    /// iTIP processing - which the plan's section 4 leaves as an open
+    /// architectural call between this app and the calendar daemon. So this says
+    /// the part is there and what the message claims it is FOR, and nothing in
+    /// this crate parses the calendar payload. The calendar app already reads
+    /// `.ics`; a second reader here would be a second set of differentials over
+    /// the same bytes, which is the thing section 2 exists to prevent.
+    pub invitation: Option<Invitation>,
     /// What the message CARRIES, named and measured, never opened.
     ///
     /// Same principle as `has_html`: say what is there without acting on it. A
@@ -69,6 +80,19 @@ pub struct Message {
     /// surface simply did not mention. Nothing is extracted and nothing is
     /// written to disk by reading this.
     pub attachments: Vec<Attachment>,
+}
+
+/// A calendar part, as the message describes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invitation {
+    /// The `method` parameter as written, lowercased: `request`, `cancel`,
+    /// `reply`, `publish` and so on. `None` when the part named none, which is
+    /// legal and means the surface must not claim it is an invitation to
+    /// something - only that the message carries a calendar part.
+    pub method: Option<String>,
+    /// How many bytes the part decodes to. The same measured-not-opened rule as
+    /// an attachment.
+    pub bytes: usize,
 }
 
 /// One part the message carries, as the message describes it.
@@ -156,6 +180,20 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
         })
         .collect();
 
+    // The calendar part, if there is one. Every part is examined rather than the
+    // first: a message can carry a plain body, an HTML body and an invitation,
+    // and an invitation is often not flagged as an attachment, so the attachment
+    // list above does not necessarily mention it.
+    let invitation = parsed.parts.iter().find_map(|part| {
+        let ct = part.content_type()?;
+        let is_calendar = ct.ctype().eq_ignore_ascii_case("text")
+            && ct.subtype().is_some_and(|s| s.eq_ignore_ascii_case("calendar"));
+        is_calendar.then(|| Invitation {
+            method: ct.attribute("method").map(|m| m.to_ascii_lowercase()),
+            bytes: part.contents().len(),
+        })
+    });
+
     // Every address in the header, not the first: a reader that keeps one has
     // decided the message was addressed to one person.
     let addresses = |list: Option<&mail_parser::Address>| -> Vec<String> {
@@ -177,6 +215,7 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
         has_html: html.is_some(),
         only_in_text,
         only_in_html,
+        invitation,
         refusal: headers.refusal(),
         channels: exfiltration::header_channels(&raw_headers)
             .into_iter()
@@ -379,6 +418,50 @@ Content-Type: text/html
             !m.only_in_text.is_empty() || !m.only_in_html.is_empty(),
             "the two parts name different hosts"
         );
+    }
+
+    #[test]
+    fn an_invitation_is_named_but_not_read() {
+        let raw = b"From: ada@example.org\r\n\
+Subject: Lunch\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/alternative; boundary=b\r\n\
+\r\n\
+--b\r\n\
+Content-Type: text/plain\r\n\
+\r\n\
+Lunch on Friday?\r\n\
+--b\r\n\
+Content-Type: text/calendar; method=REQUEST; charset=utf-8\r\n\
+\r\n\
+BEGIN:VCALENDAR\r\n\
+END:VCALENDAR\r\n\
+--b--\r\n";
+        let m = read(raw).unwrap();
+        let inv = m.invitation.expect("the message carries a calendar part");
+        // Lowercased, because a sender writes REQUEST or Request and a surface
+        // that switches on the casing shows nothing for one of them.
+        assert_eq!(inv.method.as_deref(), Some("request"));
+        assert!(inv.bytes > 0);
+    }
+
+    #[test]
+    fn a_calendar_part_with_no_method_still_shows_as_one() {
+        let raw = b"From: ada@example.org\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: text/calendar\r\n\
+\r\n\
+BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n";
+        let inv = read(raw).unwrap().invitation.expect("still a calendar part");
+        // No method means the surface may say the message carries a calendar
+        // part and may NOT say what it is asking for.
+        assert_eq!(inv.method, None);
+    }
+
+    #[test]
+    fn a_message_without_one_says_so() {
+        let raw = b"From: ada@example.org\r\nSubject: Hello\r\n\r\nNo calendar here.\r\n";
+        assert_eq!(read(raw).unwrap().invitation, None);
     }
 
     #[test]

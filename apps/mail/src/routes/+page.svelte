@@ -39,6 +39,25 @@
   /// the string is shown exactly as it arrived rather than replaced by a guess or
   /// by nothing. The raw value stays on the element either way, so a person
   /// checking a suspicious message can still read the header as sent.
+  /// The sentence for a calendar part, chosen by what the message claims it is.
+  ///
+  /// The method is a protocol token (`REQUEST`, `CANCEL`, ...) and the reader is
+  /// not the protocol, so each known one has its own sentence in the catalogue.
+  /// An unknown method is shown AS WRITTEN rather than dropped: a part marked
+  /// something this app has never heard of is exactly when a person wants to see
+  /// the word and decide for themselves.
+  function invitationWords(method: string | null): string {
+    // Written out rather than built with `ml.invitation.${method}`: the key gate
+    // reads LITERAL keys, so a composed one is invisible to it and a rename
+    // would take the sentence away with nothing failing.
+    if (method === null) return $t("ml.invitation.unmarked");
+    if (method === "request") return $t("ml.invitation.request");
+    if (method === "cancel") return $t("ml.invitation.cancel");
+    if (method === "reply") return $t("ml.invitation.reply");
+    if (method === "publish") return $t("ml.invitation.publish");
+    return $t("ml.invitation.other", { method });
+  }
+
   function formatSent(raw: string, loc: string): string {
     const at = new Date(raw);
     if (Number.isNaN(at.getTime())) return raw;
@@ -62,6 +81,7 @@
     cc: string[];
     channels: string[];
     attachments: { name: string | null; media_type: string | null; bytes: number }[];
+    invitation: { method: string | null; bytes: number } | null;
     path: string;
   };
 
@@ -151,6 +171,10 @@
       <p class="note bad" role="status">
         {$t("ml.channels", { list: message.channels.join(", ") })}
       </p>
+    {/if}
+
+    {#if message.invitation}
+      <p class="note">{invitationWords(message.invitation.method)}</p>
     {/if}
 
     {#if message.attachments.length > 0}

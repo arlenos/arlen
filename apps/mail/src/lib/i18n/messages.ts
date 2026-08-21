@@ -38,6 +38,18 @@ const messages: Catalogs = {
       ".input {$count :number}\n.match $count\none {{This message carries one file, not opened:}}\n* {{This message carries {$count} files, not opened:}}",
     "ml.attachment": "{$name}, {$type}, {$size}",
     "ml.unnamedAttachment": "a file the sender did not name",
+    // A `text/calendar` part, NAMED and not read. The core does not parse the
+    // payload - who processes iTIP is an open call between this app and the
+    // calendar daemon - so these say what the message CLAIMS the part is for and
+    // then say plainly that nothing here opened it. The methods are spelled out
+    // in words rather than printed raw: "REQUEST" is a protocol token and the
+    // person reading their mail is not the protocol.
+    "ml.invitation.request": "This message carries an invitation. Nothing here has read it.",
+    "ml.invitation.cancel": "This message carries a cancellation for an event. Nothing here has read it.",
+    "ml.invitation.reply": "This message carries somebody's reply to an invitation. Nothing here has read it.",
+    "ml.invitation.publish": "This message carries a published event. Nothing here has read it.",
+    "ml.invitation.other": "This message carries a calendar part marked {$method}. Nothing here has read it.",
+    "ml.invitation.unmarked": "This message carries a calendar part. It does not say what for, and nothing here has read it.",
   },
   de: {
     "ml.app.title": "E-Mail",
@@ -60,6 +72,12 @@ const messages: Catalogs = {
       ".input {$count :number}\n.match $count\none {{Diese Nachricht trägt eine Datei bei sich, nicht geöffnet:}}\n* {{Diese Nachricht trägt {$count} Dateien bei sich, nicht geöffnet:}}",
     "ml.attachment": "{$name}, {$type}, {$size}",
     "ml.unnamedAttachment": "eine Datei, die die absendende Seite nicht benannt hat",
+    "ml.invitation.request": "Diese Nachricht enthält eine Einladung. Diese App hat sie nicht gelesen.",
+    "ml.invitation.cancel": "Diese Nachricht enthält eine Absage zu einem Termin. Diese App hat sie nicht gelesen.",
+    "ml.invitation.reply": "Diese Nachricht enthält jemandes Antwort auf eine Einladung. Diese App hat sie nicht gelesen.",
+    "ml.invitation.publish": "Diese Nachricht enthält einen veröffentlichten Termin. Diese App hat ihn nicht gelesen.",
+    "ml.invitation.other": "Diese Nachricht enthält einen Kalenderteil, gekennzeichnet als {$method}. Diese App hat ihn nicht gelesen.",
+    "ml.invitation.unmarked": "Diese Nachricht enthält einen Kalenderteil. Wofür, sagt sie nicht, und diese App hat ihn nicht gelesen.",
   },
 };
 
