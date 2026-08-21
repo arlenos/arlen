@@ -307,16 +307,31 @@ pub fn merge_catalog(entries: Vec<CatalogEntry>) -> Vec<AppCard> {
         // A person on a fresh boot with no network then sees no picture, for an
         // icon that was sitting in `/var/lib/swcatalog/icons`. Same picture, no
         // request - so a local path wins whichever entry won the prose. Only the
-        // icon: there is no local copy of a screenshot to prefer.
+        // Screenshots follow the same rule now that a forage package ships its
+        // own: a set with a local file in it beats a set of URLs, for the same
+        // reason and with the same measurement behind it. Kept separate from the
+        // icon rather than folded in, because the two can come from different
+        // entries: the archive may hold the icon locally while the package that
+        // shipped the pictures is the community one.
         let local_icon = group
             .iter()
             .find_map(|e| e.display.icon.as_deref().filter(|i| i.starts_with('/')))
             .map(str::to_string);
+        let local_shots = group
+            .iter()
+            .find(|e| e.display.screenshots.iter().any(|s| s.starts_with('/')))
+            .map(|e| e.display.screenshots.clone());
         let display = match (local_icon, display) {
             (Some(local), d) if !d.icon.as_deref().is_some_and(|i| i.starts_with('/')) => {
                 DisplayMeta { icon: Some(local), ..d }
             }
             (_, d) => d,
+        };
+        let display = match local_shots {
+            Some(shots) if !display.screenshots.iter().any(|s| s.starts_with('/')) => {
+                DisplayMeta { screenshots: shots, ..display }
+            }
+            _ => display,
         };
 
         // A card is a bridge as soon as any source says so (only forage can).
@@ -469,6 +484,34 @@ mod tests {
                 "the picture already on this disk",
             );
             assert_eq!(cards[0].display.screenshots.len(), 3, "and the richer prose still won");
+        }
+    }
+
+    #[test]
+    fn pictures_already_on_this_disk_win_over_a_richer_source_of_urls() {
+        // The forage shape: the package shipped its own screenshots, so they are
+        // files. Flathub knows the app too, with more of them and all remote. On
+        // a fresh boot with no network the remote set is three blank frames and
+        // the local one is a picture, so the local set wins even though the other
+        // entry won the prose.
+        // Apt rather than Community for the local set, so the OTHER entry wins the
+        // merge on its own terms: a first version of this test used Community and
+        // passed with the preference deleted, because Community already outranked
+        // Flatpak and kept its screenshots without any rule.
+        let mut forage = entry("org.x.App", SourceLayer::Apt, "App", 0);
+        forage.display.screenshots = vec![
+            "/home/u/.local/share/arlen/apps/org.x.App/share/swcatalog/screenshots/a.png".into(),
+        ];
+        let hub = entry("org.x.App", SourceLayer::Flatpak, "App", 3);
+
+        for entries in [vec![forage.clone(), hub.clone()], vec![hub, forage]] {
+            let cards = merge_catalog(entries);
+            assert_eq!(cards[0].display.screenshots.len(), 1);
+            assert!(
+                cards[0].display.screenshots[0].starts_with('/'),
+                "{:?}",
+                cards[0].display.screenshots,
+            );
         }
     }
 
