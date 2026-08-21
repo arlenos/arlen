@@ -48,6 +48,48 @@ pub use seccomp::WorkerProfile;
 /// plus its header.
 pub const MAX_OUTPUT_BYTES: u64 = 12 + 16 * 1024 * 1024 * 4;
 
+/// How much of a refusing worker's stderr is kept.
+///
+/// Small on purpose: this is the one channel whose CONTENT the worker chooses,
+/// and it exists to carry one sentence, not a log.
+const MAX_REASON_BYTES: u64 = 4 * 1024;
+
+/// How much of that sentence a caller is handed, in characters.
+const MAX_REASON_CHARS: usize = 200;
+
+/// The worker's own reason for refusing, made safe to put in front of a person.
+///
+/// UNTRUSTED TEXT. This design assumes the worker is the piece that can be
+/// compromised, so its stderr is treated the way the frame it writes is treated:
+/// bounded, and stripped of everything that is not plain printable text before
+/// it can reach a surface. A decoder cannot repaint a window with escape codes
+/// or fold a second line into a message here.
+///
+/// Takes the worker's OWN line - the first one that starts `arlen-`, falling
+/// back to the first non-empty line - and drops that `<binary>: ` prefix, which
+/// is convention for a log and noise in a sentence.
+///
+/// Not the last line, which is what this did for one run: the PDF worker's
+/// sentence is followed by a library's pretty-printed struct, so the reader was
+/// shown `This page could not be drawn: )`. The closing bracket of a Rust
+/// `Debug` dump is the last line and the least useful thing on the stream.
+fn worker_reason(stderr: &str) -> Option<String> {
+    let mut lines = stderr.lines().filter(|l| !l.trim().is_empty()).map(str::trim);
+    let first = lines.clone().next()?;
+    let line = lines.find(|l| l.starts_with("arlen-")).unwrap_or(first);
+    let line = match line.split_once(": ") {
+        Some((head, rest)) if head.starts_with("arlen-") && !rest.trim().is_empty() => rest,
+        _ => line,
+    };
+    let clean: String = line
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_REASON_CHARS)
+        .collect();
+    let clean = clean.trim();
+    (!clean.is_empty()).then(|| clean.to_string())
+}
+
 /// The wall-clock budget for one worker run.
 pub const DECODE_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -132,7 +174,14 @@ pub fn run_confined_worker(
         .args(&argv)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit());
+        // CAPTURED, not inherited. A worker that refuses says why on stderr - the
+        // PDF one says "no PDF engine (libpdfium) is installed on this machine" -
+        // and inheriting sent that sentence to a journal nobody reads while the
+        // window told the reader "worker exited with exit status: 2". The reason
+        // exists; it was simply not carried. Drained on its own thread below,
+        // because a piped stream nobody reads deadlocks the worker once the pipe
+        // fills.
+        .stderr(Stdio::piped());
     // The seccomp memfd must survive exec into bwrap (it reads `--seccomp <fd>`).
     // `close_range` marks every other inherited fd CLOEXEC so no host fd leaks
     // into the worker, then the seccomp fd's CLOEXEC bit is re-cleared so it
@@ -192,6 +241,16 @@ pub fn run_confined_worker(
         }
     });
 
+    // Drained concurrently with stdout. Bounded, because this is the one channel
+    // the worker controls the content of.
+    let stderr_handle = child.stderr.take().map(|mut se| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = se.by_ref().take(MAX_REASON_BYTES).read_to_end(&mut buf);
+            buf
+        })
+    });
+
     // Read at most MAX_OUTPUT_BYTES + 1, so an over-cap worker is detected rather
     // than silently truncated into a plausible-but-wrong frame.
     let mut out = Vec::new();
@@ -220,7 +279,14 @@ pub fn run_confined_worker(
         ));
     }
     if !status.success() {
-        return Err(format!("worker exited with {status}"));
+        let reason = stderr_handle
+            .and_then(|h| h.join().ok())
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .and_then(|s| worker_reason(&s));
+        return Err(match reason {
+            Some(r) => r,
+            None => format!("worker exited with {status}"),
+        });
     }
     Ok(out)
 }
@@ -262,6 +328,54 @@ fn make_seccomp_memfd(bpf: &[u8]) -> std::io::Result<libc::c_int> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The sentence a refusing worker wrote is what a person is told - even when
+    /// a library dumps a multi-line struct after it.
+    ///
+    /// Measured from the real worker: with `libpdfium` absent it writes its own
+    /// sentence and then `pdfium-render`'s `Debug` of the load error over five
+    /// more lines, the last of which is `)`. Taking the last line put exactly
+    /// that on the screen.
+    #[test]
+    fn the_workers_own_line_becomes_the_reason() {
+        let out = worker_reason(
+            "arlen-pdf-decode-page: no PDF engine (libpdfium) is installed on this machine: dlopen failed\n\
+             LoadLibraryError(\n    DlOpen {\n        desc: \"libpdfium.so: cannot open\",\n    },\n)",
+        );
+        assert_eq!(
+            out.as_deref(),
+            Some("no PDF engine (libpdfium) is installed on this machine: dlopen failed"),
+            "the binary-name prefix is log convention, not part of the sentence"
+        );
+    }
+
+    /// Escape codes and extra lines do not travel with it.
+    ///
+    /// The worker is the component this design assumes can be compromised, so
+    /// its stderr is bounded and stripped before it can reach a window.
+    #[test]
+    fn a_worker_cannot_smuggle_control_characters_into_a_message() {
+        let out = worker_reason("arlen-x: \u{1b}[2Jcleared your screen\u{7}\nmore").expect("a line");
+        assert!(!out.contains('\u{1b}'), "{out}");
+        assert!(!out.contains('\u{7}'), "{out}");
+        assert!(!out.contains('\n'), "{out}");
+        assert_eq!(out, "[2Jcleared your screen");
+    }
+
+    /// A very long line is cut rather than printed whole.
+    #[test]
+    fn a_long_reason_is_bounded() {
+        let long = "x".repeat(5_000);
+        let out = worker_reason(&long).expect("a line");
+        assert_eq!(out.chars().count(), MAX_REASON_CHARS);
+    }
+
+    /// Nothing on stderr means nothing to say, and the caller keeps the status.
+    #[test]
+    fn silence_is_not_a_reason() {
+        assert_eq!(worker_reason("   \n\n"), None);
+    }
+
     use super::*;
     use arlen_confiner::ConfinerError;
 
