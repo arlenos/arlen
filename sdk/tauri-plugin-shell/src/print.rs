@@ -94,13 +94,50 @@ trait PortalRequest {
     fn response(&self, response: u32, results: HashMap<String, OwnedValue>) -> zbus::Result<()>;
 }
 
+/// Why a print did not start, as a word rather than as a sentence.
+///
+/// `PrintOutcome` already speaks in tokens for the ways a print ENDS, and the
+/// windows translate those. The ways it fails to BEGIN were English strings -
+/// "no print portal: ...", "no session bus: ..." - and they reach the same
+/// windows, which then show a German frame around an English cause. On an image
+/// with no printing stack at all that is not an edge case: it is what every
+/// print does.
+///
+/// The detail is kept on each variant. Whoever reads it is usually the one
+/// person who can act on it, and dropping what the layer below said would leave
+/// them with less than they have now.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+pub enum PrintProblem {
+    /// The file itself could not be opened to send.
+    FileUnreadable { message: String },
+    /// There is no session bus to ask.
+    NoBus { message: String },
+    /// The bus is there and the print portal is not - the shape of a machine
+    /// with no printing set up.
+    NoPortal { message: String },
+    /// The portal was reached and would not take the document.
+    PortalRefused { message: String },
+    /// Anything else on the way: the request path, the answer watch, an answer
+    /// that would not parse.
+    Other { message: String },
+}
+
+impl PrintProblem {
+    /// The wire form the windows read. A serializer failure is not worth a
+    /// second vocabulary; the windows show an unrecognised answer verbatim.
+    fn wire(self) -> String {
+        serde_json::to_string(&self).unwrap_or_else(|_| "unserialisable".to_string())
+    }
+}
+
 /// Print `path`, and report how it ended.
 ///
 /// The title is what the print queue shows for the job, so it is the file's own
 /// name rather than anything of ours.
 #[tauri::command]
 pub async fn print_file(path: String) -> Result<PrintOutcome, String> {
-    let file = std::fs::File::open(&path).map_err(|e| format!("could not open the file: {e}"))?;
+    let file = std::fs::File::open(&path).map_err(|e| PrintProblem::FileUnreadable { message: e.to_string() }.wire())?;
     let name = std::path::Path::new(&path)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -108,11 +145,11 @@ pub async fn print_file(path: String) -> Result<PrintOutcome, String> {
 
     let connection = zbus::Connection::session()
         .await
-        .map_err(|e| format!("no session bus: {e}"))?;
+        .map_err(|e| PrintProblem::NoBus { message: e.to_string() }.wire())?;
     let unique = connection
         .unique_name()
         .map(|n| n.to_string())
-        .ok_or_else(|| "the session bus gave us no name".to_string())?;
+        .ok_or_else(|| PrintProblem::Other { message: "the session bus gave us no name".to_string() }.wire())?;
 
     // A token unique to this attempt, so two prints in a row cannot land on one
     // another's request object.
@@ -122,31 +159,31 @@ pub async fn print_file(path: String) -> Result<PrintOutcome, String> {
 
     let reply = PortalRequestProxy::builder(&connection)
         .path(path_for_reply.as_str())
-        .map_err(|e| format!("bad request path: {e}"))?
+        .map_err(|e| PrintProblem::Other { message: format!("bad request path: {e}") }.wire())?
         .build()
         .await
-        .map_err(|e| format!("could not watch for the answer: {e}"))?;
+        .map_err(|e| PrintProblem::Other { message: format!("could not watch for the answer: {e}") }.wire())?;
     // Subscribed BEFORE the call, deliberately: see `request_path`.
     let mut answers = reply
         .receive_response()
         .await
-        .map_err(|e| format!("could not watch for the answer: {e}"))?;
+        .map_err(|e| PrintProblem::Other { message: format!("could not watch for the answer: {e}") }.wire())?;
 
     let printer = PortalPrintProxy::new(&connection)
         .await
-        .map_err(|e| format!("no print portal: {e}"))?;
+        .map_err(|e| PrintProblem::NoPortal { message: e.to_string() }.wire())?;
     let mut options: HashMap<&str, Value<'_>> = HashMap::new();
     options.insert("handle_token", Value::from(token.as_str()));
     printer
         .print("", &name, Fd::from(&file), options)
         .await
-        .map_err(|e| format!("the print portal refused: {e}"))?;
+        .map_err(|e| PrintProblem::PortalRefused { message: e.to_string() }.wire())?;
 
     match tokio::time::timeout(ANSWER_WAIT, futures_util::StreamExt::next(&mut answers)).await {
         Ok(Some(signal)) => {
             let args = signal
                 .args()
-                .map_err(|e| format!("the portal's answer made no sense: {e}"))?;
+                .map_err(|e| PrintProblem::Other { message: format!("the portal's answer made no sense: {e}") }.wire())?;
             Ok(match args.response {
                 0 => PrintOutcome::Sent,
                 1 => PrintOutcome::Cancelled,
@@ -154,7 +191,10 @@ pub async fn print_file(path: String) -> Result<PrintOutcome, String> {
             })
         }
         // The stream ended without an answer: the portal went away mid-request.
-        Ok(None) => Err("the print portal stopped answering".to_string()),
+        Ok(None) => Err(PrintProblem::Other {
+            message: "the print portal stopped answering".to_string(),
+        }
+        .wire()),
         Err(_) => Ok(PrintOutcome::NoAnswerYet),
     }
 }
@@ -205,5 +245,24 @@ mod tests {
         assert_eq!(json(PrintOutcome::Cancelled), "cancelled");
         assert_eq!(json(PrintOutcome::Refused), "refused");
         assert_eq!(json(PrintOutcome::NoAnswerYet), "no-answer-yet");
+    }
+
+    /// The words the windows switch on. Pinned, because a window that stops
+    /// recognising one of these does not fail: it falls back to showing the raw
+    /// answer, which is the state this vocabulary exists to end.
+    #[test]
+    fn a_problem_travels_as_a_word_and_keeps_its_detail() {
+        let wire = PrintProblem::NoPortal { message: "no such name".into() }.wire();
+        assert!(wire.contains("\"problem\":\"no-portal\""), "{wire}");
+        assert!(wire.contains("no such name"), "{wire}");
+
+        for (p, word) in [
+            (PrintProblem::FileUnreadable { message: String::new() }, "file-unreadable"),
+            (PrintProblem::NoBus { message: String::new() }, "no-bus"),
+            (PrintProblem::PortalRefused { message: String::new() }, "portal-refused"),
+            (PrintProblem::Other { message: String::new() }, "other"),
+        ] {
+            assert!(p.wire().contains(word), "{word}");
+        }
     }
 }
