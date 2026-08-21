@@ -17,6 +17,7 @@ use serde::Serialize;
 
 use arlen_meeting_note::MeetingNote;
 use arlen_transcript::Transcript;
+use os_sdk::graph::ReadOutcome;
 use os_sdk::UnixGraphClient;
 
 mod summarize;
@@ -77,20 +78,25 @@ fn preview_of(s: &str, n: usize) -> String {
 /// `0x0C` list op and maps them to the frontend card shape. A daemon/socket error
 /// is surfaced so the frontend can fall back to its fixture under dev.
 #[tauri::command]
-async fn meetings_list() -> Result<Vec<MeetingSummaryDto>, String> {
+async fn meetings_list() -> ReadOutcome<MeetingSummaryDto> {
     let client = UnixGraphClient::new(graph_socket());
-    let rows = client.meetings_list().await.map_err(|e| e.to_string())?;
-    Ok(rows
-        .into_iter()
-        .map(|m| MeetingSummaryDto {
-            id: m.id,
-            title: m.title,
-            // The KG stores the recording start in microseconds; the card wants ms.
-            date_ms: m.started_at / 1000,
-            participants: m.participants,
-            preview: preview_of(&m.summary, 140),
-        })
-        .collect())
+    // `ReadOutcome` rather than `Result<_, String>`: "no meetings daemon on this
+    // machine" and "this app was refused" are different things for a person to do
+    // next, and both used to arrive as an English string interpolated into a
+    // German sentence. The state is shared with every other window that reads a
+    // subsystem; the wording stays this app's.
+    ReadOutcome::from_result("meetings_list", client.meetings_list().await, |rows| {
+        rows.into_iter()
+            .map(|m| MeetingSummaryDto {
+                id: m.id,
+                title: m.title,
+                // The KG stores the recording start in microseconds; the card wants ms.
+                date_ms: m.started_at / 1000,
+                participants: m.participants,
+                preview: preview_of(&m.summary, 140),
+            })
+            .collect()
+    })
 }
 
 /// A single past meeting's full note by id: the summary, action items and the

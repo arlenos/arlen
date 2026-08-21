@@ -20,7 +20,11 @@
     {:else if $meetingsUnavailable}
       <p class="sample">
         {$meetingsFailure
-          ? $t("mt.unavailable.why", { reason: $meetingsFailure })
+          ? $meetingsFailure === "unavailable"
+                  ? $t("mt.unavailable.absent")
+                  : $meetingsFailure === "denied"
+                    ? $t("mt.unavailable.refused")
+                    : $t("mt.unavailable.why", { reason: $meetingsFailure })
           : $t("mt.unavailable")}
       </p>
     {/if}
