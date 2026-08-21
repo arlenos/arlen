@@ -39,6 +39,21 @@
 # here, and should set it from that module's queries rather than from a category:
 # see the timeline's profile, whose grant is exactly the seven questions its views
 # ask.
+#
+# AND THE THIRD HOST IMPORT HAS NO FIELD HERE AT ALL: the runtime FETCHES. A
+# Tier 1 module calls `network.fetch` and `host/network.rs` makes the request, so
+# every byte leaves the machine as `modulesd` and not as the module. That path
+# carries its own defences - https only, the module's declared domains, per-hop
+# redirect re-validation against the SSRF guard, a size cap and a timeout - and
+# every one of them is inside that file rather than in this one. The outer bound
+# that this profile is for, the one a module's own manifest cannot widen, does
+# not exist for egress: there is no `[network]` section in the profile model that
+# a runtime could be held to.
+#
+# Nothing is dropped today because no module ships. Recorded because the two
+# sections above bound the bus and the graph on exactly this reasoning, and a
+# reader who takes the pattern to mean the runtime is bounded everywhere would be
+# wrong about the axis that reaches off the machine.
 [info]
 app_id = "modulesd"
 tier = "first-party"
