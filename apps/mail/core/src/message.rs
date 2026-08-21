@@ -47,8 +47,16 @@ pub struct Message {
     pub text: Option<String>,
     /// Whether an HTML part exists. NOT its content: see the module note.
     pub has_html: bool,
-    /// What the text and HTML parts say differently, when both exist.
-    pub divergence: Option<String>,
+    /// The words that appear ONLY in the text part, when both parts exist and
+    /// they disagree. Empty when they agree or when there is only one part.
+    ///
+    /// DATA, not a sentence. This used to be a ready-made English string built
+    /// in Rust and printed verbatim, which meant the one surface whose job is to
+    /// let somebody judge a mismatch spoke English to a German reader. The words
+    /// are the finding; the sentence around them belongs in the locale file.
+    pub only_in_text: Vec<String>,
+    /// The words that appear only in the formatted part. Same rule.
+    pub only_in_html: Vec<String>,
     /// Why this message was refused, when the ambiguity rules refuse it.
     pub refusal: Option<String>,
     /// Headers that are themselves a way out of the machine.
@@ -126,9 +134,12 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
                 .is_some_and(|sub| sub.eq_ignore_ascii_case("html"))
         })
         .and_then(|_| parsed.body_html(0).map(|h| h.into_owned()));
-    let divergence = match (&text, &html) {
-        (Some(t), Some(h)) => alternative::compare(t, h).notice(),
-        _ => None,
+    let (only_in_text, only_in_html) = match (&text, &html) {
+        (Some(t), Some(h)) => {
+            let d = alternative::compare(t, h);
+            (d.sample_text(), d.sample_html())
+        }
+        _ => (Vec::new(), Vec::new()),
     };
 
     // Named and measured, never opened: `contents()` is the decoded bytes and the
@@ -164,7 +175,8 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
         date: parsed.date().map(|d| d.to_rfc3339()),
         text,
         has_html: html.is_some(),
-        divergence,
+        only_in_text,
+        only_in_html,
         refusal: headers.refusal(),
         channels: exfiltration::header_channels(&raw_headers)
             .into_iter()
@@ -333,7 +345,12 @@ ssh-rsa AAAA\r\n\
         let m = read(&msg("Content-Type: text/plain
 ", "No markup anywhere.")).unwrap();
         assert!(!m.has_html);
-        assert!(m.divergence.is_none(), "and nothing to diverge from: {:?}", m.divergence);
+        assert!(
+            m.only_in_text.is_empty() && m.only_in_html.is_empty(),
+            "and nothing to diverge from: {:?} {:?}",
+            m.only_in_text,
+            m.only_in_html
+        );
     }
 
     #[test]
@@ -358,7 +375,10 @@ Content-Type: text/html
         // The plan is explicit that a disagreement between the parts is
         // information about the message, not something to resolve quietly in
         // favour of one of them.
-        assert!(m.divergence.is_some(), "the two parts name different hosts");
+        assert!(
+            !m.only_in_text.is_empty() || !m.only_in_html.is_empty(),
+            "the two parts name different hosts"
+        );
     }
 
     #[test]

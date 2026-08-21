@@ -22,7 +22,9 @@ const messages: Catalogs = {
     // the app's lib.rs: containing the renderer does not stop the message
     // calling home, so nothing renders it yet.
     "ml.htmlNotShown": "This message also has an HTML part. It is not shown: displaying it safely is not built yet, and showing it unsafely would let the message report back that you read it.",
-    "ml.divergence": "The plain-text and HTML parts do not say the same thing. {$detail}",
+    "ml.divergenceBoth": "The plain-text and formatted versions of this message differ. Only in the text: {$text}. Only in the formatting: {$html}.",
+    "ml.divergenceText": "The plain-text version says things the formatted one does not: {$text}.",
+    "ml.divergenceHtml": "The formatted version says things the plain-text one does not: {$html}.",
     "ml.refused": "This message contradicts itself about its own format, so it is not being interpreted: {$reason}",
     "ml.channels": "Headers in this message ask to report back: {$list}",
     // Named and measured, never opened. Same principle as the HTML notice: say
@@ -49,7 +51,9 @@ const messages: Catalogs = {
     "ml.unsigned": "so geschrieben von der absendenden Seite, nicht geprüft",
     "ml.noText": "Diese Nachricht hat keinen reinen Textteil.",
     "ml.htmlNotShown": "Diese Nachricht hat auch einen HTML-Teil. Er wird nicht gezeigt: ihn sicher darzustellen ist noch nicht gebaut, und ihn unsicher zu zeigen würde der Nachricht erlauben zu melden, dass du sie gelesen hast.",
-    "ml.divergence": "Der Textteil und der HTML-Teil sagen nicht dasselbe. {$detail}",
+    "ml.divergenceBoth": "Der Textteil und der formatierte Teil dieser Nachricht unterscheiden sich. Nur im Text: {$text}. Nur in der Formatierung: {$html}.",
+    "ml.divergenceText": "Der Textteil sagt Dinge, die der formatierte Teil nicht sagt: {$text}.",
+    "ml.divergenceHtml": "Der formatierte Teil sagt Dinge, die der Textteil nicht sagt: {$html}.",
     "ml.refused": "Diese Nachricht widerspricht sich über ihr eigenes Format, deshalb wird sie nicht interpretiert: {$reason}",
     "ml.channels": "Header in dieser Nachricht wollen zurückmelden: {$list}",
     "ml.carries":
