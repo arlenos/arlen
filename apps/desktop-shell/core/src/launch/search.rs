@@ -160,6 +160,68 @@ pub fn desktop_entry_dirs(env: &XdgEnv) -> Vec<PathBuf> {
     out
 }
 
+/// Which installed applications DECLARE that they open `mime`, best first.
+///
+/// The associations half of handler resolution. `mimeapps.list` holds the
+/// CHOICES a person made; this holds what the applications say about themselves
+/// in their own `MimeType=` line, which is all a machine has on its first day -
+/// and until 21 August nothing read it, so a fresh image opened nothing at all.
+///
+/// Directory precedence is the same as `desktop_entry_dirs`, and inside a
+/// directory the answer is sorted by id, so two installs with the same entries
+/// resolve the same way rather than by whatever order the filesystem returns.
+///
+/// An exact type match only: `text/*` and `*/*` patterns in an entry are not
+/// honoured here, because an application claiming a whole family is a picker's
+/// input rather than a default, and picking one silently is the thing the
+/// added-associations rule already refuses.
+pub fn declaring(env: &XdgEnv, mime: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for dir in desktop_entry_dirs(env) {
+        let Ok(read) = std::fs::read_dir(&dir) else { continue };
+        let mut here: Vec<String> = Vec::new();
+        for item in read.flatten() {
+            let name = item.file_name().to_string_lossy().into_owned();
+            if !name.ends_with(".desktop") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(item.path()) else { continue };
+            if declares(&text, mime) {
+                here.push(name);
+            }
+        }
+        here.sort();
+        out.extend(here);
+    }
+    out
+}
+
+/// Whether a desktop entry's text claims `mime` on its `MimeType=` line.
+///
+/// Reads the DESKTOP ENTRY group only. A `MimeType=` under an action group is
+/// about that action, not about the application, and treating it as the
+/// application's claim would hand a file to something that never offered to open
+/// it.
+fn declares(text: &str, mime: &str) -> bool {
+    let mut in_entry = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_entry {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("MimeType") else { continue };
+        let Some(value) = rest.trim_start().strip_prefix('=') else { continue };
+        if value.split(';').any(|t| t.trim() == mime) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Read the desktop entry with this id, from the first directory that has it.
 ///
 /// `None` when no directory has it, or when what is there is not a launchable
@@ -188,6 +250,29 @@ pub fn load_entry(env: &XdgEnv, desktop_id: &str) -> Option<super::request::Entr
 
 #[cfg(test)]
 mod tests {
+
+    /// The application's own line is read, and only from the entry group.
+    #[test]
+    fn a_declaration_is_read_from_the_desktop_entry_group() {
+        let entry = "[Desktop Entry]\nType=Application\nMimeType=message/rfc822;text/plain;\n";
+        assert!(declares(entry, "message/rfc822"));
+        assert!(declares(entry, "text/plain"));
+        assert!(!declares(entry, "image/png"));
+    }
+
+    /// An action's own types are not the application's claim.
+    #[test]
+    fn a_declaration_under_an_action_is_not_the_applications() {
+        let entry = "[Desktop Entry]\nType=Application\n\n[Desktop Action Edit]\nMimeType=image/png;\n";
+        assert!(!declares(entry, "image/png"));
+    }
+
+    /// A key that merely starts with the same letters is a different key.
+    #[test]
+    fn a_lookalike_key_is_not_a_declaration() {
+        assert!(!declares("[Desktop Entry]\nMimeTypeHint=image/png;\n", "image/png"));
+    }
+
     use super::*;
 
     fn env() -> XdgEnv {
@@ -352,7 +437,7 @@ mod tests {
         let loaded = load_mimeapps(&e);
         assert_eq!(loaded.len(), 1);
         assert_eq!(
-            super::super::mimeapps::default_handler(&loaded, "text/plain", |_| true).as_deref(),
+            super::super::mimeapps::default_handler(&loaded, "text/plain", |_| true, |_| Vec::new()).as_deref(),
             Some("mine.desktop")
         );
     }

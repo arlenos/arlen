@@ -690,6 +690,9 @@ def main():
                          "empty is empty because the read found nothing or because it "
                          "ran before the data existed - clicking away and back "
                          "re-mounts the view without rebuilding the image")
+    ap.add_argument("--key", action="append", default=None, metavar="NAME",
+                    help="a QMP key name pressed after the clicks, e.g. `ret` to open"
+                         " the row a click just selected")
     ap.add_argument("--click-settle", type=int, default=8, metavar="SECONDS",
                     help="with --click, how long to wait before the after-shot. The "
                          "default is generous on purpose: the shot is evidence about "
@@ -1226,6 +1229,14 @@ def main():
             for spec in args.click:
                 cx, cy = (int(v) for v in spec.split(","))
                 qmp_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
+                time.sleep(1.5)
+            # Keys AFTER the clicks, because the pair is how a person opens a
+            # thing: one click puts the selection on it and Enter opens it. A
+            # double-click cannot be expressed here - the loop above sleeps 1.5s
+            # between clicks, which is well past any double-click interval - so
+            # this is the way to reach an opener from the file manager.
+            for name in args.key or []:
+                qmp_key(f, name)
                 time.sleep(1.5)
             clicked = out + ".clicked.png"
             # Long enough for the surface to have ANSWERED, not merely repainted.

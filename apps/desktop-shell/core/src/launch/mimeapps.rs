@@ -136,11 +136,12 @@ pub fn default_handler(
     files: &[MimeApps],
     mime: &str,
     installed: impl Fn(&str) -> bool,
+    associated: impl Fn(&str) -> Vec<String>,
 ) -> Option<String> {
-    let mut blocked: HashSet<&str> = HashSet::new();
+    let mut blocked: HashSet<String> = HashSet::new();
     for file in files {
         for id in file.ids(Group::Removed, mime) {
-            blocked.insert(id.as_str());
+            blocked.insert(id.clone());
         }
         for id in file.ids(Group::Default, mime) {
             if !blocked.contains(id.as_str()) && installed(id) {
@@ -148,12 +149,89 @@ pub fn default_handler(
             }
         }
     }
-    None
+    // NO CHOICE WAS MADE, so fall back to what the applications SAY about
+    // themselves. On a machine nobody has chosen a handler on there is no
+    // `mimeapps.list` at all, and with only the loop above nothing opens
+    // anything - measured on the image, 21 August: a `.eml` from the file
+    // manager answered `no-handler` while `arlen-mail.desktop` declared
+    // `MimeType=message/rfc822` two directories away, and the mail window's own
+    // empty state says "Open a message from the file manager".
+    //
+    // `Added Associations` is deliberately NOT part of this, and the test below
+    // says why: it answers "what COULD open this", which is a picker's question,
+    // and a launch must not silently pick one. An application's own `MimeType=`
+    // is a different statement - the application shipped saying it opens this
+    // type - and it is the only thing a fresh system has to go on.
+    //
+    // `Removed Associations` still wins: a type somebody has un-chosen for an
+    // application stays un-chosen however loudly the entry declares it.
+    associated(mime)
+        .into_iter()
+        .find(|id| !blocked.contains(id.as_str()) && installed(id))
 }
 
 #[cfg(test)]
 mod tests {
+
+    /// A fresh machine has no `mimeapps.list` at all, and must still open a file
+    /// with the application that says it opens that type.
+    ///
+    /// This is the case the image failed on 21 August: `arlen-mail.desktop`
+    /// declares `MimeType=message/rfc822` and a `.eml` from the file manager
+    /// answered `no-handler`.
+    #[test]
+    fn with_no_choices_the_application_that_declares_the_type_opens_it() {
+        let declares = |mime: &str| {
+            if mime == "message/rfc822" {
+                vec!["arlen-mail.desktop".to_string()]
+            } else {
+                Vec::new()
+            }
+        };
+        assert_eq!(
+            default_handler(&[], "message/rfc822", all, declares).as_deref(),
+            Some("arlen-mail.desktop")
+        );
+    }
+
+    /// A chosen default still wins over a declaration.
+    #[test]
+    fn a_choice_beats_a_declaration() {
+        let f = parse("[Default Applications]\nmessage/rfc822=chosen.desktop;\n");
+        let declares = |_: &str| vec!["declared.desktop".to_string()];
+        assert_eq!(
+            default_handler(&[f], "message/rfc822", all, declares).as_deref(),
+            Some("chosen.desktop")
+        );
+    }
+
+    /// And an un-choosing still wins over a declaration: removing a type from an
+    /// application is a decision, and an entry that keeps declaring it does not
+    /// undo that.
+    #[test]
+    fn a_removed_association_beats_a_declaration() {
+        let f = parse("[Removed Associations]\nmessage/rfc822=arlen-mail.desktop;\n");
+        let declares = |_: &str| vec!["arlen-mail.desktop".to_string()];
+        assert_eq!(default_handler(&[f], "message/rfc822", all, declares), None);
+    }
+
+    /// A declaration by something that is not installed is not a handler.
+    #[test]
+    fn a_declaration_by_a_missing_application_is_not_launched() {
+        let declares = |_: &str| vec!["gone.desktop".to_string()];
+        assert_eq!(
+            default_handler(&[], "message/rfc822", |id| id != "gone.desktop", declares),
+            None
+        );
+    }
+
     use super::*;
+
+    /// No application declares anything: the state before this fallback existed,
+    /// which is what the cases below are about.
+    fn none(_: &str) -> Vec<String> {
+        Vec::new()
+    }
 
     fn all(_: &str) -> bool {
         true
@@ -163,7 +241,7 @@ mod tests {
     fn a_default_is_read_from_its_group() {
         let f = parse("[Default Applications]\nimage/png=org.arlen.Viewer.desktop;\n");
         assert_eq!(
-            default_handler(&[f], "image/png", all).as_deref(),
+            default_handler(&[f], "image/png", all, none).as_deref(),
             Some("org.arlen.Viewer.desktop")
         );
     }
@@ -171,7 +249,7 @@ mod tests {
     #[test]
     fn a_type_with_no_entry_resolves_to_nothing() {
         let f = parse("[Default Applications]\nimage/png=v.desktop;\n");
-        assert_eq!(default_handler(&[f], "text/plain", all), None);
+        assert_eq!(default_handler(&[f], "text/plain", all, none), None);
     }
 
     /// The whole point of the precedence order: the user's file is asked first.
@@ -180,7 +258,7 @@ mod tests {
         let user = parse("[Default Applications]\ntext/plain=mine.desktop;\n");
         let system = parse("[Default Applications]\ntext/plain=theirs.desktop;\n");
         assert_eq!(
-            default_handler(&[user, system], "text/plain", all).as_deref(),
+            default_handler(&[user, system], "text/plain", all, none).as_deref(),
             Some("mine.desktop")
         );
     }
@@ -191,7 +269,7 @@ mod tests {
         let user = parse("[Default Applications]\nimage/png=v.desktop;\n");
         let system = parse("[Default Applications]\ntext/plain=ed.desktop;\n");
         assert_eq!(
-            default_handler(&[user, system], "text/plain", all).as_deref(),
+            default_handler(&[user, system], "text/plain", all, none).as_deref(),
             Some("ed.desktop")
         );
     }
@@ -202,7 +280,7 @@ mod tests {
     fn an_uninstalled_default_is_skipped_for_the_next_candidate() {
         let f = parse("[Default Applications]\ntext/plain=gone.desktop;here.desktop;\n");
         assert_eq!(
-            default_handler(&[f], "text/plain", |id| id == "here.desktop").as_deref(),
+            default_handler(&[f], "text/plain", |id| id == "here.desktop", none).as_deref(),
             Some("here.desktop")
         );
     }
@@ -210,7 +288,7 @@ mod tests {
     #[test]
     fn every_candidate_uninstalled_resolves_to_nothing() {
         let f = parse("[Default Applications]\ntext/plain=a.desktop;b.desktop;\n");
-        assert_eq!(default_handler(&[f], "text/plain", |_| false), None);
+        assert_eq!(default_handler(&[f], "text/plain", |_| false, none), None);
     }
 
     /// The user vetoing a system default is the direction precedence exists for.
@@ -219,7 +297,7 @@ mod tests {
         let user = parse("[Removed Associations]\ntext/plain=theirs.desktop;\n");
         let system = parse("[Default Applications]\ntext/plain=theirs.desktop;ok.desktop;\n");
         assert_eq!(
-            default_handler(&[user, system], "text/plain", all).as_deref(),
+            default_handler(&[user, system], "text/plain", all, none).as_deref(),
             Some("ok.desktop")
         );
     }
@@ -233,7 +311,7 @@ mod tests {
              [Removed Associations]\ntext/plain=no.desktop;\n",
         );
         assert_eq!(
-            default_handler(&[f], "text/plain", all).as_deref(),
+            default_handler(&[f], "text/plain", all, none).as_deref(),
             Some("yes.desktop")
         );
     }
@@ -244,7 +322,7 @@ mod tests {
     fn an_added_association_is_never_launched_as_a_default() {
         let f = parse("[Added Associations]\ntext/plain=maybe.desktop;\n");
         assert_eq!(
-            default_handler(std::slice::from_ref(&f), "text/plain", all),
+            default_handler(std::slice::from_ref(&f), "text/plain", all, none),
             None
         );
         assert_eq!(f.added[0].1, vec!["maybe.desktop"]);
@@ -257,7 +335,7 @@ mod tests {
              [Default Applications]\n# another\ntext/plain=right.desktop;\n",
         );
         assert_eq!(
-            default_handler(&[f], "text/plain", all).as_deref(),
+            default_handler(&[f], "text/plain", all, none).as_deref(),
             Some("right.desktop")
         );
     }
@@ -267,7 +345,7 @@ mod tests {
     fn a_line_without_a_separator_does_not_lose_the_file() {
         let f = parse("[Default Applications]\nnonsense\ntext/plain=ok.desktop;\n");
         assert_eq!(
-            default_handler(&[f], "text/plain", all).as_deref(),
+            default_handler(&[f], "text/plain", all, none).as_deref(),
             Some("ok.desktop")
         );
     }
@@ -278,7 +356,7 @@ mod tests {
             "[Default Applications]\ntext/plain=first.desktop;\ntext/plain=second.desktop;\n",
         );
         assert_eq!(
-            default_handler(&[f], "text/plain", all).as_deref(),
+            default_handler(&[f], "text/plain", all, none).as_deref(),
             Some("first.desktop")
         );
     }
@@ -287,11 +365,11 @@ mod tests {
     fn an_empty_value_is_not_a_handler() {
         let f = parse("[Default Applications]\ntext/plain=\ntext/html=ok.desktop;\n");
         assert_eq!(
-            default_handler(std::slice::from_ref(&f), "text/plain", all),
+            default_handler(std::slice::from_ref(&f), "text/plain", all, none),
             None
         );
         assert_eq!(
-            default_handler(&[f], "text/html", all).as_deref(),
+            default_handler(&[f], "text/html", all, none).as_deref(),
             Some("ok.desktop")
         );
     }
@@ -300,13 +378,13 @@ mod tests {
     fn surrounding_whitespace_is_not_part_of_the_names() {
         let f = parse("[Default Applications]\n  text/plain = a.desktop ; b.desktop ;\n");
         assert_eq!(
-            default_handler(&[f], "text/plain", |id| id == "b.desktop").as_deref(),
+            default_handler(&[f], "text/plain", |id| id == "b.desktop", none).as_deref(),
             Some("b.desktop")
         );
     }
 
     #[test]
     fn no_files_at_all_resolves_to_nothing() {
-        assert_eq!(default_handler(&[], "text/plain", all), None);
+        assert_eq!(default_handler(&[], "text/plain", all, none), None);
     }
 }
