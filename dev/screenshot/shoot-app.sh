@@ -43,6 +43,18 @@ export SHOOT_SETTLE="${4:-}"
 # is no Tauri there; this harness runs the real binary, so it can.
 export SHOOT_INJECT="${SHOOT_INJECT:-}"
 export SHOOT_LOCALE="${SHOOT_LOCALE:-}"
+# SHOOT_APP_ENV="NAME=value;OTHER=value" runs the app with those variables set.
+#
+# Semicolon-separated, not colon, because the variable most worth setting is PATH
+# and its own value is full of colons.
+#
+# WHY A WRAPPER AND NOT THE HARNESS ENVIRONMENT. The app inherits whatever
+# tauri-driver has, so exporting here would change the tooling too - and for PATH
+# that means `timeout`, `curl` and the driver itself disappear, which is exactly
+# how the first attempt at this failed. A generated script that sets the variables
+# and `exec`s the real binary keeps the change to the app alone, and `exec` means
+# the pid the driver is managing is still the app.
+export SHOOT_APP_ENV="${SHOOT_APP_ENV:-}"
 # A file to launch the app on, colon-separated for more than one argument.
 export SHOOT_APP_ARGS="${SHOOT_APP_ARGS:-}"
 # The binary is an argument here, so building it is the caller's job - but its age
@@ -133,7 +145,23 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
     curl -s "http://localhost:$SHOOT_PORT/status" >/dev/null 2>&1 && break
     sleep 0.2
   done
-  args=(--app "$SHOOT_APP" --port "$SHOOT_PORT")
+  app_under_test="$SHOOT_APP"
+  if [ -n "${SHOOT_APP_ENV:-}" ]; then
+    wrapper="$(mktemp -d)/app-under-test"
+    {
+      echo "#!/bin/sh"
+      IFS=";" read -ra pairs <<< "$SHOOT_APP_ENV"
+      for pair in "${pairs[@]}"; do
+        [ -n "$pair" ] || continue
+        echo "export ${pair%%=*}=\"${pair#*=}\""
+      done
+      echo "exec \"$SHOOT_APP\" \"\$@\""
+    } > "$wrapper"
+    chmod +x "$wrapper"
+    app_under_test="$wrapper"
+    echo "app runs with: $SHOOT_APP_ENV"
+  fi
+  args=(--app "$app_under_test" --port "$SHOOT_PORT")
   [ -n "$SHOOT_OUT" ] && args+=(--out "$SHOOT_OUT")
   [ -n "$SHOOT_TYPE" ] && args+=(--type "$SHOOT_TYPE")
   [ -n "$SHOOT_SETTLE" ] && args+=(--settle "$SHOOT_SETTLE")
