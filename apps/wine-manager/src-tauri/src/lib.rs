@@ -230,12 +230,39 @@ fn wine_revoke(id: String, letter: String) -> Result<BottleView, String> {
     Ok(view(&narrowed))
 }
 
+/// Forget a bottle: its files go to the trash and its record is removed.
+///
+/// Reversible on purpose. A prefix holds whatever the person installed into the
+/// bottle and whatever the program saved there, so it is moved to the trash the
+/// file manager can put back rather than unlinked. If the move fails, nothing is
+/// removed: a record deleted before its directory moved would leave files nobody
+/// owns and a window that cannot offer to clean them up.
+///
+/// Returns where the files went, so the surface can say it rather than imply it.
+#[tauri::command]
+fn wine_forget(id: String) -> Result<String, String> {
+    let bottles = dir()?;
+    let bottle = arlen_wine_core::registry::load_bottle(&bottles, &id).map_err(|e| e.to_string())?;
+    let gone = arlen_wine_core::forget::forget_bottle_to_trash(&bottles, &bottle)
+        .map_err(|e| e.to_string())?;
+    Ok(gone
+        .trashed_to
+        .map(|p| p.display().to_string())
+        .unwrap_or_default())
+}
+
 /// Start the window.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
-        .invoke_handler(tauri::generate_handler![wine_bottles, wine_runtime, wine_repair, wine_revoke])
+        .invoke_handler(tauri::generate_handler![
+            wine_bottles,
+            wine_runtime,
+            wine_repair,
+            wine_revoke,
+            wine_forget
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
