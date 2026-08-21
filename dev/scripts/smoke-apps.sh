@@ -43,6 +43,7 @@ APPS=(
     "arlen-terminal"
     "arlen-text-editor"
     "arlen-viewers"
+    "arlen-wine-manager-app"
 )
 
 # An app that cannot start unattended, with the reason. Empty reasons are not
