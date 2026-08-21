@@ -28,6 +28,19 @@
 # tier gives it, and one that declares a list is held to the list whatever its
 # tier. Deleting this line would not tighten the profile, it would loosen it -
 # back to the exemption that hid this question in the first place.
+# WHAT THIS FILE CANNOT SAY, and for this component it is nearly everything. Two
+# topic prefixes is the whole grant. The compositor is the display server: it
+# holds every window's contents, sees every key and every pointer event before
+# any application does, decides what has focus, and is the one process that can
+# hand a frame to a screencopy client. `clipboard.*` is in the list above
+# precisely because it is the only witness to a copy - which is a hint at the
+# scale of the rest.
+#
+# Nothing here bounds any of that, and nothing here could: this is the component
+# a confinement model would have to be built AROUND rather than applied to. The
+# grant is written so the enforce flip can be measured against a claim; it is not
+# a description of the compositor's authority and must not be read as one.
+
 [info]
 app_id = "compositor"
 tier = "system"

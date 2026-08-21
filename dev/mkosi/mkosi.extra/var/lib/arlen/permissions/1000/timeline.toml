@@ -28,6 +28,19 @@
 #
 # Read only. The helper never writes: it is a view onto the graph, and its own
 # mount is the only thing it creates.
+# AND THE SCOPE BELOW BECOMES READABLE BY EVERY PROCESS THIS USER RUNS. That is
+# the property no field here states and the one worth knowing: the helper holds
+# the read scope, but it presents the answers as a FILESYSTEM at `~/.timeline`,
+# and a FUSE mount is readable by whatever the user's session can read. So a
+# grant made to this helper is, in effect, a grant to anything running as the
+# user that thinks to look in that directory - including an app the launcher
+# confined away from the graph itself.
+#
+# That is a property of mounting a query surface rather than a defect in this
+# file, and narrowing the scope below is the only lever it leaves. It is written
+# down because the scope reads like a per-component grant and does not behave
+# like one.
+
 [info]
 app_id = "timeline"
 tier = "first-party"
