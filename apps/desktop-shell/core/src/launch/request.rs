@@ -96,6 +96,12 @@ pub fn resolve(
     mime_of: impl Fn(&Target) -> Option<String>,
     confined: bool,
     has_profile: impl Fn(&str) -> bool,
+    // Which applications DECLARE that they open a type, in preference order.
+    // Separate from `mimeapps` because they answer different questions: that is
+    // what somebody chose, this is what the installed applications say about
+    // themselves. A system nobody has chosen a handler on has the second and not
+    // the first, which is every system on its first day.
+    associated: impl Fn(&str) -> Vec<String>,
 ) -> Result<Launch, LaunchError> {
     let (app, targets) = match request {
         LaunchRequest::App { app_id, targets } => {
@@ -116,7 +122,7 @@ pub fn resolve(
                     mime: "unknown".to_string(),
                 })?,
             };
-            let id = default_handler(mimeapps, &mime, |id| entry(id).is_some())
+            let id = default_handler(mimeapps, &mime, |id| entry(id).is_some(), &associated)
                 .ok_or(LaunchError::NoHandler { mime })?;
             // The handler lookup already required the entry to exist, so an
             // absent one here is a race rather than a miss - reported as
@@ -161,6 +167,12 @@ pub fn resolve(
 
 #[cfg(test)]
 mod tests {
+    /// No application declares a type: the cases here are about the choices in
+    /// `mimeapps.list`, not about what is installed.
+    fn none(_: &str) -> Vec<String> {
+        Vec::new()
+    }
+
     use super::*;
     use arlen_launch_contract::Target;
 
@@ -208,7 +220,7 @@ mod tests {
             mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, no_sniff, false, |_| true),
+            resolve(&r, &m, catalog, no_sniff, false, |_| true, none),
             Ok(Launch::Direct(vec!["viewer".into(), "/tmp/a.png".into()]))
         );
     }
@@ -220,7 +232,7 @@ mod tests {
             targets: vec![],
         };
         assert_eq!(
-            resolve(&r, &[], catalog, no_sniff, false, |_| true),
+            resolve(&r, &[], catalog, no_sniff, false, |_| true, none),
             Ok(Launch::Direct(vec!["editor".into()]))
         );
     }
@@ -235,7 +247,7 @@ mod tests {
             mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, no_sniff, true, |_| true),
+            resolve(&r, &m, catalog, no_sniff, true, |_| true, none),
             Ok(Launch::Confined(vec![
                 "arlen-run".into(),
                 "--app-id".into(),
@@ -261,7 +273,8 @@ mod tests {
                 catalog,
                 no_sniff,
                 false,
-                |_| true
+                |_| true,
+                none
             ),
             Err(LaunchError::NoHandler {
                 mime: "application/x-nothing".into()
@@ -279,7 +292,7 @@ mod tests {
             mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, no_sniff, false, |_| true),
+            resolve(&r, &m, catalog, no_sniff, false, |_| true, none),
             Ok(Launch::Direct(vec!["viewer".into(), "/tmp/a.png".into()]))
         );
     }
@@ -296,7 +309,8 @@ mod tests {
                 catalog,
                 no_sniff,
                 false,
-                |_| true
+                |_| true,
+                none
             ),
             Err(LaunchError::UnknownApplication {
                 app_id: "nope.desktop".into()
@@ -318,7 +332,8 @@ mod tests {
                 broken,
                 no_sniff,
                 false,
-                |_| true
+                |_| true,
+                none
             ),
             Err(LaunchError::MalformedEntry {
                 app_id: "org.x.Broken".into(),
@@ -340,7 +355,8 @@ mod tests {
                 empty,
                 no_sniff,
                 false,
-                |_| true
+                |_| true,
+                none
             ),
             Err(LaunchError::NothingToRun {
                 app_id: "org.x.Empty".into()
@@ -358,7 +374,7 @@ mod tests {
             mime: Some("text/plain".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, no_sniff, false, |_| true),
+            resolve(&r, &m, catalog, no_sniff, false, |_| true, none),
             Ok(Launch::Direct(vec![
                 "viewer".into(),
                 "/tmp/; rm -rf ~".into()

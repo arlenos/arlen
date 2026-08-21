@@ -205,6 +205,10 @@ pub async fn dispatch(request: &proto::LaunchRequest, caller: &Caller) -> proto:
                 .iter()
                 .any(|p| p.exists())
         },
+        // What the installed applications say they open, for the case where
+        // nobody has chosen a handler yet - which is every machine on its first
+        // day, and was answering `no-handler` for every file type until now.
+        |mime| search::declaring(&env, mime),
     );
 
     // Before the act, not after: a record written afterwards is a record that a

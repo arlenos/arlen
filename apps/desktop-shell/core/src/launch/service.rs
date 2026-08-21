@@ -116,6 +116,8 @@ pub fn serve(
     mime_of: impl Fn(&arlen_launch_contract::Target) -> Option<String>,
     confined: bool,
     has_profile: impl Fn(&str) -> bool,
+    // Which applications declare that they open a type; see `resolve`.
+    associated: impl Fn(&str) -> Vec<String>,
 ) -> Served {
     let refuse = |outcome: LaunchOutcome, word: &'static str| Served {
         outcome,
@@ -131,7 +133,7 @@ pub fn serve(
         return refuse(LaunchOutcome::Refused, "refused:unresolved-caller");
     }
 
-    match resolve(request, mimeapps, entry, mime_of, confined, has_profile) {
+    match resolve(request, mimeapps, entry, mime_of, confined, has_profile, associated) {
         Ok(launch) => {
             // The resolved application, which for an `Open` is not what the
             // caller named - it named a document.
@@ -244,6 +246,12 @@ pub fn unrecorded_gap_event(dropped: u64, span_ms: u64) -> audit_proto::IngestRe
 
 #[cfg(test)]
 mod tests {
+    /// No application declares a type: the cases here are about the choices in
+    /// `mimeapps.list`, not about what is installed.
+    fn none(_: &str) -> Vec<String> {
+        Vec::new()
+    }
+
     use super::*;
     use arlen_launch_contract::Target;
 
@@ -296,6 +304,7 @@ mod tests {
             no_sniff,
             false,
             |_| true,
+            none,
         );
         assert!(s.launch.is_some());
         assert_eq!(s.audit.caller, "unresolved");
@@ -309,9 +318,7 @@ mod tests {
             app_id: "viewer.desktop".into(),
             targets: vec![],
         };
-        let s = serve(&r, &Caller::Unnamed, &[], catalog, no_sniff, false, |_| {
-            true
-        });
+        let s = serve(&r, &Caller::Unnamed, &[], catalog, no_sniff, false, |_| true, none);
         assert_eq!(s.outcome, LaunchOutcome::Refused);
         assert!(s.launch.is_none());
         assert_eq!(s.audit.outcome, "refused:unresolved-caller");
@@ -324,6 +331,7 @@ mod tests {
             no_sniff,
             false,
             |_| true,
+            none,
         );
         assert!(ok.launch.is_some());
         assert_eq!(ok.audit.caller, "files");
@@ -349,6 +357,7 @@ mod tests {
             sniff,
             false,
             |_| true,
+            none,
         );
         assert!(s.launch.is_some());
         assert_eq!(s.audit.started.as_deref(), Some("viewer"));
@@ -373,6 +382,7 @@ mod tests {
             no_sniff,
             false,
             |_| true,
+            none,
         );
         assert!(matches!(s.outcome, LaunchOutcome::NoHandler { .. }));
         assert!(s.launch.is_none());
@@ -390,6 +400,7 @@ mod tests {
             no_sniff,
             false,
             |_| true,
+            none,
         );
         assert_eq!(s.audit.caller, "unresolved");
         assert!(!s.audit.caller.is_empty());
@@ -422,6 +433,7 @@ mod tests {
             no_sniff,
             true,
             |_| true,
+            none,
         );
         assert_eq!(s.audit.caller, "org.arlen.Files");
         assert_eq!(s.audit.started.as_deref(), Some("org.arlen.Viewer"));
@@ -439,6 +451,7 @@ mod tests {
             no_sniff,
             true,
             |_| true,
+            none,
         );
         let event = launch_event(&s.audit);
         assert_eq!(event.kind, audit_proto::AuditKind::AppAction);
@@ -471,6 +484,7 @@ mod tests {
             no_sniff,
             false,
             |_| true,
+            none,
         );
         let event = launch_event(&s.audit);
         assert_eq!(event.structural.node_types, ["unresolved"]);
@@ -504,6 +518,7 @@ mod tests {
             no_sniff,
             true,
             |_| true,
+            none,
         );
         let line = format!("{:?}", s.audit);
         assert!(
@@ -544,6 +559,7 @@ mod tests {
                 no_sniff,
                 false,
                 |_| true,
+                none,
             );
             assert!(s.launch.is_none());
             assert_eq!(s.audit.outcome, word);
@@ -570,6 +586,7 @@ mod tests {
             no_sniff,
             false,
             |_| true,
+            none,
         );
         assert_eq!(
             s.outcome,
@@ -594,6 +611,7 @@ mod tests {
             no_sniff,
             false,
             |_| true,
+            none,
         );
         match s.outcome {
             LaunchOutcome::MalformedEntry { app_id, reason } => {
