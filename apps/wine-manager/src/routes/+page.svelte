@@ -6,6 +6,8 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { t } from "$lib/i18n/messages";
+  import { Wine } from "@lucide/svelte";
+  import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
 
   type DriveView = { letter: string; host: string; writable: boolean };
   type HealthView = {
@@ -24,7 +26,7 @@
   };
   type UnreadableBottle = { path: string; reason: string };
   type BottleList = { bottles: BottleView[]; unreadable: UnreadableBottle[] };
-  type Runtime = { wine: boolean };
+  type Runtime = { wine: boolean; bottles_dir: string | null };
 
   let list = $state<BottleList | null>(null);
   let repaired = $state<Record<string, string>>({});
@@ -46,6 +48,17 @@
 </script>
 
 <main>
+  <!-- The window is undecorated (`decorations: false`), so without this header
+       there is no way to move, minimise or close it at all: the app shipped as a
+       window a person could not put down. Every other app on this image carries
+       the same bar. -->
+  <header class="bar">
+    <Wine size={16} strokeWidth={2} />
+    <h1>{$t("wn.app.title")}</h1>
+    <span class="spacer"></span>
+    <WindowButtons />
+  </header>
+
   {#if notice}
     <p class="notice">{notice}</p>
   {/if}
@@ -54,6 +67,12 @@
   {:else if list}
     {#if list.bottles.length === 0 && list.unreadable.length === 0}
       <p class="empty">{runtime && !runtime.wine ? $t("wn.noWine") : $t("wn.none")}</p>
+      {#if runtime?.bottles_dir}
+        <!-- Where, not just what. An empty window that only explains the idea
+             leaves a person with nowhere to go; the calendar names its folder
+             and this one now does too. -->
+        <p class="empty">{$t("wn.whereBottles", { dir: runtime.bottles_dir })}</p>
+      {/if}
     {/if}
     {#each list.bottles as bottle (bottle.id)}
       <section>
@@ -158,6 +177,21 @@
 </main>
 
 <style>
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border-default, #2a2a2a);
+  }
+  .bar h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .spacer {
+    flex: 1;
+  }
   main {
     padding: 1rem 1.25rem;
     display: flex;

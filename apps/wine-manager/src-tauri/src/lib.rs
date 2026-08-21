@@ -133,6 +133,8 @@ fn view(b: &Bottle) -> BottleView {
 pub struct Runtime {
     /// Whether `wine` is on this machine.
     pub wine: bool,
+    /// Where this user's bottles live, when there is a home to keep them in.
+    pub bottles_dir: Option<String>,
 }
 
 /// Whether a program named `name` is on `PATH`.
@@ -150,7 +152,15 @@ fn on_path(name: &str) -> bool {
 /// What this machine can do with a bottle.
 #[tauri::command]
 fn wine_runtime() -> Runtime {
-    Runtime { wine: on_path("wine") }
+    Runtime {
+        wine: on_path("wine"),
+        // Named so the empty window can say where a bottle would GO. Every other
+        // app on this image tells a person that: the calendar names the folder to
+        // drop `.ics` files in, mail says a message comes from the file manager.
+        // This one explained what a bottle IS and left the reader with no next
+        // step, which is the difference between a description and an instruction.
+        bottles_dir: dir().ok().map(|d| d.to_string_lossy().into_owned()),
+    }
 }
 
 /// Where bottles live for this user.
