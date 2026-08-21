@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { trashProblem } from "$lib/trashProblem";
+  import { restoreProblem, trashProblem } from "$lib/trashProblem";
   import { t } from "$lib/i18n/messages";
   /// The viewer routes one window to one file by media type. When launched on a
   /// real file (`viewer <path>`, the `.desktop` `%f`, or a double-click) it loads
@@ -376,7 +376,17 @@
     try {
       await invoke("restore_file", { trashed: d.trashed, info: d.info, original: d.original });
     } catch (e) {
-      actionError = $t("v.couldNotRestore", { reason: String(e) });
+      // Same shape as the delete: the host names which refusal, the window
+      // writes it. "Something is using that name again" is the one that happens.
+      const p = restoreProblem(String(e));
+      actionError =
+        p.key === "v.restore.nameTaken"
+          ? $t("v.restore.nameTaken")
+          : p.key === "v.restore.unsupported"
+            ? $t("v.restore.unsupported")
+            : p.key === "v.restore.crossDevice"
+              ? $t("v.restore.crossDevice")
+              : $t("v.couldNotRestore", { reason: p.detail });
       return;
     }
     lastDeleted = null;

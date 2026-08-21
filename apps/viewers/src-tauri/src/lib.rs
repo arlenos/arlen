@@ -352,6 +352,40 @@ impl From<arlen_freedesktop_trash::TrashError> for TrashProblem {
     }
 }
 
+/// Why a restore did not happen, as a word.
+///
+/// This was `format!("{e:?}")`, the DEBUG form, so a person who tried to put a
+/// picture back and found something else already using its name read
+/// `DestinationExists` - or worse, an `Os { code: 17, kind: AlreadyExists }`.
+/// The refusal itself is right and deliberate (the restore will not clobber);
+/// what it said was for whoever wrote it.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum RestoreProblem {
+    /// Something is using that name again. The restore refuses rather than
+    /// overwriting it, which is the whole point of the no-replace rename.
+    DestinationExists,
+    /// The filesystem cannot do a no-clobber rename, and a clobbering one is not
+    /// an acceptable substitute here.
+    Unsupported,
+    /// The trash is on a different drive from where the file came from.
+    CrossDevice,
+    /// Anything else, carrying what the layer below said.
+    Other { message: String },
+}
+
+impl From<arlen_freedesktop_trash::RenameError> for RestoreProblem {
+    fn from(e: arlen_freedesktop_trash::RenameError) -> Self {
+        use arlen_freedesktop_trash::RenameError as R;
+        match e {
+            R::DestinationExists => Self::DestinationExists,
+            R::Unsupported => Self::Unsupported,
+            R::CrossDevice => Self::CrossDevice,
+            R::Other(message) => Self::Other { message },
+        }
+    }
+}
+
 /// Put a trashed file back where it was, and drop its sidecar.
 ///
 /// `rename_noreplace` rather than a plain rename: if something has taken the
@@ -361,7 +395,8 @@ impl From<arlen_freedesktop_trash::TrashError> for TrashProblem {
 #[tauri::command]
 fn restore_file(trashed: String, info: String, original: String) -> Result<(), String> {
     arlen_freedesktop_trash::rename_noreplace(&trashed, &original)
-        .map_err(|e| format!("could not put the file back: {e:?}"))?;
+        .map_err(|e| serde_json::to_string(&RestoreProblem::from(e))
+            .unwrap_or_else(|_| "unserialisable".to_string()))?;
     // A leftover sidecar describes a file that is no longer in the trash; it is
     // untidy rather than harmful, so a failure here does not fail the restore.
     let _ = std::fs::remove_file(&info);
