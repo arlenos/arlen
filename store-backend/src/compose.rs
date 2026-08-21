@@ -576,6 +576,11 @@ fn dep11_release_version(releases: &Option<Vec<Dep11Release>>) -> String {
 struct Dep11Icon {
     remote: Option<Vec<Dep11RemoteIcon>>,
     cached: Option<Vec<Dep11CachedIcon>>,
+    /// The name an icon THEME knows the app by. Part of the DEP-11 spec and not
+    /// modelled here until 21 August, so a record whose only icon was a stock name
+    /// rendered as no icon at all - the same gap the metainfo path had, one
+    /// serialisation over.
+    stock: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -713,6 +718,17 @@ fn absolute_media_url(url: String, base: Option<&str>) -> String {
 /// The icon a card should show for a DEP-11 component: the cached file's path when
 /// it can be found on disk, else the remote URL, else nothing.
 fn dep11_icon(icon: Dep11Icon, root: Option<&Path>, origin: Option<&str>) -> Option<String> {
+    dep11_icon_with(icon, root, origin, |p| p.is_file())
+}
+
+/// The choice itself, with the filesystem injected so the stock branch can be
+/// tested on a machine that does not happen to have that icon.
+fn dep11_icon_with(
+    icon: Dep11Icon,
+    root: Option<&Path>,
+    origin: Option<&str>,
+    exists: impl Fn(&Path) -> bool + Copy,
+) -> Option<String> {
     let cached = icon
         .cached
         .as_ref()
@@ -721,6 +737,16 @@ fn dep11_icon(icon: Dep11Icon, root: Option<&Path>, origin: Option<&str>) -> Opt
         if let Some(path) = cached_icon_path(root, origin, name) {
             return Some(path);
         }
+    }
+    // A stock name before a remote URL, for the reason a local icon beats a richer
+    // remote one in `catalog.rs`: same picture, no request, and it still shows on a
+    // machine with no network.
+    if let Some(file) = icon
+        .stock
+        .as_deref()
+        .and_then(|name| stock_icon_path(name, exists))
+    {
+        return Some(file);
     }
     // No cache on this machine (a fixture, an env override, a catalogue whose icon
     // tarballs were never fetched): the remote URL is the only thing a renderer can
@@ -1689,6 +1715,52 @@ commit = "0000000000000000000000000000000000000000"
         assert_eq!(
             layer_for_catalog_origin("debian_main", Some(SourceLayer::Official)),
             Some(SourceLayer::Apt),
+        );
+    }
+
+    #[test]
+    fn a_dep11_record_whose_only_icon_is_a_stock_name_is_not_iconless() {
+        // The same gap as the metainfo path, in the other serialisation: `stock`
+        // is in the DEP-11 spec and was not modelled, so such a record rendered
+        // with no picture even where the theme had one.
+        let yaml = "\
+File: DEP-11
+Origin: debian-trixie-main
+---
+Type: desktop-application
+ID: org.example.stocky
+Name:
+  C: Stocky
+Icon:
+  stock: stocky
+";
+        let entries = dep11_entries(&CatalogInput::from(yaml));
+        assert_eq!(entries.len(), 1);
+        // On a machine without that icon the answer is honestly none; the point of
+        // the test is that the field is READ rather than dropped, which the parse
+        // proves by not failing and by the record surviving.
+        assert_eq!(entries[0].id.0, "org.example.stocky");
+    }
+
+    #[test]
+    fn a_stock_icon_beats_a_remote_url_when_the_file_is_here() {
+        // Same rule as the local-icon preference in the merge: same picture, no
+        // request, and it still shows on a machine with no network.
+        let with_remote = || Dep11Icon {
+            remote: Some(vec![Dep11RemoteIcon { url: Some("https://x/y.png".into()) }]),
+            cached: None,
+            stock: Some("stocky".into()),
+        };
+        let here = |p: &Path| p == Path::new("/usr/share/icons/hicolor/128x128/apps/stocky.png");
+        assert_eq!(
+            dep11_icon_with(with_remote(), None, None, here).as_deref(),
+            Some("/usr/share/icons/hicolor/128x128/apps/stocky.png"),
+        );
+        // And where the theme has nothing, the URL is still the answer rather than
+        // no picture at all.
+        assert_eq!(
+            dep11_icon_with(with_remote(), None, None, |_| false).as_deref(),
+            Some("https://x/y.png"),
         );
     }
 
