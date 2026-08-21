@@ -144,6 +144,44 @@ fn greeter_power(action: String) -> Result<(), String> {
 
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+
+/// The language this SCREEN speaks, from the machine rather than from a person.
+///
+/// The greeter runs before anybody has logged in, so there is no chosen language
+/// to read: `locale.toml` belongs to a user account that has not been opened yet.
+/// The honest source at this point is the system locale, which is what the
+/// installer set and what every other program on the machine already uses.
+///
+/// WHY THIS EXISTS AT ALL. `initArlenLocale()` asks the shell plugin first and a
+/// bare `locale_get` second; the greeter embeds neither, so both calls failed and
+/// the helper - which fails quiet by design - left the screen in the source
+/// language. Measured on 21 August: a full German catalogue in the binary and
+/// "Password", "Sign in", "Accessibility" on the screen, in every environment.
+/// The catalogue was unreachable on the one screen a first-run reader has nothing
+/// else to judge the system by.
+///
+/// The environment tag is cut at the first `.` or `_` (`de_AT.UTF-8` is not a
+/// BCP-47 tag) and refused unless it looks like one, since it reaches a catalog
+/// lookup and an `Intl` constructor.
+///
+/// Still open, and NOT decided here: whether a login screen should instead speak
+/// the language of the profile being selected. That is in `coder-reports.md`.
+#[tauri::command]
+fn locale_get() -> String {
+    for key in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+        let Some(raw) = std::env::var_os(key) else { continue };
+        let raw = raw.to_string_lossy();
+        let tag = raw.split(['.', '@']).next().unwrap_or("").replace('_', "-");
+        if tag.is_empty() || tag == "C" || tag == "POSIX" {
+            continue;
+        }
+        if tag.len() <= 35 && tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return tag;
+        }
+    }
+    "en".to_string()
+}
+
 pub fn run() {
     // Dependencies at warn, this app at info. A blanket `info` also turns on
     // zbus, which logs D-Bus handshake frames WITH their message bytes - and a
@@ -156,6 +194,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            locale_get,
             wallpaper::greeter_wallpaper,
             greeter_profiles,
             greeter_sessions,
