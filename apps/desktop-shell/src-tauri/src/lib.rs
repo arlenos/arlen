@@ -63,10 +63,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Manager;
 
-/// Relay a log message from the frontend to the terminal.
+/// Relay a log message from the frontend to the terminal, naming the window it
+/// came from.
+///
+/// The label is not decoration. This shell runs several webviews - the bar, the
+/// launcher, the consent surface - and they share one `+layout.svelte`, so an
+/// unlabelled `[FRONTEND]` line cannot be attributed to a surface. On 21 August
+/// a line about a swallowed pointer press could have come from any of the three
+/// and the ambiguity was load-bearing for the wrong conclusion.
 #[tauri::command]
-fn log_frontend(message: String) {
-    println!("[FRONTEND] {message}");
+fn log_frontend(window: tauri::Window, message: String) {
+    println!("[FRONTEND] [{}] {message}", window.label());
 }
 
 /// Dispatch a toolbar action click back to the source app's
