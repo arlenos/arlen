@@ -54,7 +54,7 @@ NOT_ON_IMAGE: dict[str, str] = {
         "The app is real; shipping it is a decision about whether this image stays a "
         "single-user appliance, not an oversight"
     ),
-   "pdf": (
+    "pdf": (
         "the reader is real - it opens a document, shows the author's contents, searches "
         "inside it, turns pages, selects text, and since 21 August it shows a page's WORDS "
         "when it cannot draw the page, under a line saying they are the text and not the "
