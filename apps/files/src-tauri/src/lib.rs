@@ -1536,7 +1536,18 @@ fn udisksctl(verb: &str, device: &str) -> Result<(), String> {
     let out = std::process::Command::new("udisksctl")
         .args([verb, "-b", device])
         .output()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            // NOT the raw errno. `No such file or directory (os error 2)` on a
+            // spawn is about the TOOL, and a person reading it under a disk they
+            // just clicked will read it as the disk being gone. udisks2 is
+            // recorded as absent from the image (`runtime-deps.tsv`), so this is
+            // the ordinary case there rather than a broken machine.
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "udisks is not installed, so disks cannot be mounted from here".to_string()
+            } else {
+                format!("could not run udisksctl: {e}")
+            }
+        })?;
     if out.status.success() {
         Ok(())
     } else {
@@ -2386,6 +2397,27 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use super::udisksctl;
+
+    #[test]
+    fn a_disk_action_names_the_missing_tool_and_not_the_disk() {
+        // On a machine without udisks the spawn fails with `No such file or
+        // directory`, which under a disk somebody just clicked reads as the disk
+        // being gone. The image ships no udisks, so this is the ordinary case
+        // there rather than a broken machine.
+        let err = udisksctl("mount", "/dev/zzz-not-a-device").unwrap_err();
+        if err.contains("os error 2") || err.contains("No such file or directory") {
+            panic!("the raw errno reached the caller: {err}");
+        }
+    }
+
+    #[test]
+    fn a_path_that_is_not_a_block_device_is_refused_before_spawning() {
+        assert_eq!(
+            udisksctl("mount", "/home/u/Documents").unwrap_err(),
+            "not a block device"
+        );
+    }
     /// A config that cannot be read must not become the empty default, because
     /// three commands here are read-modify-write and would put that emptiness back
     /// on disk. Absent is the exception: nothing saved yet IS the empty state.
