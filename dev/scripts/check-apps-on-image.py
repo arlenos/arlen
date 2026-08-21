@@ -55,14 +55,17 @@ NOT_ON_IMAGE: dict[str, str] = {
         "single-user appliance, not an oversight"
     ),
    "pdf": (
-        "the reader is real now - it opens a document, shows the author's contents, "
-        "searches inside it, turns pages and selects text, and it starts under the "
-        "app smoke. What it cannot do on any machine yet is DRAW a page: pdfium-render "
-        "binds to a `libpdfium` at runtime and no distribution in play ships one as a "
-        "package, so staging it would put an app on the image that shows every document "
-        "as a blank sheet. It ships when the engine has a home - a built package, a "
-        "checksummed binary at image-build time, or PDFium from source in the pipeline, "
-        "which is a supply-chain call rather than a coder's"
+        "the reader is real - it opens a document, shows the author's contents, searches "
+        "inside it, turns pages, selects text, and since 21 August it shows a page's WORDS "
+        "when it cannot draw the page, under a line saying they are the text and not the "
+        "layout. So the old reason here - that staging it would put an app on the image "
+        "showing every document as a blank sheet - is no longer true, and it is left "
+        "unstaged for the other half of that reason rather than this one: there is still "
+        "no `libpdfium` anywhere, so it would ship as a reader that can never render. "
+        "Whether a text-only reader is better than no reader on the image is a product "
+        "call, and it rides on the same supply-chain decision (a built package, a "
+        "checksummed binary at image-build time, or PDFium from source) that is the "
+        "planner's rather than a coder's"
     ),
     "settings": (
         "arlen-ui's live work; the coder does not stage it. It is the largest app with no "
