@@ -88,6 +88,13 @@ pub fn granted_letters(prefix_root: &Path) -> std::io::Result<Vec<char>> {
 /// Replacement, not addition: a letter present in the prefix and absent from
 /// `drives` is removed, which is what makes revoking a grant real rather than
 /// cosmetic.
+///
+/// THAT INCLUDES `Z:`. This function refuses to WRITE the filesystem drive, and
+/// it clears one that is already there, because the table is meant to say exactly
+/// what the grants say and `Z:` is never among them. So a revoke or a re-write
+/// also closes a `Z:` somebody put back with `winecfg` - which is right, and is
+/// stated here because two callers now lean on it and neither says so at its own
+/// call site.
 pub fn write_drives(prefix_root: &Path, drives: &[Drive]) -> Result<DriveChanges, WriteError> {
     let dos = prefix_root.join("dosdevices");
     if !dos.is_dir() {
@@ -154,6 +161,19 @@ mod tests {
         assert_eq!(changes.revoked, vec!['E'], "revoking has to take the letter away");
         assert_eq!(granted_letters(&p).unwrap(), vec!['D']);
         assert!(!p.join("dosdevices/e:").exists());
+        std::fs::remove_dir_all(&p).unwrap();
+    }
+
+    #[test]
+    fn writing_the_table_clears_a_filesystem_drive_somebody_put_back() {
+        // `winecfg` can add `Z:` again, and a bottle is not a bottle with it. The
+        // repair and revoke paths both rely on this: neither re-cuts the drive
+        // itself, they write the table and expect the table to be the truth.
+        let p = prefix("z_cleared");
+        std::os::unix::fs::symlink("/", p.join("dosdevices/z:")).unwrap();
+        let changes = write_drives(&p, &[]).unwrap();
+        assert_eq!(changes.revoked, vec![UNMAPPED_DRIVE]);
+        assert!(!p.join("dosdevices/z:").exists());
         std::fs::remove_dir_all(&p).unwrap();
     }
 
