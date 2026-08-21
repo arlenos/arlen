@@ -36,8 +36,18 @@ vi.mock("$lib/tauri", () => ({
   },
 }));
 
-const { stopCapture, stopFailed, currentId, meeting, liveNotes, liveTranscript } =
-  await import("./meeting");
+const {
+  stopCapture,
+  stopFailed,
+  currentId,
+  meeting,
+  liveNotes,
+  liveTranscript,
+  loadMeetings,
+  meetings,
+  meetingsFailure,
+  meetingsUnavailable,
+} = await import("./meeting");
 
 /// Back to the state a live capture would be in, without touching the mock.
 function capturing() {
@@ -110,5 +120,33 @@ describe("stopCapture", () => {
 
     expect(get(meeting)?.humanNotes).toBe("only my typing survived");
     vi.unstubAllEnvs();
+  });
+});
+
+/// The three states reach the store as three states.
+///
+/// Written because the old shape - a bare array, or a thrown string - collapsed
+/// "no daemon" and "refused" into one English sentence, and a window cannot
+/// un-collapse what it was handed.
+describe("loadMeetings", () => {
+  it("keeps the word for an absent service rather than a sentence", async () => {
+    invoke.mockResolvedValueOnce({ state: "unavailable", reason: "no such socket" });
+    await loadMeetings();
+    expect(get(meetingsUnavailable)).toBe(true);
+    expect(get(meetingsFailure)).toBe("unavailable");
+    expect(get(meetings)).toEqual([]);
+  });
+
+  it("says refused when the daemon refused", async () => {
+    invoke.mockResolvedValueOnce({ state: "denied", reason: "graph.read not granted" });
+    await loadMeetings();
+    expect(get(meetingsFailure)).toBe("denied");
+  });
+
+  it("shows rows, and an empty list means empty rather than a failure", async () => {
+    invoke.mockResolvedValueOnce({ state: "rows", rows: [] });
+    await loadMeetings();
+    expect(get(meetingsUnavailable)).toBe(false);
+    expect(get(meetingsFailure)).toBe(null);
   });
 });

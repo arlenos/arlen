@@ -70,6 +70,17 @@ export const meetingsUnavailable = writable(false);
 /// is worth more than this one precisely because it names the cause.
 export const meetingsFailure = writable<string | null>(null);
 
+/// What `meetings_list` answers with: rows, or which way it could not read them.
+///
+/// Mirrors `ReadOutcome<T>` in the os-sdk, the shape every window that reads a
+/// subsystem uses. Written out here rather than imported because the shared home
+/// for it is `sdk/ui-kit`, which is another lane's; the file manager and the
+/// terminal carry their own copies of the same three states for the same reason.
+type MeetingsOutcome =
+  | { state: "unavailable"; reason: string }
+  | { state: "denied"; reason: string }
+  | { state: "rows"; rows: MeetingSummary[] };
+
 /// True when a real session could not read the open meeting's note.
 export const noteUnavailable = writable(false);
 
@@ -145,10 +156,25 @@ const MEETINGS_FIXTURE: MeetingSummary[] = [
 /// Load the recent meetings for the home (live: KG meeting nodes; fixture under vite).
 export async function loadMeetings(): Promise<void> {
   try {
-    meetings.set(await invoke<MeetingSummary[]>("meetings_list"));
+    // Three states, not a list: "no daemon on this machine", "this app was
+    // refused" and "there are none" are different things for a person to do
+    // next, and a bare array reads as the third whichever it was.
+    const outcome = await invoke<MeetingsOutcome>("meetings_list");
+    if (outcome.state === "rows") {
+      meetings.set(outcome.rows);
+      meetingsMocked.set(false);
+      meetingsUnavailable.set(false);
+      meetingsFailure.set(null);
+      return;
+    }
+    meetings.set([]);
     meetingsMocked.set(false);
-    meetingsUnavailable.set(false);
-    meetingsFailure.set(null);
+    meetingsUnavailable.set(true);
+    // The word, not the sentence: the window writes the sentence in the reader's
+    // language. `reason` stays out of it - the SDK's own doc calls that field a
+    // line for the log and a tooltip, not something to show.
+    meetingsFailure.set(outcome.state);
+    return;
   } catch (e) {
     if (!tauriAvailable) {
       meetings.set(MEETINGS_FIXTURE);
@@ -160,6 +186,9 @@ export async function loadMeetings(): Promise<void> {
     meetings.set([]);
     meetingsMocked.set(false);
     meetingsUnavailable.set(true);
+    // The invoke ITSELF failed - the command is missing, the host went away -
+    // which is not one of the three states. Shown as it came, because then the
+    // string is the only thing anybody has.
     meetingsFailure.set(String(e));
   }
 }
