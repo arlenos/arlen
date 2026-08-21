@@ -648,6 +648,12 @@ def main():
                     help="render through the host GPU (virgl + egl-headless) instead of llvmpipe")
     ap.add_argument("--require-bar", action="store_true",
                     help="fail unless the shell's top bar is present (full-desktop gate)")
+    ap.add_argument("--super-before-click", dest="super_before_click",
+                    action="store_true",
+                    help="press Super just before the clicks, so the launcher can"
+                         " be driven AFTER a consent card has been answered")
+    ap.add_argument("--super-settle", type=float, default=3.0,
+                    help="seconds to wait after --super-before-click")
     ap.add_argument("--super", dest="press_super", action="store_true",
                     help="after verifying, press Super and capture a second shot "
                          "(the waypointer/launcher) to exercise the input->shell path")
@@ -1200,6 +1206,17 @@ def main():
             # says nothing whatever about the popover that was the subject. This
             # capture happens after the consent flow above has resolved, so it is
             # the state the clicks actually start from.
+            # Super is pressed HERE, not in the --super block near the top, when
+            # a run needs the launcher AFTER the consent card is answered. The
+            # blocks run in source order (super, then consent, then clicks), so
+            # `--super --click` opens the launcher and the card then covers it:
+            # on 21 August a run meant to click a launcher row photographed the
+            # consent card instead, because the launcher had already gone. A
+            # first boot answers the card and THEN uses the desktop, so this is
+            # the ordinary sequence and not a special case.
+            if args.super_before_click:
+                qmp_key(f, "meta_l")
+                time.sleep(args.super_settle)
             preclick = out + ".preclick.png"
             capture(f, preclick, x_display)
             for _ in range(50):
