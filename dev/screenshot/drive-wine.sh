@@ -90,6 +90,25 @@ say "and the window offers to close it" \
   "$(printf '%s' "$got" | grep -q "Put this bottle back" && echo 1 || echo 0)" "$got"
 
 # A bottle with no network says so rather than saying nothing.
+# THE MACHINE'S OWN STATE, next to the bottle's. The notice about a missing Wine
+# used to appear only when there were no bottles at all - which is precisely when
+# a person has least to lose - so a machine with three bottles and no runtime
+# listed grants, drives and a repair button without once saying nothing could
+# run. It is now shown whenever the runtime is absent.
+#
+# WHICH DIRECTION THIS HOST CAN PROVE. A developer machine usually HAS Wine, so
+# what is assertable here is the other half of the same rule: when the runtime is
+# present the notice must stay away, because a window that warns unconditionally
+# is as useless as one that never does. The absent-Wine direction is driven
+# against the image, which ships the manager and no runtime.
+if [ -f /usr/bin/wine ]; then
+  say "with Wine present the window does not warn about its absence" \
+    "$(printf '%s' "$got" | grep -q "none of these bottles can run a program" && echo 0 || echo 1)" "$got"
+else
+  say "with no Wine installed it says so even though bottles are listed" \
+    "$(printf '%s' "$got" | grep -q "none of these bottles can run a program" && echo 1 || echo 0)" "$got"
+fi
+
 say "a bottle with no network says so" \
   "$(printf '%s' "$got" | grep -q "not allowed" && echo 1 || echo 0)" "$got"
 

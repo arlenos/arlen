@@ -65,6 +65,13 @@
   {#if failure}
     <p class="failure">{$t("wn.failed", { reason: failure })}</p>
   {:else if list}
+    <!-- Said whether or not there are bottles. It used to appear only in the
+         empty state, so a person with three bottles saw their drives, their
+         grants and their repairs listed and no hint that nothing on this machine
+         can run any of them. The list is not the answer to "can I use this". -->
+    {#if runtime && !runtime.wine && list.bottles.length > 0}
+      <p class="notice">{$t("wn.noWineWithBottles")}</p>
+    {/if}
     {#if list.bottles.length === 0 && list.unreadable.length === 0}
       <p class="empty">{runtime && !runtime.wine ? $t("wn.noWine") : $t("wn.none")}</p>
       {#if runtime?.bottles_dir}

@@ -13,6 +13,7 @@ const messages: Catalogs = {
     "wn.whereBottles": "Bottles are kept in {$dir}.",
     // Said instead of the invitation above when Wine is not installed, because
     // "no bottles yet" reads as "make one" and there is nothing behind that here.
+    "wn.noWineWithBottles": "Wine is not installed on this machine, so none of these bottles can run a program yet. What they are granted is still shown, and still true.",
     "wn.noWine": "Wine is not installed on this machine, so no Windows program can run yet. A bottle would be a Windows program with its own prefix, reaching only the folders you grant it.",
     "wn.failed": "The bottles could not be listed: {$reason}",
     "wn.prefix": "Prefix",
@@ -53,6 +54,7 @@ const messages: Catalogs = {
     "wn.app.title": "Windows-Programme",
     "wn.none": "Noch keine Flaschen. Eine Flasche ist ein Windows-Programm mit eigenem Prefix, das nur die Ordner erreicht, die du freigibst.",
     "wn.whereBottles": "Flaschen liegen in {$dir}.",
+    "wn.noWineWithBottles": "Wine ist auf diesem Rechner nicht installiert, keine dieser Flaschen kann also ein Programm starten. Was sie freigegeben haben, steht trotzdem hier und stimmt weiterhin.",
     "wn.noWine": "Wine ist auf diesem Rechner nicht installiert, es kann also noch kein Windows-Programm laufen. Eine Flasche wäre ein Windows-Programm mit eigenem Prefix, das nur die Ordner erreicht, die du freigibst.",
     "wn.failed": "Die Flaschen waren nicht auflistbar: {$reason}",
     "wn.prefix": "Prefix",

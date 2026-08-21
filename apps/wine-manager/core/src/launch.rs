@@ -15,7 +15,7 @@
 //! program that meets a drive it cannot open produces no error anyone can act on.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use arlen_confiner::merged_usr_compat_roots;
 
@@ -32,6 +32,13 @@ pub enum LaunchError {
     UnmetDrives(Vec<UnmetDrive>),
     /// No program was named.
     NoProgram,
+    /// There is no Wine on this machine, so nothing could run the program.
+    ///
+    /// Refused for the same reason as an unmet drive: without this the argv is
+    /// built, bwrap starts, and the failure surfaces from inside the sandbox as
+    /// a missing file - which names neither Wine nor the fact that this system
+    /// has none.
+    NoRuntime(PathBuf),
 }
 
 impl std::fmt::Display for LaunchError {
@@ -46,11 +53,20 @@ impl std::fmt::Display for LaunchError {
                 Ok(())
             }
             LaunchError::NoProgram => write!(f, "no program was named"),
+            LaunchError::NoRuntime(p) => {
+                write!(f, "there is no Wine at {} on this machine", p.display())
+            }
         }
     }
 }
 
 impl std::error::Error for LaunchError {}
+
+/// Where Wine is, when the machine has one.
+///
+/// One string rather than two: the check below and the argv have to name the
+/// same binary, and they did not have to for long before somebody moved one.
+pub const WINE: &str = "/usr/bin/wine";
 
 /// The environment a bottle's program runs with.
 ///
@@ -93,6 +109,12 @@ pub fn launch_argv(
     if program.is_empty() {
         return Err(LaunchError::NoProgram);
     }
+    // Checked with the same predicate the compat roots use, before anything is
+    // assembled: a machine with no Wine cannot run a Windows program, and saying
+    // so here is the difference between an answer and a sandbox error.
+    if !exists(Path::new(WINE)) {
+        return Err(LaunchError::NoRuntime(PathBuf::from(WINE)));
+    }
     let binds = plumbing_binds(&bottle.plumbing, runtime_dir, &exists);
     let run = bottle_run(bottle, usr, launch_env(bottle, display), binds)
         .map_err(LaunchError::Bottle)?;
@@ -113,7 +135,7 @@ pub fn launch_argv(
         }
     }
     argv.push("--".into());
-    argv.push("/usr/bin/wine".into());
+    argv.push(WINE.to_string());
     argv.extend(program.iter().cloned());
     Ok(argv)
 }
@@ -186,6 +208,25 @@ mod tests {
             all,
         );
         assert!(matches!(err, Err(LaunchError::UnmetDrives(_))), "{err:?}");
+    }
+
+    #[test]
+    fn a_machine_without_wine_refuses_before_it_assembles_anything() {
+        // Everything else on this host is present; only Wine is missing, which
+        // is the state of an image that ships the manager and not the runtime.
+        let no_wine = |p: &Path| p != Path::new(WINE);
+        let err = launch_argv(
+            &bottle(),
+            Path::new("/usr"),
+            Path::new("/run/user/1000"),
+            None,
+            &["notepad".to_string()],
+            no_wine,
+        );
+        assert!(matches!(err, Err(LaunchError::NoRuntime(_))), "{err:?}");
+        // And it says which binary it looked for, because "install Wine" is
+        // only actionable if a person knows what was not there.
+        assert!(format!("{}", err.unwrap_err()).contains("/usr/bin/wine"));
     }
 
     #[test]
