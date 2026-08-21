@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { printProblem } from "$lib/printProblem";
   /// The editor window: a two-pane surface - the text canvas + the KG-lens panel.
   /// The lens is a co-star (it is the reason the editor exists), not a hidden
   /// sidebar. The slim titlebar carries the file name, a focus-mode toggle, and the
@@ -188,7 +189,15 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
               ? $t("te.print.refused")
               : $t("te.print.noAnswer");
     } catch (e) {
-      printStatus = $t("te.print.failed", { reason: String(e) });
+      const p = printProblem(String(e));
+      printStatus =
+        p.key === "te.print.noPortal"
+          ? $t("te.print.noPortal")
+          : p.key === "te.print.noBus"
+            ? $t("te.print.noBus")
+            : p.key === "te.print.fileUnreadable"
+              ? $t("te.print.fileUnreadable", { message: p.detail })
+              : $t("te.print.failed", { reason: p.detail });
     }
   }
   // A launch file names the window even when it failed to open: the alternative
