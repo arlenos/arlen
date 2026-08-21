@@ -162,6 +162,9 @@ const messages: Catalogs = {
     "sh.bt.errDisconnect": "Could not disconnect.",
     "sh.bt.errConnect": "Could not connect.",
     "sh.bt.errForget": "Could not remove that device.",
+    "sh.bt.errTrust": "Could not let that device connect on its own.",
+    "sh.bt.errUntrust": "Could not stop that device connecting on its own.",
+    "sh.bt.errScan": "Could not start or stop looking for devices.",
 
     // BlueZ pairing. The device name is the device's own, never translated.
     "sh.bt.pair.confirmTitle": "Pair with {$device}?",
@@ -679,6 +682,9 @@ const messages: Catalogs = {
     "sh.bt.errDisconnect": "Die Verbindung konnte nicht getrennt werden.",
     "sh.bt.errConnect": "Es konnte keine Verbindung hergestellt werden.",
     "sh.bt.errForget": "Das Gerät konnte nicht entfernt werden.",
+    "sh.bt.errTrust": "Das Gerät konnte nicht die Erlaubnis bekommen, sich von selbst zu verbinden.",
+    "sh.bt.errUntrust": "Dem Gerät konnte die Erlaubnis, sich von selbst zu verbinden, nicht entzogen werden.",
+    "sh.bt.errScan": "Die Suche nach Geräten ließ sich nicht starten oder beenden.",
 
     "sh.bt.pair.confirmTitle": "Mit {$device} koppeln?",
     "sh.bt.pair.pinTitle": "PIN f\u00fcr {$device} eingeben",
