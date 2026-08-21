@@ -42,6 +42,7 @@ export SHOOT_SETTLE="${4:-}"
 # The vite-served scan cannot see anything a Tauri command supplies, because there
 # is no Tauri there; this harness runs the real binary, so it can.
 export SHOOT_INJECT="${SHOOT_INJECT:-}"
+export SHOOT_LOCALE="${SHOOT_LOCALE:-}"
 # A file to launch the app on, colon-separated for more than one argument.
 export SHOOT_APP_ARGS="${SHOOT_APP_ARGS:-}"
 # The binary is an argument here, so building it is the caller's job - but its age
@@ -137,6 +138,9 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   [ -n "$SHOOT_TYPE" ] && args+=(--type "$SHOOT_TYPE")
   [ -n "$SHOOT_SETTLE" ] && args+=(--settle "$SHOOT_SETTLE")
   [ -n "${SHOOT_GRAB:-}" ] && args+=(--grab-x)
+  # SHOOT_LOCALE=de renders the translated half, which is the half no English
+  # shot can check.
+  [ -n "${SHOOT_LOCALE:-}" ] && args+=(--locale "$SHOOT_LOCALE")
   # Colon-separated, so an app can be launched on a file: SHOOT_APP_ARGS=/etc/hosts
   if [ -n "${SHOOT_APP_ARGS:-}" ]; then
     IFS=":" read -ra appargs <<< "$SHOOT_APP_ARGS"
