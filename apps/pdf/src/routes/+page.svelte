@@ -163,6 +163,10 @@
   <div class="pdf-body">
     {#if !tauriAvailable}
       <p class="quiet">{$t("pdf.hostAbsent")}</p>
+    {:else if failure === "locked"}
+      <!-- The host sends a token for this one, so the sentence is written here
+           and reaches a German reader in German. -->
+      <p class="quiet">{$t("pdf.locked")}</p>
     {:else if failure}
       <p class="quiet">{$t("pdf.failed", { reason: failure })}</p>
     {:else if !doc}

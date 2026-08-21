@@ -37,6 +37,14 @@ pub enum PdfError {
     NoPages,
     /// A page was asked for that this document does not have.
     NoSuchPage(usize),
+    /// The document is locked with a password.
+    ///
+    /// A real PDF and a real refusal, which is why it is not `Unreadable`: bank
+    /// statements and payslips arrive like this, and "this file could not be read
+    /// as a PDF" would send a person looking for a corrupt download. Nothing here
+    /// asks for the password yet, and saying which of the two it is costs one
+    /// call.
+    Locked,
 }
 
 impl std::fmt::Display for PdfError {
@@ -45,6 +53,7 @@ impl std::fmt::Display for PdfError {
             Self::Unreadable(why) => write!(f, "this file could not be read as a PDF: {why}"),
             Self::NoPages => write!(f, "this PDF contains no pages"),
             Self::NoSuchPage(n) => write!(f, "this PDF has no page {n}"),
+            Self::Locked => write!(f, "this PDF is locked with a password"),
         }
     }
 }
@@ -145,6 +154,20 @@ impl Document {
     pub fn open(bytes: &[u8]) -> Result<Self, PdfError> {
         let inner =
             LoDocument::load_mem(bytes).map_err(|e| PdfError::Unreadable(e.to_string()))?;
+        // Asked BEFORE the pages, because an encrypted document's page tree may
+        // read as empty and `NoPages` would then be the answer to the wrong
+        // question - "this PDF contains no pages" about a document that has
+        // plenty, behind a password.
+        //
+        // `is_encrypted` here means "declares encryption AND was not decrypted".
+        // Checked against lopdf 0.44's reader rather than assumed: when it can
+        // decrypt a file - an empty user password, which is what an
+        // owner-password-only document has - it removes `/Encrypt` from the
+        // trailer and records the state elsewhere. So a document a person can
+        // actually read does not trip this.
+        if inner.is_encrypted() {
+            return Err(PdfError::Locked);
+        }
         let mut pages: Vec<(u32, ObjectId)> = inner.get_pages().into_iter().collect();
         // `get_pages` hands back a map keyed by page number; sorted here so the
         // vector's index IS the reading order rather than a hash order.

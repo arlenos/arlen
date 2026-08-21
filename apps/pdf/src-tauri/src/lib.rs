@@ -92,7 +92,15 @@ fn pdf_open(path: String, state: tauri::State<'_, Open>) -> Result<DocumentInfo,
         }
         _ => format!("{} could not be read: {e}", path.display()),
     })?;
-    let doc = Document::open(&bytes).map_err(|e| e.to_string())?;
+    // LOCKED IS A TOKEN, not a sentence. Every other failure here is still an
+    // English string from Rust reaching a window that speaks the reader's
+    // language, which is a debt this app carries; the locked case is the one a
+    // person actually meets - bank statements and payslips arrive with a
+    // password - so it travels as `locked` and the window writes the sentence.
+    let doc = Document::open(&bytes).map_err(|e| match e {
+        arlen_pdf_core::PdfError::Locked => "locked".to_string(),
+        other => other.to_string(),
+    })?;
     let info = DocumentInfo {
         path: path.display().to_string(),
         pages: doc.page_count(),
