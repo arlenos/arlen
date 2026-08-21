@@ -36,6 +36,8 @@
     has_html: boolean;
     divergence: string | null;
     refusal: string | null;
+    to: string[];
+    cc: string[];
     channels: string[];
     attachments: { name: string | null; media_type: string | null; bytes: number }[];
     path: string;
@@ -96,6 +98,14 @@
       <dd>{message.subject ?? "-"}</dd>
       <dt>{$t("ml.date")}</dt>
       <dd>{message.date ?? "-"}</dd>
+      {#if message.to.length > 0}
+        <dt>{$t("ml.to")}</dt>
+        <dd>{message.to.join(", ")}</dd>
+      {/if}
+      {#if message.cc.length > 0}
+        <dt>{$t("ml.cc")}</dt>
+        <dd>{message.cc.join(", ")}</dd>
+      {/if}
     </dl>
 
     {#if message.divergence}
