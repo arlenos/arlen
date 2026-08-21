@@ -271,6 +271,12 @@ def wrong_app(binary: str, loaded: str) -> str | None:
     return None
 
 
+# Under this the window cannot be showing an app. Well below any real window,
+# so a small dialog still passes; a layer-shell surface with no compositor is
+# one pixel and does not.
+MIN_VIEWPORT_W = 200
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--app", required=True, help="path to the Tauri app binary")
@@ -369,6 +375,28 @@ def main():
                 return 1
         except Exception as e:  # a driver that cannot answer must not fail the shot
             print(f"loaded url: unknown ({e})")
+
+        # A window with no width renders nothing, and every probe run against one
+        # is a measurement of an overflowing layout rather than of the app. On
+        # 21 August this cost a whole investigation: the desktop shell is a
+        # layer-shell bar, so started under plain X11 it comes up ONE pixel wide,
+        # and clicks I aimed at "the right-most control in the bar" landed
+        # wherever an unlaid-out flex row happened to put things. I wrote up a
+        # wrong diagnosis from it. Refuse instead, in the same spirit as
+        # shoot.py's width floor: a shot of a window this size proves nothing.
+        try:
+            vw = rq(base, "POST", f"/session/{sid}/execute/sync",
+                    {"script": "return [window.innerWidth, window.innerHeight];",
+                     "args": []})["value"]
+            if vw and int(vw[0]) < MIN_VIEWPORT_W:
+                print(f"DEGENERATE VIEWPORT: {int(vw[0])}x{int(vw[1])} css px")
+                print("Nothing renders at this size and any probe reports on an"
+                      " unlaid-out page. An app that needs layer-shell (the shell"
+                      " bar) cannot size itself under plain X11 - drive it in the"
+                      " nested compositor instead (dev/screenshot/shoot-compositor.sh).")
+                return 1
+        except Exception as e:  # a driver that cannot answer must not fail the shot
+            print(f"viewport: unknown ({e})")
 
         # A language is chosen by reloading rather than by starting the app
         # differently, because the app reads it from Settings through a Tauri
