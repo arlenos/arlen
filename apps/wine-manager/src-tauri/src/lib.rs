@@ -18,6 +18,27 @@ use arlen_wine_core::bottle::Bottle;
 use arlen_wine_core::registry::{bottles_dir, list_bottles};
 use serde::Serialize;
 
+/// What reading a bottle's prefix said about its description.
+///
+/// The description is a claim; the prefix is what Wine and whoever opened the
+/// directory have actually written. A window that shows only the claim will keep
+/// saying a bottle reaches two folders after `winecfg` has added a third or a
+/// re-boot has put `Z:` back.
+#[derive(Debug, Serialize)]
+pub struct HealthView {
+    /// Whether the prefix says the same thing as the description.
+    pub agrees: bool,
+    /// Granted folders the program cannot see, by letter.
+    pub missing: Vec<String>,
+    /// Letters in the prefix that no grant asked for.
+    pub unexpected: Vec<String>,
+    /// Links that leave the prefix with no grant behind them, as paths.
+    pub escapes: Vec<String>,
+    /// Whether the prefix has been booted at all. A bottle recorded and never run
+    /// is not in disagreement with itself.
+    pub booted: bool,
+}
+
 /// One bottle as the window shows it.
 #[derive(Debug, Serialize)]
 pub struct BottleView {
@@ -31,6 +52,9 @@ pub struct BottleView {
     pub drives: Vec<DriveView>,
     /// What it may reach on the network, as a word the surface can render.
     pub egress: String,
+    /// What the prefix itself says, or `None` if it could not be read - which is
+    /// a third answer and not the same as agreeing.
+    pub health: Option<HealthView>,
 }
 
 /// One drive letter as the window shows it.
@@ -77,6 +101,13 @@ fn view(b: &Bottle) -> BottleView {
             writable: d.access == arlen_wine_core::Access::ReadWrite,
         })
         .collect();
+    let health = arlen_wine_core::health::check_bottle(b).ok().map(|h| HealthView {
+        agrees: h.agrees(),
+        missing: h.missing.iter().map(|c| format!("{c}:")).collect(),
+        unexpected: h.unexpected.iter().map(|c| format!("{c}:")).collect(),
+        escapes: h.escapes.iter().map(|p| p.display().to_string()).collect(),
+        booted: arlen_wine_core::health::is_booted(&b.prefix_root),
+    });
     BottleView {
         id: b.id.clone(),
         prefix: b.prefix_root.display().to_string(),
@@ -86,6 +117,7 @@ fn view(b: &Bottle) -> BottleView {
             arlen_wine_core::bottle::Egress::Hosts(h) => h.join(", "),
             arlen_wine_core::bottle::Egress::Unrestricted => "unrestricted".into(),
         },
+        health,
     }
 }
 
