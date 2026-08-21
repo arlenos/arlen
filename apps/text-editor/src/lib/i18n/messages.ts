@@ -46,6 +46,7 @@ const messages: Catalogs = {
     "te.lens.project": "Project",
     "te.lens.project.partOf": "Part of {$name}",
     "te.lens.sample": "Example context - not this file's real graph neighbourhood.",
+    "te.lens.recently": "recently",
     "te.lens.sample.asOf": "The time you picked does not apply to it.",
     // Said on the ONE section that is still a sample once the rest is real, so a
     // reader is never left inferring which parts came from the graph.
@@ -103,6 +104,7 @@ const messages: Catalogs = {
     "te.lens.project": "Projekt",
     "te.lens.project.partOf": "Teil von {$name}",
     "te.lens.sample": "Beispielkontext - nicht die echte Graph-Nachbarschaft dieser Datei.",
+    "te.lens.recently": "vor Kurzem",
     "te.lens.sample.asOf": "Der gewählte Zeitpunkt gilt dafür nicht.",
     "te.lens.sampleSection": "Beispiel",
     "te.review.undone": "Rückgängig gemacht",

@@ -4,7 +4,23 @@
   /// (coarse lineage, honest fidelity), Related (inline contextual backlinks you act
   /// on), and Project membership. Read-only context; nothing hand-authored.
   import { lens, openRelated, type ProvenanceStep } from "$lib/stores/lens";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { relativeTime } from "@arlen/ui-kit/i18n";
+
+  /// How long ago, in the reader's language.
+  ///
+  /// The backend sends the instant; the words are this panel's to write, which
+  /// is what its own comment said before it printed `2026-08-06` at a person.
+  /// `Intl.RelativeTimeFormat` under `relativeTime` knows every language's
+  /// wording, so no catalogue entry is needed per unit.
+  ///
+  /// A zero or future instant is not a date: zero is the graph having no
+  /// timestamp, and a future one is a clock disagreement. Both read as
+  /// "recently".
+  const whenWords = (ms: number): string =>
+    !Number.isFinite(ms) || ms <= 0 || ms > Date.now()
+      ? $t("te.lens.recently")
+      : relativeTime(ms, $locale);
   import { FileText } from "lucide-svelte";
 
   // Honest actor phrasing already lives in the data ("a process" at pid fidelity);
@@ -47,7 +63,7 @@
                  a phrase in the fixture; `$t` returns the key unchanged when it
                  is not one, so both render without a second code path. -->
             <div class="prov-what">{$t(step.relation)} <span class="prov-actor">{step.actor}</span></div>
-            <div class="prov-when">{step.when}</div>
+            <div class="prov-when">{whenWords(step.when_ms)}</div>
           </div>
         </div>
       {:else}

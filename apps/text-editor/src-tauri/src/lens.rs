@@ -53,7 +53,7 @@ pub struct LensProvenanceStep {
     pub origin: &'static str,
     /// When, already phrased for display. The panel prints this verbatim, so an
     /// empty string is the honest form for "the graph did not record a time".
-    pub when: String,
+    pub when_ms: i64,
     /// `resolved` | `pid` | `proxy`: how confidently the actor is known.
     pub fidelity: &'static str,
 }
@@ -408,14 +408,19 @@ fn steps_from_rows(rows: &[HashMap<String, Value>]) -> Vec<LensProvenanceStep> {
             // the origin is the graph's own observation, not a claim by a user
             // or a model.
             origin: "graph",
-            // Epoch micros in the graph. The panel prints `when` verbatim, and
-            // an ISO date is the one form that is unambiguous without knowing
-            // the reader's locale; "3 weeks ago" would be the app's phrasing to
-            // make, not this command's.
-            when: row
+            // THE INSTANT, not a rendering of it. The comment here used to argue
+            // that an ISO day is "the one form that is unambiguous without
+            // knowing the reader's locale", and that the phrasing is the app's
+            // to make - which is right, and the app was then printing the ISO
+            // day verbatim, so the panel said `2026-08-14` to a person. Sending
+            // the instant lets it make the phrasing it was always meant to.
+            //
+            // Epoch MILLIseconds, matching the file manager's provenance step,
+            // and `0` means the graph had no timestamp rather than 1970.
+            when_ms: row
                 .get("at")
                 .and_then(|v| v.as_i64())
-                .map(|micros| iso_day(micros / 1_000_000))
+                .map(|micros| micros / 1_000)
                 .unwrap_or_default(),
             // The graph records the app id it saw, so the actor is resolved -
             // not a pid we guessed a name for.
@@ -425,22 +430,6 @@ fn steps_from_rows(rows: &[HashMap<String, Value>]) -> Vec<LensProvenanceStep> {
     steps
 }
 
-/// `YYYY-MM-DD` for Unix seconds, UTC. Civil-from-days, so no date dependency
-/// for one field.
-fn iso_day(seconds: i64) -> String {
-    let days = seconds.div_euclid(86_400);
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    format!("{y:04}-{m:02}-{d:02}")
-}
 
 #[cfg(test)]
 mod project_tests {
@@ -606,13 +595,13 @@ mod tests {
             relation: "x".into(),
             actor: "y".into(),
             origin: "graph",
-            when: String::new(),
+            when_ms: 0,
             fidelity: "resolved",
         })
         .unwrap();
         // The panel reads all five; a renamed field renders as a blank rather
         // than an error, so the names are asserted rather than trusted.
-        for field in ["relation", "actor", "origin", "when", "fidelity"] {
+        for field in ["relation", "actor", "origin", "when_ms", "fidelity"] {
             assert!(json.contains(&format!("\"{field}\"")), "{field} missing from {json}");
         }
     }
@@ -632,7 +621,8 @@ mod tests {
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].relation, "te.pv.verb.openedIn", "a message id, never a word");
         assert_eq!(steps[0].actor, "text-editor");
-        assert_eq!(steps[0].when, "2026-08-06");
+        // The instant, in milliseconds: the words are the panel's to write.
+        assert_eq!(steps[0].when_ms, 1_786_000_000_000i64);
         assert_eq!(steps[0].origin, "graph");
         assert_eq!(steps[0].fidelity, "resolved");
     }
