@@ -140,7 +140,17 @@
                 try {
                   const after = await invoke<HealthView>("wine_repair", { id: bottle.id });
                   bottle.health = after;
-                  repaired[bottle.id] = after.agrees ? $t("wn.repaired") : "";
+                  // `agrees` alone would say "put back" for a prefix that is not
+                  // there: `repair_bottle` reads nothing when the bottle has
+                  // never been booted and returns an empty reading, which is
+                  // indistinguishable from a reading where everything agreed.
+                  // The two are different answers and only `booted` tells them
+                  // apart, so a bottle with no prefix says so instead.
+                  repaired[bottle.id] = !after.booted
+                    ? $t("wn.nothingToRepair")
+                    : after.agrees
+                      ? $t("wn.repaired")
+                      : "";
                 } catch (e) {
                   repaired[bottle.id] = $t("wn.repairFailed", { reason: String(e) });
                 }
