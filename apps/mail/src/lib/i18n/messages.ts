@@ -23,6 +23,17 @@ const messages: Catalogs = {
     "ml.divergence": "The plain-text and HTML parts do not say the same thing. {$detail}",
     "ml.refused": "This message contradicts itself about its own format, so it is not being interpreted: {$reason}",
     "ml.channels": "Headers in this message ask to report back: {$list}",
+    // Named and measured, never opened. Same principle as the HTML notice: say
+    // what the message carries without acting on it.
+    // MF2 (`.input`/`.match`), not ICU MessageFormat 1. The first version of this
+    // used `{$count, plural, one {...} other {...}}` and the window printed that
+    // string verbatim: the formatter under this catalog is MessageFormat 2, where
+    // a selector is a declaration and not an inline argument. Rendered before it
+    // was believed, which is how it was caught.
+    "ml.carries":
+      ".input {$count :number}\n.match $count\none {{This message carries one file, not opened:}}\n* {{This message carries {$count} files, not opened:}}",
+    "ml.attachment": "{$name}, {$type}, {$size}",
+    "ml.unnamedAttachment": "a file the sender did not name",
   },
   de: {
     "ml.app.title": "E-Mail",
@@ -37,6 +48,10 @@ const messages: Catalogs = {
     "ml.divergence": "Der Textteil und der HTML-Teil sagen nicht dasselbe. {$detail}",
     "ml.refused": "Diese Nachricht widerspricht sich über ihr eigenes Format, deshalb wird sie nicht interpretiert: {$reason}",
     "ml.channels": "Header in dieser Nachricht wollen zurückmelden: {$list}",
+    "ml.carries":
+      ".input {$count :number}\n.match $count\none {{Diese Nachricht trägt eine Datei bei sich, nicht geöffnet:}}\n* {{Diese Nachricht trägt {$count} Dateien bei sich, nicht geöffnet:}}",
+    "ml.attachment": "{$name}, {$type}, {$size}",
+    "ml.unnamedAttachment": "eine Datei, die die absendende Seite nicht benannt hat",
   },
 };
 

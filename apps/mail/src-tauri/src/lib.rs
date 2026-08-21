@@ -29,6 +29,18 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 /// A message as the window needs it.
+/// One part the message carries, as the message describes it.
+///
+/// The name is the sender's string and nothing here opens or saves the part, so
+/// it is shown as written. Whoever adds a save button treats it as a suggestion
+/// rather than a destination.
+#[derive(serde::Serialize)]
+pub struct AttachmentView {
+    name: Option<String>,
+    media_type: Option<String>,
+    bytes: usize,
+}
+
 #[derive(Serialize)]
 pub struct MessageDto {
     /// The sender as written. Unverified: a display name is whatever the sender
@@ -48,6 +60,8 @@ pub struct MessageDto {
     refusal: Option<String>,
     /// Headers that are a way out of this machine.
     channels: Vec<String>,
+    /// What the message carries, named and measured, never opened.
+    attachments: Vec<AttachmentView>,
     /// The file this came from, for the surface to name.
     path: String,
 }
@@ -78,6 +92,15 @@ fn mail_read(path: String) -> Result<MessageDto, String> {
         divergence: m.divergence,
         refusal: m.refusal,
         channels: m.channels,
+        attachments: m
+            .attachments
+            .into_iter()
+            .map(|a| AttachmentView {
+                name: a.name,
+                media_type: a.media_type,
+                bytes: a.bytes,
+            })
+            .collect(),
         path,
     })
 }
