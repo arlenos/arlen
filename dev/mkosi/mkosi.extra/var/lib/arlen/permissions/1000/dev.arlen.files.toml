@@ -29,7 +29,9 @@
 # On the image as it ships, that surface is inert: `udisksctl` is in the ABSENT
 # list in `check-spawned-tools-classified.py` ("mounting a removable disk from the
 # file manager"), so the buttons are there and the tool is not. That is tracked
-# where absences are tracked rather than fixed here.
+# where absences are tracked rather than fixed here. Since 21 August pressing one
+# says so - "udisks is not installed, so disks cannot be mounted from here" -
+# rather than answering with the errno, which read as the disk being gone.
 
 [info]
 app_id = "dev.arlen.files"

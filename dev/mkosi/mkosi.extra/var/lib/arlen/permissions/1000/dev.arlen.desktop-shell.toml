@@ -29,6 +29,16 @@
 # thing the launcher would confine other apps FROM, and the model has no vocabulary
 # for "may start arbitrary programs".
 #
+# Concretely, and counted rather than asserted: the shell reaches the machine
+# through nine helper programs no section here names. `nmcli` changes the network
+# and connects to wifi; `rfkill` switches the radios; `pactl` and `wpctl` set the
+# volume and choose the output and input devices; `powerprofilesctl` changes the
+# power profile; `wl-copy` and `wl-paste` write and read the clipboard, including
+# the watcher behind the clipboard history; `wf-recorder` records the screen; and
+# `gtk-launch` starts a desktop entry. Every one of those is authority over the
+# machine or over what the person has copied, and the model below has no field for
+# any of it.
+#
 # Written down because a reader who takes this file as the shell's reach will be
 # wrong by the whole desktop, and because the read scope being narrow and careful
 # could otherwise be mistaken for the app being narrow.
