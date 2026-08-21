@@ -399,6 +399,110 @@ fn icon_ref(node: &roxmltree::Node) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The desktop-id a component says it launches, if it says one.
+pub fn launchable_desktop_id(xml: &str) -> Option<String> {
+    let doc = roxmltree::Document::parse(xml).ok()?;
+    doc.descendants()
+        .find(|n| {
+            n.is_element()
+                && n.tag_name().name() == "launchable"
+                && n.attribute("type") == Some("desktop-id")
+        })
+        .and_then(|n| n.text())
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+}
+
+/// Where an icon THEME keeps its files, in the order the freedesktop spec has
+/// them searched. `/usr/share/pixmaps` is last and flat: it predates the theme
+/// spec and is where a lot of packaged apps still put a single file.
+const ICON_ROOTS: [&str; 3] = [
+    "/usr/share/icons/hicolor",
+    "/usr/local/share/icons/hicolor",
+    "/usr/share/pixmaps",
+];
+
+/// Sizes tried, largest first: a card scales a big icon down cleanly and up
+/// badly. `scalable` is an SVG and beats every raster size.
+const ICON_SIZES: [&str; 6] = ["scalable", "256x256", "128x128", "64x64", "48x48", "32x32"];
+
+/// Where a `.desktop` entry lives, in the order the spec searches.
+const DESKTOP_DIRS: [&str; 2] = ["/usr/share/applications", "/usr/local/share/applications"];
+
+/// The `Icon=` a desktop entry declares, given its desktop-id.
+///
+/// The chain that actually carries an icon for an installed app: 78 of the 79
+/// `metainfo.xml` files on this laptop have NO `<icon>` element at all. They name
+/// a `<launchable type="desktop-id">`, that entry has `Icon=`, and the file is in
+/// the icon theme. Reading the metainfo alone finds nothing, which is why 42
+/// cards had no picture while every picture was on disk.
+///
+/// `read` is injected so the chain can be tested without the machine's own apps.
+pub fn desktop_entry_icon(desktop_id: &str, read: impl Fn(&Path) -> Option<String>) -> Option<String> {
+    if desktop_id.is_empty() || desktop_id.contains('/') {
+        return None;
+    }
+    for dir in DESKTOP_DIRS {
+        let Some(text) = read(&Path::new(dir).join(desktop_id)) else {
+            continue;
+        };
+        // The first `Icon=` in the [Desktop Entry] group. An action group can
+        // carry its own, and taking a later one would show the wrong picture.
+        for line in text.lines() {
+            let line = line.trim();
+            if line.starts_with('[') && !line.starts_with("[Desktop Entry]") {
+                break;
+            }
+            if let Some(v) = line.strip_prefix("Icon=") {
+                let v = v.trim();
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Resolve a STOCK icon name to a file on this machine.
+///
+/// A component that came from its own `metainfo.xml` names its icon the way a
+/// desktop entry does - a bare name, no path, no size - and the store only knew
+/// how to resolve the CACHED kind, which needs a swcatalog icon cache built by
+/// `appstreamcli compose`. Measured on this laptop: 43 cards from installed
+/// metainfo, ONE with an icon, while the files sat in `/usr/share/icons/hicolor`
+/// the whole time. This is the lookup the shell already does for a `.desktop`
+/// entry, which is where the name comes from in the first place.
+///
+/// `exists` is injected so the search order can be tested against a machine that
+/// is not this one.
+pub fn stock_icon_path(name: &str, exists: impl Fn(&Path) -> bool) -> Option<String> {
+    // A name with a path in it is not a stock name: it is a file reference, and
+    // whoever wrote it said where. A name with a slash would also let a component
+    // point the search anywhere.
+    if name.is_empty() || name.contains('/') {
+        return None;
+    }
+    for root in ICON_ROOTS {
+        let flat = Path::new(root);
+        for ext in ["svg", "png", "xpm"] {
+            let p = flat.join(format!("{name}.{ext}"));
+            if exists(&p) {
+                return Some(p.to_string_lossy().into_owned());
+            }
+        }
+        for size in ICON_SIZES {
+            for ext in ["svg", "png"] {
+                let p = flat.join(size).join("apps").join(format!("{name}.{ext}"));
+                if exists(&p) {
+                    return Some(p.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+    None
+}
+
 // --- Debian DEP-11 (AppStream-in-YAML) reader -----------------------------------
 
 /// A DEP-11 component document. Fields are optional so the leading header document
@@ -812,7 +916,22 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
     // One document per installed app, so a malformed one costs that app and
     // nothing else - the same best-effort rule the other sources follow.
     for xml in &inputs.metainfo_xml {
-        if let Some(entry) = metainfo_entry(xml) {
+        if let Some(mut entry) = metainfo_entry(xml) {
+            // The icon here is the name a desktop entry would use, so it is
+            // resolved the way a desktop entry's is. Only a bare name: anything
+            // with a scheme or a path already says where it is.
+            // Most documents name no icon at all and point at a desktop entry
+            // instead, so the name is looked up there before it is resolved.
+            let named = entry.display.icon.clone().or_else(|| {
+                launchable_desktop_id(xml)
+                    .and_then(|id| desktop_entry_icon(&id, |p| std::fs::read_to_string(p).ok()))
+            });
+            entry.display.icon = match named {
+                Some(name) if !name.contains('/') && !name.contains("://") => {
+                    stock_icon_path(&name, |p| p.is_file()).or(Some(name))
+                }
+                other => other,
+            };
             entries.push(entry);
         }
     }
@@ -1571,6 +1690,64 @@ commit = "0000000000000000000000000000000000000000"
             layer_for_catalog_origin("debian_main", Some(SourceLayer::Official)),
             Some(SourceLayer::Apt),
         );
+    }
+
+    #[test]
+    fn a_component_that_names_no_icon_gets_one_from_the_entry_it_launches() {
+        // 78 of the 79 metainfo files on this machine have no `<icon>` at all.
+        let xml = r#"<component type="desktop-application">
+  <id>org.example.demo</id>
+  <name>Demo</name>
+  <launchable type="desktop-id">org.example.demo.desktop</launchable>
+</component>"#;
+        assert_eq!(launchable_desktop_id(xml).as_deref(), Some("org.example.demo.desktop"));
+        let icon = desktop_entry_icon("org.example.demo.desktop", |p| {
+            (p == Path::new("/usr/share/applications/org.example.demo.desktop"))
+                .then(|| "[Desktop Entry]\nName=Demo\nIcon=org.example.demo\n".to_string())
+        });
+        assert_eq!(icon.as_deref(), Some("org.example.demo"));
+    }
+
+    #[test]
+    fn an_action_groups_own_icon_is_not_mistaken_for_the_apps() {
+        // A desktop entry can carry several `Icon=` lines: one for the app and one
+        // per action. Taking a later one shows the wrong picture on the card.
+        let text = "[Desktop Entry]\nName=Demo\nIcon=the-app\n\n[Desktop Action New]\nIcon=the-action\n";
+        let icon = desktop_entry_icon("d.desktop", |_| Some(text.to_string()));
+        assert_eq!(icon.as_deref(), Some("the-app"));
+    }
+
+    #[test]
+    fn a_stock_name_is_searched_largest_first_and_svg_before_png() {
+        let have = |p: &Path| {
+            p == Path::new("/usr/share/icons/hicolor/128x128/apps/demo.png")
+                || p == Path::new("/usr/share/icons/hicolor/32x32/apps/demo.png")
+        };
+        assert_eq!(
+            stock_icon_path("demo", have).as_deref(),
+            Some("/usr/share/icons/hicolor/128x128/apps/demo.png"),
+            "a card scales a big icon down cleanly and up badly",
+        );
+        let scalable = |p: &Path| p.to_string_lossy().contains("scalable");
+        assert!(stock_icon_path("demo", scalable).unwrap().ends_with("scalable/apps/demo.svg"));
+    }
+
+    #[test]
+    fn a_pixmap_is_found_when_the_theme_has_nothing() {
+        let only_pixmap = |p: &Path| p == Path::new("/usr/share/pixmaps/demo.xpm");
+        assert_eq!(
+            stock_icon_path("demo", only_pixmap).as_deref(),
+            Some("/usr/share/pixmaps/demo.xpm"),
+        );
+    }
+
+    #[test]
+    fn a_name_with_a_path_in_it_is_not_a_stock_name() {
+        // It would let a component aim the search wherever it liked, and a name
+        // that says where it is does not need looking up.
+        assert_eq!(stock_icon_path("../../etc/shadow", |_| true), None);
+        assert_eq!(stock_icon_path("", |_| true), None);
+        assert_eq!(desktop_entry_icon("../evil.desktop", |_| Some("Icon=x".into())), None);
     }
 
     #[test]
