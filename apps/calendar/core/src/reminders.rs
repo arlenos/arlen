@@ -102,6 +102,14 @@ pub fn registrations(
             },
         };
         for date in dates {
+            // The file's own corrections, honoured HERE as well as in the agenda.
+            // The exclusion landed in `view.rs` first, and for a few hours the
+            // week somebody called off was hidden from the list and still rang -
+            // two surfaces disagreeing about the same file, which is worse than
+            // either mistake alone.
+            if event.exdates.contains(&date) {
+                continue;
+            }
             let start = on_date(&event.start, date);
             let end = event
                 .end
@@ -176,6 +184,22 @@ END:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR";
             "the key names the occurrence, so a later move can drop just this one"
         );
         assert!(r.unexpanded.is_empty());
+    }
+
+    #[test]
+    fn the_week_somebody_called_off_does_not_ring() {
+        // The agenda hides that week; if the alarm still fired, the two surfaces
+        // would disagree about the same file, which is worse than either mistake
+        // on its own.
+        let ics = WEEKLY.replace(
+            "RRULE:FREQ=WEEKLY;BYDAY=WE\r\n",
+            "RRULE:FREQ=WEEKLY;BYDAY=WE\r\nEXDATE:20260826T090000Z\r\n",
+        );
+        let events = parse_events(&ics).expect("parses");
+        let r = registrations(&events, at(2026, 8, 19, 0, 0), at(2026, 9, 2, 23, 59), Tz::UTC);
+        assert_eq!(r.due.len(), 2);
+        assert_eq!(r.due[0].at, at(2026, 8, 19, 8, 45));
+        assert_eq!(r.due[1].at, at(2026, 9, 2, 8, 45), "and the series carries on after it");
     }
 
     #[test]
