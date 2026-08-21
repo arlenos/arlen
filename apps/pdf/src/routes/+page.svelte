@@ -289,7 +289,7 @@
     line-height: 1.6;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    text-align: left;
+    text-align: start;
   }
   .pdf-app {
     display: flex;
