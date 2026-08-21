@@ -14,6 +14,12 @@ import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "$lib/stores/document";
 
+/// The sample lens's own clock. Instants relative to `Date.now()` would drift
+/// with the day the fixture is read on, so a screenshot of it would never match
+/// twice.
+const SAMPLE_NOW = Date.parse("2026-08-14T09:00:00Z");
+const DAY = 24 * 3_600_000;
+
 /// Where a step's assertion came from (mirrors the Files provenance model).
 export type Provenance = "user" | "graph" | "external" | "model" | "agent";
 /// How confidently the actor is known - never overclaim ("a process", not "app X").
@@ -24,7 +30,7 @@ export interface ProvenanceStep {
   relation: string;
   actor: string;
   origin: Provenance;
-  when: string;
+  when_ms: number;
   fidelity: Fidelity;
 }
 
@@ -67,9 +73,9 @@ interface LensState {
 
 const FIXTURE = {
   provenance: [
-    { relation: "Started by", actor: "you", origin: "user" as Provenance, when: "3 weeks ago", fidelity: "resolved" as Fidelity },
-    { relation: "A section drafted by", actor: "the assistant", origin: "agent" as Provenance, when: "yesterday", fidelity: "resolved" as Fidelity },
-    { relation: "Last opened by", actor: "a process", origin: "graph" as Provenance, when: "12 minutes ago", fidelity: "pid" as Fidelity },
+    { relation: "Started by", actor: "you", origin: "user" as Provenance, when_ms: SAMPLE_NOW - 21 * DAY, fidelity: "resolved" as Fidelity },
+    { relation: "A section drafted by", actor: "the assistant", origin: "agent" as Provenance, when_ms: SAMPLE_NOW - DAY, fidelity: "resolved" as Fidelity },
+    { relation: "Last opened by", actor: "a process", origin: "graph" as Provenance, when_ms: SAMPLE_NOW - 12 * 60_000, fidelity: "pid" as Fidelity },
   ],
   related: [
     { file: "roadmap.md", ref: "roadmap", snippet: "…the editor lands after the compositor work, see the notes in this file for the lens design…" },
