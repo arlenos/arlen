@@ -570,6 +570,21 @@ sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
     }
 
     /// A downloader that returns a fixed tar archive (a source tree).
+    /// Serves the tarball for the source URL and a PNG for anything else, so a
+    /// build that also fetches a screenshot can be driven end to end.
+    struct TarballAndPictures(Vec<u8>);
+    #[async_trait]
+    impl Downloader for TarballAndPictures {
+        async fn get(&self, url: &str, _max: u64) -> Result<Vec<u8>, FetchError> {
+            if url.ends_with(".tar") {
+                return Ok(self.0.clone());
+            }
+            let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+            png.extend_from_slice(b"pixels");
+            Ok(png)
+        }
+    }
+
     struct CannedDownloader(Vec<u8>);
     #[async_trait]
     impl Downloader for CannedDownloader {
@@ -680,6 +695,12 @@ version = "1.0.0"
 summary = "demo"
 license = "MIT"
 maintainer = "key:demo"
+# One picture from the host the source comes from and one from a stranger, so a
+# build exercises both halves of the mirroring rule.
+screenshots = [
+    "https://example.org/shot.png",
+    "https://cdn.stranger.net/other.png",
+]
 
 [[source]]
 type = "tarball"
@@ -763,7 +784,7 @@ bin = ["app"]
             &recipe,
             out.path(),
             &store,
-            &CannedDownloader(tarball),
+            &TarballAndPictures(tarball),
             &UnusedGit,
             &UnusedResolver,
             &ArtifactWritingRunner { rel: "app".into() },
@@ -789,6 +810,25 @@ bin = ["app"]
             xml.contains(&format!("<id>{}</id>", recipe.recipe.id)),
             "the component declares the recipe's own id: {xml}"
         );
+
+        // The pictures came with it. The one from the source host is a file INSIDE
+        // the package, named by its contents, and the component names that file;
+        // the one from a host the recipe never made you talk to is still a URL.
+        assert!(
+            !xml.contains("https://example.org/shot.png"),
+            "the source host's picture is a local name now: {xml}"
+        );
+        assert!(
+            xml.contains("https://cdn.stranger.net/other.png"),
+            "and a stranger's is untouched: {xml}"
+        );
+        let shots: Vec<String> = std::fs::read_dir(extracted.path().join("share/swcatalog/screenshots"))
+            .expect("the package carries a screenshots directory")
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(shots.len(), 1, "one picture, not two: {shots:?}");
+        assert!(shots[0].ends_with(".png"));
+        assert!(xml.contains(&shots[0]), "and the component names it: {xml}");
 
         // And the composed catalogue beside it, which is what puts the app in the
         // store's list rather than only in its own directory. Conditional on the
