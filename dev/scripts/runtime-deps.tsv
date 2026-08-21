@@ -30,8 +30,8 @@
 
 # ── the desktop's own binaries ───────────────────────────────────────────────
 arlen-run	-	desktop-shell	own	the confined launcher, staged by the image build
-arlen-harness	-	desktop-shell	own	first-party app, staged by the image build
-arlen-settings	-	desktop-shell	own	first-party app, staged by the image build
+arlen-harness	-	desktop-shell	absent	the shell launches it and the image does not stage it (arlen-ui's live work, see check-apps-on-image NOT_ON_IMAGE)
+arlen-settings	-	desktop-shell	absent	four call sites open Settings and the image does not stage it yet
 
 # ── base system ──────────────────────────────────────────────────────────────
 sh	-	several	base	essential; the shell out of which everything else is spawned
@@ -73,3 +73,4 @@ wf-recorder	wf-recorder	desktop-shell	absent	screen recording
 glib-compile-schemas	libglib2.0-bin	installd	absent	compiling GSettings schemas for an installed app
 wineboot	wine	wine-manager	absent	creating a bottle's prefix; without it no Windows program runs at all
 wineserver	wine	wine-manager	absent	stopping the server a bottle's boot started, so it is not inherited by the next launch
+appstreamcli	appstream	forage pipeline, store	ships	composes a built package's own catalogue; the compose half is a separate Debian package

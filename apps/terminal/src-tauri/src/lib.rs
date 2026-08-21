@@ -779,7 +779,16 @@ fn terminal_inject_block(command: String, output: String) -> Result<(), String> 
         .arg("--inject")
         .arg(&path)
         .spawn()
-        .map_err(|e| format!("launch harness: {e}"))?;
+        .map_err(|e| {
+            // The harness is not staged on the image, so this is the ordinary
+            // answer there and the errno would send somebody looking for a file.
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "the assistant is not installed on this machine, so this cannot be sent to it"
+                    .to_string()
+            } else {
+                format!("the assistant could not be opened: {e}")
+            }
+        })?;
     Ok(())
 }
 

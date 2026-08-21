@@ -389,7 +389,18 @@ pub fn open_ai_settings() -> Result<(), String> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("launch settings: {e}"))
+        .map_err(|e| {
+            // Settings is not staged on the image yet, so "no such file" is the
+            // ordinary answer here rather than a fault. Said as what cannot
+            // happen: "launch settings: No such file or directory (os error 2)"
+            // reads as the launch failing for some reason worth retrying.
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "Settings is not installed on this machine, so it cannot be opened from here"
+                    .to_string()
+            } else {
+                format!("Settings could not be opened: {e}")
+            }
+        })
 }
 
 #[cfg(test)]
