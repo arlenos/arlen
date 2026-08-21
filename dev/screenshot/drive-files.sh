@@ -190,5 +190,45 @@ got=$(SHOOT_INJECT="$work/.search.js" "$here/shoot-app.sh" "$app" "$here/out/fil
 say "search reaches into a subfolder" \
   "$(printf '%s' "$got" | grep -q 'gamma.txt' && echo 1 || echo 0)" "$got"
 
-[ "$fail" = 0 ] && echo "a folder that opens, a rename and a delete that reach the disk, an undo that restores it, and a search that goes deeper than the folder"
+# A FILE NOTHING OPENS. The window used to do nothing at all here - the host built
+# the sentence and `openPath` dropped it in a `catch` - so the case worth holding
+# is not that the open fails, it is that the person is told why.
+printf 'not really a pdf\n' > "$work/report.pdf"
+# Self-contained rather than built on `$common`: that block does not only define
+# helpers, it performs the delete, and a probe about opening a file must not run
+# a delete first.
+cat > "$work/.noopen.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const out = {};
+await wait(3000);
+// Unscoped for the folder itself (it is in the HOME listing, not in
+// `.fm-browse` yet), scoped afterwards for the same reason `$common` gives.
+const cellFor = name => [...document.querySelectorAll("*")]
+  .filter(e => e.children.length === 0 && (e.textContent||"").trim() === name)[0];
+const folder = cellFor("arlen-drive-files");
+if (!folder) return JSON.stringify({ error: "no work folder in home" });
+(folder.closest("[role=row], li, tr, div") || folder)
+  .dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+await wait(1800);
+const row = cellFor("report.pdf");
+if (!row) return JSON.stringify({ error: "no report.pdf row" });
+row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+await wait(2500);
+out.status = [...document.querySelectorAll(".status-bar span")].map(s => s.textContent.trim());
+return JSON.stringify(out);
+JS
+
+got=$(SHOOT_INJECT="$work/.noopen.js" "$here/shoot-app.sh" "$app" "$here/out/files-no-handler.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+# WHAT it says depends on where it runs, and both answers are honest. Under this
+# harness there is no shell, so the launch socket is not there and the window says
+# so verbatim ("This did not open: launch socket i/o: Connection refused"). On the
+# image the shell answers and it reads "Nothing on this machine is set up to open
+# application/pdf files" - photographed on 21 August in `first-run/18`. What the
+# case holds is the thing that was missing until then: the refusal REACHES the
+# person instead of being caught and dropped.
+say "a file that will not open says so instead of doing nothing" \
+  "$(printf '%s' "$got" | grep -qE "is set up to open|did not open" && echo 1 || echo 0)" "$got"
+
+[ "$fail" = 0 ] && echo "a folder that opens, a rename and a delete that reach the disk, an undo that restores it, a search that goes deeper than the folder, and a refusal that says why"
 exit "$fail"
