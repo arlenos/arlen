@@ -11,13 +11,16 @@
   type BottleView = { id: string; prefix: string; drives: DriveView[]; egress: string };
   type UnreadableBottle = { path: string; reason: string };
   type BottleList = { bottles: BottleView[]; unreadable: UnreadableBottle[] };
+  type Runtime = { wine: boolean };
 
   let list = $state<BottleList | null>(null);
+  let runtime = $state<Runtime | null>(null);
   let failure = $state<string | null>(null);
 
   onMount(async () => {
     try {
       list = await invoke<BottleList>("wine_bottles");
+      runtime = await invoke<Runtime>("wine_runtime");
     } catch (e) {
       failure = String(e);
     }
@@ -29,7 +32,7 @@
     <p class="failure">{$t("wn.failed", { reason: failure })}</p>
   {:else if list}
     {#if list.bottles.length === 0 && list.unreadable.length === 0}
-      <p class="empty">{$t("wn.none")}</p>
+      <p class="empty">{runtime && !runtime.wine ? $t("wn.noWine") : $t("wn.none")}</p>
     {/if}
     {#each list.bottles as bottle (bottle.id)}
       <section>
