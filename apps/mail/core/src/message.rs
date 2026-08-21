@@ -29,6 +29,16 @@ pub struct Message {
     /// whatever the sender typed, and treating it as identity is how the oldest
     /// trick in mail still works.
     pub from: Option<String>,
+    /// Who else it was addressed to, as written. Same rule as `from`: a display
+    /// name is whatever the sender typed.
+    ///
+    /// Worth showing because a message to eight people and a message to you alone
+    /// read very differently and looked identical here until 21 August. `Cc` is
+    /// kept apart from `To` because the difference is the sender's statement about
+    /// who the message is FOR, which is not the same list.
+    pub to: Vec<String>,
+    /// Who was copied, as written.
+    pub cc: Vec<String>,
     /// The subject as written.
     pub subject: Option<String>,
     /// The date line as written.
@@ -135,7 +145,20 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
         })
         .collect();
 
+    // Every address in the header, not the first: a reader that keeps one has
+    // decided the message was addressed to one person.
+    let addresses = |list: Option<&mail_parser::Address>| -> Vec<String> {
+        list.map(|a| {
+            a.iter()
+                .filter_map(|addr| addr.address().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+    };
+
     Ok(Message {
+        to: addresses(parsed.to()),
+        cc: addresses(parsed.cc()),
         from: parsed.from().and_then(|a| a.first()).and_then(|a| a.address().map(str::to_string)),
         subject: parsed.subject().map(str::to_string),
         date: parsed.date().map(|d| d.to_rfc3339()),
@@ -167,6 +190,28 @@ fn header_text(raw: &[u8], header: &mail_parser::Header) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn every_recipient_is_kept_and_copied_ones_stay_apart() {
+        // Eight people and one person read very differently, and keeping only the
+        // first address decides for the reader that the message was to them alone.
+        let raw = b"From: a@example.org\r\n\
+To: one@example.org, two@example.org\r\n\
+Cc: three@example.org\r\n\
+Subject: several\r\n\
+\r\n\
+body\r\n";
+        let m = read(raw).unwrap();
+        assert_eq!(m.to, ["one@example.org", "two@example.org"]);
+        assert_eq!(m.cc, ["three@example.org"]);
+    }
+
+    #[test]
+    fn a_message_with_no_recipient_header_carries_none_rather_than_an_empty_name() {
+        let m = read(b"From: a@example.org\r\nSubject: x\r\n\r\nbody\r\n").unwrap();
+        assert!(m.to.is_empty());
+        assert!(m.cc.is_empty());
+    }
 
     #[test]
     fn a_message_says_what_it_carries_without_opening_it() {

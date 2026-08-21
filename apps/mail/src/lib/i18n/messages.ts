@@ -14,6 +14,8 @@ const messages: Catalogs = {
     "ml.from": "From",
     "ml.subject": "Subject",
     "ml.date": "Date",
+    "ml.to": "To",
+    "ml.cc": "Copied",
     "ml.unsigned": "as written by the sender, not verified",
     "ml.noText": "This message has no plain-text part.",
     // Not a missing feature, and the sentence says which. See the module note in
@@ -42,6 +44,8 @@ const messages: Catalogs = {
     "ml.from": "Von",
     "ml.subject": "Betreff",
     "ml.date": "Datum",
+    "ml.to": "An",
+    "ml.cc": "Kopie",
     "ml.unsigned": "so geschrieben von der absendenden Seite, nicht geprüft",
     "ml.noText": "Diese Nachricht hat keinen reinen Textteil.",
     "ml.htmlNotShown": "Diese Nachricht hat auch einen HTML-Teil. Er wird nicht gezeigt: ihn sicher darzustellen ist noch nicht gebaut, und ihn unsicher zu zeigen würde der Nachricht erlauben zu melden, dass du sie gelesen hast.",

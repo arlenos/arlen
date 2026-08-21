@@ -53,6 +53,8 @@ pub struct MessageDto {
     /// The plain-text body.
     text: Option<String>,
     /// Whether a real `text/html` part exists. Its content never leaves the core.
+    to: Vec<String>,
+    cc: Vec<String>,
     has_html: bool,
     /// What the two parts say differently, when both exist.
     divergence: Option<String>,
@@ -88,6 +90,8 @@ fn mail_read(path: String) -> Result<MessageDto, String> {
         subject: m.subject,
         date: m.date,
         text: m.text,
+        to: m.to,
+        cc: m.cc,
         has_html: m.has_html,
         divergence: m.divergence,
         refusal: m.refusal,
