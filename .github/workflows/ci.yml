@@ -385,12 +385,14 @@ jobs:
           python3 dev/scripts/check-missing-tool-message.py
           python3 dev/scripts/check-locale-adopted.py
           python3 dev/scripts/check-kit-defaults.py
+          python3 dev/scripts/check-app-capabilities.py
           node dev/scripts/test-check-sandbox-env.mjs
           node dev/scripts/test-check-unrendered-error.mjs
           node dev/scripts/test-check-announced-refusal.mjs
           node dev/scripts/test-check-missing-tool-message.mjs
           node dev/scripts/test-check-locale-adopted.mjs
           node dev/scripts/test-check-kit-defaults.mjs
+          node dev/scripts/test-check-app-capabilities.mjs
           node dev/scripts/test-typecheck-gating.mjs
           node dev/scripts/test-check-profile-case.mjs
           python3 dev/scripts/check-profile-agreement.py
