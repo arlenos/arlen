@@ -75,3 +75,36 @@ export function restoreProblem(raw: string): TrashProblem {
       return { key: "v.couldNotRestore", detail: raw };
   }
 }
+
+/// Why a print did not start.
+///
+/// The shell plugin answers with a word now (`no-portal`, `no-bus`,
+/// `file-unreadable`, `portal-refused`, `other`), each carrying what the layer
+/// below said. On a machine with no printing set up, `no-portal` is not an edge
+/// case - it is what every print does - and it deserves a sentence rather than a
+/// D-Bus error in English.
+export function printProblem(raw: string): TrashProblem {
+  const start = raw.indexOf("{");
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    parsed = start >= 0 ? (JSON.parse(raw.slice(start)) as Record<string, unknown>) : null;
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || typeof parsed.problem !== "string") {
+    return { key: "v.couldNotPrint", detail: raw };
+  }
+  const detail = String(parsed.message ?? "");
+  switch (parsed.problem) {
+    case "no-portal":
+      return { key: "v.print.noPortal", detail: "" };
+    case "no-bus":
+      return { key: "v.print.noBus", detail: "" };
+    case "file-unreadable":
+      return { key: "v.print.fileUnreadable", detail };
+    default:
+      // `portal-refused` and `other` both mean the machine CAN print and this
+      // attempt did not, which is the case where the detail is the useful part.
+      return { key: "v.couldNotPrint", detail };
+  }
+}

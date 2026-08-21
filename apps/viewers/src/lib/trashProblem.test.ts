@@ -8,7 +8,7 @@
 // how a person ends up with a window that says nothing happened.
 
 import { describe, expect, it } from "vitest";
-import { restoreProblem, trashProblem } from "./trashProblem";
+import { printProblem, restoreProblem, trashProblem } from "./trashProblem";
 
 // Tauri stringifies a command error, so the JSON arrives inside a message.
 const wrapped = (body: string) => `invoke error: ${body}`;
@@ -56,5 +56,26 @@ describe("restoreProblem", () => {
 
   it("shows an unrecognised answer", () => {
     expect(restoreProblem("boom")).toEqual({ key: "v.couldNotRestore", detail: "boom" });
+  });
+});
+
+describe("printProblem", () => {
+  it("names a machine with no printing rather than showing a bus error", () => {
+    const p = printProblem(wrapped('{"problem":"no-portal","message":"org.freedesktop.portal.Print: no such name"}'));
+    // The detail is dropped ON PURPOSE here: the sentence already says the whole
+    // truth, and the D-Bus name is noise to the person reading it.
+    expect(p).toEqual({ key: "v.print.noPortal", detail: "" });
+  });
+
+  it("keeps the detail where the machine CAN print and this attempt did not", () => {
+    expect(printProblem(wrapped('{"problem":"portal-refused","message":"queue is full"}')))
+      .toEqual({ key: "v.couldNotPrint", detail: "queue is full" });
+  });
+
+  it("shows an answer it does not model", () => {
+    expect(printProblem("the plugin is missing")).toEqual({
+      key: "v.couldNotPrint",
+      detail: "the plugin is missing",
+    });
   });
 });

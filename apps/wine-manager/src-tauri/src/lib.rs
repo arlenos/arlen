@@ -289,12 +289,17 @@ mod tests {
     use arlen_wine_core::{Access, PathGrant};
 
     #[test]
-    fn a_program_is_found_on_the_path_without_being_run() {
-        // `sh` is on every machine this runs on, and a name nothing provides is
-        // not. The point of the test is the pair: a lookup that always said yes
-        // or always said no would read the same on this machine.
-        assert!(on_path("sh"));
-        assert!(!on_path("there-is-no-such-program-arlen"));
+    fn the_runtime_check_asks_about_the_binary_the_launcher_will_run() {
+        // This replaced a PATH lookup, and the pair is the point: the window's
+        // answer and the launcher's argv have to be about one file, or a machine
+        // with Wine somewhere else has a window saying yes and a launch that
+        // refuses. Asserting the constant rather than the filesystem, because
+        // the answer here depends on whether this particular machine has Wine.
+        assert_eq!(arlen_wine_core::launch::WINE, "/usr/bin/wine");
+        assert_eq!(
+            wine_present(),
+            std::path::Path::new(arlen_wine_core::launch::WINE).is_file()
+        );
     }
 
     #[test]

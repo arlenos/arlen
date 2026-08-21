@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { restoreProblem, trashProblem } from "$lib/trashProblem";
+  import { printProblem, restoreProblem, trashProblem } from "$lib/trashProblem";
   import { t } from "$lib/i18n/messages";
   /// The viewer routes one window to one file by media type. When launched on a
   /// real file (`viewer <path>`, the `.desktop` `%f`, or a double-click) it loads
@@ -365,7 +365,15 @@
               : $t("v.printNoAnswer");
     } catch (e) {
       printStatus = null;
-      actionError = $t("v.couldNotPrint", { reason: String(e) });
+      const p = printProblem(String(e));
+      actionError =
+        p.key === "v.print.noPortal"
+          ? $t("v.print.noPortal")
+          : p.key === "v.print.noBus"
+            ? $t("v.print.noBus")
+            : p.key === "v.print.fileUnreadable"
+              ? $t("v.print.fileUnreadable", { message: p.detail })
+              : $t("v.couldNotPrint", { reason: p.detail });
     }
   }
 
