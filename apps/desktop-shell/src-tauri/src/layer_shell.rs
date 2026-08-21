@@ -15,7 +15,7 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
 
     window.with_webview(|webview| {
         use gtk::prelude::{Cast, GtkWindowExt, WidgetExt};
-        use gtk_layer_shell::{Edge, Layer, LayerShell};
+        use gtk_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
         // webview.inner() returns webkit2gtk::WebView (type inferred, not named).
         // webkit2gtk::WebView implements gtk::IsA<gtk::Widget> so WidgetExt applies.
@@ -71,6 +71,21 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
         gtk_window.set_anchor(Edge::Right, true);
         gtk_window.set_anchor(Edge::Bottom, true);
         gtk_window.set_exclusive_zone(36);
+        // The bar asks for keyboard ON DEMAND rather than leaving the default
+        // None, because the panels behind it bind keys: the Quick Settings grid
+        // takes arrow keys, Escape to close and a help key, and a surface the
+        // compositor never focuses cannot be sent any of them. Those bindings
+        // were unreachable for as long as this line was missing.
+        //
+        // Set here rather than flipped later ON PURPOSE. A layer surface is
+        // granted keyboard focus when it MAPS; the note in shell_overlay_client
+        // about the deleted `set_main_keyboard_grab` is the record of a flip
+        // after mapping changing a property nobody read again.
+        //
+        // It is NOT the fix for the bar refusing clicks on the image. I changed
+        // it while testing that and the clicks stayed dead, so the reason above
+        // is the only reason it is here.
+        gtk_window.set_keyboard_mode(KeyboardMode::OnDemand);
     })?;
 
     // present() flushes all pending GTK/GDK Wayland requests synchronously so
