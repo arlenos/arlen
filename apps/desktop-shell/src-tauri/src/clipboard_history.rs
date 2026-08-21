@@ -546,7 +546,13 @@ fn run_watcher(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("spawn wl-paste: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error(
+                "wl-paste",
+                "the clipboard cannot be watched from here",
+                &e,
+            )
+        })?;
 
     let stdout = child
         .stdout
@@ -676,7 +682,9 @@ pub fn copy_via_wl_copy(content: &str) -> Result<(), String> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("spawn wl-copy: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("wl-copy", "the clipboard cannot be written from here", &e)
+        })?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(content.as_bytes())

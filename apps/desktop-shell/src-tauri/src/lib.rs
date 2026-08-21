@@ -20,6 +20,7 @@ mod launch_service;
 mod layer_shell;
 mod locale;
 mod layout;
+mod missing_tool;
 mod menu_store;
 mod minimized_windows;
 mod module_scheme;

@@ -81,7 +81,9 @@ fn get_audio_status_impl() -> Result<AudioStatus, String> {
     let output = std::process::Command::new("wpctl")
         .args(["get-volume", "@DEFAULT_AUDIO_SINK@"])
         .output()
-        .map_err(|e| format!("wpctl not found: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("wpctl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !output.status.success() {
         return Err("wpctl get-volume failed".into());
@@ -203,7 +205,9 @@ pub async fn set_audio_volume(volume: u8) -> Result<(), String> {
         .args(["set-volume", "@DEFAULT_AUDIO_SINK@", &value])
         .status()
         .await
-        .map_err(|e| format!("wpctl set-volume failed: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("wpctl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !status.success() {
         return Err("wpctl set-volume returned non-zero".into());
@@ -255,7 +259,9 @@ fn get_audio_outputs_impl() -> Result<Vec<AudioOutput>, String> {
     let output = std::process::Command::new("pactl")
         .args(["-f", "json", "list", "sinks"])
         .output()
-        .map_err(|e| format!("pactl not found: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("pactl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !output.status.success() {
         return Err("pactl list sinks failed".into());
@@ -290,7 +296,9 @@ pub async fn set_audio_output(id: String) -> Result<(), String> {
         .args(["set-default-sink", &id])
         .status()
         .await
-        .map_err(|e| format!("pactl set-default-sink failed: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("pactl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !status.success() {
         return Err(format!("pactl set-default-sink {id} failed"));
@@ -336,7 +344,9 @@ fn get_audio_inputs_impl() -> Result<Vec<AudioInput>, String> {
     let output = std::process::Command::new("pactl")
         .args(["-f", "json", "list", "sources"])
         .output()
-        .map_err(|e| format!("pactl not found: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("pactl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !output.status.success() {
         return Err("pactl list sources failed".into());
@@ -375,7 +385,9 @@ pub async fn set_audio_input(id: String) -> Result<(), String> {
         .args(["set-default-source", &id])
         .status()
         .await
-        .map_err(|e| format!("pactl set-default-source failed: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("pactl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !status.success() {
         return Err(format!("pactl set-default-source {id} failed"));
@@ -399,7 +411,9 @@ fn get_input_volume_impl() -> Result<AudioStatus, String> {
     let output = std::process::Command::new("wpctl")
         .args(["get-volume", "@DEFAULT_AUDIO_SOURCE@"])
         .output()
-        .map_err(|e| format!("wpctl: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("wpctl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !output.status.success() {
         return Err("wpctl get-volume source failed".into());
@@ -432,7 +446,9 @@ pub async fn set_input_volume(volume: u8) -> Result<(), String> {
         .args(["set-volume", "@DEFAULT_AUDIO_SOURCE@", &value])
         .status()
         .await
-        .map_err(|e| format!("wpctl: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("wpctl", "the audio cannot be controlled from here", &e)
+        })?;
     if !status.success() {
         return Err("wpctl set-volume source failed".into());
     }
@@ -446,7 +462,9 @@ pub async fn toggle_input_mute() -> Result<(), String> {
         .args(["set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"])
         .status()
         .await
-        .map_err(|e| format!("wpctl: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("wpctl", "the audio cannot be controlled from here", &e)
+        })?;
     if !status.success() {
         return Err("wpctl set-mute source failed".into());
     }
@@ -482,7 +500,9 @@ fn get_app_volumes_impl() -> Result<Vec<AppVolume>, String> {
     let output = std::process::Command::new("pactl")
         .args(["-f", "json", "list", "sink-inputs"])
         .output()
-        .map_err(|e| format!("pactl: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("pactl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !output.status.success() {
         // No text-format fallback, deliberately. The one that was here parsed
@@ -565,7 +585,9 @@ pub async fn set_app_volume(id: u32, volume: u8) -> Result<(), String> {
         ])
         .status()
         .await
-        .map_err(|e| format!("pactl: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("pactl", "the audio cannot be controlled from here", &e)
+        })?;
     if !status.success() {
         return Err(format!("pactl set-sink-input-volume {id} failed"));
     }
@@ -579,7 +601,9 @@ pub async fn toggle_audio_mute() -> Result<(), String> {
         .args(["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
         .status()
         .await
-        .map_err(|e| format!("wpctl set-mute failed: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("wpctl", "the audio cannot be controlled from here", &e)
+        })?;
 
     if !status.success() {
         return Err("wpctl set-mute returned non-zero".into());

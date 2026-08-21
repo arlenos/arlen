@@ -27,7 +27,9 @@ pub async fn get_power_profile() -> Result<String, String> {
         .arg("get")
         .output()
         .await
-        .map_err(|e| format!("powerprofilesctl not found: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("powerprofilesctl", "the power profile cannot be changed from here", &e)
+        })?;
 
     if !output.status.success() {
         return Err("powerprofilesctl get failed".into());
@@ -60,7 +62,9 @@ pub async fn set_power_profile(profile: String) -> Result<(), String> {
         .args(["set", &profile])
         .status()
         .await
-        .map_err(|e| format!("powerprofilesctl set failed: {e}"))?;
+        .map_err(|e| {
+            crate::missing_tool::tool_error("powerprofilesctl", "the power profile cannot be changed from here", &e)
+        })?;
 
     if !status.success() {
         return Err("powerprofilesctl set returned non-zero".into());
