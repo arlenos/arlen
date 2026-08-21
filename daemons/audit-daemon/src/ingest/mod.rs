@@ -74,6 +74,20 @@ const ADMITTED: &[&str] = &[
     // it would refuse the launch. That is the shape that made the agent's gate
     // return Unavailable in release while debug hid it behind `dev.*`.
     "desktop-shell",
+    // AND the id the same shell resolves to on the image, which is not the same
+    // string. `identity.rs` records the pair: `/usr/bin/arlen-desktop-shell` is a
+    // symlink into `/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/`, so the
+    // `/proc/<pid>/exe` route gives `dev.arlen.desktop-shell` by rule (3) while
+    // the PATH route gives `desktop-shell` by rule (2) - one process, two ids,
+    // and the shipped profile is filed under the first of those two.
+    //
+    // Peer authentication here goes through the exe, so only this spelling was
+    // ever going to arrive and the entry above never matched a real boot.
+    // Measured 21 August: opening a message from the file manager logged
+    // `ingest connection rejected: caller is not admitted`
+    // `caller=dev.arlen.desktop-shell` on the daemon and `launch not recorded` on
+    // the shell, so every launch on the image happened with no line in the ledger.
+    "dev.arlen.desktop-shell",
     // The Context-Capsule daemon (`capsuled`): its capsule-serve audit is
     // fail-closed, so without admission every capsule read returns "audit
     // unavailable".
@@ -359,6 +373,15 @@ mod tests {
             // The shell is on PATH rather than in libexec: it is what the session
             // starts, not something a unit activates behind it.
             ("/usr/bin/arlen-desktop-shell", "desktop-shell"),
+            // And the file that PATH entry points at, which is what peer
+            // authentication sees: `/usr/bin/arlen-desktop-shell` is a symlink and
+            // the ingest side resolves `/proc/<pid>/exe`, so this is the spelling
+            // that actually arrives. Both are listed because both are true of one
+            // process; only this one has ever been admitted at runtime.
+            (
+                "/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/arlen-desktop-shell",
+                "dev.arlen.desktop-shell",
+            ),
         ];
         for &(path, id) in deployed {
             assert_eq!(
@@ -437,6 +460,10 @@ mod tests {
             "xdg-desktop-portal",
             "capsuled",
             "connections",
+            // The spelling peer authentication actually produces on the image;
+            // see the entry's own note. The bare `desktop-shell` above it has
+            // never matched a real boot.
+            "dev.arlen.desktop-shell",
             "desktop-shell",
         ] {
             assert!(
