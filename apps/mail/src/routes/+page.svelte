@@ -81,7 +81,7 @@
     cc: string[];
     channels: string[];
     attachments: { name: string | null; media_type: string | null; bytes: number }[];
-    invitation: { method: string | null; bytes: number } | null;
+    invitation: { method: string | null; bytes: number; filename: string | null } | null;
     path: string;
   };
 
