@@ -26,6 +26,13 @@ const messages: Catalogs = {
     // Said out loud rather than hidden, because a bottle missing from this list
     // sends someone looking on disk for something that is sitting right there.
     "wn.unreadable": "{$path} could not be read, so that bottle is not shown above: {$reason}",
+    // The prefix is a directory a person can open and Wine writes to on every run,
+    // so what is recorded here and what the program will actually meet can part
+    // ways. Said out loud rather than shown as the record alone.
+    "wn.driveMissing": "{$letters} is granted here and not in the prefix, so the program cannot see that folder at all.",
+    "wn.driveUnexpected": "{$letters} is in the prefix and was never granted. Something else wrote it, and it reaches wherever it points.",
+    "wn.escaped": "Something in this bottle reaches out of it without a grant behind it: {$paths}",
+    "wn.notBooted": "This bottle has no prefix yet, so nothing has been set up in it.",
   },
   de: {
     "wn.app.title": "Windows-Programme",
@@ -40,6 +47,10 @@ const messages: Catalogs = {
     "wn.egress": "Netzwerk",
     "wn.egressNone": "nicht erlaubt",
     "wn.unreadable": "{$path} war nicht lesbar, diese Flasche fehlt deshalb oben: {$reason}",
+    "wn.driveMissing": "{$letters} ist hier freigegeben und nicht im Prefix, das Programm sieht diesen Ordner also gar nicht.",
+    "wn.driveUnexpected": "{$letters} steht im Prefix und wurde nie freigegeben. Etwas anderes hat es geschrieben, und es reicht dorthin, wohin es zeigt.",
+    "wn.escaped": "Etwas in dieser Flasche reicht ohne Freigabe aus ihr heraus: {$paths}",
+    "wn.notBooted": "Diese Flasche hat noch kein Prefix, es ist also nichts darin eingerichtet.",
   },
 };
 

@@ -8,7 +8,20 @@
   import { t } from "$lib/i18n/messages";
 
   type DriveView = { letter: string; host: string; writable: boolean };
-  type BottleView = { id: string; prefix: string; drives: DriveView[]; egress: string };
+  type HealthView = {
+    agrees: boolean;
+    missing: string[];
+    unexpected: string[];
+    escapes: string[];
+    booted: boolean;
+  };
+  type BottleView = {
+    id: string;
+    prefix: string;
+    drives: DriveView[];
+    egress: string;
+    health: HealthView | null;
+  };
   type UnreadableBottle = { path: string; reason: string };
   type BottleList = { bottles: BottleView[]; unreadable: UnreadableBottle[] };
   type Runtime = { wine: boolean };
@@ -51,6 +64,21 @@
               </li>
             {/each}
           </ul>
+        {/if}
+        {#if bottle.health && !bottle.health.booted}
+          <p class="warn">{$t("wn.notBooted")}</p>
+        {:else if bottle.health && !bottle.health.agrees}
+          {#if bottle.health.missing.length}
+            <p class="warn">{$t("wn.driveMissing", { letters: bottle.health.missing.join(", ") })}</p>
+          {/if}
+          {#if bottle.health.unexpected.length}
+            <p class="warn">
+              {$t("wn.driveUnexpected", { letters: bottle.health.unexpected.join(", ") })}
+            </p>
+          {/if}
+          {#if bottle.health.escapes.length}
+            <p class="warn">{$t("wn.escaped", { paths: bottle.health.escapes.join(", ") })}</p>
+          {/if}
         {/if}
         <p class="egress">
           <span>{$t("wn.egress")}</span>
@@ -112,6 +140,11 @@
   .path span {
     opacity: 0.7;
     font-size: 0.85rem;
+  }
+  .warn {
+    color: var(--destructive, #b3261e);
+    font-size: 0.9rem;
+    margin: 0.35rem 0 0;
   }
   .broken,
   .failure {
