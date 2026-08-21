@@ -293,30 +293,63 @@ fn trash_file(path: String) -> Result<TrashedDto, String> {
     // kernel answers EXDEV - so a home-only delete failed on exactly the media
     // people keep pictures on. `trash_for_current_user` picks the volume's own
     // trash in that case and the home one otherwise.
-    let slot = arlen_freedesktop_trash::trash_for_current_user(&path).map_err(|e| {
-        use arlen_freedesktop_trash::TrashError as T;
-        match e {
-            // Still reachable, and now it means something narrower: the home
-            // trash could not take it AND the volume has no trash to offer.
-            T::CrossDevice => "this file is not on the same drive as your trash, \
-                               so it cannot be moved there"
-                .to_string(),
-            T::NoTrashHere(why) => {
-                format!("this drive cannot hold a trash, so the file was not deleted: {why}")
-            }
-            T::NotFound => "the file is no longer there".to_string(),
-            T::Unsupported => "this drive cannot move a file safely enough to undo it".to_string(),
-            T::NoSlot => "the trash already holds too many files by that name".to_string(),
-            T::NonCanonical => "the trash path could not be resolved".to_string(),
-            T::Io(m) => format!("the move failed: {m}"),
-        }
-    })?;
+    let slot = arlen_freedesktop_trash::trash_for_current_user(&path)
+        .map_err(|e| serde_json::to_string(&TrashProblem::from(e)).unwrap_or_else(|_| {
+            // A serializer that cannot write this enum is not a state worth a
+            // second vocabulary; the window shows an unrecognised reason
+            // verbatim, so a plain word is a working last resort.
+            "unserialisable".to_string()
+        }))?;
     let (trashed, trash_info) = slot.into_parts();
     Ok(TrashedDto {
         trashed: trashed.as_str().to_string(),
         info: trash_info.as_str().to_string(),
         original: path,
     })
+}
+
+/// Why a delete did not happen, as a WORD rather than as a sentence.
+///
+/// Each of these used to be an English sentence written here, which is worse
+/// than a raw error for the same reason a hardcoded date format is: somebody had
+/// already done the work of naming all seven cases, on the side of the boundary
+/// where a German reader can never see it. The catalogue writes the sentence
+/// now; this says which one.
+///
+/// `why` and `message` survive because they carry what the layer below said, and
+/// that text is the only thing anybody has for those two cases.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum TrashProblem {
+    /// The file is on a different drive from the trash that would take it.
+    CrossDevice,
+    /// That drive cannot hold a trash at all.
+    NoTrashHere { why: String },
+    /// It is not there any more.
+    NotFound,
+    /// The drive cannot move a file in a way that could be undone.
+    Unsupported,
+    /// Too many files of that name are already in the trash.
+    NoSlot,
+    /// The trash path would not resolve.
+    NonCanonical,
+    /// The move itself failed.
+    Io { message: String },
+}
+
+impl From<arlen_freedesktop_trash::TrashError> for TrashProblem {
+    fn from(e: arlen_freedesktop_trash::TrashError) -> Self {
+        use arlen_freedesktop_trash::TrashError as T;
+        match e {
+            T::CrossDevice => Self::CrossDevice,
+            T::NoTrashHere(why) => Self::NoTrashHere { why },
+            T::NotFound => Self::NotFound,
+            T::Unsupported => Self::Unsupported,
+            T::NoSlot => Self::NoSlot,
+            T::NonCanonical => Self::NonCanonical,
+            T::Io(message) => Self::Io { message },
+        }
+    }
 }
 
 /// Put a trashed file back where it was, and drop its sidecar.
