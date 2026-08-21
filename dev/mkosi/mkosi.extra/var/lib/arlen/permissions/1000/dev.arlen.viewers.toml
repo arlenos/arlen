@@ -18,10 +18,21 @@
 #                             account's home directory and never from the
 #                             environment.
 #
-# NO write anywhere. The viewer has never written a file: there is no rotate, no
-# crop and no convert yet, and when those arrive they land as a `custom` write
-# grant or a portal save, decided then rather than pre-granted now against a
-# feature nobody has built.
+# NO EDIT anywhere, and the sentence here used to say "no write", which stopped
+# being true when `trash_file` and `restore_file` were registered. The viewer
+# still does not CHANGE a picture - no rotate, no crop, no convert, and when
+# those arrive they land as a grant decided then rather than pre-granted now -
+# but it does MOVE one: to the trash, and back out of it.
+#
+# Both moves stay inside the grants above rather than needing a new one, and it
+# is worth saying why rather than leaving it to coincidence. `trash_file` uses
+# `trash_for_current_user`, which picks the trash of the volume the FILE is on:
+# `$XDG_DATA_HOME/Trash` for anything under the home directory, covered by
+# `home = true`, and `<volume>/.Trash-<uid>` for a picture on a stick or second
+# disk, covered by the mount points below. That is the same reason those mount
+# points are here for reading, so the delete works exactly where the read does -
+# and a picture whose volume is granted for reading but not for its trash would
+# be a delete that fails after the window has already offered it.
 [info]
 app_id = "dev.arlen.viewers"
 tier = "first-party"
