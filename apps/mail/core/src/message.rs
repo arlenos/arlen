@@ -179,8 +179,28 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
 
     // Named and measured, never opened: `contents()` is the decoded bytes and the
     // only thing taken from them is the length.
+    // The calendar part, if there is one. Every part is examined rather than the
+    // first: a message can carry a plain body, an HTML body and an invitation,
+    // and an invitation is often not flagged as an attachment, so the attachment
+    // list above does not necessarily mention it.
+    let calendar_part = parsed.parts.iter().position(|part| {
+        part.content_type().is_some_and(|ct| {
+            ct.ctype().eq_ignore_ascii_case("text")
+                && ct.subtype().is_some_and(|s| s.eq_ignore_ascii_case("calendar"))
+        })
+    });
+
+    // The invitation is NOT listed again here. `attachments()` includes a
+    // `text/calendar` part whether or not the sender marked it as one, so the
+    // window said "carries an invitation" and "carries one file, not opened: a
+    // file the sender did not name, text/calendar" about a single part - two
+    // arrivals where there was one, and the second sentence knows less than the
+    // first. Reported once, as what it is; its size is on the invitation.
     let attachments: Vec<Attachment> = parsed
         .attachments()
+        .filter(|part| {
+            calendar_part.is_none_or(|i| !std::ptr::eq(*part, &parsed.parts[i]))
+        })
         .map(|part| Attachment {
             name: part.attachment_name().map(str::to_string),
             media_type: part.content_type().map(|c| match c.subtype() {
@@ -191,19 +211,16 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
         })
         .collect();
 
-    // The calendar part, if there is one. Every part is examined rather than the
-    // first: a message can carry a plain body, an HTML body and an invitation,
-    // and an invitation is often not flagged as an attachment, so the attachment
-    // list above does not necessarily mention it.
-    let invitation = parsed.parts.iter().find_map(|part| {
-        let ct = part.content_type()?;
-        let is_calendar = ct.ctype().eq_ignore_ascii_case("text")
-            && ct.subtype().is_some_and(|s| s.eq_ignore_ascii_case("calendar"));
-        is_calendar.then(|| Invitation {
-            method: ct.attribute("method").map(|m| m.to_ascii_lowercase()),
+    let invitation = calendar_part.map(|i| {
+        let part = &parsed.parts[i];
+        let ct = part.content_type();
+        Invitation {
+            method: ct
+                .and_then(|c| c.attribute("method"))
+                .map(|m| m.to_ascii_lowercase()),
             bytes: part.contents().len(),
             filename: part.attachment_name().map(str::to_string),
-        })
+        }
     });
 
     // Every address in the header, not the first: a reader that keeps one has
@@ -471,10 +488,13 @@ BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n";
     }
 
     #[test]
-    fn a_calendar_part_sent_as_an_attachment_is_both_and_says_so() {
-        // The Outlook shape. It lands in `attachments` AND in `invitation`,
-        // which is not a mistake - the part really is both - but a surface
-        // cannot see that they are one part unless something joins them.
+    fn an_invitation_sent_as_an_attachment_is_reported_once() {
+        // The Outlook shape, and also the ordinary one: `attachments()` returns a
+        // `text/calendar` part whether or not the sender marked it as an
+        // attachment. Listing it in both places made the window say "carries an
+        // invitation" and "carries one file, not opened: a file the sender did
+        // not name, text/calendar" about a single part - two arrivals where there
+        // was one, and the second sentence knows less than the first.
         let raw = b"From: ada@example.org\r\nMIME-Version: 1.0\r\n\
 Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\n\
 Lunch?\r\n--b\r\nContent-Type: text/calendar; method=REQUEST; name=invite.ics\r\n\
@@ -483,9 +503,23 @@ BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n--b--\r\n";
         let m = read(raw).unwrap();
         let inv = m.invitation.expect("an invitation");
         assert_eq!(inv.filename.as_deref(), Some("invite.ics"));
+        // Named once, as what it is. Its size is on the invitation.
+        assert!(m.attachments.is_empty(), "{:?}", m.attachments);
+        assert!(inv.bytes > 0);
+    }
+
+    #[test]
+    fn a_real_attachment_beside_an_invitation_is_still_listed() {
+        // The exclusion is of THAT part, not of attachments in general.
+        let raw = b"From: ada@example.org\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\n\
+Lunch?\r\n--b\r\nContent-Type: text/calendar; method=REQUEST\r\n\r\n\
+BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n--b\r\nContent-Type: application/pdf\r\n\
+Content-Disposition: attachment; filename=menu.pdf\r\n\r\n%PDF-1.4\r\n--b--\r\n";
+        let m = read(raw).unwrap();
+        assert!(m.invitation.is_some());
         assert_eq!(m.attachments.len(), 1);
-        assert_eq!(m.attachments[0].name.as_deref(), Some("invite.ics"));
-        assert_eq!(m.attachments[0].bytes, inv.bytes, "one part, measured once");
+        assert_eq!(m.attachments[0].name.as_deref(), Some("menu.pdf"));
     }
 
     #[test]
