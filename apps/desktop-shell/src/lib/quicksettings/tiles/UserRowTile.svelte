@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// Quick Settings footer row.
   ///
@@ -34,10 +35,8 @@
   });
 
   async function refreshTheme() {
-    try {
-      const id = await invoke<string>("get_active_theme_id");
-      isDark = id !== "light";
-    } catch {}
+    const id = await shellRead<string>("get_active_theme_id", "theme");
+    if (id !== null) isDark = id !== "light";
   }
 
   async function cycleTheme() {

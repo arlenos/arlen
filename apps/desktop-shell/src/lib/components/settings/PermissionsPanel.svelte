@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// Permissions panel: lists apps and their permission scopes.
   /// Currently read-only. Write support requires D-Bus integration
@@ -38,9 +39,10 @@
   let loading = $state(true);
 
   onMount(async () => {
-    try {
-      apps = await invoke<AppSummary[]>("get_app_permissions");
-    } catch {}
+    // An empty list here reads as "no app has asked for anything", which is a
+    // claim about this machine's permissions rather than about a failed read.
+    const got = await shellRead<AppSummary[]>("get_app_permissions", "permissions");
+    if (got !== null) apps = got;
     loading = false;
   });
 
