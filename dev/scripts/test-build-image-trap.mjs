@@ -37,7 +37,21 @@ if (trapAt < 0) {
 }
 // Everything up to and including the trap, which carries `set -eu`, `here=` and
 // the `writing_image=""` the trap reads.
-const header = lines.slice(0, trapAt + 1).join("\n");
+// The header carries a disk-space precheck that exits 1 when the filesystem
+// holding /var/tmp is fuller than the build needs, and this harness runs the
+// header verbatim. On 22 August that turned every case red while an image build
+// was in flight on the same machine: the precheck refused, nothing after it ran,
+// and four cases reported `survived=true exit=1` about a trap they never reached.
+// A control that fails because the disk is full is telling the truth about the
+// disk and a lie about its subject.
+//
+// So the precheck is neutralised here - `NEED_GB=0` makes the comparison pass
+// without touching the script that ships, and the trap below it is what gets
+// tested either way.
+const header = lines
+  .slice(0, trapAt + 1)
+  .join("\n")
+  .replace(/^NEED_GB=\d+$/m, "NEED_GB=0");
 
 const failures = [];
 
