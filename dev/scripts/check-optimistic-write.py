@@ -341,7 +341,12 @@ def main() -> int:
     # How many instances each file has produced so far this run, so an entry's
     # recorded count bounds it rather than excusing the file forever.
     seen_per_file: dict[str, int] = {}
-    files = sorted((ROOT / "apps").rglob("*.ts")) + sorted((ROOT / "apps").rglob("*.svelte"))
+    # `daemons/*/…/src` too: the file picker writes through `invoke` like any
+    # frontend, and a picker that says a file was chosen when the daemon refused
+    # is the same lie in the dialog every app borrows.
+    trees = [ROOT / "apps", ROOT / "daemons"]
+    files = sorted(f for t in trees for f in t.rglob("*.ts"))
+    files += sorted(f for t in trees for f in t.rglob("*.svelte"))
     candidates = 0
     for path in files:
         s = str(path)
