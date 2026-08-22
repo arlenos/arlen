@@ -148,6 +148,56 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
   rmSync(d, { recursive: true, force: true });
 }
 
+// A named filter has to name crates that exist. The tree's manifests sit in two
+// places - an app keeps its under `src-tauri/`, a daemon at its root - and
+// reading only the root made this rule skip all nineteen frontends in silence.
+{
+  const d = mkdtempSync(join(tmpdir(), "log-filters-names-"));
+  const src = join(d, "apps", "one", "src-tauri", "src");
+  mkdirSync(src, { recursive: true });
+  writeFileSync(
+    join(src, "lib.rs"),
+    'fn run() { env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,not_a_crate=info")).init(); }\n',
+  );
+  writeFileSync(
+    join(d, "apps", "one", "src-tauri", "Cargo.toml"),
+    '[package]\nname = "one-app"\n\n[lib]\nname = "one_lib"\n',
+  );
+  const r = run(d);
+  check(
+    "a filter naming a crate that does not exist is caught",
+    r.code === 1 && r.out.includes("not_a_crate"),
+  );
+  rmSync(d, { recursive: true, force: true });
+}
+
+// The trap the daemon queue is deferred on: two crates speak, the filter names
+// one, and the other half is mute with no symptom but a quiet journal.
+{
+  const d = mkdtempSync(join(tmpdir(), "log-filters-half-"));
+  const src = join(d, "daemons", "two", "src");
+  mkdirSync(src, { recursive: true });
+  writeFileSync(
+    join(src, "main.rs"),
+    'fn main() { tracing_subscriber::EnvFilter::new("warn,two_bin=info"); tracing::info!("from the binary"); }\n',
+  );
+  writeFileSync(join(src, "lib.rs"), "pub mod work;\n");
+  writeFileSync(join(src, "work.rs"), 'pub fn go() { tracing::info!("from the library"); }\n');
+  writeFileSync(
+    join(d, "daemons", "two", "Cargo.toml"),
+    '[package]\nname = "two-lib"\n\n[[bin]]\nname = "two-bin"\n',
+  );
+  const app = join(d, "apps", "one", "src-tauri", "src");
+  mkdirSync(app, { recursive: true });
+  writeFileSync(join(app, "lib.rs"), GOOD);
+  const r = run(d);
+  check(
+    "a filter that leaves a speaking crate unnamed is caught",
+    r.code === 1 && r.out.includes("the library"),
+  );
+  rmSync(d, { recursive: true, force: true });
+}
+
 // Pointed somewhere with no apps, "nothing wrong" would describe a scan that
 // read nothing.
 {
