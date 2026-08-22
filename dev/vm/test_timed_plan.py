@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""Fixtures for the boot driver's timed schedule.
+
+`--shot-at`, `--click-at` and `--key-at` share one clock, and that sharing is the
+only reason a finding like the consent-gap one is evidence rather than a story: a
+click has to land BETWEEN two frames, and the frame captured at the click is what
+says what was on screen when the input was taken. If the schedule ran out of order,
+or dropped a mistyped spec, the run would still finish and still print a verdict.
+
+So the ordering is tested here without a VM, which is where it can be tested at
+all.
+
+Run: python3 dev/vm/test_timed_plan.py
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from verify import timed_plan  # noqa: E402
+
+failures = []
+
+
+def check(name, ok):
+    print(f"  {'ok  ' if ok else 'FAIL'} {name}")
+    if not ok:
+        failures.append(name)
+
+
+plan = timed_plan([16, 13], ["14.2:795,490"], ["20:esc"])
+check("everything is in time order", [t for t, _, _ in plan] == [13, 14.2, 16, 20])
+check(
+    "the click carries its coordinates",
+    plan[1] == (14.2, "click", (795, 490)),
+)
+check("the key carries its name", plan[3] == (20.0, "key", "esc"))
+
+# A shot and a click at the same instant: the shot goes first, so the frame says
+# what the click was aimed at rather than what it produced.
+same = timed_plan([5], ["5:1,2"], None)
+check("a shot at the same second comes before the click", [k for _, k, _ in same] == ["shot", "click"])
+
+for bad in ("14.2", "14.2:795", ":795,490"):
+    try:
+        timed_plan(None, [bad], None)
+        check(f"a malformed --click-at {bad!r} is refused", False)
+    except ValueError:
+        check(f"a malformed --click-at {bad!r} is refused", True)
+
+try:
+    timed_plan(None, None, ["20"])
+    check("a malformed --key-at is refused", False)
+except ValueError:
+    check("a malformed --key-at is refused", True)
+
+check("no timed arguments is an empty plan", timed_plan(None, None, None) == [])
+
+print()
+if failures:
+    print(f"{len(failures)} failure(s)")
+    sys.exit(1)
+print("the timed schedule holds its order")
