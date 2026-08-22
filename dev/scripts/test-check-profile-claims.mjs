@@ -146,4 +146,27 @@ rmSync(d, { recursive: true, force: true });
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);
+// The IMAGE corpus is read too, and this is the case that proves it: the same
+// contradiction, planted under `dev/mkosi/.../permissions/`, must fail. The gate
+// read only `sdk/permissions/profiles` until 22 August, so every hand-written
+// profile the image ships - the ones with the longest descriptions and the most
+// editing - was outside it.
+{
+  const root = mkdtempSync(join(tmpdir(), "claims-image-"));
+  const dir = join(root, "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000");
+  mkdirSync(dir, { recursive: true });
+  mkdirSync(join(root, "sdk/permissions/profiles"), { recursive: true });
+  writeFileSync(
+    join(dir, "probe.toml"),
+    '# The probe gets Documents.\n\n[info]\napp_id = "probe"\ntier = "first-party"\n',
+  );
+  const r = run(root);
+  check(
+    "a claim in an image profile is caught, not only in the third-party corpus",
+    r.code === 1 && r.out.includes("gets Documents"),
+    `code ${r.code}: ${r.out}`,
+  );
+  rmSync(root, { recursive: true, force: true });
+}
+
 console.log("the stale claim is caught, and all four measured false positives stay false");

@@ -45,7 +45,15 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
-PROFILES = ROOT / "sdk/permissions/profiles"
+#: Both corpora, because the defect this catches has nothing to do with which one
+#: a file lives in. `sdk/permissions/profiles` is the third-party corpus; the
+#: mkosi tree is the profiles the IMAGE ships for its own apps and daemons, which
+#: are hand-written, heavily commented, and were the only ones being edited on
+#: the night this was widened - exactly the conditions the defect came from.
+PROFILE_DIRS = [
+    ROOT / "sdk/permissions/profiles",
+    ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions",
+]
 
 #: A capitalised XDG directory, optionally negated. Case-sensitive on purpose.
 DIRECTORY = re.compile(
@@ -67,14 +75,17 @@ def leading_paragraph(text: str) -> str:
 
 
 def main() -> int:
-    if not PROFILES.is_dir():
-        print(f"NOTHING WAS READ: no profiles at {PROFILES}", file=sys.stderr)
+    present = [d for d in PROFILE_DIRS if d.is_dir()]
+    if not present:
+        where = ", ".join(str(d) for d in PROFILE_DIRS)
+        print(f"NOTHING WAS READ: no profiles at {where}", file=sys.stderr)
         return 2
 
     findings: list[str] = []
     read = 0
 
-    for path in sorted(PROFILES.glob("*.toml")):
+    files = sorted(p for d in present for p in d.rglob("*.toml"))
+    for path in files:
         text = path.read_text(encoding="utf-8")
         try:
             doc = tomllib.loads(text)
