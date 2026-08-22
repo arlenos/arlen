@@ -108,7 +108,12 @@ def main() -> int:
 
     findings: list[str] = []
     mounts = 0
-    for p in (ROOT / "apps").glob("*/src/**/*.svelte"):
+    # Frontends live under `daemons/` as well: the file picker mounts the kit's
+    # browser, and the kit's English defaults are exactly the strings no i18n
+    # lint can see, because the string is not in the frontend.
+    frontends = list((ROOT / "apps").glob("*/src/**/*.svelte"))
+    frontends += list((ROOT / "daemons").glob("*/*/src/**/*.svelte"))
+    for p in frontends:
         if "node_modules" in p.parts:
             continue
         text = p.read_text(encoding="utf-8", errors="replace")

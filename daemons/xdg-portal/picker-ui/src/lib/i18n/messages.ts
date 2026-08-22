@@ -64,6 +64,21 @@ const messages: Catalogs = {
     // The sidebar. The label is what a reader sees; the folder on disk keeps
     // its own name, which is why `places.ts` translates the label and never
     // the path. Same wording as the Files app, because they are the same places.
+    // The kit browser's own strings. They are props with English defaults, so a
+    // mount that does not pass them renders English in every locale and no i18n
+    // lint can see it: the string is not in this frontend. Same wording as the
+    // Files app, because it is the same browser.
+    "p.fb.browserLabel": "File browser",
+    "p.fb.nameLabel": "Name",
+    "p.fb.sizeLabel": "Size",
+    "p.fb.modifiedLabel": "Modified",
+    "p.fb.emptyLabel": "This folder is empty",
+    "p.fb.errorTitle": "Can't open this folder",
+    "p.fb.hintUnknown": "Something went wrong reading it.",
+    "p.fb.hintPermission": "You don't have permission to see what's inside.",
+    "p.fb.hintNotConnected": "This place is not connected right now.",
+    "p.fb.hintNoSuchDir": "This folder does not exist anymore.",
+
     "p.places.places": "Places",
     "p.places.recent": "Recent",
     "p.place.home": "Home",
@@ -117,6 +132,17 @@ const messages: Catalogs = {
       "Auswahl auf {$n} Dateien begrenzt.",
     ),
     "p.replace": "{$name} ersetzen?",
+
+    "p.fb.browserLabel": "Dateibrowser",
+    "p.fb.nameLabel": "Name",
+    "p.fb.sizeLabel": "Größe",
+    "p.fb.modifiedLabel": "Geändert",
+    "p.fb.emptyLabel": "Dieser Ordner ist leer",
+    "p.fb.errorTitle": "Ordner kann nicht geöffnet werden",
+    "p.fb.hintUnknown": "Beim Lesen ist etwas schiefgegangen.",
+    "p.fb.hintPermission": "Du hast keine Berechtigung, den Inhalt zu sehen.",
+    "p.fb.hintNotConnected": "Dieser Ort ist gerade nicht verbunden.",
+    "p.fb.hintNoSuchDir": "Dieser Ordner existiert nicht mehr.",
 
     "p.places.places": "Orte",
     "p.places.recent": "Zuletzt",
