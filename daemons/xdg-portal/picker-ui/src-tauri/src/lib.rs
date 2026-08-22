@@ -77,10 +77,16 @@ async fn picker_take_pending(
 
 /// Tauri entry point invoked from `main.rs`.
 pub fn run() {
+    // `warn` for everything, `info` for this picker: a blanket `info` puts every
+    // dependency's chatter in the journal, and zbus logs D-Bus frames WITH their
+    // bodies. A picker's frames carry the paths a person just browsed, which is
+    // the one thing this dialog exists to keep between them and the app that
+    // asked. The apps settled on this shape for the same reason.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,xdg_portal_arlen_picker_lib=info")
+            }),
         )
         .init();
 

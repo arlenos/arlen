@@ -107,6 +107,47 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
   rmSync(dir, { recursive: true, force: true });
 }
 
+// The `tracing` spelling of the same blanket, in a component under `daemons/`.
+// The rule knew only `env_logger` until 22 August, and 24 components carried this
+// one where nothing could see it. Named `planted` so no queue entry excuses it.
+{
+  const d = mkdtempSync(join(tmpdir(), "log-filters-tracing-"));
+  const app = join(d, "apps", "one", "src-tauri", "src");
+  mkdirSync(app, { recursive: true });
+  writeFileSync(join(app, "lib.rs"), GOOD);
+  const dmn = join(d, "daemons", "planted", "src");
+  mkdirSync(dmn, { recursive: true });
+  writeFileSync(
+    join(dmn, "main.rs"),
+    'fn main() { tracing_subscriber::EnvFilter::new("info"); }\n',
+  );
+  const r = run(d);
+  check("a bare tracing EnvFilter level is caught", r.code === 1 && r.out.includes("planted"));
+  rmSync(d, { recursive: true, force: true });
+}
+
+// A frontend under `daemons/` is its own component, not part of its parent. The
+// picker's Rust lives in `src-tauri/src` beside the portal daemon's `src`, and
+// merged into one entry its filter was excused by the queue entry for the daemon.
+{
+  const d = mkdtempSync(join(tmpdir(), "log-filters-frontend-"));
+  const app = join(d, "apps", "one", "src-tauri", "src");
+  mkdirSync(app, { recursive: true });
+  writeFileSync(join(app, "lib.rs"), GOOD);
+  const front = join(d, "daemons", "some-portal", "its-ui", "src-tauri", "src");
+  mkdirSync(front, { recursive: true });
+  writeFileSync(
+    join(front, "lib.rs"),
+    'fn run() { tracing_subscriber::EnvFilter::new("info"); }\n',
+  );
+  const r = run(d);
+  check(
+    "a daemon's frontend is read, and under its own name",
+    r.code === 1 && r.out.includes("its-ui"),
+  );
+  rmSync(d, { recursive: true, force: true });
+}
+
 // Pointed somewhere with no apps, "nothing wrong" would describe a scan that
 // read nothing.
 {
