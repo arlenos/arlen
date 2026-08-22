@@ -51,6 +51,15 @@
 # `living-capability-graph.md`, and answering it with a grant here in advance
 # would be answering it silently.
 #
+# ONE READ OUTSIDE THE GRANTS, named rather than left to be noticed: since
+# 22 August the window asks whether `/usr/bin/wine` exists, so that it can say
+# "Wine is not installed on this machine" instead of listing bottles that cannot
+# run. It is an existence check on a fixed system path - the same path the
+# launcher will exec - and it reads nobody's data, so it gets no grant here. The
+# line exists because a profile that only describes the grants stops describing
+# the app, and the next person to widen `[filesystem]` should know this read is
+# already happening and why.
+#
 # NOT YET GRANTED, and named so the gap is visible rather than discovered: making
 # a bottle spawns `wineboot`, and launching one spawns `bwrap` around `wine`.
 # Both are absent from the image (`runtime-deps.tsv` says so), and neither is
