@@ -35,7 +35,11 @@ const messages: Catalogs = {
     "s.redo": "Redo",
     "s.redoHint": "Redo (Ctrl+Shift+Z)",
     "s.copyHint": "Copy (Enter)",
-    "s.savedToPictures": "Saved to Pictures.",
+    // The FOLDER it is actually in. This said "Saved to Pictures." while the file
+    // goes to `Pictures/Screenshots` - the freedesktop convention the capture SDK
+    // follows - and somebody looking where they were told found an empty folder
+    // with one directory in it. I did exactly that on 22 August.
+    "s.savedToPictures": "Saved to Pictures/Screenshots.",
     "s.tool.select": "Select",
     "s.tool.crop": "Crop",
     "s.tool.arrow": "Arrow",
@@ -74,7 +78,7 @@ const messages: Catalogs = {
     "s.redo": "Wiederholen",
     "s.redoHint": "Wiederholen (Strg+Umschalt+Z)",
     "s.copyHint": "Kopieren (Enter)",
-    "s.savedToPictures": "In Bilder gespeichert.",
+    "s.savedToPictures": "In Bilder/Screenshots gespeichert.",
     "s.tool.select": "Auswählen",
     "s.tool.crop": "Zuschneiden",
     "s.tool.arrow": "Pfeil",
