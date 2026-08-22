@@ -41,6 +41,13 @@ ROOT = (
 )
 APPS = ROOT / "apps"
 
+# A log line, in either vocabulary. Used to work out which of a component's
+# crates actually speak, which is what decides how many names its filter needs.
+LOG_CALL = re.compile(
+    r"(?:tracing|log)::(?:trace|debug|info|warn|error)!|"
+    r"(?:^|[^\w:])(?:trace|debug|info|warn|error)!\s*\("
+)
+
 # The components that carry a bare `EnvFilter::new("info")` today: a level for
 # every crate in the process, dependencies included, which is the same defect the
 # app half refuses in `env_logger`'s spelling. They are a QUEUE, not an excuse.
@@ -117,6 +124,104 @@ def _code_only(text: str) -> str:
     return "\n".join(re.sub(r"//.*$", "", line) for line in text.splitlines())
 
 
+
+def _crate_names(comp: pathlib.Path) -> tuple[set[str], set[str]]:
+    """The crate names a component compiles: (library, binaries), underscored.
+
+    A `tracing` target roots at the CRATE a line was compiled into, not at the
+    package or the directory, and the three differ often enough in this tree to
+    matter: `connections` ships a lib called `connections` and a bin called
+    `arlen-connectionsd`. Read from Cargo.toml rather than guessed, and returned
+    apart, because the rule below needs to know which side a name belongs to.
+    """
+    # An app keeps its manifest under `src-tauri/`, a daemon at its root. Looking
+    # only at the root returned nothing for all nineteen Tauri frontends, and the
+    # rule below then skipped every one of them without saying so - a check that
+    # passes because it read nothing, which is the shape this file keeps finding
+    # elsewhere.
+    manifest = next(
+        (m for m in (comp / "Cargo.toml", comp / "src-tauri" / "Cargo.toml") if m.is_file()),
+        None,
+    )
+    if manifest is None:
+        return set(), set()
+    text = manifest.read_text(encoding="utf-8", errors="replace")
+    package = re.search(r'(?m)^\s*name\s*=\s*"([^"]+)"', text)
+    lib: set[str] = set()
+    bins: set[str] = set()
+    section = None
+    for line in text.splitlines():
+        head = line.strip()
+        if head.startswith("["):
+            section = head
+            continue
+        m = re.match(r'\s*name\s*=\s*"([^"]+)"', line)
+        if not m:
+            continue
+        if section == "[lib]":
+            lib.add(m.group(1).replace("-", "_"))
+        elif section == "[[bin]]":
+            bins.add(m.group(1).replace("-", "_"))
+    if package:
+        # An implicit lib or bin takes the package's name.
+        if (comp / "src" / "lib.rs").is_file() and not lib:
+            lib.add(package.group(1).replace("-", "_"))
+        if (comp / "src-tauri" / "src" / "lib.rs").is_file() and not lib:
+            lib.add(package.group(1).replace("-", "_"))
+        if not bins:
+            bins.add(package.group(1).replace("-", "_"))
+    return lib, bins
+
+
+def _path_dep_crates(comp: pathlib.Path) -> set[str]:
+    """Crate names this component pulls in from elsewhere in the tree.
+
+    Naming one is legitimate and often the point: the desktop shell keeps half its
+    logic in `apps/desktop-shell/core`, and a filter that named only the shell's
+    own crates would leave that half mute. They are ALLOWED, never required - a
+    dependency that says nothing needs no directive.
+    """
+    manifest = next(
+        (m for m in (comp / "Cargo.toml", comp / "src-tauri" / "Cargo.toml") if m.is_file()),
+        None,
+    )
+    if manifest is None:
+        return set()
+    base = manifest.parent
+    out: set[str] = set()
+    for m in re.finditer(r'(?m)^\s*([A-Za-z0-9_-]+)\s*=\s*\{[^}\n]*path\s*=\s*"([^"]+)"', manifest.read_text(encoding="utf-8", errors="replace")):
+        out.add(m.group(1).replace("-", "_"))
+        dep = (base / m.group(2)).resolve()
+        lib, bins = _crate_names(dep)
+        out |= lib | bins
+    return out
+
+
+def _logs_outside_main(comp: pathlib.Path) -> bool:
+    """Whether anything but `main.rs` in this component emits a log line."""
+    for rel in ("src", "src-tauri/src"):
+        root = comp / rel
+        if not root.is_dir():
+            continue
+        for f in sorted(root.rglob("*.rs")):
+            if f.name == "main.rs":
+                continue
+            if LOG_CALL.search(_code_only(f.read_text(encoding="utf-8", errors="replace"))):
+                return True
+    return False
+
+
+def _logs_in_main(comp: pathlib.Path) -> bool:
+    """Whether the binary's own `main.rs` emits a log line."""
+    for rel in ("src/main.rs", "src-tauri/src/main.rs"):
+        f = comp / rel
+        if f.is_file() and LOG_CALL.search(
+            _code_only(f.read_text(encoding="utf-8", errors="replace"))
+        ):
+            return True
+    return False
+
+
 def _components() -> list:
     """Every component that initialises logging, apps AND daemons.
 
@@ -165,7 +270,11 @@ def _components() -> list:
                     files = sorted(root.glob("*.rs"))
                     if files:
                         out.append(
-                            (sub.name, "\n".join(_code_only(f.read_text()) for f in files))
+                            (
+                                sub.name,
+                                "\n".join(_code_only(f.read_text()) for f in files),
+                                sub,
+                            )
                         )
                 continue
             # A daemon may hold its crate one level down (kernel-layer/kernel-layer).
@@ -174,7 +283,9 @@ def _components() -> list:
             files = [f for r in roots if r.is_dir() for f in sorted(r.glob("*.rs"))]
             if not files:
                 continue
-            out.append((comp.name, "\n".join(_code_only(f.read_text()) for f in files)))
+            out.append(
+                (comp.name, "\n".join(_code_only(f.read_text()) for f in files), comp)
+            )
     return out
 
 
@@ -195,7 +306,7 @@ def main() -> int:
 
     problems: list[str] = []
     checked = 0
-    for app, text in _components():
+    for app, text, comp_dir in _components():
         if "env_logger" not in text and "tracing_subscriber" not in text:
             continue
         checked += 1
@@ -222,6 +333,41 @@ def main() -> int:
                 f"zbus message bytes reached the journal. Name the component's own "
                 f"crate: `\"warn,<its_crate>=info\"`."
             )
+        elif named := re.search(
+            r'(?:default_filter_or|EnvFilter::new)\(\s*"([^"]*=[^"]*)"', text
+        ):
+            # The filter names crates. Two ways that goes wrong, both silent:
+            # a name no crate here has (a typo, or a rename the filter missed),
+            # and a component whose second crate speaks and is not named.
+            lib, bins = _crate_names(comp_dir)
+            have = lib | bins | _path_dep_crates(comp_dir)
+            directives = {
+                d.split("=", 1)[0].strip()
+                for d in named.group(1).split(",")
+                if "=" in d
+            }
+            unknown = sorted(d for d in directives if d and d not in have)
+            if unknown and have:
+                problems.append(
+                    f"{app}: the log filter names {', '.join(unknown)}, which is not a "
+                    f"crate this component compiles or depends on in-tree "
+                    f"({', '.join(sorted(have))}). A "
+                    f"directive for a crate that does not exist matches nothing, so "
+                    f"those lines never reach the journal."
+                )
+            elif have:
+                missing = []
+                if lib and _logs_outside_main(comp_dir) and not (lib & directives):
+                    missing.append(f"the library ({', '.join(sorted(lib))})")
+                if bins and _logs_in_main(comp_dir) and not (bins & directives):
+                    missing.append(f"the binary ({', '.join(sorted(bins))})")
+                if missing:
+                    problems.append(
+                        f"{app}: the log filter names {', '.join(sorted(directives))} "
+                        f"and leaves {' and '.join(missing)} at the blanket level, "
+                        f"though it logs. A tracing target roots at the crate the line "
+                        f"was compiled into, so the unnamed half is mute."
+                    )
         elif blanket:
             problems.append(
                 f"{app}: `default_filter_or(\"{blanket.group(1)}\")` sets a level for "
@@ -241,7 +387,7 @@ def main() -> int:
     if len(sys.argv) <= 1:
         carrying = {
             app
-            for app, text in _components()
+            for app, text, _ in _components()
             if re.search(r'EnvFilter::new\(\s*"(trace|debug|info|warn|error)"\s*\)', text)
         }
         for done in sorted(TRACING_QUEUE - carrying):
