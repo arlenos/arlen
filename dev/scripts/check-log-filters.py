@@ -58,6 +58,13 @@ APPS = ROOT / "apps"
 # The picker is the first one done, and it is the shape that makes it easy: its
 # `main.rs` logs nothing at all, so naming the lib crate mutes nothing. Check that
 # before taking the next one off this list, and take the name off when you do.
+#
+# The wallpaper daemon is the second, and it is the shape the deferral warns
+# about: 13 calls in the binary crate and 5 in the library, so the filter names
+# both. `daemons/wallpaper/src/main.rs` carries the test that proves the string
+# does what it says - events emitted with explicit targets, captured, asserted -
+# and that test is the pattern for the rest of this list. Counting the calls per
+# crate first is the whole job; the string follows from it.
 TRACING_QUEUE: frozenset[str] = frozenset(
     {
         "ai-proxy",
@@ -84,7 +91,6 @@ TRACING_QUEUE: frozenset[str] = frozenset(
         "terminal-run-mcp",
         "transfer-daemon",
         "undo-service",
-        "wallpaper",
         "xdg-portal",
     }
 )
