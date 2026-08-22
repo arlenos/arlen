@@ -652,9 +652,44 @@ def card_left_the_dom(serial_path):
         return None
 
 
+def another_card_was_raised(serial_path):
+    """Whether the shell raised a NEW consent card after taking the last one down.
+
+    The third answer this gate did not have. A card on screen after a resolve is
+    a stale frame OR a failed resolve - unless the queue had another request in
+    it, in which case the shell answered the first, hid the window, and raised it
+    again for the next one. That frame is CORRECT and both existing verdicts
+    misread it: one sends the reader to PR-20, the other blames the resolve leg.
+
+    Measured on the 22 August image, in this order and within a second:
+
+        consent_resolve: id=0 outcome=AllowedOnce
+        consent: card for 0 is out of the DOM (0 dialog node(s) remain)
+        consent_window::hide: dropped
+        consent_window::show: raised          <- the next request
+
+    So a `show` after the last `hide` is the tell.
+    """
+    if not serial_path or not os.path.exists(serial_path):
+        return False
+    try:
+        with open(serial_path, "r", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return False
+    hide = text.rfind("consent_window::hide")
+    show = text.rfind("consent_window::show: raised")
+    return hide >= 0 and show > hide
+
+
 def ghost_or_resolve(serial_path, how):
     """The failure line for a card that is still on screen after `how`."""
     gone = card_left_the_dom(serial_path)
+    if gone and another_card_was_raised(serial_path):
+        # Not a failure at all: answered, taken down, and the next one in the
+        # queue put up. The dogfood loop asks about once a minute, so this is the
+        # ORDINARY shape of a run that waits ninety seconds and then clicks.
+        return None
     if gone:
         return ("VERIFY FAIL: the consent card is still on screen after " + how +
                 ", but the shell reports it out of the DOM - the request WAS "
@@ -1924,9 +1959,15 @@ def main():
                 # The old wording named the keyboard grab, which is only one of
                 # the two ways this fails and not the one measured. See
                 # `ghost_or_resolve`.
-                print(ghost_or_resolve(serial, "Escape"))
-                print(f"  serial log: {serial}")
-                return 1
+                verdict_line = ghost_or_resolve(serial, "Escape")
+                if verdict_line is None:
+                    print("consent: answered, and the card on screen is the NEXT "
+                          "request the queue held - the shell took the first one "
+                          "down and raised the window again")
+                else:
+                    print(verdict_line)
+                    print(f"  serial log: {serial}")
+                    return 1
             if verdict == "inconclusive":
                 print("VERIFY FAIL: the gate cannot tell whether Escape dismissed "
                       "the dialog. Not a verdict on the build - look at the frame. "
@@ -1956,9 +1997,15 @@ def main():
                   f"({why}; {frac*100:.1f}% of the whole frame changed) "
                   f"-> {approved}")
             if verdict == "present":
-                print(ghost_or_resolve(serial, "'Allow once'"))
-                print(f"  serial log: {serial}")
-                return 1
+                verdict_line = ghost_or_resolve(serial, "'Allow once'")
+                if verdict_line is None:
+                    print("consent: answered, and the card on screen is the NEXT "
+                          "request the queue held - the shell took the first one "
+                          "down and raised the window again")
+                else:
+                    print(verdict_line)
+                    print(f"  serial log: {serial}")
+                    return 1
             if verdict == "inconclusive":
                 # WITH `--app` THIS IS THE EXPECTED ANSWER, NOT A FAULT. The run
                 # asked for a window to be opened, so the desktop the card sat on
