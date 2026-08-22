@@ -35,14 +35,45 @@
   // rendered into an element that no longer existed. Nobody was told anything.
   let notice = $state<string | null>(null);
   let runtime = $state<Runtime | null>(null);
-  let failure = $state<string | null>(null);
+  // The named cause, not a sentence: the window writes the sentence, because only
+  // the window is in the reader's language. `other` is the escape for a failure
+  // the command cannot name - today that is the host itself being absent, which a
+  // person never meets, and pasting an exception at them would be the same defect
+  // one layer up.
+  type Failure =
+    | { problem: "no-home" }
+    | { problem: "unreadable"; why: string }
+    | { problem: "other"; reason: string };
+  let failure = $state<Failure | null>(null);
 
   onMount(async () => {
     try {
       list = await invoke<BottleList>("wine_bottles");
       runtime = await invoke<Runtime>("wine_runtime");
     } catch (e) {
-      failure = String(e);
+      // The payload arrives as an OBJECT here, not as a string with JSON inside
+      // it - measured, by rendering this exact failure with an unreadable bottles
+      // directory and reading `[object Object]` off the screen. `apps/viewers`
+      // documents the other shape and is right about its own case, so both are
+      // accepted rather than one of them assumed: a wrong guess here does not
+      // break anything visibly, it just sends every named cause down the
+      // `other` path, which looks exactly like the code working.
+      const named =
+        e && typeof e === "object"
+          ? (e as Record<string, unknown>)
+          : (() => {
+              const raw = String(e);
+              const at = raw.indexOf("{");
+              try {
+                return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
+              } catch {
+                return null;
+              }
+            })();
+      if (named?.problem === "no-home") failure = { problem: "no-home" };
+      else if (named?.problem === "unreadable")
+        failure = { problem: "unreadable", why: String(named.why ?? "") };
+      else failure = { problem: "other", reason: String(e) };
     }
   });
 </script>
@@ -63,7 +94,11 @@
     <p class="notice">{notice}</p>
   {/if}
   {#if failure}
-    <p class="failure">{$t("wn.failed", { reason: failure })}</p>
+    <p class="failure">
+      {#if failure.problem === "no-home"}{$t("wn.failed.noHome")}
+      {:else if failure.problem === "unreadable"}{$t("wn.failed.unreadable", { why: failure.why })}
+      {:else}{$t("wn.failed.other", { reason: failure.reason })}{/if}
+    </p>
   {:else if list}
     <!-- Said whether or not there are bottles. It used to appear only in the
          empty state, so a person with three bottles saw their drives, their

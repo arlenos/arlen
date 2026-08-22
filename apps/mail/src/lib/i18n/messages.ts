@@ -10,7 +10,12 @@ const messages: Catalogs = {
   en: {
     "ml.app.title": "Mail",
     "ml.nothingOpen": "No message is open. Open a message from the file manager, or pass one on the command line.",
-    "ml.failed": "Could not read that message: {$reason}",
+    // Two named causes rather than whatever the layer below said. `other` stays
+    // for a failure the command cannot name, which today means the host itself
+    // is absent - a state a person never meets.
+    "ml.failed.unreadable": "That file could not be read, so the message is not shown: {$why}",
+    "ml.failed.notAMessage": "That file is not a message, so there is nothing to show. A message file usually ends in .eml.",
+    "ml.failed.other": "Could not read that message: {$reason}",
     "ml.from": "From",
     "ml.subject": "Subject",
     "ml.date": "Date",
@@ -57,7 +62,9 @@ const messages: Catalogs = {
   de: {
     "ml.app.title": "E-Mail",
     "ml.nothingOpen": "Keine Nachricht geöffnet. Öffne eine aus der Dateiverwaltung, oder übergib eine auf der Kommandozeile.",
-    "ml.failed": "Diese Nachricht war nicht lesbar: {$reason}",
+    "ml.failed.unreadable": "Diese Datei konnte nicht gelesen werden, deshalb wird die Nachricht nicht gezeigt: {$why}",
+    "ml.failed.notAMessage": "Diese Datei ist keine Nachricht, es gibt also nichts zu zeigen. Eine Nachrichtendatei endet meist auf .eml.",
+    "ml.failed.other": "Diese Nachricht war nicht lesbar: {$reason}",
     "ml.from": "Von",
     "ml.subject": "Betreff",
     "ml.date": "Datum",
