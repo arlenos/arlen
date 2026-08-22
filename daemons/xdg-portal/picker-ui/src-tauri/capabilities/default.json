@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default permissions for the picker UI window",
+  "description": "Default permissions for the picker UI window. Show, hide, focus and close are NOT granted: the daemon drives the window from Rust (ipc_client raises it for a request, picker_respond hides it after the answer), and a Rust-side call needs no capability. Granting them anyway would hand the webview the ability to hide the trust line or close the dialog out from under a person.",
   "windows": ["picker"],
   "permissions": [
     "core:default",
@@ -10,10 +10,6 @@
     "core:event:allow-unlisten",
     "core:event:allow-emit",
     "core:event:allow-emit-to",
-    "core:window:default",
-    "core:window:allow-show",
-    "core:window:allow-hide",
-    "core:window:allow-set-focus",
-    "core:window:allow-close"
+    "core:window:default"
   ]
 }

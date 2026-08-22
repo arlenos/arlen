@@ -73,7 +73,12 @@ VAR = "WEBKIT_FORCE_SANDBOX"
 
 
 def main() -> int:
+    # The picker is a Tauri app with a webview like any other, and it is the one
+    # window that renders on top of every app's request. It sat outside an
+    # `apps/`-only glob; it does set the variable, and now that is checked rather
+    # than true by luck.
     apps = sorted(p for p in (ROOT / "apps").glob("*/src-tauri/src/main.rs"))
+    apps += sorted(p for p in (ROOT / "daemons").glob("*/*/src-tauri/src/main.rs"))
     if not apps:
         print("no Tauri app entry points found; the layout moved and this check did not")
         return 1
