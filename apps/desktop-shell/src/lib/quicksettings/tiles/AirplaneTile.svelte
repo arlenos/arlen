@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// QS tile: Airplane Mode (rfkill).
   ///
@@ -22,9 +23,8 @@
   });
 
   async function refresh() {
-    try {
-      on = await invoke<boolean>("get_airplane_mode");
-    } catch {}
+    const got = await shellRead<boolean>("get_airplane_mode", "airplane-tile");
+    if (got !== null) on = got;
   }
 
   async function handleClick() {

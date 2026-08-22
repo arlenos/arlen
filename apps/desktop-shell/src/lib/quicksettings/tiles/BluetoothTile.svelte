@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// QS tile: Bluetooth adapter + connected device.
   ///
@@ -42,9 +43,8 @@
   });
 
   async function refresh() {
-    try {
-      state = await invoke<BluetoothState>("get_bluetooth_state");
-    } catch {}
+    const got = await shellRead<BluetoothState>("get_bluetooth_state", "bluetooth-tile");
+    if (got !== null) state = got;
   }
 
   async function handleClick() {

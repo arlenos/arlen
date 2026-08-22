@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// QS tile: Output volume slider + secondary tap to AudioPopover.
   ///
@@ -38,10 +39,13 @@
   });
 
   async function refresh() {
-    try {
-      status = await invoke<AudioStatus>("get_audio_status");
+    // `unreadable` stays true when the read fails, which is what puts "state
+    // unknown" on the tile instead of a number nobody measured.
+    const got = await shellRead<AudioStatus>("get_audio_status", "audio-tile");
+    if (got !== null) {
+      status = got;
       unreadable = false;
-    } catch {}
+    }
   }
 
   function handleInput(value: number) {
