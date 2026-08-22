@@ -27,11 +27,24 @@ fi
 # why in its own code: root-write-only, owner-traversable, NOT listable by
 # others, because a profile is a capability declaration rather than a secret and
 # integrity is the property being protected. A shipped image should not disagree
-# with the component that owns the rule, so the modes are set here to what that
-# component would set them to.
-if [ -d /var/lib/arlen/permissions ]; then
-    chmod 0755 /var/lib/arlen/permissions
-    for d in /var/lib/arlen/permissions/*/; do
-        [ -d "$d" ] && chmod 0711 "$d"
-    done
-fi
+# with the component that owns the rule.
+#
+# THE ROOT IS NOT ASSUMED. The first version of this used `/var/lib/...` and the
+# built image still shipped 0755 - read straight out of the raw with guestfish,
+# so the boot was not involved and the chmod simply never reached the tree. Which
+# root a postinst script sees is a mkosi detail worth measuring rather than
+# believing, so this tries `$BUILDROOT` first, falls back to `/`, and SAYS which
+# one it found. A silent `[ -d ]` guard is how the first attempt failed without
+# telling anybody.
+for root in "${BUILDROOT:-}" ""; do
+    dir="$root/var/lib/arlen/permissions"
+    if [ -d "$dir" ]; then
+        chmod 0755 "$dir"
+        for d in "$dir"/*/; do
+            [ -d "$d" ] && chmod 0711 "$d"
+        done
+        echo ">> permission dirs set to 0755/0711 under ${root:-/}"
+        break
+    fi
+    echo ">> no permission dirs under ${root:-/}"
+done
