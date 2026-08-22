@@ -122,6 +122,12 @@ DIR_ALIASES = {
     # resolving nowhere - which is what happened the first time its `[event_bus]`
     # section was written.
     "ai-agent": "daemons/ai-engine-daemon",
+    # The FUSE helper is one of the knowledge crate's BINARIES, not the crate:
+    # `daemons/knowledge` would read the graph daemon's code too, and that one
+    # emits `project.updated` from a process the helper is not. Pointing at
+    # `src/bin` keeps the id attached to the binaries it names - which is what an
+    # app id resolves from in the first place, a path to an executable.
+    "timeline": "daemons/knowledge/src/bin",
 }
 
 # Components whose source is not in this tree. The compositor is its own repo, so
