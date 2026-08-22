@@ -34,9 +34,13 @@ const POLL_INTERVAL: Duration = Duration::from_secs(10);
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this daemon. One name covers both
+        // halves here: the package, its library and its binary are all
+        // `arlen-powerd`, so the binary's 30 lines and the library's 22 share a
+        // target root.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,arlen_powerd=info")),
         )
         .init();
 

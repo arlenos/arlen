@@ -21,9 +21,14 @@ use tracing::{info, warn};
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for both of this daemon's crates. The
+        // binary is `arlen-undod` and the library is `arlen-undo`, so a filter
+        // naming one would leave the other mute - the 8 lines in `iface.rs` and
+        // the 2 in `undo_history.rs` belong to the library.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_undod=info,arlen_undo=info")
+            }),
         )
         .init();
 

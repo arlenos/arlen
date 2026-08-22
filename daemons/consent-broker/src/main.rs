@@ -524,9 +524,17 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this broker and the `audit` target.
+        // The broker sees what an app asked for and what a person answered; at a
+        // blanket `info` its dependencies put the same material in the journal
+        // through zbus frame logging.
+        //
+        // `audit` is a target, not a crate - the identity cutover line is filed
+        // under it, and this broker authenticates every caller.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_consent_broker=info,audit=info")
+            }),
         )
         .init();
 

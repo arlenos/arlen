@@ -18,9 +18,14 @@ use zbus::connection;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this daemon. Only the binary crate is
+        // named because only `main.rs` logs; the `connections` library is silent
+        // today, and naming a crate that says nothing adds a directive nobody can
+        // read the effect of.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_connectionsd=info")
+            }),
         )
         .init();
 

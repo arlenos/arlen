@@ -46,9 +46,13 @@ const RESPAWN_BACKOFF: Duration = Duration::from_secs(5);
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this parser. It reads the journal for
+        // a living, so a blanket level here feeds its own dependencies' chatter
+        // back into the thing it is reading.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_journald_parser=info")
+            }),
         )
         .init();
 
