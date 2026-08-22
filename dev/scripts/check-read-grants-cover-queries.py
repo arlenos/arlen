@@ -51,12 +51,13 @@ is written down is that a pattern is wrong in ways its own corpus cannot show.**
 The sibling comment-path gate shipped with a boundary bug that its `.rs` corpus
 had no string to expose, found only by running it over TypeScript.
 
-Apps only, and not because daemons do not query: `code-indexer`, `modulesd`,
-`knowledge-mcp` and the AI engine all write Cypher, and the knowledge daemon owns
-the graph outright. None of them has a profile at all, which is the open question
-about whether daemons get profiles, not something this check can decide. It will
-cover them the day they have one; until then a scope of `dev.arlen.*` is the whole
-set that exists.
+Apps AND the daemons that have a profile. It was apps only, on the ground that
+`code-indexer`, `modulesd`, `knowledge-mcp` and the AI engine "have no profile at
+all" - and that stopped being true: `code-indexer.toml`, `modulesd.toml` and
+`ai-agent.toml` are all in that directory now. The old text promised "it will
+cover them the day they have one", and the day arrived without the glob noticing,
+which is how a check quietly stops covering what it says it covers. The knowledge
+daemon still owns the graph outright and has no profile to check.
 
 **Filter fields count, and the knowledge profile used to say the opposite.** Its
 header held that a filter is not a returned field so the scope covers what is read
@@ -114,10 +115,19 @@ def query_windows(text):
             yield window
 
 
-def fields_read(app_dir):
+def rust_files(paths):
+    """Every `.rs` under `paths`, which may name directories or files."""
+    for p in paths:
+        if p.is_file():
+            yield p
+        else:
+            yield from p.rglob("*.rs")
+
+
+def fields_read(paths):
     """`(Label, field)` pairs the app's queries read, from query text only."""
     out = set()
-    for rs in app_dir.rglob("*.rs"):
+    for rs in rust_files(paths):
         if "/target/" in str(rs):
             continue
         try:
@@ -132,6 +142,40 @@ def fields_read(app_dir):
     return out
 
 
+#: Where a profile's id keeps its source, for the ids that are not `apps/<name>`.
+#:
+#: A LIST, and per-binary where a crate holds several. An app id is a ROLE
+#: resolved from a path to an executable, so `ai-agent` is the AI engine daemon,
+#: and `timeline` is ONE binary of the knowledge crate plus the module it calls
+#: into - pointing that id at `src/bin` instead attributed a sibling diagnostic
+#: binary's `MATCH (f:File ...) RETURN f.id` to the FUSE helper's profile, which
+#: is a finding about a component that does not exist. An id with no entry and no
+#: `apps/` directory is SKIPPED rather than guessed at.
+DAEMON_DIRS = {
+    "code-indexer": ["daemons/code-indexer"],
+    "modulesd": ["daemons/modulesd"],
+    "ai-agent": ["daemons/ai-engine-daemon"],
+    "calendard": ["daemons/calendar"],
+    "clockd": ["daemons/clock"],
+    "powerd": ["daemons/power-daemon"],
+    "auditd": ["daemons/audit-daemon"],
+    "timeline": [
+        "daemons/knowledge/src/bin/arlen-timeline.rs",
+        "daemons/knowledge/src/fuse.rs",
+    ],
+}
+
+
+def source_of(app_id):
+    """The paths whose Cypher this profile answers for, or None."""
+    if app_id in DAEMON_DIRS:
+        paths = [REPO / p for p in DAEMON_DIRS[app_id]]
+        present = [p for p in paths if p.exists()]
+        return present or None
+    d = REPO / "apps" / app_id.removeprefix("dev.arlen.")
+    return [d] if d.is_dir() else None
+
+
 def main():
     root = REPO / PROFILES
     # A profile carrying no grants at all is skipped deliberately, so zero
@@ -139,7 +183,7 @@ def main():
     # even the directory, is not: both are committed, so it means this ran
     # somewhere that is not the tree and the closing line would then vouch for
     # nothing.
-    profiles = sorted(root.glob("dev.arlen.*.toml")) if root.is_dir() else []
+    profiles = sorted(root.glob("*.toml")) if root.is_dir() else []
     if not profiles:
         print(f"NOTHING WAS READ: no app profile under {REPO / PROFILES}", file=sys.stderr)
         return 2
@@ -148,8 +192,8 @@ def main():
     checked = 0
     for profile in profiles:
         app_id = profile.stem
-        app_dir = REPO / "apps" / app_id.removeprefix("dev.arlen.")
-        if not app_dir.is_dir():
+        app_dir = source_of(app_id)
+        if app_dir is None:
             continue
         text = profile.read_text(encoding="utf-8")
         granted = set(GRANT.findall(text))
