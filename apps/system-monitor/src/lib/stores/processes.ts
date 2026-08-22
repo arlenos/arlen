@@ -87,9 +87,17 @@ export const mocked = writable(false);
 /// True when a real session could not read the process list at all.
 export const unavailable = writable(false);
 
-/// The last action failure, for the surface to show. Empty when all is well.
+/// Why the last action on a process did not happen: a message id and its values,
+/// NOT a sentence. Null when all is well.
+///
+/// Seven places in this file used to compose the sentence here - "Could not stop
+/// that process: " plus whatever Rust said - which put the words a person reads
+/// into a TypeScript store where no catalogue can reach them, and left a German
+/// build explaining somebody's own machine to them in English. The page writes
+/// the sentence now, from these.
+///
 /// Set only when a real backend refused - see `stop`/`setFlagChecked`.
-export const lastError = writable("");
+export const lastError = writable<{ key: string; values: Record<string, unknown> } | null>(null);
 
 /// Load the process list. Live: `list_app_rows`; fixture under vite.
 ///
@@ -220,7 +228,7 @@ export async function stop(id: number): Promise<void> {
   } catch (e) {
     if (tauriAvailable) {
       processes.set(previous);
-      lastError.set(`Could not stop that process: ${String(e)}`);
+      lastError.set({ key: "sm.err.stop", values: { reason: String(e) } });
     }
     // Without the runtime there is no backend to refuse: keep the optimistic
     // mock so the surface stays reviewable under vite.
@@ -257,9 +265,10 @@ export async function stopRow(p: Process): Promise<void> {
     }
   }
   if (failures.length && tauriAvailable) {
-    lastError.set(
-      `Stopped ${ids.length - failures.length} of ${ids.length}: ${failures[0]}`,
-    );
+    lastError.set({
+      key: "sm.err.stopSome",
+      values: { done: ids.length - failures.length, total: ids.length, reason: failures[0] },
+    });
   }
   // Reload either way: the truth about which members survived is the backend's,
   // and after a group action guessing it locally is exactly the false
@@ -289,7 +298,7 @@ async function setFlagChecked(
   } catch (e) {
     if (tauriAvailable) {
       setFlag(id, revert);
-      lastError.set(`${failure}: ${String(e)}`);
+      lastError.set({ key: failure, values: { reason: String(e) } });
     }
   }
 }
@@ -326,62 +335,63 @@ async function rowLever(
   }
   if (failures.length && tauriAvailable) {
     setFlag(row.id, revert);
-    lastError.set(
-      `${failure} (${ids.length - failures.length} of ${ids.length}): ${failures[0]}`,
-    );
+    lastError.set({
+      key: `${failure}.some`,
+      values: { done: ids.length - failures.length, total: ids.length, reason: failures[0] },
+    });
   }
 }
 
 /// Freeze every process the row stands for. Live: `freeze_process`.
 export async function pauseRow(row: Process): Promise<void> {
   await rowLever(row, { paused: true }, { paused: false }, "freeze_process",
-    (id) => ({ id, paused: true }), "Could not pause that app");
+    (id) => ({ id, paused: true }), "sm.err.pauseApp");
 }
 
 /// Thaw every process the row stands for.
 export async function resumeRow(row: Process): Promise<void> {
   await rowLever(row, { paused: false }, { paused: true }, "freeze_process",
-    (id) => ({ id, paused: false }), "Could not resume that app");
+    (id) => ({ id, paused: false }), "sm.err.resumeApp");
 }
 
 /// Throttle every process the row stands for.
 export async function limitRow(row: Process): Promise<void> {
   await rowLever(row, { limited: true }, { limited: false }, "limit_process",
-    (id) => ({ id, limited: true }), "Could not limit that app");
+    (id) => ({ id, limited: true }), "sm.err.limitApp");
 }
 
 /// Remove the throttle from every process the row stands for.
 export async function unlimitRow(row: Process): Promise<void> {
   await rowLever(row, { limited: false }, { limited: true }, "limit_process",
-    (id) => ({ id, limited: false }), "Could not unlimit that app");
+    (id) => ({ id, limited: false }), "sm.err.unlimitApp");
 }
 
 /// Freeze a process (cgroup.freeze) - the non-destructive pause. Live: `freeze_process`.
 export async function pause(id: number): Promise<void> {
   await setFlagChecked(
     id, { paused: true }, { paused: false },
-    "freeze_process", { id, paused: true }, "Could not pause that process",
+    "freeze_process", { id, paused: true }, "sm.err.pause",
   );
 }
 /// Unfreeze it. Live: `freeze_process`.
 export async function resume(id: number): Promise<void> {
   await setFlagChecked(
     id, { paused: false }, { paused: true },
-    "freeze_process", { id, paused: false }, "Could not resume that process",
+    "freeze_process", { id, paused: false }, "sm.err.resume",
   );
 }
 /// Soft-throttle a process (cgroup memory.high + cpu.max). Live: `limit_process`.
 export async function limit(id: number): Promise<void> {
   await setFlagChecked(
     id, { limited: true }, { limited: false },
-    "limit_process", { id, limited: true }, "Could not limit that process",
+    "limit_process", { id, limited: true }, "sm.err.limit",
   );
 }
 /// Remove the throttle. Live: `limit_process`.
 export async function unlimit(id: number): Promise<void> {
   await setFlagChecked(
     id, { limited: false }, { limited: true },
-    "limit_process", { id, limited: false }, "Could not remove that limit",
+    "limit_process", { id, limited: false }, "sm.err.unlimit",
   );
 }
 
@@ -426,7 +436,7 @@ export async function renice(id: number, nice: number): Promise<boolean> {
     await invoke("renice_process", { id, nice });
     return true;
   } catch (e) {
-    lastError.set(`Could not change that priority: ${String(e)}`);
+    lastError.set({ key: "sm.err.priority", values: { reason: String(e) } });
     return false;
   }
 }
