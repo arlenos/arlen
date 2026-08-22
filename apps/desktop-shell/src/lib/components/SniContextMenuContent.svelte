@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellAction } from "$lib/shellAction";
   import { t } from "$lib/i18n/messages";
   /// Async-loaded context menu content for SNI tray items.
   /// Fetches the com.canonical.dbusmenu layout on mount and renders
@@ -40,9 +41,16 @@
 
   async function handleClick(item: DbusMenuItem) {
     if (!item.enabled) return;
-    try {
-      await invoke("click_sni_menu_item", { service, menuPath, itemId: item.id });
-    } catch {}
+    // The LOAD failure already has a line in the menu; the click had nothing.
+    // Pressing "Quit" on a tray menu and watching the application stay is the
+    // shape this file was otherwise careful about. The menu is gone by the time
+    // an answer arrives, so the toast channel is the one that outlives it -
+    // which is what `shellAction` exists for.
+    void shellAction(
+      "click_sni_menu_item",
+      { service, menuPath, itemId: item.id },
+      "sh.sni.errClick",
+    );
   }
 </script>
 
