@@ -243,8 +243,15 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
     // file the sender did not name, text/calendar" about a single part - two
     // arrivals where there was one, and the second sentence knows less than the
     // first. Reported once, as what it is; its size is on the invitation.
+    // A SEALED message carries no files, it carries a seal. Its outer parts are
+    // the envelope - PGP/MIME's version part and the ciphertext, or S/MIME's
+    // single `pkcs7-mime` - and listing them as "2 files, not opened" tells a
+    // person they received two files when they received one message they cannot
+    // read. Anything the sender actually attached is INSIDE the ciphertext and
+    // nothing out here can see it, so there is nothing being hidden by this.
     let attachments: Vec<Attachment> = parsed
         .attachments()
+        .filter(|_| sealed.is_none())
         .filter(|part| {
             calendar_part.is_none_or(|i| !std::ptr::eq(*part, &parsed.parts[i]))
         })
@@ -590,6 +597,21 @@ Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; bound
 Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name=smime.p7m\r\n\
 Content-Transfer-Encoding: base64\r\n\r\nMIAGCSqGSIb3DQEHA6CA\r\n";
         assert_eq!(read(raw).unwrap().sealed, Some(Sealed::Smime));
+    }
+
+    #[test]
+    fn a_sealed_message_does_not_report_its_envelope_as_files() {
+        let raw = b"From: ada@example.org\r\nSubject: Secret\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=b\r\n\r\n\
+--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n\
+--b\r\nContent-Type: application/octet-stream; name=encrypted.asc\r\n\r\n\
+-----BEGIN PGP MESSAGE-----\r\n-----END PGP MESSAGE-----\r\n--b--\r\n";
+        let m = read(raw).unwrap();
+        assert_eq!(m.sealed, Some(Sealed::Pgp));
+        // Both outer parts are the envelope. The window said "This message
+        // carries 2 files, not opened" over them, which is a sentence about
+        // enclosures nobody sent.
+        assert!(m.attachments.is_empty(), "{:?}", m.attachments);
     }
 
     #[test]
