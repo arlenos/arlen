@@ -377,6 +377,8 @@ jobs:
           node dev/scripts/test-check-plugin-grants.mjs
           python3 dev/scripts/check-daemon-stop.py
           node dev/scripts/test-check-daemon-stop.mjs
+          python3 dev/scripts/check-consent-input-ordering.py
+          node dev/scripts/test-check-consent-input-ordering.mjs
           python3 dev/scripts/check-cypher-groups.py
           node dev/scripts/test-check-cypher-groups.mjs
           python3 dev/scripts/check-sandbox-env.py
