@@ -6,8 +6,11 @@
 /// The folder set is built client-side from `home` for the common XDG
 /// layout; a `picker_places` daemon command would resolve localized or
 /// user-relocated XDG dirs correctly (flagged in arlen-ui-reports.md).
-/// Recent comes from the routed `picker_recent` command and is simply
-/// omitted when that command is absent - nothing half-mocks a feed.
+/// Recent comes from the routed `picker_recent` command, which NOTHING
+/// REGISTERS today, so on a real machine the group is always omitted and the
+/// sidebar is Places only. Only the mock in `routes/_pickertest` answers it.
+/// The omission is the right behaviour; the absence of a producer is the
+/// reason it always happens.
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Place, PlaceGroup } from "@arlen/ui-kit/components/browser";

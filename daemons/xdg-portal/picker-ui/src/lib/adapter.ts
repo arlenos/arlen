@@ -70,10 +70,12 @@ export const pickerAdapter: BrowserAdapter = {
     const raw = await invoke<DirEntry[]>("list_directory", { path });
     return sortEntries(raw.map(toEntry), sort);
   },
-  // Plain files with a decodable extension; the picker-side thumbnail
-  // command is confined to the daemon's cap-std root. Any failure
-  // (command absent during the frontend mock, or a decode error) falls
-  // back to the icon - the tile never breaks.
+  // Plain files with a decodable extension. NOTHING REGISTERS
+  // `picker_thumbnail` today - not the picker's host, not the daemon - so on a
+  // real machine this throws every time and the grid is icons. The mock in
+  // `routes/_pickertest` answers it, which is the only place thumbnails have
+  // ever appeared; a screenshot of that route is not evidence the feature
+  // exists. The fallback is right either way: the tile never breaks.
   thumbnail: async (path: string, entry: FileEntry) => {
     if (entry.kind !== "file" || !THUMBNAILABLE.test(entry.name)) return null;
     try {
