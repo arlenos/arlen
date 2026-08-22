@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { shellToastError } from "$lib/shellAction";
+  import { get } from "svelte/store";
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// Network popover: WiFi list with context menus, VPN, power toggle.
   /// Structure mirrors BluetoothPopover: Header > Sections > Items with ContextMenu.
@@ -105,7 +108,10 @@
       catch { error = "sh.net.stateUnknown"; }
     loading = false;
   }
-  async function loadVpns() { try { vpns = await invoke<VpnConnection[]>("get_vpn_connections"); } catch {} }
+  async function loadVpns() {
+    const got = await shellRead<VpnConnection[]>("get_vpn_connections", "vpn");
+    if (got !== null) vpns = got;
+  }
 
   async function handleConnect(net: WifiNetwork) {
     if (net.is_connected) {
@@ -127,10 +133,29 @@
     } catch { error = "sh.net.errPassword"; }
     connectingTo = null; await pollStatus(); await loadNetworks(true);
   }
+  /// Both copies say when they did not happen.
+  ///
+  /// Somebody who presses "Copy password" and gets nothing goes and pastes into
+  /// a password box; the silence is worse than the failure. There is no room in
+  /// this popover for a line and it closes on the next click, so the toast is
+  /// the channel - the same one every tile in this shell uses for a refused
+  /// action.
   async function copyPassword(ssid: string) {
-    try { const pw = await invoke<string | null>("get_saved_password", { ssid }); if (pw) await navigator.clipboard.writeText(pw); } catch {}
+    try {
+      const pw = await invoke<string | null>("get_saved_password", { ssid });
+      if (pw) await navigator.clipboard.writeText(pw);
+      else shellToastError("sh.net.errNoPassword");
+    } catch {
+      shellToastError("sh.net.errCopy");
+    }
   }
-  async function copyText(text: string) { try { await navigator.clipboard.writeText(text); } catch {} }
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      shellToastError("sh.net.errCopy");
+    }
+  }
   async function loadConnDetails(ssid: string) {
     try { connDetails = await invoke<ConnDetails>("get_connection_details", { ssid }); } catch { connDetails = null; }
   }

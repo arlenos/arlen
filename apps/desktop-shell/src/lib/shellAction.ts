@@ -43,3 +43,20 @@ export async function shellAction(
     return false;
   }
 }
+
+/**
+ * Raise `key` as a toast, for a refusal that did not come from an `invoke`.
+ *
+ * The clipboard is the case that needed this: a copy that fails is not a host
+ * command refusing, so `shellAction` has nothing to wrap, and the popover that
+ * offered the button is gone before anybody could read a line in it.
+ *
+ * It lives HERE rather than in the component for a mechanical reason worth
+ * knowing: `check-i18n-reactivity` refuses `get(t)` inside a `.svelte` file,
+ * because a string read that way keeps whichever locale rendered first. A toast
+ * is not markup - it is a snapshot raised at the moment of the failure, and the
+ * current locale is the right one - so the rule and the need meet in a helper.
+ */
+export function shellToastError(key: string): void {
+  toast.error(get(t)(key));
+}
