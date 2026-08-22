@@ -97,8 +97,16 @@ def main() -> int:
         if root_apps.is_dir()
         else []
     )
+    # Frontends under `daemons/` are frontends: the file picker is the dialog
+    # every app borrows, and a failure it records and never draws is as silent
+    # there as anywhere.
+    apps += sorted(
+        p
+        for p in (ROOT / "daemons").glob("*/*")
+        if (p / "src").is_dir() and (p / "package.json").is_file()
+    )
     if not apps:
-        print(f"NOTHING WAS READ: no apps under {ROOT / 'apps'}", file=sys.stderr)
+        print(f"NOTHING WAS READ: no frontend under {ROOT / 'apps'} or {ROOT / 'daemons'}", file=sys.stderr)
         return 2
 
     findings: list[str] = []
