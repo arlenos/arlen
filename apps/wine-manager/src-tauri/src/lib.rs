@@ -169,6 +169,23 @@ fn wine_runtime() -> Runtime {
 }
 
 /// Where bottles live for this user.
+/// Why the bottle list could not be produced, as a word rather than a sentence.
+///
+/// It was `String(e)` all the way to the screen, so a German reader met an
+/// English clause inside a German frame - the same shape as the login screen's
+/// English fallback, one layer down. There are exactly two causes and both are
+/// nameable here, on the side of the boundary where nobody can translate them.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum BottlesProblem {
+    /// Neither `XDG_DATA_HOME` nor `HOME` is set, so there is nowhere bottles
+    /// could be kept and nothing to list.
+    NoHome,
+    /// The bottle directory itself would not be read. `why` survives because it
+    /// is what the filesystem said and the only detail anybody has.
+    Unreadable { why: String },
+}
+
 fn dir() -> Result<PathBuf, String> {
     let data = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -179,8 +196,11 @@ fn dir() -> Result<PathBuf, String> {
 
 /// Every bottle, and every bottle file that would not parse.
 #[tauri::command]
-fn wine_bottles() -> Result<BottleList, String> {
-    let listing = list_bottles(&dir()?).map_err(|e| e.to_string())?;
+fn wine_bottles() -> Result<BottleList, BottlesProblem> {
+    let dir = dir().map_err(|_| BottlesProblem::NoHome)?;
+    let listing = list_bottles(&dir).map_err(|e| BottlesProblem::Unreadable {
+        why: e.to_string(),
+    })?;
     Ok(BottleList {
         bottles: listing.bottles.iter().map(view).collect(),
         unreadable: listing

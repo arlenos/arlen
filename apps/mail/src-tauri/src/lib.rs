@@ -106,10 +106,25 @@ fn launch_file(state: tauri::State<'_, LaunchFile>) -> Option<String> {
 ///
 /// # Errors
 /// When the file cannot be read, or holds nothing that parses as a message.
+/// Why a message did not open, as a word rather than a sentence.
+///
+/// There are two causes and both are ordinary for an app that is handed a path
+/// by the file manager: the file would not read, or it is not a message. Both
+/// used to reach the window as English text built here, inside a frame the
+/// catalogue had already translated - so a German reader got half a sentence in
+/// each language. `why` survives on the first because the filesystem's own words
+/// are the only detail there is.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum ReadProblem {
+    Unreadable { why: String },
+    NotAMessage,
+}
+
 #[tauri::command]
-fn mail_read(path: String) -> Result<MessageDto, String> {
-    let raw = std::fs::read(&path).map_err(|e| format!("could not read {path}: {e}"))?;
-    let m = arlen_mail_core::message::read(&raw)?;
+fn mail_read(path: String) -> Result<MessageDto, ReadProblem> {
+    let raw = std::fs::read(&path).map_err(|e| ReadProblem::Unreadable { why: e.to_string() })?;
+    let m = arlen_mail_core::message::read(&raw).map_err(|_| ReadProblem::NotAMessage)?;
     Ok(MessageDto {
         from: m.from,
         subject: m.subject,

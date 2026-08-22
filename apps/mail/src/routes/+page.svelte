@@ -65,7 +65,11 @@
   const tauriAvailable = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
   let message = $state<Message | null>(null);
-  let failure = $state<string | null>(null);
+  type Failure =
+    | { problem: "unreadable"; why: string }
+    | { problem: "not-a-message" }
+    | { problem: "other"; reason: string };
+  let failure = $state<Failure | null>(null);
   let launched = $state<string | null>(null);
 
   onMount(() => {
@@ -77,7 +81,26 @@
         message = await invoke<Message>("mail_read", { path: launched });
         failure = null;
       } catch (e) {
-        failure = String(e);
+        // The payload arrives as an OBJECT here, not as a string with JSON
+        // inside it - measured on the wine-manager window, which printed
+        // `[object Object]` until this accepted both shapes. `apps/viewers`
+        // documents the string form and is right about its own case.
+        const named =
+          e && typeof e === "object"
+            ? (e as Record<string, unknown>)
+            : (() => {
+                const raw = String(e);
+                const at = raw.indexOf("{");
+                try {
+                  return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
+                } catch {
+                  return null;
+                }
+              })();
+        if (named?.problem === "unreadable")
+          failure = { problem: "unreadable", why: String(named.why ?? "") };
+        else if (named?.problem === "not-a-message") failure = { problem: "not-a-message" };
+        else failure = { problem: "other", reason: String(e) };
       }
     })();
   });
@@ -92,7 +115,11 @@
   </header>
 
   {#if failure}
-    <p class="note bad" role="alert">{$t("ml.failed", { reason: failure })}</p>
+    <p class="note bad" role="alert">
+      {#if failure.problem === "unreadable"}{$t("ml.failed.unreadable", { why: failure.why })}
+      {:else if failure.problem === "not-a-message"}{$t("ml.failed.notAMessage")}
+      {:else}{$t("ml.failed.other", { reason: failure.reason })}{/if}
+    </p>
   {:else if !message}
     <p class="note">{$t("ml.nothingOpen")}</p>
   {:else}
