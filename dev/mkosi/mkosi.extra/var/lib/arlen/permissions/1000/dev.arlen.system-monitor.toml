@@ -40,3 +40,26 @@ tier = "first-party"
 
 [filesystem]
 read_only = ["/sys/block"]
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# DECLARING IS WHAT BOUNDS A COMPONENT, not its tier: the event bus holds a
+# consumer to its declared `subscribe` list whatever tier it is, and a component
+# that declares NOTHING keeps the machine-wide view. This profile had no
+# `[event_bus]` section at all, so under enforcement this window could have
+# subscribed to anything on the bus - another app's activity, the graph's own
+# traffic - which is reach it has no claim to.
+#
+# NOTHING IS PUBLISHED: there is no emitter in this app (checked, not assumed).
+#
+# The subscribe list is not this app's own code either. `sdk/tauri-plugin-shell`
+# subscribes these two from inside every Tauri process for the toolbar and the
+# shortcut dispatch, so omitting them would silently switch both off while the
+# subscribe still returns Ok.
+[event_bus]
+publish = []
+subscribe = [
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]
