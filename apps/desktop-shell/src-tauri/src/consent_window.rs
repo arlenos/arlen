@@ -159,9 +159,24 @@ pub fn show(app: &AppHandle) {
         //
         // The 21 August attempt at this had a 2s backstop that armed anyway, and
         // the backstop is what fired - `raised` at 131.2s, `armed` at 133.2s. So
-        // the mechanism was not what failed; the escape hatch was. There is none
-        // now: a card that never reports leaves the request unanswered, which is
-        // the fail-closed direction and what the rule prescribes.
+        // the escape hatch was part of what failed. There is none now: a card that
+        // never reports leaves the request unanswered, which is the fail-closed
+        // direction and what the rule prescribes.
+        //
+        // AND THIS IS STILL NOT ENOUGH, measured on 22 August with the change in:
+        // `arm` fires 37ms after the raise while the card reaches the screen a
+        // second or more later, and a click driven at raise+1.2s was taken as the
+        // answer with the frame at that instant showing no card. The rAF pair
+        // completes as soon as GTK ticks a frame, and GTK ticks in 4ms.
+        //
+        // So the ordering rule is NOT satisfied by this shape alone. Three
+        // candidate signals have now been measured and none of them means pixels
+        // - the page's DOM report, both frame clocks, and this readiness report.
+        // Closing it needs a structural answer rather than a better callback:
+        // a surface that stays mapped so nothing has a first frame to wait for,
+        // or one created per request so the load path is observable. That is a
+        // change to a security surface and is recorded for the planner rather
+        // than guessed at here.
         let empty = Region::create_rectangle(&RectangleInt::new(0, 0, 0, 0));
         gtk_window.input_shape_combine_region(Some(&empty));
         // Re-asserted on every raise rather than trusted from creation: the

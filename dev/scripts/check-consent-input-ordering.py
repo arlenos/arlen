@@ -20,9 +20,16 @@ a full input region (`input_shape_combine_region` over a whole-screen rectangle)
 or an exclusive keyboard mode. Only the separate `arm()` may do either, and that
 is called by the card's own component once it has laid out.
 
-What it cannot check: whether `arm` is reachable, or whether the page's report is
-honest about pixels. Both were measured instead - three frame timings on the image
-- and neither is a thing a scanner can see.
+NECESSARY, NOT SUFFICIENT, and the number matters so nobody reads a green run as a
+closed hole: with this shape in place `arm` fires 37ms after the raise while the
+card reaches the screen a second or more later, and a click at raise+1.2s was
+still taken as the answer. The page's readiness report is a rAF pair, and rAF
+completes as soon as GTK ticks a frame - which it does in 4ms while WebKit's
+pixels are seconds away.
+
+So this holds the SHAPE: mapped without input, armed from one place. Whether the
+report that arms it is honest about pixels is measured on the image, not here, and
+today it is not. Three signals have been measured and none of them means pixels.
 
 Deliberately narrow. It names one surface rather than every layer window, because
 the top bar legitimately takes input the moment it maps: it has no question to
@@ -110,8 +117,9 @@ def main() -> int:
 
     print(
         "the consent surface maps holding no input; only `arm` makes it "
-        "answerable. Source only: whether the card's report is honest about pixels "
-        "was measured on the image and cannot be read here."
+        "answerable. THE SHAPE ONLY: on 22 August `arm` fired 37ms after the raise "
+        "while the card reached the screen a second later, and a click in that gap "
+        "was still taken as the answer. A green run here is not a closed hole."
     )
     return 0
 
