@@ -162,6 +162,42 @@ pub fn show(app: &AppHandle) {
         // so the redraw is asked for at the one place that knows the surface
         // just came back.
         webview.inner().queue_draw();
+
+        // WHEN this surface actually presents, measured rather than assumed.
+        //
+        // A click driven 1.1s after the raise was taken as the answer while the
+        // frame at that instant showed a plain desktop, so the ordering rule -
+        // paint, then take input - needs a signal that means PIXELS. The page's
+        // own report does not: it fires on a DOM update and was thrown away for
+        // that reason (see above). These two lines say which of the remaining
+        // candidates does. The toplevel and the webview each have their own frame
+        // clock, and if the card is WebKit content presenting on its own surface
+        // they will not agree; the gap between them is the thing to read.
+        //
+        // Once per raise: the handler disconnects itself on the first tick.
+        for (what, widget) in [
+            ("toplevel", gtk_window.clone().upcast::<gtk::Widget>()),
+            ("webview", webview.inner().clone().upcast::<gtk::Widget>()),
+        ] {
+            let Some(clock) = WidgetExt::frame_clock(&widget) else {
+                log::info!("consent_window::show: {what} has no frame clock");
+                continue;
+            };
+            let started = std::time::Instant::now();
+            let id: std::rc::Rc<std::cell::RefCell<Option<gtk::glib::SignalHandlerId>>> =
+                std::rc::Rc::new(std::cell::RefCell::new(None));
+            let take = id.clone();
+            let handler = clock.connect_after_paint(move |c| {
+                if let Some(h) = take.borrow_mut().take() {
+                    log::info!(
+                        "consent_window::show: {what} first after-paint {}ms after raise",
+                        started.elapsed().as_millis()
+                    );
+                    gtk::glib::signal::signal_handler_disconnect(c, h);
+                }
+            });
+            *id.borrow_mut() = Some(handler);
+        }
     });
     log::info!("consent_window::show: raised");
 }
