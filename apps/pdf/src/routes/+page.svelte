@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clampPage, pageIntent } from "$lib/paging";
   /// The reader: what is in this document, and where in it a word appears.
   ///
   /// Every empty-looking state here is a DIFFERENT state and says so. No host is
@@ -121,7 +122,7 @@
   /// as the document having restarted.
   function step(delta: number) {
     if (!doc) return;
-    current = Math.min(Math.max(current + delta, 1), doc.pages);
+    current = clampPage(current, delta, doc.pages);
   }
 
   /// Keyboard first, as the viewer conventions have it.
@@ -132,22 +133,12 @@
   function onKey(event: KeyboardEvent) {
     if (!doc) return;
     const target = event.target as HTMLElement | null;
-    if (target?.tagName === "INPUT") return;
-    const map: Record<string, () => void> = {
-      ArrowRight: () => step(1),
-      ArrowDown: () => step(1),
-      PageDown: () => step(1),
-      " ": () => step(event.shiftKey ? -1 : 1),
-      ArrowLeft: () => step(-1),
-      ArrowUp: () => step(-1),
-      PageUp: () => step(-1),
-      Home: () => (current = 1),
-      End: () => (current = doc ? doc.pages : 1),
-    };
-    const act = map[event.key];
-    if (act) {
+    const intent = pageIntent(event.key, event.shiftKey, target?.tagName === "INPUT");
+    if (intent) {
       event.preventDefault();
-      act();
+      if (intent.kind === "step") step(intent.delta);
+      else if (intent.kind === "first") current = 1;
+      else current = doc.pages;
     }
   }
 </script>
