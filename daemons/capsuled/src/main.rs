@@ -19,10 +19,21 @@ use capsuled::revocation::RevocationFile;
 use capsuled::server::{run, socket_path, ServeContext};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // `warn` for everything, `info` for this daemon's two crates and for the
+    // `audit` target. A bare `info` sets the level for every dependency in the
+    // process too, and zbus logs D-Bus frames with their bodies; a capsule daemon
+    // handles exactly the content that must not land in a journal nobody granted.
+    //
+    // `audit` is a TARGET, not a crate: `arlen-permissions` files the identity
+    // cutover line under it, so a directive naming only crates leaves it at warn
+    // and the line disappears. This daemon authenticates every peer it serves.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new(
+                    "warn,arlen_capsuled=info,capsuled=info,audit=info",
+                )
+            }),
         )
         .init();
 

@@ -81,7 +81,6 @@ TRACING_QUEUE: frozenset[str] = frozenset(
         "audit-daemon",
         "bridge-ingest",
         "calendar",
-        "capsuled",
         "clock",
         "code-indexer",
         "config-broker",
@@ -123,6 +122,18 @@ def _code_only(text: str) -> str:
     """
     return "\n".join(re.sub(r"//.*$", "", line) for line in text.splitlines())
 
+
+
+def _without_tests(text: str) -> str:
+    """The text up to its first test module.
+
+    A test that emits `info!(target: "wayland_client", …)` to prove a filter is
+    not the crate asking for that target in production, and reading it as one
+    turned this file's own regression test into a finding against three unrelated
+    components - through a dependency edge, no less.
+    """
+    cut = text.find("#[cfg(test)]")
+    return text if cut < 0 else text[:cut]
 
 
 def _crate_names(comp: pathlib.Path) -> tuple[set[str], set[str]]:
@@ -197,6 +208,72 @@ def _path_dep_crates(comp: pathlib.Path) -> set[str]:
     return out
 
 
+# A log line that names its own target, and the level it does it at. A target is
+# not a crate: `tracing::info!(target: "audit", …)` lands under `audit`, so a
+# filter naming only crates leaves it at the default level whatever the crate
+# directive says.
+EXPLICIT_TARGET = re.compile(
+    r'(?:tracing::)?(trace|debug|info)!\s*\(\s*\n?\s*target:\s*"([^"]+)"',
+    re.MULTILINE,
+)
+
+
+# What a component has to be doing for a dependency's explicit target to be
+# reachable from it. One entry today: the `audit` target belongs to
+# `arlen-permissions`' peer authentication, so a component that never calls it
+# cannot emit that line and does not need the directive.
+TARGET_ENTRYPOINTS: dict[str, tuple[str, ...]] = {
+    "audit": ("ConnectionAuth", "StampedIdentity", "stamped_identity"),
+}
+
+
+def _fine_targets(comp: pathlib.Path) -> set[str]:
+    """Explicit log targets this component can emit BELOW warn, its in-tree
+    dependencies included.
+
+    `arlen-permissions` writes the identity-cutover line as
+    `info!(target: "audit", event = "identity.legacy_unavailable", …)`, and its own
+    comment says reading that as noise is how the cutover gets talked out of
+    hardening. Under `warn,<crate>=info` it is gone: the directive names a crate
+    and the line is filed under `audit`. Every daemon that authenticates a peer
+    inherits that, which is why this is read from the dependencies too rather than
+    left to whoever writes the next filter to remember.
+    """
+    out: set[str] = set()
+    roots = [comp / "src", comp / "src-tauri" / "src"]
+    own = "\n".join(
+        f.read_text(encoding="utf-8", errors="replace")
+        for r in roots
+        if r.is_dir()
+        for f in sorted(r.rglob("*.rs"))
+    )
+    manifest = next(
+        (m for m in (comp / "Cargo.toml", comp / "src-tauri" / "Cargo.toml") if m.is_file()),
+        None,
+    )
+    # A dependency CONTAINING the line is not the same as this component reaching
+    # it. Settings pulls in `arlen-permissions` for the revoke request types and
+    # never authenticates a peer, so requiring `audit` there would be a directive
+    # for something that can never fire. The entry points below are what makes the
+    # difference readable without guessing at reachability.
+    if manifest is not None and any(sym in own for syms in TARGET_ENTRYPOINTS.values() for sym in syms):
+        base = manifest.parent
+        for m in re.finditer(
+            r'(?m)^\s*[A-Za-z0-9_-]+\s*=\s*\{[^}\n]*path\s*=\s*"([^"]+)"',
+            manifest.read_text(encoding="utf-8", errors="replace"),
+        ):
+            roots.append((base / m.group(1)).resolve() / "src")
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for f in sorted(root.rglob("*.rs")):
+            for m in EXPLICIT_TARGET.finditer(
+                _without_tests(_code_only(f.read_text(encoding="utf-8", errors="replace")))
+            ):
+                out.add(m.group(2))
+    return out
+
+
 def _logs_outside_main(comp: pathlib.Path) -> bool:
     """Whether anything but `main.rs` in this component emits a log line."""
     for rel in ("src", "src-tauri/src"):
@@ -206,7 +283,9 @@ def _logs_outside_main(comp: pathlib.Path) -> bool:
         for f in sorted(root.rglob("*.rs")):
             if f.name == "main.rs":
                 continue
-            if LOG_CALL.search(_code_only(f.read_text(encoding="utf-8", errors="replace"))):
+            if LOG_CALL.search(
+                _without_tests(_code_only(f.read_text(encoding="utf-8", errors="replace")))
+            ):
                 return True
     return False
 
@@ -216,7 +295,7 @@ def _logs_in_main(comp: pathlib.Path) -> bool:
     for rel in ("src/main.rs", "src-tauri/src/main.rs"):
         f = comp / rel
         if f.is_file() and LOG_CALL.search(
-            _code_only(f.read_text(encoding="utf-8", errors="replace"))
+            _without_tests(_code_only(f.read_text(encoding="utf-8", errors="replace")))
         ):
             return True
     return False
@@ -340,7 +419,12 @@ def main() -> int:
             # a name no crate here has (a typo, or a rename the filter missed),
             # and a component whose second crate speaks and is not named.
             lib, bins = _crate_names(comp_dir)
-            have = lib | bins | _path_dep_crates(comp_dir)
+            # Targets belong here too: a directive may legitimately name one, and
+            # the rule below REQUIRES some of them. Left out, the two halves of
+            # this check contradicted each other - `audit=info` was demanded by
+            # one and reported as a crate that does not exist by the other.
+            targets = _fine_targets(comp_dir)
+            have = lib | bins | _path_dep_crates(comp_dir) | targets
             directives = {
                 d.split("=", 1)[0].strip()
                 for d in named.group(1).split(",")
@@ -361,6 +445,24 @@ def main() -> int:
                     missing.append(f"the library ({', '.join(sorted(lib))})")
                 if bins and _logs_in_main(comp_dir) and not (bins & directives):
                     missing.append(f"the binary ({', '.join(sorted(bins))})")
+                # Only for a tracing filter. An explicit target is tracing's
+                # vocabulary; an `env_logger` filter selects `log` records, and a
+                # tracing event only becomes one when the bridge is compiled in.
+                # Requiring the directive there would be cargo-cult - and the
+                # shell, which is the component it fired on, is env_logger.
+                fine = {
+                    t
+                    for t in targets
+                    if t not in directives and "::" not in t
+                } if "EnvFilter::new" in named.group(0) else set()
+                if fine:
+                    problems.append(
+                        f"{app}: the log filter does not name {', '.join(sorted(fine))}, "
+                        f"which this component or one of its in-tree dependencies logs "
+                        f"to below warn. A target is not a crate: the line is filed "
+                        f"under that name, so a directive for the crate does not reach "
+                        f"it and the level falls back to the blanket."
+                    )
                 if missing:
                     problems.append(
                         f"{app}: the log filter names {', '.join(sorted(directives))} "
