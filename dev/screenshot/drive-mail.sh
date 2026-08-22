@@ -190,6 +190,11 @@ sealed=$(SHOOT_APP_ARGS="$fix/sealed.eml" SHOOT_INJECT="$fix/probe.js" \
 say "an encrypted message says it is encrypted" \
   "$(printf '%s' "$sealed" | grep -q "encrypted with PGP" && echo 1 || echo 0)" "$sealed"
 
+# Its envelope is not an enclosure. The window said "This message carries 2
+# files, not opened" over the PGP version part and the ciphertext.
+say "and does not offer its envelope as files somebody sent" \
+  "$(printf '%s' "$sealed" | grep -q "carries 2 files" && echo 0 || echo 1)" "$sealed"
+
 say "and does not report itself as a message with no text" \
   "$(printf '%s' "$sealed" | grep -q "no text part" && echo 0 || echo 1)" "$sealed"
 
