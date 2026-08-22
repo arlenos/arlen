@@ -20,3 +20,18 @@ if ! id arlen >/dev/null 2>&1; then
     # user session (and every user service it spawns) inherit journal read access.
     useradd --create-home --shell /bin/bash --groups video,input,render,systemd-journal arlen
 fi
+
+# The per-uid permission directories are shipped as an overlay, and an overlay
+# carries whatever mode the checkout had - 0755, which is listable by anybody.
+# `permission-helper` creates the same directories at 0711 on purpose and says
+# why in its own code: root-write-only, owner-traversable, NOT listable by
+# others, because a profile is a capability declaration rather than a secret and
+# integrity is the property being protected. A shipped image should not disagree
+# with the component that owns the rule, so the modes are set here to what that
+# component would set them to.
+if [ -d /var/lib/arlen/permissions ]; then
+    chmod 0755 /var/lib/arlen/permissions
+    for d in /var/lib/arlen/permissions/*/; do
+        [ -d "$d" ] && chmod 0711 "$d"
+    done
+fi
