@@ -39,3 +39,28 @@ tier = "first-party"
 [event_bus]
 publish = ["code.indexed"]
 subscribe = ["file.opened"]
+
+# The graph read, granted rather than left to the tier.
+#
+# `refresh_roots_if_stale` asks the knowledge daemon one question:
+#
+#   MATCH (p:Project) WHERE p.expired_at IS NULL AND p.root_path IS NOT NULL
+#   RETURN p.root_path AS root
+#
+# and the answer is what stops this indexer walking the whole disk - an
+# unavailable graph keeps the previous roots rather than widening.
+#
+# IT WORKS TODAY WITHOUT THIS SECTION, and that is the reason to write it. The
+# knowledge daemon's read gate lets a system-anchored caller past the label check
+# on its TIER, so this query is admitted because of what the binary is rather
+# than because anybody granted it. A grant makes the read checkable - the
+# `check-read-grants-cover-queries` gate reads the Cypher and the grant together -
+# so a future query touching a field nobody granted is caught here rather than
+# after a stricter gate lands.
+#
+# Both fields the query names, and nothing else.
+[graph]
+read = [
+    "system.Project.root_path",
+    "system.Project.expired_at",
+]
