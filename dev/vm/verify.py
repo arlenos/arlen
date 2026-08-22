@@ -842,6 +842,27 @@ def main():
                          "has to exist BEFORE the session starts - a calendar file "
                          "whose alarm the daemon reads at startup, a config a "
                          "first-run path branches on. Repeatable.")
+    ap.add_argument(
+        "--click-at",
+        action="append",
+        metavar="SECONDS:X,Y",
+        help="click these 1280x800 coordinates this many seconds after QMP connects, "
+        "on the same clock as --shot-at. For driving input INTO a gap - a surface "
+        "that holds the desktop's input before it has painted can be asked the "
+        "question by clicking where its button will be, and whether the answer is "
+        "taken is the whole finding.",
+    )
+    ap.add_argument(
+        "--shot-at",
+        type=float,
+        action="append",
+        metavar="SECONDS",
+        help="capture an extra frame this many seconds after QMP connects, written "
+        "beside --out as `<out>.t<SECONDS>.png`. Repeatable. For a question about "
+        "WHEN something appears rather than whether it did: a surface that is raised "
+        "at 14s and shows its first pixels seconds later cannot be told from one that "
+        "renders instantly by a single shot at the end.",
+    )
     ap.add_argument("--linger", type=int, default=0, metavar="SECONDS",
                     help="stay alive this long after the checks pass, before the "
                          "shutdown. Pair with --keep to get a journal that covers "
@@ -1029,6 +1050,7 @@ def main():
                             stderr=subprocess.DEVNULL, env=qemu_env)
     try:
         sock, f = qmp_connect(qmp_path, time.monotonic() + 30)
+        t_qmp = time.monotonic()
         print(f"QMP connected; letting the session come up ({args.wait}s)...")
         # For the pure top-bar gate (the black-screen rate measurement), POLL for the
         # bar rather than a single wait-then-shot. Under heavy load the shell's WebKit
@@ -1038,6 +1060,48 @@ def main():
         # wait their after-steps depend on.
         # Set when the poll actually saw the bar, so a modal covering the final
         # frame cannot erase that evidence.
+        # The extra frames and the timed clicks share one clock and one ordering,
+        # so a click can be aimed INTO the gap between two frames.
+        timed: list[tuple[float, str, object]] = []
+        for at in args.shot_at or []:
+            timed.append((at, "shot", None))
+        for spec in args.click_at or []:
+            when, _, where = spec.partition(":")
+            cx, cy = (int(v) for v in where.split(","))
+            timed.append((float(when), "click", (cx, cy)))
+
+        for at, kind, arg in sorted(timed, key=lambda t: t[0]):
+            left = at - (time.monotonic() - t_qmp)
+            if left > 0:
+                time.sleep(left)
+            if kind == "click":
+                cx, cy = arg
+                # The frame size is not known before the first capture, and a
+                # click needs it. Take one to learn it; it is thrown away.
+                probe = f"{out}.click{at:g}.png"
+                capture(f, probe, x_display)
+                for _ in range(50):
+                    if os.path.exists(probe) and os.path.getsize(probe) > 0:
+                        break
+                    time.sleep(0.1)
+                try:
+                    cw, ch = Image.open(probe).size
+                except Exception:
+                    cw, ch = 1280, 800
+                qmp_click(f, round(cw * cx / 1280), round(ch * cy / 800), cw, ch)
+                print(f"click at {at:g}s: {cx},{cy}")
+                continue
+            frame = f"{out}.t{at:g}.png"
+            shot = capture(f, frame, x_display)
+            if "error" in shot:
+                print(f"shot at {at:g}s: {shot['error'].get('desc', shot['error'])}")
+            else:
+                for _ in range(50):
+                    if os.path.exists(frame) and os.path.getsize(frame) > 0:
+                        break
+                    time.sleep(0.1)
+                print(f"shot at {at:g}s: {frame}")
+
         bar_seen_while_polling = False
         # Set only when a modal was dismissed and a fresh shot taken; see the note
         # at the app-text check for why the two frames are not interchangeable.
