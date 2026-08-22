@@ -18,10 +18,22 @@ use wayland_client::Connection;
 const RELOAD_SETTLE: Duration = Duration::from_millis(150);
 
 fn main() {
+    // `warn` for everything, `info` for this daemon's own two crates. A bare
+    // `info` sets the level for every dependency in the process as well, and the
+    // Wayland and image stacks under this one are chatty at info.
+    //
+    // BOTH names are needed and that is not a belt-and-braces choice: a tracing
+    // target roots at the crate the line was compiled into, so the 13 calls in
+    // this binary belong to `arlen_wallpaperd` while the 5 in `decode`/`render`
+    // belong to the library. Naming one would have muted the other, which is the
+    // defect rather than the fix.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new(
+                    "warn,arlen_wallpaperd=info,arlen_wallpaper=info",
+                )
+            }),
         )
         .init();
 
@@ -273,5 +285,68 @@ mod tests {
                 "{other} must not trigger a wallpaper reload"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use std::io;
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::EnvFilter;
+
+    #[derive(Clone, Default)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for Captured {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
+        type Writer = Captured;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// The default filter must let BOTH of this daemon's crates through at info
+    /// while holding dependencies at warn.
+    ///
+    /// This is here because the same string is about to be written into twenty
+    /// more daemons, and the failure it guards against is silent: a directive
+    /// naming one crate mutes the other, and the only symptom is a journal that
+    /// looks quiet. Events are emitted with explicit targets, so the assertion is
+    /// about the filter rather than about where this test happens to be compiled.
+    #[test]
+    fn the_default_filter_lets_both_of_this_daemons_crates_speak() {
+        let sink = Captured::default();
+        let layer = tracing_subscriber::fmt::layer()
+            .with_writer(sink.clone())
+            .with_ansi(false);
+        let subscriber = tracing_subscriber::registry()
+            .with(EnvFilter::new("warn,arlen_wallpaperd=info,arlen_wallpaper=info"))
+            .with(layer);
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(target: "arlen_wallpaperd", "from the binary");
+            tracing::info!(target: "arlen_wallpaper::render", "from the library");
+            tracing::info!(target: "wayland_client", "a dependency at info");
+            tracing::warn!(target: "wayland_client", "a dependency at warn");
+        });
+
+        let out = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
+        assert!(out.contains("from the binary"), "binary muted: {out}");
+        assert!(out.contains("from the library"), "library muted: {out}");
+        assert!(
+            !out.contains("a dependency at info"),
+            "a dependency spoke at info: {out}"
+        );
+        assert!(out.contains("a dependency at warn"), "warn lost: {out}");
     }
 }
