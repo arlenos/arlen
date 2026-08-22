@@ -55,3 +55,21 @@ read = [
     "system.Project.root_path",
     "system.Project.status",
 ]
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# BOTH LISTS ARE EMPTY, AND THAT IS THE DECLARATION. Declaring is what bounds a
+# component - the bus holds a consumer to its list whatever its tier, and one
+# that declares nothing keeps the machine-wide view - so an empty list is not the
+# same as no section: it says this component has no business on the bus, where
+# silence said it may read everything on it.
+#
+# Read out of `src/bin/arlen-timeline.rs`, all 125 lines of it: the FUSE helper
+# mounts a filesystem and answers lookups by querying the knowledge daemon over
+# its socket. It subscribes to nothing and emits nothing. Its reach is the
+# `[graph]` scope above, which is where the interesting question about this
+# component lives.
+[event_bus]
+publish = []
+subscribe = []
