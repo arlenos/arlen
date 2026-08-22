@@ -49,6 +49,37 @@ function run(root) {
   }
 }
 
+// A frontend under `daemons/` with a TypeScript vite config: two things this
+// check could not see at once, which is how the picker came to serve on the same
+// port as Settings with `strictPort` on both.
+{
+  const root = mkdtempSync(join(tmpdir(), "dev-ports-daemon-"));
+  mkdirSync(join(root, "apps", "one", "src-tauri"), { recursive: true });
+  writeFileSync(
+    join(root, "apps", "one", "vite.config.js"),
+    "export default { server: { port: 1421, strictPort: true, hmr: { port: 1422 } } };\n",
+  );
+  writeFileSync(
+    join(root, "apps", "one", "src-tauri", "tauri.conf.json"),
+    JSON.stringify({ build: { devUrl: "http://localhost:1421" } }, null, 2),
+  );
+  const ui = join(root, "daemons", "some-portal", "its-ui");
+  mkdirSync(join(ui, "src-tauri"), { recursive: true });
+  writeFileSync(
+    join(ui, "vite.config.ts"),
+    "export default { server: { port: 1421, strictPort: true, hmr: { port: 1422 } } };\n",
+  );
+  writeFileSync(
+    join(ui, "src-tauri", "tauri.conf.json"),
+    JSON.stringify({ build: { devUrl: "http://localhost:1421" } }, null, 2),
+  );
+  const code = run(root);
+  if (code === 1) ok("a daemon frontend on an app's port is caught, TypeScript config and all");
+  else bad("a daemon frontend on an app's port is caught, TypeScript config and all", `exit ${code}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+
 const cases = [
   ["distinct ports pass", { a: [1420, 1520, 1420], b: [1422, 1522, 1422] }, 0],
   ["two apps on one server port is caught", { a: [1429, 1529, 1429], b: [1429, 1530, 1429] }, 1],
