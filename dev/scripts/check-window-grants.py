@@ -157,7 +157,13 @@ def frontend(app: Path, kit: str) -> str:
 
 
 def main() -> int:
+    # The picker grants window permissions like any Tauri frontend, and its
+    # capability file was never read by this check because it lives under
+    # `daemons/`.
     apps = sorted(p for p in (ROOT / "apps").glob("*") if (p / "src-tauri").is_dir())
+    apps += sorted(
+        p for p in (ROOT / "daemons").glob("*/*") if (p / "src-tauri").is_dir()
+    )
     if not apps:
         # A count of zero is only honest when there was something to count.
         print("found no Tauri apps under apps/; the layout moved and this check went quiet")
