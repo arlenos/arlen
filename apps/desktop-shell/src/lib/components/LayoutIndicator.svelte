@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   /// Layout-mode indicator for the top bar.
   ///
   /// Wraps the shared `Applet` primitive. Reflects the current
@@ -15,15 +16,11 @@
   let mode = $state("floating");
 
   async function poll() {
-    try {
-      const s = await invoke<{ mode: string }>("get_layout_state");
-      mode = s.mode;
-    } catch (e) {
-      // Keeps the last known mode rather than inventing one, which is right -
-      // but a poll that has been failing for an hour looks identical to a layout
-      // that has not changed, so it says so in the log.
-      invoke("log_frontend", { message: `[layout] mode could not be read: ${e}` }).catch(() => {});
-    }
+    // Keeps the last known mode rather than inventing one, and says in the log
+    // when it could not be read: a poll that has been failing for an hour looks
+    // identical to a layout that has not changed.
+    const s = await shellRead<{ mode: string }>("get_layout_state", "layout");
+    if (s !== null) mode = s.mode;
   }
 
   poll();

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// Top-bar Night Light badge.
   ///
@@ -26,10 +27,8 @@
   });
 
   async function refresh() {
-    try {
-      const c = await invoke<ShellConfig>("get_shell_config");
-      active = c.night_light?.enabled ?? false;
-    } catch {}
+    const c = await shellRead<ShellConfig>("get_shell_config", "night-light");
+    if (c !== null) active = c.night_light?.enabled ?? false;
   }
 
   function handleClick() {
