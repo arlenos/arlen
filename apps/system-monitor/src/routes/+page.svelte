@@ -130,7 +130,7 @@
     {#if $lastError}
       <!-- A refused action must be visible: the row already reverted, and this
            says why, so a failed Stop never passes as a killed process. -->
-      <p class="note error" role="alert">{$lastError}</p>
+      <p class="note error" role="alert">{$t($lastError.key, $lastError.values)}</p>
     {/if}
     <div class="toolbar">
       <span class="filter">
