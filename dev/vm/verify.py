@@ -1516,16 +1516,22 @@ def main():
         # either exists or it does not. Read AFTER the run, out of the overlay
         # that boot wrote into - checking from a second boot would ask a machine
         # that never took the screenshot, which is a fresh overlay every time.
-        script = "run\nmount-ro /dev/sda2 /\n"
+        # ONE guestfish per path, not one script for all of them. A path that is
+        # not there makes guestfish exit non-zero, and a single script would let
+        # one missing directory discard every other listing - the same trap the
+        # journal reader below documents about a glob that matches nothing. A
+        # missing directory is also an ANSWER here ("the app never made it"), so
+        # it has to be reported rather than lost.
         for path in args.inspect:
-            script += f"ll {path}\n"
-        r = subprocess.run(["guestfish", "--ro", "-a", overlay],
-                           input=script, capture_output=True, text=True)
-        if r.returncode != 0:
-            print(f"inspect: could not read the overlay ({r.stderr.strip()})")
-        else:
-            for path in args.inspect:
-                print(f"inspect {path}:")
+            r = subprocess.run(
+                ["guestfish", "--ro", "-a", overlay],
+                input=f"run\nmount-ro /dev/sda2 /\nll {path}\n",
+                capture_output=True, text=True)
+            if r.returncode != 0:
+                first = (r.stderr.strip().splitlines() or ["no such directory"])[-1]
+                print(f"inspect {path}: NOT READ - {first}")
+                continue
+            print(f"inspect {path}:")
             for line in r.stdout.strip().splitlines():
                 print(f"  {line}")
 
