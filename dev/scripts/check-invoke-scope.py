@@ -102,10 +102,30 @@ def wrapped_calls(body: str) -> set[str]:
 # evening. Cleared on 12 Aug, and the guard below is why it cannot happen again.
 ACKNOWLEDGED: dict[str, str] = {}
 
+# Where each frontend actually lives, filled as files are attributed. A name is
+# not a path once frontends live in two trees: rebuilding `apps/<name>` from the
+# name sent the picker into the backendless bucket, which reads as "this has no
+# backend to move a command into" about a frontend that has one.
+APP_DIRS: dict[str, pathlib.Path] = {}
+
+
 def app_of(path: pathlib.Path) -> str | None:
-    """The app a file belongs to, or `None` for anything outside `apps/`."""
+    """The frontend a file belongs to, or `None` for anything outside one.
+
+    `apps/<name>/…` and `daemons/<daemon>/<name>/…`: the file picker is a Tauri
+    frontend with its own binary and its own handler, so the question this check
+    asks - does this frontend invoke a command ITS OWN binary defines - is the
+    same question there. It sat outside an `apps/`-only reading for as long as it
+    has existed.
+    """
     parts = path.relative_to(ROOT).parts
-    return parts[1] if len(parts) > 2 and parts[0] == "apps" else None
+    if len(parts) > 2 and parts[0] == "apps":
+        APP_DIRS.setdefault(parts[1], ROOT / parts[0] / parts[1])
+        return parts[1]
+    if len(parts) > 3 and parts[0] == "daemons":
+        APP_DIRS.setdefault(parts[2], ROOT / parts[0] / parts[1] / parts[2])
+        return parts[2]
+    return None
 
 
 def scan(
@@ -177,7 +197,7 @@ def main() -> int:
             elsewhere = sorted(a for a, cs in defines.items() if cmd in cs)
             if not elsewhere:
                 continue  # nobody defines it: check-invoke-shape's finding, not this one
-            if not (ROOT / "apps" / app / "src-tauri").is_dir():
+            if not (APP_DIRS.get(app, ROOT / "apps" / app) / "src-tauri").is_dir():
                 # A different fact, and the remedy above would be impossible
                 # advice: you cannot move a command into an app that has no
                 # backend to move it into. The name matching another app's
