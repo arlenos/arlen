@@ -198,6 +198,29 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
   rmSync(d, { recursive: true, force: true });
 }
 
+// A package's extra binaries live in `src/bin/` and are their own crates. The
+// knowledge daemon's timeline helper kept a blanket level through the whole pass
+// that fixed twenty-four others, because nothing here looked in that directory.
+{
+  const d = mkdtempSync(join(tmpdir(), "log-filters-bin-"));
+  const app = join(d, "apps", "one", "src-tauri", "src");
+  mkdirSync(app, { recursive: true });
+  writeFileSync(join(app, "lib.rs"), GOOD);
+  const bin = join(d, "daemons", "three", "src", "bin");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(d, "daemons", "three", "src", "main.rs"), "fn main() {}\n");
+  writeFileSync(
+    join(bin, "helper.rs"),
+    'fn main() { tracing_subscriber::EnvFilter::new("info"); }\n',
+  );
+  const r = run(d);
+  check(
+    "an extra binary under src/bin is read, under its own name",
+    r.code === 1 && r.out.includes("helper"),
+  );
+  rmSync(d, { recursive: true, force: true });
+}
+
 // Pointed somewhere with no apps, "nothing wrong" would describe a scan that
 // read nothing.
 {

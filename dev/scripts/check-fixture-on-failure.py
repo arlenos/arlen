@@ -352,7 +352,12 @@ def main() -> int:
     catches = 0
     rendered = 0
     used: set[str] = set()
-    for path in sorted((ROOT / "apps").rglob("*.ts")) + sorted((ROOT / "apps").rglob("*.svelte")):
+    # The daemons carry frontends too - the file picker is the dialog every app
+    # borrows - and a fixture shown there would be a listing nobody has.
+    trees = [ROOT / "apps", ROOT / "daemons"]
+    for path in sorted(f for t in trees for f in t.rglob("*.ts")) + sorted(
+        f for t in trees for f in t.rglob("*.svelte")
+    ):
         s = str(path)
         if any(k in s for k in SKIP) or "node_modules" in s or "/src/" not in s:
             continue
