@@ -292,6 +292,22 @@ HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
 # The commands with no host, as of 9 August, with what each one is. Keeping the
 # reason next to the name is the difference between an inventory and an alibi.
 KNOWN: dict[str, dict[str, str]] = {
+    # The file picker. Both of these are NEEDS A PRODUCER: the portal daemon has
+    # no recent-files source and no thumbnailer, so on a real machine the Recent
+    # group never appears and the grid shows icons only. They read as features in
+    # `routes/_pickertest`, which answers both from its mock - which is how a
+    # look-mock ends up showing a section the product does not have.
+    "picker-ui": {
+        "picker_recent": (
+            "the sidebar's Recent group. Needs a producer: nothing in the portal "
+            "daemon keeps a recent-files list, and the picker is confined to the "
+            "daemon's cap-std root, so it cannot read one itself"
+        ),
+        "picker_thumbnail": (
+            "grid-view thumbnails. Needs a producer: no thumbnailer runs behind "
+            "the picker, so the tile falls back to its icon every time"
+        ),
+    },
     "knowledge": {
         "knowledge_library": (
             "the library view. Traced: the bridge-ingest daemon writes into dynamic "
@@ -438,7 +454,17 @@ def main() -> int:
     findings: list[str] = []
     inventory = 0
     uncalled: list[str] = []
+    # `apps/` plus the frontends under `daemons/`: the file picker is a Tauri
+    # frontend with its own `src-tauri`, so the pairing this check does - what the
+    # UI invokes against what the host registers - applies to it unchanged. It was
+    # outside the scope for as long as it existed, and the first run that included
+    # it found a command nothing registers.
     apps = sorted(p for p in (ROOT / "apps").iterdir() if (p / "package.json").exists())
+    apps += sorted(
+        p
+        for p in (ROOT / "daemons").glob("*/*")
+        if (p / "package.json").exists() and (p / "src-tauri").is_dir()
+    )
 
     # Commands the SHARED KIT invokes, read once and offered to every app.
     #
@@ -501,7 +527,7 @@ def main() -> int:
                 inventory += 1
                 continue
             findings.append(
-                f"apps/{app.name}: invokes `{name}`, which neither its host nor a "
+                f"{app.relative_to(ROOT)}: invokes `{name}`, which neither its host nor a "
                 f"plugin registers. Every call throws; whatever the catch does is "
                 f"what the user gets."
             )
