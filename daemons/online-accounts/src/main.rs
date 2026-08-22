@@ -16,9 +16,14 @@ use zbus::connection;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for both of this daemon's crates. The binary
+        // is `arlen-accountsd` and the library `online-accounts`; the library holds
+        // the account handling, so naming only the binary would mute the half that
+        // matters most here.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_accountsd=info,online_accounts=info")
+            }),
         )
         .init();
 

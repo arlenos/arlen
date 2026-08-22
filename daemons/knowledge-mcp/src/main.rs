@@ -8,9 +8,13 @@ use arlen_knowledge_mcp::{knowledge_socket_path, KnowledgeMcp, SERVER_ID};
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this server. It answers graph questions
+        // for a model; a blanket level puts the transport's frames - and with them
+        // the rows - beside its own lines.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_knowledge_mcp=info")
+            }),
         )
         .init();
 

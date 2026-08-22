@@ -55,9 +55,13 @@ fn idle_timeout() -> Duration {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this backend. Every module is declared
+        // here, so one directive covers the lot; the picker frontend beside it is a
+        // separate crate with its own filter.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,xdg_desktop_portal_arlen=info")
+            }),
         )
         .init();
 

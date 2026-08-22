@@ -77,15 +77,6 @@ TRACING_QUEUE: frozenset[str] = frozenset(
         "ai-proxy",
         "ai-undo-signer",
         "ai-engine-daemon",
-        "calendar",
-        "clock",
-        "file-manager-mcp",
-        "knowledge-mcp",
-        "notification-daemon",
-        "online-accounts",
-        "system-monitor-mcp",
-        "terminal-run-mcp",
-        "xdg-portal",
     }
 )
 DAEMONS = ROOT / "daemons"
