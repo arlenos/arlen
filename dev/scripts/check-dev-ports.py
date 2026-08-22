@@ -44,7 +44,14 @@ DEV_URL = re.compile(r'"devUrl": *"http://localhost:(\d+)"')
 
 def ports_of(app: Path) -> tuple[int | None, int | None, int | None]:
     """(server, hmr, devUrl) for one app; any may be None."""
-    vite = app / "vite.config.js"
+    # `.ts` as well: the picker's config is TypeScript, and a check that only
+    # looked for `.js` read no ports from it at all - which is how it came to
+    # share 1421 with Settings, the app you are most likely to have running when
+    # you open a file dialog.
+    vite = next(
+        (v for v in (app / "vite.config.js", app / "vite.config.ts") if v.is_file()),
+        app / "vite.config.js",
+    )
     conf = app / "src-tauri/tauri.conf.json"
     server = hmr = dev = None
     if vite.is_file():
@@ -66,7 +73,12 @@ def main() -> int:
         return 1
 
     apps = {}
-    for d in sorted(APPS.iterdir()):
+    # Frontends under `daemons/` claim dev ports from the same range and collide
+    # the same way.
+    dirs = sorted(APPS.iterdir()) + sorted(
+        d for d in (ROOT / "daemons").glob("*/*") if (d / "src-tauri").is_dir()
+    )
+    for d in dirs:
         if not d.is_dir():
             continue
         server, hmr, dev = ports_of(d)
