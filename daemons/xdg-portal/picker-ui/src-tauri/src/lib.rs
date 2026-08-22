@@ -5,6 +5,7 @@
 
 mod fs_commands;
 mod ipc_client;
+mod locale;
 mod theme;
 
 use std::sync::Arc;
@@ -93,6 +94,7 @@ pub fn run() {
         .setup(move |app| {
             let app_handle = app.handle().clone();
             let client = client.clone();
+            locale::spawn_locale_watcher(app.handle().clone());
             // Connect to the daemon in the background; if it is not
             // running yet, abort with a non-zero exit so systemd /
             // shell scripts see the failure rather than the picker
@@ -110,6 +112,7 @@ pub fn run() {
             picker_take_pending,
             frontend_log,
             get_theme,
+            locale::locale_get,
             fs_commands::list_directory,
             fs_commands::resolve_start_dir,
             fs_commands::parent_dir,

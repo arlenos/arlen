@@ -12,21 +12,29 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Place, PlaceGroup } from "@arlen/ui-kit/components/browser";
 
+/// Write one message. The caller passes it in: this module has no locale of its
+/// own, and a place list built at startup in whatever language was current would
+/// keep it through a switch.
+type Write = (key: string) => string;
+
 interface ConventionalDir {
-  label: string;
+  /// The message key for what a reader sees.
+  key: string;
   icon: string;
+  /// The folder ON DISK, which keeps its own name whatever the reader's
+  /// language is. Translating this would build a path that does not exist.
   sub: string;
 }
 
 /// The conventional XDG user dirs, in sidebar order. Home is the root;
 /// the rest hang off it.
 const CONVENTIONAL: ConventionalDir[] = [
-  { label: "Documents", icon: "documents", sub: "Documents" },
-  { label: "Downloads", icon: "downloads", sub: "Downloads" },
-  { label: "Pictures", icon: "pictures", sub: "Pictures" },
-  { label: "Music", icon: "music", sub: "Music" },
-  { label: "Videos", icon: "videos", sub: "Videos" },
-  { label: "Desktop", icon: "desktop", sub: "Desktop" },
+  { key: "p.place.documents", icon: "documents", sub: "Documents" },
+  { key: "p.place.downloads", icon: "downloads", sub: "Downloads" },
+  { key: "p.place.pictures", icon: "pictures", sub: "Pictures" },
+  { key: "p.place.music", icon: "music", sub: "Music" },
+  { key: "p.place.videos", icon: "videos", sub: "Videos" },
+  { key: "p.place.desktop", icon: "desktop", sub: "Desktop" },
 ];
 
 function joinHome(home: string, sub: string): string {
@@ -34,35 +42,41 @@ function joinHome(home: string, sub: string): string {
 }
 
 /// Build the conventional places group from a resolved home path.
-export function conventionalPlaces(home: string): PlaceGroup {
+export function conventionalPlaces(home: string, write: Write): PlaceGroup {
   const places: Place[] = [
-    { label: "Home", icon: "home", path: home },
+    { label: write("p.place.home"), icon: "home", path: home },
     ...CONVENTIONAL.map((d) => ({
-      label: d.label,
+      label: write(d.key),
       icon: d.icon,
       path: joinHome(home, d.sub),
     })),
   ];
-  return { label: "Places", places };
+  return { label: write("p.places.places"), places };
 }
 
-/// Build the Recent group from the routed picker-side recent feed.
+/// Fetch the recent places from the routed picker-side recent feed.
 /// Returns null (the group does not render) when there is no recent
 /// data or the command is unavailable.
-export async function recentGroup(): Promise<PlaceGroup | null> {
+export async function recentPlaces(): Promise<Place[] | null> {
   try {
     const recent = await invoke<Place[]>("picker_recent");
     if (!recent || recent.length === 0) return null;
-    return {
-      label: "Recent",
-      // The rail would show identical clock glyphs; keep Recent out of
-      // the collapsed icon rail.
-      railHidden: true,
-      places: recent.map((p) => ({ ...p, icon: "recent" })),
-    };
+    return recent.map((p) => ({ ...p, icon: "recent" }));
   } catch {
     return null;
   }
+}
+
+/// Wrap the recent places in their group. Separate from the fetch so the group
+/// can be rebuilt in a new language without asking the daemon again.
+export function recentGroup(places: Place[], write: Write): PlaceGroup {
+  return {
+    label: write("p.places.recent"),
+    // The rail would show identical clock glyphs; keep Recent out of
+    // the collapsed icon rail.
+    railHidden: true,
+    places,
+  };
 }
 
 /// Resolve the home path the picker starts from (the daemon picks the

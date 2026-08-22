@@ -58,15 +58,16 @@ export const MULTI_SELECT_CAP = 256;
 /// `<currentDir>/<filename>`; a name with separators or `..` could
 /// escape the displayed directory and hand a sandboxed caller a
 /// writable export elsewhere. The daemon's `validate_save_path` is the
-/// second line of defence. Returns null when acceptable, else an error
-/// string for inline display.
+/// second line of defence. Returns null when acceptable, else the message
+/// key for the reason, which the field renders in the reader's language: a
+/// store has no locale, so it names the sentence rather than writing it.
 export function validateFilename(name: string): string | null {
-  if (!name || name.length === 0) return "Filename is required.";
-  if (name === "." || name === "..") return "Reserved name.";
-  if (name.includes("/")) return "Slashes are not allowed in the filename.";
-  if (name.includes("\0")) return "Filename cannot contain a NUL byte.";
+  if (!name || name.length === 0) return "p.err.required";
+  if (name === "." || name === "..") return "p.err.reserved";
+  if (name.includes("/")) return "p.err.slash";
+  if (name.includes("\0")) return "p.err.nul";
   for (const c of name) {
-    if (c.charCodeAt(0) < 0x20) return "Filename cannot contain control characters.";
+    if (c.charCodeAt(0) < 0x20) return "p.err.control";
   }
   return null;
 }

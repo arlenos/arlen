@@ -32,6 +32,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
 toml = "0.8"
 dirs = "5"
+arlen-i18n = { path = "../../../../sdk/i18n" }
+notify = "6"
 
 [features]
 default = ["custom-protocol"]
