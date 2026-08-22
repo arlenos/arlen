@@ -843,6 +843,15 @@ def main():
                          "whose alarm the daemon reads at startup, a config a "
                          "first-run path branches on. Repeatable.")
     ap.add_argument(
+        "--key-at",
+        action="append",
+        metavar="SECONDS:NAME",
+        help="press a QMP key this many seconds after QMP connects, on the same "
+        "clock as --shot-at and --click-at. Answering a queued dialog is often the "
+        "PRECONDITION for the thing being measured - a broker that shows one card "
+        "at a time never raises a second one until the first is answered.",
+    )
+    ap.add_argument(
         "--click-at",
         action="append",
         metavar="SECONDS:X,Y",
@@ -1069,11 +1078,18 @@ def main():
             when, _, where = spec.partition(":")
             cx, cy = (int(v) for v in where.split(","))
             timed.append((float(when), "click", (cx, cy)))
+        for spec in args.key_at or []:
+            when, _, name = spec.partition(":")
+            timed.append((float(when), "key", name))
 
         for at, kind, arg in sorted(timed, key=lambda t: t[0]):
             left = at - (time.monotonic() - t_qmp)
             if left > 0:
                 time.sleep(left)
+            if kind == "key":
+                qmp_key(f, arg)
+                print(f"key at {at:g}s: {arg}")
+                continue
             if kind == "click":
                 cx, cy = arg
                 # The frame size is not known before the first capture, and a
