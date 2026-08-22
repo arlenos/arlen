@@ -19,9 +19,16 @@ use transfer_daemon::config;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this daemon's two crates and for the
+        // `audit` target. The binary is `arlen-transferd` and the library is
+        // `transfer-daemon`, so both need naming; `audit` is a target rather than a
+        // crate, and this daemon authenticates the peers it transfers for.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new(
+                    "warn,arlen_transferd=info,transfer_daemon=info,audit=info",
+                )
+            }),
         )
         .init();
 

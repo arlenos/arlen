@@ -21,9 +21,11 @@ const STARTUP_GRACE_SECS: i64 = 120;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this daemon. One name covers both its
+        // crates: package, library and binary are all `arlen-anomalyd`.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,arlen_anomalyd=info")),
         )
         .init();
 
