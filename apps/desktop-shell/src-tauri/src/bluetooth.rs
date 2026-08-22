@@ -36,7 +36,10 @@ pub struct BluetoothDevice {
 }
 
 /// Overall Bluetooth state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// `Default` is the honest empty one - no adapter, nothing powered, no devices -
+/// which is what a machine with no BlueZ has.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BluetoothState {
     /// Whether a Bluetooth adapter exists at all.
     pub available: bool,
@@ -220,6 +223,19 @@ fn guess_icon_from_name(name: &str) -> String {
 type ManagedObjects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
 
 /// Fetch all managed objects from BlueZ via the ObjectManager interface.
+/// Whether this error means "there is no BlueZ here" rather than "the read
+/// failed".
+///
+/// D-Bus says it two ways depending on how the service is missing: a name that
+/// was never installed is `ServiceUnknown` / not activatable, and a name that
+/// nobody owns right now is `NameHasNoOwner`. Both mean the same thing to a
+/// person looking at a Bluetooth panel.
+fn service_is_absent(error: &str) -> bool {
+    error.contains("ServiceUnknown")
+        || error.contains("NameHasNoOwner")
+        || error.contains("not activatable")
+}
+
 async fn get_managed_objects(conn: &Connection) -> Result<ManagedObjects, String> {
     let proxy = zbus::Proxy::new(conn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager")
         .await
@@ -283,7 +299,21 @@ pub async fn get_bluetooth_state() -> Result<BluetoothState, String> {
         .await
         .map_err(|e| format!("system bus: {e}"))?;
 
-    let objects = get_managed_objects(&conn).await?;
+    // A MACHINE WITHOUT BLUEZ IS NOT A FAILED READ. On an image that ships no
+    // bluetooth service the call comes back `ServiceUnknown: The name is not
+    // activatable`, and this used to hand that up as an error - so the popover
+    // showed a red "Could not read the Bluetooth state" where the truth is
+    // simply that this device has no Bluetooth. `available: false` is the state
+    // that says so, and the window already has a sentence for it.
+    //
+    // Only the name being absent is treated this way. The system bus failing,
+    // or BlueZ answering something unexpected, stays an error: "there is none"
+    // and "I could not tell" are the two answers that must not be confused.
+    let objects = match get_managed_objects(&conn).await {
+        Ok(objects) => objects,
+        Err(e) if service_is_absent(&e) => return Ok(BluetoothState::default()),
+        Err(e) => return Err(e),
+    };
 
     // Find the first Adapter1 interface.
     let mut available = false;
@@ -694,4 +724,37 @@ async fn find_adapter_path(conn: &Connection) -> Result<String, String> {
         }
     }
     Err("No Bluetooth adapter found".into())
+}
+
+#[cfg(test)]
+mod absence_tests {
+    use super::service_is_absent;
+
+    /// The two shapes a missing service takes on the bus, and one that is NOT a
+    /// missing service.
+    ///
+    /// The distinction is the whole point: "there is no Bluetooth here" and "I
+    /// could not tell" are different answers, and only the first one may be
+    /// shown as an empty panel. A timeout is the second - the service may be
+    /// there and slow - so it stays an error.
+    #[test]
+    fn a_name_nobody_installed_or_owns_reads_as_absent() {
+        assert!(service_is_absent(
+            "GetManagedObjects: org.freedesktop.DBus.Error.ServiceUnknown: \
+             The name org.bluez was not provided by any .service files"
+        ));
+        assert!(service_is_absent(
+            "GetManagedObjects: org.freedesktop.DBus.Error.NameHasNoOwner: no owner"
+        ));
+        assert!(service_is_absent("The name is not activatable"));
+    }
+
+    #[test]
+    fn a_read_that_merely_failed_is_not_absence() {
+        assert!(!service_is_absent(
+            "GetManagedObjects: org.freedesktop.DBus.Error.NoReply: timed out"
+        ));
+        assert!(!service_is_absent("deserialize: unexpected type"));
+        assert!(!service_is_absent("system bus: connection refused"));
+    }
 }
