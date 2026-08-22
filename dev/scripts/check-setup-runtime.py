@@ -121,7 +121,10 @@ def fn_bodies(app_src: Path) -> dict[str, tuple[bool, str, Path]]:
 def main() -> int:
     findings: list[str] = []
     checked = 0
+    # The picker has a `setup` hook of its own - it spawns the daemon connection
+    # there - and it is a Tauri app in every way this check cares about.
     libs = sorted((ROOT / "apps").glob("*/src-tauri/src/lib.rs"))
+    libs += sorted((ROOT / "daemons").glob("*/*/src-tauri/src/lib.rs"))
     # A crate with no setup hook is a legitimate zero and several have none, so
     # the emptiness that has to be refused is one level up: no `lib.rs` where every
     # app keeps one. That is a wrong root or a moved layout, and the line below
