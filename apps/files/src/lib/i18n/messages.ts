@@ -32,6 +32,10 @@ const messages: Catalogs = {
     "f.open.didNotStart": "{$what} did not start.",
     "f.open.refused": "The shell refused to open this.",
     "f.open.failed": "This did not open: {$what}",
+    "f.done.trash":
+      ".input {$count :number}\n.match $count\none {{Moved to Trash. Ctrl+Z puts it back.}}\n* {{Moved {$count} items to Trash. Ctrl+Z puts them back.}}",
+    "f.done.delete":
+      ".input {$count :number}\n.match $count\none {{Deleted for good. This one cannot be taken back.}}\n* {{Deleted {$count} items for good. These cannot be taken back.}}",
     "f.prov.partOf": "Part of {$actor}, {$when}. Recorded from what Arlen observed.",
     "f.prov.lastOpenedBy": "Last opened by {$actor}, {$when}. Recorded from what Arlen observed.",
     "f.prov.attested": "Verified as from {$actor}, {$when}, by a content credential.",
@@ -362,6 +366,10 @@ const messages: Catalogs = {
     "f.open.didNotStart": "{$what} ist nicht gestartet.",
     "f.open.refused": "Die Shell hat das Öffnen abgelehnt.",
     "f.open.failed": "Das wurde nicht geöffnet: {$what}",
+    "f.done.trash":
+      ".input {$count :number}\n.match $count\none {{In den Papierkorb verschoben. Strg+Z legt es zurück.}}\n* {{{$count} Einträge in den Papierkorb verschoben. Strg+Z legt sie zurück.}}",
+    "f.done.delete":
+      ".input {$count :number}\n.match $count\none {{Endgültig gelöscht. Das lässt sich nicht zurückholen.}}\n* {{{$count} Einträge endgültig gelöscht. Das lässt sich nicht zurückholen.}}",
     "f.prov.partOf": "Teil von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
     "f.prov.lastOpenedBy": "Zuletzt ge\u00f6ffnet von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
     "f.prov.attested": "Best\u00e4tigt als von {$actor}, {$when}, durch ein Inhaltszertifikat.",

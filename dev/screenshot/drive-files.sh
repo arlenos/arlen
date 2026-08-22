@@ -78,6 +78,13 @@ await wait(600);
   .dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
 await wait(2000);
 out.afterDelete = listing();
+// What the window SAYS it did. A row leaving the list is feedback of a kind;
+// where the file went, and that the app can put it back, was said nowhere.
+// Matched on the SENTENCE, not on the word: the sidebar has a "Trash" place in
+// it and `/Trash[^\n]*/` finds that one first, which is what this probe did on
+// its first run - it reported "Trash" and I nearly filed the status line as
+// missing when it was the reader looking in the wrong place.
+out.saidAfterDelete = (document.body.innerText.match(/Moved to Trash[^\n]*/) || [""])[0].trim();
 '
 
 { printf '%s' "$common"; echo 'return JSON.stringify(out);'; } > "$work/.delete.js"
@@ -96,6 +103,10 @@ got=$(SHOOT_INJECT="$work/.delete.js" "$here/shoot-app.sh" "$app" "$here/out/fil
   | sed -n 's/^inject result: //p')
 say "opens a folder and lists what is in it" \
   "$(printf '%s' "$got" | grep -q '"opened":\["alpha.txt","beta.txt","sub"\]' && echo 1 || echo 0)" "$got"
+say "and the window says where it went, and how to get it back" \
+  "$(printf '%s' "$got" | grep -q "Moved to Trash" \
+     && printf '%s' "$got" | grep -q "Ctrl+Z" && echo 1 || echo 0)" "$got"
+
 say "Delete takes the file off the disk, not just out of the list" \
   "$(printf '%s' "$got" | grep -q '"afterDelete":\["alpha.txt","sub"\]' \
      && [ ! -e "$work/beta.txt" ] && echo 1 || echo 0)" \
