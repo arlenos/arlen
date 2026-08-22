@@ -205,7 +205,7 @@ TARGET_ENTRYPOINTS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _fine_targets(comp: pathlib.Path) -> set[str]:
+def _fine_targets(comp: pathlib.Path, own_text: str | None = None) -> set[str]:
     """Explicit log targets this component can emit BELOW warn, its in-tree
     dependencies included.
 
@@ -223,7 +223,11 @@ def _fine_targets(comp: pathlib.Path) -> set[str]:
     # strand is the right route for someone else, and a raw text search read that
     # as ai-proxy authenticating peers - which it does not, and it does not even
     # depend on the crate.
-    own = "\n".join(
+    # `own_text` is for a `src/bin/` binary, whose reach is its own file rather
+    # than every file in the package: the timeline helper links the knowledge
+    # library but calls none of its peer authentication, and reading the package
+    # made the check demand a target that binary cannot emit.
+    own = own_text if own_text is not None else "\n".join(
         _code_only(f.read_text(encoding="utf-8", errors="replace"))
         for r in roots
         if r.is_dir()
@@ -338,6 +342,16 @@ def _components() -> list:
                             )
                         )
                 continue
+            # A package's extra binaries under `src/bin/` are their own crates with
+            # their own `main`, and they were read by nothing here: the knowledge
+            # daemon's timeline helper kept a blanket `info` through the whole pass
+            # that took twenty-four of them off, because the scan only ever looked
+            # at `src/*.rs`.
+            for extra in sorted((comp.joinpath(*rel) / "bin").glob("*.rs")):
+                text = _code_only(extra.read_text(encoding="utf-8", errors="replace"))
+                if "env_logger" in text or "tracing_subscriber" in text:
+                    out.append((extra.stem, text, comp, text))
+
             # A daemon may hold its crate one level down (kernel-layer/kernel-layer).
             roots = [comp.joinpath(*rel)]
             roots += [c.joinpath(*rel) for c in sorted(comp.iterdir()) if c.is_dir()]
@@ -367,7 +381,7 @@ def main() -> int:
 
     problems: list[str] = []
     checked = 0
-    for app, text, comp_dir in _components():
+    for app, text, comp_dir, *own in _components():
         if "env_logger" not in text and "tracing_subscriber" not in text:
             continue
         checked += 1
@@ -405,7 +419,7 @@ def main() -> int:
             # the rule below REQUIRES some of them. Left out, the two halves of
             # this check contradicted each other - `audit=info` was demanded by
             # one and reported as a crate that does not exist by the other.
-            targets = _fine_targets(comp_dir)
+            targets = _fine_targets(comp_dir, own[0] if own else None)
             have = lib | bins | _path_dep_crates(comp_dir) | targets
             directives = {
                 d.split("=", 1)[0].strip()
@@ -471,7 +485,7 @@ def main() -> int:
     if len(sys.argv) <= 1:
         carrying = {
             app
-            for app, text, _ in _components()
+            for app, text, *_ in _components()
             if re.search(r'EnvFilter::new\(\s*"(trace|debug|info|warn|error)"\s*\)', text)
         }
         for done in sorted(TRACING_QUEUE - carrying):

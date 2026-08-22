@@ -96,10 +96,18 @@ fn timeline_mount() -> Option<String> {
 }
 
 fn main() -> Result<()> {
+    // `warn` for everything, `info` for this helper and the `knowledge` library it
+    // serves the mount from. Both are needed: the helper's own three lines are in
+    // `arlen_timeline`, and `fuse.rs` - which is where a mount that failed says so
+    // - compiles into `knowledge`.
+    //
+    // A blanket `info` also gave every dependency the same level, and this one
+    // reads the graph over a socket for every directory listing.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_timeline=info,knowledge=info")
+            }),
         )
         .init();
 
