@@ -400,6 +400,19 @@
           filter={rowFilter}
           onactivate={onActivate}
           onselection={(list) => (selected = list)}
+          columns={{
+            middle: "size",
+            middleLabel: $t("p.fb.sizeLabel"),
+            timeLabel: $t("p.fb.modifiedLabel"),
+          }}
+          browserLabel={$t("p.fb.browserLabel")}
+          nameLabel={$t("p.fb.nameLabel")}
+          emptyLabel={$t("p.fb.emptyLabel")}
+          errorTitle={$t("p.fb.errorTitle")}
+          hintUnknown={$t("p.fb.hintUnknown")}
+          hintPermission={$t("p.fb.hintPermission")}
+          hintNotConnected={$t("p.fb.hintNotConnected")}
+          hintNoSuchDir={$t("p.fb.hintNoSuchDir")}
         />
       </section>
     </div>
