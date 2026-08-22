@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dayLabel, isToday, repeatLabel } from "$lib/wording";
   /// The agenda: what is in your calendar files, grouped by the day each event
   /// writes for itself.
   ///
@@ -101,68 +102,6 @@
   /// The day heading, through Intl off the shared locale - never a catalogue
   /// string, so a German build says "Mittwoch, 19. August" rather than an
   /// English order with German words in it.
-  /// Whether a row's day is the reader's today.
-  ///
-  /// The agenda starts at the first day that HAS something on it, which is not
-  /// necessarily today - so the first heading could be next Tuesday and read as
-  /// if it were now. Marking the day the reader is standing on is the difference
-  /// between a list of dates and an agenda.
-  ///
-  /// Compared as the reader's own local date rather than through UTC, because
-  /// "today" is a fact about the reader's clock and an event's `date` is already
-  /// in its own local terms.
-  function isToday(date: string): boolean {
-    const now = new Date();
-    const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
-      now.getDate(),
-    ).padStart(2, "0")}`;
-    return date === local;
-  }
-
-  function dayLabel(date: string): string {
-    const [y, m, d] = date.split("-").map(Number);
-    return new Intl.DateTimeFormat($locale, {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    }).format(new Date(y, m - 1, d));
-  }
-
-  /// What the repeat chip says.
-  ///
-  /// "Repeats" alone was true of a standup every weekday and of a birthday every
-  /// year, which is the same as saying nothing. The event carries the frequency,
-  /// the interval and the weekdays as keys, and the sentence is written here so
-  /// it is written in the reader's language.
-  ///
-  /// A rule the calendar refuses carries no frequency, and then the chip goes
-  /// back to the bare word: better vague than wrong about somebody's week.
-  const DAY_KEY: Record<string, string> = {
-    mon: "cal.dayMon",
-    tue: "cal.dayTue",
-    wed: "cal.dayWed",
-    thu: "cal.dayThu",
-    fri: "cal.dayFri",
-    sat: "cal.daySat",
-    sun: "cal.daySun",
-  };
-  const EVERY_KEY: Record<string, string> = {
-    daily: "cal.everyDaily",
-    weekly: "cal.everyWeekly",
-    monthly: "cal.everyMonthly",
-    yearly: "cal.everyYearly",
-  };
-
-  function repeatLabel(e: { every: string | null; every_n: number; on_days: string[] }): string {
-    const key = e.every ? EVERY_KEY[e.every] : undefined;
-    if (!key) return $t("cal.repeats");
-    const every = $t(key, { n: e.every_n });
-    if (e.on_days.length === 0) return every;
-    const days = e.on_days
-      .map((d) => (DAY_KEY[d] ? $t(DAY_KEY[d]) : d))
-      .join(", ");
-    return $t("cal.onDays", { every, days });
-  }
 </script>
 
 <main class="page">
@@ -216,8 +155,8 @@
       {#each days as day (day.date)}
         <li class="day">
           <h2>
-            {dayLabel(day.date)}
-            {#if isToday(day.date)}<span class="today">{$t("cal.today")}</span>{/if}
+            {dayLabel(day.date, $locale)}
+            {#if isToday(day.date, new Date())}<span class="today">{$t("cal.today")}</span>{/if}
           </h2>
           <ul class="events">
             {#each day.events as e (e.uid + e.date + (e.time ?? ""))}
@@ -250,7 +189,7 @@
                       class="repeat"
                       title={e.expanded ? $t("cal.repeatsShown") : $t("cal.repeatsUnexpanded")}
                     >
-                      <Repeat size={12} strokeWidth={2} />{repeatLabel(e)}
+                      <Repeat size={12} strokeWidth={2} />{repeatLabel(e, $t)}
                     </span>
                     {#if !e.expanded}
                       <span class="unexpanded">{$t("cal.onlyThisOne")}</span>
