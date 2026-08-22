@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   /// SNI system tray indicator for the top bar.
   ///
   /// Wraps the shared `Applet` primitive. Visible only when at
@@ -31,20 +32,14 @@
   let hasAttention = $state(false);
 
   async function loadItems() {
-    try {
-      items = await invoke<SniItem[]>("get_sni_items");
+    // A failed read leaves the list as it was, and an empty list hides the
+    // indicator entirely - so a tray that could not be read looks exactly like a
+    // machine with nothing in its tray. `shellRead` keeps that behaviour and
+    // stops it being silent.
+    const got = await shellRead<SniItem[]>("get_sni_items", "tray");
+    if (got !== null) {
+      items = got;
       hasAttention = items.some((i) => i.status === "NeedsAttention");
-    } catch (e) {
-      // A failed read leaves the list as it was, and an empty list hides the
-      // indicator entirely - so a tray that could not be read looks exactly like
-      // a machine with nothing in its tray. There is no room in a 36px bar for a
-      // sentence about it and no useful action for a person to take, so this
-      // goes where the person debugging an empty tray will look. Silence was the
-      // only thing that made it unfindable.
-      //
-      // `log_frontend` rather than `console.error`: WebKitGTK does not reliably
-      // put console output where a diagnostic session can see it.
-      invoke("log_frontend", { message: `[tray] items could not be read: ${e}` }).catch(() => {});
     }
   }
 

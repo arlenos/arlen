@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// Top-bar Caffeine badge.
   ///
@@ -20,10 +21,8 @@
   });
 
   async function refresh() {
-    try {
-      const s = await invoke<{ caffeineActive: boolean }>("get_toggle_status");
-      active = s.caffeineActive;
-    } catch {}
+    const s = await shellRead<{ caffeineActive: boolean }>("get_toggle_status", "caffeine");
+    if (s !== null) active = s.caffeineActive;
   }
 
   function handleClick() {

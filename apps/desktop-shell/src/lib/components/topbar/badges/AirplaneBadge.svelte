@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// Top-bar Airplane Mode badge.
   ///
@@ -20,9 +21,8 @@
   });
 
   async function refresh() {
-    try {
-      active = await invoke<boolean>("get_airplane_mode");
-    } catch {}
+    const on = await shellRead<boolean>("get_airplane_mode", "airplane");
+    if (on !== null) active = on;
   }
 
   function handleClick() {

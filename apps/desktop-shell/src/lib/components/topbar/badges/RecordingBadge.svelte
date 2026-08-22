@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shellRead } from "$lib/shellRead";
   import { t } from "$lib/i18n/messages";
   /// Top-bar Recording badge.
   ///
@@ -35,11 +36,11 @@
   });
 
   async function refresh() {
-    try {
-      const s = await invoke<ToggleStatus>("get_toggle_status");
+    const s = await shellRead<ToggleStatus>("get_toggle_status", "recording");
+    if (s !== null) {
       active = s.recordingActive;
       startedAt = s.recordingStartedAt ?? null;
-    } catch {}
+    }
   }
 
   function handleClick() {
