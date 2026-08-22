@@ -67,9 +67,18 @@ fn hex_to_bytes(s: &str) -> Vec<u8> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this daemon and the `audit` target.
+        // A bare `info` also sets the level for zbus, which logs D-Bus frames with
+        // their bodies - and the whole point of a ledger daemon is that what it
+        // handles does not leak sideways into a journal nobody granted.
+        //
+        // `audit` is a target rather than a crate: `arlen-permissions` files the
+        // identity cutover line under it, and this daemon authenticates every peer
+        // that submits.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_auditd=info,audit=info")
+            }),
         )
         .init();
 
