@@ -48,37 +48,36 @@ LOG_CALL = re.compile(
     r"(?:^|[^\w:])(?:trace|debug|info|warn|error)!\s*\("
 )
 
-# The components that carry a bare `EnvFilter::new("info")` today: a level for
-# every crate in the process, dependencies included, which is the same defect the
-# app half refuses in `env_logger`'s spelling. They are a QUEUE, not an excuse.
+# Components allowed to keep a bare `EnvFilter::new("info")` - a level for every
+# crate in the process, dependencies included, which is the same defect the app
+# half refuses in `env_logger`'s spelling.
 #
-# They are not swept because the fix is not mechanical. A `tracing` target roots
-# at the crate the line was compiled into, so a daemon whose logic sits in a lib
-# behind a thin `main.rs` needs BOTH names, and a filter naming one of the two
-# makes the other half mute - which is the defect, not the fix. Each wants its
-# own sitting with the daemon run afterwards.
+# EMPTY, and it should stay that way. It held 24 names on 22 August, every daemon
+# in the tree plus the AI workspace, because the rule above knew only
+# `env_logger`'s spelling and could not see this one. They were worked off one at
+# a time rather than swept, and the reason is worth keeping: a `tracing` target
+# roots at the crate the line was compiled into, so a daemon whose logic sits in
+# a library behind a thin `main.rs` needs BOTH names, and a filter naming one of
+# the two makes the other half mute - the defect, not the fix.
 #
-# The knowledge daemon shows the other shape: it names both `knowledge` and
-# `arlen_graph_daemon`, because its bin was renamed and one directive alone had
-# stopped matching what it emits.
+# What the pass turned up, in case a new component tempts someone to add a name
+# here rather than count:
 #
-# The picker is the first one done, and it is the shape that makes it easy: its
-# `main.rs` logs nothing at all, so naming the lib crate mutes nothing. Check that
-# before taking the next one off this list, and take the name off when you do.
+#   * the knowledge daemon already named both `knowledge` and `arlen_graph_daemon`,
+#     because its bin was renamed and one directive alone had stopped matching;
+#   * the picker's `main.rs` logs nothing at all, so its library name is the whole
+#     filter;
+#   * wallpaper splits 13 calls to the binary and 5 to the library, and
+#     `daemons/wallpaper/src/main.rs` carries the test that proves the string -
+#     targets emitted, captured, asserted;
+#   * `audit` is a TARGET, not a crate: `arlen-permissions` files the identity
+#     cutover line under it, so every daemon that authenticates a peer names it
+#     too, and one that only mentions the crate in a doc comment does not.
 #
-# The wallpaper daemon is the second, and it is the shape the deferral warns
-# about: 13 calls in the binary crate and 5 in the library, so the filter names
-# both. `daemons/wallpaper/src/main.rs` carries the test that proves the string
-# does what it says - events emitted with explicit targets, captured, asserted -
-# and that test is the pattern for the rest of this list. Counting the calls per
-# crate first is the whole job; the string follows from it.
-TRACING_QUEUE: frozenset[str] = frozenset(
-    {
-        "ai-proxy",
-        "ai-undo-signer",
-        "ai-engine-daemon",
-    }
-)
+# Counting the calls per crate is the whole job. The string follows from it, and
+# the checks below prove it names what exists and what speaks.
+TRACING_QUEUE: frozenset[str] = frozenset()
+
 DAEMONS = ROOT / "daemons"
 
 # app -> why its filter is not ours to fix.
@@ -220,8 +219,12 @@ def _fine_targets(comp: pathlib.Path) -> set[str]:
     """
     out: set[str] = set()
     roots = [comp / "src", comp / "src-tauri" / "src"]
+    # Code only: `ai-proxy` explains in a doc comment why the stamped-identity
+    # strand is the right route for someone else, and a raw text search read that
+    # as ai-proxy authenticating peers - which it does not, and it does not even
+    # depend on the crate.
     own = "\n".join(
-        f.read_text(encoding="utf-8", errors="replace")
+        _code_only(f.read_text(encoding="utf-8", errors="replace"))
         for r in roots
         if r.is_dir()
         for f in sorted(r.rglob("*.rs"))

@@ -358,9 +358,16 @@ fn build_write_runner() -> Arc<dyn RelationWriter> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this daemon and the `audit` target. The
+        // engine's own lines are how a decision is read back; its dependencies'
+        // are not, and one of them carries the model transcript.
+        //
+        // `audit` is a target, not a crate, so a crate directive does not reach the
+        // identity line this daemon can emit for every peer it authenticates.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_ai_engine_daemon=info,audit=info")
+            }),
         )
         .init();
 

@@ -21,9 +21,14 @@ use tokio::sync::Mutex;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this signer and the `audit` target. It
+        // holds a key and answers only the agent; who asked is the whole question
+        // here, which is why the `audit` target - a target, not a crate - is named
+        // rather than left at the blanket level.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_ai_undo_signer=info,audit=info")
+            }),
         )
         .init();
     tracing::info!("arlen-ai-undo-signer starting");
