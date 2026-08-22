@@ -115,6 +115,13 @@ DIR_ALIASES = {
     "clockd": "daemons/clock",
     "powerd": "daemons/power-daemon",
     "calendard": "daemons/calendar",
+    # An app id is a ROLE, not a binary name: `identity.rs` resolves BOTH
+    # `/usr/lib/arlen/libexec/arlen-ai-agent` and `.../arlen-ai-engine-daemon` to
+    # `ai-agent`, on the planner's reuse-the-existing-name ruling. Without this
+    # line the profile is unreadable to this check and the id gets reported as
+    # resolving nowhere - which is what happened the first time its `[event_bus]`
+    # section was written.
+    "ai-agent": "daemons/ai-engine-daemon",
 }
 
 # Components whose source is not in this tree. The compositor is its own repo, so

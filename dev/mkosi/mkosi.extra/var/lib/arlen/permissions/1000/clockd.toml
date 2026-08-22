@@ -30,3 +30,27 @@ tier = "first-party"
 
 [system.power]
 schedule_wake = true
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# DECLARING IS WHAT BOUNDS A COMPONENT, not its tier: the bus holds a consumer to
+# its declared list whatever tier it carries, and one that declares nothing keeps
+# the machine-wide view. This daemon declared nothing, so under enforcement it
+# could have read anything on the bus while needing exactly two things.
+#
+# NOTHING IS PUBLISHED: the daemon has no emitter (checked in `main.rs`, not
+# assumed). It answers D-Bus and writes its own state; it does not put events on
+# the bus.
+#
+# The subscribe list is `watch_sleep`, verbatim: the power daemon turns logind's
+# `PrepareForSleep` into these two, and the clock listens so a stopwatch does not
+# count the hours a machine spent asleep. If the bus is unreachable the clock
+# keeps working and says so in the log, which is the behaviour a narrowed scope
+# must not quietly change.
+[event_bus]
+publish = []
+subscribe = [
+    "power.suspend",
+    "power.resume",
+]
