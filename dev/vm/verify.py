@@ -796,6 +796,11 @@ def main():
                          "serial shows the probe unit starting, so an image that "
                          "ships the probe is held to it without being asked; pass "
                          "this to demand it from an image that may not.")
+    ap.add_argument("--inspect", action="append", default=None, metavar="/PATH",
+                    help="after the run, list this directory out of the overlay and "
+                         "print what is in it. For the question a frame cannot "
+                         "answer: the window said it saved a file, so is the file "
+                         "there. Repeatable.")
     ap.add_argument("--preload", action="append", default=None, metavar="SRC:/DEST",
                     help="copy a host file into the guest before boot, into the "
                          "throwaway overlay rather than the image. For state that "
@@ -1504,6 +1509,25 @@ def main():
                 fh.write(journal_text)
             print(f"journal: {os.path.abspath(args.journal_out)} "
                   f"({journal_text.count(chr(10))} lines)")
+
+    if args.inspect:
+        # The same principle as the probe below, one size down: a window saying
+        # "Saved to Pictures." is the guest's account of itself, and the file
+        # either exists or it does not. Read AFTER the run, out of the overlay
+        # that boot wrote into - checking from a second boot would ask a machine
+        # that never took the screenshot, which is a fresh overlay every time.
+        script = "run\nmount-ro /dev/sda2 /\n"
+        for path in args.inspect:
+            script += f"ll {path}\n"
+        r = subprocess.run(["guestfish", "--ro", "-a", overlay],
+                           input=script, capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"inspect: could not read the overlay ({r.stderr.strip()})")
+        else:
+            for path in args.inspect:
+                print(f"inspect {path}:")
+            for line in r.stdout.strip().splitlines():
+                print(f"  {line}")
 
     if require_probe:
         # Before grading anything the guest SAID, read what the guest WROTE.
