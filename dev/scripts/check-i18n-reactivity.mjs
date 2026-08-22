@@ -111,7 +111,7 @@ let tsScanned = 0;
 // against inputs chosen to fool it.
 const BASES = process.argv[2]
   ? [process.argv[2]]
-  : [join(ROOT, "apps"), join(ROOT, "sdk")];
+  : [join(ROOT, "apps"), join(ROOT, "sdk"), join(ROOT, "daemons")];
 
 for (const base of BASES) {
   if (!existsSync(base)) continue;

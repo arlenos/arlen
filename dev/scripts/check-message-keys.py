@@ -68,9 +68,16 @@ def uses(app_src: Path) -> dict[str, str]:
 
 
 def main() -> int:
+    # Every catalogue in the tree, not only the ones under `apps/`. The file
+    # picker is a frontend like any other and carries the one dialog every app
+    # borrows; it lived outside this glob until it had a catalogue at all, which
+    # is exactly the shape a scope written for a smaller tree keeps hiding.
     apps = sorted(p for p in (REPO / "apps").glob("*/src/lib/i18n") if p.is_dir())
+    apps += sorted(
+        p for p in (REPO / "daemons").glob("*/*/src/lib/i18n") if p.is_dir()
+    )
     if not apps:
-        print(f"NOTHING WAS READ: no app catalogue under {REPO}/apps", file=sys.stderr)
+        print(f"NOTHING WAS READ: no catalogue under {REPO}/apps or {REPO}/daemons", file=sys.stderr)
         return 2
 
     problems: list[str] = []
@@ -106,7 +113,7 @@ def main() -> int:
             print(f"  {p}")
         return 1
 
-    print(f"OK: {seen_uses} literal key use(s) across {len(apps)} app(s), every one defined in every locale")
+    print(f"OK: {seen_uses} literal key use(s) across {len(apps)} frontend(s), every one defined in every locale")
     return 0
 
 

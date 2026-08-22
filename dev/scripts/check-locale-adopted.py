@@ -65,9 +65,19 @@ def main() -> int:
         print(f"NOTHING WAS READ: no apps under {apps}", file=sys.stderr)
         return 2
 
+    # The daemons carry frontends too: the file picker is the one dialog every
+    # app on the machine borrows. A scope of `apps/` only was written when the
+    # tree had nothing else with a `src/lib/i18n` in it.
+    fronts = [p for p in apps.iterdir() if (p / "src").is_dir()]
+    fronts += [
+        p
+        for p in (ROOT / "daemons").glob("*/*")
+        if (p / "src").is_dir() and (p / "package.json").is_file()
+    ]
+
     findings: list[str] = []
     checked = 0
-    for app in sorted(p for p in apps.iterdir() if (p / "src").is_dir()):
+    for app in sorted(fronts):
         catalogue = list((app / "src/lib/i18n").glob("*.ts")) if (app / "src/lib/i18n").is_dir() else []
         if not catalogue:
             continue
@@ -80,7 +90,7 @@ def main() -> int:
         if ADOPTS.search(src) or app.name in ACKNOWLEDGED:
             continue
         findings.append(
-            f"apps/{app.name}: ships a catalogue and never adopts a language, so every "
+            f"{app.relative_to(ROOT)}: ships a catalogue and never adopts a language, so every "
             f"translation in it is unreachable and the app is the source language forever"
         )
 
