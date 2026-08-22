@@ -326,9 +326,13 @@ fn local_zone() -> chrono_tz::Tz {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this daemon. Only `main.rs` logs, so the
+        // binary crate is the whole of what speaks here; the `arlen-calendar`
+        // library is silent.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_calendard=info")
+            }),
         )
         .init();
 

@@ -19,9 +19,15 @@ use arlen_notification_daemon::storage::Database;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for both of this daemon's crates. Notification
+        // bodies are user content, and a blanket `info` hands them to zbus frame
+        // logging on their way through - the exact leak this shape exists to close.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new(
+                    "warn,arlen_notifyd=info,arlen_notification_daemon=info",
+                )
+            }),
         )
         .init();
 

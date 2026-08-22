@@ -11,9 +11,13 @@ use arlen_terminal_run_mcp::server::{TerminalRunMcp, SERVER_ID};
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this server. It runs commands on
+        // request; the commands themselves belong in its own audited lines, not in
+        // whatever a dependency decides to print.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_terminal_run_mcp=info")
+            }),
         )
         .init();
 

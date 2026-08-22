@@ -733,9 +733,13 @@ impl ClockInterface {
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for both of this daemon's crates. The binary
+        // is `arlen-clockd` and the library `arlen-clock`, and both log - an alarm
+        // that did not ring is read from these lines, so neither half may be mute.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_clockd=info,arlen_clock=info")
+            }),
         )
         .init();
 

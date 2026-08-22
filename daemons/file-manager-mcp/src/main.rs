@@ -9,9 +9,12 @@ use arlen_file_manager_mcp::{load_scope, FileManagerMcp, SERVER_ID};
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this server. Its arguments are paths a
+        // person opened, which is not material for a dependency to log at info.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_file_manager_mcp=info")
+            }),
         )
         .init();
 
