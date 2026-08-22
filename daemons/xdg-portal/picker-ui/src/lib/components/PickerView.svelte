@@ -28,6 +28,7 @@
     type PlaceGroup,
     type ViewMode,
   } from "@arlen/ui-kit/components/browser";
+  import { t } from "$lib/i18n/messages";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { Input } from "@arlen/ui-kit/components/ui/input";
@@ -48,7 +49,7 @@
     showNotice,
     validateFilename,
   } from "$lib/stores/pickerUi.svelte";
-  import { conventionalPlaces, recentGroup, resolveHome } from "$lib/places";
+  import { conventionalPlaces, recentGroup, recentPlaces, resolveHome } from "$lib/places";
   import type { FileFilter, PickerRequest } from "$lib/types/protocol";
   import SaveBar from "$lib/components/SaveBar.svelte";
 
@@ -61,7 +62,14 @@
   let lastInitedHandle = $state<string | null>(null);
 
   let home = $state("/home");
-  let placeGroups = $state<PlaceGroup[]>([]);
+  // The fetched recent entries, not the finished group: the sidebar is derived
+  // so a language switch relabels it without asking the daemon again.
+  let recent = $state<Place[] | null>(null);
+  const placeGroups = $derived.by(() => {
+    const groups: PlaceGroup[] = [conventionalPlaces(home, (k) => $t(k))];
+    if (recent) groups.push(recentGroup(recent, (k) => $t(k)));
+    return groups;
+  });
   let selected = $state<FileEntry[]>([]);
   let searchText = $state("");
 
@@ -127,10 +135,7 @@
       allowVirtual: false,
     });
 
-    const groups: PlaceGroup[] = [conventionalPlaces(home)];
-    const recent = await recentGroup();
-    if (recent) groups.push(recent);
-    placeGroups = groups;
+    recent = await recentPlaces();
   }
 
   function basename(path: string): string {
@@ -173,14 +178,14 @@
   // segmented control's value is a plain string mirrored from the
   // controller; the filter is a PopoverSelect over the caller's
   // filters plus the always-present "All files" escape hatch.
-  const VIEW_OPTIONS: { value: string; label: string; icon: typeof List }[] = [
-    { value: "list", label: "List view", icon: List },
-    { value: "grid", label: "Grid view", icon: LayoutGrid },
-  ];
+  const VIEW_OPTIONS = $derived<{ value: string; label: string; icon: typeof List }[]>([
+    { value: "list", label: $t("p.view.list"), icon: List },
+    { value: "grid", label: $t("p.view.grid"), icon: LayoutGrid },
+  ]);
   const ALL_FILTER = "__all__";
   const filterOptions = $derived<PopoverSelectOption[]>([
     ...filters.map((f) => ({ value: f.name, label: f.name })),
-    { value: ALL_FILTER, label: "All files" },
+    { value: ALL_FILTER, label: $t("p.filter.all") },
   ]);
   const filterValue = $derived(ui.activeFilter?.name ?? ALL_FILTER);
 
@@ -204,19 +209,19 @@
 
   const title = $derived.by(() => {
     const r = pickState.request;
-    if (!r) return "Open file";
+    if (!r) return $t("p.title.open");
     if ("title" in r && r.title) return r.title;
-    if (isSaveFile(r) || isSaveFiles(r)) return "Save file";
-    if (directoriesOnly) return "Choose folder";
-    return "Open file";
+    if (isSaveFile(r) || isSaveFiles(r)) return $t("p.title.save");
+    if (directoriesOnly) return $t("p.title.folder");
+    return $t("p.title.open");
   });
 
   const confirmLabel = $derived.by(() => {
     const r = pickState.request;
-    if (!r) return "Open";
-    if (isSaveFile(r) || isSaveFiles(r)) return "Save";
-    if (directoriesOnly) return "Choose folder";
-    return "Open";
+    if (!r) return $t("p.confirm.open");
+    if (isSaveFile(r) || isSaveFiles(r)) return $t("p.confirm.save");
+    if (directoriesOnly) return $t("p.confirm.folder");
+    return $t("p.confirm.open");
   });
 
   const confirmDisabled = $derived.by(() => {
@@ -237,17 +242,16 @@
   const appLabel = $derived.by(() => {
     const r = pickState.request;
     const id = r && "appId" in r ? r.appId : "";
-    if (!id) return "The requesting app";
+    if (!id) return $t("p.app.unknown");
     const seg = id.split(".").pop() ?? id;
     return seg.charAt(0).toUpperCase() + seg.slice(1);
   });
   const trustLine = $derived.by(() => {
     const r = pickState.request;
     if (!r) return "";
-    if (isSaveFile(r) || isSaveFiles(r))
-      return `${appLabel} gets to save to the location you choose`;
-    if (directoriesOnly) return `${appLabel} gets access to the folder you choose`;
-    return `${appLabel} gets access to ${multiple ? "the files" : "the file"} you choose`;
+    if (isSaveFile(r) || isSaveFiles(r)) return $t("p.trust.save", { app: appLabel });
+    if (directoriesOnly) return $t("p.trust.folder", { app: appLabel });
+    return $t("p.trust.open", { app: appLabel, count: multiple ? 2 : 1 });
   });
 
   // ---- Actions ---------------------------------------------------------
@@ -270,7 +274,7 @@
       if (selected.length === 0) return;
       let paths = pathsFor(selected);
       if (paths.length > MULTI_SELECT_CAP) {
-        showNotice(`Selection limited to ${MULTI_SELECT_CAP} files.`);
+        showNotice($t("p.cap", { n: MULTI_SELECT_CAP }));
         paths = paths.slice(0, MULTI_SELECT_CAP);
       }
       await respond({ type: "picked", handle: r.handle, paths, currentFilter: ui.activeFilter });
@@ -282,7 +286,7 @@
       if (validateFilename(name) !== null) return;
       const path = `${currentDir.replace(/\/$/, "")}/${name}`;
       const exists = await invoke<boolean>("file_exists", { path }).catch(() => false);
-      if (exists && !window.confirm(`Replace ${name}?`)) return;
+      if (exists && !window.confirm($t("p.replace", { name }))) return;
       await respond({ type: "picked", handle: r.handle, paths: [path], currentFilter: ui.activeFilter });
       return;
     }
@@ -344,8 +348,8 @@
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Up one directory"
-          title="Up one directory"
+          aria-label={$t("p.up")}
+          title={$t("p.up")}
           onclick={() => controller?.up()}
         >
           <ArrowUp strokeWidth={1.75} />
@@ -359,8 +363,8 @@
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={showHidden ? "Hide hidden files" : "Show hidden files"}
-          title="Toggle hidden files (Ctrl+H)"
+          aria-label={showHidden ? $t("p.hidden.hide") : $t("p.hidden.show")}
+          title={$t("p.hidden")}
           onclick={() => controller?.setShowHidden(!showHidden)}
         >
           {#if showHidden}
@@ -376,11 +380,11 @@
           <Search class="search-icon size-3.5" strokeWidth={1.75} />
           <Input
             class="search-input"
-            placeholder="Filter"
+            placeholder={$t("p.filter.placeholder")}
             bind:value={searchText}
             autocomplete="off"
             spellcheck="false"
-            aria-label="Filter the listing by name"
+            aria-label={$t("p.filter.aria")}
           />
         </div>
       </div>
@@ -415,14 +419,14 @@
             value={filterValue}
             options={filterOptions}
             onchange={onFilterChange}
-            placeholder="All files"
+            placeholder={$t("p.filter.all")}
             width="max-content"
           />
         {:else}
           <span></span>
         {/if}
         <div class="actions">
-          <Button variant="outline" onclick={cancel} disabled={pickState.busy}>Cancel</Button>
+          <Button variant="outline" onclick={cancel} disabled={pickState.busy}>{$t("p.cancel")}</Button>
           <Button variant="default" onclick={confirm} disabled={confirmDisabled}>
             {confirmLabel}
           </Button>

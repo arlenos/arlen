@@ -3,6 +3,7 @@
   /// other field in the system. The location is the browsed folder; the
   /// daemon revalidates the composed path.
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { t } from "$lib/i18n/messages";
   import { getUiState, setSaveFilename, validateFilename } from "$lib/stores/pickerUi.svelte";
 
   let { location }: { location: string } = $props();
@@ -16,14 +17,16 @@
     filename = ui.saveFilename;
   });
 
+  // The store names the reason; this writes it, because only a component
+  // is in the reader's language.
   let validationError = $derived(validateFilename(ui.saveFilename));
 </script>
 
 <div class="save-bar">
   <label class="field">
-    <span class="label">Save as</span>
+    <span class="label">{$t("p.save.as")}</span>
     <Input
-      placeholder="filename"
+      placeholder={$t("p.save.placeholder")}
       bind:value={filename}
       oninput={() => setSaveFilename(filename)}
       autocomplete="off"
@@ -31,9 +34,9 @@
       aria-invalid={validationError !== null}
     />
   </label>
-  <p class="location" title={location}>in {location}</p>
+  <p class="location" title={location}>{$t("p.save.in", { dir: location })}</p>
   {#if validationError && ui.saveFilename.length > 0}
-    <p class="error">{validationError}</p>
+    <p class="error">{$t(validationError)}</p>
   {/if}
 </div>
 
