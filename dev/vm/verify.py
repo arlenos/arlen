@@ -100,6 +100,38 @@ def qmp_move(f, px, py, w, h):
         {"type": "abs", "data": {"axis": "y", "value": ay}}])
 
 
+def timed_plan(shot_at, click_at, key_at):
+    """The timed frames, clicks and keys as one list in time order.
+
+    Separate from the loop that runs it so the ordering can be tested without a
+    VM, because the ordering is the whole point: a click aimed INTO the gap
+    between two frames is only evidence if it happens between them, and the
+    click's own probe frame is what says what was on screen when it landed.
+
+    Raises ValueError on a spec it cannot read, rather than skipping it - a
+    mistyped `--click-at` that silently did nothing would turn a real finding
+    into a quiet pass.
+    """
+    plan: list[tuple[float, str, object]] = []
+    for at in shot_at or []:
+        plan.append((float(at), "shot", None))
+    for spec in click_at or []:
+        when, sep, where = spec.partition(":")
+        if not sep or "," not in where:
+            raise ValueError(f"--click-at wants SECONDS:X,Y, got {spec!r}")
+        cx, cy = (int(v) for v in where.split(","))
+        plan.append((float(when), "click", (cx, cy)))
+    for spec in key_at or []:
+        when, sep, name = spec.partition(":")
+        if not sep or not name:
+            raise ValueError(f"--key-at wants SECONDS:NAME, got {spec!r}")
+        plan.append((float(when), "key", name))
+    # Stable within one instant: a shot before a click at the same second says
+    # what the click was aimed at.
+    order = {"shot": 0, "key": 1, "click": 2}
+    return sorted(plan, key=lambda t: (t[0], order[t[1]]))
+
+
 def qmp_click(f, px, py, w, h):
     """Left-click at pixel (px, py) on a w x h frame via the absolute pointing
     device (virtio-tablet). QEMU's abs axis is 0..0x7fff mapped to the display, so
@@ -1071,18 +1103,7 @@ def main():
         # frame cannot erase that evidence.
         # The extra frames and the timed clicks share one clock and one ordering,
         # so a click can be aimed INTO the gap between two frames.
-        timed: list[tuple[float, str, object]] = []
-        for at in args.shot_at or []:
-            timed.append((at, "shot", None))
-        for spec in args.click_at or []:
-            when, _, where = spec.partition(":")
-            cx, cy = (int(v) for v in where.split(","))
-            timed.append((float(when), "click", (cx, cy)))
-        for spec in args.key_at or []:
-            when, _, name = spec.partition(":")
-            timed.append((float(when), "key", name))
-
-        for at, kind, arg in sorted(timed, key=lambda t: t[0]):
+        for at, kind, arg in timed_plan(args.shot_at, args.click_at, args.key_at):
             left = at - (time.monotonic() - t_qmp)
             if left > 0:
                 time.sleep(left)
