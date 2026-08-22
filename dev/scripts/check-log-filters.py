@@ -40,6 +40,54 @@ ROOT = (
     else pathlib.Path(__file__).resolve().parents[2]
 )
 APPS = ROOT / "apps"
+
+# The components that carry a bare `EnvFilter::new("info")` today: a level for
+# every crate in the process, dependencies included, which is the same defect the
+# app half refuses in `env_logger`'s spelling. They are a QUEUE, not an excuse.
+#
+# They are not swept because the fix is not mechanical. A `tracing` target roots
+# at the crate the line was compiled into, so a daemon whose logic sits in a lib
+# behind a thin `main.rs` needs BOTH names, and a filter naming one of the two
+# makes the other half mute - which is the defect, not the fix. Each wants its
+# own sitting with the daemon run afterwards.
+#
+# The knowledge daemon shows the other shape: it names both `knowledge` and
+# `arlen_graph_daemon`, because its bin was renamed and one directive alone had
+# stopped matching what it emits.
+#
+# The picker is the first one done, and it is the shape that makes it easy: its
+# `main.rs` logs nothing at all, so naming the lib crate mutes nothing. Check that
+# before taking the next one off this list, and take the name off when you do.
+TRACING_QUEUE: frozenset[str] = frozenset(
+    {
+        "ai-proxy",
+        "ai-undo-signer",
+        "ai-engine-daemon",
+        "anomaly-detector",
+        "audit-daemon",
+        "bridge-ingest",
+        "calendar",
+        "capsuled",
+        "clock",
+        "code-indexer",
+        "config-broker",
+        "connections",
+        "consent-broker",
+        "file-manager-mcp",
+        "journald-parser",
+        "knowledge-mcp",
+        "notification-daemon",
+        "online-accounts",
+        "power-daemon",
+        "session-supervisor",
+        "system-monitor-mcp",
+        "terminal-run-mcp",
+        "transfer-daemon",
+        "undo-service",
+        "wallpaper",
+        "xdg-portal",
+    }
+)
 DAEMONS = ROOT / "daemons"
 
 # app -> why its filter is not ours to fix.
@@ -83,11 +131,36 @@ def _components() -> list:
     daemon run afterwards, not a sweep.
     """
     out = []
-    for base, rel in ((APPS, ("src-tauri", "src")), (DAEMONS, ("src",))):
+    for base, rel, *by_subdir in (
+        (APPS, ("src-tauri", "src")),
+        (DAEMONS, ("src",)),
+        # A frontend under `daemons/` keeps its Rust in `src-tauri/src` like an
+        # app, not in `src` like a daemon, so it needs its own pass: the picker's
+        # logging init was in neither of the two above. It is named after the
+        # frontend, not its parent - merged into the parent, the picker inherited
+        # the portal daemon's place on the queue and its own blanket was excused
+        # by an entry about a different process.
+        (DAEMONS, ("src-tauri", "src"), True),
+        # The AI workspace is its own tree of daemons - the proxy and the undo
+        # signer both initialise logging and were read by nothing here.
+        (ROOT / "ai", ("src",)),
+    ):
         if not base.is_dir():
             continue
         for comp in sorted(base.iterdir()):
             if not comp.is_dir():
+                continue
+            if by_subdir:
+                # One entry per sub-crate, under its own name.
+                for sub in sorted(c for c in comp.iterdir() if c.is_dir()):
+                    root = sub.joinpath(*rel)
+                    if not root.is_dir():
+                        continue
+                    files = sorted(root.glob("*.rs"))
+                    if files:
+                        out.append(
+                            (sub.name, "\n".join(_code_only(f.read_text()) for f in files))
+                        )
                 continue
             # A daemon may hold its crate one level down (kernel-layer/kernel-layer).
             roots = [comp.joinpath(*rel)]
@@ -104,7 +177,12 @@ def main() -> int:
         print(f"NOTHING WAS READ: no apps directory under {ROOT}", file=sys.stderr)
         return 2
 
+    # `apps/*/src-tauri` plus the frontends under `daemons/`. The picker is a
+    # Tauri binary with its own subscriber, and its D-Bus frames name the paths a
+    # person just browsed - the blanket `info` this refuses is worse there than
+    # in an app, not better.
     sources = sorted(APPS.glob("*/src-tauri/src/*.rs"))
+    sources += sorted((ROOT / "daemons").glob("*/*/src-tauri/src/*.rs"))
     if not sources:
         print(f"NOTHING WAS READ: no app sources under {APPS}", file=sys.stderr)
         return 2
@@ -120,10 +198,23 @@ def main() -> int:
 
         bare_init = re.search(r"\benv_logger::init\(\)", text)
         blanket = re.search(r'default_filter_or\(\s*"(trace|debug|info|warn|error)"\s*\)', text)
+        # The same blanket in `tracing`'s spelling. It was invisible here until
+        # 22 August because the regex knew only `env_logger`, and 27 components
+        # carry it - see TRACING_QUEUE.
+        tracing_blanket = re.search(
+            r'EnvFilter::new\(\s*"(trace|debug|info|warn|error)"\s*\)', text
+        )
         if bare_init:
             problems.append(
                 f"{app}: `env_logger::init()` defaults to `error`, so this app is mute "
                 f"in the journal. Use `default_filter_or(\"warn,<its_crate>=info\")`."
+            )
+        elif tracing_blanket and app not in TRACING_QUEUE:
+            problems.append(
+                f"{app}: `EnvFilter::new(\"{tracing_blanket.group(1)}\")` sets a level "
+                f"for EVERY crate in the process, dependencies included - which is how "
+                f"zbus message bytes reached the journal. Name the component's own "
+                f"crate: `\"warn,<its_crate>=info\"`."
             )
         elif blanket:
             problems.append(
@@ -138,6 +229,21 @@ def main() -> int:
     # the answer is always no, which failed every fixture the control planted. An
     # excuse list is a claim about one tree; validating it elsewhere is a category
     # error, and the control is what surfaced it.
+    # The queue must stay a queue: a component that has since been given a real
+    # filter has to come off the list, or the list slowly becomes the answer
+    # instead of the backlog.
+    if len(sys.argv) <= 1:
+        carrying = {
+            app
+            for app, text in _components()
+            if re.search(r'EnvFilter::new\(\s*"(trace|debug|info|warn|error)"\s*\)', text)
+        }
+        for done in sorted(TRACING_QUEUE - carrying):
+            problems.append(
+                f"{done} is on the blanket-filter queue and no longer sets one; "
+                f"delete the entry"
+            )
+
     if len(sys.argv) <= 1:
         for stale in sorted(NOT_OURS):
             if not (APPS / stale).is_dir():
