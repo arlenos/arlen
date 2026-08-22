@@ -139,6 +139,22 @@
     const pending = $current;
     if (pending) {
       view = pending;
+      // Tell the shell the card is up, which is what makes the surface
+      // answerable at all: it is raised with an empty input region and no
+      // keyboard, so until this lands a press aimed at these buttons goes to
+      // whatever is behind them. After layout and two animation frames, which is
+      // the latest moment this side can honestly claim - the pixels follow the
+      // frame, and nothing in the process can observe them.
+      //
+      // No timer behind it. A card that never gets here leaves its request
+      // unanswered, and an unanswered request is the safe end of this.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          void invoke("consent_ready").catch((e) => {
+            say(`consent_ready failed, the card cannot be answered: ${e}`, "error");
+          });
+        }),
+      );
       return;
     }
     if (view === null) return;

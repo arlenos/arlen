@@ -62,3 +62,17 @@ pub fn frontend_log(level: String, msg: String) {
         _ => log::info!("[frontend] {msg}"),
     }
 }
+
+/// The consent card is on screen and the surface may take input now.
+///
+/// Invoked by the card's own component after its layout and two animation
+/// frames. Until it arrives the surface is mapped with an empty input region and
+/// no keyboard, so a press aimed at where the buttons will be lands on whatever
+/// is behind it rather than on a grant nobody has read yet.
+///
+/// There is deliberately no timer that arms without this: a card that never
+/// reports leaves its request unanswered, which is the safe direction.
+#[tauri::command]
+pub fn consent_ready(app: tauri::AppHandle) {
+    crate::consent_window::arm(&app);
+}
