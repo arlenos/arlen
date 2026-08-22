@@ -32,9 +32,12 @@ fn catalog_config_path() -> std::path::PathBuf {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this proxy and the `audit` target. It
+        // sits on the egress path with prompts passing through it, and a blanket
+        // level hands the HTTP stack's own logging the same material.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,arlen_ai_proxy=info")),
         )
         .init();
 

@@ -22,12 +22,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // `warn` for everything, `info` for this daemon's two crates and for the
         // `audit` target. The binary is `arlen-transferd` and the library is
         // `transfer-daemon`, so both need naming; `audit` is a target rather than a
-        // crate, and this daemon authenticates the peers it transfers for.
+        // crate.
+        //
+        // No `audit` directive: the request socket's ConnectionAuth flow is still
+        // the deferred half of `request_socket.rs`, so this daemon cannot emit that
+        // target yet. It joins the filter when the accept loop does.
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                tracing_subscriber::EnvFilter::new(
-                    "warn,arlen_transferd=info,transfer_daemon=info,audit=info",
-                )
+                tracing_subscriber::EnvFilter::new("warn,arlen_transferd=info,transfer_daemon=info")
             }),
         )
         .init();
