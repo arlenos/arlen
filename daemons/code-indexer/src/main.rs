@@ -42,9 +42,13 @@ const MAX_FRAME: usize = 1024 * 1024;
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this indexer. Only `main.rs` logs, and
+        // it shares its crate name with the library, so one directive covers what
+        // speaks.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_code_indexer=info")
+            }),
         )
         .init();
 

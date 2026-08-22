@@ -15,9 +15,12 @@ use arlen_permissions::identity_store::IdentityStore;
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this broker. A blanket level would put
+        // its dependencies' chatter beside config values it is handling.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_config_broker=info")
+            }),
         )
         .init();
 

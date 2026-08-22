@@ -176,9 +176,13 @@ fn run() -> Result<(), String> {
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt()
+        // `warn` for everything, `info` for this daemon. It carries other systems'
+        // data into the graph, which is the last material that should reach a
+        // journal through a dependency's frame logging.
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("warn,arlen_bridge_ingest=info")
+            }),
         )
         .with_writer(io::stderr)
         .init();
