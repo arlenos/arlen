@@ -63,6 +63,19 @@ function busyLabel(kind: OpKind, count: number): string {
   }
 }
 
+/// What the last operation DID, for the status bar, or null.
+///
+/// A successful trash left no trace: the row vanished from the list, which is
+/// feedback of a kind, and nothing said where the file went or that the app can
+/// put it back. The undo is real - `files_undo` inverts the last op - and lived
+/// entirely in a keyboard shortcut nobody is told about.
+///
+/// Only the two operations that MOVE somebody's data out of sight say anything.
+/// A copy or a rename is visible in the list it just changed; a trash and a
+/// delete are the ones where a person wants to know what happened, and they get
+/// different sentences because only one of them can be taken back.
+export const opDone = writable<{ key: string; count: number } | null>(null);
+
 export async function runOp(
   kind: OpKind,
   src: string[],
@@ -70,9 +83,15 @@ export async function runOp(
   policy?: "skip" | "rename" | "replace",
 ): Promise<boolean> {
   opBusy.set(busyLabel(kind, src.length));
+  // The previous answer goes the moment a new one is asked for; a line about the
+  // last delete sitting over a running copy is worse than no line.
+  opDone.set(null);
   try {
     await invoke("files_op", { kind, src, dst: dst ?? null, policy: policy ?? null });
     opError.set(null);
+    if (kind === "trash") opDone.set({ key: "f.done.trash", count: src.length });
+    else if (kind === "delete") opDone.set({ key: "f.done.delete", count: src.length });
+    else opDone.set(null);
     await get(activeController)?.refresh();
     return true;
   } catch (e) {
