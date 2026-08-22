@@ -165,7 +165,11 @@
                  history, and the line above has just said that history could not
                  be read. Three states kept apart - not loaded, loaded and failed,
                  loaded and empty - and this is the third. -->
-            <p class="px-2 py-2 text-xs leading-relaxed text-sidebar-foreground/55">{$t("mt.empty")}</p>
+            <!-- The SHORT form. The main pane already says the whole sentence and
+                 carries the button that acts on it; both were saying the same
+                 thing at once, which reads as two different pieces of news until
+                 you have read both. The list says what the list holds. -->
+            <p class="px-2 py-2 text-xs leading-relaxed text-sidebar-foreground/55">{$t("mt.emptyShort")}</p>
           {/if}
         </SidebarGroup>
       </SidebarContent>
