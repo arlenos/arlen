@@ -136,22 +136,38 @@ pub fn show(app: &AppHandle) {
         let Some(toplevel) = webview.inner().toplevel() else { return };
         let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else { return };
 
-        // Armed from the raise, and the alternative was tried and thrown away.
-        // On 21 August I raised it with an EMPTY region and armed it when the
-        // page reported the card painted (two animation frames) with a 2s
-        // backstop. It does not work: the page's report is about a DOM update,
-        // not about pixels, and the surface presents its first frame seconds
-        // later - `show: raised` at 131.2s, armed at 133.2s, card visible
-        // somewhere before 15s. So the machinery moved the swallowing window
-        // without closing it and cost a command, a timer and a frontend call to
-        // do it. The presentation delay is the real defect and it is not this
-        // function's to fix.
-        let full = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 32767));
-        gtk_window.input_shape_combine_region(Some(&full));
+        // NOT armed from the raise. A surface that has not painted holds no
+        // input and answers nothing - the rule is ordering, not speed, and it
+        // does not depend on how large the gap happens to be.
+        //
+        // Why the gap is real, measured on 22 August rather than argued:
+        //
+        //   raise                    card on screen        after-paint says
+        //   13.88s                   about +3s             4ms
+        //   77.82s (second raise)    about +2.5 to +5s     1025ms
+        //   13.80s (compositing on)  about +1.4s           9ms
+        //
+        // So GTK's frame clock reports a painted CONTAINER milliseconds after the
+        // raise while the card inside it is seconds away, on both clocks, and the
+        // delta is not even stable between two raises in one boot. Accelerated
+        // compositing halves the gap and does not close it, so it is not purely
+        // the VM's software rendering either. There is no signal here that means
+        // pixels, which is why this arms from the PAGE instead: `consent_ready`
+        // is invoked by the card's own component after its layout and two
+        // animation frames, and that is the latest honest moment this process can
+        // observe.
+        //
+        // The 21 August attempt at this had a 2s backstop that armed anyway, and
+        // the backstop is what fired - `raised` at 131.2s, `armed` at 133.2s. So
+        // the mechanism was not what failed; the escape hatch was. There is none
+        // now: a card that never reports leaves the request unanswered, which is
+        // the fail-closed direction and what the rule prescribes.
+        let empty = Region::create_rectangle(&RectangleInt::new(0, 0, 0, 0));
+        gtk_window.input_shape_combine_region(Some(&empty));
         // Re-asserted on every raise rather than trusted from creation: the
         // window is hidden and shown repeatedly, and each show maps the surface
         // afresh, which is precisely the moment interactivity is read.
-        gtk_window.set_keyboard_mode(KeyboardMode::Exclusive);
+        gtk_window.set_keyboard_mode(KeyboardMode::None);
         gtk_window.show_all();
         gtk_window.queue_draw();
         // The WEBVIEW is redrawn too, not only its GTK container. A second
@@ -200,6 +216,37 @@ pub fn show(app: &AppHandle) {
         }
     });
     log::info!("consent_window::show: raised");
+}
+
+/// Arms the surface: the card is on screen, so it may now take input.
+///
+/// Called by the consent page once its card has laid out and two animation
+/// frames have gone by. This is the ordering rule's second half - `show` maps a
+/// surface that swallows nothing, and only this makes it answerable.
+///
+/// Idempotent: a second call re-asserts the same region, which is what a re-raise
+/// of an already-armed surface needs anyway.
+pub fn arm(app: &AppHandle) {
+    let Some(w) = app.get_webview_window(LABEL) else {
+        log::warn!("consent_window::arm: no consent window");
+        return;
+    };
+    let _ = w.with_webview(move |webview| {
+        use gtk::cairo::{RectangleInt, Region};
+        use gtk::prelude::{Cast, WidgetExt};
+        use gtk_layer_shell::{KeyboardMode, LayerShell};
+
+        let Some(toplevel) = webview.inner().toplevel() else {
+            return;
+        };
+        let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else {
+            return;
+        };
+        let full = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 32767));
+        gtk_window.input_shape_combine_region(Some(&full));
+        gtk_window.set_keyboard_mode(KeyboardMode::Exclusive);
+    });
+    log::info!("consent_window::arm: the card is up, input taken from here");
 }
 
 /// Drops the consent surface once no request is pending.
