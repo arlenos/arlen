@@ -45,3 +45,38 @@ relations = [
     { from = "system.File", to = "system.Project", type = "FILE_PART_OF" },
 ]
 instance_scope = "all"
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# THIS ONE IS DIFFERENT FROM EVERY OTHER PROFILE HERE, and the difference is
+# worth reading before editing the list. The engine's subscriptions are not
+# written in its code: `orchestrator::subscription_types(&behaviours)` derives
+# them from the ENABLED BEHAVIOURS' triggers, so the set changes when a
+# behaviour is added, enabled or disabled - and a static list here is a snapshot
+# of a shipped configuration rather than a property of the binary.
+#
+# The list below is that snapshot, read out of the shipped SKILL.md files rather
+# than assumed:
+#
+#   file.opened               `auto-tag-by-project`
+#   calendar.event.upcoming   `meeting-prep`
+#
+# The other four shipped behaviours (`ask`, `explain`, `tag-untagged-files`,
+# `tidy-downloads`) are manual or scheduled and subscribe to nothing.
+#
+# SO: A NEW EVENT-TRIGGERED BEHAVIOUR NEEDS A LINE HERE, and under enforcement it
+# is silently inert without one - the subscribe returns Ok and the filter drops
+# the pattern. Whether that coupling should exist at all, or whether the engine
+# should declare its scope dynamically from the behaviours it loaded, is a design
+# question I am not answering in a profile; it is written down so the next person
+# meets it as a decision rather than as a behaviour that never fires.
+#
+# NOTHING IS PUBLISHED: the engine acts through the knowledge daemon and the
+# audit ledger, not by putting events on the bus.
+[event_bus]
+publish = []
+subscribe = [
+    "file.opened",
+    "calendar.event.upcoming",
+]
