@@ -34,7 +34,37 @@ export const openDocument = writable<OpenDocument | null>(null);
 
 /// Why the file the editor was asked to open is not on screen. Null when there
 /// was nothing to open or the open succeeded.
-export const openError = writable<string | null>(null);
+export type OpenProblem =
+  | { problem: "not-absolute" }
+  | { problem: "unreadable"; why: string }
+  | { problem: "not-text" }
+  | { problem: "other"; reason: string };
+
+export const openError = writable<OpenProblem | null>(null);
+
+/// Read the host's answer, which arrives as an object here and as a string with
+/// JSON inside it elsewhere in the tree. Both are accepted rather than one
+/// assumed: guessing wrong sends every named cause down `other`, which looks
+/// exactly like the code working.
+function named(e: unknown): OpenProblem {
+  const bag =
+    e && typeof e === "object"
+      ? (e as Record<string, unknown>)
+      : (() => {
+          const raw = String(e);
+          const at = raw.indexOf("{");
+          try {
+            return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
+          } catch {
+            return null;
+          }
+        })();
+  if (bag?.problem === "not-absolute") return { problem: "not-absolute" };
+  if (bag?.problem === "unreadable")
+    return { problem: "unreadable", why: String(bag.why ?? "") };
+  if (bag?.problem === "not-text") return { problem: "not-text" };
+  return { problem: "other", reason: String(e) };
+}
 
 /// The basename of the file the editor was launched on, whether or not it opened.
 /// The titlebar needs this: on a failed open the first version fell back to a demo
@@ -71,7 +101,7 @@ export async function openPath(path: string): Promise<void> {
     });
     openError.set(null);
   } catch (e) {
-    openError.set(String(e));
+    openError.set(named(e));
   }
 }
 
@@ -83,7 +113,7 @@ export async function loadInitialFile(): Promise<void> {
   try {
     path = await invoke<string | null>("initial_file");
   } catch (e) {
-    openError.set(String(e));
+    openError.set(named(e));
     return;
   }
   if (!path) return;

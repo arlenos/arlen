@@ -358,7 +358,12 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
              putting text on screen under a filename that is not its text. -->
         <div class="open-failed" role="alert">
           <p class="of-title">{$t("te.open.failed")}</p>
-          <p class="of-detail">{$openError}</p>
+          <p class="of-detail">
+            {#if $openError.problem === "not-absolute"}{$t("te.open.notAbsolute")}
+            {:else if $openError.problem === "not-text"}{$t("te.open.notText")}
+            {:else if $openError.problem === "unreadable"}{$t("te.open.unreadable", { why: $openError.why })}
+            {:else}{$openError.reason}{/if}
+          </p>
         </div>
       {:else if editable}
         <!-- A real file gets the real buffer. The demo documents below keep the
