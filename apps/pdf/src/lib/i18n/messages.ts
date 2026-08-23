@@ -21,7 +21,7 @@ const messages: Catalogs = {
     "pdf.search.none": "No page contains that.",
     "pdf.search.unsearchable":
       "{$count} pages could not be read, so anything on them is missing from these results.",
-    "pdf.nothingOpen": "No document is open. Open a PDF from the file manager, or pass one on the command line.",
+    "pdf.nothingOpen": "No document is open. Open a PDF from Files, or pass one on the command line.",
     "pdf.failed": "Could not open this document: {$reason}",
     "pdf.locked": "This document is locked with a password. This reader cannot ask for one yet, so it cannot be opened here.",
     "pdf.hostAbsent": "The reader reads documents through its own host, which is not running here.",
@@ -41,7 +41,7 @@ const messages: Catalogs = {
     "pdf.search.unsearchable":
       "{$count} Seiten konnten nicht gelesen werden, deshalb fehlt alles darauf in diesen Ergebnissen.",
     "pdf.nothingOpen":
-      "Es ist kein Dokument geöffnet. Öffne ein PDF aus der Dateiverwaltung oder übergib eins auf der Kommandozeile.",
+      "Es ist kein Dokument geöffnet. Öffne ein PDF aus Dateien oder übergib eins auf der Kommandozeile.",
     "pdf.failed": "Dieses Dokument konnte nicht geöffnet werden: {$reason}",
     "pdf.locked": "Dieses Dokument ist mit einem Passwort gesperrt. Dieser Leser kann noch keins abfragen, also lässt es sich hier nicht öffnen.",
     "pdf.hostAbsent": "Der Reader liest Dokumente über seinen eigenen Host, der hier nicht läuft.",
