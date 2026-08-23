@@ -31,6 +31,28 @@ export function invitationWords(method: string | null, t: Translate): string {
   return t("ml.invitation.other", { method });
 }
 
+/// A size written the way the reader writes one: `16 kB` in English, a comma
+/// decimal in German, the unit from the reader's locale. Moved here from the
+/// page when the reading surface grew components - a rule, not markup glue.
+export function formatBytes(n: number, loc: string): string {
+  return new Intl.NumberFormat(loc, {
+    style: "unit",
+    unit: "byte",
+    unitDisplay: "narrow",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(n);
+}
+
+/// The display half of a mailbox line: `Mara Winter <mara@example.org>` reads
+/// as the name, a bare address as itself. The full line stays wherever trust
+/// matters; this is for the avatar and the list row.
+export function displayName(from: string): string {
+  const at = from.indexOf("<");
+  const name = (at > 0 ? from.slice(0, at) : from).trim();
+  return name || from;
+}
+
 /// The Date header, written the way the reader's language writes one.
 ///
 /// A header that will not parse is returned VERBATIM. The raw line is what the
