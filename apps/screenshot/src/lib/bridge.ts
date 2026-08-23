@@ -107,3 +107,24 @@ export function frontendLog(message: string): void {
 export function canvasPngBase64(c: HTMLCanvasElement): string {
   return c.toDataURL("image/png").split(",")[1] ?? "";
 }
+
+/// Close this window.
+///
+/// The app takes a picture, saves it and is done; before this it had no way to
+/// go. `decorations: false` and no titlebar of its own meant the last state -
+/// one sentence saying where the file went - sat on screen with no button to
+/// press and no key that closed it, on a desktop where every other window has a
+/// close control. Photographed on a German boot, 23 August.
+///
+/// Best-effort and guarded like every other call here: under plain vite there is
+/// no window to close, and a tab that refuses to go away is the browser's own
+/// rule rather than a fault of this app.
+export async function closeWindow(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().close();
+  } catch (e) {
+    console.warn("closeWindow: the window stayed open:", e);
+  }
+}

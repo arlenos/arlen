@@ -38,6 +38,7 @@
     copyPng,
     frontendLog,
     canvasPngBase64,
+    closeWindow,
     type Output,
     type Window as CaptureWindow,
   } from "$lib/bridge";
@@ -424,9 +425,18 @@
     saveCanvas(canvas);
   }
   // Ignoring the thumbnail auto-saves (the fast path); the dismiss button does too.
+  /// How long the "saved to" line stays before the window goes away.
+  ///
+  /// Long enough to read seven words and no longer: this app's whole job is done
+  /// by the time it says that, and a capture tool that stays on screen is in the
+  /// way of the thing you took a picture of. It used to stay forever - no
+  /// titlebar, no close button, no key that closed it.
+  const GOODBYE_MS = 2500;
+
   function autoSaveAndDismiss() {
     if (base) saveCanvas(base);
     phase = "dismissed";
+    setTimeout(() => void closeWindow(), GOODBYE_MS);
   }
   function fileName(): string {
     const d = new Date();
@@ -439,6 +449,10 @@
       if (e.key === "Escape") { textEdit = null; }
       return;
     }
+    // Escape with nothing to cancel means "I am done with this window", which is
+    // what a person reaches for on a transient capture tool and what this had no
+    // answer to.
+    if (e.key === "Escape") { e.preventDefault(); void closeWindow(); return; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") { e.preventDefault(); copy(); return; }
     if (e.key === "Enter") { e.preventDefault(); copy(); return; }
