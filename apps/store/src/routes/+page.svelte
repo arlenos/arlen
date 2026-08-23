@@ -1,29 +1,35 @@
 <script lang="ts">
   /// The store browse (store-app.md §8.1/§8.7, content-forward): search first,
-  /// the capability facets as honest toggle chips, then the hand-picked editorial
-  /// collections. Discovery is plain and good - no engagement machinery, no
-  /// stars, search runs local.
+  /// the capability facets as honest toggle chips, the hand-picked editorial
+  /// collections, then the whole catalogue. Discovery is plain and good - no
+  /// engagement machinery, no stars, search runs local.
+  ///
+  /// The catalogue can be thousands of cards, so the all-apps grid renders in
+  /// slices behind a "Show more" button - a button, not an infinite scroll,
+  /// because the page should have an end a person can reach on purpose.
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import AppCard from "$lib/components/AppCard.svelte";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
   import {
     apps,
+    collections,
     catalogMocked,
     loadCatalog,
-    COLLECTIONS,
-    facetFlags,
+    collectionTitle,
     trustOf,
-    defaultVariantOf,
-    type StoreApp,
+    type StoreCard,
   } from "$lib/stores/catalog";
 
   onMount(loadCatalog);
 
   let query = $state("");
 
-  // The capability facets (§8.1): the vocabulary is the real grant classes.
+  // The capability facets (§8.1): the vocabulary is the real grant classes,
+  // answered by the backend as per-card booleans - nothing is derived from
+  // prose here.
   type FacetKey = "noNetwork" | "offlineOnly" | "noGraph" | "verified" | "reproducible";
   const FACETS: { key: FacetKey; labelKey: string }[] = [
     { key: "noNetwork", labelKey: "st.facet.noNetwork" },
@@ -46,15 +52,39 @@
   const visible = $derived($apps.filter((a) => showCommunity || trustOf(a) !== "community"));
   const filtering = $derived(query.trim().length > 0 || active.size > 0 || leastPrivilege);
   const results = $derived.by(() => {
-    let list = visible.filter((a) => a.name.toLowerCase().includes(query.trim().toLowerCase()));
-    for (const f of active) list = list.filter((a) => facetFlags(a)[f]);
-    if (leastPrivilege) list = [...list].sort((a, b) => defaultVariantOf(a).capWeight - defaultVariantOf(b).capWeight);
+    const q = query.trim().toLowerCase();
+    let list = visible.filter(
+      (a) => a.name.toLowerCase().includes(q) || a.summary.toLowerCase().includes(q) || a.id.toLowerCase().includes(q),
+    );
+    for (const f of active) list = list.filter((a) => a[f]);
+    if (leastPrivilege) list = [...list].sort((a, b) => a.capWeight - b.capWeight);
     return list;
   });
 
-  function byId(id: string): StoreApp | undefined {
-    return visible.find((a) => a.id === id);
-  }
+  // The collections that actually have members in this catalogue. An empty one
+  // is hidden; when none match at all (a catalogue the curator has not written
+  // for yet), the page says so once and the full grid below carries the load.
+  const liveCollections = $derived(
+    $collections
+      .map((c) => ({
+        coll: c,
+        members: c.members
+          .map((id) => visible.find((a) => a.id === id))
+          .filter((a): a is StoreCard => a !== undefined),
+      }))
+      .filter((c) => c.members.length > 0),
+  );
+
+  const everything = $derived([...visible].sort((a, b) => a.name.localeCompare(b.name)));
+
+  // The all-apps slice. Resets when the reveal toggle changes the population.
+  const SLICE = 60;
+  let shown = $state(SLICE);
+  $effect(() => {
+    void showCommunity;
+    shown = SLICE;
+  });
+
   function open(id: string): void {
     void goto(`/app/${id}`);
   }
@@ -67,7 +97,13 @@
     {/if}
 
     <div class="search">
-      <SearchField bind:value={query} placeholder={$t("st.search")} aria-label={$t("st.search")} id="store-search" />
+      <SearchField
+        bind:value={query}
+        size="prominent"
+        placeholder={$t("st.search")}
+        aria-label={$t("st.search")}
+        id="store-search"
+      />
     </div>
 
     <div class="facets" role="group" aria-label={$t("st.search")}>
@@ -115,17 +151,34 @@
         {/each}
       </div>
     {:else}
-      {#each COLLECTIONS as coll (coll.labelKey)}
-        {@const members = coll.ids.map(byId).filter((a): a is StoreApp => a !== undefined)}
-        {#if members.length > 0}
-          <div class="group-label">{$t(coll.labelKey)}</div>
-          <div class="grid">
-            {#each members as app (app.id)}
-              <AppCard {app} onopen={open} />
-            {/each}
+      {#each liveCollections as { coll, members } (coll.id)}
+        <div class="group-label">{collectionTitle(coll, $locale)}</div>
+        <div class="grid">
+          {#each members as app (app.id)}
+            <AppCard {app} onopen={open} />
+          {/each}
+        </div>
+      {/each}
+      {#if liveCollections.length === 0 && everything.length > 0}
+        <p class="quiet">{$t("st.coll.none")}</p>
+      {/if}
+
+      {#if everything.length > 0}
+        <div class="group-label">{$t("st.all")}</div>
+        <div class="grid">
+          {#each everything.slice(0, shown) as app (app.id)}
+            <AppCard {app} onopen={open} />
+          {/each}
+        </div>
+        {#if everything.length > shown}
+          <div class="more">
+            <span class="count">{$t("st.shown", { n: shown, total: everything.length })}</span>
+            <Button variant="outline" size="sm" id="store-show-more" onclick={() => (shown += SLICE * 2)}>
+              {$t("st.showMore")}
+            </Button>
           </div>
         {/if}
-      {/each}
+      {/if}
     {/if}
   </div>
 </main>
@@ -138,7 +191,7 @@
   }
   .st-content {
     width: 100%;
-    max-width: 46rem;
+    max-width: 64rem;
     margin: 0 auto;
     padding: 1.25rem 1.5rem 2rem;
   }
@@ -186,6 +239,16 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
     gap: 0.6rem;
+  }
+  .more {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+  .count {
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .quiet {
     margin: 0;

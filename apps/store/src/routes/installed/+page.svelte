@@ -5,38 +5,44 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { t } from "$lib/i18n/messages";
-  import { apps, catalogMocked, loadCatalog, isInstalled } from "$lib/stores/catalog";
+  import IconTile from "$lib/components/IconTile.svelte";
+  import { apps, catalogMocked, loadCatalog, type Tier } from "$lib/stores/catalog";
 
   onMount(loadCatalog);
 
-  const installed = $derived($apps.filter(isInstalled));
+  const installed = $derived($apps.filter((a) => a.installed));
 
-  function sourceLabel(s: string): string {
-    return s === "forage" ? $t("st.src.forage") : s === "flathub" ? $t("st.src.flathub") : $t("st.src.debian");
+  function sourceLabel(s: Tier): string {
+    return s === "forage"
+      ? $t("st.src.forage")
+      : s === "flathub"
+        ? $t("st.src.flathub")
+        : s === "debian"
+          ? $t("st.src.debian")
+          : $t("st.src.native");
   }
 </script>
 
 <main class="st-main">
-      <div class="st-content">
-        {#if $catalogMocked}
-          <p class="sample">{$t("st.sample")}</p>
-        {/if}
+  <div class="st-content">
+    {#if $catalogMocked}
+      <p class="sample">{$t("st.sample")}</p>
+    {/if}
 
-        {#if installed.length === 0}
-          <p class="quiet">{$t("st.inst.empty")}</p>
-        {:else}
-          {#each installed as app (app.id)}
-            {@const v = app.variants.find((x) => x.installed)}
-            <button type="button" class="row" id={`inst-${app.id}`} onclick={() => goto(`/app/${app.id}`)}>
-              <span class="tile" style="background:{app.icon}" aria-hidden="true"></span>
-              <span class="row-body">
-                <span class="row-name">{app.name}</span>
-                <span class="row-meta">{v ? sourceLabel(v.source) : ""}</span>
-              </span>
-            </button>
-          {/each}
-        {/if}
-      </div>
+    {#if installed.length === 0}
+      <p class="quiet">{$t("st.inst.empty")}</p>
+    {:else}
+      {#each installed as app (app.id)}
+        <button type="button" class="row" id={`inst-${app.id}`} onclick={() => goto(`/app/${app.id}`)}>
+          <IconTile icon={app.icon} name={app.name} size="2.5rem" />
+          <span class="row-body">
+            <span class="row-name">{app.name}</span>
+            <span class="row-meta">{sourceLabel(app.tier)}</span>
+          </span>
+        </button>
+      {/each}
+    {/if}
+  </div>
 </main>
 
 <style>
@@ -77,12 +83,6 @@
   }
   .row:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
-  }
-  .tile {
-    flex-shrink: 0;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: var(--radius-input);
   }
   .row-body {
     display: flex;
