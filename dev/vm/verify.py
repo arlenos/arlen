@@ -868,12 +868,14 @@ def main():
                          "print what is in it. For the question a frame cannot "
                          "answer: the window said it saved a file, so is the file "
                          "there. Repeatable.")
-    ap.add_argument("--preload", action="append", default=None, metavar="SRC:/DEST",
+    ap.add_argument("--preload", action="append", default=None, metavar="SRC:/DEST[:MODE]",
                     help="copy a host file into the guest before boot, into the "
                          "throwaway overlay rather than the image. For state that "
                          "has to exist BEFORE the session starts - a calendar file "
                          "whose alarm the daemon reads at startup, a config a "
-                         "first-run path branches on. Repeatable.")
+                         "first-run path branches on. Repeatable. MODE is octal "
+                         "(0755) for a file that has to be executable - the copy "
+                         "does not carry the source's own bit.")
     ap.add_argument(
         "--key-at",
         action="append",
@@ -994,18 +996,29 @@ def main():
     if args.preload:
         pairs = []
         for spec in args.preload:
-            src, _, dest = spec.partition(":")
+            src, _, rest = spec.partition(":")
+            dest, _, mode = rest.partition(":")
             if not src or not dest or not dest.startswith("/"):
-                print(f"VERIFY FAIL: --preload wants SRC:/absolute/dest, got {spec!r}", file=sys.stderr)
+                print(f"VERIFY FAIL: --preload wants SRC:/absolute/dest[:MODE], got {spec!r}", file=sys.stderr)
                 return 2
             if not os.path.isfile(src):
                 print(f"VERIFY FAIL: --preload source {src} is not a file", file=sys.stderr)
                 return 2
-            pairs.append((src, dest))
+            if mode and not re.fullmatch(r"0?[0-7]{3}", mode):
+                print(f"VERIFY FAIL: --preload mode must be octal like 0755, got {mode!r}", file=sys.stderr)
+                return 2
+            pairs.append((src, dest, mode))
         script = ["run", "mount /dev/sda2 /"]
-        for src, dest in pairs:
+        for src, dest, mode in pairs:
             script.append(f"mkdir-p {os.path.dirname(dest)}")
             script.append(f"upload {src} {dest}")
+            # `upload` does not carry the source's mode, so a preloaded script
+            # lands unexecutable and the thing that runs it dies without saying
+            # why: greetd opened a session and closed it 20ms later, and the run
+            # still reported OK. Naming the mode is how you preload something
+            # meant to be RUN rather than read.
+            if mode:
+                script.append(f"chmod 0{int(mode, 8):o} {dest}")
         # `guestfish` over the qcow2 overlay, so the writes land in the throwaway.
         r = subprocess.run(
             ["guestfish", "--rw", "-a", overlay],
@@ -1016,8 +1029,8 @@ def main():
         if r.returncode != 0:
             print(f"VERIFY FAIL: could not preload into the overlay: {r.stderr.strip()}", file=sys.stderr)
             return 2
-        for _, dest in pairs:
-            print(f"preloaded {dest}")
+        for _, dest, mode in pairs:
+            print(f"preloaded {dest}" + (f" (mode 0{int(mode, 8):o})" if mode else ""))
 
     # The virgl path has no CPU-side framebuffer for QMP to dump, so QEMU must
     # draw into something we can grab: an Xvfb of our own, with QEMU's GTK display
@@ -2164,6 +2177,30 @@ def main():
                   "legitimate. Neither is cosmetic.")
             return 1
         print("identity: no divergence and no refused stamp on the console")
+
+        # DID THE DESKTOP START AT ALL?
+        #
+        # Everything below reads a boot that got somewhere. A boot where the
+        # session died on its first breath still walked all the way to the end
+        # and said "VERIFY OK: the compositor rendered a frame" - measured here
+        # on 23 August, after a preloaded greetd config pointed at a wrapper the
+        # overlay had landed without its execute bit. greetd opened the PAM
+        # session at 6.07s and closed it at 6.09s, no compositor and no shell
+        # ever ran, and the run passed. The frame it saw was a console.
+        #
+        # So: if the console was readable and never names the compositor, the
+        # desktop did not start, and no amount of pixels afterwards makes that a
+        # pass. Keyed on the process identifier the journal prints, which is
+        # there from the compositor's first line, rather than on any one message
+        # it might stop logging.
+        if "arlen-compositor[" not in identity_text:
+            print("VERIFY FAIL: the console never names the compositor, so the "
+                  "session never started")
+            print("  greetd runs /usr/bin/arlen-session, which spawns it. A "
+                  "session that dies immediately leaves a bootable machine with "
+                  "no desktop - and every later check here reads pixels, which a "
+                  "console has too.")
+            return 1
 
         # The socket table's other half. CI checks it against the SOURCE - every
         # dialled socket has an entry, no entry is stale - and cannot check the
