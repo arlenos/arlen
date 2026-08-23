@@ -96,7 +96,7 @@
         <ContextMenu.SubContent class="shell-popover">
           {#each moveTargets as ws, i (ws.id)}
             <ContextMenu.Item onclick={() => moveAllSelectedToWorkspace(ws.id)}>
-              {ws.name || `Workspace ${i + 1}`}
+              {ws.name || $t("sh.ws.numbered", { n: i + 1 })}
             </ContextMenu.Item>
           {/each}
         </ContextMenu.SubContent>
@@ -124,7 +124,7 @@
         <ContextMenu.SubContent class="shell-popover">
           {#each moveTargets as ws, i (ws.id)}
             <ContextMenu.Item onclick={() => restoreWindowToWorkspace(windowId, ws.id)}>
-              {ws.name || `Workspace ${i + 1}`}
+              {ws.name || $t("sh.ws.numbered", { n: i + 1 })}
             </ContextMenu.Item>
           {/each}
         </ContextMenu.SubContent>
@@ -142,7 +142,7 @@
         <ContextMenu.SubContent class="shell-popover">
           {#each moveTargets as ws, i (ws.id)}
             <ContextMenu.Item onclick={() => moveWindowToWorkspaceAction(windowId, ws.id)}>
-              {ws.name || `Workspace ${i + 1}`}
+              {ws.name || $t("sh.ws.numbered", { n: i + 1 })}
             </ContextMenu.Item>
           {/each}
         </ContextMenu.SubContent>

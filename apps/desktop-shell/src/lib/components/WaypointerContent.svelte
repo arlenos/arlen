@@ -1049,7 +1049,7 @@
                   badge="kill"
                   fallbackIcon={Skull}
                   title={proc.name}
-                  description={`PID ${proc.pid}, ${formatBytes(proc.memory_bytes, $locale)}`}
+                  description={$t("sh.wp.procDetail", { pid: proc.pid, size: formatBytes(proc.memory_bytes, $locale) })}
                 />
               </CommandItem>
             {/each}
@@ -1099,7 +1099,7 @@
                 <WaypointerResult
                   icon={X}
                   emphasis={60}
-                  title={`Exit Focus: ${$focusState.projectName}`}
+                  title={$t("sh.wp.exitFocus", { name: $focusState.projectName })}
                 />
               </CommandItem>
             {/if}

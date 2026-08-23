@@ -4,6 +4,8 @@
   /// into the drag engine) and the right-click anchor for the
   /// window context menu.
 
+  import { t } from "$lib/i18n/messages";
+
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import { AppWindow } from "lucide-svelte";
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
@@ -74,8 +76,8 @@
         onpointercancel={drag.onCardPointerCancel}
         title={title || appId}
         aria-label={minimized
-          ? `Minimized: ${title || appId} on workspace ${wsIndex + 1}`
-          : `${title || appId} on workspace ${wsIndex + 1}`}
+          ? $t("sh.aria.windowMinimized", { window: title || appId, n: wsIndex + 1 })
+          : $t("sh.aria.window", { window: title || appId, n: wsIndex + 1 })}
       >
         {#if iconUrl}
           <img

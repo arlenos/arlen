@@ -7,6 +7,7 @@
   /// Mock-vs-live: the capture-state signal (compositor/portal -> shell) is a coder
   /// seam. Under vite dev the badge shows a fixture so the surface renders; on metal
   /// without the command it stays invisible (no cry-wolf), like RecordingBadge.
+  import { t } from "$lib/i18n/messages";
   import { StatusBadge } from "@arlen/ui-kit/components/topbar";
   import { tauriAvailable } from "$lib/tauri";
   import { ScreenShare } from "lucide-svelte";
@@ -76,7 +77,7 @@
   active={active}
   pulsate
   label={label}
-  title={`Your screen is being shared with ${app}. Click to stop.`}
+  title={$t("sh.aria.sharing", { app })}
   onclick={handleClick}
 >
   {#snippet icon()}

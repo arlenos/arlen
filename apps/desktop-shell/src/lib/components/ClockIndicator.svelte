@@ -7,6 +7,8 @@
   /// Updates every minute, synced to the minute boundary to avoid
   /// drift.
 
+  import { t } from "$lib/i18n/messages";
+
   import { Applet } from "@arlen/ui-kit/components/topbar";
   import { locale } from "@arlen/ui-kit/i18n";
 
@@ -68,7 +70,7 @@
   });
 </script>
 
-<Applet appletId="clock" {tooltip} ariaLabel={`Clock: ${weekday} ${time}`}>
+<Applet appletId="clock" {tooltip} ariaLabel={$t("sh.aria.clock", { weekday, time })}>
   {#snippet labelSnippet()}
     <span class="clock-weekday">{weekday}</span>
     <span class="clock-time">{time}</span>

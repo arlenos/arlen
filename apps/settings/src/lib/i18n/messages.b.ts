@@ -514,6 +514,10 @@ export const b: Catalogs = {
     // Component props passed in markup, invisible to the born-translatable lint
     // until 23 August.
     "s.sys.iconHint": "The icon set across your apps",
+    "s.qs.hiddenTile": "Hidden tile: {$tile}. Drag back into the panel or right-click to show",
+    "s.pr.jobNumber": "Job {$id}",
+    "s.tb.reorder": "Reorder {$item}",
+    "s.ai.enableBehaviour": "Enable {$name}",
     "s.kbd.variantHint": "Optional variant for the primary layout, for example dvorak or colemak.",
     "s.sysact.resetAllBody": "This removes every custom command. All actions go back to their built-in defaults.",
     "s.sysact.resetAllConfirm": "Reset all",
@@ -1436,6 +1440,10 @@ export const b: Catalogs = {
     "s.sys.cursor": "Zeiger",
     "s.sys.theme": "Thema",
     "s.sys.iconHint": "Der Symbolsatz für deine Apps",
+    "s.qs.hiddenTile": "Ausgeblendete Kachel: {$tile}. Zurück ins Panel ziehen oder per Rechtsklick einblenden",
+    "s.pr.jobNumber": "Auftrag {$id}",
+    "s.tb.reorder": "{$item} umsortieren",
+    "s.ai.enableBehaviour": "{$name} einschalten",
     "s.kbd.variantHint": "Optionale Variante für das primäre Layout, zum Beispiel dvorak oder colemak.",
     "s.sysact.resetAllBody": "Das entfernt jeden eigenen Befehl. Alle Aktionen gehen auf ihre eingebauten Vorgaben zurück.",
     "s.sysact.resetAllConfirm": "Alle zurücksetzen",

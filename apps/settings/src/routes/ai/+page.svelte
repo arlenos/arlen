@@ -365,7 +365,7 @@
             {#snippet control()}
               <Switch
                 value={b.enabled}
-                ariaLabel={`Enable ${b.name}`}
+                ariaLabel={$t("s.ai.enableBehaviour", { name: b.name })}
                 onchange={(v: boolean) => setBehaviourEnabled(b.name, v)}
               />
             {/snippet}
