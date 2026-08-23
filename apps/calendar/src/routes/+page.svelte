@@ -9,6 +9,7 @@
   /// of nothing rendered as one is the defect this app was written after.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { CalendarDays, MapPin, Repeat } from "@lucide/svelte";
@@ -132,10 +133,40 @@
   /// The day heading, through Intl off the shared locale - never a catalogue
   /// string, so a German build says "Mittwoch, 19. August" rather than an
   /// English order with German words in it.
+
+  function isInteractive(e: Event): boolean {
+    const target = e.target as HTMLElement | null;
+    return !!target?.closest("button, a, input, [role='button']");
+  }
+
+  async function startDrag(e: PointerEvent) {
+    if (e.button !== 0 || e.pointerType !== "mouse") return;
+    if (isInteractive(e)) return;
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      /* standalone (vite) has no toplevel to drag */
+    }
+  }
+
+  async function toggleMax(e: MouseEvent) {
+    if (isInteractive(e)) return;
+    try {
+      const w = getCurrentWindow();
+      if (await w.isMaximized()) await w.unmaximize();
+      else await w.maximize();
+    } catch {
+      /* no window in standalone */
+    }
+  }
 </script>
 
 <main class="page">
-  <header class="bar">
+  <!-- The header is a drag surface (a non-keyboard pointer interaction); its
+       actual controls are the accessible WindowButtons, so the
+       static-interaction lint is a false positive here. -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <header class="bar" onpointerdown={startDrag} ondblclick={toggleMax}>
     <CalendarDays size={16} strokeWidth={2} />
     <h1>{$t("cal.agenda")}</h1>
     <span class="spacer"></span>
@@ -269,14 +300,16 @@
   }
   .bar {
     display: flex;
+    height: 2.5rem;
+    flex-shrink: 0;
     align-items: center;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 0 8px;
     border-bottom: 1px solid var(--color-border-default, #262626);
   }
   .bar h1 {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 500;
     margin: 0;
   }
   .spacer {
