@@ -11,7 +11,6 @@
   import { ArrowLeft, ExternalLink, Check, Minus } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
-  import StoreHeader from "$lib/components/StoreHeader.svelte";
   import { t } from "$lib/i18n/messages";
   import {
     apps,
@@ -70,10 +69,7 @@
   }
 </script>
 
-<div class="st-app">
-  <StoreHeader />
-
-  <main class="st-main">
+<main class="st-main">
   <div class="st-content">
     {#if $catalogMocked}
       <p class="sample">{$t("st.sample")}</p>
@@ -212,19 +208,9 @@
       <p class="quiet">{$t("st.notFound")}</p>
     {/if}
   </div>
-  </main>
-</div>
+</main>
 
 <style>
-  .st-app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--color-bg-app);
-    color: var(--color-fg-primary);
-  }
-  /* The scroller spans the window so the scrollbar sits at the edge; the
-     content column is capped inside it. */
   .st-main {
     flex: 1;
     min-height: 0;

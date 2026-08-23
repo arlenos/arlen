@@ -1,11 +1,23 @@
 <script lang="ts">
-  /// The store's places rail: Browse, Installed, Updates - the three things the
-  /// store is for. The update count is a quiet number, never a red dot
-  /// (update-flow-plan.md U-5: no nagging; routine updates wait to be looked at).
+  /// The store's places sidebar on the files-canon kit primitives: icon
+  /// collapse, the caps app label in the header, a rail. Browse, Installed,
+  /// Updates - the three things the store is for. The update count stays a
+  /// quiet number, never a red dot (update-flow-plan.md U-5).
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { Compass, Package, ArrowDownToLine } from "lucide-svelte";
+  import {
+    Sidebar,
+    SidebarContent,
+    SidebarGroup,
+    SidebarGroupLabel,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarRail,
+  } from "@arlen/ui-kit/components/ui/sidebar";
   import { t } from "$lib/i18n/messages";
   import { updateCount, loadUpdates } from "$lib/stores/updates";
 
@@ -19,63 +31,38 @@
   const current = $derived($page.url.pathname);
 </script>
 
-<nav class="rail" aria-label={$t("st.title")}>
-  {#each PLACES as p (p.href)}
-    {@const Icon = p.icon}
-    <button
-      type="button"
-      class="place"
-      class:active={current === p.href}
-      aria-current={current === p.href ? "page" : undefined}
-      id={`rail-${p.href === "/" ? "browse" : p.href.slice(1)}`}
-      onclick={() => goto(p.href)}
+<Sidebar collapsible="icon">
+  <SidebarHeader class="h-10 flex-row items-center py-0">
+    <span
+      class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
     >
-      <Icon size={16} strokeWidth={1.75} />
-      <span class="place-label">{$t(p.labelKey)}</span>
-      {#if p.href === "/updates" && $updateCount > 0}
-        <span class="count">{$updateCount}</span>
-      {/if}
-    </button>
-  {/each}
-</nav>
-
-<style>
-  .rail {
-    flex: 0 0 11rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    padding: 0.75rem 0.6rem;
-    border-inline-end: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-  }
-  .place {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    width: 100%;
-    padding: 0.4rem 0.5rem;
-    border: none;
-    border-radius: var(--radius-input);
-    background: transparent;
-    text-align: start;
-    font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--color-fg-primary) 82%, transparent);
-    cursor: pointer;
-  }
-  .place:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-  }
-  .place.active {
-    background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
-    color: var(--color-fg-primary);
-    font-weight: 500;
-  }
-  .place-label {
-    flex: 1;
-  }
-  .count {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-    font-variant-numeric: tabular-nums;
-  }
-</style>
+      {$t("st.title")}
+    </span>
+  </SidebarHeader>
+  <SidebarContent>
+    <SidebarGroup>
+      <SidebarGroupLabel>{$t("st.section.places")}</SidebarGroupLabel>
+      <SidebarMenu>
+        {#each PLACES as p (p.href)}
+          {@const Icon = p.icon}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              id={`rail-${p.href === "/" ? "browse" : p.href.slice(1)}`}
+              isActive={current === p.href}
+              onclick={() => goto(p.href)}
+            >
+              <Icon strokeWidth={1.75} />
+              <span>{$t(p.labelKey)}</span>
+              {#if p.href === "/updates" && $updateCount > 0}
+                <span class="ms-auto text-xs tabular-nums text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden">
+                  {$updateCount}
+                </span>
+              {/if}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        {/each}
+      </SidebarMenu>
+    </SidebarGroup>
+  </SidebarContent>
+  <SidebarRail />
+</Sidebar>

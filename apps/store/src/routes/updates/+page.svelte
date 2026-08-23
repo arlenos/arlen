@@ -7,8 +7,6 @@
   /// default so the loud case is believed.
   import { onMount } from "svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import StoreHeader from "$lib/components/StoreHeader.svelte";
-  import StoreRail from "$lib/components/StoreRail.svelte";
   import { t } from "$lib/i18n/messages";
   import { loadCatalog } from "$lib/stores/catalog";
   import {
@@ -44,11 +42,7 @@
   };
 </script>
 
-<div class="st-app">
-  <StoreHeader />
-  <div class="st-body">
-    <StoreRail />
-    <main class="st-main">
+<main class="st-main">
       <div class="st-content">
         {#if $updatesMocked}
           <p class="sample">{$t("st.sample")}</p>
@@ -110,23 +104,9 @@
           {/if}
         {/if}
       </div>
-    </main>
-  </div>
-</div>
+</main>
 
 <style>
-  .st-app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--color-bg-app);
-    color: var(--color-fg-primary);
-  }
-  .st-body {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-  }
   .st-main {
     flex: 1;
     min-width: 0;

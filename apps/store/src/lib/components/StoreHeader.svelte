@@ -1,9 +1,13 @@
 <script lang="ts">
-  /// The app titlebar: drag region + window controls, matching the sibling apps.
-  /// Window calls are guarded so the app renders under vite.
+  /// The header bar on the files canon: h-10, trigger first, the PLACE in the
+  /// middle (the app name lives in the sidebar caps label). Window calls are
+  /// guarded so the app renders under vite.
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { SidebarTrigger } from "@arlen/ui-kit/components/ui/sidebar";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { t } from "$lib/i18n/messages";
+
+  let { placeLabel }: { placeLabel: string } = $props();
 
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
@@ -35,29 +39,14 @@
      controls are the accessible WindowButtons inside it, so the static-interaction
      lint is a false positive here. Same treatment as the meetings layout. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<header class="st-header" onpointerdown={startDrag} ondblclick={toggleMax}>
-  <span class="st-header-title">{$t("st.title")}</span>
-  <span class="st-header-spacer"></span>
+<header
+  class="flex h-10 shrink-0 select-none items-center gap-2 border-b border-border bg-background px-2"
+  onpointerdown={startDrag}
+  ondblclick={toggleMax}
+>
+  <SidebarTrigger class="-ml-1" />
+  <Separator orientation="vertical" class="me-1 h-4" />
+  <span class="truncate text-sm font-medium text-foreground">{placeLabel}</span>
+  <span class="flex-1"></span>
   <WindowButtons />
 </header>
-
-<style>
-  .st-header {
-    display: flex;
-    align-items: center;
-    height: 2.75rem;
-    flex-shrink: 0;
-    padding: 0 0.35rem 0 0.9rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    user-select: none;
-    -webkit-user-select: none;
-  }
-  .st-header-title {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--color-fg-primary);
-  }
-  .st-header-spacer {
-    flex: 1;
-  }
-</style>

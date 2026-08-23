@@ -4,8 +4,6 @@
   /// lives on the app page - one job per surface.
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import StoreHeader from "$lib/components/StoreHeader.svelte";
-  import StoreRail from "$lib/components/StoreRail.svelte";
   import { t } from "$lib/i18n/messages";
   import { apps, catalogMocked, loadCatalog, isInstalled } from "$lib/stores/catalog";
 
@@ -18,11 +16,7 @@
   }
 </script>
 
-<div class="st-app">
-  <StoreHeader />
-  <div class="st-body">
-    <StoreRail />
-    <main class="st-main">
+<main class="st-main">
       <div class="st-content">
         {#if $catalogMocked}
           <p class="sample">{$t("st.sample")}</p>
@@ -43,23 +37,9 @@
           {/each}
         {/if}
       </div>
-    </main>
-  </div>
-</div>
+</main>
 
 <style>
-  .st-app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--color-bg-app);
-    color: var(--color-fg-primary);
-  }
-  .st-body {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-  }
   .st-main {
     flex: 1;
     min-width: 0;
