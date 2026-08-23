@@ -9,6 +9,7 @@
     togglePopover,
     hoverPopover,
   } from "$lib/stores/activePopover.js";
+  import { t } from "$lib/i18n/messages";
   import { Applet } from "@arlen/ui-kit/components/topbar";
   import { Square } from "lucide-svelte";
 
@@ -17,7 +18,7 @@
 
 <Applet
   appletId="quick-settings"
-  tooltip="Quick Settings"
+  tooltip={$t("sh.tip.quickSettings")}
   popoverOpen={isOpen}
   onclick={() => togglePopover("quick-settings")}
   onmouseenter={() => hoverPopover("quick-settings")}

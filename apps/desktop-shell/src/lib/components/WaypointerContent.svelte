@@ -916,7 +916,7 @@
              (relevance 1.0) surfaces at the top, beating any partial
              app-name match. -->
         {#if $powerResults.length > 0}
-          <CommandGroup heading="System">
+          <CommandGroup heading={$t("sh.wp.grp.system")}>
             {#each $powerResults as action (action.id)}
               {@const ActionIcon = iconForPowerAction(action.id)}
               <CommandItem
@@ -947,7 +947,7 @@
              execute confirmation arrives via the `arlen://toast`
              event bridge in `+layout.svelte`. -->
         {#if $quickActionResults.length > 0}
-          <CommandGroup heading="Quick Actions">
+          <CommandGroup heading={$t("sh.wp.grp.quickActions")}>
             {#each $quickActionResults as qa (qa.id)}
               <CommandItem
                 value={`qa-${qa.id}`}
@@ -975,7 +975,7 @@
              Hidden as soon as the user types anything so the search
              result sections can take over. -->
         {#if query.trim().length === 0 && $recentAppsStore.length > 0}
-          <CommandGroup heading="Recent Apps">
+          <CommandGroup heading={$t("sh.wp.grp.recentApps")}>
             {#each $recentAppsStore as app, i (app.name + "_rec_" + i)}
               <CommandItem
                 value={`recent-app-${app.exec}`}
@@ -996,7 +996,7 @@
         {/if}
 
         {#if query.trim().length === 0 && $recentFilesStore.length > 0}
-          <CommandGroup heading="Recent Files">
+          <CommandGroup heading={$t("sh.wp.grp.recentFiles")}>
             {#each $recentFilesStore as file (file.path)}
               <CommandItem
                 value={`recent-file-${file.path}`}
@@ -1014,7 +1014,7 @@
         {/if}
 
         {#if $windowResults.length > 0}
-          <CommandGroup heading="Windows">
+          <CommandGroup heading={$t("sh.wp.grp.windows")}>
             {#each $windowResults as win (win.id)}
               {@const icon = appIconFor(win.app_id)}
               <CommandItem
@@ -1037,7 +1037,7 @@
         {/if}
 
         {#if $processResults.length > 0}
-          <CommandGroup heading="Processes">
+          <CommandGroup heading={$t("sh.wp.grp.processes")}>
             {#each $processResults as proc (proc.pid)}
               {@const procIcon = appIconFor(proc.name)}
               <CommandItem
@@ -1057,7 +1057,7 @@
         {/if}
 
         {#if $unicodeResults.length > 0}
-          <CommandGroup heading="Unicode">
+          <CommandGroup heading={$t("sh.wp.grp.unicode")}>
             {#each $unicodeResults as uc (uc.codepoint)}
               <CommandItem
                 value={`unicode-${uc.codepoint}`}
@@ -1074,7 +1074,7 @@
         {/if}
 
         {#if $searchResults.length > 0}
-          <CommandGroup heading="Applications">
+          <CommandGroup heading={$t("sh.wp.grp.applications")}>
             {#each $searchResults as app, i (app.name + i)}
               <CommandItem
                 value={app.name}
@@ -1093,7 +1093,7 @@
         {/if}
 
         {#if filteredProjects.length > 0 || $isFocused}
-          <CommandGroup heading="Projects">
+          <CommandGroup heading={$t("sh.wp.grp.projects")}>
             {#if $isFocused}
               <CommandItem value="focus-exit" onSelect={() => { deactivateFocus(); close(); }}>
                 <WaypointerResult
@@ -1118,7 +1118,7 @@
         {/if}
 
         {#if $clipboardResults.length > 0}
-          <CommandGroup heading="Clipboard">
+          <CommandGroup heading={$t("sh.wp.grp.clipboard")}>
             {#each $clipboardResults as entry (entry.id)}
               <CommandItem
                 value={`clip-item-${entry.id}`}
@@ -1160,7 +1160,7 @@
         {/if}
 
         {#if $fileResults.length > 0}
-          <CommandGroup heading="Files">
+          <CommandGroup heading={$t("sh.wp.grp.files")}>
             {#each $fileResults as file (file.id)}
               {@const FileIconComponent = iconForFileName(file.icon)}
               <CommandItem
@@ -1180,7 +1180,7 @@
         {/if}
 
         {#if $dictResults.length > 0}
-          <CommandGroup heading="Definitions">
+          <CommandGroup heading={$t("sh.wp.grp.definitions")}>
             {#each $dictResults as def (def.id)}
               <CommandItem
                 value={`dict-${def.id}`}
@@ -1199,7 +1199,7 @@
         {/if}
 
         {#if $settingsResults.length > 0}
-          <CommandGroup heading="Settings">
+          <CommandGroup heading={$t("sh.wp.grp.settings")}>
             {#each $settingsResults as sr (sr.setting.id)}
               <CommandItem
                 value={`setting-${sr.setting.id}`}
@@ -1230,7 +1230,7 @@
         {/if}
 
         {#if $moduleResults.length > 0}
-          <CommandGroup heading="Modules">
+          <CommandGroup heading={$t("sh.wp.grp.modules")}>
             {#each $moduleResults as result (result.id)}
               <CommandItem
                 value={`module:${result.id}`}
