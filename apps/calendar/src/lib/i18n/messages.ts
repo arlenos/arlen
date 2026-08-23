@@ -43,7 +43,17 @@ const messages: Catalogs = {
     "cal.unreadable": "{$count} of your calendar files could not be read, so events in them are missing.",
     "cal.hostAbsent": "The calendar reads your files through its own host, which is not running here.",
     "cal.serviceDown": "Showing your files directly: the calendar service is not running, so no reminders are being set for these events.",
-    "cal.failed": "Could not read your calendar files: {$reason}",
+    // Named causes rather than whatever the layer below said. The five keep
+    // failures used to reach the window as English sentences with no catalogue
+    // around them at all.
+    "cal.failed.noHome": "This session has no home directory, so there is no calendar folder to read.",
+    "cal.failed.unreadable": "Your calendar folder could not be read, so nothing is shown: {$why}",
+    "cal.failed.other": "Could not read your calendar files: {$reason}",
+    "cal.keep.notAFile": "That is not a file, so there is nothing to keep.",
+    "cal.keep.noHome": "This session has no home directory, so there is nowhere to keep it.",
+    "cal.keep.cannotMakeDir": "The calendar folder could not be made, so it was not kept: {$why}",
+    "cal.keep.alreadyKept": "A calendar called {$name} is already kept. Rename one of them and try again.",
+    "cal.keep.copyFailed": "It could not be copied into the calendar folder: {$why}",
   },
   de: {
     "cal.app.title": "Kalender",
@@ -73,7 +83,14 @@ const messages: Catalogs = {
     "cal.unreadable": "{$count} deiner Kalenderdateien konnten nicht gelesen werden, die Termine darin fehlen also.",
     "cal.hostAbsent": "Der Kalender liest deine Dateien über seinen eigenen Host, der hier nicht läuft.",
     "cal.serviceDown": "Deine Dateien werden direkt gelesen: der Kalenderdienst läuft nicht, deshalb werden für diese Termine keine Erinnerungen gestellt.",
-    "cal.failed": "Deine Kalenderdateien konnten nicht gelesen werden: {$reason}",
+    "cal.failed.noHome": "Diese Sitzung hat kein Home-Verzeichnis, es gibt also keinen Kalenderordner zu lesen.",
+    "cal.failed.unreadable": "Dein Kalenderordner konnte nicht gelesen werden, deshalb wird nichts gezeigt: {$why}",
+    "cal.failed.other": "Deine Kalenderdateien konnten nicht gelesen werden: {$reason}",
+    "cal.keep.notAFile": "Das ist keine Datei, es gibt also nichts zu behalten.",
+    "cal.keep.noHome": "Diese Sitzung hat kein Home-Verzeichnis, es gibt also keinen Ort dafür.",
+    "cal.keep.cannotMakeDir": "Der Kalenderordner konnte nicht angelegt werden, deshalb wurde nichts behalten: {$why}",
+    "cal.keep.alreadyKept": "Ein Kalender namens {$name} wird bereits behalten. Benenne einen von beiden um und versuche es erneut.",
+    "cal.keep.copyFailed": "Er konnte nicht in den Kalenderordner kopiert werden: {$why}",
   },
 };
 
