@@ -30,6 +30,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Plus } from "lucide-svelte";
   import { t, dir } from "$lib/i18n/messages";
+  import { setWindowTitle } from "$lib/window-title";
   import {
     captureUnavailable,
     meetings,
@@ -43,6 +44,14 @@
   import { locale } from "$lib/i18n/messages";
 
   let { children } = $props();
+
+  // The topbar and the workspace overview show the NATIVE window title,
+  // not the document one below, so it has to be set - and set again when
+  // the language changes, which is why this reads `$t` instead of firing
+  // once at startup.
+  $effect(() => {
+    void setWindowTitle($t("mt.app.title"));
+  });
 
   onMount(() => {
     void loadMeetings();

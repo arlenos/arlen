@@ -15,6 +15,14 @@
     e.preventDefault();
   }
 
+  // The topbar and the workspace overview show the NATIVE window title,
+  // not the document one below, so it has to be set - and set again when
+  // the language changes, which is why this reads `$t` instead of firing
+  // once at startup.
+  $effect(() => {
+    void setWindowTitle($t("v.app.title"));
+  });
+
   onMount(() => {
     void initArlenTheme();
     void initArlenLocale();
@@ -22,6 +30,7 @@
     return () => document.removeEventListener("contextmenu", suppressBrowserContextMenu);
   });
   import { t } from "$lib/i18n/messages";
+  import { setWindowTitle } from "$lib/window-title";
 </script>
 
 <svelte:head>
