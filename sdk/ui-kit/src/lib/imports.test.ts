@@ -37,15 +37,15 @@ function sources(dir: string, out: string[] = []): string[] {
 describe("kit imports", () => {
   it("never reaches for $lib, which belongs to whoever is compiling us", () => {
     const offenders = sources(join(ROOT, "lib"))
-      .filter((p) =>
+      .filter((p: string) =>
         readFileSync(p, "utf8")
           .split("\n")
           // Not comment lines: the barrel documents the app-side spelling in a
           // `///` example, and a check that flags prose is one people learn to skip.
-          .filter((l) => !/^\s*(\/\/|\*)/.test(l))
-          .some((l) => /from\s+["']\$lib\//.test(l)),
+          .filter((l: string) => !/^\s*(\/\/|\*)/.test(l))
+          .some((l: string) => /from\s+["']\$lib\//.test(l)),
       )
-      .map((p) => relative(ROOT, p));
+      .map((p: string) => relative(ROOT, p));
     expect(offenders).toEqual([]);
   });
 });

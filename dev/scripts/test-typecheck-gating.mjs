@@ -66,7 +66,12 @@ if (block) {
     .map((l) => l.replace(/^\s{0,12}/, ""))
     .join("\n")
     // The workflow reads the package from the job matrix; the test supplies it.
-    .replace(/APP="\$\{\{ matrix\.app \}\}"/, 'APP="$1"');
+    .replace(/APP="\$\{\{ matrix\.app \}\}"/, 'APP="$1"')
+    // The real list is empty (and should stay so unless a reason is written
+    // beside a new entry). The machinery still has to spare a listed package
+    // the day one is listed, so the test injects a sample entry and exercises
+    // the branch with it rather than depending on the tree carrying a defect.
+    .replace(/TYPECHECK_ADVISORY="[^"]*"/, 'TYPECHECK_ADVISORY="sdk/ui-kit"');
 
   const dir = mkdtempSync(join(tmpdir(), "arlen-typecheck-"));
   const script = join(dir, "step.sh");
