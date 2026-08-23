@@ -39,7 +39,7 @@
 
 <BaseTile
   label={$t("sh.tile.airplane")}
-  statusText={on ? $t("sh.tile.radiosOff") : $t("sh.tile.available")}
+  statusText={on ? $t("sh.tile.radiosOff") : $t("sh.tile.radiosOn")}
   active={on}
   onclick={handleClick}
 >
