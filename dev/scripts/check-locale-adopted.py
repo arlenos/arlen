@@ -45,18 +45,7 @@ ROOT = (
 ADOPTS = re.compile(r"initArlenLocale\s*\(|locale\.set\s*\(")
 
 #: Keys are app directory names. A silence belongs here WITH its reason.
-ACKNOWLEDGED: dict[str, str] = {
-    "harness": (
-        "arlen-ui's live work, and the same gap: a catalogue with no startup "
-        "adoption, so its German is unreachable. Reported rather than edited - "
-        "the fix is one line in their layout and theirs to make."
-    ),
-    "store": (
-        "arlen-ui's, as above. Both were found by the same scan that found the "
-        "greeter's, and both are recorded here so the gate stays green for their "
-        "lane while the finding is written down where they will meet it."
-    ),
-}
+ACKNOWLEDGED: dict[str, str] = {}
 
 
 def main() -> int:

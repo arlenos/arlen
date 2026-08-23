@@ -26,14 +26,21 @@
   import ImportDialog from "$lib/components/chat/ImportDialog.svelte";
   import { activeTitle, initSessions, newSession } from "$lib/stores/conversation";
   import { initAppMenu } from "$lib/menu";
+  import { initArlenLocale } from "@arlen/ui-kit/i18n";
+  import { initArlenTheme } from "@arlen/ui-kit/theme";
 
   let { children } = $props();
 
   // Load persisted conversations here, not in a route, so the history in the
-  // sidebar is populated whichever surface the app opens on.
+  // sidebar is populated whichever surface the app opens on. The locale and
+  // theme adoption are the same two lines every app runs; without them the
+  // German catalogue in messages.ts was unreachable and the app stayed
+  // English on a German desktop.
   onMount(() => {
     initSessions();
     void initAppMenu();
+    void initArlenLocale();
+    void initArlenTheme();
   });
 
   // The header names the place. On the conversation route it shows the active
