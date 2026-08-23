@@ -395,6 +395,7 @@ const messages: Catalogs = {
     // not fit "Erlaube X zu Y?", and German puts the verb at the end. Two
     // sentences carry it without bending either language.
     "sh.consent.ask": "Allow {$app} to {$what}?",
+    "sh.consent.who.installd": "Software install",
     // Accessible names built as template literals, which a screen reader speaks
     // and the born-translatable lint could not read until it learned backticks.
     "sh.aria.clock": "Clock: {$weekday} {$time}",
@@ -949,6 +950,7 @@ const messages: Catalogs = {
     "sh.wp.grp.modules": "Module",
     "sh.tip.quickSettings": "Schnelleinstellungen",
     "sh.consent.ask": "{$app} möchte {$what}. Zulassen?",
+    "sh.consent.who.installd": "Software-Installation",
     "sh.aria.clock": "Uhr: {$weekday} {$time}",
     "sh.aria.project": "Projekt: {$name}. Rechtsklick für Optionen",
     "sh.aria.sharing": "Dein Bildschirm wird mit {$app} geteilt. Zum Beenden klicken.",
