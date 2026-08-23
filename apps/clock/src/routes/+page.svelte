@@ -138,7 +138,7 @@
   .titlebar {
     display: flex;
     align-items: center;
-    height: 2.75rem;
+    height: 2.5rem;
     padding: 0 0.35rem 0 1rem;
     flex-shrink: 0;
     user-select: none;
