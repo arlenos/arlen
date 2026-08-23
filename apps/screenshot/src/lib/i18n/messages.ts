@@ -82,7 +82,14 @@ const messages: Catalogs = {
     "s.redo": "Wiederholen",
     "s.redoHint": "Wiederholen (Strg+Umschalt+Z)",
     "s.copyHint": "Kopieren (Enter)",
-    "s.savedToPictures": "In Bilder/Screenshots gespeichert.",
+    // The FOLDER NAME IS NOT TRANSLATED. This said "Bilder/Screenshots", which is
+    // what a German reader would call the folder and not what it is called on
+    // disk: the image ships the English XDG directories, and the file manager
+    // shows a translated LABEL over an untranslated name for exactly that reason.
+    // A German reader sent to Bilder/Screenshots finds nothing at all - the same
+    // defect the English line above was already fixed for, reintroduced in
+    // translation.
+    "s.savedToPictures": "In Pictures/Screenshots gespeichert.",
     "s.tool.select": "Auswählen",
     "s.tool.crop": "Zuschneiden",
     "s.tool.arrow": "Pfeil",
