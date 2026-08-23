@@ -88,12 +88,31 @@ fn absolute(path: &str) -> Result<PathBuf, String> {
 /// renders, so a file it cannot faithfully round-trip through a string is one it
 /// must not open at all. The check is UTF-8 validity, which is the same property
 /// the save relies on.
+/// Why a file did not open, as a word rather than a sentence.
+///
+/// Three outcomes, and the middle one is ordinary rather than technical: opening
+/// a picture or a binary in a text editor is a thing people do by accident. It
+/// used to reach the window as "not UTF-8 text, so this editor will not open it",
+/// an English sentence built here, under a title the catalogue had translated.
+/// `why` survives on the first because the filesystem's own words name the path
+/// and the reason.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum OpenProblem {
+    /// The path is relative, so there is nothing to resolve it against.
+    NotAbsolute,
+    /// The file would not read.
+    Unreadable { why: String },
+    /// It is not text this editor can round-trip, so opening it would risk
+    /// writing back something else.
+    NotText,
+}
+
 #[tauri::command]
-fn editor_open(path: String) -> Result<OpenedFile, String> {
-    let p = absolute(&path)?;
-    let bytes = std::fs::read(&p).map_err(|e| format!("{path}: {e}"))?;
-    let text = String::from_utf8(bytes)
-        .map_err(|_| format!("{path}: not UTF-8 text, so this editor will not open it"))?;
+fn editor_open(path: String) -> Result<OpenedFile, OpenProblem> {
+    let p = absolute(&path).map_err(|_| OpenProblem::NotAbsolute)?;
+    let bytes = std::fs::read(&p).map_err(|e| OpenProblem::Unreadable { why: e.to_string() })?;
+    let text = String::from_utf8(bytes).map_err(|_| OpenProblem::NotText)?;
     let stamp = stamp(&p);
     Ok(OpenedFile { path, text, stamp })
 }

@@ -27,7 +27,7 @@ const { openPath, loadInitialFile, openDocument, openError, openTarget } =
 
 describe("openPath", () => {
   it("opens a file and clears any earlier failure", async () => {
-    openError.set("something older went wrong");
+    openError.set({ problem: "other", reason: "something older went wrong" });
     invoke.mockImplementation(() =>
       Promise.resolve({ path: "/home/t/notes.md", text: "# Notes" }),
     );
@@ -56,7 +56,30 @@ describe("openPath", () => {
 
     // Both callers are user gestures, so this must resolve rather than throw.
     await expect(openPath("/root/secret")).resolves.toBeUndefined();
-    expect(get(openError)).toContain("permission denied");
+    // An error the host did not name keeps its own words, which is the only
+    // detail there is for it.
+    expect(get(openError)).toEqual({
+      problem: "other",
+      reason: expect.stringContaining("permission denied"),
+    });
+  });
+
+  it("names the host's own cause rather than pasting its words", async () => {
+    // What a real refusal looks like coming back from the command: the payload
+    // is an object, not a string with JSON inside it. Getting that wrong sends
+    // every named cause down `other`, which reads exactly like it working.
+    invoke.mockImplementation(() => Promise.reject({ problem: "not-text" }));
+    await openPath("/home/t/photo.jpg");
+    expect(get(openError)).toEqual({ problem: "not-text" });
+
+    invoke.mockImplementation(() =>
+      Promise.reject({ problem: "unreadable", why: "Permission denied (os error 13)" }),
+    );
+    await openPath("/root/secret");
+    expect(get(openError)).toEqual({
+      problem: "unreadable",
+      why: "Permission denied (os error 13)",
+    });
   });
 
   it("names the file that was asked for, not the one still loaded", async () => {
@@ -88,6 +111,11 @@ describe("loadInitialFile", () => {
   it("reports a failure to ask for the launch file", async () => {
     invoke.mockImplementation(() => Promise.reject(new Error("host said no")));
     await loadInitialFile();
-    expect(get(openError)).toContain("host said no");
+    // Asking for the launch file has no named causes - whatever went wrong there
+    // is the host's own words and there is nothing else to say about it.
+    expect(get(openError)).toEqual({
+      problem: "other",
+      reason: expect.stringContaining("host said no"),
+    });
   });
 });
