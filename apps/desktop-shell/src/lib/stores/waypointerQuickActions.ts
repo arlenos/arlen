@@ -65,11 +65,30 @@ export function clearQuickActionResults(): void {
 /// appears afterwards. Nothing appearing means it worked, and that reading was
 /// wrong for every action that failed. The name is the one they just picked
 /// from the list, which is why the line can be specific about it.
+///
+/// IT HAS TO BE SAID IN THE OTHER WINDOW. This raised the toast right here, and
+/// the launcher hides in the same breath - so the notice was drawn into a webview
+/// on its way out and nobody ever saw it. Measured on the machine: pressing
+/// `WLAN umschalten` on an image with no NetworkManager logged the refusal and
+/// showed the person an empty desktop. The `arlen://toast` event is the channel
+/// that already exists for exactly this - the backend uses it because the
+/// waypointer cannot be trusted to still be on screen - and it is a channel this
+/// side can use too.
 export async function invokeQuickAction(id: string, label?: string): Promise<void> {
   try {
     await invoke("quick_action_run", { id });
   } catch (e) {
     console.warn(`[waypointer] quick action ${id} failed:`, e);
-    toast.error(get(t)("sh.wp.qaFailed", { action: label ?? id }));
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit("arlen://toast", {
+      kind: "error",
+      key: "sh.wp.qaFailed",
+      params: { action: label ?? id },
+      // Only read if the catalog is missing the id, and legible when it is.
+      message: "sh.wp.qaFailed",
+    }).catch(() => {
+      // No host to carry it: say it here rather than not at all.
+      toast.error(get(t)("sh.wp.qaFailed", { action: label ?? id }));
+    });
   }
 }
