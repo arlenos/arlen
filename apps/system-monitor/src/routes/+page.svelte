@@ -239,14 +239,14 @@
     background: var(--color-bg-app, #0f0f0f);
     color: var(--color-fg-primary, #fafafa);
   }
-  /* The knowledge/store header recipe: 2.75rem, title, spacer, window
+  /* The shared header recipe: the h-10 bar, title, spacer, window
      controls, drag region. No bottom border here - the tabs nav right below
      already draws the one hairline, and two rules 2.1rem apart read as a
      mistake. */
   .titlebar {
     display: flex;
     align-items: center;
-    height: 2.75rem;
+    height: 2.5rem;
     padding: 0 0.35rem 0 1rem;
     flex-shrink: 0;
     user-select: none;
