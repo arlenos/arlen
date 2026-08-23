@@ -36,6 +36,24 @@
 
   update();
 
+  // Re-format when the LANGUAGE changes, not only when the minute does.
+  //
+  // The formatters follow `$locale`, but the rendered strings were written by an
+  // imperative `update()` that ran at init and then once a minute - so between
+  // `initArlenLocale` resolving and the next minute boundary the bar kept
+  // whatever it had formatted first. Two boots of the same image with the same
+  // preloaded `[locale] ui = "de"` on 23 August: one showed `So 15:09`, the other
+  // `Sun 03:21 PM`, and which one you got depended on where the shot landed in
+  // that window. A clock that is English for up to a minute after every start is
+  // not a clock somebody can trust to be in their language.
+  $effect(() => {
+    // Named so the dependency is the formatters, which is what carries the
+    // locale; reading them is the whole point of the line.
+    timeFormatter;
+    weekdayFormatter;
+    update();
+  });
+
   let timer: ReturnType<typeof setTimeout> | null = null;
   let interval: ReturnType<typeof setInterval> | null = null;
 
