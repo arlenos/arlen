@@ -239,15 +239,26 @@
     if (p) deny(p);
   }
 
+  /// Attested ids whose own spelling reads badly on a card, and the message that
+  /// replaces them.
+  ///
+  /// Keyed on what the BROKER actually sends. `requester` is the attested
+  /// identity from `path_to_app_id` - `installd`, `settings`, `files` - and this
+  /// map used to be keyed `org.arlen.files` and `com.example.notes`, which no
+  /// resolver ever returns. So every card was falling through to the capitalised
+  /// id, and the one entry that mattered never fired: a person granting a package
+  /// install read "Installd" rather than what it is.
+  ///
+  /// Names of things stay names - Files is Files in every language - so only the
+  /// entries that are a PHRASE carry a message id.
   const NAMES: Record<string, string> = {
-    "org.arlen.files": "Files",
-    "org.arlen.installd": "Software install",
-    "com.example.notes": "Notes",
-    "com.example.mail": "Mail",
+    installd: "sh.consent.who.installd",
   };
   function friendly(id: string): string {
+    const key = NAMES[id];
+    if (key) return $t(key);
     const seg = id.split(".").pop() ?? id;
-    return NAMES[id] ?? seg.charAt(0).toUpperCase() + seg.slice(1);
+    return seg.charAt(0).toUpperCase() + seg.slice(1);
   }
 
   // The single semantic accent the surface wears. Danger is reserved for the
