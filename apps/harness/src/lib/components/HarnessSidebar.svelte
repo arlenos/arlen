@@ -11,6 +11,7 @@
   import {
     Sidebar,
     SidebarContent,
+    SidebarHeader,
     SidebarFooter,
     SidebarGroup,
     SidebarGroupLabel,
@@ -119,6 +120,11 @@
 </script>
 
 <Sidebar>
+  <SidebarHeader class="h-10 flex-row items-center py-0">
+    <span class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55">
+      {$t("h.app.title")}
+    </span>
+  </SidebarHeader>
   <SidebarContent>
     <SidebarGroup>
       <SidebarMenu>
