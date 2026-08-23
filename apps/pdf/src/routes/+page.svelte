@@ -14,6 +14,7 @@
   /// that refused, and those are different facts about their document.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { FileText, Search } from "@lucide/svelte";
   import { tauriAvailable } from "$lib/tauri";
@@ -141,12 +142,42 @@
       else current = doc.pages;
     }
   }
+
+  function isInteractive(e: Event): boolean {
+    const target = e.target as HTMLElement | null;
+    return !!target?.closest("button, a, input, [role='button']");
+  }
+
+  async function startDrag(e: PointerEvent) {
+    if (e.button !== 0 || e.pointerType !== "mouse") return;
+    if (isInteractive(e)) return;
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      /* standalone (vite) has no toplevel to drag */
+    }
+  }
+
+  async function toggleMax(e: MouseEvent) {
+    if (isInteractive(e)) return;
+    try {
+      const w = getCurrentWindow();
+      if (await w.isMaximized()) await w.unmaximize();
+      else await w.maximize();
+    } catch {
+      /* no window in standalone */
+    }
+  }
 </script>
 
 <svelte:window onkeydown={onKey} />
 
 <div class="pdf-app">
-  <header class="pdf-bar" data-tauri-drag-region>
+  <!-- The header is a drag surface (a non-keyboard pointer interaction); its
+       actual controls are the accessible WindowButtons, so the
+       static-interaction lint is a false positive here. -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <header class="pdf-bar" onpointerdown={startDrag} ondblclick={toggleMax}>
     <span class="pdf-title">{title ?? $t("pdf.app.title")}</span>
     <WindowButtons />
   </header>
@@ -298,12 +329,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 0 8px 0 12px;
-    height: 36px;
+    padding: 0 8px;
+    height: 2.5rem;
+    flex-shrink: 0;
     border-bottom: 1px solid var(--color-border-default);
   }
   .pdf-title {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
