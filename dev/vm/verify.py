@@ -57,6 +57,18 @@ def qmp_connect(path, deadline):
     return sock, f
 
 
+class QmpError(RuntimeError):
+    """QEMU refused a command.
+
+    Raised rather than returned because every caller here ignored the reply, so
+    a refusal read exactly like success: a mistyped qcode (`supr` for `esc`) or
+    a coordinate outside the screen would be reported by this script as a key
+    pressed and a click driven, and the run would then measure a machine nobody
+    had touched. An instrument that says it did something it did not do is worse
+    than one that cannot do it at all.
+    """
+
+
 def qmp(f, execute, **arguments):
     cmd = {"execute": execute}
     if arguments:
@@ -68,7 +80,12 @@ def qmp(f, execute, **arguments):
         if not line:
             raise EOFError("QMP closed")
         msg = json.loads(line)
-        if "return" in msg or "error" in msg:
+        if "error" in msg:
+            err = msg["error"]
+            raise QmpError(
+                f"{execute}: {err.get('class', 'error')}: {err.get('desc', err)}"
+            )
+        if "return" in msg:
             return msg
 
 
@@ -1497,7 +1514,7 @@ def main():
                 if proc.poll() is not None:
                     break
                 time.sleep(0.25)
-        except (EOFError, OSError, ValueError):
+        except (EOFError, OSError, ValueError, QmpError):
             pass                            # already gone, or the socket died with it
         if proc.poll() is None:
             plug_pulled = True
@@ -1505,7 +1522,7 @@ def main():
                   "(its journal will be short)")
             try:
                 qmp(f, "quit")
-            except (EOFError, OSError, ValueError):
+            except (EOFError, OSError, ValueError, QmpError):
                 pass
     finally:
         try:

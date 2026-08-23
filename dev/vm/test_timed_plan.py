@@ -18,7 +18,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from verify import timed_plan  # noqa: E402
+import json  # noqa: E402
+
+from verify import QmpError, qmp, timed_plan  # noqa: E402
 
 failures = []
 
@@ -57,8 +59,46 @@ except ValueError:
 
 check("no timed arguments is an empty plan", timed_plan(None, None, None) == [])
 
+print("the timed schedule holds its order")
+
+# ── qmp: a refusal must not read as success ─────────────────────────────────
+#
+# Every caller ignored the reply, so a refused command - a mistyped qcode, a
+# coordinate off the screen - was reported by the driver as a key pressed and a
+# click driven. The run then measured a machine nobody had touched.
+
+
+class _Wire:
+    """A QMP peer that answers each command with a canned reply."""
+
+    def __init__(self, replies):
+        self._replies = list(replies)
+        self.sent = []
+
+    def write(self, data):
+        self.sent.append(json.loads(data.decode()))
+
+    def readline(self):
+        return (json.dumps(self._replies.pop(0)) + "\n").encode()
+
+
+refused = _Wire([{"error": {"class": "GenericError", "desc": "invalid parameter 'supr'"}}])
+try:
+    qmp(refused, "input-send-event", events=[])
+    check("a refused command raises rather than returning", False)
+except QmpError as e:
+    check("a refused command raises rather than returning", True)
+    check("and the message names the command", "input-send-event" in str(e))
+    check("and quotes what QEMU said", "invalid parameter 'supr'" in str(e))
+
+accepted = _Wire([{"event": "SHUTDOWN", "data": {}}, {"return": {}}])
+check(
+    "an accepted command returns past the async events",
+    qmp(accepted, "screendump", filename="/tmp/x.png") == {"return": {}},
+)
+
 print()
 if failures:
     print(f"{len(failures)} failure(s)")
     sys.exit(1)
-print("the timed schedule holds its order")
+print("a refused QMP command is loud")
