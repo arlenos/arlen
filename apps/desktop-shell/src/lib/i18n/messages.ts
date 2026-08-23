@@ -633,6 +633,12 @@ const messages: Catalogs = {
     "sh.ws.minimized": "Minimized",
     "sh.ws.overview": "Workspace overview",
     "sh.module.failed": "Module failed; click to retry",
+    // The mount failure had no sentence at all: a bare "!" with the raw error in
+    // its tooltip, while the branch one line down already said its piece in the
+    // reader's language. The cause travels verbatim - it is a developer's string
+    // about a module that did not come up, and translating it would make it match
+    // nothing anyone can search for.
+    "sh.module.didNotMount": "This module did not come up. {$why}",
   },
   de: {
     "sh.app.title": "Arlen",
@@ -1192,6 +1198,7 @@ const messages: Catalogs = {
     "sh.ws.minimized": "Minimiert",
     "sh.ws.overview": "\u00dcbersicht der Arbeitsfl\u00e4chen",
     "sh.module.failed": "Modul fehlgeschlagen; zum erneuten Versuch klicken",
+    "sh.module.didNotMount": "Dieses Modul ist nicht hochgekommen. {$why}",
   },
 };
 

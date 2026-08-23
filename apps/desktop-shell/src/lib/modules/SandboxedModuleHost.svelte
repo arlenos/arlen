@@ -234,7 +234,7 @@
 </script>
 
 {#if mountError}
-  <div class="mod-failed" title={mountError}>
+  <div class="mod-failed" title={$t("sh.module.didNotMount", { why: mountError })}>
     <span class="mod-failed-glyph">!</span>
   </div>
 {:else if module.failed}
