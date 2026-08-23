@@ -19,6 +19,8 @@ import { t } from "$lib/i18n/messages";
 interface ToastPayload {
   kind: "success" | "info" | "warning" | "error";
   message: string;
+  /// Values the named line interpolates.
+  params?: Record<string, string>;
   /// A catalog id to render instead of `message`.
   ///
   /// The backend knows WHICH line to say and not the words for it - the catalog
@@ -35,7 +37,9 @@ export function initToastBridge(): () => void {
     // A key the catalog does not carry renders as the id, which is legible and
     // greppable; falling back to the backend's own `message` would put the
     // source language on screen, which is the thing this exists to stop.
-    const message = payload?.key ? write(payload.key) : (payload?.message ?? "");
+    const message = payload?.key
+      ? write(payload.key, payload.params ?? undefined)
+      : (payload?.message ?? "");
     if (!message) return;
     switch (payload.kind) {
       case "success":

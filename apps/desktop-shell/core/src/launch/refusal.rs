@@ -59,7 +59,7 @@ fn is_warning(line: &str) -> bool {
 /// `None` for a success, and `None` for an unconfined launch: an ordinary
 /// application exits non-zero all the time, long after it started, and calling
 /// that a failure to launch would make the first real refusal unremarkable.
-pub fn refusal_message(app: &str, confined: bool, success: bool, stderr: &str) -> Option<String> {
+pub fn refusal_detail(confined: bool, success: bool, stderr: &str) -> Option<String> {
     if success || !confined {
         return None;
     }
@@ -74,7 +74,12 @@ pub fn refusal_message(app: &str, confined: bool, success: bool, stderr: &str) -
         .split_once(':')
         .map(|(_, rest)| rest.trim())
         .unwrap_or(line);
-    Some(format!("{app} did not start: {detail}"))
+    // The DETAIL only. This used to return the whole sentence - "Clock did not
+    // start: ..." - which put user-facing English in a core function, where the
+    // catalog cannot reach it. The caller names the line and the frontend writes
+    // it; the launcher's own words travel through as the cause, untranslated,
+    // because a translated system error stops matching what can be looked up.
+    Some(detail.to_string())
 }
 
 #[cfg(test)]
@@ -83,16 +88,8 @@ mod tests {
 
     #[test]
     fn a_launcher_refusal_becomes_a_sentence_in_the_launchers_own_words() {
-        let out = refusal_message(
-            "Clock",
-            true,
-            false,
-            "arlen-run: profile not found for dev.arlen.clock\n",
-        );
-        assert_eq!(
-            out.as_deref(),
-            Some("Clock did not start: profile not found for dev.arlen.clock")
-        );
+        let out = refusal_detail(true, false, "arlen-run: profile not found for dev.arlen.clock\n");
+        assert_eq!(out.as_deref(), Some("profile not found for dev.arlen.clock"));
     }
 
     // The case that was answered wrongly: the stamp warning is printed on every
@@ -100,8 +97,7 @@ mod tests {
     // therefore the reported reason - a sentence saying the app carried on.
     #[test]
     fn a_warning_the_launcher_continued_past_is_not_the_reason() {
-        let out = refusal_message(
-            "Files",
+        let out = refusal_detail(
             true,
             false,
             "arlen-run: warning: identity stamp not registered (app resolves via /proc): connect: No such file\n\
@@ -109,7 +105,7 @@ mod tests {
         );
         assert_eq!(
             out.as_deref(),
-            Some("Files did not start: confinement setup for dev.arlen.files: bind source missing")
+            Some("confinement setup for dev.arlen.files: bind source missing")
         );
     }
 
@@ -117,8 +113,7 @@ mod tests {
     // this can name, so there is nothing to say rather than a warning to misreport.
     #[test]
     fn warnings_alone_produce_no_message() {
-        let out = refusal_message(
-            "Files",
+        let out = refusal_detail(
             true,
             false,
             "arlen-run: warning: no per-launch cgroup (x); reaping falls back to bwrap\n",
@@ -128,15 +123,14 @@ mod tests {
 
     #[test]
     fn the_other_spelling_of_the_prefix_is_recognised_too() {
-        let out = refusal_message(
-            "Clock",
+        let out = refusal_detail(
             true,
             false,
             "arlen-run --landlock-exec: exec: No such file or directory (os error 2)",
         );
         assert_eq!(
             out.as_deref(),
-            Some("Clock did not start: exec: No such file or directory (os error 2)")
+            Some("exec: No such file or directory (os error 2)")
         );
     }
 
@@ -145,16 +139,16 @@ mod tests {
     #[test]
     fn an_applications_own_nonzero_exit_is_not_reported_as_a_refusal() {
         assert_eq!(
-            refusal_message("Editor", true, false, "syntax error\n"),
+            refusal_detail(true, false, "syntax error\n"),
             None
         );
-        assert_eq!(refusal_message("Editor", false, false, ""), None);
+        assert_eq!(refusal_detail(false, false, ""), None);
     }
 
     #[test]
     fn a_launch_that_worked_says_nothing() {
         assert_eq!(
-            refusal_message("Clock", true, true, "arlen-run: noise"),
+            refusal_detail(true, true, "arlen-run: noise"),
             None
         );
     }
@@ -164,7 +158,7 @@ mod tests {
     #[test]
     fn the_marker_is_only_a_marker_at_the_start_of_a_line() {
         assert_eq!(
-            refusal_message("Editor", true, false, "could not reach arlen-run: busy"),
+            refusal_detail(true, false, "could not reach arlen-run: busy"),
             None
         );
     }

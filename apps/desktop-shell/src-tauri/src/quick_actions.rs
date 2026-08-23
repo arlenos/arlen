@@ -31,6 +31,9 @@ pub struct ToastEvent {
     /// backend names the sentence and the frontend writes it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// Values the named line interpolates. Only meaningful beside `key`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,12 +54,23 @@ pub(crate) fn emit_toast(app: &AppHandle, kind: ToastKind, message: impl Into<St
             kind,
             message: message.into(),
             key: None,
+            params: None,
         },
     );
 }
 
 /// Raise a toast the frontend writes, named by its catalog id.
-pub(crate) fn emit_toast_key(app: &AppHandle, kind: ToastKind, key: &str) {
+///
+/// `params` are the values the line interpolates. A technical cause travels as
+/// one of them, verbatim: the sentence around it is the reader's, the cause is
+/// whatever the system said, and translating a system error is how a message
+/// stops matching what anyone can look up.
+pub(crate) fn emit_toast_key(
+    app: &AppHandle,
+    kind: ToastKind,
+    key: &str,
+    params: &[(&str, String)],
+) {
     let _ = app.emit(
         TOAST_EVENT,
         ToastEvent {
@@ -65,6 +79,16 @@ pub(crate) fn emit_toast_key(app: &AppHandle, kind: ToastKind, key: &str) {
             // itself so a missing catalog entry is legible rather than blank.
             message: key.to_string(),
             key: Some(key.to_string()),
+            params: if params.is_empty() {
+                None
+            } else {
+                Some(
+                    params
+                        .iter()
+                        .map(|(k, v)| ((*k).to_string(), v.clone()))
+                        .collect(),
+                )
+            },
         },
     );
 }
@@ -87,7 +111,7 @@ pub(crate) fn emit_toast_key(app: &AppHandle, kind: ToastKind, key: &str) {
 pub async fn quick_action_run(id: String, app: AppHandle) -> Result<(), String> {
     match dispatch(&id, app.clone()).await {
         Ok(key) => {
-            emit_toast_key(&app, ToastKind::Success, key);
+            emit_toast_key(&app, ToastKind::Success, key, &[]);
             Ok(())
         }
         Err(e) => {
@@ -428,6 +452,7 @@ mod tests {
             kind: ToastKind::Success,
             message: "DND is now on".into(),
             key: None,
+            params: None,
         };
         let json = serde_json::to_string(&ev).unwrap();
         assert!(json.contains(r#""kind":"success""#));

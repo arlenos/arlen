@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use arlen_desktop_shell_core::launch::exec::{expand_exec, ExecContext, ExecError};
 use arlen_desktop_shell_core::launch::plan::{plan, Launch};
-use arlen_desktop_shell_core::launch::refusal::refusal_message;
+use arlen_desktop_shell_core::launch::refusal::refusal_detail;
 use serde::Serialize;
 
 /// A single application entry parsed from a `.desktop` file.
@@ -516,14 +516,23 @@ pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
                 "app_index: refusing to launch {}: its launcher entry is malformed ({e}): {exec}",
                 app_id.as_deref().unwrap_or("an application")
             );
-            crate::quick_actions::emit_toast(
-                &app,
-                crate::quick_actions::ToastKind::Error,
-                format!(
-                    "{} did not start: its launcher entry is malformed.",
-                    app_id.as_deref().unwrap_or("The application")
+            // Two lines rather than one with a fallback word in it: German
+            // puts the article on the app and "Die The application" is what a
+            // placeholder-shaped default reads like once translated.
+            match app_id.as_deref() {
+                Some(id) => crate::quick_actions::emit_toast_key(
+                    &app,
+                    crate::quick_actions::ToastKind::Error,
+                    "sh.toast.appEntryMalformed",
+                    &[("app", id.to_string())],
                 ),
-            );
+                None => crate::quick_actions::emit_toast_key(
+                    &app,
+                    crate::quick_actions::ToastKind::Error,
+                    "sh.toast.anAppEntryMalformed",
+                    &[],
+                ),
+            }
             return;
         }
     };
@@ -543,14 +552,20 @@ pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
         Ok(p) => p,
         Err(e) => {
             log::error!("app_index: refusing to launch: nothing to run ({e:?}): {exec}");
-            crate::quick_actions::emit_toast(
-                &app,
-                crate::quick_actions::ToastKind::Error,
-                format!(
-                    "{} did not start: its launcher entry names no program to run.",
-                    app_id.as_deref().unwrap_or("The application")
+            match app_id.as_deref() {
+                Some(id) => crate::quick_actions::emit_toast_key(
+                    &app,
+                    crate::quick_actions::ToastKind::Error,
+                    "sh.toast.appEntryNoProgram",
+                    &[("app", id.to_string())],
                 ),
-            );
+                None => crate::quick_actions::emit_toast_key(
+                    &app,
+                    crate::quick_actions::ToastKind::Error,
+                    "sh.toast.anAppEntryNoProgram",
+                    &[],
+                ),
+            }
             return;
         }
     };
@@ -563,12 +578,10 @@ pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
     }
     let was_confined = matches!(planned, Launch::Confined(_));
     let toast = app.clone();
-    let toast_launch_failure = move |message: &str| {
-        crate::quick_actions::emit_toast(
-            &toast,
-            crate::quick_actions::ToastKind::Error,
-            message.to_string(),
-        );
+    // Named lines, not written ones: the shell's catalog is in the frontend, so
+    // this side says WHICH sentence and the reader's language decides the words.
+    let toast_launch_failure = move |key: &str, params: &[(&str, String)]| {
+        crate::quick_actions::emit_toast_key(&toast, crate::quick_actions::ToastKind::Error, key, params);
     };
     let argv = planned.argv().to_vec();
     let named = app_id.clone().unwrap_or_else(|| "The application".into());
@@ -603,7 +616,10 @@ pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
         match child {
             Err(e) => {
                 log::error!("app_index: could not start {}: {e}", argv[0]);
-                toast_launch_failure(&format!("{named} did not start: {e}"));
+                toast_launch_failure(
+                    "sh.toast.appDidNotStart",
+                    &[("app", named.clone()), ("why", e.to_string())],
+                );
             }
             Ok(mut c) => {
                 let stderr = c
@@ -618,11 +634,14 @@ pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
                 match c.wait() {
                     Ok(status) if !status.success() => {
                         log::warn!("app_index: exited with {status}: {argv:?}");
-                        if let Some(message) =
-                            refusal_message(&named, was_confined, status.success(), &stderr)
+                        if let Some(why) =
+                            refusal_detail(was_confined, status.success(), &stderr)
                         {
-                            log::error!("app_index: {message}");
-                            toast_launch_failure(&message);
+                            log::error!("app_index: {named} did not start: {why}");
+                            toast_launch_failure(
+                                "sh.toast.appDidNotStart",
+                                &[("app", named.clone()), ("why", why)],
+                            );
                         }
                     }
                     Ok(_) => {}
