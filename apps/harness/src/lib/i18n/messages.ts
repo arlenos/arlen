@@ -12,6 +12,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     // Titlebar / surfaces
+    "h.app.title": "AI",
     "h.title.conversation": "Conversation",
     "h.title.chat": "Chat",
     "h.title.agent": "Activity",
@@ -288,6 +289,7 @@ const messages: Catalogs = {
     "h.disp.noMemory": "It does not remember earlier questions in this chat yet.",
   },
   de: {
+    "h.app.title": "KI",
     "h.title.conversation": "Unterhaltung",
     "h.title.chat": "Chat",
     "h.title.agent": "Aktivität",
