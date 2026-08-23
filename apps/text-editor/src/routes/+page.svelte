@@ -15,6 +15,8 @@
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
   import { t, dir } from "$lib/i18n/messages";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Sun, PanelRight, Hash, Printer } from "lucide-svelte";
@@ -289,20 +291,18 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     {/if}
     <span class="spacer"></span>
     {#if file.type === "code"}
-      <button
-        type="button"
-        class="tb-btn icon"
-        class:on={lineNumbers}
-        aria-label={$t("te.lineNumbers.toggle")}
-        title={$t("te.lineNumbers")}
+      <IconAction
+        label={$t("te.lineNumbers.toggle")}
+        size="control"
+        active={lineNumbers}
         onclick={() => (lineNumbers = !lineNumbers)}
       >
-        <Hash size={15} strokeWidth={2} />
-      </button>
+        <Hash size={15} strokeWidth={1.75} />
+      </IconAction>
     {:else}
-      <button type="button" class="tb-btn" class:on={focusMode} onclick={() => (focusMode = !focusMode)}>
+      <Button variant={focusMode ? "default" : "outline"} size="sm" onclick={() => (focusMode = !focusMode)}>
         <Sun size={14} strokeWidth={2} /> {$t("te.focus")}
-      </button>
+      </Button>
     {/if}
     <!-- Live: picking a past instant re-reads the lens as of then. It was
          disabled while promotion wrote no interval stamps, and again while only
@@ -317,26 +317,18 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
       onchange={(v) => (asOf = v)}
     />
     {#if editable}
-      <button
-        type="button"
-        class="tb-btn icon"
-        aria-label={$t("te.print")}
-        title={$t("te.print")}
-        onclick={() => print()}
-      >
-        <Printer size={15} strokeWidth={2} />
-      </button>
+      <IconAction label={$t("te.print")} size="control" onclick={() => print()}>
+        <Printer size={15} strokeWidth={1.75} />
+      </IconAction>
     {/if}
-    <button
-      type="button"
-      class="tb-btn icon"
-      class:on={lensOpen}
-      aria-label={$t("te.lens.toggle")}
-      title={$t("te.lens.toggle")}
+    <IconAction
+      label={$t("te.lens.toggle")}
+      size="control"
+      active={lensOpen}
       onclick={() => (lensOpen = !lensOpen)}
     >
-      <PanelRight size={15} strokeWidth={2} />
-    </button>
+      <PanelRight size={15} strokeWidth={1.75} />
+    </IconAction>
     <WindowButtons />
   </header>
 
@@ -475,36 +467,13 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    height: 2.75rem;
+    height: 2.5rem;
     padding: 0 1rem;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     flex-shrink: 0;
   }
   .spacer {
     flex: 1;
-  }
-  .tb-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.6rem;
-    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
-    border-radius: var(--radius-input, 8px);
-    background: transparent;
-    font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-    cursor: pointer;
-  }
-  .tb-btn:hover {
-    color: var(--color-fg-primary);
-  }
-  .tb-btn.on {
-    border-color: color-mix(in srgb, var(--color-fg-primary) 30%, transparent);
-    color: var(--color-fg-primary);
-    background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-  }
-  .tb-btn.icon {
-    padding: 0.3rem;
   }
   .body {
     flex: 1;
