@@ -87,11 +87,16 @@ GRANT = re.compile(r"core:window:allow-(.+)")
 #
 # It started at seventeen across twelve apps and is five across two, because the
 # `allow-show` twelve were removed rather than carried (see below). What is left is
-# genuinely two apps: `screenshot`, which renders no window control and grants four
-# it never calls, and `store`'s `hide`. Both are one-app decisions rather than a
-# template, so they want somebody who can watch that window rather than a sweep.
+# genuinely two apps: `screenshot`, which renders no window control, and `store`'s
+# `hide`. Both are one-app decisions rather than a template, so they want somebody
+# who can watch that window rather than a sweep.
+#
+# The screenshot count came down from four to three when the app learned to close
+# itself: it takes a picture, says where it went and goes away, so `allow-close`
+# is a grant with a call behind it now. This gate is what noticed - a stale count
+# is exactly the room a new unused grant would hide in.
 KNOWN: dict[str, tuple[int, str]] = {
-    "screenshot": (4, "close, hide, minimize, start-dragging - it renders no window control"),
+    "screenshot": (3, "hide, minimize, start-dragging - it renders no window control"),
     "store": (1, "hide; arlen-ui's surface, the capability file is not"),
 }
 
