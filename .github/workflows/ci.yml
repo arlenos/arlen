@@ -872,13 +872,7 @@ jobs:
             #
             # An entry belongs in TYPECHECK_ADVISORY only WITH its reason, and
             # comes out when the reason expires.
-            TYPECHECK_ADVISORY="sdk/ui-kit"
-            #   sdk/ui-kit: 5 errors in src/lib/imports.test.ts, all one cause -
-            #   the package has no @types/node and the test imports node:fs and
-            #   node:path. It is arlen-ui's lane, so it is reported in
-            #   coder-reports.md rather than edited here. Same defect that was
-            #   just fixed in apps/files; the fix is a devDependency plus two
-            #   parameter annotations.
+            TYPECHECK_ADVISORY=""
             APP="${{ matrix.app }}"
             if printf ' %s ' "$TYPECHECK_ADVISORY" | grep -qF " $APP "; then
               npm run check || echo "advisory (listed): $APP"
