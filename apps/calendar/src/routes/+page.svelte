@@ -42,7 +42,14 @@
   };
 
   let agenda = $state<Agenda | null>(null);
-  let failure = $state<string | null>(null);
+  // The named cause, not a sentence: only the window is in the reader's
+  // language. `other` stays for a failure the command cannot name, which today
+  // means the host itself is absent - a state a person never meets.
+  type Failure =
+    | { problem: "no-home" }
+    | { problem: "unreadable"; why: string }
+    | { problem: "other"; reason: string };
+  let failure = $state<Failure | null>(null);
 
   /// The file the app was opened on, when it was opened on one. Read once: it
   /// is an argument, not a setting, and it cannot change while the window lives.
@@ -50,16 +57,22 @@
 
   /// The result of a keep, when one has been asked for. `null` before, so the
   /// button is the resting state rather than an empty sentence being one.
-  let kept = $state<{ path: string | null; error: string | null } | null>(null);
+  type KeepProblem =
+    | { problem: "not-a-file" }
+    | { problem: "no-home" }
+    | { problem: "cannot-make-dir"; why: string }
+    | { problem: "already-kept"; name: string }
+    | { problem: "copy-failed"; why: string };
+  let kept = $state<{ path: string | null; problem: KeepProblem | null } | null>(null);
 
   /// Copy the opened file into the calendar directory, then read the directory
   /// rather than the file - the point of keeping it is that it is now one of
   /// yours, and the reminder daemon watches that folder.
   async function keep() {
     if (!launched) return;
-    kept = await invoke<{ path: string | null; error: string | null }>("calendar_import", {
+    kept = await invoke<{ path: string | null; problem: KeepProblem | null }>("calendar_import", {
       path: launched,
-    }).catch((e) => ({ path: null, error: String(e) }));
+    }).catch(() => ({ path: null, problem: null }));
     if (kept.path) {
       launched = null;
       await read();
@@ -71,7 +84,24 @@
       agenda = await invoke<Agenda>("calendar_agenda", { file: launched });
       failure = null;
     } catch (e) {
-      failure = String(e);
+      // The payload arrives as an object here; `apps/viewers` documents the
+      // string-with-JSON shape, so both are accepted rather than one assumed.
+      const named =
+        e && typeof e === "object"
+          ? (e as Record<string, unknown>)
+          : (() => {
+              const raw = String(e);
+              const at = raw.indexOf("{");
+              try {
+                return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
+              } catch {
+                return null;
+              }
+            })();
+      if (named?.problem === "no-home") failure = { problem: "no-home" };
+      else if (named?.problem === "unreadable")
+        failure = { problem: "unreadable", why: String(named.why ?? "") };
+      else failure = { problem: "other", reason: String(e) };
     }
   }
 
@@ -115,7 +145,11 @@
   {#if !tauriAvailable}
     <p class="note">{$t("cal.hostAbsent")}</p>
   {:else if failure}
-    <p class="note bad" role="alert">{$t("cal.failed", { reason: failure })}</p>
+    <p class="note bad" role="alert">
+      {#if failure.problem === "no-home"}{$t("cal.failed.noHome")}
+      {:else if failure.problem === "unreadable"}{$t("cal.failed.unreadable", { why: failure.why })}
+      {:else}{$t("cal.failed.other", { reason: failure.reason })}{/if}
+    </p>
   {:else if agenda}
     <!-- Said whenever the service is absent, not only when the list is empty:
          the rows below are right either way, and what is missing is the arming
@@ -135,8 +169,14 @@
         <button type="button" onclick={keep}>{$t("cal.keep")}</button>
       </p>
     {/if}
-    {#if kept?.error}
-      <p class="note bad" role="alert">{kept.error}</p>
+    {#if kept?.problem}
+      <p class="note bad" role="alert">
+        {#if kept.problem.problem === "not-a-file"}{$t("cal.keep.notAFile")}
+        {:else if kept.problem.problem === "no-home"}{$t("cal.keep.noHome")}
+        {:else if kept.problem.problem === "cannot-make-dir"}{$t("cal.keep.cannotMakeDir", { why: kept.problem.why })}
+        {:else if kept.problem.problem === "already-kept"}{$t("cal.keep.alreadyKept", { name: kept.problem.name })}
+        {:else}{$t("cal.keep.copyFailed", { why: kept.problem.why })}{/if}
+      </p>
     {/if}
     {#if agenda.unreadable > 0}
       <p class="note bad" role="alert">{$t("cal.unreadable", { count: agenda.unreadable })}</p>

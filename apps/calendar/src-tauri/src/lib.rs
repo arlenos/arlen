@@ -50,7 +50,7 @@ fn launch_file(state: tauri::State<'_, LaunchFile>) -> Option<String> {
 /// that is what the surface has to name when the file turns out to hold nothing:
 /// "no events in <this file>" is the honest sentence, and naming the calendar
 /// folder instead would point at something the person did not open.
-fn agenda_of_file(path: &std::path::Path) -> Result<Agenda, String> {
+fn agenda_of_file(path: &std::path::Path) -> Agenda {
     let mut agenda = Agenda {
         events: Vec::new(),
         directory: path.display().to_string(),
@@ -63,7 +63,7 @@ fn agenda_of_file(path: &std::path::Path) -> Result<Agenda, String> {
     };
     let Ok(text) = std::fs::read_to_string(path) else {
         agenda.unreadable = 1;
-        return Ok(agenda);
+        return agenda;
     };
     agenda.files = 1;
     match ics::parse_events(&text) {
@@ -72,7 +72,7 @@ fn agenda_of_file(path: &std::path::Path) -> Result<Agenda, String> {
         }
         Err(_) => agenda.unreadable = 1,
     }
-    Ok(agenda)
+    agenda
 }
 
 /// Read every `.ics` file in the calendar directory.
@@ -100,13 +100,45 @@ async fn agenda_from_service() -> Option<Agenda> {
     serde_json::from_str(&json).ok()
 }
 
+/// Why keeping a calendar did not happen, as a word rather than a sentence.
+///
+/// All five were English sentences built here and rendered with no catalogue
+/// around them at all, so a German reader met them verbatim. They are ordinary
+/// outcomes of pressing Keep - the file is gone, the name is taken - and the
+/// window is the only place that knows the reader's language.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum ImportProblem {
+    /// The path handed over does not name a file at all.
+    NotAFile,
+    /// Nowhere to keep calendars: no home directory for this session.
+    NoHome,
+    /// The calendar directory could not be created. `why` is what the
+    /// filesystem said.
+    CannotMakeDir { why: String },
+    /// A calendar of that name is already kept, and keeping would overwrite it.
+    AlreadyKept { name: String },
+    /// The copy itself failed.
+    CopyFailed { why: String },
+}
+
 /// What happened when a person asked to keep an opened calendar.
 #[derive(serde::Serialize)]
 struct ImportResult {
     /// Where it now lives, when it was copied.
     path: Option<String>,
-    /// Why it was not, in a sentence the surface can show.
-    error: Option<String>,
+    /// Why it was not, named rather than written out.
+    problem: Option<ImportProblem>,
+}
+
+/// Why an agenda could not be read, as a word.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum AgendaProblem {
+    /// No home directory, so there is no calendar folder to read.
+    NoHome,
+    /// The calendar folder itself would not be read.
+    Unreadable { why: String },
 }
 
 /// Copy an opened `.ics` into the calendar directory, so it is still there
@@ -127,35 +159,37 @@ struct ImportResult {
 async fn calendar_import(path: String) -> ImportResult {
     let src = std::path::PathBuf::from(&path);
     let Some(name) = src.file_name() else {
-        return ImportResult { path: None, error: Some("that path does not name a file".into()) };
+        return ImportResult { path: None, problem: Some(ImportProblem::NotAFile) };
     };
     let Some(dir) = calendar_dir() else {
-        return ImportResult {
-            path: None,
-            error: Some("this machine has no home directory to keep calendars in".into()),
-        };
+        return ImportResult { path: None, problem: Some(ImportProblem::NoHome) };
     };
     if let Err(e) = std::fs::create_dir_all(&dir) {
         return ImportResult {
             path: None,
-            error: Some(format!("could not make {}: {e}", dir.display())),
+            problem: Some(ImportProblem::CannotMakeDir { why: e.to_string() }),
         };
     }
     let dest = dir.join(name);
     if dest.exists() {
         return ImportResult {
             path: None,
-            error: Some(format!("a calendar called {} is already kept", name.to_string_lossy())),
+            problem: Some(ImportProblem::AlreadyKept {
+                name: name.to_string_lossy().into_owned(),
+            }),
         };
     }
     match std::fs::copy(&src, &dest) {
-        Ok(_) => ImportResult { path: Some(dest.display().to_string()), error: None },
-        Err(e) => ImportResult { path: None, error: Some(format!("could not keep it: {e}")) },
+        Ok(_) => ImportResult { path: Some(dest.display().to_string()), problem: None },
+        Err(e) => ImportResult {
+            path: None,
+            problem: Some(ImportProblem::CopyFailed { why: e.to_string() }),
+        },
     }
 }
 
 #[tauri::command]
-async fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
+async fn calendar_agenda(file: Option<String>) -> Result<Agenda, AgendaProblem> {
     // Opened ON a file: that file is the whole agenda. Reading the directory too
     // would answer a question the person did not ask - they double-clicked one
     // calendar, and mixing it with everything else would bury it.
@@ -163,13 +197,15 @@ async fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
         // Not through the service: it holds the calendar directory, and a file
         // somebody opened may be anywhere. Asking it for one would either return
         // the wrong agenda or nothing at all.
-        return agenda_of_file(std::path::Path::new(&path));
+        // Never an error: a file that will not read or parse is reported IN the
+        // agenda as `unreadable`, which is what the window shows.
+        return Ok(agenda_of_file(std::path::Path::new(&path)));
     }
     if let Some(agenda) = agenda_from_service().await {
         return Ok(agenda);
     }
     let Some(dir) = calendar_dir() else {
-        return Err("this machine has no home directory to read calendars from".into());
+        return Err(AgendaProblem::NoHome);
     };
     let mut agenda = Agenda {
         events: Vec::new(),
@@ -186,7 +222,9 @@ async fn calendar_agenda(file: Option<String>) -> Result<Agenda, String> {
         return Ok(agenda);
     }
 
-    let entries = std::fs::read_dir(&dir).map_err(|e| format!("could not read {}: {e}", dir.display()))?;
+    let entries = std::fs::read_dir(&dir).map_err(|e| AgendaProblem::Unreadable {
+        why: e.to_string(),
+    })?;
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ics")) {
