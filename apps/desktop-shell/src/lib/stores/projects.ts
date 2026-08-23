@@ -7,8 +7,7 @@
 
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { toast } from "svelte-sonner";
-import { t } from "$lib/i18n/messages";
+import { raiseRefusal } from "$lib/shellAction";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -112,7 +111,7 @@ export async function activateFocus(project: Project): Promise<boolean> {
     // between explains it. The toast is the channel for precisely this - the
     // surface that started the action is gone before the answer arrives.
     console.error("[projects] activate focus failed:", e);
-    toast.error(get(t)("sh.focus.errActivate"));
+    raiseRefusal("sh.focus.errActivate");
     // RE-READ rather than assume. Clearing the state was a guess that the daemon
     // is where it was before, and a guess is what put the shell and the daemon
     // out of step in the first place: the daemon owns the focus, so it answers
@@ -135,7 +134,7 @@ export async function deactivateFocus(): Promise<boolean> {
     // Re-reading puts the chip back if the focus is still on, which is both the
     // truth and the only way they can see it is still on.
     console.error("[projects] deactivate focus failed:", e);
-    toast.error(get(t)("sh.focus.errDeactivate"));
+    raiseRefusal("sh.focus.errDeactivate");
     await reconcileFocus();
     return false;
   }
@@ -200,7 +199,7 @@ export function initProjects(): () => void {
       // silently lost - and with it the notification suppression that went with
       // it. Nothing on screen is WRONG afterwards, which is why it needs saying:
       // there is no other sign it happened.
-      toast.error(get(t)("sh.focus.errRestore"));
+      raiseRefusal("sh.focus.errRestore");
     });
 
   const pending: Promise<UnlistenFn>[] = [

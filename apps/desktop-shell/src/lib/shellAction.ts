@@ -39,7 +39,7 @@ export async function shellAction(
     await invoke(command, args);
     return true;
   } catch {
-    toast.error(get(t)(failureKey));
+    raiseRefusal(failureKey);
     return false;
   }
 }
@@ -58,5 +58,41 @@ export async function shellAction(
  * current locale is the right one - so the rule and the need meet in a helper.
  */
 export function shellToastError(key: string): void {
-  toast.error(get(t)(key));
+  raiseRefusal(key);
+}
+
+/**
+ * Raise a refusal where it will actually be read.
+ *
+ * A notice drawn into the window that is closing is a notice nobody sees. The
+ * launcher hides the instant an item is picked, and a popover closes on the
+ * click that failed, so the surface that raised the line is often the one on its
+ * way out. Measured on the machine: a quick action refused because the daemon it
+ * needs is not on the image logged the refusal, raised its toast in the
+ * launcher, and showed the person an empty desktop.
+ *
+ * `arlen://toast` is the channel that already exists for this. The backend uses
+ * it because it cannot know which window is up; the same is true of any frontend
+ * code that runs in the launcher. The main window's bridge renders it, and a
+ * window that is hidden rendering it too costs nothing.
+ *
+ * Falls back to a local toast when there is no host to carry the event - a plain
+ * vite session, the render harness - because saying it in the wrong window still
+ * beats not saying it.
+ */
+export function raiseRefusal(key: string, params?: Record<string, string>): void {
+  void (async () => {
+    try {
+      const { emit } = await import("@tauri-apps/api/event");
+      await emit("arlen://toast", {
+        kind: "error",
+        key,
+        params,
+        // Read only if the catalog is missing the id, and legible when it is.
+        message: key,
+      });
+    } catch {
+      toast.error(get(t)(key, params));
+    }
+  })();
 }
