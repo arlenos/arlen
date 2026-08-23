@@ -33,6 +33,7 @@
   import { closeSearch, searchOpen } from "$lib/stores/search";
   import { t, dir } from "$lib/i18n/messages";
   import { publishAppMenu } from "$lib/menu";
+  import { setWindowTitle } from "$lib/window-title";
   import { facetOpen } from "$lib/stores/facets";
   import { duplicatesOpen, scanDuplicates, closeDuplicates } from "$lib/stores/duplicates";
   import { undoLast } from "$lib/stores/ops";
@@ -60,7 +61,16 @@
     // Publish the topbar menu, and again whenever the language changes: `t`
     // is derived from the locale store, so a switch re-runs this and the
     // shell replaces the whole menu with the one the reader can read.
-    const stopMenu = t.subscribe((tr) => void publishAppMenu(tr));
+    //
+    // The window title rides along. `<svelte:head><title>` below sets the
+    // DOCUMENT title, which nothing outside the webview ever reads; the name
+    // the topbar and the workspace overview show is the native window title,
+    // and that came from tauri.conf.json - so the catalog said "Dateien"
+    // while every surface outside this window said "Files".
+    const stopMenu = t.subscribe((tr) => {
+      void publishAppMenu(tr);
+      void setWindowTitle(tr("f.app.title"));
+    });
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {
       stopMenu();
