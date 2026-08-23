@@ -2214,73 +2214,20 @@ const APP_ID: &str = "dev.arlen.files";
 /// [`APP_ID`] via the GTK program name (GTK3 ignores `enableGTKAppId` for the
 /// Wayland app_id). `ARLEN_APP_ID` stays an override for a launcher that pins
 /// a different id.
-async fn publish_app_menu() {
-    use os_sdk::menu::{Menu, MenuGroup, MenuItem};
-
+///
+/// The tree comes from the webview (`$lib/menu.ts`), which is where the labels
+/// are: built here from English literals, the bar read "File Edit View Go Help"
+/// over a German window, and a language switch could not reach a menu published
+/// before the webview existed. The frontend re-publishes on every switch.
+#[tauri::command]
+async fn publish_menu(groups: Vec<os_sdk::menu::MenuGroup>) -> Result<(), String> {
     let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| APP_ID.to_string());
     let socket = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
     let emitter = os_sdk::event::UnixEventEmitter::new(socket.to_string_lossy().into_owned());
-    let menu = Menu::new(emitter, app_id);
-
-    let groups = vec![
-        MenuGroup::new(
-            "File",
-            vec![
-                MenuItem::item("New Folder", "file.new_folder"),
-                MenuItem::item("New Window", "file.new_window"),
-                MenuItem::separator(),
-                MenuItem::item("Properties", "file.properties"),
-                MenuItem::separator(),
-                MenuItem::item("Close Window", "file.close"),
-            ],
-        ),
-        MenuGroup::new(
-            "Edit",
-            vec![
-                MenuItem::item("Undo", "edit.undo"),
-                MenuItem::separator(),
-                MenuItem::item("Cut", "edit.cut"),
-                MenuItem::item("Copy", "edit.copy"),
-                MenuItem::item("Paste", "edit.paste"),
-                MenuItem::separator(),
-                MenuItem::item("Rename", "edit.rename"),
-                MenuItem::item("Move to Trash", "edit.trash"),
-                MenuItem::item("Select All", "edit.select_all"),
-            ],
-        ),
-        MenuGroup::new(
-            "View",
-            vec![
-                MenuItem::item("Refresh", "view.refresh"),
-                MenuItem::item("Show Hidden Files", "view.toggle_hidden"),
-                MenuItem::separator(),
-                MenuItem::submenu(
-                    "Sort By",
-                    vec![
-                        MenuItem::item("Name", "view.sort.name"),
-                        MenuItem::item("Size", "view.sort.size"),
-                        MenuItem::item("Type", "view.sort.type"),
-                        MenuItem::item("Modified", "view.sort.modified"),
-                    ],
-                ),
-            ],
-        ),
-        MenuGroup::new(
-            "Go",
-            vec![
-                MenuItem::item("Home", "go.home"),
-                MenuItem::item("Recent", "go.recent"),
-                MenuItem::item("Trash", "go.trash"),
-                MenuItem::separator(),
-                MenuItem::item("Parent Folder", "go.up"),
-            ],
-        ),
-        MenuGroup::new("Help", vec![MenuItem::item("About Files", "help.about")]),
-    ];
-
-    if let Err(e) = menu.register(groups).await {
-        log::warn!("failed to publish the files app menu: {e}");
-    }
+    os_sdk::menu::Menu::new(emitter, app_id)
+        .register(groups)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Forwarded to the webview as `arlen://menu-action` when the user
@@ -2344,9 +2291,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| {
-            // Publish the global menu once the app is up; it routes over the
-            // Event Bus to the shell topbar (cross-process).
-            tauri::async_runtime::spawn(publish_app_menu());
+            // The webview publishes the menu itself once its catalog is up
+            // (`publish_menu`), so the labels are in the reader's language.
             // Receive topbar-menu clicks back from the shell and forward them
             // into the webview so the frontend runs the operation (#2b).
             tauri::async_runtime::spawn(run_menu_action_listener(app.handle().clone()));
@@ -2358,6 +2304,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             shell_present,
             frontend_log,
+            publish_menu,
             remote::network_places,
             files_list,
             files_list_location,
