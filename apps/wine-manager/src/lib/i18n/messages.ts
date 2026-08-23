@@ -58,10 +58,10 @@ const messages: Catalogs = {
   },
   de: {
     "wn.app.title": "Windows-Programme",
-    "wn.none": "Noch keine Flaschen. Eine Flasche ist ein Windows-Programm mit eigenem Prefix, das nur die Ordner erreicht, die du freigibst.",
+    "wn.none": "Noch keine Flaschen. Eine Flasche ist ein Windows-Programm mit eigenem Prefix; es erreicht nur die Ordner, die du freigibst.",
     "wn.whereBottles": "Flaschen liegen in {$dir}.",
     "wn.noWineWithBottles": "Wine ist auf diesem Rechner nicht installiert, keine dieser Flaschen kann also ein Programm starten. Was sie freigegeben haben, steht trotzdem hier und stimmt weiterhin.",
-    "wn.noWine": "Wine ist auf diesem Rechner nicht installiert, es kann also noch kein Windows-Programm laufen. Eine Flasche wäre ein Windows-Programm mit eigenem Prefix, das nur die Ordner erreicht, die du freigibst.",
+    "wn.noWine": "Wine ist auf diesem Rechner nicht installiert, es kann also noch kein Windows-Programm laufen. Eine Flasche wäre ein Windows-Programm mit eigenem Prefix; es erreicht nur die Ordner, die du freigibst.",
     "wn.failed.noHome": "Auf dieser Maschine gibt es keinen Ort, an dem Bottles liegen könnten, also gibt es nichts aufzulisten. Das passiert, wenn für diese Sitzung weder HOME noch XDG_DATA_HOME gesetzt ist.",
     "wn.failed.unreadable": "Der Ordner mit den Bottles konnte nicht gelesen werden, deshalb wird keines davon gezeigt: {$why}",
     "wn.failed.other": "Die Bottles konnten nicht aufgelistet werden: {$reason}",
