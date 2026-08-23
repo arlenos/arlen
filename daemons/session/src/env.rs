@@ -91,6 +91,24 @@ pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, S
             env.insert(A11Y_SCREEN_READER.into(), v);
         }
     }
+
+    // The log level, when somebody set one on the session.
+    //
+    // A release compositor logs at `warn` and there was no way to raise it: the
+    // session builds this map and spawns the compositor with exactly it, so a
+    // `RUST_LOG` set anywhere outside reached the session process and stopped
+    // there. That made a whole class of question unanswerable on a real image -
+    // when a window first reached the screen, why an input was refused - because
+    // the only process that knows is the one whose voice was turned down.
+    //
+    // Inherited rather than defaulted: an image that says nothing keeps the quiet
+    // release level, and raising it stays a deliberate act (a unit drop-in, a
+    // debug boot), not something a build decides for every user.
+    if let Ok(v) = std::env::var("RUST_LOG") {
+        if !v.is_empty() {
+            env.insert("RUST_LOG".into(), v);
+        }
+    }
     env
 }
 
@@ -131,6 +149,35 @@ pub const MUST_BE_UNSET: &[&str] = &["DISPLAY", "WAYLAND_DISPLAY"];
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_log_level_travels_only_when_somebody_set_one() {
+        // One test for both directions, for the reason the handoff test gives:
+        // `set_var` is process-wide and two tests over one variable race.
+        std::env::remove_var("RUST_LOG");
+        assert!(
+            !session_env("s-1", "").contains_key("RUST_LOG"),
+            "an image that says nothing keeps the quiet release level"
+        );
+
+        std::env::set_var("RUST_LOG", "cosmic_comp=info");
+        let env = session_env("s-1", "");
+        std::env::remove_var("RUST_LOG");
+        assert_eq!(
+            env.get("RUST_LOG").map(String::as_str),
+            Some("cosmic_comp=info"),
+            "the compositor is spawned with exactly this map, so a level that \
+             does not travel here cannot reach it at all"
+        );
+
+        // An empty value is not a level. Treating it as one would hand the
+        // compositor a filter that parses to nothing and silently drop it back
+        // to the default, which reads as "the passthrough is broken".
+        std::env::set_var("RUST_LOG", "");
+        let env = session_env("s-1", "");
+        std::env::remove_var("RUST_LOG");
+        assert!(!env.contains_key("RUST_LOG"));
+    }
 
     #[test]
     fn the_greeter_handoff_travels_only_when_it_was_made() {
