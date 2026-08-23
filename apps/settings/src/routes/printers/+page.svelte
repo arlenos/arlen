@@ -239,7 +239,7 @@
 {/snippet}
 
 {#snippet jobRow(job: Job)}
-  <Row label={job.name ?? `Job ${job.id}`} description={jobPrinter(job.printer)}>
+  <Row label={job.name ?? $t("s.pr.jobNumber", { id: job.id })} description={jobPrinter(job.printer)}>
     {#snippet leading()}
       <span class="dot" data-state={job.state === "processing" ? "processing" : "queued"} aria-hidden="true"></span>
     {/snippet}

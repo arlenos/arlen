@@ -300,7 +300,7 @@
               <button
                 {...props}
                 class="focus-indicator"
-                aria-label={`Project: ${$focusState.projectName}. Right-click for options`}
+                aria-label={$t("sh.aria.project", { name: $focusState.projectName })}
                 onclick={openProjectSwitcher}
               >
                 {#if $focusState.accentColor}

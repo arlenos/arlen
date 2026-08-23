@@ -511,6 +511,47 @@ fn expr_literals(src: &str) -> Vec<String> {
             out.push(lit);
             continue;
         }
+        // A template literal's STATIC parts. `title={`Allow ${who} to ${what}?`}`
+        // was the consent card's question until 23 August - the one sentence a
+        // person reads before granting anything, in English on a German machine,
+        // and invisible here because this only knew quoted strings.
+        //
+        // Each run between the interpolations is offered separately, so
+        // `Allow `/` to `/`?` are three candidates and `meaningful` drops the two
+        // that are punctuation and a preposition. A frame that carries real copy
+        // keeps it.
+        if c == '`' {
+            i += 1;
+            let mut lit = String::new();
+            while i < chars.len() && chars[i] != '`' {
+                if chars[i] == '\\' && i + 1 < chars.len() {
+                    i += 1;
+                    lit.push(chars[i]);
+                    i += 1;
+                    continue;
+                }
+                // `${` opens an expression: end this run, skip to its close.
+                if chars[i] == '$' && i + 1 < chars.len() && chars[i + 1] == '{' {
+                    out.push(std::mem::take(&mut lit));
+                    i += 2;
+                    let mut depth = 1;
+                    while i < chars.len() && depth > 0 {
+                        if chars[i] == '{' {
+                            depth += 1;
+                        } else if chars[i] == '}' {
+                            depth -= 1;
+                        }
+                        i += 1;
+                    }
+                    continue;
+                }
+                lit.push(chars[i]);
+                i += 1;
+            }
+            i += 1;
+            out.push(lit);
+            continue;
+        }
         i += 1;
     }
     out

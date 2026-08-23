@@ -585,7 +585,7 @@
 
     <div class="swatches">
       {#each swatches as s (s.token)}
-        <button class="swatch" class:active={color === s.hex} style={`background:${s.hex}`} aria-label={`Colour ${s.token.replace("--color-", "")}`} onclick={() => (color = s.hex)}></button>
+        <button class="swatch" class:active={color === s.hex} style={`background:${s.hex}`} aria-label={$t("s.swatch", { name: s.token.replace("--color-", "") })} onclick={() => (color = s.hex)}></button>
       {/each}
     </div>
 

@@ -70,7 +70,7 @@
             {#if it}
               {@const Icon = iconFor(it)}
               <div class="tb-row" class:dimmed={!it.shown}>
-                <button class="tb-handle" data-sortable-handle aria-label={`Reorder ${it.name}`}>
+                <button class="tb-handle" data-sortable-handle aria-label={$t("s.tb.reorder", { item: it.name })}>
                   <GripVertical size={15} strokeWidth={2} />
                 </button>
                 <span class="tb-icon"><Icon size={16} strokeWidth={1.75} /></span>

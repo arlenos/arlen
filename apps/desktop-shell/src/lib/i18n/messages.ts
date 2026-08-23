@@ -395,6 +395,16 @@ const messages: Catalogs = {
     // not fit "Erlaube X zu Y?", and German puts the verb at the end. Two
     // sentences carry it without bending either language.
     "sh.consent.ask": "Allow {$app} to {$what}?",
+    // Accessible names built as template literals, which a screen reader speaks
+    // and the born-translatable lint could not read until it learned backticks.
+    "sh.aria.clock": "Clock: {$weekday} {$time}",
+    "sh.aria.project": "Project: {$name}. Right-click for options",
+    "sh.aria.sharing": "Your screen is being shared with {$app}. Click to stop.",
+    "sh.aria.window": "{$window} on workspace {$n}",
+    "sh.aria.windowMinimized": "Minimized: {$window} on workspace {$n}",
+    "sh.wp.procDetail": "PID {$pid}, {$size}",
+    "sh.wp.exitFocus": "Exit Focus: {$name}",
+    "sh.ws.numbered": "Workspace {$n}",
     "sh.tip.recentActions": "Recent actions",
     "sh.wp.askPlaceholder": "Ask the agent\u2026",
     "sh.wp.searchPlaceholder": "Search\u2026",
@@ -939,6 +949,14 @@ const messages: Catalogs = {
     "sh.wp.grp.modules": "Module",
     "sh.tip.quickSettings": "Schnelleinstellungen",
     "sh.consent.ask": "{$app} möchte {$what}. Zulassen?",
+    "sh.aria.clock": "Uhr: {$weekday} {$time}",
+    "sh.aria.project": "Projekt: {$name}. Rechtsklick für Optionen",
+    "sh.aria.sharing": "Dein Bildschirm wird mit {$app} geteilt. Zum Beenden klicken.",
+    "sh.aria.window": "{$window} auf Arbeitsfläche {$n}",
+    "sh.aria.windowMinimized": "Minimiert: {$window} auf Arbeitsfläche {$n}",
+    "sh.wp.procDetail": "PID {$pid}, {$size}",
+    "sh.wp.exitFocus": "Fokus verlassen: {$name}",
+    "sh.ws.numbered": "Arbeitsfläche {$n}",
     "sh.tip.recentActions": "Letzte Aktionen",
     "sh.wp.askPlaceholder": "Den Agenten fragen\u2026",
     "sh.wp.searchPlaceholder": "Suchen\u2026",
