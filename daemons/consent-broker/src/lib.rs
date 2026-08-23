@@ -119,6 +119,21 @@ pub struct ConsentRequest {
     pub triggered_by_external_content: bool,
     /// A plain-language risk/outcome summary - NOT the resource ("uses your
     /// data plan", "permanently deletes 3 files"), the anti-fatigue copy rule.
+    ///
+    /// IN THE ASKER'S LANGUAGE, WHICH IS NOT NECESSARILY THE READER'S. This
+    /// string reaches the card verbatim and becomes the question a person is
+    /// asked before granting anything. Measured on 23 August by booting the image
+    /// with `[locale] ui = "de"`: the buttons said Ablehnen and Einmal erlauben
+    /// over an English question, because `dev/dogfood` had written its summary in
+    /// English and nothing between here and the card could translate it.
+    ///
+    /// The shell's frame around it is translated now. This half is not, and the
+    /// route that would fix it already exists in this struct: `class` is a
+    /// machine-readable capability, so a card could write the question from the
+    /// class and keep this as detail. That changes what a request MEANS and is a
+    /// design decision rather than a patch - recorded in `coder-reports.md`. Until
+    /// it is taken, an asker writing this string is choosing the language a
+    /// stranger will be asked in.
     pub summary: String,
     /// The concrete scope / target of the action, when there is a useful
     /// detail line to show.
