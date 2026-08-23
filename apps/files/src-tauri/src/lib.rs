@@ -2241,7 +2241,8 @@ struct MenuActionEvent {
 /// Receive topbar-menu clicks and forward them into this app's webview.
 ///
 /// The menu is published into the topbar over the Event Bus
-/// ([`publish_app_menu`]); the shell publishes the clicked action back
+/// ([`publish_menu`], called by the webview); the shell publishes the
+/// clicked action back
 /// onto the bus as `app.menu.action_invoked`. We subscribe to that
 /// back-channel (filtered to our own app_id by the SDK) and re-emit
 /// each action as a Tauri event the frontend handles (#2b). Best-effort:
