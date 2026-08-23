@@ -51,7 +51,7 @@
 <header
   onpointerdown={startDrag}
   ondblclick={toggleMax}
-  class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+  class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
 >
   <div class="flex items-center gap-2">
     <SidebarTrigger class="-ml-1" />
@@ -64,7 +64,7 @@
         <!-- A single segment is the panel name, which the page's own H1
              already says right below - the bar carries the app identity
              instead of repeating it. -->
-        <span>{$t("s.header.appName")}</span>
+        <span class="font-medium text-foreground">{$t("s.header.appName")}</span>
       {:else}
         {#each $breadcrumbs as segment, i (segment + i)}
           {#if i > 0}

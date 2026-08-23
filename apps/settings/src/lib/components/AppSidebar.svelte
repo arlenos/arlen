@@ -184,7 +184,7 @@
        collapsed to the icon rail (Tim's call: no line through the expanded
        sidebar). -->
   <SidebarHeader
-    class="h-12 justify-center py-0 border-sidebar-border group-data-[collapsible=icon]:border-b"
+    class="h-10 justify-center py-0 border-sidebar-border group-data-[collapsible=icon]:border-b"
   >
     <!--
       Search replaces the static "Settings · Arlen OS" branding
@@ -205,7 +205,7 @@
       <SearchField
         bind:ref={inputEl}
         bind:value={query}
-        size="prominent"
+        size="control"
         onkeydown={onKey}
         onmousedown={onSearchClick}
         onfocus={() => {
@@ -292,7 +292,7 @@
        matches the sidebar's own 0.5rem padding, kept uniform on the top so
        the corner nests evenly. */
     --container-radius: var(--radius-window, var(--radius-card));
-    /* No top nudge: the SidebarHeader centers the field against the h-12 bar
+    /* No top nudge: the SidebarHeader centers the field against the h-10 bar
        (a margin here would fight justify-center and sit the field 4px low).
        Centered in 48px the true top inset is 6px, so the concentric radius
        derives from that. */
