@@ -350,7 +350,7 @@
       // A source that will not capture is reported where the picture would be,
       // not swallowed: a picker that silently keeps the old image is one that
       // says you photographed something you did not.
-      captureFailure = shot.kind === "unavailable" ? shot.reason : "no host to capture with";
+      captureFailure = shot.kind === "unavailable" ? shot.reason : $t("s.noHost");
       return;
     }
     source = value;
