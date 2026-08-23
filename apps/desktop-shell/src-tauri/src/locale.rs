@@ -8,7 +8,7 @@
 use arlen_i18n::{chosen_locale, locale_config_path};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 /// The current UI language tag.
 #[tauri::command]
@@ -53,9 +53,28 @@ pub fn spawn_locale_watcher<R: Runtime>(app: AppHandle<R>) {
                 *lf = Instant::now();
             }
             std::thread::sleep(Duration::from_millis(30));
-            if let Err(e) = app_clone.emit("arlen://locale-changed", &chosen_locale()) {
+            let now = chosen_locale();
+            if let Err(e) = app_clone.emit("arlen://locale-changed", &now) {
                 log::warn!("locale: emit failed: {e}");
             }
+            // The app list is read from `.desktop` files in one language and kept,
+            // so a switch that reaches every rendered string still left the
+            // launcher listing apps under their old names. Re-read it, off this
+            // thread: the scan resolves an icon per app and this callback is the
+            // watcher's.
+            let for_index = app_clone.clone();
+            std::thread::spawn(move || {
+                let fresh = crate::app_index::build_index_in(&now);
+                if let Some(index) = for_index.try_state::<crate::app_index::AppIndex>() {
+                    match index.lock() {
+                        Ok(mut held) => {
+                            log::info!("locale: re-indexed {} applications as {now}", fresh.len());
+                            *held = fresh;
+                        }
+                        Err(e) => log::warn!("locale: the app index was not re-read: {e}"),
+                    }
+                }
+            });
         }) {
             Ok(w) => w,
             Err(e) => {
