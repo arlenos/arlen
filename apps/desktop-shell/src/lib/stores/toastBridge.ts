@@ -13,17 +13,29 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "svelte-sonner";
+import { get } from "svelte/store";
+import { t } from "$lib/i18n/messages";
 
 interface ToastPayload {
   kind: "success" | "info" | "warning" | "error";
   message: string;
+  /// A catalog id to render instead of `message`.
+  ///
+  /// The backend knows WHICH line to say and not the words for it - the catalog
+  /// is here. A quick action used to build its own English sentence and emit it
+  /// as text, so a German desktop flipped the switch and answered in English.
+  key?: string;
 }
 
 export function initToastBridge(): () => void {
   let unlisten: UnlistenFn | null = null;
 
   listen<ToastPayload>("arlen://toast", ({ payload }) => {
-    const message = payload?.message ?? "";
+    const write = get(t);
+    // A key the catalog does not carry renders as the id, which is legible and
+    // greppable; falling back to the backend's own `message` would put the
+    // source language on screen, which is the thing this exists to stop.
+    const message = payload?.key ? write(payload.key) : (payload?.message ?? "");
     if (!message) return;
     switch (payload.kind) {
       case "success":
