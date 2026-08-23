@@ -1,85 +1,71 @@
 <script lang="ts">
-  import { formatSent, invitationWords } from "$lib/wording";
-  /// One message, and only what can be shown honestly.
+  /// The mail client, three panes on the files chrome: the folder rail, the
+  /// message list, the reading surface. The mailbox model is the intended
+  /// contract (mailbox.ts) - fixture under vite, honestly unconnected on a
+  /// host without the account backend - while the one wire that IS real today
+  /// (`launch_file` + `mail_read`, a message opened from Files) renders into
+  /// the same reading surface as a transient row that belongs to no folder.
   ///
-  /// The HTML part is deliberately absent - see the app's `lib.rs`. The sentence
-  /// that says so is a fact about the message, not an apology for a gap: a
-  /// reader who is told nothing would take the text part for the whole message,
-  /// which is exactly how a phishing mail whose two parts disagree gets read as
-  /// the harmless one.
+  /// The HTML part of a message stays deliberately absent - see the app's
+  /// `lib.rs` (EFAIL): containing the renderer does not stop the message
+  /// calling home. The reading surface states that as a fact, not an apology.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { Mail, TriangleAlert } from "@lucide/svelte";
-  import { t, locale } from "$lib/i18n/messages";
-
-  /// A size written the way the reader writes one: `16 kB` in English, `16 kB`
-  /// with a comma decimal in German, and the unit from the reader's locale rather
-  /// than from a hardcoded table.
-  ///
-  /// Local rather than in the kit because `sdk/ui-kit` is arlen-ui's, and a
-  /// second app that needs this is the moment to move it there - `formatDecimal`
-  /// lives in the kit for exactly this reason and a byte size belongs beside it.
-  const formatBytes = (n: number, loc: string) =>
-    new Intl.NumberFormat(loc, {
-      style: "unit",
-      unit: "byte",
-      unitDisplay: "narrow",
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(n);
-
-  /// When the message says it was sent, written the way the reader writes a date.
-  ///
-  /// The core hands over an RFC 3339 string, and the window was printing it
-  /// verbatim: `2026-08-19T09:00:00Z` in front of a person, in every language.
-  /// Every other app on this image formats through `Intl` off the shared locale -
-  /// the calendar's own profile note makes it a house rule - and mail was the one
-  /// surface still showing machine text.
-  ///
-  /// A DATE LINE IS WHATEVER THE SENDER WROTE, so this can fail, and when it does
-  /// the string is shown exactly as it arrived rather than replaced by a guess or
-  /// by nothing. The raw value stays on the element either way, so a person
-  /// checking a suspicious message can still read the header as sent.
+  import { Mail, Reply, Forward, Archive, Trash2, FileText } from "@lucide/svelte";
+  import { t } from "$lib/i18n/messages";
+  import {
+    SidebarProvider,
+    SidebarInset,
+    SidebarTrigger,
+  } from "@arlen/ui-kit/components/ui/sidebar";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import FolderRail from "$lib/components/FolderRail.svelte";
+  import MessageList from "$lib/components/MessageList.svelte";
+  import MessageView from "$lib/components/MessageView.svelte";
+  import ComposeView from "$lib/components/ComposeView.svelte";
+  import {
+    folders,
+    envelopes,
+    mailboxMocked,
+    openedFile,
+    loadMailbox,
+    openMessage,
+    markRead,
+    moveMessage,
+    deleteForever,
+    type FolderKind,
+    type Message,
+  } from "$lib/stores/mailbox";
 
-  type Message = {
-    from: string | null;
-    subject: string | null;
-    date: string | null;
-    text: string | null;
-    has_html: boolean;
-    only_in_text: string[];
-    only_in_html: string[];
-    refusal: string | null;
-    to: string[];
-    cc: string[];
-    channels: string[];
-    attachments: { name: string | null; media_type: string | null; bytes: number }[];
-    invitation: { method: string | null; bytes: number; filename: string | null } | null;
-    sealed: string | null;
-    path: string;
-  };
-
-  /// Whether there is a host to ask at all. In a browser there is none, and that
-  /// is not a failure to report.
+  /// Whether there is a host to ask at all. In a browser there is none, and
+  /// that is not a failure to report.
   const tauriAvailable = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-  let message = $state<Message | null>(null);
+  let selectedFolder = $state("inbox");
+  let selectedId = $state<string | null>(null);
+  let reading = $state<Message | null>(null);
+  let composing = $state(false);
+  let preset = $state<{ to: string; subject: string; body: string }>({ to: "", subject: "", body: "" });
+
   type Failure =
     | { problem: "unreadable"; why: string }
     | { problem: "not-a-message" }
     | { problem: "other"; reason: string };
   let failure = $state<Failure | null>(null);
-  let launched = $state<string | null>(null);
 
   onMount(() => {
+    void loadMailbox();
     if (!tauriAvailable) return;
     void (async () => {
-      launched = await invoke<string | null>("launch_file").catch(() => null);
+      const launched = await invoke<string | null>("launch_file").catch(() => null);
       if (!launched) return;
       try {
-        message = await invoke<Message>("mail_read", { path: launched });
+        const m = await invoke<Message>("mail_read", { path: launched });
+        openedFile.set(m);
+        selectedId = "@file";
         failure = null;
       } catch (e) {
         // The payload arrives as an OBJECT here, not as a string with JSON
@@ -105,6 +91,82 @@
       }
     })();
   });
+
+  const rows = $derived(
+    $envelopes.filter((e) => e.folderId === selectedFolder).sort((a, b) => b.dateMs - a.dateMs),
+  );
+
+  function selectFolder(id: string): void {
+    selectedFolder = id;
+    if (selectedId !== "@file") {
+      selectedId = null;
+      reading = null;
+    }
+    composing = false;
+  }
+
+  function selectMessage(id: string): void {
+    selectedId = id;
+    composing = false;
+    markRead(id);
+    void openMessage(id).then((m) => {
+      if (selectedId === id) reading = m;
+    });
+  }
+
+  function startCompose(to = "", subject = "", body = ""): void {
+    preset = { to, subject, body };
+    composing = true;
+  }
+
+  function composeDone(draftId: string | null): void {
+    composing = false;
+    if (draftId) {
+      selectedFolder = "drafts";
+      selectMessage(draftId);
+    }
+  }
+
+  function reply(): void {
+    if (!reading) return;
+    startCompose(reading.from ?? "", reading.subject ? `Re: ${reading.subject}` : "");
+  }
+  function forward(): void {
+    if (!reading) return;
+    startCompose("", reading.subject ? `Fwd: ${reading.subject}` : "", reading.text ? `\n\n${reading.text}` : "");
+  }
+  function archiveSelected(): void {
+    if (!selectedId || selectedId === "@file") return;
+    moveMessage(selectedId, "archive");
+    selectedId = null;
+    reading = null;
+  }
+  function deleteSelected(): void {
+    if (!selectedId || selectedId === "@file") return;
+    if (selectedFolder === "trash") deleteForever(selectedId);
+    else moveMessage(selectedId, "trash");
+    selectedId = null;
+    reading = null;
+  }
+
+  // Spelled out for the key gate, like the rail's names.
+  const FOLDER_NAMES: Record<FolderKind, string> = {
+    inbox: "ml.folder.inbox",
+    sent: "ml.folder.sent",
+    drafts: "ml.folder.drafts",
+    archive: "ml.folder.archive",
+    trash: "ml.folder.trash",
+  };
+  // The bar names the place: compose, the open message, or the folder.
+  const barTitle = $derived.by(() => {
+    if (composing) return $t("ml.compose.title");
+    if (selectedId === "@file" && $openedFile) return $openedFile.subject ?? $t("ml.openedFile");
+    if (selectedId && reading) return reading.subject ?? "-";
+    const kind = $folders.find((f) => f.id === selectedFolder)?.kind;
+    return kind ? $t(FOLDER_NAMES[kind]) : $t("ml.app.title");
+  });
+
+  const showActions = $derived(!composing && selectedId !== null && selectedId !== "@file" && reading !== null);
 
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
@@ -133,189 +195,190 @@
   }
 </script>
 
-<main class="page">
-  <!-- The header is a drag surface (a non-keyboard pointer interaction); its
-       actual controls are the accessible WindowButtons, so the
-       static-interaction lint is a false positive here. -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <header class="bar" onpointerdown={startDrag} ondblclick={toggleMax}>
-    <Mail size={16} strokeWidth={2} />
-    <h1>{$t("ml.app.title")}</h1>
-    <span class="spacer"></span>
-    <WindowButtons />
-  </header>
+<SidebarProvider class="h-screen min-h-0 overflow-hidden">
+  <FolderRail activeFolder={composing ? null : selectedFolder} onselect={selectFolder} oncompose={() => startCompose()} />
 
-  {#if failure}
-    <p class="note bad" role="alert">
-      {#if failure.problem === "unreadable"}{$t("ml.failed.unreadable", { why: failure.why })}
-      {:else if failure.problem === "not-a-message"}{$t("ml.failed.notAMessage")}
-      {:else}{$t("ml.failed.other", { reason: failure.reason })}{/if}
-    </p>
-  {:else if !message}
-    <p class="note">{$t("ml.nothingOpen")}</p>
-  {:else}
-    <!-- The refusal comes FIRST and above the message, because it is a statement
-         about whether anything below it can be believed. -->
-    {#if message.refusal}
-      <p class="note bad" role="alert">
-        <TriangleAlert size={14} strokeWidth={2} aria-hidden="true" />
-        {$t("ml.refused", { reason: message.refusal })}
-      </p>
-    {/if}
-
-    <dl class="headers">
-      <dt>{$t("ml.from")}</dt>
-      <!-- The caveat sits ON the sender line rather than in a footnote: a
-           display name is whatever the sender typed, and this is the field a
-           reader trusts hardest. -->
-      <dd>{message.from ?? "-"} <span class="quiet">({$t("ml.unsigned")})</span></dd>
-      <dt>{$t("ml.subject")}</dt>
-      <dd>{message.subject ?? "-"}</dd>
-      <dt>{$t("ml.date")}</dt>
-      <dd title={message.date ?? ""}>
-        {message.date ? formatSent(message.date, $locale) : "-"}
-      </dd>
-      {#if message.to.length > 0}
-        <dt>{$t("ml.to")}</dt>
-        <dd>{message.to.join(", ")}</dd>
+  <SidebarInset class="h-svh min-h-0">
+    <!-- The header is a drag surface (a non-keyboard pointer interaction); its
+         actual controls are the accessible buttons inside it, so the
+         static-interaction lint is a false positive here. -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <header
+      onpointerdown={startDrag}
+      ondblclick={toggleMax}
+      class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+    >
+      <SidebarTrigger class="-ml-1" />
+      <Separator orientation="vertical" class="me-1 h-4" />
+      <span class="select-none truncate text-sm font-medium text-foreground">{barTitle}</span>
+      <div class="flex-1"></div>
+      {#if showActions}
+        <IconAction label={$t("ml.reply")} size="control" onclick={reply}>
+          <Reply size={15} strokeWidth={1.75} />
+        </IconAction>
+        <IconAction label={$t("ml.forward")} size="control" onclick={forward}>
+          <Forward size={15} strokeWidth={1.75} />
+        </IconAction>
+        <IconAction label={$t("ml.archive")} size="control" onclick={archiveSelected}>
+          <Archive size={15} strokeWidth={1.75} />
+        </IconAction>
+        <IconAction label={$t("ml.delete")} size="control" onclick={deleteSelected}>
+          <Trash2 size={15} strokeWidth={1.75} />
+        </IconAction>
       {/if}
-      {#if message.cc.length > 0}
-        <dt>{$t("ml.cc")}</dt>
-        <dd>{message.cc.join(", ")}</dd>
-      {/if}
-    </dl>
+      <WindowButtons />
+    </header>
 
-    {#if message.only_in_text.length > 0 || message.only_in_html.length > 0}
-      <p class="note bad" role="status">
-        {#if message.only_in_text.length > 0 && message.only_in_html.length > 0}
-          {$t("ml.divergenceBoth", {
-            text: message.only_in_text.join(", "),
-            html: message.only_in_html.join(", "),
-          })}
-        {:else if message.only_in_text.length > 0}
-          {$t("ml.divergenceText", { text: message.only_in_text.join(", ") })}
+    <div class="body-row">
+      {#if $folders.length > 0}
+        <div class="list-col">
+          {#if $mailboxMocked}
+            <p class="sample">{$t("ml.sample")}</p>
+          {/if}
+          {#if $openedFile}
+            <button
+              type="button"
+              class="opened-file"
+              class:on={selectedId === "@file"}
+              id="opened-file"
+              onclick={() => {
+                selectedId = "@file";
+                composing = false;
+              }}
+            >
+              <FileText size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span class="of-body">
+                <span class="of-label">{$t("ml.openedFile")}</span>
+                <span class="of-subject">{$openedFile.subject ?? "-"}</span>
+              </span>
+            </button>
+          {/if}
+          <MessageList {rows} {selectedId} onselect={selectMessage} />
+        </div>
+      {/if}
+
+      <div class="pane">
+        {#if composing}
+          {#key preset}
+            <ComposeView presetTo={preset.to} presetSubject={preset.subject} presetBody={preset.body} ondone={composeDone} />
+          {/key}
+        {:else if failure}
+          <div class="center">
+            <p class="note bad" role="alert">
+              {#if failure.problem === "unreadable"}{$t("ml.failed.unreadable", { why: failure.why })}
+              {:else if failure.problem === "not-a-message"}{$t("ml.failed.notAMessage")}
+              {:else}{$t("ml.failed.other", { reason: failure.reason })}{/if}
+            </p>
+          </div>
+        {:else if selectedId === "@file" && $openedFile}
+          <MessageView message={$openedFile} />
+        {:else if selectedId && reading}
+          <MessageView message={reading} />
         {:else}
-          {$t("ml.divergenceHtml", { html: message.only_in_html.join(", ") })}
+          <div class="center">
+            <Mail size={28} strokeWidth={1.5} aria-hidden="true" />
+            <p class="note">
+              {#if $folders.length > 0}
+                {$t("ml.noneSelected")}
+              {:else if tauriAvailable}
+                {$t("ml.unconnected")}
+              {:else}
+                {$t("ml.nothingOpen")}
+              {/if}
+            </p>
+          </div>
         {/if}
-      </p>
-    {/if}
-
-    {#if message.channels.length > 0}
-      <p class="note bad" role="status">
-        {$t("ml.channels", { list: message.channels.join(", ") })}
-      </p>
-    {/if}
-
-    {#if message.invitation}
-      <p class="note">{invitationWords(message.invitation.method, $t)}</p>
-    {/if}
-
-    {#if message.attachments.length > 0}
-      <p class="note">{$t("ml.carries", { count: message.attachments.length })}</p>
-      <ul class="carried">
-        {#each message.attachments as file, i (i)}
-          <li>
-            {$t("ml.attachment", {
-              name: file.name ?? $t("ml.unnamedAttachment"),
-              type: file.media_type ?? "?",
-              size: formatBytes(file.bytes, $locale),
-            })}
-          </li>
-        {/each}
-      </ul>
-    {/if}
-
-    {#if message.text}
-      <pre class="body">{message.text}</pre>
-    {:else if message.sealed === "pgp"}
-      <p class="note">{$t("ml.sealed.pgp")}</p>
-    {:else if message.sealed === "smime"}
-      <p class="note">{$t("ml.sealed.smime")}</p>
-    {:else if message.sealed}
-      <p class="note">{$t("ml.sealed.unknown")}</p>
-    {:else}
-      <p class="note">{$t("ml.noText")}</p>
-    {/if}
-
-    {#if message.has_html}
-      <p class="note">{$t("ml.htmlNotShown")}</p>
-    {/if}
-  {/if}
-</main>
+      </div>
+    </div>
+  </SidebarInset>
+</SidebarProvider>
 
 <style>
-  .page {
+  .body-row {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .list-col {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    background: var(--color-bg-app, #0f0f0f);
-    color: var(--color-fg-primary, #e6e8ee);
-    font-family: "Inter Variable", system-ui, sans-serif;
-  }
-  .bar {
-    display: flex;
-    height: 2.5rem;
+    width: 21rem;
+    min-height: 0;
     flex-shrink: 0;
-    align-items: center;
-    gap: 8px;
-    padding: 0 8px;
-    border-bottom: 1px solid var(--color-border-default, #2a2a2a);
+    border-inline-end: 1px solid var(--color-border-default, #2a2a2a);
   }
-  .bar h1 {
+  .sample {
     margin: 0;
-    font-size: 14px;
-    font-weight: 500;
+    padding: 0.4rem 0.7rem;
+    border-bottom: 1px solid var(--color-border-default, #2a2a2a);
+    font-size: var(--text-2xs, 11px);
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
-  .spacer {
+  .opened-file {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0.35rem 0.35rem 0;
+    padding: 0.45rem 0.55rem;
+    border: 1px dashed var(--color-border-default, #2a2a2a);
+    border-radius: var(--radius-input, 8px);
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+  }
+  .opened-file:hover {
+    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
+  }
+  .opened-file.on {
+    background: color-mix(in srgb, var(--color-fg-primary) 9%, transparent);
+  }
+  .opened-file :global(svg) {
+    flex-shrink: 0;
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  }
+  .of-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .of-label {
+    font-size: var(--text-2xs, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+  }
+  .of-subject {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-sm, 13px);
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
     flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .center {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
   }
   .note {
-    margin: 12px 14px 0;
-    font-size: 13px;
+    margin: 0;
+    max-width: 26rem;
+    text-align: center;
+    font-size: var(--text-sm, 13px);
     line-height: 1.5;
     color: var(--color-fg-secondary, #a3a3a3);
   }
   .note.bad {
     color: var(--color-fg-warning, #eab308);
-  }
-  .headers {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 4px 12px;
-    margin: 14px;
-    font-size: 13px;
-  }
-  .headers dt {
-    color: var(--color-fg-secondary, #a3a3a3);
-  }
-  .headers dd {
-    margin: 0;
-    /* The subject and the sender are the two fields most likely to be long and
-       hostile; neither may push the layout sideways. */
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .quiet {
-    color: var(--color-fg-secondary, #a3a3a3);
-  }
-  .carried {
-    margin: 0.25rem 0 0.75rem;
-    padding-left: 1.1rem;
-  }
-  .carried li {
-    opacity: 0.85;
-  }
-  .body {
-    margin: 8px 14px 14px;
-    padding: 12px;
-    overflow: auto;
-    font-family: ui-monospace, monospace;
-    font-size: 13px;
-    line-height: 1.55;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    background: var(--color-bg-card, #171717);
-    border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: 8px;
   }
 </style>
