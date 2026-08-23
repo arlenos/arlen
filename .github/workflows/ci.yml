@@ -229,6 +229,8 @@ jobs:
           python3 dev/scripts/check-shipped-units.py
           node dev/scripts/test-check-shipped-units.mjs
           node dev/scripts/check-catalogs.mjs
+          python3 dev/scripts/check-catalog-duplicates.py
+          node dev/scripts/test-check-catalog-duplicates.mjs
           node dev/scripts/check-i18n-reactivity.mjs
           python3 dev/scripts/check-invoke-shape.py
           node dev/scripts/test-check-invoke-shape.mjs
