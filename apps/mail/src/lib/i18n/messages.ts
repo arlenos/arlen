@@ -9,7 +9,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "ml.app.title": "Mail",
-    "ml.nothingOpen": "No message is open. Open a message from the file manager, or pass one on the command line.",
+    "ml.nothingOpen": "No message is open. Open a message from Files, or pass one on the command line.",
     // Two named causes rather than whatever the layer below said. `other` stays
     // for a failure the command cannot name, which today means the host itself
     // is absent - a state a person never meets.
@@ -61,7 +61,7 @@ const messages: Catalogs = {
   },
   de: {
     "ml.app.title": "E-Mail",
-    "ml.nothingOpen": "Keine Nachricht geöffnet. Öffne eine aus der Dateiverwaltung, oder übergib eine auf der Kommandozeile.",
+    "ml.nothingOpen": "Keine Nachricht geöffnet. Öffne eine aus Dateien, oder übergib eine auf der Kommandozeile.",
     "ml.failed.unreadable": "Diese Datei konnte nicht gelesen werden, deshalb wird die Nachricht nicht gezeigt: {$why}",
     "ml.failed.notAMessage": "Diese Datei ist keine Nachricht, es gibt also nichts zu zeigen. Eine Nachrichtendatei endet meist auf .eml.",
     "ml.failed.other": "Diese Nachricht war nicht lesbar: {$reason}",
