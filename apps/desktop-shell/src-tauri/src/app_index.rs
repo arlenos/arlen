@@ -90,7 +90,18 @@ fn app_dirs() -> Vec<PathBuf> {
 }
 
 /// Builds the app index by scanning all directories and resolving icons.
+///
+/// Names and descriptions come out in the language the desktop is set to, so the
+/// launcher lists an app under the name its window carries. A language switch
+/// rebuilds this (see `locale::spawn_locale_watcher`); the index is read from
+/// disk either way, so there is nothing to keep in step by hand.
 pub fn build_index() -> Vec<AppEntry> {
+    build_index_in(&arlen_i18n::chosen_locale())
+}
+
+/// [`build_index`] for one named language. Separate so a test can index a
+/// fixture directory in German without changing the machine's own setting.
+pub fn build_index_in(locale: &str) -> Vec<AppEntry> {
     let mut entries = Vec::new();
     let mut seen_names: HashMap<String, usize> = HashMap::new();
 
@@ -103,7 +114,7 @@ pub fn build_index() -> Vec<AppEntry> {
             if path.extension().and_then(|e| e.to_str()) != Some("desktop") {
                 continue;
             }
-            if let Some(app) = parse_desktop_file(&path) {
+            if let Some(app) = parse_desktop_file(&path, locale) {
                 if let Some(&idx) = seen_names.get(&app.name) {
                     entries[idx] = app.clone();
                 } else {
@@ -137,8 +148,42 @@ pub fn build_index() -> Vec<AppEntry> {
     entries
 }
 
-/// Parses a single `.desktop` file into an `AppEntry`.
-fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
+/// The value of `key` in the reader's language, per the desktop-entry spec's
+/// fallback chain: `key[lang_COUNTRY@MOD]`, `key[lang_COUNTRY]`, `key[lang@MOD]`,
+/// `key[lang]`, then the unlocalised `key`.
+///
+/// Without this the launcher listed every app under its English name on a German
+/// machine - `Files`, `Calendar`, `Mail` - while the window and the topbar said
+/// `Dateien`, `Kalender`, `E-Mail`, so somebody typing the name they could see
+/// found nothing. Every entry in the tree has carried `Name[de]` the whole time;
+/// nothing read it.
+fn localized<'a>(fields: &'a HashMap<String, String>, key: &str, locale: &str) -> Option<&'a String> {
+    let (lang_country, modifier) = match locale.split_once('@') {
+        Some((base, m)) => (base, Some(m)),
+        None => (locale, None),
+    };
+    let lang = lang_country.split(['_', '-']).next().unwrap_or(lang_country);
+    // The spec's order, most specific first. A tag written `de-AT` reaches the
+    // same entries as `de_AT`: the config carries BCP-47, desktop files carry
+    // POSIX, and a reader should not have to know which is which.
+    let posix = lang_country.replace('-', "_");
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(m) = modifier {
+        candidates.push(format!("{key}[{posix}@{m}]"));
+    }
+    candidates.push(format!("{key}[{posix}]"));
+    if let Some(m) = modifier {
+        candidates.push(format!("{key}[{lang}@{m}]"));
+    }
+    candidates.push(format!("{key}[{lang}]"));
+    candidates.push(key.to_string());
+    candidates
+        .iter()
+        .find_map(|k| fields.get(k).filter(|v| !v.trim().is_empty()))
+}
+
+/// Parses a single `.desktop` file into an `AppEntry`, in `locale`'s language.
+fn parse_desktop_file(path: &Path, locale: &str) -> Option<AppEntry> {
     let content = std::fs::read_to_string(path).ok()?;
 
     let mut in_desktop_entry = false;
@@ -168,7 +213,7 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         return None;
     }
 
-    let name = fields.get("Name")?.trim().to_string();
+    let name = localized(&fields, "Name", locale)?.trim().to_string();
     if name.is_empty() || name.starts_with('_') {
         return None;
     }
@@ -191,10 +236,9 @@ fn parse_desktop_file(path: &Path) -> Option<AppEntry> {
         .get("Icon")
         .unwrap_or(&String::new())
         .to_string();
-    let description = fields
-        .get("Comment")
-        .unwrap_or(&String::new())
-        .to_string();
+    let description = localized(&fields, "Comment", locale)
+        .cloned()
+        .unwrap_or_default();
     let categories = fields
         .get("Categories")
         .map(|s| {
@@ -591,6 +635,60 @@ pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// A `.desktop` file's key/value pairs, for the localised-lookup tests.
+    /// Named apart from the `entry` helper below, which builds an `AppEntry`.
+    fn keys(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn a_name_comes_out_in_the_readers_language() {
+        let f = keys(&[("Name", "Files"), ("Name[de]", "Dateien")]);
+        assert_eq!(localized(&f, "Name", "de").map(String::as_str), Some("Dateien"));
+        assert_eq!(localized(&f, "Name", "en").map(String::as_str), Some("Files"));
+        // A language the entry says nothing about falls back rather than vanishing.
+        assert_eq!(localized(&f, "Name", "fr").map(String::as_str), Some("Files"));
+    }
+
+    #[test]
+    fn the_most_specific_variant_wins_and_then_the_next() {
+        let f = keys(&[
+            ("Name", "Files"),
+            ("Name[de]", "Dateien"),
+            ("Name[de_AT]", "Doteien"),
+        ]);
+        assert_eq!(localized(&f, "Name", "de_AT").map(String::as_str), Some("Doteien"));
+        // The config carries BCP-47 (`de-AT`), desktop files carry POSIX
+        // (`de_AT`), and a reader should not have to know which is which.
+        assert_eq!(localized(&f, "Name", "de-AT").map(String::as_str), Some("Doteien"));
+        // A country the entry does not name falls back to the language.
+        assert_eq!(localized(&f, "Name", "de_CH").map(String::as_str), Some("Dateien"));
+    }
+
+    #[test]
+    fn a_modifier_is_tried_before_the_bare_language() {
+        let f = keys(&[
+            ("Name", "Serbian"),
+            ("Name[sr]", "Српски"),
+            ("Name[sr@latin]", "Srpski"),
+        ]);
+        assert_eq!(localized(&f, "Name", "sr@latin").map(String::as_str), Some("Srpski"));
+        assert_eq!(localized(&f, "Name", "sr").map(String::as_str), Some("Српски"));
+    }
+
+    #[test]
+    fn an_empty_translation_is_not_a_translation() {
+        // A blank value would otherwise win over the real name and leave the
+        // launcher listing an app with no name at all.
+        let f = keys(&[("Name", "Files"), ("Name[de]", "   ")]);
+        assert_eq!(localized(&f, "Name", "de").map(String::as_str), Some("Files"));
+    }
+
     use super::*;
 
     #[test]
