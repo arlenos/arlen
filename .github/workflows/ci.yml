@@ -233,6 +233,8 @@ jobs:
           node dev/scripts/test-check-catalog-duplicates.mjs
           python3 dev/scripts/check-menu-labels-translated.py
           node dev/scripts/test-check-menu-labels-translated.mjs
+          python3 dev/scripts/check-app-names-agree.py
+          node dev/scripts/test-check-app-names-agree.mjs
           node dev/scripts/check-i18n-reactivity.mjs
           python3 dev/scripts/check-invoke-shape.py
           node dev/scripts/test-check-invoke-shape.mjs
