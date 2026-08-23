@@ -37,7 +37,14 @@ pub enum MenuItemKind {
 /// One entry in an app menu. Mirrors the desktop-shell `MenuItem` shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MenuItem {
-    /// The visible label.
+    /// The visible label, ALREADY IN THE READER'S LANGUAGE.
+    ///
+    /// The shell renders this string as it arrives and holds no catalog to
+    /// translate it against, so whatever is written here is what a reader sees.
+    /// An app whose labels live in a frontend catalog therefore has to publish
+    /// from the frontend: built in Rust from source-language literals, a menu
+    /// is English forever and cannot follow a language switch either, having
+    /// been sent before the webview that knows the language existed.
     pub label: String,
     /// The action id dispatched back to the app on click. Empty for
     /// separators and submenus.
@@ -108,7 +115,8 @@ impl MenuItem {
 /// A top-level menu group (e.g. "File", "Edit").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MenuGroup {
-    /// The group label shown in the menu bar.
+    /// The group label shown in the menu bar, in the reader's language. See
+    /// [`MenuItem::label`].
     pub label: String,
     /// The group's items.
     pub items: Vec<MenuItem>,
@@ -148,6 +156,10 @@ impl<E: EventEmitter> Menu<E> {
 
     /// Publish (replace) this app's global menu. The shell renders it in
     /// the topbar whenever one of the app's windows is focused.
+    ///
+    /// Replaces wholesale, so an app re-publishes the whole tree on any change,
+    /// including a language change: that is the intended way to keep the bar in
+    /// the reader's language for the whole session, not only at startup.
     ///
     /// # Errors
     /// [`EmitError::SerializationFailed`] if `groups.len() > MAX_MENU_GROUPS`
