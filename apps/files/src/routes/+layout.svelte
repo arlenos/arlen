@@ -32,6 +32,7 @@
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
   import { t, dir } from "$lib/i18n/messages";
+  import { publishAppMenu } from "$lib/menu";
   import { facetOpen } from "$lib/stores/facets";
   import { duplicatesOpen, scanDuplicates, closeDuplicates } from "$lib/stores/duplicates";
   import { undoLast } from "$lib/stores/ops";
@@ -56,8 +57,13 @@
     // Live-reskin on a desktop-wide theme switch (GAP-20).
     void initArlenTheme();
     void initArlenLocale();
+    // Publish the topbar menu, and again whenever the language changes: `t`
+    // is derived from the locale store, so a switch re-runs this and the
+    // shell replaces the whole menu with the one the reader can read.
+    const stopMenu = t.subscribe((tr) => void publishAppMenu(tr));
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {
+      stopMenu();
       document.removeEventListener("contextmenu", suppressBrowserContextMenu);
     };
   });
