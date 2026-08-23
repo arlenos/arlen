@@ -383,6 +383,17 @@ const messages: Catalogs = {
     // German desktop flipped the switch and answered in the wrong language.
     // Each is the state that now holds, not the act - "is now on" outlives the
     // moment, "turned on" is gone by the time it is read.
+    // Toasts the shell raises from its own backend, named there and written here.
+    // The cause travels verbatim as {$why}: the sentence is the reader's, the
+    // cause is whatever the system said, and a translated system error stops
+    // matching anything anyone can look up.
+    "sh.toast.assistantDidNotOpen": "The assistant did not open. {$why}",
+    "sh.toast.commandDidNotRun": "The command did not run. {$why}",
+    "sh.toast.appEntryMalformed": "{$app} did not start: its launcher entry is malformed.",
+    "sh.toast.appEntryNoProgram": "{$app} did not start: its launcher entry names no program to run.",
+    "sh.toast.anAppEntryNoProgram": "An application did not start: its launcher entry names no program to run.",
+    "sh.toast.appDidNotStart": "{$app} did not start. {$why}",
+    "sh.toast.anAppEntryMalformed": "An application did not start: its launcher entry is malformed.",
     "sh.qa.dnd.on": "Do not disturb is on.",
     "sh.qa.dnd.off": "Do not disturb is off.",
     "sh.qa.nightLight.on": "Night light is on.",
@@ -974,6 +985,13 @@ const messages: Catalogs = {
     "sh.wp.grp.processes": "Prozesse",
     "sh.wp.grp.unicode": "Unicode",
     "sh.wp.grp.applications": "Programme",
+    "sh.toast.assistantDidNotOpen": "Der Assistent hat nicht geöffnet. {$why}",
+    "sh.toast.commandDidNotRun": "Der Befehl ist nicht gelaufen. {$why}",
+    "sh.toast.appEntryMalformed": "{$app} ist nicht gestartet: der Starteintrag ist fehlerhaft.",
+    "sh.toast.appEntryNoProgram": "{$app} ist nicht gestartet: der Starteintrag nennt kein Programm.",
+    "sh.toast.anAppEntryNoProgram": "Eine Anwendung ist nicht gestartet: ihr Starteintrag nennt kein Programm.",
+    "sh.toast.appDidNotStart": "{$app} ist nicht gestartet. {$why}",
+    "sh.toast.anAppEntryMalformed": "Eine Anwendung ist nicht gestartet: ihr Starteintrag ist fehlerhaft.",
     "sh.qa.dnd.on": "Nicht stören ist an.",
     "sh.qa.dnd.off": "Nicht stören ist aus.",
     "sh.qa.nightLight.on": "Nachtlicht ist an.",

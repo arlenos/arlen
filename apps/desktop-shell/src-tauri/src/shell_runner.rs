@@ -34,10 +34,11 @@ pub fn execute_shell_command(
     }
     let failed = |e: std::io::Error| {
         log::error!("shell_runner: spawn failed: {e}");
-        crate::quick_actions::emit_toast(
+        crate::quick_actions::emit_toast_key(
             &app,
             crate::quick_actions::ToastKind::Error,
-            format!("The command did not run: {e}"),
+            "sh.toast.commandDidNotRun",
+            &[("why", e.to_string())],
         );
     };
 

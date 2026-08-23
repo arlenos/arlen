@@ -64,10 +64,11 @@ pub fn open_harness_session(app: tauri::AppHandle, id: String) -> Result<(), Str
         }
         Err(e) => {
             log::error!("open_harness_session: spawn failed: {e}");
-            crate::quick_actions::emit_toast(
+            crate::quick_actions::emit_toast_key(
                 &app,
                 crate::quick_actions::ToastKind::Error,
-                format!("The assistant did not open: {e}"),
+                "sh.toast.assistantDidNotOpen",
+                &[("why", e.to_string())],
             );
             Err(format!("could not start {HARNESS_BIN}: {e}"))
         }
