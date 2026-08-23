@@ -53,6 +53,19 @@ struct Finding {
 /// only attributes that render as visible or assistive text. `value`/`href`/
 /// `class`/`id`/`role`/`data-*` and the like are excluded (not user copy, or
 /// usually dynamic).
+/// Whether a MARKUP attribute's literal value is copy.
+///
+/// The HTML names below, plus every component prop on `USER_FACING_PROPS` - and
+/// that second half was missing until 23 August, which is a bigger hole than it
+/// looks. Passing a prop as an attribute is how a Svelte component receives text;
+/// the props list was only ever consulted by the SCRIPT scanner, so
+/// `statusText="Muted"` in markup was invisible while `statusText = "Muted"` in a
+/// script body was a finding.
+///
+/// The list's own comment claimed otherwise - `statusText` was added on a
+/// "measured miss: every quick-settings tile said its state through this prop" -
+/// and the fix had landed in the list the markup path does not read. Five English
+/// strings in the quick-settings tiles are what that cost.
 fn is_user_facing_attr(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
@@ -71,7 +84,9 @@ fn is_user_facing_attr(name: &str) -> bool {
             | "arialabel"
             | "ariadescription"
             | "ariaplaceholder"
-    )
+    ) || USER_FACING_PROPS
+        .iter()
+        .any(|p| p.eq_ignore_ascii_case(name))
 }
 
 /// Collapse a candidate string to its comparison form: trim, collapse internal
@@ -399,7 +414,13 @@ fn take_expr(chars: &[char], i: &mut usize, line: &mut usize) -> String {
 /// grows when a real miss is found, not speculatively.
 const USER_FACING_PROPS: &[&str] = &[
     "label", "title", "placeholder", "description", "ariaLabel", "tooltip", "message",
-    "summary", "heading", "hint", "caption", "confirmLabel", "cancelLabel",
+    "summary", "heading", "hint", "caption", "confirmLabel",
+    // `detailLabel` joined on 23 August: the quick-settings tiles pass it as the
+    // accessible name of the button that opens a panel, and three of them said
+    // "Open Bluetooth devices" in every language. The exact-match list is how
+    // this rule stays precise, so a synonym only arrives by somebody reading -
+    // which is how the other fourteen arrived too.
+    "detailLabel", "cancelLabel",
     // A tile's state line, which is its whole second row of text. Added on a
     // measured miss: every quick-settings tile said its state through this prop
     // and the gate called the directory clean.

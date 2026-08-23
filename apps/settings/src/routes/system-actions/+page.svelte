@@ -148,8 +148,8 @@
 <ConfirmDialog
   open={resetAllOpen}
   title={$t("s.sysact.resetConfirm")}
-  message="This removes every custom command. All actions go back to their built-in defaults."
-  confirmLabel="Reset all"
+  message={$t("s.sysact.resetAllBody")}
+  confirmLabel={$t("s.sysact.resetAllConfirm")}
   variant="destructive"
   onConfirm={resetAll}
   onCancel={() => (resetAllOpen = false)}

@@ -16,7 +16,7 @@
 
 <Applet
   appletId="undo"
-  tooltip="Recent actions"
+  tooltip={$t("sh.tip.recentActions")}
   ariaLabel={$t("sh.undo.indicator")}
   popoverOpen={$activePopover === "undo"}
   {onclick}

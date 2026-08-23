@@ -511,6 +511,12 @@ export const b: Catalogs = {
     "s.sys.desc": "Cursor, icons, sounds, and the terminal colours. Change one and it overrides just that value, on top of the theme.",
     "s.sys.cursor": "Cursor",
     "s.sys.theme": "Theme",
+    // Component props passed in markup, invisible to the born-translatable lint
+    // until 23 August.
+    "s.sys.iconHint": "The icon set across your apps",
+    "s.kbd.variantHint": "Optional variant for the primary layout, for example dvorak or colemak.",
+    "s.sysact.resetAllBody": "This removes every custom command. All actions go back to their built-in defaults.",
+    "s.sysact.resetAllConfirm": "Reset all",
     "s.sys.cursorThemeHint": "The pointer style across the desktop",
     "s.col.writeFailed": "That colour was not saved. The previous one still applies.",
     "s.sys.writeFailed": "That setting was not saved. The previous one still applies.",
@@ -1429,6 +1435,10 @@ export const b: Catalogs = {
     "s.sys.desc": "Zeiger, Symbole, Kl\u00e4nge und die Terminalfarben. Was du \u00e4nderst, \u00fcberschreibt genau diesen Wert \u00fcber dem Thema.",
     "s.sys.cursor": "Zeiger",
     "s.sys.theme": "Thema",
+    "s.sys.iconHint": "Der Symbolsatz für deine Apps",
+    "s.kbd.variantHint": "Optionale Variante für das primäre Layout, zum Beispiel dvorak oder colemak.",
+    "s.sysact.resetAllBody": "Das entfernt jeden eigenen Befehl. Alle Aktionen gehen auf ihre eingebauten Vorgaben zurück.",
+    "s.sysact.resetAllConfirm": "Alle zurücksetzen",
     "s.sys.cursorThemeHint": "Die Zeigerform auf dem ganzen Desktop",
     "s.col.writeFailed": "Diese Farbe wurde nicht gespeichert. Die vorherige gilt weiter.",
     "s.sys.writeFailed": "Diese Einstellung wurde nicht gespeichert. Die vorherige gilt weiter.",

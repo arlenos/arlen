@@ -369,7 +369,7 @@
   <Section label={$t("s.kbd.primaryVariant")}>
     <Row
       label={$t("s.kbd.variant")}
-      description="Optional variant for the primary layout, e.g. 'dvorak' or 'colemak'."
+      description={$t("s.kbd.variantHint")}
     >
       {#snippet control()}
         <Input

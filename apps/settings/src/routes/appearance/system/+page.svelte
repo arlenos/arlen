@@ -124,7 +124,7 @@
       <Section label={$t("s.sys.icons")}>
         <OverrideRow
           label={$t("s.sys.theme")}
-          hint="The icon set across your apps"
+          hint={$t("s.sys.iconHint")}
           overridden={isOverridden($overrides, "iconTheme")}
           onreset={() => resetSys("iconTheme")}
           id="sys-iconTheme"

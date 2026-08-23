@@ -55,6 +55,7 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
+apps/harness/src/lib/components/HarnessSidebar.svelte	This removes the chat and its messages. You cannot undo this.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
@@ -241,16 +242,10 @@ apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
 apps/settings/src/lib/stores/themeSystem.ts	Adwaita
-apps/settings/src/lib/stores/themeSystem.ts	Bell
 apps/settings/src/lib/stores/themeSystem.ts	Bibata
 apps/settings/src/lib/stores/themeSystem.ts	Capitaine
-apps/settings/src/lib/stores/themeSystem.ts	Chime
-apps/settings/src/lib/stores/themeSystem.ts	Click
-apps/settings/src/lib/stores/themeSystem.ts	Message
 apps/settings/src/lib/stores/themeSystem.ts	Numix
 apps/settings/src/lib/stores/themeSystem.ts	Papirus
-apps/settings/src/lib/stores/themeSystem.ts	Pop
-apps/settings/src/lib/stores/themeSystem.ts	Soft
 apps/settings/src/lib/stores/themeSystem.ts	Tela
 apps/settings/src/routes/about/+page.svelte	Arlen OS
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
