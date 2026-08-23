@@ -8,17 +8,19 @@
   import { onMount } from "svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t } from "$lib/i18n/messages";
+  import { capText } from "$lib/caps";
+  import IconTile from "$lib/components/IconTile.svelte";
   import { loadCatalog } from "$lib/stores/catalog";
   import {
     pendingUpdates,
     updatesMocked,
+    updateFailure,
     loadUpdates,
     applyUpdate,
     applyAllRoutine,
     skipUpdate,
     uninstallApp,
     deltaOf,
-    capText,
     updateApp,
     type SourceLayer,
   } from "$lib/stores/updates";
@@ -48,6 +50,10 @@
           <p class="sample">{$t("st.sample")}</p>
         {/if}
 
+        {#if $updateFailure}
+          <p class="failure" role="alert">{$t("st.upd.failed", { reason: $updateFailure })}</p>
+        {/if}
+
         {#if $pendingUpdates.length === 0}
           <p class="quiet">{$t("st.upd.empty")}</p>
         {:else}
@@ -56,7 +62,7 @@
             {#each decision as u (u.id)}
               {@const app = updateApp(u.id)}
               <div class="upd" id={`upd-${u.id}`}>
-                <span class="tile" class:tile-plain={!app.icon} style={app.icon ? `background:${app.icon}` : undefined} aria-hidden="true"></span>
+                <IconTile icon={app.icon} name={app.name} size="2.5rem" />
                 <div class="upd-body">
                   <div class="upd-head">
                     <span class="upd-name">{app.name}</span>
@@ -66,7 +72,7 @@
                     <p class="delta">{$t("st.upd.unknownDelta")}</p>
                   {:else}
                     {#each u.new_capabilities as cap (cap)}
-                      <p class="delta">{$t("st.upd.wants", { what: capText(cap) })}</p>
+                      <p class="delta">{$t("st.upd.wants", { what: capText($t, cap) })}</p>
                     {/each}
                   {/if}
                   <div class="actions">
@@ -89,7 +95,7 @@
             {#each routine as u (u.id)}
               {@const app = updateApp(u.id)}
               <div class="upd" id={`upd-${u.id}`}>
-                <span class="tile" class:tile-plain={!app.icon} style={app.icon ? `background:${app.icon}` : undefined} aria-hidden="true"></span>
+                <IconTile icon={app.icon} name={app.name} size="2.5rem" />
                 <div class="upd-body">
                   <div class="upd-head">
                     <span class="upd-name">{app.name}</span>
@@ -117,6 +123,11 @@
     max-width: 46rem;
     margin: 0 auto;
     padding: 1.25rem 1.5rem 2rem;
+  }
+  .failure {
+    margin: 0 0 0.75rem;
+    font-size: var(--text-sm);
+    color: var(--color-error, #dc2626);
   }
   .sample {
     margin: 0 0 0.75rem;
@@ -159,12 +170,6 @@
     border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
   }
-  .tile {
-    flex-shrink: 0;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: var(--radius-input);
-  }
   .upd-body {
     flex: 1;
     min-width: 0;
@@ -194,9 +199,6 @@
     font-size: var(--text-sm);
     line-height: 1.45;
     color: var(--color-fg-primary);
-  }
-  .tile.tile-plain {
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
   }
   .actions {
     display: flex;

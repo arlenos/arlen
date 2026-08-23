@@ -8,10 +8,9 @@
 /// stands in and the actions apply locally so the whole flow drives.
 import { derived, get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { apps } from "./catalog";
+import { apps, type SourceLayer } from "./catalog";
 
-/// The backend's source layer, verbatim (six variants, PascalCase serde).
-export type SourceLayer = "Personal" | "Community" | "Official" | "Flatpak" | "Apt" | "Native";
+export type { SourceLayer } from "./catalog";
 
 /// One outdated app, exactly as `store_outdated` serialises it. The tri-state
 /// of `new_capabilities` is the point: `null` means the widening is UNKNOWN
@@ -35,12 +34,6 @@ export type Delta = "unknown" | "none" | "widened";
 export function deltaOf(u: PendingUpdate): Delta {
   if (u.new_capabilities === null) return "unknown";
   return u.new_capabilities.length > 0 ? "widened" : "none";
-}
-
-/// A capability identifier as a readable line, until the identifier -> copy
-/// map exists (flagged as a seam): "graph.read_files" -> "graph read files".
-export function capText(id: string): string {
-  return id.replace(/[._-]/g, " ");
 }
 
 const FIXTURE: PendingUpdate[] = [
@@ -78,6 +71,10 @@ const FIXTURE: PendingUpdate[] = [
 export const pendingUpdates = writable<PendingUpdate[]>([]);
 /// True while the list is the FIXTURE.
 export const updatesMocked = writable(false);
+/// The last action that the backend refused, as its own words. A refusal must
+/// never render as "done": the daemons learned to say "refused" instead of
+/// answering emptily, and swallowing that here would turn it right back.
+export const updateFailure = writable<string | null>(null);
 /// The quiet rail count.
 export const updateCount = derived(pendingUpdates, ($u) => $u.length);
 
@@ -100,6 +97,15 @@ export async function loadUpdates(): Promise<void> {
   }
 }
 
+function refused(e: unknown): void {
+  // Under vite there is no backend at all - the fixture flow applies locally
+  // and silence is honest. Live, a rejection is a refusal and it is said.
+  if (!get(updatesMocked)) {
+    updateFailure.set(String(e));
+    void loadUpdates();
+  }
+}
+
 function drop(id: string): void {
   pendingUpdates.update((u) => u.filter((p) => p.id !== id));
 }
@@ -110,8 +116,8 @@ export async function applyUpdate(id: string): Promise<void> {
   drop(id);
   try {
     await invoke("store_update", { id });
-  } catch {
-    // Seam unwired: the local removal stands.
+  } catch (e) {
+    refused(e);
   }
 }
 
@@ -122,8 +128,8 @@ export async function applyAllRoutine(): Promise<void> {
   pendingUpdates.update((u) => u.filter((p) => deltaOf(p) !== "none"));
   try {
     await invoke("store_update_all_routine", { ids: routine.map((p) => p.id) });
-  } catch {
-    // Seam unwired.
+  } catch (e) {
+    refused(e);
   }
 }
 
@@ -132,8 +138,8 @@ export async function skipUpdate(id: string): Promise<void> {
   drop(id);
   try {
     await invoke("store_skip_update", { id });
-  } catch {
-    // Seam unwired.
+  } catch (e) {
+    refused(e);
   }
 }
 
@@ -144,7 +150,7 @@ export async function uninstallApp(id: string): Promise<void> {
   drop(id);
   try {
     await invoke("store_uninstall", { id });
-  } catch {
-    // Seam unwired.
+  } catch (e) {
+    refused(e);
   }
 }

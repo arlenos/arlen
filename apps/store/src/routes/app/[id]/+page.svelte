@@ -5,13 +5,14 @@
   /// the quiet trust panel (ODRS is one row, never the headline), screenshots,
   /// description, and the passive support link.
   import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
-  import { ArrowLeft, ExternalLink, Check, Minus } from "lucide-svelte";
+  import { ArrowLeft, Check, Minus } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import { t } from "$lib/i18n/messages";
+  import { reachRows } from "$lib/caps";
+  import IconTile from "$lib/components/IconTile.svelte";
   import {
     apps,
     catalogMocked,
@@ -20,9 +21,12 @@
     observedFor,
     installApp,
     trustOf,
-    isInstalled,
-    type TrustSignals,
-    type ObservedLine,
+    layerFor,
+    type LayerSignals,
+    type ObservedStatus,
+    type SourceLayer,
+    type StoreVariant,
+    type Tier,
   } from "$lib/stores/catalog";
 
   const id = $derived($page.params.id);
@@ -34,8 +38,8 @@
   const variant = $derived(app ? (app.variants[chosen] ?? app.variants[0]) : null);
   const leastWeight = $derived(app ? Math.min(...app.variants.map((v) => v.capWeight)) : 0);
 
-  let trust = $state<TrustSignals | null>(null);
-  let observed = $state<ObservedLine[]>([]);
+  let trust = $state<LayerSignals>([]);
+  let observed = $state<ObservedStatus | null>(null);
 
   onMount(async () => {
     await loadCatalog();
@@ -47,26 +51,52 @@
     if (!a) return;
     chosen = a.defaultVariant;
     void trustFor(a.id).then((v) => (trust = v));
-    if (isInstalled(a)) void observedFor(a.id).then((v) => (observed = v));
-    else observed = [];
+    if (a.installed) void observedFor(a.id).then((v) => (observed = v));
+    else observed = null;
   });
 
-  function sourceLabel(s: string): string {
-    return s === "forage" ? $t("st.src.forage") : s === "flathub" ? $t("st.src.flathub") : $t("st.src.debian");
+  function sourceLabel(s: Tier): string {
+    return s === "forage"
+      ? $t("st.src.forage")
+      : s === "flathub"
+        ? $t("st.src.flathub")
+        : s === "debian"
+          ? $t("st.src.debian")
+          : $t("st.src.native");
   }
 
-  // The variant row's one meta line: the same axis on every row (the
+  // Which layers a tier can stand for; the trust panel row follows the chosen
+  // variant through this map.
+  const TIER_LAYERS: Record<Tier, SourceLayer[]> = {
+    forage: ["Personal", "Community", "Official"],
+    flathub: ["Flatpak"],
+    debian: ["Apt"],
+    installed: ["Native"],
+  };
+  const signals = $derived.by(() => {
+    if (!variant) return null;
+    const layers = TIER_LAYERS[variant.source];
+    return trust.find(([layer]) => layers.includes(layer))?.[1] ?? null;
+  });
+
+  // The variant row's one meta line: the same axes on every row (version and
   // capability count) so the rows actually compare, then the least-privilege
-  // marker where it is earned, then installed.
-  function variantMeta(v: (typeof app extends null ? never : NonNullable<typeof app>)["variants"][number]): string {
+  // marker where it is earned.
+  function variantMeta(v: StoreVariant): string {
     const a = app;
     if (!a) return "";
-    const parts: string[] = [$t("st.capCount", { n: v.caps.filter((c) => !c.negative).length })];
+    const parts: string[] = [];
+    if (v.version) parts.push($t("st.version.value", { v: v.version }));
+    parts.push($t("st.capCount", { n: v.capabilities.length }));
     const differ = a.variants.some((o) => o.capWeight !== leastWeight);
-    if (v.capWeight === leastWeight && differ) parts.push($t("st.leastPrivilege").toLowerCase());
-    if (v.installed) parts.push($t("st.installed").toLowerCase());
+    // Not lowercased into the sentence: German capitalises its nouns, so the
+    // catalogue string is used exactly as written.
+    if (v.capWeight === leastWeight && differ) parts.push($t("st.leastPrivilege"));
     return parts.join(", ");
   }
+
+  const paintable = (s: string) => s.startsWith("linear-gradient(") || /^https?:\/\//.test(s);
+  const shots = $derived(app ? app.screenshots.filter(paintable) : []);
 </script>
 
 <main class="st-main">
@@ -82,7 +112,7 @@
 
     {#if app && variant}
       <header class="head">
-        <span class="tile" style="background:{app.icon}" aria-hidden="true"></span>
+        <IconTile icon={app.icon} name={app.name} size="4rem" />
         <div class="head-text">
           <h1 class="name">{app.name}</h1>
           <p class="summary">{app.summary}</p>
@@ -91,26 +121,30 @@
           {/if}
         </div>
         <span class="head-action">
-          {#if variant.installed}
+          {#if app.installed}
             <Badge variant="success" class="h-control px-3">{$t("st.installed")}</Badge>
-          {:else}
-            <Button id="install" onclick={() => installApp(app.id, variant.source)}>{$t("st.install")}</Button>
+          {:else if app.installable}
+            <Button id="install" onclick={() => installApp(app.id, layerFor(app, chosen))}>{$t("st.install")}</Button>
           {/if}
         </span>
       </header>
+
+      {#if !app.installable && !app.installed}
+        <p class="quiet">{$t("st.notInstallable")}</p>
+      {/if}
 
       {#if app.variants.length > 1}
         <section class="panel" aria-labelledby="variants-label">
           <div class="panel-label" id="variants-label">{$t("st.installFrom")}</div>
           <div class="variants" role="radiogroup" aria-label={$t("st.installFrom")}>
-            {#each app.variants as v, i (v.source)}
+            {#each app.variants as v, i (i)}
               <button
                 type="button"
                 class="variant"
                 class:on={chosen === i}
                 role="radio"
                 aria-checked={chosen === i}
-                id={`variant-${v.source}`}
+                id={`variant-${i}-${v.source}`}
                 onclick={() => (chosen = i)}
               >
                 <span class="variant-name">{sourceLabel(v.source)}</span>
@@ -126,7 +160,7 @@
 
       <section class="panel" aria-labelledby="reach-label">
         <div class="panel-label" id="reach-label">{$t("st.reach.title")}</div>
-        {#each variant.caps as cap (cap.text)}
+        {#each reachRows($t, variant.capabilities) as cap (cap.text)}
           <div class="cap" class:negative={cap.negative}>
             {#if cap.negative}
               <Minus size={14} strokeWidth={2} aria-hidden="true" />
@@ -136,26 +170,46 @@
             <span>{cap.text}</span>
           </div>
         {/each}
-        {#if variant.enrolledDeb}
+        {#if variant.source === "debian"}
           <p class="cap-note">{$t("st.reach.confined")}</p>
         {/if}
       </section>
 
-      {#if observed.length > 0}
+      {#if app.installed && observed}
         <section class="panel" aria-labelledby="observed-label">
           <div class="panel-label" id="observed-label">{$t("st.observed.title")}</div>
-          {#each observed as line (line.text)}
-            <p class="observed-line">{line.text}</p>
-          {/each}
+          {#if observed.state === "measured"}
+            <p class="observed-line">{$t("st.observed.window", { days: observed.windowDays })}</p>
+            {#each observed.declared as cap (cap)}
+              {@const used = observed.observed.includes(cap)}
+              <div class="cap" class:negative={!used}>
+                {#if used}
+                  <Check size={14} strokeWidth={2} aria-hidden="true" />
+                {:else}
+                  <Minus size={14} strokeWidth={2} aria-hidden="true" />
+                {/if}
+                <span
+                  >{reachRows($t, [cap])[0].text}:
+                  {used ? $t("st.observed.used") : $t("st.observed.notObserved")}</span
+                >
+              </div>
+            {/each}
+          {:else}
+            <!-- "Unavailable" is its own state, said plainly - an empty panel
+                 here would read as a clean bill of health the system cannot
+                 give (§8.2). -->
+            <p class="observed-line">{$t("st.observed.unavailable")}</p>
+          {/if}
         </section>
       {/if}
 
       <section class="panel" aria-labelledby="trust-label">
         <div class="panel-label" id="trust-label">{$t("st.trust.title")}</div>
-        <!-- Reproducible and verified are facts about the CHOSEN variant (the
-             fixture already differs per source), so they read from it and
-             follow the selection like the capability panel does. Installs and
-             the ODRS rating are app-level. -->
+        <!-- Reproducible and verified are facts about the CHOSEN variant, so
+             they read from it and follow the selection like the capability
+             panel does. Installs, the ODRS rating and the supply chain come
+             from the same variant's source layer; a signal the layer does not
+             attest is hidden, never shown empty (§9.2). -->
         <div class="trust-row">
           <span class="trust-k">{$t("st.trust.reproducible")}</span>
           <span class="trust-v">{variant.reproducible ? $t("st.trust.reproducible.yes") : $t("st.trust.reproducible.no")}</span>
@@ -164,25 +218,38 @@
           <span class="trust-k">{$t("st.trust.publisher")}</span>
           <span class="trust-v">{variant.verified ? $t("st.trust.publisher.yes") : $t("st.trust.publisher.no")}</span>
         </div>
-        {#if trust?.installCount != null}
+        {#if signals?.attestation}
           <div class="trust-row">
-            <span class="trust-k">{$t("st.trust.installs")}</span>
-            <span class="trust-v">{$t("st.trust.installs.value", { n: trust.installCount.toLocaleString() })}</span>
+            <span class="trust-k">{$t("st.trust.attested")}</span>
+            <span class="trust-v"
+              >{$t("st.trust.attested.value", { signer: signals.attestation.signer })}
+              ({signals.attestation.pinned_here ? $t("st.trust.attested.pinned") : $t("st.trust.attested.unpinned")})</span
+            >
           </div>
         {/if}
-        {#if trust?.odrsRating != null}
+        {#if signals?.install_count != null}
+          <div class="trust-row">
+            <span class="trust-k">{$t("st.trust.installs")}</span>
+            <span class="trust-v">{$t("st.trust.installs.value", { n: signals.install_count.toLocaleString() })}</span>
+          </div>
+        {/if}
+        {#if signals?.odrs_score != null}
           <div class="trust-row">
             <span class="trust-k">{$t("st.trust.rating")}</span>
-            <span class="trust-v">{$t("st.trust.rating.value", { score: trust.odrsRating.toFixed(1) })}</span>
+            <span class="trust-v">{$t("st.trust.rating.value", { score: signals.odrs_score.toFixed(1) })}</span>
           </div>
         {/if}
       </section>
 
-      {#if app.shots && app.shots.length > 0}
+      {#if shots.length > 0}
         <div class="group-label">{$t("st.screenshots")}</div>
         <div class="shots">
-          {#each app.shots as shot, i (i)}
-            <span class="shot" style="background:{shot}" aria-hidden="true"></span>
+          {#each shots as shot, i (i)}
+            {#if shot.startsWith("linear-gradient(")}
+              <span class="shot" style="background:{shot}" aria-hidden="true"></span>
+            {:else}
+              <img class="shot" src={shot} alt="" loading="lazy" />
+            {/if}
           {/each}
         </div>
       {/if}
@@ -190,19 +257,6 @@
       {#if app.description}
         <div class="group-label">{$t("st.about")}</div>
         <p class="desc">{app.description}</p>
-      {/if}
-
-      {#if app.donationUrl}
-        {@const url = app.donationUrl}
-        <Button
-          variant="ghost"
-          class="gap-2 px-3 font-normal text-muted-foreground hover:text-foreground"
-          id="support"
-          onclick={() => invoke("open_url", { url }).catch(() => {})}
-        >
-          <ExternalLink size={15} strokeWidth={1.75} />
-          {$t("st.support")}
-        </Button>
       {/if}
     {:else}
       <p class="quiet">{$t("st.notFound")}</p>
@@ -250,12 +304,6 @@
     gap: 1rem;
     align-items: flex-start;
     margin-bottom: 1.25rem;
-  }
-  .tile {
-    flex-shrink: 0;
-    width: 4rem;
-    height: 4rem;
-    border-radius: var(--radius-card);
   }
   .head-text {
     flex: 1;
@@ -402,6 +450,8 @@
     width: 16rem;
     aspect-ratio: 16 / 10;
     border-radius: var(--radius-input);
+    object-fit: cover;
+    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
   }
   .desc {
     margin: 0 0 1rem;
@@ -410,7 +460,7 @@
     color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
   }
   .quiet {
-    margin: 0;
+    margin: 0 0 1rem;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
