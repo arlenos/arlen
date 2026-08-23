@@ -9,6 +9,7 @@
   import KnowledgeHeader from "$lib/components/KnowledgeHeader.svelte";
   import KnowledgeSidebar from "$lib/components/KnowledgeSidebar.svelte";
   import KnowledgeDetail from "$lib/components/KnowledgeDetail.svelte";
+  import { SidebarProvider, SidebarInset } from "@arlen/ui-kit/components/ui/sidebar";
   import TimelineView from "$lib/components/TimelineView.svelte";
   import ProjectsView from "$lib/components/ProjectsView.svelte";
   import SearchView from "$lib/components/SearchView.svelte";
@@ -129,22 +130,19 @@
   const searchOwnsContent = $derived($searchQuery.trim().length > 0 || $path === "searches");
 </script>
 
-<div class="kn-app">
-  <KnowledgeHeader />
-  <div class="kn">
-    <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} onsettings={openPrivacySettings} />
-
+<SidebarProvider class="h-screen min-h-0 overflow-hidden">
+  <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} onsettings={openPrivacySettings} />
+  <SidebarInset class="h-svh min-h-0">
+    <!-- The bar carries the place (the files canon); the in-content heading is
+         gone - one context, said once. -->
+    <KnowledgeHeader placeLabel={$t(labelKeyFor(searchOwnsContent ? "searches" : $path))} />
+    <div class="kn-body">
     <main class="kn-main">
-    <header class="kn-head">
-      <h1 class="kn-h1">{$t(labelKeyFor(searchOwnsContent ? "searches" : $path))}</h1>
-      <!-- Every designed place carries its own example-data line. -->
-
+    {#if settingsOpenFailed}
       <!-- The capability browser lives in Settings; if it would not start, say
            so rather than leaving the click looking like there is no such page. -->
-      {#if settingsOpenFailed}
-        <p class="kn-open-failed" role="alert">{$t("k.settingsOpenFailed")}</p>
-      {/if}
-    </header>
+      <p class="kn-open-failed" role="alert">{$t("k.settingsOpenFailed")}</p>
+    {/if}
     {#if searchOwnsContent}
       <!-- The titlebar query owns the content area wherever you are; the
            Searches place shows the same surface at rest (the saved list). -->
@@ -184,8 +182,9 @@
     {:else if selected}
       <KnowledgeDetail entry={selected} onclose={() => (selected = null)} />
     {/if}
-  </div>
-</div>
+    </div>
+  </SidebarInset>
+</SidebarProvider>
 
 <style>
   /* A failure, coloured like one.
@@ -203,36 +202,17 @@
     color: var(--color-error, #f87171);
   }
 
-  .kn-app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--color-bg-app);
-    color: var(--color-fg-primary);
-  }
-  .kn {
+  .kn-body {
     flex: 1;
     min-height: 0;
     display: flex;
   }
   .kn-main {
     flex: 1;
+    min-height: 0;
     min-width: 0;
     display: flex;
     flex-direction: column;
-  }
-  .kn-head {
-    display: flex;
-    align-items: baseline;
-    gap: 0.75rem;
-    padding: 0.9rem 1.1rem 0.6rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-  }
-  .kn-h1 {
-    margin: 0;
-    font-size: var(--text-lg);
-    font-weight: 600;
-    color: var(--color-fg-primary);
   }
   .kn-browser {
     flex: 1;

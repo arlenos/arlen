@@ -1,14 +1,18 @@
 <script lang="ts">
-  /// The app titlebar: the drag region + window controls, matching the sibling
-  /// apps (settings `SiteHeader`). Window drag goes through an explicit
-  /// `startDragging()` (the `data-tauri-drag-region` attribute is unreliable on
-  /// Wayland in Tauri v2), and every window call is guarded so the app still
-  /// renders under vite, where there is no Tauri runtime.
+  /// The header bar on the files canon: h-10 inside the inset, trigger first,
+  /// the PLACE in the middle (never the app name - that lives in the sidebar's
+  /// caps label), the graph search and the window controls at the end. Drag
+  /// goes through an explicit `startDragging()` (the drag attribute is
+  /// unreliable on Wayland in Tauri v2), guarded so vite still renders.
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { SidebarTrigger } from "@arlen/ui-kit/components/ui/sidebar";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { query, clearSearch } from "$lib/stores/search";
   import { t } from "$lib/i18n/messages";
+
+  let { placeLabel }: { placeLabel: string } = $props();
 
   function onSearchKey(e: KeyboardEvent): void {
     if (e.key === "Escape") {
@@ -36,7 +40,8 @@
     if (isInteractive(e)) return;
     try {
       const w = getCurrentWindow();
-      (await w.isMaximized()) ? await w.unmaximize() : await w.maximize();
+      if (await w.isMaximized()) await w.unmaximize();
+      else await w.maximize();
     } catch {
       // vite: no-op.
     }
@@ -44,12 +49,18 @@
 </script>
 
 <!-- The header is a drag surface (a non-keyboard pointer interaction); its actual
-     controls are the accessible WindowButtons inside it, so the static-interaction
-     lint is a false positive here. Same treatment as the meetings layout. -->
+     controls are the accessible buttons inside it, so the static-interaction
+     lint is a false positive here. Same treatment as the files layout. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<header class="kn-header" onpointerdown={startDrag} ondblclick={toggleMax}>
-  <span class="kn-header-title">{$t("k.title")}</span>
-  <span class="kn-header-spacer"></span>
+<header
+  class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+  onpointerdown={startDrag}
+  ondblclick={toggleMax}
+>
+  <SidebarTrigger class="-ml-1" />
+  <Separator orientation="vertical" class="me-1 h-4" />
+  <span class="select-none truncate text-sm font-medium text-foreground">{placeLabel}</span>
+  <span class="flex-1"></span>
   <!-- The one search entry (Tim's placement call): typing hands the content
        area to the search surface; Esc returns to the place. -->
   <div class="kn-search">
@@ -64,28 +75,9 @@
 </header>
 
 <style>
-  .kn-header {
-    display: flex;
-    align-items: center;
-    height: 2.75rem;
-    flex-shrink: 0;
-    padding: 0 0.35rem 0 0.9rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    user-select: none;
-    -webkit-user-select: none;
-  }
-  .kn-header-title {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--color-fg-primary);
-  }
-  .kn-header-spacer {
-    flex: 1;
-  }
-
   /* The global search: the shared SearchField in the chrome, sized here. */
   .kn-search {
     width: 15rem;
-    margin-inline-end: 0.5rem;
+    margin-inline-end: 0.25rem;
   }
 </style>

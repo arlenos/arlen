@@ -1,9 +1,21 @@
 <script lang="ts">
-  /// The Knowledge places sidebar (knowledge-app.md §2): the explore places over the
-  /// graph, plus the rows that link out to Settings/Privacy (decision 6 - a surface
-  /// that owns a capability is not re-hosted here). A fixed nav list, so it is its
-  /// own light component rather than the file-oriented kit PlacesSidebar.
+  /// The Knowledge places sidebar on the files-canon kit primitives: icon
+  /// collapse, the caps app label in the header, group labels, a rail. The
+  /// explore places over the graph plus the rows that link out to
+  /// Settings/Privacy (knowledge-app.md decision 6 - a surface that owns a
+  /// capability is not re-hosted here).
   import { Clock, FolderGit2, Search, Library, Package, ShieldCheck, ChevronRight } from "lucide-svelte";
+  import {
+    Sidebar,
+    SidebarContent,
+    SidebarGroup,
+    SidebarGroupLabel,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarRail,
+  } from "@arlen/ui-kit/components/ui/sidebar";
   import { t } from "$lib/i18n/messages";
 
   let {
@@ -26,11 +38,6 @@
   ];
 
   // The rows that leave for Settings rather than being re-hosted here (decision 6).
-  // Capsules joined the capability browser on this list: minting is authority-bearing
-  // and the mint allowlist is deliberate, so widening it to a third surface would mean
-  // re-making the mint-requires-a-human argument for a section nobody asked for. A link
-  // is idempotent and honest; a disabled capsule panel would be an invented capability
-  // wearing a disabled state.
   const LINKOUTS = [
     { id: "capabilities", labelKey: "k.place.capabilities", icon: ShieldCheck },
     { id: "capsules", labelKey: "k.place.capsules", icon: Package },
@@ -45,94 +52,56 @@
   }
 </script>
 
-<nav class="kn-side" aria-label={$t("k.title")}>
-  <div class="kn-group kn-group-first">{$t("k.section.explore")}</div>
-  {#each PLACES as p (p.id)}
-    {@const Icon = p.icon}
-    <!-- Addressable by place, the way the clock's tabs carry `id="tab-alarms"`.
-         These four views live inside one route, so without a stable hook the
-         only way to reach Projects or Library in a headless shot is
-         `:nth-of-type`, which silently photographs the wrong panel the day
-         someone reorders the list. -->
-    <button
-      type="button"
-      class="kn-place"
-      data-place={p.id}
-      class:active={isActive(p.id)}
-      aria-current={isActive(p.id) ? "page" : undefined}
-      onclick={() => onnavigate(p.id)}
+<Sidebar collapsible="icon">
+  <SidebarHeader class="h-10 flex-row items-center py-0">
+    <!-- The app name lives HERE, as the quiet caps label (the files recipe);
+         the header bar carries the place, never the app. -->
+    <span
+      class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
     >
-      <Icon size={16} strokeWidth={1.75} />
-      <span>{$t(p.labelKey)}</span>
-    </button>
-  {/each}
+      {$t("k.title")}
+    </span>
+  </SidebarHeader>
+  <SidebarContent>
+    <SidebarGroup>
+      <SidebarGroupLabel>{$t("k.section.explore")}</SidebarGroupLabel>
+      <SidebarMenu>
+        {#each PLACES as p (p.id)}
+          {@const Icon = p.icon}
+          <SidebarMenuItem>
+            <!-- Addressable by place (`data-place`) so headless shots reach
+                 Projects or Library without :nth-of-type. -->
+            <SidebarMenuButton
+              data-place={p.id}
+              isActive={isActive(p.id)}
+              onclick={() => onnavigate(p.id)}
+            >
+              <Icon strokeWidth={1.75} />
+              <span>{$t(p.labelKey)}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        {/each}
+      </SidebarMenu>
+    </SidebarGroup>
 
-  <div class="kn-group">{$t("k.section.authority")}</div>
-  {#each LINKOUTS as l (l.id)}
-    {@const Icon = l.icon}
-    <button type="button" class="kn-place kn-linkout" onclick={onsettings}>
-      <Icon size={16} strokeWidth={1.75} />
-      <span>{$t(l.labelKey)}</span>
-      <span class="kn-caret"><ChevronRight size={14} strokeWidth={2} /></span>
-    </button>
-  {/each}
-  <span class="kn-linkout-note">{$t("k.caps.opens")}</span>
-</nav>
-
-<style>
-  .kn-side {
-    flex: 0 0 15rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    padding: 0.75rem 0.6rem;
-    border-inline-end: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    overflow-y: auto;
-  }
-  .kn-group {
-    padding: 0.6rem 0.5rem 0.25rem;
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-  }
-  .kn-group-first {
-    padding-top: 0.35rem;
-  }
-  .kn-place {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    width: 100%;
-    padding: 0.4rem 0.5rem;
-    border: none;
-    border-radius: var(--radius-input);
-    background: transparent;
-    text-align: start;
-    font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--color-fg-primary) 82%, transparent);
-    cursor: pointer;
-  }
-  .kn-place:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-  }
-  .kn-place.active {
-    background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
-    color: var(--color-fg-primary);
-    font-weight: 500;
-  }
-  .kn-linkout {
-    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-  }
-  .kn-caret {
-    margin-inline-start: auto;
-    display: inline-flex;
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-  }
-  .kn-linkout-note {
-    padding: 0.05rem 0.5rem 0;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-  }
-</style>
+    <SidebarGroup class="pt-0">
+      <SidebarGroupLabel>{$t("k.section.authority")}</SidebarGroupLabel>
+      <SidebarMenu>
+        {#each LINKOUTS as l (l.id)}
+          {@const Icon = l.icon}
+          <SidebarMenuItem>
+            <SidebarMenuButton onclick={onsettings}>
+              <Icon strokeWidth={1.75} />
+              <span>{$t(l.labelKey)}</span>
+              <ChevronRight class="ms-auto opacity-60" strokeWidth={2} />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        {/each}
+      </SidebarMenu>
+      <span class="px-2 pt-0.5 text-[length:var(--text-2xs)] text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden">
+        {$t("k.caps.opens")}
+      </span>
+    </SidebarGroup>
+  </SidebarContent>
+  <SidebarRail />
+</Sidebar>
