@@ -385,6 +385,16 @@ const messages: Catalogs = {
     "sh.wp.grp.settings": "Settings",
     "sh.wp.grp.modules": "Modules",
     "sh.tip.quickSettings": "Quick Settings",
+    // The consent question itself, which was a template literal in the card -
+    // `Allow ${app} to ${what}?` - so the one sentence a person must read before
+    // granting anything was English on a German machine. Found by booting the
+    // image with `[locale] ui = "de"` preloaded, where the buttons said Ablehnen
+    // and Einmal erlauben above an English question.
+    //
+    // The German is not a word-for-word frame: an arbitrary infinitive phrase does
+    // not fit "Erlaube X zu Y?", and German puts the verb at the end. Two
+    // sentences carry it without bending either language.
+    "sh.consent.ask": "Allow {$app} to {$what}?",
     "sh.tip.recentActions": "Recent actions",
     "sh.wp.askPlaceholder": "Ask the agent\u2026",
     "sh.wp.searchPlaceholder": "Search\u2026",
@@ -928,6 +938,7 @@ const messages: Catalogs = {
     "sh.wp.grp.settings": "Einstellungen",
     "sh.wp.grp.modules": "Module",
     "sh.tip.quickSettings": "Schnelleinstellungen",
+    "sh.consent.ask": "{$app} möchte {$what}. Zulassen?",
     "sh.tip.recentActions": "Letzte Aktionen",
     "sh.wp.askPlaceholder": "Den Agenten fragen\u2026",
     "sh.wp.searchPlaceholder": "Suchen\u2026",
