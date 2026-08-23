@@ -480,6 +480,19 @@ const messages: Catalogs = {
 
     // Quick Settings tiles
     "sh.tile.airplane": "Airplane Mode",
+    // The tiles' remaining English, found on 23 August. Every one of these sat in
+    // a position the born-translatable lint cannot see - a ternary branch, or an
+    // attribute not on its props list - in the panel a person opens most.
+    "sh.tile.btNoDevice": "No device",
+    "sh.tile.btOff": "Off",
+    "sh.tile.btDetail": "Open Bluetooth devices",
+    "sh.tile.netDisconnected": "Disconnected",
+    "sh.tile.netDetail": "Open network picker",
+    "sh.tile.audioDetail": "Open audio devices",
+    // Not "Daemon offline": a person does not run a daemon, and the tile's own
+    // note says the point is telling them whether to wait or to look into it.
+    "sh.tile.kgNotRecording": "Not recording yet",
+    "sh.tile.kgNoEvents": "Nothing recorded yet",
     "sh.tile.errAirplane": "Airplane mode did not change.",
     "sh.tile.errWifi": "WiFi did not change.",
     "sh.tile.errBluetooth": "Bluetooth did not change.",
@@ -978,6 +991,14 @@ const messages: Catalogs = {
     "sh.hdr.close": "Schlie\u00dfen",
 
     "sh.tile.airplane": "Flugmodus",
+    "sh.tile.btNoDevice": "Kein Gerät",
+    "sh.tile.btOff": "Aus",
+    "sh.tile.btDetail": "Bluetooth-Geräte öffnen",
+    "sh.tile.netDisconnected": "Nicht verbunden",
+    "sh.tile.netDetail": "Netzwerkauswahl öffnen",
+    "sh.tile.audioDetail": "Audiogeräte öffnen",
+    "sh.tile.kgNotRecording": "Zeichnet noch nicht auf",
+    "sh.tile.kgNoEvents": "Noch nichts aufgezeichnet",
     "sh.tile.errAirplane": "Der Flugmodus hat sich nicht geändert.",
     "sh.tile.errWifi": "WLAN hat sich nicht geändert.",
     "sh.tile.errBluetooth": "Bluetooth hat sich nicht geändert.",

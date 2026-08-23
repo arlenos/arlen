@@ -62,7 +62,7 @@
 
   const connected = $derived(state.devices.find((d) => d.connected));
   const subtitle = $derived(
-    !state.powered ? "Off" : connected ? connected.name : "No device",
+    !state.powered ? $t("sh.tile.btOff") : connected ? connected.name : $t("sh.tile.btNoDevice"),
   );
 </script>
 
@@ -73,7 +73,7 @@
     active={state.powered}
     onclick={handleClick}
     onDetail={openDetail}
-    detailLabel="Open Bluetooth devices"
+    detailLabel={$t("sh.tile.btDetail")}
   >
     {#snippet icon()}
       {#if state.powered}

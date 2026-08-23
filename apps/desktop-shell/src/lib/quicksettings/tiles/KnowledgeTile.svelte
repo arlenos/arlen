@@ -78,7 +78,7 @@
   /// nothing recorded yet" so the user knows whether to debug or
   /// just wait.
   const emptyMessage = $derived(
-    !stats.available ? "Daemon offline" : "No events yet",
+    !stats.available ? $t("sh.tile.kgNotRecording") : $t("sh.tile.kgNoEvents"),
   );
 
   const linePath = $derived.by(() => {
