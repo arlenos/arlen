@@ -95,7 +95,7 @@
     max={100}
     oninput={handleInput}
     onDetail={() => openPopover("audio")}
-    detailLabel="Open audio devices"
+    detailLabel={$t("sh.tile.audioDetail")}
   >
     {#snippet icon()}
       <button

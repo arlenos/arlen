@@ -90,7 +90,7 @@
   {active}
   onclick={handleClick}
   onDetail={openDetail}
-  detailLabel="Open network picker"
+  detailLabel={$t("sh.tile.netDetail")}
 >
   {#snippet icon()}
     {#if airplane}
