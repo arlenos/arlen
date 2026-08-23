@@ -416,11 +416,25 @@ const USER_FACING_PROPS: &[&str] = &[
 
 /// Name endings that carry prose when assigned: `loadError`, `emptyMessage`.
 ///
-/// Suffixes rather than whole names, and only these two, because they are the two
-/// that hold a sentence written for a person. `errorCount` is a number and never
-/// matches a string literal; `title`/`label` are deliberately NOT here, since
-/// `columnLabel = "id"` and similar identifiers would flood the list.
-const USER_FACING_SUFFIXES: &[&str] = &["error", "message"];
+/// Suffixes rather than whole names, and only these three, because they are the
+/// ones that hold a sentence written for a person. `errorCount` is a number and
+/// never matches a string literal; `title`/`label` are deliberately NOT here,
+/// since `columnLabel = "id"` and similar identifiers would flood the list.
+///
+/// `failure` joined on 23 August, because a name is the only signal this lint has
+/// for "this string is for a reader" and a synonym missing from the list is a
+/// whole class of strings it cannot look at.
+///
+/// KNOWN BLIND SPOT, found in the same reading and not closed: the literal has to
+/// sit immediately after `name =`. The string that prompted this was
+/// `captureFailure = cond ? shot.reason : "no host to capture with"`, and the
+/// prefix a ternary branch leaves is `:` with the assignment target already
+/// scrolled out of the window. Closing it needs statement-level context, which
+/// this scanner deliberately does not keep - it is a fixed character window, and
+/// that shape is why its false-positive rate is low enough to be a gate. The
+/// screenshot string was fixed at its source instead; the next one of these will
+/// have to be found by reading, as this one was.
+const USER_FACING_SUFFIXES: &[&str] = &["error", "message", "failure"];
 
 /// Deliberately absent: `name`, `text` and `body`.
 ///
