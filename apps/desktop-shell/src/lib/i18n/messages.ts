@@ -546,6 +546,12 @@ const messages: Catalogs = {
     "sh.tile.knowledge": "Knowledge",
     "sh.tile.network": "Network",
     "sh.tile.radiosOff": "Radios off",
+    // The airplane tile's OTHER state. It borrowed `sh.tile.available` from Do
+    // Not Disturb, where "Available" means notifications get through - vague
+    // enough to pass in English and plainly wrong once rendered in German, where
+    // the tile said "Erreichbar" under Flugmodus. This mirrors its own off-state
+    // instead of borrowing another tile's word.
+    "sh.tile.radiosOn": "Radios on",
     "sh.tile.available": "Available",
     "sh.tile.startProject": "Start a project",
     "sh.tile.focusMode": "Focus Mode",
@@ -1078,6 +1084,7 @@ const messages: Catalogs = {
     "sh.tile.knowledge": "Wissen",
     "sh.tile.network": "Netzwerk",
     "sh.tile.radiosOff": "Funk aus",
+    "sh.tile.radiosOn": "Funk an",
     "sh.tile.available": "Erreichbar",
     "sh.tile.startProject": "Projekt beginnen",
     "sh.tile.focusMode": "Fokusmodus",
