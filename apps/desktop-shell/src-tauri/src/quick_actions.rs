@@ -22,6 +22,15 @@ use tauri::{AppHandle, Emitter};
 pub struct ToastEvent {
     pub kind: ToastKind,
     pub message: String,
+    /// A catalog id the frontend renders instead of `message`, when the line is
+    /// one this side knows the NAME of but not the WORDS.
+    ///
+    /// A quick action used to build its own confirmation - "Night Light is now
+    /// on" - and emit it as text, so on a German desktop the switch flipped and
+    /// an English sentence appeared. The catalog lives in the frontend, so the
+    /// backend names the sentence and the frontend writes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,6 +50,21 @@ pub(crate) fn emit_toast(app: &AppHandle, kind: ToastKind, message: impl Into<St
         ToastEvent {
             kind,
             message: message.into(),
+            key: None,
+        },
+    );
+}
+
+/// Raise a toast the frontend writes, named by its catalog id.
+pub(crate) fn emit_toast_key(app: &AppHandle, kind: ToastKind, key: &str) {
+    let _ = app.emit(
+        TOAST_EVENT,
+        ToastEvent {
+            kind,
+            // A reader never sees this: the frontend renders `key`. It is the id
+            // itself so a missing catalog entry is legible rather than blank.
+            message: key.to_string(),
+            key: Some(key.to_string()),
         },
     );
 }
@@ -62,8 +86,8 @@ pub(crate) fn emit_toast(app: &AppHandle, kind: ToastKind, message: impl Into<St
 #[tauri::command]
 pub async fn quick_action_run(id: String, app: AppHandle) -> Result<(), String> {
     match dispatch(&id, app.clone()).await {
-        Ok(message) => {
-            emit_toast(&app, ToastKind::Success, message);
+        Ok(key) => {
+            emit_toast_key(&app, ToastKind::Success, key);
             Ok(())
         }
         Err(e) => {
@@ -73,8 +97,9 @@ pub async fn quick_action_run(id: String, app: AppHandle) -> Result<(), String> 
     }
 }
 
-/// Per-action dispatch. Returns the user-facing message on success.
-async fn dispatch(id: &str, app: AppHandle) -> Result<String, String> {
+/// Per-action dispatch. Returns the CATALOG ID of the confirmation on success;
+/// the frontend writes the sentence in the reader's language.
+async fn dispatch(id: &str, app: AppHandle) -> Result<&'static str, String> {
     match id {
         // DND state lives in the notification daemon, not in the
         // shell — there's no local reader to "toggle" against.
@@ -97,10 +122,10 @@ async fn dispatch(id: &str, app: AppHandle) -> Result<String, String> {
         "qa.open_settings_focus" => open_settings(Some("focus")),
         "qa.open_settings_knowledge" => open_settings(Some("knowledge")),
         "qa.open_settings_notifications" => open_settings(Some("notifications")),
-        "qa.lock_screen" => session_action(&["lock-session"], "Locking screen"),
+        "qa.lock_screen" => session_action(&["lock-session"], "sh.qa.locking"),
         "qa.logout" => session_logout(),
-        "qa.reboot" => power_action(&["reboot"], "Restarting"),
-        "qa.shutdown" => power_action(&["poweroff"], "Shutting down"),
+        "qa.reboot" => power_action(&["reboot"], "sh.qa.restarting"),
+        "qa.shutdown" => power_action(&["poweroff"], "sh.qa.shuttingDown"),
         other => Err(format!("unknown quick action: {other}")),
     }
 }
@@ -118,7 +143,7 @@ async fn dispatch(id: &str, app: AppHandle) -> Result<String, String> {
 /// than fall back to the user-wide kill — losing parallel work
 /// to a typoed click is a worse failure than the user finding a
 /// different way to log out.
-fn session_logout() -> Result<String, String> {
+fn session_logout() -> Result<&'static str, String> {
     let session = std::env::var("XDG_SESSION_ID")
         .map_err(|_| {
             "XDG_SESSION_ID is not set — cannot scope logout to the current session".to_string()
@@ -126,7 +151,7 @@ fn session_logout() -> Result<String, String> {
     if session.trim().is_empty() {
         return Err("XDG_SESSION_ID is empty".into());
     }
-    session_action(&["terminate-session", session.trim()], "Logging out")
+    session_action(&["terminate-session", session.trim()], "sh.qa.loggingOut")
 }
 
 /// Spawn `loginctl <args>` and wait briefly for early failure.
@@ -140,8 +165,8 @@ fn session_logout() -> Result<String, String> {
 /// silently or eventually fail in a way the user notices via the
 /// session ending (logout) or the screen actually locking
 /// (lock-session).
-fn session_action(args: &[&str], message: &str) -> Result<String, String> {
-    spawn_and_check("loginctl", args, message, 1500)
+fn session_action(args: &[&str], key: &'static str) -> Result<&'static str, String> {
+    spawn_and_check("loginctl", args, key, 1500)
 }
 
 /// Spawn `systemctl <args>` for poweroff / reboot.
@@ -152,8 +177,8 @@ fn session_action(args: &[&str], message: &str) -> Result<String, String> {
 /// timeout" — by then the kernel halt sequence is in flight.
 /// An early non-zero exit means PolicyKit denied the call (or
 /// the user lacks permission); we surface stderr.
-fn power_action(args: &[&str], message: &str) -> Result<String, String> {
-    spawn_and_check("systemctl", args, message, 2000)
+fn power_action(args: &[&str], key: &'static str) -> Result<&'static str, String> {
+    spawn_and_check("systemctl", args, key, 2000)
 }
 
 /// Spawn `cmd args`, wait up to `timeout_ms`, surface stderr on
@@ -163,9 +188,9 @@ fn power_action(args: &[&str], message: &str) -> Result<String, String> {
 fn spawn_and_check(
     cmd: &str,
     args: &[&str],
-    message: &str,
+    key: &'static str,
     timeout_ms: u64,
-) -> Result<String, String> {
+) -> Result<&'static str, String> {
     let mut child = std::process::Command::new(cmd)
         .args(args)
         .stdout(std::process::Stdio::null())
@@ -183,7 +208,7 @@ fn spawn_and_check(
     while std::time::Instant::now() < deadline {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => {
-                return Ok(message.to_string());
+                return Ok(key);
             }
             Ok(Some(status)) => {
                 let mut stderr = String::new();
@@ -215,7 +240,7 @@ fn spawn_and_check(
     // down before the process can exit cleanly). For session
     // calls a long-running call is rare but harmless to declare
     // success on.
-    Ok(message.to_string())
+    Ok(key)
 }
 
 // ── Toggle helpers ─────────────────────────────────────────────────
@@ -230,7 +255,7 @@ fn spawn_and_check(
 /// from an `Arc<...>` inside a non-command async fn is awkward.
 /// The proto-message construction is a 5-line clone of the command
 /// body.
-async fn set_dnd(app: AppHandle, mode: &str) -> Result<String, String> {
+async fn set_dnd(app: AppHandle, mode: &str) -> Result<&'static str, String> {
     use tauri::Manager;
     use notification_proto::proto;
     let writer = app
@@ -248,13 +273,10 @@ async fn set_dnd(app: AppHandle, mode: &str) -> Result<String, String> {
         })),
     };
     crate::notifications::client::send_command(&writer, msg).await?;
-    Ok(format!(
-        "Do Not Disturb {}",
-        if mode == "off" { "disabled" } else { "enabled" }
-    ))
+    Ok(if mode == "off" { "sh.qa.dnd.off" } else { "sh.qa.dnd.on" })
 }
 
-async fn toggle_night_light(app: AppHandle) -> Result<String, String> {
+async fn toggle_night_light(app: AppHandle) -> Result<&'static str, String> {
     use tauri::Manager;
 
     let cfg = crate::shell_config::get_shell_config()
@@ -270,86 +292,66 @@ async fn toggle_night_light(app: AppHandle) -> Result<String, String> {
         cfg.night_light.temperature,
         sender,
     )?;
-    Ok(format!(
-        "Night Light is now {}",
-        if new_enabled { "on" } else { "off" }
-    ))
+    Ok(if new_enabled { "sh.qa.nightLight.on" } else { "sh.qa.nightLight.off" })
 }
 
-async fn toggle_airplane(app: AppHandle) -> Result<String, String> {
+async fn toggle_airplane(app: AppHandle) -> Result<&'static str, String> {
     let current = crate::network::get_airplane_mode().await.unwrap_or(false);
     crate::network::set_airplane_mode(app, !current).await?;
     let after = crate::network::get_airplane_mode().await.unwrap_or(!current);
-    Ok(format!(
-        "Airplane mode is now {}",
-        if after { "on" } else { "off" }
-    ))
+    Ok(if after { "sh.qa.airplane.on" } else { "sh.qa.airplane.off" })
 }
 
-async fn toggle_wifi(_app: AppHandle) -> Result<String, String> {
+async fn toggle_wifi(_app: AppHandle) -> Result<&'static str, String> {
     let current = crate::network::get_wifi_enabled().await.unwrap_or(false);
     crate::network::set_wifi_enabled(!current).await?;
     let after = crate::network::get_wifi_enabled().await.unwrap_or(!current);
-    Ok(format!(
-        "WiFi is now {}",
-        if after { "on" } else { "off" }
-    ))
+    Ok(if after { "sh.qa.wifi.on" } else { "sh.qa.wifi.off" })
 }
 
-async fn toggle_bluetooth(_app: AppHandle) -> Result<String, String> {
+async fn toggle_bluetooth(_app: AppHandle) -> Result<&'static str, String> {
     let state = crate::bluetooth::get_bluetooth_state().await?;
     let new_powered = !state.powered;
     crate::bluetooth::set_bluetooth_powered(new_powered).await?;
-    Ok(format!(
-        "Bluetooth is now {}",
-        if new_powered { "on" } else { "off" }
-    ))
+    Ok(if new_powered { "sh.qa.bluetooth.on" } else { "sh.qa.bluetooth.off" })
 }
 
-async fn toggle_caffeine(app: AppHandle) -> Result<String, String> {
+async fn toggle_caffeine(app: AppHandle) -> Result<&'static str, String> {
     use tauri::Manager;
     let state = app
         .try_state::<crate::system_toggles::ToggleState>()
         .ok_or_else(|| "ToggleState not available".to_string())?;
     let after = crate::system_toggles::toggle_caffeine(state)?;
-    Ok(format!(
-        "Caffeine is now {}",
-        if after { "on" } else { "off" }
-    ))
+    Ok(if after { "sh.qa.caffeine.on" } else { "sh.qa.caffeine.off" })
 }
 
-async fn toggle_recording(app: AppHandle) -> Result<String, String> {
+async fn toggle_recording(app: AppHandle) -> Result<&'static str, String> {
     use tauri::Manager;
     let state = app
         .try_state::<crate::system_toggles::ToggleState>()
         .ok_or_else(|| "ToggleState not available".to_string())?;
     let after = crate::system_toggles::toggle_recording(state)?;
-    Ok(format!(
-        "Screen recording is now {}",
-        if after { "on" } else { "off" }
-    ))
+    Ok(if after { "sh.qa.recording.on" } else { "sh.qa.recording.off" })
 }
 
-fn set_theme(app: AppHandle, id: &str) -> Result<String, String> {
+fn set_theme(app: AppHandle, id: &str) -> Result<&'static str, String> {
     use tauri::Manager;
     let state = app
         .try_state::<crate::theme::commands::ThemeState>()
         .ok_or_else(|| "ThemeState not available".to_string())?;
     crate::theme::commands::set_theme(id.to_string(), state, app.clone())
         .map_err(|e| format!("set_theme: {e:?}"))?;
-    Ok(format!(
-        "Theme is now {}",
-        match id {
-            "dark" => "Dark",
-            "light" => "Light",
-            other => other,
-        }
-    ))
+    Ok(match id {
+        "light" => "sh.qa.theme.light",
+        // Dark for anything else: the two quick actions are the only callers and
+        // a third id would be a bug rather than a theme to name.
+        _ => "sh.qa.theme.dark",
+    })
 }
 
 // ── Settings launcher ──────────────────────────────────────────────
 
-fn open_settings(panel: Option<&str>) -> Result<String, String> {
+fn open_settings(panel: Option<&str>) -> Result<&'static str, String> {
     let mut cmd = std::process::Command::new("arlen-settings");
     if let Some(panel) = panel {
         cmd.args(["--panel", panel]);
@@ -362,10 +364,10 @@ fn open_settings(panel: Option<&str>) -> Result<String, String> {
             // (`cargo tauri dev` doesn't install). Surface a hint.
             format!("could not launch arlen-settings: {e}")
         })?;
-    Ok(match panel {
-        Some(p) => format!("Opening Settings: {p}"),
-        None => "Opening Settings".to_string(),
-    })
+    // One line for both, panel or not. The panel id is an English token
+    // (`display`, `keyboard`) and naming it here would put an untranslated word
+    // in a translated sentence; the window that opens says which page it is on.
+    Ok("sh.qa.settings.opening")
 }
 
 #[cfg(test)]
@@ -425,9 +427,65 @@ mod tests {
         let ev = ToastEvent {
             kind: ToastKind::Success,
             message: "DND is now on".into(),
+            key: None,
         };
         let json = serde_json::to_string(&ev).unwrap();
         assert!(json.contains(r#""kind":"success""#));
         assert!(json.contains(r#""message":"DND is now on""#));
+        // Absent rather than null, so a reader of the payload cannot mistake
+        // "this line has no catalog id" for "its id is nothing".
+        assert!(!json.contains("key"));
+    }
+
+    /// A quick action names its confirmation and never writes it.
+    ///
+    /// The catalog is in the frontend; this side used to build the sentence in
+    /// English and emit it as text, which is what a German desktop then showed.
+    /// Every id here has to exist in `messages.ts` - and the ids are the only
+    /// thing this file may say about the wording.
+    #[test]
+    fn every_confirmation_is_a_catalog_id() {
+        let ids = [
+            "sh.qa.dnd.on",
+            "sh.qa.dnd.off",
+            "sh.qa.nightLight.on",
+            "sh.qa.nightLight.off",
+            "sh.qa.airplane.on",
+            "sh.qa.airplane.off",
+            "sh.qa.wifi.on",
+            "sh.qa.wifi.off",
+            "sh.qa.bluetooth.on",
+            "sh.qa.bluetooth.off",
+            "sh.qa.caffeine.on",
+            "sh.qa.caffeine.off",
+            "sh.qa.recording.on",
+            "sh.qa.recording.off",
+            "sh.qa.theme.dark",
+            "sh.qa.theme.light",
+            "sh.qa.settings.opening",
+            "sh.qa.locking",
+            "sh.qa.loggingOut",
+            "sh.qa.restarting",
+            "sh.qa.shuttingDown",
+        ];
+        let catalog = include_str!("../../src/lib/i18n/messages.ts");
+        for id in ids {
+            assert!(
+                catalog.contains(&format!("\"{id}\"")),
+                "{id} is emitted as a toast id and the catalog does not carry it"
+            );
+        }
+        // And the file that emits them names no others: a new action that
+        // invents an id would pass the loop above by not being in the list.
+        //
+        // The PRODUCTION half only. Scanning the whole file made this test find
+        // its own `split` argument and report a bare `sh.qa`, which is a real
+        // trap of self-scanning tests rather than a fact about the code.
+        let src = include_str!("quick_actions.rs");
+        let production = src.split("#[cfg(test)]").next().unwrap_or(src);
+        for hit in production.split("\"sh.qa").skip(1) {
+            let id = format!("sh.qa{}", hit.split('"').next().unwrap_or(""));
+            assert!(ids.contains(&id.as_str()), "{id} is emitted but not listed here");
+        }
     }
 }
