@@ -90,6 +90,28 @@ it covers**. Four of that day's fixes were wrong on the first attempt in exactly
 that way: the banner was at the top of the page and the false sentence was in the
 middle of it. Somebody has to look at the picture.
 
+## Reading the name a window actually has
+
+```sh
+dev/screenshot/window-title.sh <app-binary> [locale] [expected]
+
+dev/screenshot/window-title.sh target/release/arlen-clock-app de Uhr
+```
+
+A screenshot cannot answer this one. Every app sets `<svelte:head><title>` to
+its translated name, but that is the DOCUMENT title and it never leaves the
+webview; the name the topbar and the workspace overview show is the NATIVE
+window title, which comes from `tauri.conf.json`. So thirteen apps had the right
+name in their catalog and an English one on every surface outside their own
+window, and no picture of the app could show it, because the apps draw no
+titlebar (`decorations: false`). The window manager is the only witness, so this
+runs the binary on its own Xvfb with a config directory it cannot escape and
+asks `xdotool`.
+
+With `expected` it asserts. Run it twice with different locales: the same
+binary answering "Uhr" under `de` and "Clock" under `en` is the proof that the
+title follows the language rather than being a second constant.
+
 ## Photographing something that only exists once opened
 
 A dropdown's items, a popover's body and a dialog's contents are not in the DOM
