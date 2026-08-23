@@ -11,9 +11,7 @@
 
 import { writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { get } from "svelte/store";
-import { toast } from "svelte-sonner";
-import { t } from "$lib/i18n/messages";
+import { raiseRefusal } from "$lib/shellAction";
 
 export interface QuickActionResult {
   id: string;
@@ -73,22 +71,12 @@ export function clearQuickActionResults(): void {
 /// showed the person an empty desktop. The `arlen://toast` event is the channel
 /// that already exists for exactly this - the backend uses it because the
 /// waypointer cannot be trusted to still be on screen - and it is a channel this
-/// side can use too.
+/// side can use too - `raiseRefusal` is where that lives.
 export async function invokeQuickAction(id: string, label?: string): Promise<void> {
   try {
     await invoke("quick_action_run", { id });
   } catch (e) {
     console.warn(`[waypointer] quick action ${id} failed:`, e);
-    const { emit } = await import("@tauri-apps/api/event");
-    await emit("arlen://toast", {
-      kind: "error",
-      key: "sh.wp.qaFailed",
-      params: { action: label ?? id },
-      // Only read if the catalog is missing the id, and legible when it is.
-      message: "sh.wp.qaFailed",
-    }).catch(() => {
-      // No host to carry it: say it here rather than not at all.
-      toast.error(get(t)("sh.wp.qaFailed", { action: label ?? id }));
-    });
+    raiseRefusal("sh.wp.qaFailed", { action: label ?? id });
   }
 }
