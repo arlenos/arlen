@@ -434,7 +434,7 @@
         requesterName={friendly(p.requester)}
         requesterId={p.requester}
         {tone}
-        title={`Allow ${friendly(p.requester)} to ${p.summary}?`}
+        title={$t("sh.consent.ask", { app: friendly(p.requester), what: p.summary })}
         big={p.tier === "high_stakes"}
         {body}
         {footer}
