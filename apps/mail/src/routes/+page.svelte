@@ -9,6 +9,7 @@
   /// the harmless one.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Mail, TriangleAlert } from "@lucide/svelte";
   import { t, locale } from "$lib/i18n/messages";
 
@@ -104,10 +105,40 @@
       }
     })();
   });
+
+  function isInteractive(e: Event): boolean {
+    const target = e.target as HTMLElement | null;
+    return !!target?.closest("button, a, input, [role='button']");
+  }
+
+  async function startDrag(e: PointerEvent) {
+    if (e.button !== 0 || e.pointerType !== "mouse") return;
+    if (isInteractive(e)) return;
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      /* standalone (vite) has no toplevel to drag */
+    }
+  }
+
+  async function toggleMax(e: MouseEvent) {
+    if (isInteractive(e)) return;
+    try {
+      const w = getCurrentWindow();
+      if (await w.isMaximized()) await w.unmaximize();
+      else await w.maximize();
+    } catch {
+      /* no window in standalone */
+    }
+  }
 </script>
 
 <main class="page">
-  <header class="bar">
+  <!-- The header is a drag surface (a non-keyboard pointer interaction); its
+       actual controls are the accessible WindowButtons, so the
+       static-interaction lint is a false positive here. -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <header class="bar" onpointerdown={startDrag} ondblclick={toggleMax}>
     <Mail size={16} strokeWidth={2} />
     <h1>{$t("ml.app.title")}</h1>
     <span class="spacer"></span>
@@ -223,15 +254,17 @@
   }
   .bar {
     display: flex;
+    height: 2.5rem;
+    flex-shrink: 0;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
+    padding: 0 8px;
     border-bottom: 1px solid var(--color-border-default, #2a2a2a);
   }
   .bar h1 {
     margin: 0;
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
   }
   .spacer {
     flex: 1;
