@@ -83,9 +83,9 @@
 </script>
 
 <Sidebar collapsible="icon">
-  <!-- With no header band the places start the rail; a small first inset so
-       the top row does not sit on the window edge. -->
-  <SidebarContent class="fm-sidebar-scroll pt-2">
+  <!-- With no header band the places start the rail; the first group's own
+       pt-1 (PlacesSidebar) puts its top row on the header-bar line. -->
+  <SidebarContent class="fm-sidebar-scroll">
     <PlacesSidebar
       groups={$placeGroups}
       {activePath}
