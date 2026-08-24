@@ -25,6 +25,23 @@ export interface BottleAccess {
   homeFolder: boolean;
 }
 
+/// One drive letter inside the bottle and the folder behind it. The daemon's
+/// drive table IS the file boundary: a Windows app sees exactly these letters
+/// and nothing else. `path: null` is the system drive - the app's own world,
+/// not a folder of the user's.
+export interface BottleDrive {
+  letter: string;
+  path: string | null;
+}
+
+/// The daemon's prefix-vs-description check, shown ONLY when it disagrees:
+/// a bottle whose links lead outside itself has wider reach than its drive
+/// table claims, and that is the one thing this panel must never overstate.
+export interface BottleHealth {
+  agrees: boolean;
+  escapes: number;
+}
+
 /// One Windows app in its bottle, as the panel renders it. The first few fields
 /// drive the thin default row; the rest are the Advanced depth.
 export interface Bottle {
@@ -54,6 +71,8 @@ export interface Bottle {
   /// Whether the app follows the Arlen theme (wine-theming-plan.md).
   followsTheme: boolean;
   access: BottleAccess;
+  /// The drive letters the bottle maps, from the daemon's dosdevices table.
+  drives: BottleDrive[];
 }
 
 /// Global cross-bottle defaults + installed runtimes.
@@ -76,7 +95,7 @@ const FIXTURE: Bottle[] = [
     id: "b1",
     appName: "Notepad++",
     appId: "notepad-plus-plus",
-    recipe: "Notepad++ recipe",
+    recipe: "Notepad++",
     tier: "curated",
     wineVersion: "Wine 9.0",
     windowsVersion: "10",
@@ -91,12 +110,13 @@ const FIXTURE: Bottle[] = [
     diskUsage: "480 MB",
     followsTheme: true,
     access: { network: false, homeFolder: false },
+    drives: [{ letter: "C", path: null }],
   },
   {
     id: "b2",
     appName: "Paint.NET",
     appId: "paint-net",
-    recipe: "Paint.NET recipe",
+    recipe: "Paint.NET",
     tier: "curated",
     wineVersion: "Wine 9.0",
     windowsVersion: "10",
@@ -111,6 +131,10 @@ const FIXTURE: Bottle[] = [
     diskUsage: "1.2 GB",
     followsTheme: true,
     access: { network: true, homeFolder: false },
+    drives: [
+      { letter: "C", path: null },
+      { letter: "D", path: "/home/mara/Pictures" },
+    ],
   },
   {
     id: "b3",
@@ -131,8 +155,20 @@ const FIXTURE: Bottle[] = [
     diskUsage: "320 MB",
     followsTheme: false,
     access: { network: true, homeFolder: true },
+    drives: [
+      { letter: "C", path: null },
+      { letter: "D", path: "/home/mara" },
+    ],
   },
 ];
+
+/// The fixture's one unhealthy bottle: the deviating state has to be designable
+/// without a daemon that can produce it on demand.
+const FIXTURE_HEALTH: Record<string, BottleHealth> = {
+  b1: { agrees: true, escapes: 0 },
+  b2: { agrees: true, escapes: 0 },
+  b3: { agrees: false, escapes: 2 },
+};
 
 /// The Wine/Proton versions the selectors offer.
 export const wineVersions = ["Wine 9.0", "Wine 8.21", "Proton 9.0", "Wine (staging)"];
@@ -250,6 +286,39 @@ export async function deleteBottle(id: string): Promise<void> {
     // machine the user thinks is cleaner than it is.
     winApps.update((s) => ({ ...s, bottles: before }));
     winActionFailed.set(true);
+  }
+}
+
+/// The app the last launch attempt could not start, for the sentence naming it.
+/// Separate from `winActionFailed`: that one says the CONFIG did not change,
+/// and a launch that failed changed nothing about the config.
+export const launchFailed = writable<string | null>(null);
+
+/// Start the Windows app. Live: `launch_windows_app` (the daemon owns the
+/// process, so it outlives this window). Under vite the fixture app has nothing
+/// to start, so the button is inert rather than pretending.
+export async function launchApp(id: string): Promise<void> {
+  launchFailed.set(null);
+  try {
+    await invoke("launch_windows_app", { id });
+  } catch {
+    if (!tauriAvailable) return;
+    const name = get(winApps).bottles.find((b) => b.id === id)?.appName ?? id;
+    launchFailed.set(name);
+  }
+}
+
+/// Read the daemon's prefix-vs-description check for one bottle. Live:
+/// `bottle_health` (the daemon already answers this on its socket; the bridge
+/// is the seam). `null` means the check could not be read - which is NOT the
+/// same as healthy, so the caller shows nothing rather than a green light.
+export async function bottleHealth(id: string): Promise<BottleHealth | null> {
+  try {
+    const h = await invoke<BottleHealth>("bottle_health", { id });
+    return h;
+  } catch {
+    if (!tauriAvailable) return FIXTURE_HEALTH[id] ?? null;
+    return null;
   }
 }
 
