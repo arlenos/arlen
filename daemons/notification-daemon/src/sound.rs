@@ -29,6 +29,22 @@ pub enum SoundResolution {
 /// first: a silence marker wins over any audio file in the same directory.
 const EXTENSIONS: [&str; 4] = [".disabled", ".oga", ".ogg", ".wav"];
 
+/// The reserved per-event override value meaning "play nothing for this event".
+///
+/// A theme silences a cue by shipping a `.disabled` marker beside it, which the
+/// resolver already honours. A PERSON has no theme to edit, so the per-event mute
+/// in Settings needs a value it can write into `sound.overrides`, and this is it.
+/// It is spelled after the marker it stands for, so a config read by hand says
+/// what it does.
+///
+/// Not an unresolvable cue name. Naming a sound that does not exist resolves to
+/// [`SoundResolution::NotFound`], which is the system failing to find what you
+/// asked for; this is the system doing exactly what you asked. The two are
+/// different sentences and the resolver already tells them apart, so a mute must
+/// not be smuggled in as a lookup failure. [`theme_cue_names`] withholds this name
+/// from the picker for the same reason.
+pub const DISABLED_OVERRIDE: &str = "disabled";
+
 /// The fallback theme every inheritance chain ends in (freedesktop Sound Theme
 /// spec), so a name absent from the active theme still resolves to the system
 /// default cue.
@@ -209,6 +225,13 @@ pub fn theme_cue_names(roots: &[PathBuf], theme: &str) -> Vec<String> {
                     continue;
                 }
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    // Reserved: `disabled` is how a person writes "play nothing"
+                    // into an override, so a theme shipping a cue by that name
+                    // must not appear in a picker where choosing it would read as
+                    // picking a sound.
+                    if stem == DISABLED_OVERRIDE {
+                        continue;
+                    }
                     if !out.iter().any(|n| n == stem) {
                         out.push(stem.to_string());
                     }
@@ -319,6 +342,12 @@ pub fn resolve_cue(
     roots: &[std::path::PathBuf],
 ) -> SoundResolution {
     let name = cue_name_for_event(event, &config.overrides);
+    // The reserved mute, before any filesystem walk: the answer does not depend on
+    // what any theme ships, and a theme that happened to carry a cue by this name
+    // must not turn a deliberate silence into a sound.
+    if name == DISABLED_OVERRIDE {
+        return SoundResolution::Silenced;
+    }
     resolve_sound(roots, &config.theme, name.as_ref())
 }
 
@@ -824,6 +853,52 @@ mod tests {
             resolve_cue(SoundEvent::NotificationArrived, &config, &[root.clone()]),
             SoundResolution::File(root.join("mytheme/custom-bell.oga")),
         );
+    }
+
+    /// The per-event mute a person can actually write. Silenced, not NotFound:
+    /// one is the system doing what you asked, the other is it failing to find
+    /// what you asked for, and the caller acts on the difference.
+    #[test]
+    fn a_disabled_override_silences_the_event_without_touching_a_theme() {
+        let dir = tempfile::tempdir().unwrap();
+        // A real cue for this event exists and is still not played.
+        let theme = dir.path().join("arlen");
+        std::fs::create_dir_all(&theme).unwrap();
+        std::fs::write(theme.join("dialog-error.oga"), b"x").unwrap();
+
+        let mut config = crate::config::types::SoundConfig {
+            theme: "arlen".to_string(),
+            ..Default::default()
+        };
+        let roots = vec![dir.path().to_path_buf()];
+        assert!(matches!(
+            resolve_cue(SoundEvent::Error, &config, &roots),
+            SoundResolution::File(_)
+        ));
+
+        config.overrides.insert(
+            SoundEvent::Error.sound_name().to_string(),
+            DISABLED_OVERRIDE.to_string(),
+        );
+        assert_eq!(
+            resolve_cue(SoundEvent::Error, &config, &roots),
+            SoundResolution::Silenced
+        );
+    }
+
+    /// The reserved word is withheld from the picker, so nobody can choose it as
+    /// if it were a sound. Its own event stays offered.
+    #[test]
+    fn the_picker_never_offers_the_reserved_disabled_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let theme = dir.path().join("arlen");
+        std::fs::create_dir_all(&theme).unwrap();
+        std::fs::write(theme.join("disabled.oga"), b"x").unwrap();
+        std::fs::write(theme.join("bell.oga"), b"x").unwrap();
+
+        let names = theme_cue_names(&[dir.path().to_path_buf()], "arlen");
+        assert!(!names.iter().any(|n| n == DISABLED_OVERRIDE));
+        assert!(names.iter().any(|n| n == "bell"));
     }
 
     #[test]
