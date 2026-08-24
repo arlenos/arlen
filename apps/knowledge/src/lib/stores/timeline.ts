@@ -91,6 +91,16 @@ export const paused = writable(false);
 /// and recording that really is still running.
 export const pauseUnavailable = writable(false);
 
+/// Whether anyone has actually read whether recording is paused.
+///
+/// The store above defaults to `false`, which is a value, and a control drawn
+/// from it renders a POSITION: a Pause button says "this is running right now".
+/// When the read fails that position is a guess about the most privacy-loaded
+/// claim this app makes. The network popover next door already refuses to draw a
+/// toggle whose state it does not know, and says why in its own code; this is the
+/// same rule reaching the one control that had not adopted it.
+export const pausedKnown = writable(false);
+
 function localMidnight(unix: number): number {
   const d = new Date(unix * 1000);
   d.setHours(0, 0, 0, 0);
@@ -251,7 +261,9 @@ export async function loadPaused(): Promise<void> {
   try {
     paused.set(await invoke<boolean>("knowledge_timeline_paused"));
     pauseUnavailable.set(false);
+    pausedKnown.set(true);
   } catch {
+    pausedKnown.set(false);
     // Under vite there is no backend; on metal a failed read is not a reason to
     // assert either state.
   }

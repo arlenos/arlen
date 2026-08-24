@@ -25,6 +25,7 @@
     timelineUnavailable,
     timelineNoService,
     paused,
+    pausedKnown,
     pauseUnavailable,
     pendingMenuAction,
     loadTimeline,
@@ -270,15 +271,21 @@
         <span class="tl-sample">{$t("k.sample")}</span>
       {/if}
       <span class="tl-spacer"></span>
-      <button type="button" class="tl-pause" class:on={$paused} onclick={() => setPaused(!$paused)}>
-        {#if $paused}
-          <Play size={13} strokeWidth={2} />
-          {$t("k.tl.resume")}
-        {:else}
-          <Pause size={13} strokeWidth={2} />
-          {$t("k.tl.pause")}
-        {/if}
-      </button>
+      <!-- Only when the state was read. The button carries the answer in its
+           own label - Pause means "running", Resume means "paused" - so drawing
+           it from an unread default states the one thing this app must never
+           state without measuring. -->
+      {#if $pausedKnown}
+        <button type="button" class="tl-pause" class:on={$paused} onclick={() => setPaused(!$paused)}>
+          {#if $paused}
+            <Play size={13} strokeWidth={2} />
+            {$t("k.tl.resume")}
+          {:else}
+            <Pause size={13} strokeWidth={2} />
+            {$t("k.tl.pause")}
+          {/if}
+        </button>
+      {/if}
       <button type="button" class="tl-whats" class:open={disclosureOpen} onclick={() => (disclosureOpen = !disclosureOpen)}>
         <ChevronRight size={13} strokeWidth={2} />
         {$t("k.tl.whats")}
