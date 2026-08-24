@@ -431,6 +431,29 @@ export async function bottleHealth(id: string): Promise<BottleHealth | null> {
 }
 
 /// Change a global default, optimistically. Live: `set_windows_defaults`.
+/// Read what this machine can actually run Windows programs with.
+///
+/// Replaces the opening list of runtimes that said "installed" about a disk nobody
+/// had read. An empty list after this ran means there is none, which the panel says
+/// rather than leaving the section looking merely unfilled.
+export async function loadRuntimes(): Promise<void> {
+  try {
+    const wine = await invoke<string | null>("windows_runtimes");
+    defaults.update((d) => ({
+      ...d,
+      runtimes: wine ? [{ name: wine, installed: true }] : [],
+    }));
+    runtimesKnown.set(true);
+  } catch {
+    // Not measured is not the same as none, so the panel is told nothing rather
+    // than told there is nothing.
+    runtimesKnown.set(!tauriAvailable);
+  }
+}
+
+/// Whether the runtime list above was actually read.
+export const runtimesKnown = writable(false);
+
 export async function patchDefaults(patch: Partial<WinDefaults>): Promise<void> {
   const before = get(defaults);
   defaults.update((d) => ({ ...d, ...patch }));

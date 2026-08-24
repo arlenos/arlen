@@ -24,6 +24,8 @@
     launchFailureKey,
     forgetFailed,
     forgetFailureKey,
+    loadRuntimes,
+    runtimesKnown,
     defaults,
     wineVersions,
     load,
@@ -33,7 +35,13 @@
     type Bottle,
   } from "$lib/stores/windows-apps";
 
-  onMount(load);
+  onMount(() => {
+    void load();
+    // Separate from the bottle list: what this machine can run is a different
+    // question from what is installed in it, and one failing must not blank the
+    // other.
+    void loadRuntimes();
+  });
 
   const versionOptions = wineVersions.map((v) => ({ value: v, label: v }));
   // Derived, not constant: a top-level array is built once at import, so its
@@ -148,9 +156,18 @@
         {/snippet}
       </Row>
       <!-- No runtimes rather than four invented ones: the list of what is
-           installed is an observation, and nothing reports it yet. -->
+           installed is an observation. Empty now means two different things and
+           they get two different rows - the runtime was asked and there is none,
+           or nobody could ask. Telling somebody "none installed" when the daemon
+           was simply unreachable sends them looking for the wrong problem. -->
       {#if $defaults.runtimes.length === 0}
-        <Row id="win-runtimes" label={$t("s.wa.runtimesUnknown")} description={$t("s.wa.runtimesUnknownDesc")} />
+        <Row
+          id="win-runtimes"
+          label={$runtimesKnown ? $t("s.wa.runtimesNone") : $t("s.wa.runtimesUnknown")}
+          description={$runtimesKnown
+            ? $t("s.wa.runtimesNoneDesc")
+            : $t("s.wa.runtimesUnknownDesc")}
+        />
       {/if}
       <!-- The state lives in the control slot alone; a description repeating
            "Installed" said the same thing twice on one line. -->
