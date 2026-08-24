@@ -13,6 +13,8 @@
   import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers } from "lucide-svelte";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { RATES, rateLabel, refreshMs, setRefreshMs } from "$lib/refresh";
@@ -160,26 +162,33 @@
            two independent timers with no control over either. -->
       <label class="rate">
         <span class="rate-label">{$t("tm.rate.label")}</span>
-        <select
-          class="rate-select"
-          aria-label={$t("tm.rate.aria")}
+        <PopoverSelect
           value={String($refreshMs)}
-          onchange={(e) => setRefreshMs(Number((e.currentTarget as HTMLSelectElement).value))}
-        >
-          {#each RATES as r (r)}
-            <option value={String(r)}>{rateLabel(r)}</option>
-          {/each}
-        </select>
+          options={RATES.map((r) => ({ value: String(r), label: rateLabel(r) }))}
+          ariaLabel={$t("tm.rate.aria")}
+          onchange={(v) => setRefreshMs(Number(v))}
+        />
       </label>
-      <button
-        type="button"
-        class="toggle"
-        class:on={flatten}
-        title={$t(flatten ? "tm.toggle.toGrouped" : "tm.toggle.toAll")}
-        onclick={() => (flatten = !flatten)}
-      >
+      <!-- The kit tooltip, not the browser's: a native `title` is the one
+           tooltip this desktop does not use. -->
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props }: { props: Record<string, unknown> })}
+            <button
+              {...props}
+              type="button"
+              class="toggle"
+              class:on={flatten}
+              onclick={() => (flatten = !flatten)}
+            >
         {#if flatten}<Rows3 size={14} strokeWidth={2} /> {$t("tm.toggle.all")}{:else}<Layers size={14} strokeWidth={2} /> {$t("tm.toggle.grouped")}{/if}
-      </button>
+            </button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.TooltipContent side="bottom">
+          {$t(flatten ? "tm.toggle.toGrouped" : "tm.toggle.toAll")}
+        </Tooltip.TooltipContent>
+      </Tooltip.Root>
     </div>
 
     <div class="proc-body">

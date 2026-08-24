@@ -27,6 +27,7 @@
     Download,
   } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import FloatingThumbnail from "$lib/components/FloatingThumbnail.svelte";
   import { drawShape, rectOf, type Shape, type ShapeKind, type ToolKind, type Point } from "$lib/annotate";
   import {
@@ -576,25 +577,21 @@
   {#if outputs.length + windows.length > 1}
     <div class="source">
       <label class="source-label" for="capture-source">{$t("s.source")}</label>
-      <select
-        id="capture-source"
-        class="source-select"
+      <PopoverSelect
         value={source}
-        onchange={(e) => void pickSource((e.currentTarget as HTMLSelectElement).value)}
-      >
-        {#each outputs as o (o.index)}
-          <option value={`screen:${o.index}`}>
-            {$t("s.source.screenSized", { name: o.name ?? String(o.index + 1), w: o.width, h: o.height })}
-          </option>
-        {/each}
-        {#each windows as w (w.index)}
-          <option value={`window:${w.index}`}>
-            {w.title
-              ? $t("s.source.window", { title: w.title })
-              : $t("s.source.windowUntitled")}
-          </option>
-        {/each}
-      </select>
+        options={[
+          ...outputs.map((o) => ({
+            value: `screen:${o.index}`,
+            label: $t("s.source.screenSized", { name: o.name ?? String(o.index + 1), w: o.width, h: o.height }),
+          })),
+          ...windows.map((w) => ({
+            value: `window:${w.index}`,
+            label: w.title ? $t("s.source.window", { title: w.title }) : $t("s.source.windowUntitled"),
+          })),
+        ]}
+        ariaLabel={$t("s.source")}
+        onchange={(v) => void pickSource(v)}
+      />
     </div>
   {/if}
 
@@ -719,16 +716,6 @@
   }
   .source-label {
     color: var(--color-fg-secondary, #9aa4b2);
-  }
-  .source-select {
-    max-width: 22rem;
-    padding: 2px 6px;
-    font: inherit;
-    font-size: 0.85rem;
-    color: var(--color-fg-primary, #e6e8ee);
-    background: var(--color-bg-card, #171717);
-    border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: 6px;
   }
 
   .sample-note {
