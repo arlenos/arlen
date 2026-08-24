@@ -26,6 +26,7 @@
   import NetworkPopover from "$lib/components/NetworkPopover.svelte";
   import AudioPopover from "$lib/components/AudioPopover.svelte";
   import UndoPopover from "$lib/components/UndoPopover.svelte";
+  import ClipboardPopover from "$lib/components/ClipboardPopover.svelte";
   import BatteryPopover from "$lib/components/BatteryPopover.svelte";
   import WorkspaceIndicator from "$lib/components/WorkspaceIndicator.svelte";
   import SandboxedModuleIndicatorSlot from "$lib/components/SandboxedModuleIndicatorSlot.svelte";
@@ -394,6 +395,7 @@
   <NetworkPopover />
   <AudioPopover />
   <UndoPopover />
+  <ClipboardPopover />
   <BatteryPopover />
   <BluetoothPopover />
   <MprisPopover />

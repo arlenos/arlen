@@ -17,6 +17,7 @@ export type PopoverType =
   | "layout"
   | "mpris"
   | "undo"
+  | "clipboard"
   | `module:${string}`
   | null;
 

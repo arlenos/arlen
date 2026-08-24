@@ -508,6 +508,20 @@ const messages: Catalogs = {
     "sh.ask.ctrlJContinue": "Ctrl+J continue in agent",
     "sh.ask.escBack": "Esc back",
 
+    // Clipboard-history popover
+    "sh.clip.title": "Clipboard",
+    "sh.clip.search": "Search entries",
+    "sh.clip.off": "Clipboard history is turned off in the shell configuration.",
+    "sh.clip.empty": "Nothing copied yet. The history lives only while the shell runs.",
+    "sh.clip.unavailable": "Cannot read the clipboard history right now.",
+    "sh.clip.mocked": "Example entries - nothing here was really copied.",
+    "sh.clip.copyFailed": "That entry was not copied back to the clipboard.",
+    "sh.clip.noMatches": "No entries match",
+    "sh.clip.moreLines": "{$n} more lines",
+    "sh.clip.deleteAria": "Delete this entry",
+    "sh.clip.clearAll": "Clear all",
+    "sh.clip.clearConfirm": "Click again to clear",
+
     // Undo popover
     "sh.undo.title": "Recent actions",
     "sh.undo.mocked": "Example actions - nothing here really ran.",
@@ -1093,6 +1107,19 @@ const messages: Catalogs = {
     "sh.ask.enterFollowUp": "Enter nachfragen",
     "sh.ask.ctrlJContinue": "Strg+J im Agenten fortsetzen",
     "sh.ask.escBack": "Esc zur\u00fcck",
+
+    "sh.clip.title": "Zwischenablage",
+    "sh.clip.search": "Einträge durchsuchen",
+    "sh.clip.off": "Der Zwischenablage-Verlauf ist in der Shell-Konfiguration ausgeschaltet.",
+    "sh.clip.empty": "Noch nichts kopiert. Der Verlauf lebt nur, solange die Shell läuft.",
+    "sh.clip.unavailable": "Der Zwischenablage-Verlauf kann gerade nicht gelesen werden.",
+    "sh.clip.mocked": "Beispieleinträge – hier wurde nichts wirklich kopiert.",
+    "sh.clip.copyFailed": "Dieser Eintrag wurde nicht in die Zwischenablage zurückkopiert.",
+    "sh.clip.noMatches": "Keine passenden Einträge",
+    "sh.clip.moreLines": "{$n} weitere Zeilen",
+    "sh.clip.deleteAria": "Diesen Eintrag löschen",
+    "sh.clip.clearAll": "Alle löschen",
+    "sh.clip.clearConfirm": "Zum Löschen erneut klicken",
 
     "sh.undo.title": "Letzte Aktionen",
     "sh.undo.mocked": "Beispielaktionen \u2013 hier ist nichts wirklich gelaufen.",
