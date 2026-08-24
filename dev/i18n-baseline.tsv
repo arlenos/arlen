@@ -1,18 +1,29 @@
+apps/calendar/src/lib/stores/calendar.ts	1:1 Jonas
+apps/calendar/src/lib/stores/calendar.ts	Call with New York
+apps/calendar/src/lib/stores/calendar.ts	Concert
+apps/calendar/src/lib/stores/calendar.ts	Dentist
+apps/calendar/src/lib/stores/calendar.ts	Design review
+apps/calendar/src/lib/stores/calendar.ts	Mara's birthday
+apps/calendar/src/lib/stores/calendar.ts	Planning breakfast
+apps/calendar/src/lib/stores/calendar.ts	Print workshop
+apps/calendar/src/lib/stores/calendar.ts	Public holiday
+apps/calendar/src/lib/stores/calendar.ts	Rent due
+apps/calendar/src/lib/stores/calendar.ts	Standup
 apps/desktop-shell/src/lib/components/GlobalMenuBar.svelte	Arlen
 apps/desktop-shell/src/lib/components/Indicator.svelte	Grow
 apps/desktop-shell/src/lib/components/Indicator.svelte	Shrink
 apps/desktop-shell/src/lib/components/NetworkIndicator.svelte	Ethernet: {}
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Ethernet
+apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	WiFi
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Legal
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Letter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
+apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
 apps/desktop-shell/src/lib/stores/consent.ts	move 8 files to the Trash
@@ -55,11 +66,10 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
-apps/harness/src/lib/components/HarnessSidebar.svelte	This removes the chat and its messages. You cannot undo this.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
-apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Image artifact
+apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/types.ts	Chart
 apps/harness/src/lib/components/artifact/types.ts	Code
 apps/harness/src/lib/components/artifact/types.ts	Diagram
@@ -88,21 +98,22 @@ apps/harness/src/lib/components/chat/GateCard.svelte	Always allow
 apps/harness/src/lib/components/chat/GateCard.svelte	Applied
 apps/harness/src/lib/components/chat/GateCard.svelte	Applied automatically
 apps/harness/src/lib/components/chat/GateCard.svelte	Auto
+apps/harness/src/lib/components/chat/GateCard.svelte	files
 apps/harness/src/lib/components/chat/GateCard.svelte	Only in this project
 apps/harness/src/lib/components/chat/GateCard.svelte	This action type generally
 apps/harness/src/lib/components/chat/GateCard.svelte	Undo
-apps/harness/src/lib/components/chat/GateCard.svelte	files
 apps/harness/src/lib/components/chat/GateCard.svelte	via
 apps/harness/src/lib/components/chat/ImportDialog.svelte	A .json file exported from a chat
 apps/harness/src/lib/components/chat/ImportDialog.svelte	Import chat
 apps/harness/src/lib/components/chat/ImportDialog.svelte	Open a chat you exported as JSON. It is added as a new conversation, so it never overwrites one you have.
 apps/harness/src/lib/components/chat/ModelPicker.svelte	cloud · egress, audited
+apps/harness/src/lib/components/chat/ModelPicker.svelte	{}k ctx
 apps/harness/src/lib/components/chat/ModelPicker.svelte	local · no egress
 apps/harness/src/lib/components/chat/ModelPicker.svelte	unavailable
-apps/harness/src/lib/components/chat/ModelPicker.svelte	{}k ctx
+apps/harness/src/lib/components/HarnessSidebar.svelte	This removes the chat and its messages. You cannot undo this.
 apps/harness/src/lib/components/mint/MintFlow.svelte	Include
-apps/harness/src/lib/components/transparency/AccessSection.svelte	While the AI is off, none of this access is active.
 apps/harness/src/lib/components/transparency/AccessSection.svelte	no data
+apps/harness/src/lib/components/transparency/AccessSection.svelte	While the AI is off, none of this access is active.
 apps/harness/src/lib/components/transparency/ActivitySection.svelte	See everything it did
 apps/harness/src/lib/components/transparency/CostSection.svelte	. Cloud use has a cost; check your provider for the rate.
 apps/harness/src/lib/components/transparency/CostSection.svelte	Cloud use has a cost. The running count is not available right now.
@@ -130,17 +141,17 @@ apps/harness/src/lib/stores/mint.ts	12 notes you saved to read
 apps/harness/src/lib/stores/mint.ts	3 items you have open
 apps/harness/src/lib/stores/mint.ts	8 places and their links
 apps/harness/src/lib/stores/mint.ts	Current selection
+apps/harness/src/lib/stores/mint.ts	notes they mention
 apps/harness/src/lib/stores/mint.ts	Project Atlas
 apps/harness/src/lib/stores/mint.ts	Reading list
-apps/harness/src/lib/stores/mint.ts	Trip 2026
-apps/harness/src/lib/stores/mint.ts	notes they mention
+apps/harness/src/lib/stores/mint.ts	their tags
 apps/harness/src/lib/stores/mint.ts	the people who wrote them
 apps/harness/src/lib/stores/mint.ts	the project and its files
-apps/harness/src/lib/stores/mint.ts	their tags
+apps/harness/src/lib/stores/mint.ts	Trip 2026
 apps/harness/src/lib/time.ts	a minute ago
-apps/harness/src/lib/time.ts	just now
 apps/harness/src/lib/time.ts	{} d ago
 apps/harness/src/lib/time.ts	{} h ago
+apps/harness/src/lib/time.ts	just now
 apps/harness/src/lib/time.ts	{} min ago
 apps/knowledge/src/lib/stores/library.ts	Attention Is All You Need
 apps/knowledge/src/lib/stores/library.ts	Conference registration confirmed
@@ -162,13 +173,14 @@ apps/knowledge/src/lib/stores/search.ts	Website redesign
 apps/knowledge/src/lib/stores/search.ts	Website redesign, 2:10 pm to 4:40 pm
 apps/knowledge/src/lib/stores/timeline.ts	Arlen OS
 apps/knowledge/src/lib/stores/timeline.ts	Website redesign
+apps/mail/src/lib/wording.ts	(no subject)
 apps/meetings/src/lib/stores/meeting.ts	Editor and meeting-notes direction
 apps/meetings/src/lib/stores/meeting.ts	Sovereignty review
 apps/meetings/src/lib/stores/meeting.ts	Weekly standup
 apps/settings/src/lib/components/AddProviderDialog.svelte	Anthropic
 apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
-apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
 apps/settings/src/lib/components/AddProviderDialog.svelte	https://api.example.com/v1
+apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
 apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
@@ -187,9 +199,9 @@ apps/settings/src/lib/stores/appSettings.ts	Appearance
 apps/settings/src/lib/stores/appSettings.ts	Arranged in the app's own window
 apps/settings/src/lib/stores/appSettings.ts	Backup folder
 apps/settings/src/lib/stores/appSettings.ts	Built-in speakers
-apps/settings/src/lib/stores/appSettings.ts	CRLF, for files shared with Windows tools
 apps/settings/src/lib/stores/appSettings.ts	Command palette
 apps/settings/src/lib/stores/appSettings.ts	Connected over Bluetooth
+apps/settings/src/lib/stores/appSettings.ts	CRLF, for files shared with Windows tools
 apps/settings/src/lib/stores/appSettings.ts	Deutsch (Österreich)
 apps/settings/src/lib/stores/appSettings.ts	Editing
 apps/settings/src/lib/stores/appSettings.ts	Editor theme
@@ -207,8 +219,8 @@ apps/settings/src/lib/stores/appSettings.ts	Ignored patterns
 apps/settings/src/lib/stores/appSettings.ts	Incremental
 apps/settings/src/lib/stores/appSettings.ts	Irregular tuning values this page cannot express as controls
 apps/settings/src/lib/stores/appSettings.ts	Keep as found
-apps/settings/src/lib/stores/appSettings.ts	LF, the norm everywhere but Windows
 apps/settings/src/lib/stores/appSettings.ts	Legacy usage pings
+apps/settings/src/lib/stores/appSettings.ts	LF, the norm everywhere but Windows
 apps/settings/src/lib/stores/appSettings.ts	Line endings
 apps/settings/src/lib/stores/appSettings.ts	Parser engine
 apps/settings/src/lib/stores/appSettings.ts	Reparse the whole file each edit; slower, simpler
@@ -241,19 +253,18 @@ apps/settings/src/lib/stores/models.ts	Names new chats. A small local model is p
 apps/settings/src/lib/stores/models.ts	Runs the tasks you have turned on.
 apps/settings/src/lib/stores/models.ts	Your machine can run models up to about 8B at a good speed.
 apps/settings/src/lib/stores/printers.ts	Network
-apps/settings/src/lib/stores/theme.ts	Fira Code
-apps/settings/src/lib/stores/theme.ts	Inter
-apps/settings/src/lib/stores/theme.ts	JetBrains Mono
 apps/settings/src/lib/stores/themeSystem.ts	Adwaita
 apps/settings/src/lib/stores/themeSystem.ts	Bibata
 apps/settings/src/lib/stores/themeSystem.ts	Capitaine
 apps/settings/src/lib/stores/themeSystem.ts	Numix
 apps/settings/src/lib/stores/themeSystem.ts	Papirus
 apps/settings/src/lib/stores/themeSystem.ts	Tela
+apps/settings/src/lib/stores/theme.ts	Fira Code
+apps/settings/src/lib/stores/theme.ts	Inter
+apps/settings/src/lib/stores/theme.ts	JetBrains Mono
 apps/settings/src/routes/about/+page.svelte	Arlen OS
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
-apps/settings/src/routes/appearance/system/+page.svelte	README.md
 apps/settings/src/routes/appearance/system/+page.svelte	arlen@desktop
 apps/settings/src/routes/appearance/system/+page.svelte	build
 apps/settings/src/routes/appearance/system/+page.svelte	build failed
@@ -261,9 +272,10 @@ apps/settings/src/routes/appearance/system/+page.svelte	call
 apps/settings/src/routes/appearance/system/+page.svelte	deprecated
 apps/settings/src/routes/appearance/system/+page.svelte	docs
 apps/settings/src/routes/appearance/system/+page.svelte	error:
+apps/settings/src/routes/appearance/system/+page.svelte	README.md
+apps/settings/src/routes/appearance/system/+page.svelte	~/src
 apps/settings/src/routes/appearance/system/+page.svelte	src
 apps/settings/src/routes/appearance/system/+page.svelte	warning:
-apps/settings/src/routes/appearance/system/+page.svelte	~/src
 apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
 apps/settings/src/routes/apps/[id]/+page.svelte	{} GB
 apps/settings/src/routes/apps/[id]/+page.svelte	{} MB
@@ -303,6 +315,7 @@ apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} GB
 apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} MB
 apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} GB
 apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} MB
+apps/system-monitor/src/lib/stores/detail.ts	files you opened this week
 apps/system-monitor/src/lib/stores/detail.ts	It answers your questions from the graph.
 apps/system-monitor/src/lib/stores/detail.ts	It can reach the folders you open in it.
 apps/system-monitor/src/lib/stores/detail.ts	It can use the network and your Downloads folder.
@@ -310,7 +323,6 @@ apps/system-monitor/src/lib/stores/detail.ts	It can use the network, the microph
 apps/system-monitor/src/lib/stores/detail.ts	It maintains the knowledge graph.
 apps/system-monitor/src/lib/stores/detail.ts	It reads from the knowledge graph within its granted scope and writes nothing without your say.
 apps/system-monitor/src/lib/stores/detail.ts	It runs with limited access and holds nothing sensitive.
-apps/system-monitor/src/lib/stores/detail.ts	files you opened this week
 apps/system-monitor/src/lib/stores/detail.ts	notes and their tags
 apps/system-monitor/src/lib/stores/detail.ts	read and write the graph
 apps/system-monitor/src/lib/stores/detail.ts	read recent files
@@ -320,8 +332,8 @@ apps/system-monitor/src/lib/stores/detail.ts	the query tier you set
 apps/system-monitor/src/lib/stores/detail.ts	the whole graph
 apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
 apps/viewers/src/lib/mock.ts	Nightswim
-apps/viewers/src/routes/+page.svelte	TypeError: undefined is not an object (evaluating 'window.__TAURI_INTERNALS__.invoke')
 apps/viewers/src/routes/+page.svelte	decode-image: unsupported JPEG progressive scan
+apps/viewers/src/routes/+page.svelte	TypeError: undefined is not an object (evaluating 'window.__TAURI_INTERNALS__.invoke')
 apps/viewers/src/routes/+page.svelte	unsupported media kind: {}
 sdk/ui-kit/src/lib/components/browser/format.ts	{} PB
 sdk/ui-kit/src/lib/components/ui/add-remove-list/add-remove-list.svelte	No items yet.
