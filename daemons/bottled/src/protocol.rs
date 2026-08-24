@@ -54,6 +54,15 @@ pub struct BottleView {
 pub enum Response {
     Bottles {
         bottles: Vec<BottleView>,
+        /// The bottles that are there and did not read.
+        ///
+        /// CARRIED, not dropped. `Listing` keeps these apart from the ones that
+        /// read cleanly for the reason its own doc gives - so the surface can say
+        /// so - and the first cut of this answer threw them away, which turns "one
+        /// of your bottles is broken" into "you have no bottles". Measured against
+        /// a bottle.toml that did not parse: the list came back empty and cheerful
+        /// while a Health ask on the same id said it could not be read.
+        unreadable: Vec<String>,
     },
     /// What the prefix on disk says, against what the bottle says it is.
     Health {
@@ -70,9 +79,7 @@ pub enum Response {
     },
     /// The ask could not be answered. A token, not prose: the window writes the
     /// sentence, in the reader's language.
-    Refused {
-        problem: Problem,
-    },
+    Refused { problem: Problem },
 }
 
 /// Why an ask was refused.
@@ -113,6 +120,19 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Response {
         Request::ListBottles => match list_bottles(bottles_dir) {
             Ok(listing) => Response::Bottles {
                 bottles: listing.bottles.iter().map(view).collect(),
+                unreadable: listing
+                    .unreadable
+                    .iter()
+                    .map(|(path, _why)| {
+                        // The directory name is the bottle id; the reason stays
+                        // here rather than travelling, because it is a parser's
+                        // words and the window writes the sentence.
+                        path.parent()
+                            .and_then(|p| p.file_name())
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| path.to_string_lossy().into_owned())
+                    })
+                    .collect(),
             },
             Err(_) => Response::Refused {
                 problem: Problem::Unreadable,
@@ -157,8 +177,32 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(
             handle_request(dir.path(), &Request::ListBottles),
-            Response::Bottles { bottles: vec![] },
+            Response::Bottles {
+                bottles: vec![],
+                unreadable: vec![]
+            },
             "a machine with no bottles has none, which is not a failure to read them"
+        );
+    }
+
+    #[test]
+    fn a_bottle_that_will_not_read_is_named_rather_than_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("broken")).unwrap();
+        std::fs::write(dir.path().join("broken/bottle.toml"), "id = [not toml").unwrap();
+
+        let Response::Bottles {
+            bottles,
+            unreadable,
+        } = handle_request(dir.path(), &Request::ListBottles)
+        else {
+            panic!("a list ask is answered with a list");
+        };
+        assert!(bottles.is_empty());
+        assert_eq!(
+            unreadable,
+            vec!["broken".to_string()],
+            "silently, this reads as a machine with no bottles at all"
         );
     }
 
