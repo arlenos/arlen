@@ -55,6 +55,9 @@
   /// The open conversation: its subject and its messages in sent order. One
   /// message is the common case and renders as the plain reading surface.
   let reading = $state<{ subject: string; messages: Message[] } | null>(null);
+  /// A row that was clicked and did not open. Only ever true under a host: with
+  /// no host there is nothing to have refused, and the sample stands in.
+  let readFailed = $state(false);
   let composing = $state(false);
   let preset = $state<{ to: string; subject: string; body: string }>({ to: "", subject: "", body: "" });
 
@@ -169,7 +172,15 @@
     void Promise.all(mem.map((e) => openMessage(e.id))).then((list) => {
       if (!(selected.size === 1 && selected.has(id))) return;
       const messages = list.filter((m): m is Message => m !== null);
-      if (messages.length === 0) return;
+      if (messages.length === 0) {
+        // Nothing came back. This used to return in silence, which read as "the
+        // row you clicked has no message in it" - and before that it showed a
+        // fixture, which read as somebody else's mail.
+        readFailed = tauriAvailable;
+        reading = null;
+        return;
+      }
+      readFailed = false;
       reading = { subject: mem[0].subject, messages };
     });
   }
@@ -380,6 +391,11 @@
           </div>
         {:else if fileOpen && $openedFile}
           <MessageView message={$openedFile} />
+        {:else if readFailed}
+          <div class="center">
+            <Mail size={28} strokeWidth={1.5} aria-hidden="true" />
+            <p class="note" role="alert">{$t("ml.openFailed")}</p>
+          </div>
         {:else if selected.size === 1 && reading}
           {#if reading.messages.length === 1}
             <MessageView message={reading.messages[0]} />

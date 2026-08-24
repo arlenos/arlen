@@ -10,6 +10,7 @@
 /// the whole client drives; live they will ride `mail_move`/`mail_delete`/
 /// `mail_send` when the account backend lands.
 import { derived, get, writable } from "svelte/store";
+import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 /// The message DTO exactly as `mail_read` serialises it (snake_case, no renames).
@@ -322,8 +323,7 @@ export async function loadMailbox(): Promise<void> {
     envelopes.set(lists.flat());
     mailboxMocked.set(false);
   } catch {
-    const hosted = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (hosted) {
+    if (tauriAvailable) {
       // A real host with no mailbox backend: an unconnected mailbox, not a
       // pretend one. The launch path (`mail_read`) still works beside this.
       folders.set([]);
@@ -338,11 +338,17 @@ export async function loadMailbox(): Promise<void> {
 }
 
 /// Open one message. Live: the intended `mail_open`; fixture: the local map.
+///
+/// THE SAME SPLIT AS `loadMailbox`, which this was missing. A real session whose
+/// open failed got a fixture message back - somebody else's words, rendered as
+/// the message you clicked. Under a host the answer is now nothing, and the
+/// surface says the message could not be opened; the sample only stands in where
+/// there is no host to have asked.
 export async function openMessage(id: string): Promise<Message | null> {
   try {
     return await invoke<Message>("mail_open", { id });
   } catch {
-    return FIXTURE_MESSAGES[id] ?? null;
+    return tauriAvailable ? null : (FIXTURE_MESSAGES[id] ?? null);
   }
 }
 
