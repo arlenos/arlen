@@ -21,8 +21,8 @@
 //! repeats and it cannot yet say when.
 
 pub mod reminders;
-pub mod view;
 pub mod rrule;
+pub mod view;
 pub mod write;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
@@ -227,7 +227,10 @@ fn parse_property(line: &str) -> Option<Property> {
     let params = parts
         .filter_map(|p| {
             let (k, v) = p.split_once('=')?;
-            Some((k.trim().to_uppercase(), v.trim().trim_matches('"').to_string()))
+            Some((
+                k.trim().to_uppercase(),
+                v.trim().trim_matches('"').to_string(),
+            ))
         })
         .collect();
     Some(Property {
@@ -261,8 +264,14 @@ fn unescape(value: &str) -> String {
 /// Read a DATE or DATE-TIME value into the form the file wrote it.
 fn parse_time(prop: &Property) -> Option<CalTime> {
     let v = prop.value.trim();
-    if prop.param("VALUE").is_some_and(|p| p.eq_ignore_ascii_case("DATE")) || v.len() == 8 {
-        return NaiveDate::parse_from_str(v, "%Y%m%d").ok().map(CalTime::Day);
+    if prop
+        .param("VALUE")
+        .is_some_and(|p| p.eq_ignore_ascii_case("DATE"))
+        || v.len() == 8
+    {
+        return NaiveDate::parse_from_str(v, "%Y%m%d")
+            .ok()
+            .map(CalTime::Day);
     }
     if let Some(stripped) = v.strip_suffix('Z') {
         return NaiveDateTime::parse_from_str(stripped, "%Y%m%dT%H%M%S")
@@ -381,6 +390,60 @@ fn shift(start: &CalTime, seconds: i64) -> CalTime {
 /// Unknown components (VTODO, VJOURNAL, VTIMEZONE) are skipped rather than
 /// refused: a file holding a timezone definition beside its events is the normal
 /// case, and refusing the file would lose the events.
+/// What a calendar file says about ITSELF, as against the events in it.
+///
+/// The properties sit in the VCALENDAR block before the first VEVENT, and a file
+/// need not carry any of them - most do not. `None` is therefore the ordinary
+/// answer and not a failure: a calendar with no name is displayed by its file
+/// name, and one with no colour gets whatever the surface picks.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CalendarProperties {
+    /// `X-WR-CALNAME`, the de-facto name every calendar app writes.
+    pub name: Option<String>,
+    /// The colour, from RFC 7986 `COLOR` or Apple's `X-APPLE-CALENDAR-COLOR`.
+    ///
+    /// RFC 7986 names a CSS3 colour word; Apple writes `#rrggbbaa`. Both are
+    /// returned verbatim - deciding what a colour word looks like is the
+    /// renderer's business, and translating one here would be this file guessing
+    /// at a palette.
+    pub color: Option<String>,
+}
+
+/// Read a calendar's own properties, stopping at the first component.
+///
+/// Stops rather than scanning the file: an event may carry its own `COLOR`, and
+/// reading that as the calendar's would paint every calendar the colour of
+/// whichever event happened to be first.
+pub fn calendar_properties(text: &str) -> CalendarProperties {
+    let mut out = CalendarProperties::default();
+    for line in unfold(text) {
+        let upper = line.to_ascii_uppercase();
+        if upper.starts_with("BEGIN:V") && !upper.starts_with("BEGIN:VCALENDAR") {
+            break;
+        }
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        // The property name may carry parameters (`COLOR;X=1:red`), which are not
+        // part of the name.
+        let name = name.split(';').next().unwrap_or("").to_ascii_uppercase();
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        match name.as_str() {
+            "X-WR-CALNAME" if out.name.is_none() => out.name = Some(value.to_string()),
+            // RFC 7986 wins over the Apple extension when a file carries both:
+            // it is the standard one, and a file with both is a file written by
+            // something that knew about the standard.
+            "COLOR" => out.color = Some(value.to_string()),
+            "X-APPLE-CALENDAR-COLOR" if out.color.is_none() => out.color = Some(value.to_string()),
+            _ => {}
+        }
+    }
+    out
+}
+
 pub fn parse_events(text: &str) -> Result<Vec<Event>, IcsError> {
     let lines = unfold(text);
     if !lines
@@ -498,6 +561,37 @@ pub fn parse_events(text: &str) -> Result<Vec<Event>, IcsError> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_calendar_names_and_colours_itself_or_says_nothing() {
+        let plain = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n";
+        assert_eq!(calendar_properties(plain), CalendarProperties::default());
+
+        let named = "BEGIN:VCALENDAR\r\nX-WR-CALNAME:Arbeit\r\n\
+                     X-APPLE-CALENDAR-COLOR:#FF2968\r\nEND:VCALENDAR\r\n";
+        let p = calendar_properties(named);
+        assert_eq!(p.name.as_deref(), Some("Arbeit"));
+        assert_eq!(p.color.as_deref(), Some("#FF2968"));
+
+        // Both spellings present: the standard one wins, whichever order they
+        // are written in.
+        let both = "BEGIN:VCALENDAR\r\nX-APPLE-CALENDAR-COLOR:#FF2968\r\n\
+                    COLOR:turquoise\r\nEND:VCALENDAR\r\n";
+        assert_eq!(
+            calendar_properties(both).color.as_deref(),
+            Some("turquoise")
+        );
+
+        // An event's own colour is not the calendar's. Without the stop at the
+        // first component every calendar would take the colour of whichever
+        // event came first.
+        let event_coloured = "BEGIN:VCALENDAR\r\nX-WR-CALNAME:Privat\r\n\
+                              BEGIN:VEVENT\r\nCOLOR:red\r\nUID:1\r\n\
+                              END:VEVENT\r\nEND:VCALENDAR\r\n";
+        let p = calendar_properties(event_coloured);
+        assert_eq!(p.name.as_deref(), Some("Privat"));
+        assert_eq!(p.color, None);
+    }
+
     const WITH_ALARM: &str = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a@x\r\n\
 SUMMARY:Standup\r\nDTSTART:20260819T090000Z\r\nDTEND:20260819T091500Z\r\n\
 BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nDURATION:PT5M\r\nREPEAT:3\r\n\
@@ -509,26 +603,47 @@ END:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR";
         // VALARM's DURATION is how often it repeats, and reading it as the
         // event's would end a 15-minute standup after 5.
         let ev = &parse_events(WITH_ALARM).expect("parses")[0];
-        assert_eq!(ev.end, Some(CalTime::Utc(
-            chrono::NaiveDate::from_ymd_opt(2026, 8, 19).unwrap().and_hms_opt(9, 15, 0).unwrap()
-        )));
+        assert_eq!(
+            ev.end,
+            Some(CalTime::Utc(
+                chrono::NaiveDate::from_ymd_opt(2026, 8, 19)
+                    .unwrap()
+                    .and_hms_opt(9, 15, 0)
+                    .unwrap()
+            ))
+        );
         assert_eq!(ev.alarms.len(), 1);
         assert_eq!(ev.alarms[0].action.as_deref(), Some("DISPLAY"));
         assert_eq!(
             ev.alarms[0].trigger,
-            Trigger::Relative { seconds: -900, related: Related::Start }
+            Trigger::Relative {
+                seconds: -900,
+                related: Related::Start
+            }
         );
     }
 
     #[test]
     fn a_trigger_says_which_end_it_counts_from_and_when_it_is_a_fixed_time() {
-        let ics = |t: &str| format!("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\n\
+        let ics = |t: &str| {
+            format!(
+                "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\n\
 DTSTART:20260819T090000Z\r\nDTEND:20260819T100000Z\r\nBEGIN:VALARM\r\n{t}\r\n\
-END:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR");
-        let one = |t: &str| parse_events(&ics(t)).expect("parses")[0].alarms.first().cloned();
+END:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR"
+            )
+        };
+        let one = |t: &str| {
+            parse_events(&ics(t)).expect("parses")[0]
+                .alarms
+                .first()
+                .cloned()
+        };
         assert_eq!(
             one("TRIGGER;RELATED=END:PT5M").map(|a| a.trigger),
-            Some(Trigger::Relative { seconds: 300, related: Related::End })
+            Some(Trigger::Relative {
+                seconds: 300,
+                related: Related::End
+            })
         );
         assert!(matches!(
             one("TRIGGER;VALUE=DATE-TIME:20260819T083000Z").map(|a| a.trigger),
@@ -547,7 +662,10 @@ END:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR");
         // staying on the one the file wrote.
         let start = Utc.with_ymd_and_hms(2026, 8, 26, 9, 0, 0).unwrap();
         let times = when::alarm_times(ev, start, Some(start), chrono_tz::Tz::UTC);
-        assert_eq!(times, vec![Utc.with_ymd_and_hms(2026, 8, 26, 8, 45, 0).unwrap()]);
+        assert_eq!(
+            times,
+            vec![Utc.with_ymd_and_hms(2026, 8, 26, 8, 45, 0).unwrap()]
+        );
     }
 
     #[test]
@@ -560,7 +678,6 @@ BEGIN:VALARM\r\nTRIGGER;RELATED=END:PT5M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCAL
         // Folding it onto the start would ring at a different time than written.
         assert!(when::alarm_times(ev, start, None, chrono_tz::Tz::UTC).is_empty());
     }
-
 
     const SAMPLE: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:a@arlen\r\nSUMMARY:Standup\r\nDTSTART;TZID=Europe/Vienna:20260819T090000\r\nDTEND;TZID=Europe/Vienna:20260819T091500\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
 
@@ -602,7 +719,10 @@ BEGIN:VALARM\r\nTRIGGER;RELATED=END:PT5M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCAL
                    SUMMARY:A title long enough that a writer would\r\n  fold it here\r\n\
                    END:VEVENT\r\nEND:VCALENDAR\r\n";
         let events = parse_events(ics).expect("a calendar");
-        assert_eq!(events[0].summary, "A title long enough that a writer would fold it here");
+        assert_eq!(
+            events[0].summary,
+            "A title long enough that a writer would fold it here"
+        );
     }
 
     #[test]
@@ -637,7 +757,11 @@ BEGIN:VALARM\r\nTRIGGER;RELATED=END:PT5M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCAL
         assert_eq!(parse_duration("P1W"), Some(604_800));
         assert_eq!(parse_duration("PT1H30M10S"), Some(5_410));
         assert_eq!(parse_duration("-PT15M"), Some(-900));
-        assert_eq!(parse_duration("PT15"), None, "a number with no unit is not a duration");
+        assert_eq!(
+            parse_duration("PT15"),
+            None,
+            "a number with no unit is not a duration"
+        );
         assert_eq!(parse_duration("1H"), None, "no P prefix");
     }
 
@@ -655,8 +779,10 @@ BEGIN:VALARM\r\nTRIGGER;RELATED=END:PT5M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCAL
     /// A colon inside a quoted parameter must not end the parameter section.
     #[test]
     fn a_quoted_parameter_containing_a_colon_does_not_split_the_line() {
-        let p = parse_property(r#"DTSTART;ALTREP="http://example.com:80/x";TZID=Europe/Vienna:20260819T090000"#)
-            .expect("a property");
+        let p = parse_property(
+            r#"DTSTART;ALTREP="http://example.com:80/x";TZID=Europe/Vienna:20260819T090000"#,
+        )
+        .expect("a property");
         assert_eq!(p.name, "DTSTART");
         assert_eq!(p.value, "20260819T090000");
         assert_eq!(p.param("TZID"), Some("Europe/Vienna"));
@@ -796,6 +922,7 @@ pub mod when {
 
     #[cfg(test)]
     mod tests {
+
         use super::*;
         use crate::parse_events;
         use chrono::NaiveDate;
@@ -804,7 +931,10 @@ pub mod when {
 
         fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
             Utc.from_utc_datetime(
-                &NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, min, 0).unwrap(),
+                &NaiveDate::from_ymd_opt(y, m, d)
+                    .unwrap()
+                    .and_hms_opt(h, min, 0)
+                    .unwrap(),
             )
         }
 
@@ -814,10 +944,16 @@ pub mod when {
         #[test]
         fn a_zoned_time_resolves_through_its_own_zone() {
             let t = CalTime::Zoned {
-                at: NaiveDate::from_ymd_opt(2026, 8, 19).unwrap().and_hms_opt(9, 0, 0).unwrap(),
+                at: NaiveDate::from_ymd_opt(2026, 8, 19)
+                    .unwrap()
+                    .and_hms_opt(9, 0, 0)
+                    .unwrap(),
                 tzid: VIENNA.into(),
             };
-            assert_eq!(instant(&t, VIENNA.parse().unwrap()), Some(at(2026, 8, 19, 7, 0)));
+            assert_eq!(
+                instant(&t, VIENNA.parse().unwrap()),
+                Some(at(2026, 8, 19, 7, 0))
+            );
         }
 
         /// A zone this machine has never heard of is refused. Falling back to the
@@ -825,7 +961,10 @@ pub mod when {
         #[test]
         fn an_unknown_zone_has_no_instant() {
             let t = CalTime::Zoned {
-                at: NaiveDate::from_ymd_opt(2026, 8, 19).unwrap().and_hms_opt(9, 0, 0).unwrap(),
+                at: NaiveDate::from_ymd_opt(2026, 8, 19)
+                    .unwrap()
+                    .and_hms_opt(9, 0, 0)
+                    .unwrap(),
                 tzid: "Mars/Olympus".into(),
             };
             assert_eq!(instant(&t, VIENNA.parse().unwrap()), None);
@@ -837,9 +976,15 @@ pub mod when {
         #[test]
         fn a_floating_time_follows_the_reader() {
             let t = CalTime::Floating(
-                NaiveDate::from_ymd_opt(2026, 8, 19).unwrap().and_hms_opt(9, 0, 0).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 8, 19)
+                    .unwrap()
+                    .and_hms_opt(9, 0, 0)
+                    .unwrap(),
             );
-            assert_eq!(instant(&t, VIENNA.parse().unwrap()), Some(at(2026, 8, 19, 7, 0)));
+            assert_eq!(
+                instant(&t, VIENNA.parse().unwrap()),
+                Some(at(2026, 8, 19, 7, 0))
+            );
             assert_eq!(
                 instant(&t, "Asia/Tokyo".parse().unwrap()),
                 Some(at(2026, 8, 19, 0, 0)),
@@ -864,7 +1009,10 @@ pub mod when {
         #[test]
         fn a_wall_clock_time_its_zone_skips_has_no_instant() {
             let t = CalTime::Floating(
-                NaiveDate::from_ymd_opt(2026, 3, 29).unwrap().and_hms_opt(2, 30, 0).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 3, 29)
+                    .unwrap()
+                    .and_hms_opt(2, 30, 0)
+                    .unwrap(),
             );
             assert_eq!(instant(&t, VIENNA.parse().unwrap()), None);
         }
@@ -891,7 +1039,12 @@ pub mod when {
                        BEGIN:VEVENT\nUID:a\nDTSTART:20260819T071000Z\nEND:VEVENT\n\
                        END:VCALENDAR\n";
             let events = parse_events(ics).expect("a calendar");
-            let soon = upcoming(&events, at(2026, 8, 19, 7, 0), VIENNA.parse().unwrap(), 3600);
+            let soon = upcoming(
+                &events,
+                at(2026, 8, 19, 7, 0),
+                VIENNA.parse().unwrap(),
+                3600,
+            );
             assert_eq!(
                 soon.iter().map(|(e, _)| e.uid.as_str()).collect::<Vec<_>>(),
                 vec!["a", "b"]
@@ -905,7 +1058,13 @@ pub mod when {
             let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\n\
                        DTSTART;TZID=Mars/Olympus:20260819T071000\nEND:VEVENT\nEND:VCALENDAR\n";
             let events = parse_events(ics).expect("a calendar");
-            assert!(upcoming(&events, at(2026, 8, 19, 7, 0), VIENNA.parse().unwrap(), 3600).is_empty());
+            assert!(upcoming(
+                &events,
+                at(2026, 8, 19, 7, 0),
+                VIENNA.parse().unwrap(),
+                3600
+            )
+            .is_empty());
         }
     }
 }
