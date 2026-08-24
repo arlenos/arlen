@@ -70,7 +70,9 @@
 <div class="slot" bind:this={el} data-page={page}>
   {#if stateNow?.failure}
     <div class="fallback" data-selectable>
-      <p class="quiet">{$t("pdf.pageFailed", { reason: stateNow.failure })}</p>
+      <p class="quiet">
+        {stateNow.failure === "no-renderer" ? $t("pdf.pageNoRenderer") : $t("pdf.pageFailed")}
+      </p>
       <!-- The words, when the picture cannot be had. Said to be the text and
            not the page, because it has none of the layout: a table comes back
            as its cells in reading order and a two-column article reads

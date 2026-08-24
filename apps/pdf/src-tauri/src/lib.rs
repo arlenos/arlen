@@ -138,6 +138,17 @@ pub struct PageImage {
 /// Where the sandboxed page renderer lives: `ARLEN_PDF_WORKER_DIR` if set (the
 /// dev and dist override), else the directory of the running reader, beside
 /// which it ships.
+/// The page renderer, a separate binary beside the app.
+const WORKER_BIN: &str = "arlen-pdf-decode-page";
+
+/// No renderer is installed on this machine, so no page can be drawn. Expected
+/// today rather than exceptional: the worker links a rasteriser no image ships.
+const NO_RENDERER: &str = "no-renderer";
+
+/// The renderer was there and would not draw this page. What went wrong is in the
+/// log, deliberately: the detail is for whoever debugs it, not for the reader.
+const REFUSED: &str = "refused";
+
 fn worker_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("ARLEN_PDF_WORKER_DIR") {
         return PathBuf::from(dir);
@@ -165,13 +176,27 @@ fn pdf_page_image(page: usize, scale: f32, state: tauri::State<'_, Open>) -> Res
         held.as_ref().ok_or_else(no_document)?.bytes.clone()
     };
     let dir = worker_dir();
+    // The one expected absence, answered as itself. `arlen-pdf-decode-page` is a
+    // separate binary and no image stages it yet, so without this the caller got
+    // `spawn bwrap: No such file or directory (os error 2)` - which the window
+    // then printed verbatim over every page of the document, errno and all. A
+    // routine condition travels as a token and the window writes the sentence.
+    if !dir.join(WORKER_BIN).is_file() {
+        return Err(NO_RENDERER.to_string());
+    }
     let frame = arlen_worker_sandbox::run_confined_worker(
         &dir.to_string_lossy(),
-        "arlen-pdf-decode-page",
+        WORKER_BIN,
         arlen_worker_sandbox::WorkerProfile::SINGLE_THREADED,
         &[page.to_string(), scale.to_string()],
         &bytes,
-    )?;
+    )
+    .map_err(|e| {
+        // Kept out of the surface for the same reason: it names bwrap and carries
+        // an errno. The reader shows its own sentence and the detail goes here.
+        log::warn!("page {page} could not be drawn: {e}");
+        REFUSED.to_string()
+    })?;
     decode_frame(&frame)
 }
 
