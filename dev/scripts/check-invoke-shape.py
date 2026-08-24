@@ -503,6 +503,20 @@ DEAD_INVOKES: dict[str, str] = {
     # is a subsystem and not a command. `print_job_retry` was the fourth and went
     # the other way: IPP Restart-Job on your own job needs no new privilege, so
     # `PrintBackend` grew a sixth operation and the Resume button works.
+    # the mailbox MODEL, which `mail-app.md` §6 leaves open: what a folder is on
+    # this machine, and what an id names. Not a missing function - a shape nobody
+    # has decided, and inventing one in a Tauri command would decide it by
+    # accident. The store already answers a real host with an empty, honestly
+    # unconnected mailbox rather than a sample - planner, mail-app.md §6
+    "mail_folders": "the mailbox model is undecided (mail-app.md §6); the store answers a real host with an unconnected mailbox rather than a sample",
+    "mail_list": "the mailbox model is undecided (mail-app.md §6); the store answers a real host with an unconnected mailbox rather than a sample",
+    "mail_open": "the mailbox model is undecided (mail-app.md §6); the store answers a real host with an unconnected mailbox rather than a sample",
+    # `shared.Person` has an owner on paper (`org.arlen.contacts`) and a decided
+    # contract - mail READS people and never owns them - but no producer: no
+    # contacts surface and no CardDAV bridge writes one yet, so the command would
+    # answer "nobody" to every address it was ever asked. It lands with the first
+    # thing that puts a person in the graph - coder, contacts-decision.md
+    "mail_sender_person": "shared.Person has a decided contract and no producer yet; the command would answer nobody to every address until contacts or the CardDAV bridge writes one",
     # dictation has no backend at all yet; the badge was built against the intended contract - needs a decision on whether dictation is in scope
     "dictation_status": "dictation has no backend at all yet; the badge was built against the intended contract",
     "stop_dictation": "dictation has no backend at all yet; the badge was built against the intended contract",
