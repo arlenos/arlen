@@ -465,7 +465,7 @@ pub fn delete_event(
         in_event = false;
 
         if !block_has_uid(&block, uid) {
-            out.extend(block.drain(..));
+            out.append(&mut block);
             continue;
         }
         touched = true;
@@ -481,11 +481,11 @@ pub fn delete_event(
                     block.clear();
                 } else if block_recurrence_id(&block).is_some() {
                     // A correction for another day is not this occurrence.
-                    out.extend(block.drain(..));
+                    out.append(&mut block);
                 } else {
                     let at = block.len() - 1;
                     block.insert(at, format!("EXDATE;VALUE=DATE:{stamp}"));
-                    out.extend(block.drain(..));
+                    out.append(&mut block);
                 }
             }
             Scope::Following => {
@@ -494,10 +494,10 @@ pub fn delete_event(
                     // A correction on or after the cut is part of what is ending.
                     block.clear();
                 } else if block_recurrence_id(&block).is_some() {
-                    out.extend(block.drain(..));
+                    out.append(&mut block);
                 } else {
                     end_rule_before(&mut block, stamp);
-                    out.extend(block.drain(..));
+                    out.append(&mut block);
                 }
             }
         }
