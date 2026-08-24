@@ -113,6 +113,38 @@ impl UndoInterface {
         Ok(serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()))
     }
 
+    /// The recorded chain behind one action, as JSON: the steps a disclosure shows
+    /// under a row.
+    ///
+    /// `op_id` is a lookup key, exactly as in `enact`: the steps come from the
+    /// signed log and the ledger, never from anything the caller supplies.
+    ///
+    /// Every failure is an ERROR and none of them is an empty list, which is the
+    /// one thing this method must not return by accident. `recent` may hand back a
+    /// row with no description because the action is still undoable and saying so
+    /// is its job; a disclosure has the opposite duty. Somebody opened it to see
+    /// the record, so an empty `steps` has to mean the ledger holds nothing
+    /// further - and if it were also what an unreadable ledger looked like, the
+    /// panel would state that on a read that never happened.
+    async fn detail(
+        &self,
+        op_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        admitted("detail", &header, connection).await?;
+        let detail = undo_history::detail_of(
+            &arlen_ai_undo_proto::socket_path(),
+            &undo_history::LedgerChains::at_default_socket(),
+            &op_id,
+            RECENT_LIMIT,
+        )
+        .await
+        .map_err(zbus::fdo::Error::Failed)?;
+        serde_json::to_string(&detail)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("the record could not be encoded: {e}")))
+    }
+
     /// Reverse the action with this operation id, returning a one-word outcome.
     ///
     /// The inverse comes from the signed log, never from the caller: `op_id` is a
