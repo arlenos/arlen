@@ -1,11 +1,13 @@
 # The calendar's profile, under the uid it applies to, like every other app here.
 #
 # NARROW BY CONSTRUCTION, because the app is narrow: it reads the `.ics` files in
-# one directory and shows them. It writes in exactly one place - keeping an opened
-# invitation copies it into that same directory, which is why the `custom` entry
-# below is there and bound writable. It does not sync, it reaches no network, and
-# it reads nothing from the knowledge graph - so there is no `[graph]` section at
-# all rather than an empty one, which would be a different statement.
+# one directory and shows them. It writes in exactly one PLACE and now for two
+# reasons - keeping an opened invitation copies it into that directory, and since
+# 24 August `calendar_create_event` writes a new event there as its own file.
+# That is why the `custom` entry below is there and bound writable. It does not
+# sync, it reaches no network, and it reads nothing from the knowledge graph - so
+# there is no `[graph]` section at all rather than an empty one, which would be a
+# different statement.
 #
 # This paragraph said "it does not write" until the import landed, while the note
 # further down already described the write. A summary that contradicts the detail
