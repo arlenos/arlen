@@ -129,6 +129,8 @@ arlen-permissions = { path = "../../../sdk/permissions" }
 # transport lives in the broker's lib.
 arlen-consent-broker = { path = "../../../daemons/consent-broker" }
 capsuled = { path = "../../../daemons/capsuled" }
+# The Windows-app runtime: the panel reads its bottles over the daemon socket.
+arlen-wine-core = { path = "../../../daemons/bottled" }
 
 [dev-dependencies]
 tempfile = "3"

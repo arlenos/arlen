@@ -356,7 +356,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "clear_bottle_caches": "bottle cache clearing (surface off the navigation)",
         "delete_bottle": "deleting a bottle (surface off the navigation)",
         "install_windows_app": "installing a Windows app (surface off the navigation)",
-        "list_bottles": "the bottle list (surface off the navigation)",
         "set_bottle_config": "bottle settings (surface off the navigation)",
         "set_windows_defaults": "the Windows-app defaults (surface off the navigation)",
         # The four printer entries that stood here are gone rather than fixed, and
