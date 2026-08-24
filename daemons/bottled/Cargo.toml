@@ -29,6 +29,9 @@ arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }
 # every other broker in this tree authenticates with, rather than a second
 # hand-rolled credential read.
 arlen-permissions = { path = "../../sdk/permissions" }
+# Forgetting a bottle throws away what somebody installed, so it goes in the
+# ledger before it happens and is refused when the ledger cannot take it.
+audit-proto = { path = "../../contracts/audit-proto" }
 serde_json = "1"
 tokio = { version = "1", features = ["net", "io-util", "rt-multi-thread", "macros", "signal", "process"] }
 tracing = "0.1"
