@@ -212,7 +212,8 @@
   .notif-group-dot {
     width: 6px;
     height: 6px;
-    border-radius: var(--radius-full, 9999px);
+    /* Chip radius, not a circle: the house dot family. */
+    border-radius: var(--radius-chip, 4px);
     background: var(--color-accent);
     flex-shrink: 0;
   }
