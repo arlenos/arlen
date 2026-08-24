@@ -132,6 +132,74 @@ pub fn vcalendar(event: &NewEvent) -> String {
     format!("{}\r\n", folded.join("\r\n"))
 }
 
+/// Set a calendar's own `COLOR`, leaving everything else where it was.
+///
+/// LINE SURGERY, not a re-serialise. The file is somebody's calendar and may
+/// carry properties, comments in the form of X- lines, and events this crate does
+/// not model; writing back a parsed-and-regenerated file would quietly drop all of
+/// it. So this replaces the one line if it is there and inserts it if it is not,
+/// and touches nothing else.
+///
+/// The insert goes after `BEGIN:VCALENDAR` rather than at the end of the header:
+/// it must land before the first component, and that is the only position that is
+/// certainly before one.
+///
+/// Returns `None` when the text is not a calendar - no `BEGIN:VCALENDAR` line at
+/// all - because writing a colour into a file that is not one would make it
+/// neither.
+pub fn set_calendar_color(text: &str, color: &str) -> Option<String> {
+    // The value travels into a line-based format, so a newline in it would forge
+    // a property. Refused rather than escaped: ICS has no escape for this
+    // position, and a colour with a line break in it is not a colour.
+    if color.contains(['\r', '\n']) || color.trim().is_empty() {
+        return None;
+    }
+    let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut out: Vec<String> = Vec::new();
+    // Two states, kept apart because conflating them was the first bug here: the
+    // calendar's own header is what lies BETWEEN `BEGIN:VCALENDAR` and the first
+    // component, and only a COLOR in there is the calendar's.
+    let mut in_header = false;
+    let mut seen_calendar = false;
+    let mut wrote = false;
+    for raw in text.split('\n') {
+        let line = raw.strip_suffix('\r').unwrap_or(raw);
+        let upper = line.to_ascii_uppercase();
+
+        if in_header && (upper.starts_with("COLOR:") || upper.starts_with("COLOR;")) {
+            out.push(format!("COLOR:{color}"));
+            wrote = true;
+            continue;
+        }
+        // A component starts: the header is over, and if nothing was replaced the
+        // colour goes in just above it.
+        if in_header && upper.starts_with("BEGIN:V") {
+            if !wrote {
+                out.push(format!("COLOR:{color}"));
+                wrote = true;
+            }
+            in_header = false;
+        }
+        out.push(line.to_string());
+        if upper.starts_with("BEGIN:VCALENDAR") {
+            in_header = true;
+            seen_calendar = true;
+        }
+    }
+    if !seen_calendar {
+        return None;
+    }
+    if !wrote {
+        // A calendar with no components at all: the colour goes before END.
+        let at = out
+            .iter()
+            .position(|l| l.to_ascii_uppercase().starts_with("END:VCALENDAR"))
+            .unwrap_or(out.len());
+        out.insert(at, format!("COLOR:{color}"));
+    }
+    Some(out.join(ending))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,72 +333,4 @@ mod tests {
         d.location = "Studio".into();
         assert_eq!(parse_events(&vcalendar(&d)).unwrap()[0].location, "Studio");
     }
-}
-
-/// Set a calendar's own `COLOR`, leaving everything else where it was.
-///
-/// LINE SURGERY, not a re-serialise. The file is somebody's calendar and may
-/// carry properties, comments in the form of X- lines, and events this crate does
-/// not model; writing back a parsed-and-regenerated file would quietly drop all of
-/// it. So this replaces the one line if it is there and inserts it if it is not,
-/// and touches nothing else.
-///
-/// The insert goes after `BEGIN:VCALENDAR` rather than at the end of the header:
-/// it must land before the first component, and that is the only position that is
-/// certainly before one.
-///
-/// Returns `None` when the text is not a calendar - no `BEGIN:VCALENDAR` line at
-/// all - because writing a colour into a file that is not one would make it
-/// neither.
-pub fn set_calendar_color(text: &str, color: &str) -> Option<String> {
-    // The value travels into a line-based format, so a newline in it would forge
-    // a property. Refused rather than escaped: ICS has no escape for this
-    // position, and a colour with a line break in it is not a colour.
-    if color.contains(['\r', '\n']) || color.trim().is_empty() {
-        return None;
-    }
-    let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
-    let mut out: Vec<String> = Vec::new();
-    // Two states, kept apart because conflating them was the first bug here: the
-    // calendar's own header is what lies BETWEEN `BEGIN:VCALENDAR` and the first
-    // component, and only a COLOR in there is the calendar's.
-    let mut in_header = false;
-    let mut seen_calendar = false;
-    let mut wrote = false;
-    for raw in text.split('\n') {
-        let line = raw.strip_suffix('\r').unwrap_or(raw);
-        let upper = line.to_ascii_uppercase();
-
-        if in_header && (upper.starts_with("COLOR:") || upper.starts_with("COLOR;")) {
-            out.push(format!("COLOR:{color}"));
-            wrote = true;
-            continue;
-        }
-        // A component starts: the header is over, and if nothing was replaced the
-        // colour goes in just above it.
-        if in_header && upper.starts_with("BEGIN:V") {
-            if !wrote {
-                out.push(format!("COLOR:{color}"));
-                wrote = true;
-            }
-            in_header = false;
-        }
-        out.push(line.to_string());
-        if upper.starts_with("BEGIN:VCALENDAR") {
-            in_header = true;
-            seen_calendar = true;
-        }
-    }
-    if !seen_calendar {
-        return None;
-    }
-    if !wrote {
-        // A calendar with no components at all: the colour goes before END.
-        let at = out
-            .iter()
-            .position(|l| l.to_ascii_uppercase().starts_with("END:VCALENDAR"))
-            .unwrap_or(out.len());
-        out.insert(at, format!("COLOR:{color}"));
-    }
-    Some(out.join(ending))
 }
