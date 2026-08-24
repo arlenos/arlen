@@ -7,7 +7,6 @@
     Sidebar,
     SidebarContent,
     SidebarGroup,
-    SidebarHeader,
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
@@ -52,13 +51,6 @@
 </script>
 
 <Sidebar collapsible="icon">
-  <SidebarHeader class="h-10 flex-row items-center py-0">
-    <span
-      class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
-    >
-      {$t("ml.app.title")}
-    </span>
-  </SidebarHeader>
   <SidebarContent>
     <SidebarGroup>
       <SidebarMenu>

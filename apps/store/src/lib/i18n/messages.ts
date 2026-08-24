@@ -7,7 +7,6 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
-    "st.title": "Store",
     "st.sample": "Example catalogue - not the real one yet.",
     "st.search": "Search apps",
     "st.facet.noNetwork": "No network",
@@ -92,7 +91,6 @@ const messages: Catalogs = {
     "st.upd.failed": "That did not go through: {$reason}",
   },
   de: {
-    "st.title": "Store",
     "st.sample": "Beispielkatalog, noch nicht der echte.",
     "st.search": "Apps suchen",
     "st.facet.noNetwork": "Kein Netzwerk",

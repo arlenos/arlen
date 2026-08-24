@@ -283,7 +283,6 @@ const messages: Catalogs = {
     "f.search.close": "Close search",
 
     // Sidebar
-    "f.sidebar.files": "Files",
     "f.sidebar.smartFolders": "Smart Folders",
     "f.sidebar.searches": "Searches",
     "f.sidebar.recent": "Recent",
@@ -605,7 +604,6 @@ const messages: Catalogs = {
     "f.search.searchPlaceholder": "Diesen Ordner und alles darin durchsuchen",
     "f.search.close": "Suche schließen",
 
-    "f.sidebar.files": "Dateien",
     "f.sidebar.smartFolders": "Intelligente Ordner",
     "f.sidebar.searches": "Suchen",
     "f.sidebar.recent": "Zuletzt",
