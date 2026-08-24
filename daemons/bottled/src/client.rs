@@ -38,8 +38,9 @@ impl std::error::Error for ClientError {}
 /// Ask the daemon at `socket` one question.
 pub fn ask(socket: &Path, request: &Request) -> Result<Response, ClientError> {
     let mut stream = UnixStream::connect(socket).map_err(ClientError::NotRunning)?;
-    let body = serde_json::to_vec(request)
-        .map_err(|e| ClientError::Transport(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+    let body = serde_json::to_vec(request).map_err(|e| {
+        ClientError::Transport(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    })?;
     stream
         .write_all(&(body.len() as u32).to_be_bytes())
         .and_then(|()| stream.write_all(&body))
@@ -47,7 +48,9 @@ pub fn ask(socket: &Path, request: &Request) -> Result<Response, ClientError> {
         .map_err(ClientError::Transport)?;
 
     let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf).map_err(ClientError::Transport)?;
+    stream
+        .read_exact(&mut len_buf)
+        .map_err(ClientError::Transport)?;
     let len = u32::from_be_bytes(len_buf) as usize;
     if len > MAX_FRAME {
         return Err(ClientError::Transport(std::io::Error::new(
@@ -56,7 +59,9 @@ pub fn ask(socket: &Path, request: &Request) -> Result<Response, ClientError> {
         )));
     }
     let mut answer = vec![0u8; len];
-    stream.read_exact(&mut answer).map_err(ClientError::Transport)?;
+    stream
+        .read_exact(&mut answer)
+        .map_err(ClientError::Transport)?;
     serde_json::from_slice(&answer).map_err(|e| {
         ClientError::Transport(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     })

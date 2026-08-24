@@ -138,10 +138,16 @@ mod tests {
 
     #[test]
     fn the_x_socket_directory_is_asked_for_whole() {
-        let p = Plumbing { display: Display::X11, ..Default::default() };
+        let p = Plumbing {
+            display: Display::X11,
+            ..Default::default()
+        };
         assert_eq!(
             plumbing_binds(&p, Path::new("/run/user/1000"), all),
-            vec![Bind::ReadWrite(X11_SOCKET_DIR.into(), X11_SOCKET_DIR.into())]
+            vec![Bind::ReadWrite(
+                X11_SOCKET_DIR.into(),
+                X11_SOCKET_DIR.into()
+            )]
         );
     }
 
@@ -168,7 +174,10 @@ mod tests {
         };
         assert_eq!(
             plumbing_binds(&p, Path::new("/run/user/1000"), all),
-            vec![Bind::ReadWrite("/tmp/wl.sock".into(), "/tmp/wl.sock".into())]
+            vec![Bind::ReadWrite(
+                "/tmp/wl.sock".into(),
+                "/tmp/wl.sock".into()
+            )]
         );
     }
 
@@ -185,14 +194,21 @@ mod tests {
         let binds = plumbing_binds(&p, Path::new("/run/user/1000"), |path| {
             path != Path::new("/dev/dri")
         });
-        assert!(!binds.iter().any(|b| matches!(b, Bind::ReadWrite(s, _) if s == "/dev/dri")));
+        assert!(!binds
+            .iter()
+            .any(|b| matches!(b, Bind::ReadWrite(s, _) if s == "/dev/dri")));
         assert_eq!(binds.len(), 2);
     }
 
     #[test]
     fn the_gpu_is_off_unless_it_was_asked_for() {
-        let p = Plumbing { display: Display::X11, ..Default::default() };
+        let p = Plumbing {
+            display: Display::X11,
+            ..Default::default()
+        };
         let binds = plumbing_binds(&p, Path::new("/run/user/1000"), all);
-        assert!(!binds.iter().any(|b| matches!(b, Bind::ReadWrite(s, _) if s == "/dev/dri")));
+        assert!(!binds
+            .iter()
+            .any(|b| matches!(b, Bind::ReadWrite(s, _) if s == "/dev/dri")));
     }
 }

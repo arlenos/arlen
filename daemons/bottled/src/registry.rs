@@ -201,13 +201,16 @@ mod tests {
     fn bottle(id: &str) -> Bottle {
         Bottle {
             id: id.into(),
-            prefix_root: PathBuf::from("/home/u/.local/share/arlen/bottles").join(id).join("pfx"),
+            prefix_root: PathBuf::from("/home/u/.local/share/arlen/bottles")
+                .join(id)
+                .join("pfx"),
             grants: vec![PathGrant {
                 host: PathBuf::from("/home/u/Projects"),
                 access: Access::ReadWrite,
             }],
             egress: Egress::None,
             plumbing: Default::default(),
+            program: Vec::new(),
         }
     }
 
@@ -239,7 +242,10 @@ mod tests {
         let d = dir("corrupt");
         let path = save_bottle(&d, &bottle("broken")).unwrap();
         std::fs::write(&path, "id = ").unwrap();
-        assert!(matches!(load_bottle(&d, "broken"), Err(RegistryError::Unreadable(..))));
+        assert!(matches!(
+            load_bottle(&d, "broken"),
+            Err(RegistryError::Unreadable(..))
+        ));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "id = ");
         std::fs::remove_dir_all(&d).unwrap();
     }
@@ -247,7 +253,10 @@ mod tests {
     #[test]
     fn a_bottle_that_is_not_there_reads_differently_from_one_that_is_broken() {
         let d = dir("absent");
-        assert!(matches!(load_bottle(&d, "never-made"), Err(RegistryError::NoSuchBottle(_))));
+        assert!(matches!(
+            load_bottle(&d, "never-made"),
+            Err(RegistryError::NoSuchBottle(_))
+        ));
         std::fs::remove_dir_all(&d).unwrap();
     }
 
@@ -260,7 +269,11 @@ mod tests {
         let listing = list_bottles(&d).unwrap();
         assert_eq!(listing.bottles.len(), 1);
         assert_eq!(listing.bottles[0].id, "good");
-        assert_eq!(listing.unreadable.len(), 1, "telling someone their bottle is gone is worse than telling them it is broken");
+        assert_eq!(
+            listing.unreadable.len(),
+            1,
+            "telling someone their bottle is gone is worse than telling them it is broken"
+        );
         assert_eq!(listing.unreadable[0].0, bad);
         std::fs::remove_dir_all(&d).unwrap();
     }
@@ -283,7 +296,10 @@ mod tests {
     #[test]
     fn a_machine_with_no_bottles_lists_none_rather_than_failing() {
         let d = dir("empty");
-        assert_eq!(list_bottles(&d.join("never-created")).unwrap(), Listing::default());
+        assert_eq!(
+            list_bottles(&d.join("never-created")).unwrap(),
+            Listing::default()
+        );
         std::fs::remove_dir_all(&d).unwrap();
     }
 
@@ -300,7 +316,13 @@ mod tests {
     #[test]
     fn the_prefix_sits_beside_the_description() {
         let d = Path::new("/data/arlen/bottles");
-        assert_eq!(prefix_for(d, "x").unwrap(), Path::new("/data/arlen/bottles/x/pfx"));
-        assert_eq!(bottle_path(d, "x").unwrap(), Path::new("/data/arlen/bottles/x/bottle.toml"));
+        assert_eq!(
+            prefix_for(d, "x").unwrap(),
+            Path::new("/data/arlen/bottles/x/pfx")
+        );
+        assert_eq!(
+            bottle_path(d, "x").unwrap(),
+            Path::new("/data/arlen/bottles/x/bottle.toml")
+        );
     }
 }

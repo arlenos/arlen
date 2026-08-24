@@ -66,6 +66,15 @@ pub struct Bottle {
     /// What it needs beyond its grants: a display, a GPU, the font rules.
     #[serde(default)]
     pub plumbing: crate::plumbing::Plumbing,
+    /// The Windows program this bottle exists to run, as an argv.
+    ///
+    /// EMPTY IS A REAL STATE, not a missing value: a bottle can be made before
+    /// anything is installed into it, and until an installer has run there is
+    /// nothing to start. A launch of an empty one is refused by name rather than
+    /// guessed at, and `#[serde(default)]` keeps every bottle written before this
+    /// field existed readable - they simply have nothing to run yet.
+    #[serde(default)]
+    pub program: Vec<String>,
 }
 
 /// A bottle turned into something runnable.
@@ -239,16 +248,23 @@ mod tests {
             id: "notepadpp".into(),
             prefix_root: PathBuf::from("/home/u/.local/share/arlen/bottles/notepadpp/pfx"),
             grants: vec![
-                PathGrant { host: PathBuf::from("/home/u/Projects"), access: Access::ReadWrite },
+                PathGrant {
+                    host: PathBuf::from("/home/u/Projects"),
+                    access: Access::ReadWrite,
+                },
                 // Deliberately outside /usr. An earlier version of this fixture
                 // granted /usr/share/fonts read-only, and the invariant test below
                 // still passed with the read-only binds removed entirely, because
                 // the confiner's own read-only /usr already covered it. The test
                 // was measuring the confiner, not this module.
-                PathGrant { host: PathBuf::from("/srv/reference"), access: Access::ReadOnly },
+                PathGrant {
+                    host: PathBuf::from("/srv/reference"),
+                    access: Access::ReadOnly,
+                },
             ],
             egress: Egress::None,
             plumbing: Default::default(),
+            program: Vec::new(),
         }
     }
 
@@ -329,13 +345,22 @@ mod tests {
             "--tmpfs".into(),
             "/home/u/Projects/secret".into(),
         ];
-        assert_eq!(reachable(&args, Path::new("/home/u/Projects/open")), Reachable::ReadWrite);
-        assert_eq!(reachable(&args, Path::new("/home/u/Projects/secret")), Reachable::No);
+        assert_eq!(
+            reachable(&args, Path::new("/home/u/Projects/open")),
+            Reachable::ReadWrite
+        );
+        assert_eq!(
+            reachable(&args, Path::new("/home/u/Projects/secret")),
+            Reachable::No
+        );
     }
 
     #[test]
     fn a_bottle_with_no_egress_unshares_the_network() {
-        assert!(run().confinement.bwrap_args().contains(&"--unshare-net".to_string()));
+        assert!(run()
+            .confinement
+            .bwrap_args()
+            .contains(&"--unshare-net".to_string()));
     }
 
     #[test]

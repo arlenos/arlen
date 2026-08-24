@@ -127,6 +127,9 @@ pub fn create_bottle(
         grants: new.grants.clone(),
         egress: new.egress.clone(),
         plumbing: new.plumbing.clone(),
+        // A fresh bottle runs nothing: the prefix is booted and empty until an
+        // installer has put something in it.
+        program: Vec::new(),
     };
     registry::save_bottle(bottles_dir, &bottle)?;
     Ok(bottle)
@@ -175,7 +178,10 @@ mod tests {
     fn a_made_bottle_is_cut_lettered_and_written_down() {
         let d = dir("made");
         let b = create_bottle(&d, &new_bottle("probe"), fake_boot).unwrap();
-        assert!(!b.prefix_root.join("dosdevices/z:").exists(), "the filesystem drive is gone");
+        assert!(
+            !b.prefix_root.join("dosdevices/z:").exists(),
+            "the filesystem drive is gone"
+        );
         assert!(
             b.prefix_root.join("drive_c/users/u/Documents").is_dir(),
             "and My Documents is a real local directory"
@@ -216,7 +222,10 @@ mod tests {
         // letter that was not a file.
         let made = create_bottle(&d, &new_bottle("probe"), boot);
         assert!(made.is_ok(), "an ungranted letter is cut like the others");
-        assert!(!d.join("probe/pfx/dosdevices/y:").exists(), "and nothing is left in its place");
+        assert!(
+            !d.join("probe/pfx/dosdevices/y:").exists(),
+            "and nothing is left in its place"
+        );
         std::fs::remove_dir_all(&d).unwrap();
     }
 
