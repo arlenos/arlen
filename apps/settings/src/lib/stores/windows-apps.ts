@@ -352,10 +352,31 @@ export async function deleteBottle(id: string): Promise<void> {
   }
 }
 
-/// The app the last launch attempt could not start, for the sentence naming it.
-/// Separate from `winActionFailed`: that one says the CONFIG did not change,
-/// and a launch that failed changed nothing about the config.
-export const launchFailed = writable<string | null>(null);
+/// Why a launch did not happen, and to which app.
+///
+/// THE REASON TRAVELS AS A TOKEN, and the window writes the sentence. The runtime
+/// keeps five refusals apart - nothing is installed in this bottle yet, this
+/// machine has no Wine, the bottle's prefix was never made, the granted folders
+/// are not reachable, the confinement would not start - and they used to arrive
+/// as one message saying the service "did not take the request", which is true of
+/// exactly one of them.
+export const launchFailed = writable<{ name: string; reason: string } | null>(null);
+
+/// The message key for a refusal token, and the catch-all for one nobody knows.
+export function launchFailureKey(reason: string): string {
+  switch (reason) {
+    case "nothing-to-run":
+      return "s.wa.launchNothing";
+    case "no-wine":
+      return "s.wa.launchNoWine";
+    case "prefix-missing":
+      return "s.wa.launchNoPrefix";
+    case "drives-unmet":
+      return "s.wa.launchDrives";
+    default:
+      return "s.wa.launchFailed";
+  }
+}
 
 /// Start the Windows app. Live: `launch_windows_app` (the daemon owns the
 /// process, so it outlives this window). Under vite the fixture app has nothing
@@ -364,10 +385,10 @@ export async function launchApp(id: string): Promise<void> {
   launchFailed.set(null);
   try {
     await invoke("launch_windows_app", { id });
-  } catch {
+  } catch (e) {
     if (!tauriAvailable) return;
     const name = get(winApps).bottles.find((b) => b.id === id)?.appName ?? id;
-    launchFailed.set(name);
+    launchFailed.set({ name, reason: String(e) });
   }
 }
 

@@ -138,10 +138,25 @@ pub async fn bottle_health(id: String) -> Result<BottleHealth, String> {
 pub async fn launch_windows_app(id: String) -> Result<u32, String> {
     tokio::task::spawn_blocking(move || match ask(&socket_path(), &Request::Launch { id }) {
         Ok(Response::Launched { pid }) => Ok(pid),
-        Ok(Response::Refused { problem }) => Err(format!("{problem:?}")),
+        // The token, not its Debug form: `nothing-to-run` is what the daemon
+        // speaks on the wire and what the window matches on to pick a sentence.
+        // Five reasons that arrive as one string are one sentence, and four of
+        // them would be wrong.
+        Ok(Response::Refused { problem }) => Err(problem_token(problem)),
         Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
         Err(e) => Err(e.to_string()),
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// A refusal as its wire token (`nothing-to-run`, `no-wine`, ...).
+fn problem_token(problem: arlen_wine_core::protocol::Problem) -> String {
+    serde_json::to_value(problem)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        // A token that will not serialise is not a sentence anybody should read,
+        // so it falls back to the one the window already has for "it did not
+        // start and nobody can say why".
+        .unwrap_or_else(|| "could-not-start".to_string())
 }
