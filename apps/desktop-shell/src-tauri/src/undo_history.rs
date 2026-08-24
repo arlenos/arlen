@@ -94,8 +94,11 @@ pub struct UndoRowView {
     op_id: String,
     /// Who acted, as the panel's four-way chip.
     producer: &'static str,
-    /// The quiet leading verb, past tense.
-    verb: &'static str,
+    /// Which forward act this row reverses, as a TOKEN the panel words: one of the
+    /// seven `InverseReceipt` kinds, or `unknown`. Not the verb itself - the panel
+    /// already reads the producer chip out of its catalogue, and a verb written
+    /// here arrives English beside a translated chip ("Dateien moved ...").
+    kind: &'static str,
     /// The emphasized object.
     object: String,
     /// Unix seconds. Absent when the audit join found nothing, because the signed
@@ -105,10 +108,10 @@ pub struct UndoRowView {
     /// `reversible` or `reversible_with_cost`; never `irreversible`, see the
     /// module note.
     reversibility: &'static str,
-    /// The inverse named as the act it performs. Absent when the undo cannot be
-    /// carried out here, which is how the panel knows not to offer the button.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    inverse_label: Option<&'static str>,
+    /// Whether the panel may offer the undo button. False when the daemon says it
+    /// will not act, and for the kinds whose inverse is not carried out from here.
+    /// The button's wording follows `kind` out of the panel's catalogue.
+    enactable: bool,
     /// The panel's own interaction state. Every row starts ready; `enacting` and
     /// `done` are set by the panel as it works, and are not ledger facts.
     state: &'static str,
@@ -117,21 +120,25 @@ pub struct UndoRowView {
 /// The forward act a receipt reverses, and the button that reverses it.
 ///
 /// Keyed by `inverse_kind`, whose values are the seven `InverseReceipt` variants.
-/// An unknown kind is a receipt variant added without coming back here; it gets a
-/// neutral wording rather than a wrong one, and no button, because a label that
-/// misnames what a button does is worse than a row without one.
-fn wording(inverse_kind: &str) -> (&'static str, Option<&'static str>) {
+/// An unknown kind is a receipt variant added without coming back here; it gets
+/// the neutral `unknown` token rather than a wrong one, and no button, because a
+/// label that misnames what a button does is worse than a row without one.
+///
+/// The returned token is the whole answer. The wording lives in the panel's
+/// message catalogue in both languages, so the row reads as one sentence and not
+/// as a translated chip in front of an English verb.
+fn kind_of(inverse_kind: &str) -> (&'static str, bool) {
     match inverse_kind {
-        "restore-path" => ("moved", Some("Put back")),
-        "restore-from-trash" => ("deleted", Some("Restore")),
-        "restore-value" => ("changed", Some("Restore previous")),
-        "delete-created" => ("created", Some("Remove it")),
-        "trash-created" => ("created", Some("Move it to Trash")),
-        "retract-graph-edge" => ("tagged", Some("Untag")),
+        "restore-path" => ("restore-path", true),
+        "restore-from-trash" => ("restore-from-trash", true),
+        "restore-value" => ("restore-value", true),
+        "delete-created" => ("delete-created", true),
+        "trash-created" => ("trash-created", true),
+        "retract-graph-edge" => ("retract-graph-edge", true),
         // Reversible, but not from here: rolling a filesystem snapshot back is
         // its own mechanism with its own cost.
-        "restore-snapshot" => ("changed", None),
-        _ => ("acted on", None),
+        "restore-snapshot" => ("restore-snapshot", false),
+        _ => ("unknown", false),
     }
 }
 
@@ -155,11 +162,11 @@ fn producer_of(actor: Option<&str>) -> &'static str {
 
 /// Translate one served row into the row the panel renders.
 fn entry_from_row(row: Row) -> UndoRowView {
-    let (verb, label) = wording(&row.inverse_kind);
+    let (kind, has_local_inverse) = kind_of(&row.inverse_kind);
     UndoRowView {
         op_id: row.op_id,
         producer: producer_of(row.description.as_ref().map(|d| d.actor.as_str())),
-        verb,
+        kind,
         object: row.object,
         at: row.description.as_ref().map(|d| d.timestamp_micros / 1_000_000),
         reversibility: if row.inverse_kind == "restore-snapshot" {
@@ -169,7 +176,7 @@ fn entry_from_row(row: Row) -> UndoRowView {
         },
         // Only where the daemon says it will act. A button the daemon refuses is
         // a button that does nothing.
-        inverse_label: if row.enactable { label } else { None },
+        enactable: row.enactable && has_local_inverse,
         state: "ready",
     }
 }
@@ -240,9 +247,9 @@ mod tests {
     }
 
     /// The seven receipt kinds are the whole vocabulary the log can hold, and
-    /// each names its forward act exactly. If a kind is added without a wording,
-    /// this catches it: the neutral fallback is for a live surface, not for a
-    /// variant nobody translated.
+    /// each names its forward act exactly. If a kind is added without being
+    /// mapped, this catches it: the neutral fallback is for a live surface, not
+    /// for a variant nobody wrote a wording for.
     #[test]
     fn every_receipt_kind_has_its_own_wording() {
         let kinds = [
@@ -255,11 +262,12 @@ mod tests {
             "restore-snapshot",
         ];
         for k in kinds {
-            let (verb, _) = wording(k);
-            assert_ne!(verb, "acted on", "{k} has no wording");
+            let (token, _) = kind_of(k);
+            assert_ne!(token, "unknown", "{k} is not mapped");
+            assert_eq!(token, k, "{k} must travel as itself");
         }
-        assert_eq!(wording("something-new").0, "acted on");
-        assert_eq!(wording("something-new").1, None);
+        assert_eq!(kind_of("something-new").0, "unknown");
+        assert!(!kind_of("something-new").1);
     }
 
     /// Nothing in this log is irreversible. An act with no inverse never produced
@@ -291,7 +299,7 @@ mod tests {
     fn a_snapshot_rollback_is_costly_not_permanent() {
         let e = entry_from_row(row("restore-snapshot", false, None));
         assert_eq!(e.reversibility, "reversible_with_cost");
-        assert_eq!(e.inverse_label, None);
+        assert!(!e.enactable);
     }
 
     /// A row the daemon will not enact offers no button, whatever its kind. A
@@ -299,8 +307,8 @@ mod tests {
     #[test]
     fn an_unenactable_row_offers_no_button() {
         let e = entry_from_row(row("restore-path", false, None));
-        assert_eq!(e.inverse_label, None);
-        assert_eq!(entry_from_row(row("restore-path", true, None)).inverse_label, Some("Put back"));
+        assert!(!e.enactable);
+        assert!(entry_from_row(row("restore-path", true, None)).enactable);
     }
 
     /// With the audit daemon down there is no clock: the signed entry carries no
@@ -357,7 +365,7 @@ mod tests {
         assert_eq!(parsed.op_id, "op-7");
         assert!(parsed.enactable);
         let e = entry_from_row(parsed);
-        assert_eq!(e.verb, "moved");
+        assert_eq!(e.kind, "restore-path");
         assert_eq!(e.producer, "agent");
         assert_eq!(e.at, Some(1_700_000_000));
     }

@@ -20,16 +20,20 @@ export type UndoProducer = "agent" | "files" | "terminal" | "settings";
 export interface UndoEntry {
   opId: string;
   producer: UndoProducer;
-  /// The quiet leading verb ("moved", "tagged", "deleted", "changed").
-  verb: string;
-  /// The emphasized object ("3 files to the Trash", "report.pdf").
+  /// Which forward act this row reverses, as a token: one of the seven receipt
+  /// kinds, or "unknown". The wording is this app's, in the reader's language -
+  /// the backend used to send the verb itself, which arrived English beside a
+  /// translated producer chip ("Dateien moved report.pdf").
+  kind: string;
+  /// The emphasized object, and pure data rather than prose: a path, a
+  /// "file:key" setting, or a "from -RELATION-> to" edge. Nothing to translate.
   object: string;
   /// Unix seconds.
   at: number;
   reversibility: "reversible" | "reversible_with_cost" | "irreversible";
-  /// The inverse, named as the act it performs ("Put back", "Untag");
-  /// absent on an irreversible entry.
-  inverseLabel?: string;
+  /// Whether the undo button is offered. False when the service will not act,
+  /// and for a snapshot rollback, whose inverse is not carried out from here.
+  enactable: boolean;
   state: "ready" | "enacting" | "done";
 }
 
@@ -52,11 +56,11 @@ export const undoUnavailable = writable(false);
 const now = Math.floor(Date.now() / 1000);
 
 const FIXTURE: UndoEntry[] = [
-  { opId: "u-1", producer: "files", verb: "moved", object: "3 files to the Trash", at: now - 40, reversibility: "reversible", inverseLabel: "Put back", state: "ready" },
-  { opId: "u-2", producer: "agent", verb: "tagged", object: "2 files to Thesis", at: now - 60 * 4, reversibility: "reversible", inverseLabel: "Untag", state: "ready" },
-  { opId: "u-3", producer: "terminal", verb: "deleted", object: "build-cache/", at: now - 60 * 11, reversibility: "reversible", inverseLabel: "Restore", state: "ready" },
-  { opId: "u-4", producer: "settings", verb: "changed", object: "Night light schedule", at: now - 60 * 25, reversibility: "reversible", inverseLabel: "Restore previous", state: "ready" },
-  { opId: "u-5", producer: "files", verb: "emptied", object: "the Trash", at: now - 60 * 47, reversibility: "irreversible", state: "ready" },
+  { opId: "u-1", producer: "files", kind: "restore-path", object: "~/Documents/report.pdf", at: now - 40, reversibility: "reversible", enactable: true, state: "ready" },
+  { opId: "u-2", producer: "agent", kind: "retract-graph-edge", object: "report.pdf -FILE_PART_OF-> Thesis", at: now - 60 * 4, reversibility: "reversible", enactable: true, state: "ready" },
+  { opId: "u-3", producer: "terminal", kind: "restore-from-trash", object: "~/build-cache/", at: now - 60 * 11, reversibility: "reversible", enactable: true, state: "ready" },
+  { opId: "u-4", producer: "settings", kind: "restore-value", object: "shell.toml:night_light.schedule", at: now - 60 * 25, reversibility: "reversible", enactable: true, state: "ready" },
+  { opId: "u-5", producer: "agent", kind: "restore-snapshot", object: "/home/tim", at: now - 60 * 47, reversibility: "reversible_with_cost", enactable: false, state: "ready" },
 ];
 
 /// Load the recent reversal entries. Live: `undo_read` (seam).

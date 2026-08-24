@@ -221,6 +221,16 @@
     // onMount's return closure tear down every Tauri listener on
     // unmount, preventing the "every HMR adds another listener" leak
     // that was making the shell slower with time.
+    // FIRST, before anything that can raise a refusal. A toast is a frozen
+    // string: the bridge words it from the catalog at the moment the event
+    // arrives, so a startup failure raised before the catalog is in hand is
+    // worded in English and stays English for its whole life on screen. The
+    // focus-mode restore in `initProjects` is exactly such a failure. This does
+    // not make the race impossible - the read is async and nothing here awaits
+    // it - but it starts the local config read before the first init that can
+    // fail, which is what decides it in practice.
+    void initArlenLocale();
+
     const disposers: Array<() => void> = [
       // First, so a failure in any init below is logged rather than swallowed.
       initConsoleBridge(),
@@ -245,7 +255,6 @@
     // `listen()` lives for the lifetime of the page — it has no init/
     // dispose pair because the theme store is module-scoped state.
     initTheme().catch(() => {});
-    void initArlenLocale();
 
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {
