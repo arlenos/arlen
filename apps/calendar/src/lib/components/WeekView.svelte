@@ -9,7 +9,7 @@
   /// also keeps SC 2.5.7's single-pointer requirement moot here.
   import { t, locale } from "$lib/i18n/messages";
   import { isToday } from "$lib/wording";
-  import { layoutDay, parseYmd, ymd, type AgendaEvent } from "$lib/stores/calendar";
+  import { calendars, colorOf, layoutDay, parseYmd, ymd, type AgendaEvent } from "$lib/stores/calendar";
   import EventPopover from "./EventPopover.svelte";
 
   let {
@@ -67,7 +67,12 @@
         {#each (byDay.get(d) ?? []).filter((e) => e.time === null) as e (e.uid + e.date)}
           <EventPopover event={e}>
             {#snippet children(props: Record<string, unknown>)}
-              <button type="button" class="allday-pill" {...props}>{e.summary}</button>
+              <button
+                type="button"
+                class="allday-pill"
+                style="--cal: {colorOf($calendars, e)}"
+                {...props}>{e.summary}</button
+              >
             {/snippet}
           </EventPopover>
         {/each}
@@ -97,7 +102,7 @@
                 <button
                   type="button"
                   class="block"
-                  style="top: {(b.startMin * HOUR) / 60}px; height: {Math.max(((b.endMin - b.startMin) * HOUR) / 60, 20)}px; left: calc({(b.col / b.cols) * 100}% + 2px); width: calc({100 / b.cols}% - 4px);"
+                  style="top: {(b.startMin * HOUR) / 60}px; height: {Math.max(((b.endMin - b.startMin) * HOUR) / 60, 20)}px; left: calc({(b.col / b.cols) * 100}% + 2px); width: calc({100 / b.cols}% - 4px); --cal: {colorOf($calendars, b.event)}"
                   {...props}
                 >
                   {#if b.endMin - b.startMin < 40}
@@ -179,7 +184,7 @@
     padding: 1px 6px;
     border: none;
     border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--color-accent, #6366f1) 22%, transparent);
+    background: color-mix(in srgb, var(--cal, var(--color-accent, #6366f1)) 26%, transparent);
     font: inherit;
     font-size: var(--text-2xs, 11px);
     color: var(--color-fg-primary);
@@ -238,9 +243,9 @@
     overflow: hidden;
     padding: 3px 6px;
     border: none;
-    border-inline-start: 2px solid var(--color-accent, #6366f1);
+    border-inline-start: 2px solid var(--cal, var(--color-accent, #6366f1));
     border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--color-accent, #6366f1) 18%, var(--color-bg-card, #171717));
+    background: color-mix(in srgb, var(--cal, var(--color-accent, #6366f1)) 20%, var(--color-bg-card, #171717));
     font: inherit;
     text-align: start;
     color: var(--color-fg-primary);

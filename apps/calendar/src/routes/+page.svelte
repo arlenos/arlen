@@ -27,6 +27,8 @@
   import {
     agenda,
     loadAgenda,
+    loadCalendars,
+    hiddenCalendars,
     addDays,
     startOfWeek,
     ymd,
@@ -82,6 +84,7 @@
   async function read() {
     try {
       await loadAgenda(launched);
+      await loadCalendars();
       failure = null;
     } catch (e) {
       // The payload arrives as an object here; `apps/viewers` documents the
@@ -119,6 +122,13 @@
     const stop = listen("arlen://calendar-changed", () => void read());
     return () => void stop.then((un) => un());
   });
+
+  /// The events the visible calendars contribute; a hidden calendar's rows
+  /// leave every view at once.
+  const visibleEvents = $derived(
+    ($agenda?.events ?? []).filter((e) => !$hiddenCalendars.has(e.calendar ?? "")),
+  );
+  const visibleAgenda = $derived($agenda ? { ...$agenda, events: visibleEvents } : null);
 
   const weekDays = $derived.by(() => {
     const monday = startOfWeek(focus);
@@ -247,14 +257,14 @@
 
         {#if launched || view === "agenda"}
           <div class="scroll-list">
-            <AgendaView agenda={$agenda as Agenda} />
+            <AgendaView agenda={visibleAgenda as Agenda} />
           </div>
         {:else if view === "week"}
-          <WeekView days={weekDays} events={$agenda.events} />
+          <WeekView days={weekDays} events={visibleEvents} />
         {:else if view === "day"}
-          <WeekView days={[focus]} events={$agenda.events} />
+          <WeekView days={[focus]} events={visibleEvents} />
         {:else}
-          <MonthView month={focus} events={$agenda.events} onopenday={openDay} />
+          <MonthView month={focus} events={visibleEvents} onopenday={openDay} />
         {/if}
       {/if}
     </div>

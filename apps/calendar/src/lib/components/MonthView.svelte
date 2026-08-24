@@ -4,7 +4,7 @@
   /// hands the day to the day view, so nothing is reachable only by squinting.
   import { t, locale } from "$lib/i18n/messages";
   import { isToday } from "$lib/wording";
-  import { addDays, parseYmd, startOfWeek, type AgendaEvent } from "$lib/stores/calendar";
+  import { addDays, calendars, colorOf, parseYmd, startOfWeek, type AgendaEvent } from "$lib/stores/calendar";
   import EventPopover from "./EventPopover.svelte";
 
   let {
@@ -57,7 +57,7 @@
           {#each list.slice(0, MAX_PILLS) as e (e.uid + e.date + (e.time ?? ""))}
             <EventPopover event={e}>
               {#snippet children(props: Record<string, unknown>)}
-                <button type="button" class="pill" class:timed={e.time !== null} {...props}>
+                <button type="button" class="pill" class:timed={e.time !== null} style="--cal: {colorOf($calendars, e)}" {...props}>
                   {#if e.time}<span class="p-time">{e.time}</span>{/if}
                   <span class="p-title">{e.summary}</span>
                 </button>
@@ -155,7 +155,7 @@
     padding: 1px 5px;
     border: none;
     border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--color-accent, #6366f1) 22%, transparent);
+    background: color-mix(in srgb, var(--cal, var(--color-accent, #6366f1)) 26%, transparent);
     font: inherit;
     font-size: var(--text-2xs, 11px);
     text-align: start;

@@ -18,6 +18,7 @@
   import { t } from "$lib/i18n/messages";
   import { agenda, calendarMocked } from "$lib/stores/calendar";
   import MiniMonth from "./MiniMonth.svelte";
+  import CalendarList from "./CalendarList.svelte";
 
   let {
     focus,
@@ -55,6 +56,10 @@
 
     <SidebarGroup class="pt-0">
       <MiniMonth {focus} {marked} {onpick} />
+    </SidebarGroup>
+
+    <SidebarGroup class="pt-0">
+      <CalendarList />
     </SidebarGroup>
 
     <SidebarGroup class="pt-0">
