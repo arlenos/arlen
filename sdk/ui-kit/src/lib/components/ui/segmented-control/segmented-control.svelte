@@ -18,6 +18,7 @@
     id,
     disabled = false,
     ariaLabel,
+    size = "control",
     onchange,
     class: className,
   }: {
@@ -30,6 +31,10 @@
     id?: string;
     disabled?: boolean;
     ariaLabel?: string;
+    /// "control" (the default register) or "compact" for tight chrome like a
+    /// titlebar view switcher, where the control ladder's compact step keeps
+    /// air above and below inside an h-10 bar.
+    size?: "control" | "compact";
     onchange?: (value: string) => void;
     class?: string;
   } = $props();
@@ -79,7 +84,7 @@
   }
 </script>
 
-<div class="seg {className ?? ''}" {id} role="radiogroup" aria-label={ariaLabel}>
+<div class="seg {className ?? ''}" class:compact={size === "compact"} {id} role="radiogroup" aria-label={ariaLabel}>
   {#each options as opt, i (opt.value)}
     {#if opt.icon}
       {@const Icon = opt.icon}
@@ -172,6 +177,16 @@
     background: color-mix(in srgb, var(--foreground) 15%, transparent);
     border-color: color-mix(in srgb, var(--foreground) 30%, transparent);
     color: var(--foreground);
+  }
+
+  .seg.compact .seg-pill {
+    padding: 2px 10px;
+    min-height: calc(var(--height-control-compact, 26px) - 6px);
+    font-size: var(--text-xs);
+  }
+
+  .seg.compact .seg-pill.icon-pill {
+    width: var(--height-control-compact, 26px);
   }
 
   .seg:has(.seg-pill:disabled) {
