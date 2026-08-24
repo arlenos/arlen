@@ -121,6 +121,15 @@ pub enum Problem {
     NothingToRun,
     /// There is no Wine on this machine, so no Windows program can run at all.
     NoWine,
+    /// The bottle's prefix is not on disk, so there is nothing to run inside.
+    ///
+    /// Refused for the reason `launch.rs` gives for the two above it: without the
+    /// check the argv is built, bwrap starts, and the failure surfaces from inside
+    /// the sandbox as `Can't find source path` - which names neither the prefix
+    /// nor the fact that this bottle was never made. Measured, by launching one:
+    /// the daemon answered `launched` and a pid for a program that was already
+    /// dead.
+    PrefixMissing,
     /// The drive table promises reach the confinement does not give. Refused
     /// rather than started: the program would see a drive it cannot open.
     DrivesUnmet,
@@ -191,6 +200,11 @@ pub fn launch(
     if bottle.program.is_empty() {
         return Response::Refused {
             problem: Problem::NothingToRun,
+        };
+    }
+    if !exists(&bottle.prefix_root) {
+        return Response::Refused {
+            problem: Problem::PrefixMissing,
         };
     }
     let argv = match launch_argv(&bottle, usr, runtime_dir, display, &bottle.program, exists) {
@@ -381,8 +395,6 @@ mod tests {
             }
         );
 
-        // A machine with no Wine says so, rather than starting a confinement in
-        // which the program is missing.
         std::fs::create_dir_all(dir.path().join("has-one")).unwrap();
         std::fs::write(
             dir.path().join("has-one/bottle.toml"),
@@ -390,6 +402,9 @@ mod tests {
              program = [\"notepad.exe\"]\n",
         )
         .unwrap();
+
+        // A bottle whose prefix was never made says so, rather than answering
+        // with a pid for a process that is already gone.
         assert_eq!(
             launch(
                 dir.path(),
@@ -397,7 +412,27 @@ mod tests {
                 std::path::Path::new("/usr"),
                 std::path::Path::new("/run/user/1000"),
                 None,
-                |_| false,
+                |p| p != std::path::Path::new("/nowhere/pfx"),
+                never,
+            ),
+            Response::Refused {
+                problem: Problem::PrefixMissing
+            }
+        );
+
+        // A machine with no Wine says so, rather than starting a confinement in
+        // which the program is missing.
+        assert_eq!(
+            launch(
+                dir.path(),
+                "has-one",
+                std::path::Path::new("/usr"),
+                std::path::Path::new("/run/user/1000"),
+                None,
+                // The prefix is there; Wine is not. Ordered that way on purpose:
+                // a missing prefix is checked first, so this closure has to leave
+                // it in place or it would answer the earlier question.
+                |p| p != std::path::Path::new("/usr/bin/wine"),
                 never,
             ),
             Response::Refused {

@@ -122,3 +122,26 @@ pub async fn bottle_health(id: String) -> Result<BottleHealth, String> {
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// Start the Windows program a bottle exists to run.
+///
+/// The daemon owns the process, so it outlives this window - which is the reason
+/// the runtime is a daemon at all. What starts is what the bottle records, not
+/// something this command names, so the panel cannot ask for a different program
+/// inside somebody's confinement.
+///
+/// A refusal comes back as its own token, because the four reasons need four
+/// different sentences: nothing is installed in this bottle yet, this machine has
+/// no Wine, the drive table promises reach the confinement does not give, or the
+/// confinement would not start.
+#[tauri::command]
+pub async fn launch_windows_app(id: String) -> Result<u32, String> {
+    tokio::task::spawn_blocking(move || match ask(&socket_path(), &Request::Launch { id }) {
+        Ok(Response::Launched { pid }) => Ok(pid),
+        Ok(Response::Refused { problem }) => Err(format!("{problem:?}")),
+        Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+        Err(e) => Err(e.to_string()),
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
