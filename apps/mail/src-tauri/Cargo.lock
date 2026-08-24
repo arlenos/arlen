@@ -69,6 +69,7 @@ name = "arlen-mail-app"
 version = "0.1.0"
 dependencies = [
  "arlen-mail-core",
+ "dirs 5.0.1",
  "serde",
  "tauri",
  "tauri-build",
