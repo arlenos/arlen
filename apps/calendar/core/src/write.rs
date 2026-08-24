@@ -204,6 +204,63 @@ pub fn set_calendar_color(text: &str, color: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    const SERIES: &str = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:weekly@x\r\n\
+SUMMARY:Standup\r\nDTSTART:20260302T090000Z\r\nRRULE:FREQ=WEEKLY;COUNT=8\r\n\
+END:VEVENT\r\nBEGIN:VEVENT\r\nUID:other@x\r\nSUMMARY:Keep me\r\n\
+DTSTART:20260303T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+    #[test]
+    fn deleting_one_occurrence_leaves_the_rule_alone() {
+        let out = delete_event(SERIES, "weekly@x", Scope::This, Some("2026-03-09")).unwrap();
+        assert!(out.contains("EXDATE;VALUE=DATE:20260309"), "{out}");
+        assert!(
+            out.contains("RRULE:FREQ=WEEKLY;COUNT=8"),
+            "the rule is untouched"
+        );
+        assert!(out.contains("UID:other@x"), "somebody else's event stays");
+    }
+
+    #[test]
+    fn deleting_the_rest_ends_the_rule_the_day_before() {
+        let out = delete_event(SERIES, "weekly@x", Scope::Following, Some("2026-03-16")).unwrap();
+        // UNTIL is inclusive, so the cut is the day before the one picked - and
+        // COUNT goes, because a rule carrying both is read two ways.
+        assert!(out.contains("UNTIL=20260315"), "{out}");
+        assert!(
+            !out.contains("COUNT=8"),
+            "COUNT and UNTIL must not both stand: {out}"
+        );
+        assert!(out.contains("UID:weekly@x"), "the past occurrences stay");
+    }
+
+    #[test]
+    fn deleting_all_takes_the_corrections_with_it() {
+        let with_override = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:weekly@x\r\n\
+DTSTART:20260302T090000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:weekly@x\r\nRECURRENCE-ID:20260309T090000Z\r\n\
+SUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let out = delete_event(with_override, "weekly@x", Scope::All, None).unwrap();
+        assert!(
+            !out.contains("weekly@x"),
+            "an orphaned correction is still an event: {out}"
+        );
+        assert!(out.contains("BEGIN:VCALENDAR"), "the calendar survives");
+    }
+
+    #[test]
+    fn a_delete_that_cannot_be_aimed_does_nothing() {
+        // No occurrence for a scope that needs one: refusing beats deleting the
+        // whole series because a date was missing.
+        assert_eq!(delete_event(SERIES, "weekly@x", Scope::This, None), None);
+        assert_eq!(
+            delete_event(SERIES, "weekly@x", Scope::Following, Some("nonsense")),
+            None
+        );
+        // A uid nobody has: nothing was touched, and the caller is told so rather
+        // than handed back a file it would write for no reason.
+        assert_eq!(delete_event(SERIES, "ghost@x", Scope::All, None), None);
+    }
+
     #[test]
     fn a_colour_is_replaced_or_inserted_and_nothing_else_moves() {
         let with_event = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-WR-CALNAME:Arbeit\r\n\
@@ -333,4 +390,183 @@ mod tests {
         d.location = "Studio".into();
         assert_eq!(parse_events(&vcalendar(&d)).unwrap()[0].location, "Studio");
     }
+}
+
+/// Which occurrences of a recurring event an edit is meant to reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    /// Only the one the person was looking at.
+    This,
+    /// That one and everything after it.
+    Following,
+    /// The whole series, and any single-occurrence corrections of it.
+    All,
+}
+
+/// Remove an event, or part of a series, from a calendar's text.
+///
+/// THREE DIFFERENT EDITS, because "delete" means three different things to a
+/// recurring event and doing the wrong one loses days somebody still has:
+///
+///   * `All` drops every VEVENT carrying the uid - the series AND the
+///     single-occurrence corrections that share its uid through RECURRENCE-ID.
+///     Dropping only the master would leave those corrections behind as orphans
+///     that most calendar apps then show as events of their own.
+///   * `This` adds an `EXDATE` for that occurrence, which is how iCalendar says
+///     "not that one" without touching the rule, and drops a correction for that
+///     date if one exists.
+///   * `Following` ends the rule the day before, by rewriting `UNTIL` - so the
+///     occurrences already past stay in the file, which is what a person who
+///     cancels a weekly meeting from March expects to still find in February.
+///
+/// `occurrence` is a `YYYY-MM-DD` and is required for the first two scopes; a
+/// missing or unreadable one refuses rather than falling back to the whole series,
+/// because that fallback deletes more than was asked for.
+pub fn delete_event(
+    text: &str,
+    uid: &str,
+    scope: Scope,
+    occurrence: Option<&str>,
+) -> Option<String> {
+    if uid.is_empty() {
+        return None;
+    }
+    let stamp = match scope {
+        Scope::All => None,
+        _ => Some(compact_date(occurrence?)?),
+    };
+    let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let lines: Vec<String> = text
+        .split('\n')
+        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
+        .collect();
+
+    let mut out: Vec<String> = Vec::new();
+    let mut block: Vec<String> = Vec::new();
+    let mut in_event = false;
+    let mut touched = false;
+
+    for line in lines {
+        let upper = line.to_ascii_uppercase();
+        if upper.starts_with("BEGIN:VEVENT") {
+            in_event = true;
+            block.clear();
+            block.push(line);
+            continue;
+        }
+        if !in_event {
+            out.push(line);
+            continue;
+        }
+        block.push(line);
+        if !upper.starts_with("END:VEVENT") {
+            continue;
+        }
+        in_event = false;
+
+        if !block_has_uid(&block, uid) {
+            out.extend(block.drain(..));
+            continue;
+        }
+        touched = true;
+        match scope {
+            // Every block with this uid goes, master and corrections alike.
+            Scope::All => {
+                block.clear();
+            }
+            Scope::This => {
+                let stamp = stamp.as_deref().expect("checked above");
+                if block_recurrence_id(&block).is_some_and(|r| r.starts_with(stamp)) {
+                    // A correction FOR that day: removing it removes the day.
+                    block.clear();
+                } else if block_recurrence_id(&block).is_some() {
+                    // A correction for another day is not this occurrence.
+                    out.extend(block.drain(..));
+                } else {
+                    let at = block.len() - 1;
+                    block.insert(at, format!("EXDATE;VALUE=DATE:{stamp}"));
+                    out.extend(block.drain(..));
+                }
+            }
+            Scope::Following => {
+                let stamp = stamp.as_deref().expect("checked above");
+                if block_recurrence_id(&block).is_some_and(|r| r.as_str() >= stamp) {
+                    // A correction on or after the cut is part of what is ending.
+                    block.clear();
+                } else if block_recurrence_id(&block).is_some() {
+                    out.extend(block.drain(..));
+                } else {
+                    end_rule_before(&mut block, stamp);
+                    out.extend(block.drain(..));
+                }
+            }
+        }
+        block.clear();
+    }
+    touched.then(|| out.join(ending))
+}
+
+/// `YYYY-MM-DD` to the `YYYYMMDD` iCalendar writes.
+fn compact_date(date: &str) -> Option<String> {
+    let mut parts = date.split('-');
+    let (y, m, d) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || y.len() != 4 || m.len() != 2 || d.len() != 2 {
+        return None;
+    }
+    let all_digits = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+    (all_digits(y) && all_digits(m) && all_digits(d)).then(|| format!("{y}{m}{d}"))
+}
+
+/// Whether a VEVENT block carries this uid.
+fn block_has_uid(block: &[String], uid: &str) -> bool {
+    block.iter().any(|l| {
+        l.to_ascii_uppercase()
+            .strip_prefix("UID:")
+            .is_some_and(|_| l[4..].trim() == uid)
+    })
+}
+
+/// The block's `RECURRENCE-ID` value, when it is a correction to one occurrence.
+fn block_recurrence_id(block: &[String]) -> Option<String> {
+    block.iter().find_map(|l| {
+        let upper = l.to_ascii_uppercase();
+        if !upper.starts_with("RECURRENCE-ID") {
+            return None;
+        }
+        l.split_once(':').map(|(_, v)| v.trim().to_string())
+    })
+}
+
+/// End the block's rule the day before `stamp`.
+///
+/// `UNTIL` is inclusive in iCalendar, so the cut is the day BEFORE the occurrence
+/// the person picked: they asked for that one to go too.
+fn end_rule_before(block: &mut [String], stamp: &str) {
+    let Some(before) = day_before(stamp) else {
+        return;
+    };
+    for line in block.iter_mut() {
+        let upper = line.to_ascii_uppercase();
+        if !upper.starts_with("RRULE:") {
+            continue;
+        }
+        let (name, value) = line.split_once(':').unwrap_or(("RRULE", ""));
+        // COUNT and UNTIL are mutually exclusive: a rule that kept both would be
+        // read differently by different calendars.
+        let kept: Vec<&str> = value
+            .split(';')
+            .filter(|p| {
+                let u = p.to_ascii_uppercase();
+                !u.starts_with("UNTIL=") && !u.starts_with("COUNT=")
+            })
+            .filter(|p| !p.is_empty())
+            .collect();
+        *line = format!("{name}:{};UNTIL={before}", kept.join(";"));
+    }
+}
+
+/// The day before a `YYYYMMDD` stamp, as another one.
+fn day_before(stamp: &str) -> Option<String> {
+    let date = chrono::NaiveDate::parse_from_str(stamp, "%Y%m%d").ok()?;
+    Some(date.pred_opt()?.format("%Y%m%d").to_string())
 }
