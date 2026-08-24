@@ -33,8 +33,10 @@
     startOfWeek,
     ymd,
     type Agenda,
+    type AgendaEvent,
   } from "$lib/stores/calendar";
   import CalendarSidebar from "$lib/components/CalendarSidebar.svelte";
+  import QuickCreate from "$lib/components/QuickCreate.svelte";
   import WeekView from "$lib/components/WeekView.svelte";
   import MonthView from "$lib/components/MonthView.svelte";
   import AgendaView from "$lib/components/AgendaView.svelte";
@@ -44,6 +46,23 @@
   let view = $state<View>("week");
   let focus = $state(ymd(new Date()));
   let creating = $state(false);
+  /// The event the full dialog is editing, when it is.
+  let editing = $state<AgendaEvent | null>(null);
+  /// The quick-create panel, when a slot was spanned on the grid.
+  let quick = $state<{ date: string; time: string; endTime: string; x: number; y: number } | null>(null);
+  /// A slot the full dialog was seeded with from the quick-create.
+  let seed = $state<{ date: string; time: string; endTime: string; title: string } | null>(null);
+
+  function openEdit(e: AgendaEvent): void {
+    editing = e;
+    creating = true;
+  }
+  function quickMore(title: string): void {
+    if (quick) seed = { date: quick.date, time: quick.time, endTime: quick.endTime, title };
+    quick = null;
+    editing = null;
+    creating = true;
+  }
 
   // The named cause, not a sentence: only the window is in the reader's
   // language. `other` stays for a failure the command cannot name.
@@ -260,18 +279,39 @@
             <AgendaView agenda={visibleAgenda as Agenda} />
           </div>
         {:else if view === "week"}
-          <WeekView days={weekDays} events={visibleEvents} />
+          <WeekView days={weekDays} events={visibleEvents} onquick={(q) => (quick = q)} onedit={openEdit} />
         {:else if view === "day"}
-          <WeekView days={[focus]} events={visibleEvents} />
+          <WeekView days={[focus]} events={visibleEvents} onquick={(q) => (quick = q)} onedit={openEdit} />
         {:else}
-          <MonthView month={focus} events={visibleEvents} onopenday={openDay} />
+          <MonthView month={focus} events={visibleEvents} onopenday={openDay} onedit={openEdit} />
         {/if}
       {/if}
     </div>
   </SidebarInset>
 </SidebarProvider>
 
-<EventForm open={creating} date={focus} onclose={() => (creating = false)} />
+<EventForm
+  open={creating}
+  date={seed?.date ?? focus}
+  seed={seed ? { time: seed.time, endTime: seed.endTime, title: seed.title } : null}
+  {editing}
+  onclose={() => {
+    creating = false;
+    editing = null;
+    seed = null;
+  }}
+/>
+
+{#if quick}
+  <QuickCreate
+    at={{ x: quick.x, y: quick.y }}
+    date={quick.date}
+    time={quick.time}
+    endTime={quick.endTime}
+    onclose={() => (quick = null)}
+    onmore={quickMore}
+  />
+{/if}
 
 <style>
   .content {

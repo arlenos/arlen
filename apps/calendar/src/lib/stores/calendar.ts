@@ -383,3 +383,66 @@ export async function createEvent(draft: EventDraft): Promise<string | null> {
     return null;
   }
 }
+
+/// A change to one event, as the edit surfaces write it.
+export interface EventChanges {
+  summary?: string;
+  date?: string;
+  allDay?: boolean;
+  time?: string | null;
+  endTime?: string | null;
+  location?: string;
+}
+
+/// Update one (non-repeating) event. INTENDED SEAM:
+/// `calendar_update_event(uid, calendarId, changes)` rewriting the VEVENT in
+/// its file; repeating series come with the scope parameter (phase 3 of the
+/// plan, `"this" | "following" | "all"`). Fixture applies locally; live
+/// without the command answers with the refusal.
+export async function updateEvent(
+  uid: string,
+  calendarId: string,
+  changes: EventChanges,
+): Promise<string | null> {
+  try {
+    await invoke("calendar_update_event", { uid, calendarId, changes });
+    return null;
+  } catch (e) {
+    let mocked = false;
+    calendarMocked.update((m) => ((mocked = m), m));
+    if (!mocked) return get(t)("cal.edit.failed", { reason: String(e) });
+    agenda.update((a) => {
+      if (!a) return a;
+      const events = a.events.map((ev) => {
+        if (ev.uid !== uid) return ev;
+        return {
+          ...ev,
+          summary: changes.summary ?? ev.summary,
+          location: changes.location ?? ev.location,
+          date: changes.date ?? ev.date,
+          time: changes.allDay ? null : changes.time !== undefined ? changes.time : ev.time,
+          end_time: changes.allDay ? null : changes.endTime !== undefined ? changes.endTime : ev.end_time,
+          kind: changes.allDay ? "day" : changes.allDay === false && ev.kind === "day" ? "floating" : ev.kind,
+        };
+      });
+      events.sort((x, y) => x.date.localeCompare(y.date) || (x.time ?? "").localeCompare(y.time ?? ""));
+      return { ...a, events };
+    });
+    return null;
+  }
+}
+
+/// Delete one (non-repeating) event. INTENDED SEAM:
+/// `calendar_delete_event(uid, calendarId)`; scope joins in phase 3.
+export async function deleteEvent(uid: string, calendarId: string): Promise<string | null> {
+  try {
+    await invoke("calendar_delete_event", { uid, calendarId });
+    return null;
+  } catch (e) {
+    let mocked = false;
+    calendarMocked.update((m) => ((mocked = m), m));
+    if (!mocked) return get(t)("cal.edit.failed", { reason: String(e) });
+    agenda.update((a) => (a ? { ...a, events: a.events.filter((ev) => ev.uid !== uid) } : a));
+    return null;
+  }
+}

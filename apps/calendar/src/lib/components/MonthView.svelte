@@ -11,11 +11,13 @@
     month,
     events,
     onopenday,
+    onedit,
   }: {
     /// Any date inside the month to show (YYYY-MM-DD).
     month: string;
     events: AgendaEvent[];
     onopenday: (date: string) => void;
+    onedit?: (e: AgendaEvent) => void;
   } = $props();
 
   const first = $derived(`${month.slice(0, 7)}-01`);
@@ -55,7 +57,7 @@
         <button type="button" class="num" onclick={() => onopenday(d)}>{parseYmd(d).getDate()}</button>
         <div class="pills">
           {#each list.slice(0, MAX_PILLS) as e (e.uid + e.date + (e.time ?? ""))}
-            <EventPopover event={e}>
+            <EventPopover event={e} {onedit}>
               {#snippet children(props: Record<string, unknown>)}
                 <button type="button" class="pill" class:timed={e.time !== null} style="--cal: {colorOf($calendars, e)}" {...props}>
                   {#if e.time}<span class="p-time">{e.time}</span>{/if}

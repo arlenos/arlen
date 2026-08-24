@@ -1,24 +1,44 @@
 <script lang="ts">
   /// The time grid: one column per day, an all-day strip pinned on top, timed
   /// events as positioned blocks that split the column when they overlap. Also
-  /// the day view - the same engine with one column. The grid's slot height
-  /// stays >= 24px per half hour (calendar-app.md §7a c) and the initial
-  /// scroll lands the working morning in view.
+  /// the day view - the same engine with one column. Slot height stays >= 24px
+  /// per half hour (calendar-app.md §7a c); the initial scroll lands the
+  /// working morning in view.
   ///
-  /// No dragging in v1: creating and moving events are the form's job, which
-  /// also keeps SC 2.5.7's single-pointer requirement moot here.
+  /// Interaction: press on empty grid and drag to span a time - release opens
+  /// the quick-create; press a block and drag to move it (15-minute snap,
+  /// across days), drag its lower edge to resize, hold Alt while dropping to
+  /// duplicate. Every drag has a single-pointer alternative (SC 2.5.7): the
+  /// block's popover opens the full edit dialog. A repeating occurrence does
+  /// not drag - the series dialog is the next phase, and silently moving one
+  /// occurrence of a rule would be a lie about the others.
   import { t, locale } from "$lib/i18n/messages";
   import { isToday } from "$lib/wording";
-  import { calendars, colorOf, layoutDay, parseYmd, ymd, type AgendaEvent } from "$lib/stores/calendar";
+  import {
+    calendars,
+    colorOf,
+    layoutDay,
+    parseYmd,
+    updateEvent,
+    createEvent,
+    ymd,
+    type AgendaEvent,
+  } from "$lib/stores/calendar";
   import EventPopover from "./EventPopover.svelte";
 
   let {
     days,
     events,
+    onquick,
+    onedit,
   }: {
     /// The visible dates (YYYY-MM-DD), Monday-first for a week, one for a day.
     days: string[];
     events: AgendaEvent[];
+    /// Open the quick-create at a spanned slot (screen coords for anchoring).
+    onquick: (q: { date: string; time: string; endTime: string; x: number; y: number }) => void;
+    /// Open the full edit dialog for one event.
+    onedit: (e: AgendaEvent) => void;
   } = $props();
 
   const HOUR = 48; // px per hour -> 24px per half-hour slot, the floor.
@@ -41,11 +61,159 @@
     };
   }
 
+  function minToTime(min: number): string {
+    const m = Math.max(0, Math.min(24 * 60, min));
+    return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  }
+  const snap = (min: number, step: number) => Math.round(min / step) * step;
+
   let scroller = $state<HTMLElement | null>(null);
+  let gridEl = $state<HTMLElement | null>(null);
   $effect(() => {
     // Land the morning in view once the grid exists; 8:00 minus a breath.
     if (scroller) scroller.scrollTop = 7.5 * HOUR;
   });
+
+  /// Which date a clientX falls into, from the grid's own geometry.
+  function dateAtX(clientX: number): string {
+    if (!gridEl) return days[0];
+    const rect = gridEl.getBoundingClientRect();
+    const gutter = 3.5 * 16;
+    const colW = (rect.width - gutter) / days.length;
+    const i = Math.floor((clientX - rect.left - gutter) / colW);
+    return days[Math.max(0, Math.min(days.length - 1, i))];
+  }
+  function minAtY(clientY: number): number {
+    if (!gridEl) return 0;
+    const rect = gridEl.getBoundingClientRect();
+    return ((clientY - rect.top) / HOUR) * 60;
+  }
+
+  // --- Spanning a new slot on empty grid -----------------------------------
+  let spanning = $state<{ date: string; anchorMin: number; startMin: number; endMin: number } | null>(null);
+
+  function colDown(e: PointerEvent, date: string): void {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest(".block")) return;
+    const m = snap(minAtY(e.clientY), 30);
+    spanning = { date, anchorMin: m, startMin: m, endMin: m + 30 };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* a synthetic or already-lifted pointer has no capture to take */
+    }
+  }
+  function colMove(e: PointerEvent): void {
+    if (!spanning) return;
+    const m = snap(minAtY(e.clientY), 30);
+    spanning = {
+      ...spanning,
+      date: dateAtX(e.clientX),
+      startMin: Math.min(spanning.anchorMin, m),
+      endMin: Math.max(spanning.anchorMin + 30, m + 30),
+    };
+  }
+  function colUp(e: PointerEvent): void {
+    if (!spanning) return;
+    const q = spanning;
+    spanning = null;
+    onquick({
+      date: q.date,
+      time: minToTime(q.startMin),
+      endTime: minToTime(Math.max(q.endMin, q.startMin + 30)),
+      x: e.clientX,
+      y: e.clientY,
+    });
+  }
+
+  // --- Moving / resizing an existing block ---------------------------------
+  type DragState = {
+    event: AgendaEvent;
+    mode: "move" | "resize";
+    grabOffsetMin: number;
+    date: string;
+    startMin: number;
+    endMin: number;
+    moved: boolean;
+    duplicate: boolean;
+  };
+  let drag = $state<DragState | null>(null);
+
+  function blockDown(e: PointerEvent, ev: AgendaEvent, startMin: number, endMin: number): void {
+    if (e.button !== 0 || ev.repeats) return;
+    const nearBottom = (endMin - minAtY(e.clientY)) * (HOUR / 60) < 8;
+    drag = {
+      event: ev,
+      mode: nearBottom ? "resize" : "move",
+      grabOffsetMin: minAtY(e.clientY) - startMin,
+      date: ev.date,
+      startMin,
+      endMin,
+      moved: false,
+      duplicate: false,
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* a synthetic or already-lifted pointer has no capture to take */
+    }
+  }
+  function blockMove(e: PointerEvent): void {
+    if (!drag) return;
+    const pointerMin = minAtY(e.clientY);
+    if (drag.mode === "move") {
+      const len = drag.endMin - drag.startMin;
+      const start = Math.max(0, Math.min(24 * 60 - len, snap(pointerMin - drag.grabOffsetMin, 15)));
+      drag = {
+        ...drag,
+        date: dateAtX(e.clientX),
+        startMin: start,
+        endMin: start + len,
+        moved: true,
+        duplicate: e.altKey,
+      };
+    } else {
+      const end = Math.max(drag.startMin + 15, snap(pointerMin, 15));
+      drag = { ...drag, endMin: Math.min(24 * 60, end), moved: true };
+    }
+  }
+  async function blockUp(e: PointerEvent): Promise<void> {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    if (!d.moved) return; // a plain click: the popover trigger handles it
+    suppressClick = true;
+    const changes = {
+      date: d.date,
+      time: minToTime(d.startMin),
+      endTime: minToTime(d.endMin),
+    };
+    if (d.duplicate || e.altKey) {
+      await createEvent({
+        summary: d.event.summary,
+        date: d.date,
+        allDay: false,
+        time: changes.time,
+        endTime: changes.endTime,
+        location: d.event.location,
+        repeat: "none",
+        onDays: [],
+        calendarId: d.event.calendar ?? "",
+      });
+    } else {
+      await updateEvent(d.event.uid, d.event.calendar ?? "", changes);
+    }
+  }
+  /// After a real drag, the release still fires a click on the block, which
+  /// would pop the details open over the drop. Swallowed exactly once.
+  let suppressClick = false;
+  function maybeSuppress(e: MouseEvent): void {
+    if (suppressClick) {
+      e.stopPropagation();
+      e.preventDefault();
+      suppressClick = false;
+    }
+  }
 </script>
 
 <div class="week" style="--cols: {days.length}">
@@ -65,7 +233,7 @@
     {#each days as d (d)}
       <span class="allday-cell">
         {#each (byDay.get(d) ?? []).filter((e) => e.time === null) as e (e.uid + e.date)}
-          <EventPopover event={e}>
+          <EventPopover event={e} {onedit}>
             {#snippet children(props: Record<string, unknown>)}
               <button
                 type="button"
@@ -81,7 +249,7 @@
   </div>
 
   <div class="scroll" bind:this={scroller}>
-    <div class="grid" style="height: {24 * HOUR}px">
+    <div class="grid" style="height: {24 * HOUR}px" bind:this={gridEl}>
       <div class="gutter hours">
         {#each Array.from({ length: 24 }, (_, h) => h) as h (h)}
           <span class="hour" style="top: {h * HOUR}px">{String(h).padStart(2, "0")}:00</span>
@@ -89,34 +257,86 @@
       </div>
       {#each days as d (d)}
         {@const today = isToday(d, new Date())}
-        <div class="day-col" class:today>
+        <!-- The column is a drawing surface for spanning a new event; its
+             interactive children are the block buttons. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="day-col"
+          class:today
+          onpointerdown={(e) => colDown(e, d)}
+          onpointermove={colMove}
+          onpointerup={colUp}
+        >
           {#each Array.from({ length: 24 }, (_, h) => h) as h (h)}
             <span class="line" style="top: {h * HOUR}px" aria-hidden="true"></span>
           {/each}
           {#if today && ymd(now) === d}
             <span class="now" style="top: {nowTop}px" aria-hidden="true"></span>
           {/if}
+          {#if spanning && spanning.date === d}
+            <span
+              class="ghost"
+              style="top: {(spanning.startMin * HOUR) / 60}px; height: {((spanning.endMin - spanning.startMin) * HOUR) / 60}px"
+              aria-hidden="true"
+            >
+              {minToTime(spanning.startMin)}&#8211;{minToTime(spanning.endMin)}
+            </span>
+          {/if}
           {#each layoutDay(byDay.get(d) ?? []) as b (b.event.uid + b.event.date + (b.event.time ?? ""))}
-            <EventPopover event={b.event}>
-              {#snippet children(props: Record<string, unknown>)}
-                <button
-                  type="button"
-                  class="block"
-                  style="top: {(b.startMin * HOUR) / 60}px; height: {Math.max(((b.endMin - b.startMin) * HOUR) / 60, 20)}px; left: calc({(b.col / b.cols) * 100}% + 2px); width: calc({100 / b.cols}% - 4px); --cal: {colorOf($calendars, b.event)}"
-                  {...props}
-                >
-                  {#if b.endMin - b.startMin < 40}
-                    <!-- A short block holds one line, and the line that matters
-                         is the name; the time is where the block sits. -->
-                    <span class="b-title">{b.event.summary}</span>
-                  {:else}
-                    <span class="b-title">{b.event.summary}</span>
-                    <span class="b-time">{b.event.time}{#if b.event.end_time}&#8211;{b.event.end_time}{/if}</span>
-                  {/if}
-                </button>
-              {/snippet}
-            </EventPopover>
+            {@const isDragged =
+              drag !== null && drag.event.uid === b.event.uid && drag.event.date === b.event.date && !drag.duplicate}
+            {@const top = isDragged && drag ? (drag.startMin * HOUR) / 60 : (b.startMin * HOUR) / 60}
+            {@const height =
+              isDragged && drag
+                ? Math.max(((drag.endMin - drag.startMin) * HOUR) / 60, 20)
+                : Math.max(((b.endMin - b.startMin) * HOUR) / 60, 20)}
+            {@const shownDate = isDragged && drag ? drag.date : d}
+            {#if shownDate === d}
+              <EventPopover event={b.event} {onedit}>
+                {#snippet children(props: Record<string, unknown>)}
+                  <button
+                    type="button"
+                    class="block"
+                    class:dragging={isDragged && drag?.moved}
+                    class:fixed-series={b.event.repeats}
+                    style="top: {top}px; height: {height}px; left: calc({(b.col / b.cols) * 100}% + 2px); width: calc({100 / b.cols}% - 4px); --cal: {colorOf($calendars, b.event)}"
+                    onpointerdown={(e) => blockDown(e, b.event, b.startMin, b.endMin)}
+                    onpointermove={blockMove}
+                    onpointerup={blockUp}
+                    onclickcapture={maybeSuppress}
+                    {...props}
+                  >
+                    {#if b.endMin - b.startMin < 40}
+                      <!-- A short block holds one line, and the line that
+                           matters is the name; the time is where it sits. -->
+                      <span class="b-title">{b.event.summary}</span>
+                    {:else}
+                      <span class="b-title">{b.event.summary}</span>
+                      <span class="b-time"
+                        >{isDragged && drag ? minToTime(drag.startMin) : b.event.time}&#8211;{isDragged && drag
+                          ? minToTime(drag.endMin)
+                          : (b.event.end_time ?? "")}</span
+                      >
+                    {/if}
+                    {#if !b.event.repeats}
+                      <span class="resize-handle" aria-hidden="true"></span>
+                    {/if}
+                  </button>
+                {/snippet}
+              </EventPopover>
+            {/if}
           {/each}
+          {#if drag && drag.moved && drag.date === d && (drag.duplicate || drag.event.date !== d)}
+            <!-- The drop preview in the target column (a move across days, or
+                 an Alt-duplicate) - the original stays where it is. -->
+            <span
+              class="ghost strong"
+              style="top: {(drag.startMin * HOUR) / 60}px; height: {Math.max(((drag.endMin - drag.startMin) * HOUR) / 60, 20)}px; --cal: {colorOf($calendars, drag.event)}"
+              aria-hidden="true"
+            >
+              {drag.event.summary}
+            </span>
+          {/if}
         </div>
       {/each}
     </div>
@@ -217,6 +437,7 @@
     position: relative;
     border-inline-start: 1px solid var(--color-border-subtle, #1f1f1f);
     min-width: 0;
+    touch-action: none;
   }
   .day-col.today {
     background: color-mix(in srgb, var(--color-accent, #6366f1) 4%, transparent);
@@ -234,6 +455,27 @@
     border-top: 2px solid var(--color-accent, #6366f1);
     z-index: 2;
   }
+  .ghost {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    z-index: 3;
+    display: flex;
+    align-items: flex-start;
+    padding: 3px 6px;
+    border: 1px dashed color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    border-radius: var(--radius-chip, 4px);
+    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    font-size: var(--text-2xs, 10px);
+    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  .ghost.strong {
+    border-style: solid;
+    border-color: var(--cal, var(--color-accent));
+    background: color-mix(in srgb, var(--cal, var(--color-accent)) 18%, transparent);
+  }
   .block {
     position: absolute;
     z-index: 1;
@@ -250,6 +492,15 @@
     text-align: start;
     color: var(--color-fg-primary);
     cursor: pointer;
+    touch-action: none;
+  }
+  .block.dragging {
+    z-index: 4;
+    opacity: 0.85;
+    cursor: grabbing;
+  }
+  .block.fixed-series {
+    cursor: default;
   }
   .block:focus-visible,
   .allday-pill:focus-visible {
@@ -267,5 +518,13 @@
     font-size: var(--text-2xs, 10px);
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
     font-variant-numeric: tabular-nums;
+  }
+  .resize-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 6px;
+    cursor: ns-resize;
   }
 </style>
