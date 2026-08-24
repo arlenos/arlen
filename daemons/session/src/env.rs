@@ -211,24 +211,44 @@ pub fn posix_locale_for(tag: &str, generated: &[String]) -> Option<String> {
         .cloned()
 }
 
-/// The language variable, when there is one to set.
+/// The language variables, when the machine has a locale for the chosen language.
 ///
-/// `LANG` rather than `LC_TIME` alone, on purpose. It is the category default, so
-/// one variable settles dates, times, numbers and the messages of every GTK
-/// program the desktop starts - a user who asked for German gets a German file
-/// chooser too. Our own surfaces are unaffected either way: they render from the
-/// catalogues and format through `Intl`.
+/// THREE, and the split is the whole point. `LANG` is the category default, so it
+/// settles the dates and times the native controls draw. `LC_MESSAGES` and
+/// `LC_NUMERIC` are then pinned back to `C`, because this map reaches every
+/// process the session starts and several of them read another program's output:
+/// the shell parses `rfkill list` for `Soft blocked: yes`, the audio panel parses
+/// `pactl`, the store parses `flatpak`. Those strings are translated the moment a
+/// locale exists - measured on the host, `ls` of a missing file answers `cannot
+/// access` under `C` and `Zugriff ... nicht möglich` under `de_AT.UTF-8` - and a
+/// parser reading the German is a panel that says nothing is there.
 ///
-/// It lands in the map rather than being exported here because the map is what
+/// `LC_NUMERIC` is in that list for the same reason one step further down: with it
+/// following the language, `printf "%.1f" 1.5` prints `1,5`, and a volume read out
+/// of `wpctl` stops parsing as a float.
+///
+/// WHAT IT COSTS. A third-party GTK program shows its own English messages to a
+/// German user, and its numbers with a dot. The right end state is each parser
+/// pinning `LC_ALL=C` on the command it spawns - a program that reads another
+/// program's output owns that - and then messages can follow the language too.
+/// Until they do, the desktop's own panels working is worth more than a translated
+/// GIMP menu.
+///
+/// They land in the map rather than being exported here because the map is what
 /// [`import_list`] is derived from, and the apps are systemd user services: a
 /// variable that is not in the map reaches the session process and stops.
 ///
 /// One knock-on worth naming: `xdg-user-dirs-update`, which this session already
-/// runs, reads `LANG` to name the user's folders. A German session will therefore
-/// get `~/Dokumente` - which is what that call was put there for, and what its own
-/// comment describes wanting.
-pub fn language_env(tag: &str, generated: &[String]) -> Option<(String, String)> {
-    posix_locale_for(tag, generated).map(|name| ("LANG".to_string(), name))
+/// runs, reads `LANG`. A German session will therefore get `~/Dokumente` - which is
+/// what that call was put there for, and what its own comment describes wanting.
+pub fn language_env(tag: &str, generated: &[String]) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    if let Some(name) = posix_locale_for(tag, generated) {
+        out.insert("LANG".to_string(), name);
+        out.insert("LC_MESSAGES".to_string(), "C".to_string());
+        out.insert("LC_NUMERIC".to_string(), "C".to_string());
+    }
+    out
 }
 
 /// The greeter's screen-reader handoff: `1`, `0`, or absent. Matches
@@ -303,12 +323,17 @@ mod tests {
         assert_eq!(posix_locale_for("", &have), None);
         assert_eq!(posix_locale_for("../etc", &have), None);
 
-        assert_eq!(
-            language_env("de", &have),
-            Some(("LANG".to_string(), "de_DE.UTF-8".to_string())),
-            "the apps are user services, so it has to be a map entry to reach them"
-        );
-        assert_eq!(language_env("fr", &have), None);
+        // The apps are user services, so these have to be map entries to reach
+        // them at all - and the two pins have to travel with the language, or the
+        // panels that parse `rfkill` and `pactl` start reading German.
+        let env = language_env("de", &have);
+        assert_eq!(env.get("LANG").map(String::as_str), Some("de_DE.UTF-8"));
+        assert_eq!(env.get("LC_MESSAGES").map(String::as_str), Some("C"));
+        assert_eq!(env.get("LC_NUMERIC").map(String::as_str), Some("C"));
+
+        // Nothing to set means nothing set, pins included: a session that keeps
+        // the C formats does not need to be told to keep them.
+        assert!(language_env("fr", &have).is_empty());
     }
 
     #[test]
