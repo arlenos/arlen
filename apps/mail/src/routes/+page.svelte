@@ -45,7 +45,10 @@
   const tauriAvailable = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
   let selectedFolder = $state("inbox");
-  let selectedId = $state<string | null>(null);
+  /// The selected message ids. One id reads; several arm the bulk actions.
+  /// "@file" is the launched-file pseudo-selection and never joins a set.
+  let selected = $state<Set<string>>(new Set());
+  let fileOpen = $state(false);
   let reading = $state<Message | null>(null);
   let composing = $state(false);
   let preset = $state<{ to: string; subject: string; body: string }>({ to: "", subject: "", body: "" });
@@ -65,7 +68,8 @@
       try {
         const m = await invoke<Message>("mail_read", { path: launched });
         openedFile.set(m);
-        selectedId = "@file";
+        fileOpen = true;
+        selected = new Set();
         failure = null;
       } catch (e) {
         // The payload arrives as an OBJECT here, not as a string with JSON
@@ -98,20 +102,38 @@
 
   function selectFolder(id: string): void {
     selectedFolder = id;
-    if (selectedId !== "@file") {
-      selectedId = null;
+    if (!fileOpen) {
+      selected = new Set();
       reading = null;
     }
     composing = false;
   }
 
-  function selectMessage(id: string): void {
-    selectedId = id;
+  /// A plain click or a keyboard step: single-select and read.
+  function openOne(id: string): void {
+    selected = new Set([id]);
+    fileOpen = false;
     composing = false;
     markRead(id);
     void openMessage(id).then((m) => {
-      if (selectedId === id) reading = m;
+      if (selected.size === 1 && selected.has(id)) reading = m;
     });
+  }
+
+  /// Ctrl/shift selection from the list: several rows arm the bulk actions,
+  /// and the reading pane steps back to the count.
+  function selectionChanged(sel: Set<string>): void {
+    selected = sel;
+    fileOpen = false;
+    composing = false;
+    if (sel.size !== 1) reading = null;
+    else {
+      const id = [...sel][0];
+      markRead(id);
+      void openMessage(id).then((m) => {
+        if (selected.size === 1 && selected.has(id)) reading = m;
+      });
+    }
   }
 
   function startCompose(to = "", subject = "", body = ""): void {
@@ -123,7 +145,7 @@
     composing = false;
     if (draftId) {
       selectedFolder = "drafts";
-      selectMessage(draftId);
+      openOne(draftId);
     }
   }
 
@@ -136,16 +158,18 @@
     startCompose("", reading.subject ? `Fwd: ${reading.subject}` : "", reading.text ? `\n\n${reading.text}` : "");
   }
   function archiveSelected(): void {
-    if (!selectedId || selectedId === "@file") return;
-    moveMessage(selectedId, "archive");
-    selectedId = null;
+    if (selected.size === 0) return;
+    for (const id of selected) moveMessage(id, "archive");
+    selected = new Set();
     reading = null;
   }
   function deleteSelected(): void {
-    if (!selectedId || selectedId === "@file") return;
-    if (selectedFolder === "trash") deleteForever(selectedId);
-    else moveMessage(selectedId, "trash");
-    selectedId = null;
+    if (selected.size === 0) return;
+    for (const id of selected) {
+      if (selectedFolder === "trash") deleteForever(id);
+      else moveMessage(id, "trash");
+    }
+    selected = new Set();
     reading = null;
   }
 
@@ -157,16 +181,21 @@
     archive: "ml.folder.archive",
     trash: "ml.folder.trash",
   };
-  // The bar names the place: compose, the open message, or the folder.
+  // The bar names the place: compose, the open message, a selection count, or
+  // the folder.
   const barTitle = $derived.by(() => {
     if (composing) return $t("ml.compose.title");
-    if (selectedId === "@file" && $openedFile) return $openedFile.subject ?? $t("ml.openedFile");
-    if (selectedId && reading) return reading.subject ?? "-";
+    if (fileOpen && $openedFile) return $openedFile.subject ?? $t("ml.openedFile");
+    if (selected.size > 1) return $t("ml.selectedCount", { n: selected.size });
+    if (selected.size === 1 && reading) return reading.subject ?? "-";
     const kind = $folders.find((f) => f.id === selectedFolder)?.kind;
     return kind ? $t(FOLDER_NAMES[kind]) : $t("ml.app.title");
   });
 
-  const showActions = $derived(!composing && selectedId !== null && selectedId !== "@file" && reading !== null);
+  /// One message read: everything. Several: only the actions that make sense
+  /// for a pile (archive, delete) - a bulk Reply would be a lie.
+  const showSingleActions = $derived(!composing && !fileOpen && selected.size === 1 && reading !== null);
+  const showBulkActions = $derived(!composing && !fileOpen && selected.size > 1);
 
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
@@ -212,13 +241,15 @@
       <Separator orientation="vertical" class="me-1 h-4" />
       <span class="select-none truncate text-sm font-medium text-foreground">{barTitle}</span>
       <div class="flex-1"></div>
-      {#if showActions}
+      {#if showSingleActions}
         <IconAction label={$t("ml.reply")} size="control" onclick={reply}>
           <Reply size={15} strokeWidth={1.75} />
         </IconAction>
         <IconAction label={$t("ml.forward")} size="control" onclick={forward}>
           <Forward size={15} strokeWidth={1.75} />
         </IconAction>
+      {/if}
+      {#if showSingleActions || showBulkActions}
         <IconAction label={$t("ml.archive")} size="control" onclick={archiveSelected}>
           <Archive size={15} strokeWidth={1.75} />
         </IconAction>
@@ -239,10 +270,11 @@
             <button
               type="button"
               class="opened-file"
-              class:on={selectedId === "@file"}
+              class:on={fileOpen}
               id="opened-file"
               onclick={() => {
-                selectedId = "@file";
+                fileOpen = true;
+                selected = new Set();
                 composing = false;
               }}
             >
@@ -253,7 +285,14 @@
               </span>
             </button>
           {/if}
-          <MessageList {rows} {selectedId} onselect={selectMessage} />
+          <MessageList
+            {rows}
+            {selected}
+            onchange={selectionChanged}
+            onopen={openOne}
+            onarchive={archiveSelected}
+            ondelete={deleteSelected}
+          />
         </div>
       {/if}
 
@@ -270,10 +309,15 @@
               {:else}{$t("ml.failed.other", { reason: failure.reason })}{/if}
             </p>
           </div>
-        {:else if selectedId === "@file" && $openedFile}
+        {:else if fileOpen && $openedFile}
           <MessageView message={$openedFile} />
-        {:else if selectedId && reading}
+        {:else if selected.size === 1 && reading}
           <MessageView message={reading} />
+        {:else if selected.size > 1}
+          <div class="center">
+            <Mail size={28} strokeWidth={1.5} aria-hidden="true" />
+            <p class="note">{$t("ml.selectedCount", { n: selected.size })}</p>
+          </div>
         {:else}
           <div class="center">
             <Mail size={28} strokeWidth={1.5} aria-hidden="true" />
