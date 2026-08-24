@@ -302,6 +302,48 @@ fn rrule_of(repeat: &str, on_days: &[String]) -> Option<String> {
     }
 }
 
+/// Why a calendar file could not be read.
+enum CalendarRead {
+    NoHome,
+    NoSuchCalendar,
+    Unreadable(String),
+}
+
+/// Read one calendar by id, and hand back where it was.
+///
+/// The id names a FILE, so it is checked as a name and not a path before it is
+/// joined to anything: a `..` or a slash arriving from a window would otherwise
+/// choose the file this reads and, through its caller, the file it writes.
+fn read_calendar(id: &str) -> Result<(PathBuf, String), CalendarRead> {
+    let Some(dir) = calendar_dir() else {
+        return Err(CalendarRead::NoHome);
+    };
+    if id.is_empty() || id.contains(['/', '\\']) || id.starts_with('.') {
+        return Err(CalendarRead::NoSuchCalendar);
+    }
+    let path = dir.join(format!("{id}.ics"));
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Ok((path, text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(CalendarRead::NoSuchCalendar),
+        Err(e) => Err(CalendarRead::Unreadable(e.to_string())),
+    }
+}
+
+/// Write a calendar back, whole or not at all.
+///
+/// Through a temporary beside it and a rename: a calendar half-written because the
+/// disk filled mid-save is worse than one that kept its old contents. The
+/// temporary is this function's litter and is cleared if the rename fails, rather
+/// than left beside somebody's calendar looking like a second one.
+fn write_calendar(path: &std::path::Path, text: &str) -> Result<(), String> {
+    let tmp = path.with_extension("ics.tmp");
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })
+}
+
 /// Why a calendar could not be recoloured.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "kebab-case", tag = "problem")]
@@ -327,32 +369,68 @@ enum ColorProblem {
 /// this app does not model, events, the person's own X- lines - is where it was.
 #[tauri::command]
 fn calendar_set_color(id: String, color: String) -> Result<(), ColorProblem> {
-    let Some(dir) = calendar_dir() else {
-        return Err(ColorProblem::NoHome);
-    };
-    // The id names a file, so it must be a name and not a path.
-    if id.is_empty() || id.contains(['/', '\\']) || id.starts_with('.') {
-        return Err(ColorProblem::NoSuchCalendar);
-    }
-    let path = dir.join(format!("{id}.ics"));
-    let text = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(ColorProblem::NoSuchCalendar)
-        }
-        Err(e) => return Err(ColorProblem::Unreadable { why: e.to_string() }),
-    };
+    let (path, text) = read_calendar(&id).map_err(|e| match e {
+        CalendarRead::NoHome => ColorProblem::NoHome,
+        CalendarRead::NoSuchCalendar => ColorProblem::NoSuchCalendar,
+        CalendarRead::Unreadable(why) => ColorProblem::Unreadable { why },
+    })?;
     let Some(updated) = arlen_calendar_core::write::set_calendar_color(&text, &color) else {
         return Err(ColorProblem::BadColor);
     };
-    let tmp = path.with_extension("ics.tmp");
-    std::fs::write(&tmp, updated).map_err(|e| ColorProblem::NotWritten { why: e.to_string() })?;
-    std::fs::rename(&tmp, &path).map_err(|e| {
-        // The temporary is this function's litter, not the person's calendar.
-        let _ = std::fs::remove_file(&tmp);
-        ColorProblem::NotWritten { why: e.to_string() }
+    write_calendar(&path, &updated).map_err(|why| ColorProblem::NotWritten { why })
+}
+
+/// Why an event could not be removed.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum DeleteProblem {
+    /// Nowhere to keep calendars: no home directory for this session.
+    NoHome,
+    /// No calendar by that name here.
+    NoSuchCalendar,
+    /// It is there and could not be read.
+    Unreadable { why: String },
+    /// The scope was not one of `this`, `following`, `all`.
+    BadScope,
+    /// Nothing in that calendar has this uid, or the occurrence was missing or
+    /// unreadable for a scope that needs one. Nothing was removed.
+    NotAimed,
+    /// The write itself failed. Nothing was changed.
+    NotWritten { why: String },
+}
+
+/// Remove an event, or one occurrence, or the rest of a series.
+#[tauri::command]
+fn calendar_delete_event(
+    uid: String,
+    calendar_id: String,
+    scope: String,
+    occurrence_date: Option<String>,
+) -> Result<(), DeleteProblem> {
+    use arlen_calendar_core::write::Scope;
+    let scope = match scope.as_str() {
+        "this" => Scope::This,
+        "following" => Scope::Following,
+        "all" => Scope::All,
+        _ => return Err(DeleteProblem::BadScope),
+    };
+    let (path, text) = read_calendar(&calendar_id).map_err(|e| match e {
+        CalendarRead::NoHome => DeleteProblem::NoHome,
+        CalendarRead::NoSuchCalendar => DeleteProblem::NoSuchCalendar,
+        CalendarRead::Unreadable(why) => DeleteProblem::Unreadable { why },
     })?;
-    Ok(())
+    let Some(updated) = arlen_calendar_core::write::delete_event(
+        &text,
+        &uid,
+        scope,
+        occurrence_date.as_deref(),
+    ) else {
+        // The core answers `None` for every ask it could not aim: no such uid, or
+        // a scope that needs an occurrence and did not get a readable one. Both
+        // mean the file is untouched, which is what the caller has to know.
+        return Err(DeleteProblem::NotAimed);
+    };
+    write_calendar(&path, &updated).map_err(|why| DeleteProblem::NotWritten { why })
 }
 
 /// One calendar as the sidebar lists it.
@@ -404,7 +482,7 @@ fn calendar_calendars() -> Vec<CalendarInfo> {
         .collect();
     // By what the person sees, not by what the filesystem happened to hand back:
     // `read_dir` has no order, so an unsorted list reshuffles between reads.
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by_key(|c| c.name.to_lowercase());
     out
 }
 
@@ -553,6 +631,7 @@ pub fn run() {
             calendar_agenda,
             calendar_calendars,
             calendar_set_color,
+            calendar_delete_event,
             launch_file,
             calendar_import,
             calendar_create_event
