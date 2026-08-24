@@ -17,7 +17,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
 serde = { version = "1", features = ["derive"] }
-arlen-wine-core = { path = "../core" }
+arlen-wine-core = { path = "../../../daemons/bottled" }
 
 # This app is its own standalone crate (not a member of a parent workspace).
 [workspace]
