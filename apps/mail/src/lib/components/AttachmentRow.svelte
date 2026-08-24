@@ -15,12 +15,42 @@
   /// The outcome of the last save press, one line under the chips.
   let outcome = $state<{ ok: boolean; text: string } | null>(null);
 
+  /// What the command says went wrong, as a word this file turns into a sentence.
+  type SaveProblem =
+    | { problem: "unreadable"; why: string }
+    | { problem: "not-a-message" }
+    | { problem: "no-such-attachment" }
+    | { problem: "no-folder" }
+    | { problem: "not-written"; why: string };
+
+  function refusal(e: unknown): string {
+    // A TAGGED word, not a stringified object. `String(e)` on a typed refusal
+    // renders `[object Object]`, which is a sentence about nothing.
+    const p = e as SaveProblem | null;
+    switch (p?.problem) {
+      case "unreadable":
+        return $t("ml.attach.failed.unreadable", { why: p.why });
+      case "not-a-message":
+        return $t("ml.attach.failed.notAMessage");
+      case "no-such-attachment":
+        return $t("ml.attach.failed.noSuchAttachment");
+      case "no-folder":
+        return $t("ml.attach.failed.noFolder");
+      case "not-written":
+        return $t("ml.attach.failed.notWritten", { why: p.why });
+      default:
+        // Not one of ours: no host at all, or a transport that failed before the
+        // command answered. Its own words are the only detail there is.
+        return $t("ml.attach.failed.other", { reason: String(e) });
+    }
+  }
+
   async function save(index: number): Promise<void> {
     try {
       const path = await invoke<string>("mail_save_attachment", { path: message.path, index });
       outcome = { ok: true, text: $t("ml.attach.saved", { path }) };
     } catch (e) {
-      outcome = { ok: false, text: $t("ml.attach.failed", { reason: String(e) }) };
+      outcome = { ok: false, text: refusal(e) };
     }
   }
 </script>

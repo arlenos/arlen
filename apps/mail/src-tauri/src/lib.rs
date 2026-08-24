@@ -164,6 +164,97 @@ fn mail_read(path: String) -> Result<MessageDto, ReadProblem> {
 ///
 /// # Panics
 /// When Tauri cannot build the app, which is a broken installation.
+
+/// Why an attachment did not get saved, as a word rather than a sentence.
+///
+/// Same rule as [`ReadProblem`]: the window owns the wording, this owns the
+/// cause. `why` survives only where the filesystem's own words are the detail.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum SaveProblem {
+    Unreadable { why: String },
+    NotAMessage,
+    NoSuchAttachment,
+    NoFolder,
+    NotWritten { why: String },
+}
+
+/// Save one attachment out of a message file, and answer with where it went.
+///
+/// THE SENDER'S FILENAME IS A SUGGESTION, NOT A DESTINATION - the rule
+/// `arlen_mail_core::message::Attachment::name` states and the reason this
+/// command takes only the index. Everything but the final component is dropped,
+/// so `../../.ssh/authorized_keys` saves as `authorized_keys` into the downloads
+/// folder and reaches nothing else. A name that is empty, `.` or `..` after that
+/// is not a name, and the part is saved under its position instead.
+///
+/// The name is otherwise kept AS WRITTEN, including a second extension. Renaming
+/// `invoice.pdf.exe` to something calmer would be this app lying about what
+/// arrived; what actually keeps it from running is that nothing here marks a
+/// saved file executable, and a desktop that launches by extension is a
+/// different bug in a different place.
+///
+/// # Errors
+/// When the message will not read, carries no such attachment, there is no
+/// downloads folder, or the write fails.
+#[tauri::command]
+fn mail_save_attachment(path: String, index: usize) -> Result<String, SaveProblem> {
+    let raw = std::fs::read(&path).map_err(|e| SaveProblem::Unreadable { why: e.to_string() })?;
+    let message =
+        arlen_mail_core::message::read(&raw).map_err(|_| SaveProblem::NotAMessage)?;
+    let named = message
+        .attachments
+        .get(index)
+        .ok_or(SaveProblem::NoSuchAttachment)?
+        .name
+        .clone();
+    let bytes = arlen_mail_core::message::attachment_bytes(&raw, index)
+        .ok_or(SaveProblem::NoSuchAttachment)?;
+
+    let folder = dirs::download_dir().ok_or(SaveProblem::NoFolder)?;
+    std::fs::create_dir_all(&folder).map_err(|e| SaveProblem::NotWritten { why: e.to_string() })?;
+    let target = free_path(&folder, &safe_name(named.as_deref(), index));
+    std::fs::write(&target, &bytes).map_err(|e| SaveProblem::NotWritten { why: e.to_string() })?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
+/// The sender's suggestion reduced to a single filename, or a positional one.
+fn safe_name(named: Option<&str>, index: usize) -> String {
+    let from_sender = named
+        .map(|n| n.trim())
+        .filter(|n| !n.is_empty())
+        .and_then(|n| {
+            std::path::Path::new(n)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+        })
+        .filter(|n| n != "." && n != ".." && !n.is_empty());
+    from_sender.unwrap_or_else(|| format!("attachment-{}", index + 1))
+}
+
+/// `folder/name`, or the first `name (2)`, `name (3)` that is free.
+///
+/// NEVER OVERWRITES. Two messages carrying `scan.pdf` are two files, and a
+/// second save that silently replaced the first would lose a document while
+/// reporting success.
+fn free_path(folder: &std::path::Path, name: &str) -> PathBuf {
+    let first = folder.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let path = std::path::Path::new(name);
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy()));
+    for n in 2..1000 {
+        let candidate = folder.join(format!("{stem} ({n}){}", ext.as_deref().unwrap_or("")));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    first
+}
+
+
 pub fn run() {
     // `arlen-mail <file>`, or the desktop entry's `%f`. Nothing else is read
     // from argv: an app that takes flags from whatever launched it is an app
@@ -174,7 +265,60 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
         .manage(LaunchFile(launched))
-        .invoke_handler(tauri::generate_handler![launch_file, mail_read])
+        .invoke_handler(tauri::generate_handler![launch_file, mail_read, mail_save_attachment])
         .run(tauri::generate_context!())
         .expect("error while running arlen-mail");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_senders_path_becomes_one_filename() {
+        // The oldest trick with an attachment name, and the reason this command
+        // takes an index rather than a name.
+        assert_eq!(safe_name(Some("../../.ssh/authorized_keys"), 0), "authorized_keys");
+        assert_eq!(safe_name(Some("/etc/passwd"), 0), "passwd");
+        assert_eq!(safe_name(Some("scan.pdf"), 0), "scan.pdf");
+    }
+
+    #[test]
+    fn a_name_that_is_not_a_name_becomes_a_position() {
+        for empty in [None, Some(""), Some("   "), Some("."), Some("..")] {
+            assert_eq!(safe_name(empty, 1), "attachment-2", "{empty:?}");
+        }
+    }
+
+    #[test]
+    fn a_second_extension_is_kept_because_renaming_it_would_be_a_lie() {
+        // What keeps it from running is that nothing here marks a file
+        // executable - not a rename that hides what arrived.
+        assert_eq!(safe_name(Some("invoice.pdf.exe"), 0), "invoice.pdf.exe");
+    }
+
+    #[test]
+    fn a_second_file_of_the_same_name_does_not_replace_the_first() {
+        let dir = std::env::temp_dir().join(format!("arlen-mail-save-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = free_path(&dir, "scan.pdf");
+        assert_eq!(first.file_name().unwrap(), "scan.pdf");
+        std::fs::write(&first, b"one").unwrap();
+        let second = free_path(&dir, "scan.pdf");
+        assert_eq!(second.file_name().unwrap(), "scan (2).pdf");
+        std::fs::write(&second, b"two").unwrap();
+        assert_eq!(std::fs::read(&first).unwrap(), b"one", "the first must still be there");
+        let third = free_path(&dir, "scan.pdf");
+        assert_eq!(third.file_name().unwrap(), "scan (3).pdf");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_name_with_no_extension_still_numbers() {
+        let dir = std::env::temp_dir().join(format!("arlen-mail-noext-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("notes"), b"x").unwrap();
+        assert_eq!(free_path(&dir, "notes").file_name().unwrap(), "notes (2)");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
