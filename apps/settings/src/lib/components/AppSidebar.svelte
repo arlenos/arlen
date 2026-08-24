@@ -13,7 +13,7 @@
     useSidebar,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { tick } from "svelte";
-  import { PANELS, navigateTo } from "$lib/stores/navigation";
+  import { PANELS, SECTIONS, navigateTo, focusSearchSignal } from "$lib/stores/navigation";
   import { t } from "$lib/i18n/messages";
   import { search, type SearchResult } from "$lib/search/index";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
@@ -53,6 +53,14 @@
 
   const sidebar = useSidebar();
   const collapsed = $derived(!sidebar.open);
+
+  // The shell menu's "Search settings" entry lands here: expand if needed and
+  // put the caret in the box.
+  $effect(() => {
+    if ($focusSearchSignal === 0) return;
+    if (collapsed) sidebar.toggle();
+    setTimeout(() => inputEl?.focus(), collapsed ? 220 : 0);
+  });
 
   /// While collapsed the search box is a glorified expand button:
   /// no placeholder text fits in 32 px, focusing the input behind
@@ -125,46 +133,6 @@
     Wine,
     AppWindow,
   };
-
-  // Group panels by section, matching the Pre-Phase-6 plan
-  // (`docs/architecture/settings-app.md` section structure plus
-  // four new pages).
-  const SECTIONS = [
-    {
-      label: "s.section.system",
-      // No windows-apps: see the note in `navigation.ts`. The route and its
-      // store are still here and still build; what is gone is the way in.
-      panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "language", "about"] as const,
-    },
-    {
-      label: "s.section.personal",
-      panelIds: [
-        "appearance",
-        "quicksettings",
-        "accessibility",
-        "focus",
-        "knowledge",
-      ] as const,
-    },
-    {
-      label: "s.section.ai",
-      panelIds: ["ai", "ai-providers", "ai-models"] as const,
-    },
-    {
-      label: "s.section.input",
-      panelIds: [
-        "keyboard",
-        "shortcuts",
-        "mouse",
-        "touchpad",
-        "system-actions",
-      ] as const,
-    },
-    {
-      label: "s.section.apps",
-      panelIds: ["apps", "extensions", "privacy"] as const,
-    },
-  ];
 
   /// A panel is active when it is the longest-prefix owner of the current
   /// route, so `/apps/<id>` highlights Apps and `/privacy/physical` highlights

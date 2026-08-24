@@ -23,6 +23,7 @@
   import { onMount } from "svelte";
   import { newSession } from "$lib/stores/sessions";
   import { historyPaletteOpen } from "$lib/stores/history";
+  import { initAppMenu, menuAction } from "$lib/menu";
   import { openQuickConnect } from "$lib/stores/remoteConnections";
   import { initTopbar } from "$lib/topbar";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
@@ -40,7 +41,18 @@
     void setWindowTitle($t("term.app.title"));
   });
 
+  // The shell menu's dispatch: the same verbs the global keys run.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "session.new") newSession();
+    else if (a === "session.connect") openQuickConnect();
+    else if (a === "view.history") historyPaletteOpen.update((open) => !open);
+  });
+
   onMount(() => {
+    void initAppMenu();
     void initTopbar();
     // Live-reskin on a desktop-wide theme switch (GAP-20).
     void initArlenTheme();

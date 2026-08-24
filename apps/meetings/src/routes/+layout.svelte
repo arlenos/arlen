@@ -29,9 +29,13 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Plus } from "lucide-svelte";
   import { t, dir } from "$lib/i18n/messages";
+  import { appMenuGroups, registerAppMenu, initMenuActions, menuAction } from "$lib/menu";
   import { setWindowTitle } from "$lib/window-title";
   import {
     captureUnavailable,
+    transcribe,
+    stopCapture,
+    openInEditor,
     meetings,
     meetingsMocked,
     meetingsUnavailable,
@@ -52,7 +56,24 @@
     void setWindowTitle($t("mt.app.title"));
   });
 
+  // The shell menu, re-registered whenever the language OR the transcribe
+  // state changes: the checked mark is part of the registered tree.
+  $effect(() => {
+    void registerAppMenu(appMenuGroups($t, { transcribe: $transcribe }));
+  });
+  // Its dispatch: the same verbs the rail and the capture surface run.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "meeting.start") void goto("/capture");
+    else if (a === "meeting.stop") void stopCapture();
+    else if (a === "meeting.open_editor") void openInEditor();
+    else if (a === "view.transcribe") transcribe.update((v) => !v);
+  });
+
   onMount(() => {
+    void initMenuActions();
     void loadMeetings();
     // The chosen language and the live theme, the same two lines every other app
     // runs. This app embeds the plugin and has the permission; it just never

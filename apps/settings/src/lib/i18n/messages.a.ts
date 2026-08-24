@@ -348,6 +348,8 @@ export const a: Catalogs = {
     "s.nav.privacy": "Privacy",
     // Sidebar section headers
     "s.section.system": "System",
+    "s.menu.view": "View",
+    "s.menu.go": "Go",
     "s.section.personal": "Personal",
     "s.section.ai": "AI",
     "s.section.input": "Input",
@@ -1194,6 +1196,8 @@ export const a: Catalogs = {
     "s.nav.extensions": "Erweiterungen",
     "s.nav.privacy": "Datenschutz",
     "s.section.system": "System",
+    "s.menu.view": "Ansicht",
+    "s.menu.go": "Gehe zu",
     "s.section.personal": "Persönlich",
     "s.section.ai": "KI",
     "s.section.input": "Eingabe",

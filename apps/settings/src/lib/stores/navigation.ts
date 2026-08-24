@@ -91,6 +91,34 @@ export const PANELS: PanelMeta[] = [
   { id: "privacy", title: "s.nav.privacy", icon: "Shield", enabled: true, href: "/privacy" },
 ];
 
+/// The sidebar's section grouping, exported so the shell app menu can render
+/// the same tree without a second copy (one source, two surfaces).
+export const SECTIONS = [
+  {
+    label: "s.section.system",
+    // No windows-apps: see the note above PANELS. The route and its store are
+    // still here and still build; what is gone is the way in.
+    panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "language", "about"] as const,
+  },
+  {
+    label: "s.section.personal",
+    panelIds: ["appearance", "quicksettings", "accessibility", "focus", "knowledge"] as const,
+  },
+  { label: "s.section.ai", panelIds: ["ai", "ai-providers", "ai-models"] as const },
+  {
+    label: "s.section.input",
+    panelIds: ["keyboard", "shortcuts", "mouse", "touchpad", "system-actions"] as const,
+  },
+  { label: "s.section.apps", panelIds: ["apps", "extensions", "privacy"] as const },
+];
+
+/// Rung by the shell menu's "Search settings" entry; the sidebar focuses its
+/// search field when it fires.
+export const focusSearchSignal = writable(0);
+export function requestSearchFocus(): void {
+  focusSearchSignal.update((n) => n + 1);
+}
+
 interface NavigationState {
   currentPanel: PanelId;
   /// Optional element id to scroll to after navigation (deep-link targets).

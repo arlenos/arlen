@@ -20,8 +20,10 @@
     navigateTo,
     navigation,
     consumeScrollTarget,
+    requestSearchFocus,
     type PanelId,
   } from "$lib/stores/navigation";
+  import { initAppMenu, menuAction } from "$lib/menu";
   import { theme } from "$lib/stores/theme";
   import { exportSettingsIndex } from "$lib/search/index";
   import { tauriAvailable } from "$lib/tauri";
@@ -85,7 +87,18 @@
     e.preventDefault();
   }
 
+  // The shell menu's dispatch: the Go tree lands on navigateTo, the search
+  // entry rings the sidebar's focus bell.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "view.search") requestSearchFocus();
+    else if (a.startsWith("go.")) void navigateTo(a.slice(3) as PanelId);
+  });
+
   onMount(() => {
+    void initAppMenu();
     theme.load();
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
 

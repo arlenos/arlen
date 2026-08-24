@@ -14,6 +14,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Mail, Reply, Forward, Archive, Trash2, FileText } from "@lucide/svelte";
   import { t } from "$lib/i18n/messages";
+  import { initAppMenu, menuAction } from "$lib/menu";
   import { displayName, threadKey } from "$lib/wording";
   import {
     SidebarProvider,
@@ -68,7 +69,22 @@
     | { problem: "other"; reason: string };
   let failure = $state<Failure | null>(null);
 
+  // The shell menu's dispatch. Reply/forward no-op with nothing open, the
+  // same guard their toolbar twins carry.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "message.new") startCompose();
+    else if (a === "message.reply") reply();
+    else if (a === "message.forward") forward();
+    else if (a === "message.archive") archiveSelected();
+    else if (a === "message.delete") deleteSelected();
+    else if (a.startsWith("go.")) selectFolder(a.slice(3));
+  });
+
   onMount(() => {
+    void initAppMenu();
     void loadMailbox();
     if (!tauriAvailable) return;
     void (async () => {
