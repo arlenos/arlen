@@ -111,6 +111,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-arlen-shell",
+ "uuid",
  "zbus",
 ]
 
