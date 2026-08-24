@@ -34,6 +34,16 @@ async fn try_call_string(bus: &str, path: &str, member: &str) -> Option<String> 
     proxy.call(member, &()).await.ok()
 }
 
+/// Substitutes `fallback` when the call cannot be made. Prefer `try_call_string`
+/// and a `null`: a substituted value is indistinguishable from a measured one, so
+/// the surface states as fact something nothing read. The three remaining callers
+/// are the model catalogue, the provider catalogue and the default models, and
+/// each is held here by its READER, not by a judgement that a lie is fine there:
+/// all three parse into a list-typed store with an `[]` fallback that swallows a
+/// `null` as successfully-empty, and would then iterate it. Converting the
+/// command alone turns "the daemon is down" from a wrong-but-drawn empty
+/// catalogue into a broken render. Those readers are arlen-ui's files; the two
+/// halves have to land together.
 async fn call_string(bus: &str, path: &str, member: &str, fallback: &str) -> String {
     let Ok(connection) = Connection::session().await else {
         return fallback.to_string();
@@ -152,19 +162,29 @@ pub async fn ai_defaults_get() -> String {
 
 /// The agent's pending gate proposals (`pending_proposals`): a JSON array the
 /// harness renders as inline gate cards (each `{ id, summary, reason, effects }`),
-/// oldest first. Empty array if the agent is unreachable or nothing is pending.
+/// oldest first. `null` when the agent is unreachable.
+///
+/// Not `[]`: an empty list is an answer ("nothing is waiting on you"), and a
+/// silent gate feed is precisely what a person reads as "nothing needs me".
+/// The store already distinguishes them - it holds null for unread, not empty -
+/// so the honest token is what makes that branch reachable.
 #[tauri::command]
 pub async fn pending_proposals() -> String {
-    call_string(AGENT_BUS, AGENT_PATH, "pending_proposals", "[]").await
+    try_call_string(AGENT_BUS, AGENT_PATH, "pending_proposals")
+        .await
+        .unwrap_or_else(|| "null".to_string())
 }
 
 /// The agent's recently-completed (silent-done) actions (`completed_actions`): a
 /// JSON array the harness renders as quiet done-lines each with an `[Undo]`,
 /// oldest first. Each entry carries the correlation id the `compensate` undo
-/// keys off. Empty array if unreachable or nothing has executed.
+/// keys off. `null` when the agent is unreachable, `[]` only when it answered
+/// and nothing has executed - the same distinction the pending feed draws.
 #[tauri::command]
 pub async fn completed_actions() -> String {
-    call_string(AGENT_BUS, AGENT_PATH, "completed_actions", "[]").await
+    try_call_string(AGENT_BUS, AGENT_PATH, "completed_actions")
+        .await
+        .unwrap_or_else(|| "null".to_string())
 }
 
 /// Dismiss a pending gate proposal (`deny`): the user declined the confirmation.
@@ -232,10 +252,13 @@ pub async fn undo_action(id: String) -> String {
 /// The agent's working-set shape (`working_set` on the agent): the shape-only
 /// introspection of what the agent currently has in scope (AIT-R1), for the
 /// transparency drawer's working-set section. Identity/shape only, never user
-/// data. Empty object if the agent is unreachable.
+/// data. `null` when the agent is unreachable, which the drawer reads as the
+/// "not available yet" state rather than as an empty working set.
 #[tauri::command]
 pub async fn ai_working_set() -> String {
-    call_string(AGENT_BUS, AGENT_PATH, "working_set", "{}").await
+    try_call_string(AGENT_BUS, AGENT_PATH, "working_set")
+        .await
+        .unwrap_or_else(|| "null".to_string())
 }
 
 /// The AI's capability grants for the transparency drawer's Grants feed
@@ -272,17 +295,19 @@ pub async fn ai_access_grants() -> serde_json::Value {
 }
 
 /// The autonomy-dial state (`action_state` on the agent): `{ action_mode,
-/// autonomous_apps, executor_live }`. The safe inert shape if the agent is
-/// unreachable (suggest / none / off).
+/// autonomous_apps, executor_live }`. `null` when the agent is unreachable.
+///
+/// It used to answer with an inert shape (suggest / none / off) instead. That
+/// shape is not safe, it is a reading: the dial is a CONTROL, so it renders the
+/// substituted values as the machine's current position, and a person adjusting
+/// autonomy would have been told the assistant only suggests without anything
+/// having asked it. The dial hides itself for a null state, which is the true
+/// answer when nothing was measured.
 #[tauri::command]
 pub async fn action_state() -> String {
-    call_string(
-        AGENT_BUS,
-        AGENT_PATH,
-        "action_state",
-        r#"{"action_mode":"suggest","autonomous_apps":[],"executor_live":false}"#,
-    )
-    .await
+    try_call_string(AGENT_BUS, AGENT_PATH, "action_state")
+        .await
+        .unwrap_or_else(|| "null".to_string())
 }
 
 /// Set the baseline autonomy mode (`ai_set_action_mode` on the agent): `"suggest"`
