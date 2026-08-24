@@ -462,7 +462,7 @@
     color: var(--color-fg-primary, #e6e8ee);
     background: var(--color-bg-card, #171717);
     border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: 6px;
+    border-radius: var(--radius-button, 6px);
     cursor: pointer;
   }
   .keep button:hover {

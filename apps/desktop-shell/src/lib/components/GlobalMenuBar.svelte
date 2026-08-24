@@ -221,7 +221,9 @@
     height: 8px;
     min-width: 0;
     padding: 0;
-    border-radius: var(--radius-full);
+    /* The dot variant joins the house dot family (chip), the counter pill
+       above keeps its pill. */
+    border-radius: var(--radius-chip, 4px);
   }
   .app-badge.badge-error {
     background: var(--color-error);

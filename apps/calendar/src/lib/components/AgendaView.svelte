@@ -93,7 +93,7 @@
   .today {
     margin-inline-start: 8px;
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-chip, 4px);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;

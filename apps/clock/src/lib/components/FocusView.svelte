@@ -103,7 +103,9 @@
   .fo-dot {
     width: 0.4rem;
     height: 0.4rem;
-    border-radius: var(--radius-full, 9999px);
+    /* Chip radius, not a circle: the house dot family (mail's unread dot,
+       the calendar dots). */
+    border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--color-fg-primary) 18%, transparent);
   }
   .fo-dot.done {

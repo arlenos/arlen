@@ -437,7 +437,8 @@
   .focus-dot {
     width: 6px;
     height: 6px;
-    border-radius: var(--radius-full);
+    /* Chip radius, not a circle: the house dot family. */
+    border-radius: var(--radius-chip, 4px);
     flex-shrink: 0;
   }
   .focus-name {

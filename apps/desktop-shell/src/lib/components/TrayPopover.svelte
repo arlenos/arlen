@@ -146,5 +146,6 @@
   .tray-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .tray-item-title { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
   .tray-item-subtitle { font-size: var(--text-2xs); color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-  .tray-item-badge { width: 8px; height: 8px; background: var(--color-error); border-radius: var(--radius-full); flex-shrink: 0; }
+  /* Chip radius, not a circle: the house dot family. */
+  .tray-item-badge { width: 8px; height: 8px; background: var(--color-error); border-radius: var(--radius-chip, 4px); flex-shrink: 0; }
 </style>

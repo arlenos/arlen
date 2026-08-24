@@ -126,7 +126,8 @@
   .ps-dot {
     width: 6px;
     height: 6px;
-    border-radius: var(--radius-full);
+    /* Chip radius, not a circle: the house dot family. */
+    border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--sidebar-foreground) 30%, transparent);
     flex-shrink: 0;
   }
