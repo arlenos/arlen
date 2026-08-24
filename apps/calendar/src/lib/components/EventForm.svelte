@@ -20,17 +20,33 @@
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { t, locale } from "$lib/i18n/messages";
   import { dayLabel } from "$lib/wording";
-  import { calendars, CALENDAR_PALETTE, createEvent, type EventDraft } from "$lib/stores/calendar";
+  import {
+    calendars,
+    CALENDAR_PALETTE,
+    createEvent,
+    updateEvent,
+    deleteEvent,
+    type AgendaEvent,
+    type EventDraft,
+  } from "$lib/stores/calendar";
+  import { Trash2 } from "@lucide/svelte";
   import MiniMonth from "./MiniMonth.svelte";
 
   let {
     open,
     date,
+    editing = null,
+    seed = null,
     onclose,
   }: {
     open: boolean;
     /// The focused date the form starts on.
     date: string;
+    /// The event being edited, or null for a new one. Repeating events do not
+    /// reach this form until the series scope dialog exists (phase 3).
+    editing?: AgendaEvent | null;
+    /// A slot handed over from the quick-create ("All options").
+    seed?: { time: string; endTime: string; title: string } | null;
     onclose: () => void;
   } = $props();
 
@@ -56,40 +72,84 @@
 
   $effect(() => {
     if (open) {
-      day = date;
       failed = null;
+      if (editing) {
+        summary = editing.summary;
+        day = editing.date;
+        allDay = editing.time === null;
+        from = editing.time ?? "09:00";
+        to = editing.end_time ?? (editing.time ? editing.time : "10:00");
+        location = editing.location;
+        repeat = "none";
+        calendarId = editing.calendar ?? calendarId;
+      } else {
+        day = date;
+        if (seed) {
+          summary = seed.title;
+          from = seed.time;
+          to = seed.endTime;
+          allDay = false;
+        }
+      }
       setTimeout(() => titleEl?.focus(), 50);
     }
   });
 
   const DAY_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
-  async function create(): Promise<void> {
-    const draft: EventDraft = {
-      summary: summary.trim(),
-      date: day,
-      allDay,
-      time: allDay ? null : from,
-      endTime: allDay ? null : to,
-      location: location.trim(),
-      repeat,
-      onDays: repeat === "weekly" ? onDays.map((i) => DAY_NAMES[i]) : [],
-      calendarId,
-    };
-    const refusal = await createEvent(draft);
-    if (refusal) {
-      failed = refusal;
-      return;
-    }
+  function reset(): void {
     summary = "";
     location = "";
     repeat = "none";
     onDays = [];
+  }
+
+  async function submit(): Promise<void> {
+    let refusal: string | null;
+    if (editing) {
+      refusal = await updateEvent(editing.uid, editing.calendar ?? calendarId, {
+        summary: summary.trim(),
+        date: day,
+        allDay,
+        time: allDay ? null : from,
+        endTime: allDay ? null : to,
+        location: location.trim(),
+      });
+    } else {
+      const draft: EventDraft = {
+        summary: summary.trim(),
+        date: day,
+        allDay,
+        time: allDay ? null : from,
+        endTime: allDay ? null : to,
+        location: location.trim(),
+        repeat,
+        onDays: repeat === "weekly" ? onDays.map((i) => DAY_NAMES[i]) : [],
+        calendarId,
+      };
+      refusal = await createEvent(draft);
+    }
+    if (refusal) {
+      failed = refusal;
+      return;
+    }
+    reset();
+    onclose();
+  }
+
+  async function remove(): Promise<void> {
+    if (!editing) return;
+    const refusal = await deleteEvent(editing.uid, editing.calendar ?? calendarId);
+    if (refusal) {
+      failed = refusal;
+      return;
+    }
+    reset();
     onclose();
   }
 </script>
 
-<Dialog {open} onClose={onclose} ariaLabel={$t("cal.form.title")}>
+<Dialog {open} onClose={onclose} ariaLabel={editing ? $t("cal.edit.title") : $t("cal.form.title")}>
   <div class="form">
     <input
       bind:this={titleEl}
@@ -161,7 +221,7 @@
       />
     </div>
 
-    <div class="row" class:top={repeat === "weekly"}>
+    <div class="row" class:top={repeat === "weekly"} class:gone={editing !== null}>
       <Repeat size={15} strokeWidth={1.75} aria-hidden="true" />
       <span class="repeat-col">
         <SegmentedControl
@@ -186,8 +246,14 @@
     {/if}
 
     <div class="actions">
+      {#if editing}
+        <Button variant="ghost" class="text-muted-foreground me-auto" id="event-delete" onclick={remove}>
+          <Trash2 size={14} strokeWidth={1.75} />
+          {$t("cal.delete")}
+        </Button>
+      {/if}
       <Button variant="ghost" id="event-cancel" onclick={onclose}>{$t("cal.form.cancel")}</Button>
-      <Button id="event-create" onclick={create}>{$t("cal.form.create")}</Button>
+      <Button id="event-create" onclick={submit}>{editing ? $t("cal.form.save") : $t("cal.form.create")}</Button>
     </div>
   </div>
 </Dialog>
@@ -289,6 +355,9 @@
     margin: 0;
     font-size: var(--text-xs, 12px);
     color: var(--color-warning, #eab308);
+  }
+  .row.gone {
+    display: none;
   }
   .actions {
     display: flex;
