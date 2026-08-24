@@ -21,7 +21,10 @@ pub fn run() {
     // journal access and covered by no capability grant, which undoes in a log
     // line what the graph's scoping is for. A byte trace stays available as
     // `RUST_LOG=zbus=trace`, deliberately, rather than by default.
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,arlen_settings_lib=info")).init();
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("warn,arlen_settings_lib=info"),
+    )
+    .init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_menu::init())
@@ -85,6 +88,8 @@ pub fn run() {
             commands::ai::ai_status,
             commands::ai::ai_explain,
             commands::ai::ai_providers_list,
+            commands::windows_apps::list_bottles,
+            commands::windows_apps::bottle_health,
             commands::capsules::list_capsules,
             commands::capsules::revoke_capsule,
             commands::ai::ai_behaviours,

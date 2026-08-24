@@ -42,10 +42,19 @@ pub struct BottleView {
     pub network: bool,
     /// Whether one of its granted drives is the person's home.
     pub home_folder: bool,
-    /// The drive letters it was granted, in letter order. Derived through the
-    /// same mapping the launcher runs, so the panel and the bottle cannot
-    /// disagree about which letter is which.
-    pub drives: Vec<char>,
+    /// The drives it was granted, in letter order. Derived through the same
+    /// mapping the launcher runs, so a surface and the bottle cannot disagree
+    /// about which letter is which.
+    pub drives: Vec<DriveView>,
+}
+
+/// One granted drive: the letter a Windows program sees, and the host folder it
+/// really is. Both, because a letter on its own says a drive exists without
+/// saying what it reaches, which is the half that matters for confinement.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DriveView {
+    pub letter: char,
+    pub path: String,
 }
 
 /// What the daemon says back.
@@ -106,7 +115,15 @@ pub fn view(bottle: &Bottle) -> BottleView {
         // refusal the launcher makes, so a panel never shows a drive that would
         // not be there when the program starts.
         drives: map_drives(&bottle.grants)
-            .map(|drives| drives.iter().map(|d| d.letter).collect())
+            .map(|drives| {
+                drives
+                    .iter()
+                    .map(|d| DriveView {
+                        letter: d.letter,
+                        path: d.host.to_string_lossy().into_owned(),
+                    })
+                    .collect()
+            })
             .unwrap_or_default(),
     }
 }
