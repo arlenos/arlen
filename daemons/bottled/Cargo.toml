@@ -22,5 +22,8 @@ arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }
 # The examples build the launch argv, which needs the compat roots this crate
 # resolves against the host.
 arlen-confiner = { path = "../../sdk/confiner" }
+# The wire format is pinned by a test that reads the bytes a caller would see.
+serde_json = "1"
+tempfile = "3"
 
 [workspace]

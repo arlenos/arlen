@@ -36,6 +36,7 @@ pub mod forget;
 pub mod health;
 pub mod launch;
 pub mod plumbing;
+pub mod protocol;
 pub mod registry;
 pub mod sever;
 
@@ -193,7 +194,11 @@ impl std::fmt::Display for DriveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DriveError::NotAbsolute(p) => {
-                write!(f, "{} is not an absolute path, so it cannot be a drive", p.display())
+                write!(
+                    f,
+                    "{} is not an absolute path, so it cannot be a drive",
+                    p.display()
+                )
             }
             DriveError::NoLettersLeft { granted, available } => write!(
                 f,
@@ -286,12 +291,27 @@ mod tests {
             (p("/home/u/.wine/dosdevices/c:"), p("../drive_c")),
             (p("/home/u/.wine/dosdevices/z:"), p("/")),
             (p("/home/u/.wine/dosdevices/com1"), p("/dev/ttyS0")),
-            (p("/home/u/.wine/drive_c/users/u/Desktop"), p("/home/u/Desktop")),
-            (p("/home/u/.wine/drive_c/users/u/Documents"), p("/home/u/Documents")),
-            (p("/home/u/.wine/drive_c/users/u/Downloads"), p("/home/u/Downloads")),
+            (
+                p("/home/u/.wine/drive_c/users/u/Desktop"),
+                p("/home/u/Desktop"),
+            ),
+            (
+                p("/home/u/.wine/drive_c/users/u/Documents"),
+                p("/home/u/Documents"),
+            ),
+            (
+                p("/home/u/.wine/drive_c/users/u/Downloads"),
+                p("/home/u/Downloads"),
+            ),
             (p("/home/u/.wine/drive_c/users/u/Music"), p("/home/u/Music")),
-            (p("/home/u/.wine/drive_c/users/u/Pictures"), p("/home/u/Pictures")),
-            (p("/home/u/.wine/drive_c/users/u/Videos"), p("/home/u/Videos")),
+            (
+                p("/home/u/.wine/drive_c/users/u/Pictures"),
+                p("/home/u/Pictures"),
+            ),
+            (
+                p("/home/u/.wine/drive_c/users/u/Videos"),
+                p("/home/u/Videos"),
+            ),
         ]
     }
 
@@ -305,11 +325,21 @@ mod tests {
             .collect();
         assert_eq!(
             into_home,
-            ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos"],
+            [
+                "Desktop",
+                "Documents",
+                "Downloads",
+                "Music",
+                "Pictures",
+                "Videos"
+            ],
             "the shell folders are separate symlinks and survive dropping Z:"
         );
         assert_eq!(
-            found.iter().filter(|e| e.reach == Reach::Filesystem).count(),
+            found
+                .iter()
+                .filter(|e| e.reach == Reach::Filesystem)
+                .count(),
             1,
             "Z: is one of the eight, not the whole problem"
         );
@@ -349,7 +379,11 @@ mod tests {
         // here would report a link into a different prefix as safely inside this
         // one, which is the wrong direction for a boundary check to be wrong in.
         assert_eq!(
-            reach(&p("/home/u/.wine"), &p("/home/u/.wine/dosdevices/d:"), &p("/home/u/.wine-old/drive_c")),
+            reach(
+                &p("/home/u/.wine"),
+                &p("/home/u/.wine/dosdevices/d:"),
+                &p("/home/u/.wine-old/drive_c")
+            ),
             Reach::Host(p("/home/u/.wine-old/drive_c"))
         );
     }
@@ -357,7 +391,11 @@ mod tests {
     #[test]
     fn serial_devices_are_not_reported_as_reaching_the_users_files() {
         assert_eq!(
-            reach(&p("/home/u/.wine"), &p("/home/u/.wine/dosdevices/com1"), &p("/dev/ttyS0")),
+            reach(
+                &p("/home/u/.wine"),
+                &p("/home/u/.wine/dosdevices/com1"),
+                &p("/dev/ttyS0")
+            ),
             Reach::Device(p("/dev/ttyS0"))
         );
     }
@@ -376,8 +414,14 @@ mod tests {
 
     #[test]
     fn the_same_grants_get_the_same_letters_whatever_order_they_arrive_in() {
-        let a = PathGrant { host: p("/home/u/Projects"), access: Access::ReadWrite };
-        let b = PathGrant { host: p("/home/u/Documents"), access: Access::ReadOnly };
+        let a = PathGrant {
+            host: p("/home/u/Projects"),
+            access: Access::ReadWrite,
+        };
+        let b = PathGrant {
+            host: p("/home/u/Documents"),
+            access: Access::ReadOnly,
+        };
         let one = map_drives(&[a.clone(), b.clone()]).unwrap();
         let other = map_drives(&[b, a]).unwrap();
         assert_eq!(one, other);
@@ -388,8 +432,14 @@ mod tests {
     #[test]
     fn granting_one_directory_twice_takes_the_wider_access() {
         let drives = map_drives(&[
-            PathGrant { host: p("/srv/share"), access: Access::ReadOnly },
-            PathGrant { host: p("/srv/share"), access: Access::ReadWrite },
+            PathGrant {
+                host: p("/srv/share"),
+                access: Access::ReadOnly,
+            },
+            PathGrant {
+                host: p("/srv/share"),
+                access: Access::ReadWrite,
+            },
         ])
         .unwrap();
         assert_eq!(drives.len(), 1);
@@ -398,24 +448,37 @@ mod tests {
 
     #[test]
     fn a_relative_grant_is_refused_rather_than_resolved() {
-        let err = map_drives(&[PathGrant { host: p("Documents"), access: Access::ReadOnly }]);
+        let err = map_drives(&[PathGrant {
+            host: p("Documents"),
+            access: Access::ReadOnly,
+        }]);
         assert_eq!(err, Err(DriveError::NotAbsolute(p("Documents"))));
     }
 
     #[test]
     fn more_grants_than_letters_is_an_error_and_not_a_silent_truncation() {
         let grants: Vec<_> = (0..30)
-            .map(|i| PathGrant { host: p(&format!("/srv/{i:02}")), access: Access::ReadOnly })
+            .map(|i| PathGrant {
+                host: p(&format!("/srv/{i:02}")),
+                access: Access::ReadOnly,
+            })
             .collect();
         assert_eq!(
             map_drives(&grants),
-            Err(DriveError::NoLettersLeft { granted: 30, available: 22 })
+            Err(DriveError::NoLettersLeft {
+                granted: 30,
+                available: 22
+            })
         );
     }
 
     #[test]
     fn a_drive_names_its_dosdevices_entry_in_the_form_wine_reads() {
-        let d = Drive { letter: 'D', host: p("/srv/share"), access: Access::ReadOnly };
+        let d = Drive {
+            letter: 'D',
+            host: p("/srv/share"),
+            access: Access::ReadOnly,
+        };
         assert_eq!(d.dosdevice_name(), "d:");
     }
 }
