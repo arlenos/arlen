@@ -1,0 +1,52 @@
+#!/bin/sh
+# Phase 4n of the Debian-native build (CHROOT): the document reader (arlen-pdf, a
+# Tauri 2 app), the same two-step as its neighbours - the SvelteKit frontend, then
+# the Tauri Rust backend.
+#
+# WHY IT WAS ABSENT. The reader was built, its decode worker was built, and nothing
+# ever put it on a machine: no build step, no desktop entry, no MIME claim. So the
+# image could not open a PDF at all - not from the file manager, not from a mail
+# attachment, not from the command line - while the app that does it sat finished in
+# the tree. The neighbouring apps each carry these three lines; this one did not.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-pdf"  # own dir; separate workspace
+export CXXFLAGS="-include cstdint"
+export LIBGL_ALWAYS_SOFTWARE=1
+export npm_config_cache="$cache/npm"
+mkdir -p "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen/apps/pdf"
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+
+echo ">> tauri build --no-bundle (production) arlen-pdf"
+./node_modules/.bin/tauri build --no-bundle
+
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-pdf' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! arlen-pdf not found after build" >&2; exit 1; }
+
+install -Dm755 "$out" \
+        "$DESTDIR/usr/lib/arlen/apps/dev.arlen.pdf/bin/arlen-pdf"
+mkdir -p "$DESTDIR/usr/bin"
+ln -sf "../lib/arlen/apps/dev.arlen.pdf/bin/arlen-pdf" \
+        "$DESTDIR/usr/bin/arlen-pdf"
+install -Dm644 "$SRCDIR/arlen/apps/pdf/dist/arlen-pdf.desktop" \
+        "$DESTDIR/usr/share/applications/arlen-pdf.desktop"
+install -Dm644 "$SRCDIR/arlen/apps/pdf/src-tauri/icons/128x128.png" \
+        "$DESTDIR/usr/share/icons/hicolor/128x128/apps/arlen-pdf.png"
+echo ">> staged arlen-pdf into the image"
