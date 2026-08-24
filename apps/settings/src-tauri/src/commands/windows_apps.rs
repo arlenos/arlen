@@ -17,10 +17,14 @@ use arlen_wine_core::protocol::{Request, Response};
 use arlen_wine_core::server::socket_path;
 use serde::Serialize;
 
-/// One bottle, as much of it as the runtime actually knows.
+/// One bottle as a panel row, as much of it as the runtime actually knows.
+///
+/// Named `BottleRow` rather than `Bottle` on purpose: the runtime has a `Bottle`
+/// of its own with a different shape, and two types one word apart in one
+/// codebase is how a reader - and a checker - resolves the wrong one.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Bottle {
+pub struct BottleRow {
     pub id: String,
     /// Whether the app in this bottle may reach the network at all.
     pub network: bool,
@@ -28,13 +32,14 @@ pub struct Bottle {
     pub home_folder: bool,
     /// The drives it was granted: the letter a Windows program sees and the host
     /// folder behind it.
-    pub drives: Vec<Drive>,
+    pub drives: Vec<DriveRow>,
 }
 
-/// One granted drive, as `windows-apps.ts` declares it.
+/// One granted drive, as `windows-apps.ts` declares it. `DriveRow` for the same
+/// reason as `BottleRow`: the runtime's own `Drive` carries more.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Drive {
+pub struct DriveRow {
     pub letter: String,
     pub path: String,
 }
@@ -43,7 +48,7 @@ pub struct Drive {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bottles {
-    pub bottles: Vec<Bottle>,
+    pub bottles: Vec<BottleRow>,
     /// Bottles that are on disk and did not read.
     ///
     /// SEPARATE from the list, because "you have no bottles" and "one of your
@@ -65,14 +70,14 @@ pub async fn list_bottles() -> Result<Bottles, String> {
         }) => Ok(Bottles {
             bottles: bottles
                 .into_iter()
-                .map(|b| Bottle {
+                .map(|b| BottleRow {
                     id: b.id,
                     network: b.network,
                     home_folder: b.home_folder,
                     drives: b
                         .drives
                         .into_iter()
-                        .map(|d| Drive {
+                        .map(|d| DriveRow {
                             letter: d.letter.to_string(),
                             path: d.path,
                         })

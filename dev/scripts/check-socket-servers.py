@@ -64,6 +64,7 @@ SERVERS = {
     "ai-proxy.sock": "arlen-ai-engine-daemon",
     "audit-ingest.sock": "arlen-auditd",
     "audit-read.sock": "arlen-auditd",
+    "bottled.sock": "arlen-bottled",
     "capsule.sock": "arlen-capsuled",
     "capsule-control.sock": "arlen-capsuled",
     "clipboard.sock": "arlen-desktop-shell",
