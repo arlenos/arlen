@@ -34,4 +34,10 @@ apt-get install -y --no-install-recommends \
     nodejs npm \
     libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
     libssl-dev libgtk-layer-shell-dev \
-    libheif-dev
+    libheif-dev \
+    locales
+# `locales` is here rather than in the image's own package list on purpose: it
+# carries the ~30MB of locale SOURCE data that `localedef` compiles from, and the
+# only thing the running system needs is the compiled archive that phase 9e writes
+# into $DESTDIR. So the sources stay in the throwaway build overlay and never
+# reach the shipped image.

@@ -93,7 +93,11 @@ mod tests {
         let found = wait_for_display(
             || {
                 looks += 1;
-                if looks < 5 { vec![] } else { vec!["wayland-1".into()] }
+                if looks < 5 {
+                    vec![]
+                } else {
+                    vec!["wayland-1".into()]
+                }
             },
             |_| slept += 1,
             100,
