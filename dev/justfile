@@ -623,6 +623,23 @@ i18n-baseline:
 # boot cosmic-comp nested in Xvfb, launch a Wayland CLIENT under it, grim-capture to
 # OUT, then INSPECT the PNG yourself (the metal-verify behavioural rule - your own
 # vision, not deferred to a human). Capture is grim >= 1.5 over
+# The screenshot harness checking itself, in both directions per feature.
+#
+# NOT IN CI, and worth knowing why rather than assuming it is covered: this needs
+# a display plus WebKit 6.0 through gi (`gir1.2-webkit-6.0`, `python3-gi`, `xvfb`,
+# `openbox`), none of which the CI package list carries - it has webkit2gtk-4.1 for
+# the Tauri builds, a different generation. So this is the recipe that makes the
+# controls reachable, and running it is a deliberate act.
+#
+# What it holds: `--probe` reads the page AFTER `--open` clicked (it did not, for
+# weeks); `--stub-host` really installs a runtime and a plain run really has none,
+# which is the difference between rendering the browser preview and rendering the
+# failure a person meets; and a single-colour frame says so rather than passing as
+# a picture of an app that draws nothing.
+#   just screenshot-selfcheck
+screenshot-selfcheck:
+    bash "{{justfile_directory()}}/screenshot/test-render-wide.sh"
+
 # ext-image-copy-capture-v1 (auto-negotiated; the fork's only capture protocol, no
 # force flag). Optional env on the script: SHOOT_INJECT (ydotool/wtype, needs
 # /dev/uinput - the one sudo: modprobe uinput + udev rule + ydotoold), SHOOT_BASELINE

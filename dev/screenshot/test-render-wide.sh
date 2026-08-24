@@ -22,6 +22,13 @@
 # again.
 #
 # Needs a display; run it as-is and it brings its own Xvfb.
+#
+# NOT REACHED BY CI, deliberately recorded rather than left to be discovered: this
+# uses WebKit 6.0 through gi, and the CI package list carries webkit2gtk-4.1 for the
+# Tauri builds, which is a different generation - plus no xvfb and no openbox. So
+# nothing runs these controls unless a person does. `just screenshot-selfcheck` is
+# where they live. A check nobody runs is the shape `arlen-rtl-lint` was in when a
+# physical margin grew past it.
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
