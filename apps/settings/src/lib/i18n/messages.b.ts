@@ -707,6 +707,8 @@ export const b: Catalogs = {
     "s.wa.manageReach": "Manage what this app can reach",
     "s.wa.manageAccess": "Manage access",
     "s.wa.compat": "Compatibility",
+    "s.wa.notManaged":
+      "This app's compatibility settings are not managed yet, so there is nothing here to change.",
     "s.wa.compatVersion": "Compatibility version",
     "s.wa.winVersion": "Windows version",
     "s.wa.dxvk": "Direct3D to Vulkan (DXVK)",
@@ -1636,6 +1638,8 @@ export const b: Catalogs = {
     "s.wa.manageReach": "Verwalten, worauf diese App zugreifen darf",
     "s.wa.manageAccess": "Zugriff verwalten",
     "s.wa.compat": "Kompatibilit\u00e4t",
+    "s.wa.notManaged":
+      "Die Kompatibilit\u00e4tseinstellungen dieser App werden noch nicht verwaltet, hier gibt es also nichts zu \u00e4ndern.",
     "s.wa.compatVersion": "Kompatibilit\u00e4tsversion",
     "s.wa.winVersion": "Windows-Version",
     "s.wa.dxvk": "Direct3D auf Vulkan (DXVK)",

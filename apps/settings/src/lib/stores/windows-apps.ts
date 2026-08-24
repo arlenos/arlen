@@ -46,33 +46,56 @@ export interface BottleHealth {
 /// drive the thin default row; the rest are the Advanced depth.
 export interface Bottle {
   id: string;
-  appName: string;
-  appId: string;
-  /// The compat-recipe that configured this bottle (or the default bottle).
-  recipe: string;
-  tier: CompatTier;
-  wineVersion: string;
-  /// The Windows version the app is told it is running on.
-  windowsVersion: "7" | "10" | "11";
-  /// The DLL overrides + winetricks verbs the recipe applied (editable).
-  dllOverrides: string[];
-  winetricks: string[];
-  launchArgs: string;
-  workingDir: string;
-  /// Environment variables as "KEY=value" tokens.
-  envVars: string[];
-  /// Translate Direct3D to Vulkan (DXVK) for better graphics performance.
-  dxvk: boolean;
-  /// Display scaling as a percentage.
-  scaling: number;
-  windowMode: "windowed" | "fullscreen";
-  /// Human-readable disk usage of the bottle, e.g. "1.2 GB".
-  diskUsage: string;
-  /// Whether the app follows the Arlen theme (wine-theming-plan.md).
-  followsTheme: boolean;
+  /// What the bottle knows about itself, from the runtime.
   access: BottleAccess;
-  /// The drive letters the bottle maps, from the daemon's dosdevices table.
+  /// The drives the bottle maps, from the daemon's dosdevices table.
   drives: BottleDrive[];
+
+  // EVERYTHING BELOW IS OPTIONAL, and the question mark is the honest part
+  // rather than a convenience. A bottle knows its id, what it may reach and
+  // which folders it was granted; it does not know its Wine version, its DLL
+  // overrides, its winetricks verbs, DXVK, scaling or a window mode. Those come
+  // from the compat recipe (`windows-apps-plan.md` lists it as its own piece,
+  // forage-distributed and signed), which does not exist yet - so nothing on
+  // this machine has measured them and the panel must render an absent field as
+  // not-measured rather than as a value. They were required fields filled by a
+  // fixture until 24 August, which is the same shape as a task manager
+  // reporting memory it never read.
+  appName?: string;
+  appId?: string;
+  /// The compat-recipe that configured this bottle (or the default bottle).
+  recipe?: string;
+  tier?: CompatTier;
+  wineVersion?: string;
+  /// The Windows version the app is told it is running on.
+  windowsVersion?: "7" | "10" | "11";
+  /// The DLL overrides + winetricks verbs the recipe applied (editable).
+  dllOverrides?: string[];
+  winetricks?: string[];
+  launchArgs?: string;
+  workingDir?: string;
+  /// Environment variables as "KEY=value" tokens.
+  envVars?: string[];
+  /// Translate Direct3D to Vulkan (DXVK) for better graphics performance.
+  dxvk?: boolean;
+  /// Display scaling as a percentage.
+  scaling?: number;
+  windowMode?: "windowed" | "fullscreen";
+  /// Human-readable disk usage of the bottle, e.g. "1.2 GB".
+  diskUsage?: string;
+  /// Whether the app follows the Arlen theme (wine-theming-plan.md).
+  followsTheme?: boolean;
+}
+
+/// What `list_bottles` answers: the bottles that read, and the ones that did not.
+interface BottleListing {
+  bottles: {
+    id: string;
+    network: boolean;
+    homeFolder: boolean;
+    drives: BottleDrive[];
+  }[];
+  unreadable: string[];
 }
 
 /// Global cross-bottle defaults + installed runtimes.
@@ -88,6 +111,13 @@ interface WinAppsState {
   mocked: boolean;
   /// True when a real session could not read the bottles at all.
   unavailable: boolean;
+  /// Bottles that are on disk and did not read, by id.
+  ///
+  /// Kept apart from `bottles` because "you have none" and "one of yours is
+  /// broken" are different sentences, and only the second is one somebody can do
+  /// something about. Silently, a bottle whose description will not parse simply
+  /// vanishes from the list.
+  unreadable: string[];
 }
 
 const FIXTURE: Bottle[] = [
@@ -173,7 +203,13 @@ const FIXTURE_HEALTH: Record<string, BottleHealth> = {
 /// The Wine/Proton versions the selectors offer.
 export const wineVersions = ["Wine 9.0", "Wine 8.21", "Proton 9.0", "Wine (staging)"];
 
-export const winApps = writable<WinAppsState>({ bottles: [], loading: false, mocked: false, unavailable: false });
+export const winApps = writable<WinAppsState>({
+  bottles: [],
+  loading: false,
+  mocked: false,
+  unavailable: false,
+  unreadable: [],
+});
 
 /// True when the last change to a bottle or a default did not reach the daemon,
 /// so the switches went back to what the bottle really holds. A Windows app's
@@ -210,16 +246,43 @@ export const defaults = writable<WinDefaults>({
 export async function load(): Promise<void> {
   winApps.update((s) => ({ ...s, loading: true }));
   try {
-    const bottles = await invoke<Bottle[]>("list_bottles");
-    winApps.set({ bottles, loading: false, mocked: false, unavailable: false });
+    const listing = await invoke<BottleListing>("list_bottles");
+    // Mapped rather than passed through: the runtime answers what a bottle
+    // knows, and the fields it does not know stay ABSENT here. Filling them with
+    // plausible values would put a Wine version and a scaling percentage on
+    // screen that nothing on this machine measured.
+    winApps.set({
+      bottles: listing.bottles.map((b) => ({
+        id: b.id,
+        appId: b.id,
+        access: { network: b.network, homeFolder: b.homeFolder },
+        drives: b.drives,
+      })),
+      unreadable: listing.unreadable,
+      loading: false,
+      mocked: false,
+      unavailable: false,
+    });
   } catch {
     if (!tauriAvailable) {
-      winApps.set({ bottles: FIXTURE, loading: false, mocked: true, unavailable: false });
+      winApps.set({
+        bottles: FIXTURE,
+        loading: false,
+        mocked: true,
+        unavailable: false,
+        unreadable: [],
+      });
       return;
     }
     // Each bottle carries live config controls through `patchBottle`, so an
     // invented one is a row of switches writing to a bottle that does not exist.
-    winApps.set({ bottles: [], loading: false, mocked: false, unavailable: true });
+    winApps.set({
+      bottles: [],
+      loading: false,
+      mocked: false,
+      unavailable: true,
+      unreadable: [],
+    });
   }
 }
 

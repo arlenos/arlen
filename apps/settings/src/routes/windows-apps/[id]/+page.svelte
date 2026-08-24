@@ -112,9 +112,9 @@
       </div>
     {:else}
       <div class="head span-full">
-        <AppAvatar appId={bottle.appId} label={bottle.appName} size={48} />
+        <AppAvatar appId={bottle.appId ?? bottle.id} label={bottle.appName ?? bottle.id} size={48} />
         <div class="head-text">
-          <span class="head-name">{bottle.appName}</span>
+          <span class="head-name">{bottle.appName ?? bottle.id}</span>
           <span class="head-meta">{compatLine(bottle)}</span>
         </div>
         <div class="head-actions">
@@ -153,11 +153,24 @@
         </Row>
       </Section>
 
+      <!-- THE RECIPE HALF, and it is absent until there is a recipe. Every
+           control below binds a value that comes from the compat recipe - Wine
+           version, DLL overrides, winetricks verbs, DXVK, scaling, the window
+           mode - and `windows-apps-plan.md` lists that recipe as its own piece,
+           forage-distributed and signed, which does not exist yet. Drawn from an
+           unmeasured value each of these renders a POSITION, and each writes
+           through `set_bottle_config`, which no host defines. So the section
+           says what it is rather than offering switches that go nowhere. -->
+      {#if bottle.wineVersion !== undefined}
+        <!-- The `?? ...` fallbacks inside are UNREACHABLE behind this gate: the
+             recipe half arrives whole or not at all. They are there because the
+             check narrows `wineVersion` and TypeScript cannot carry that to its
+             neighbours, not because any of them is a value worth showing. -->
       <Section label={$t("s.wa.compat")} class="span-full">
         <Row id="win-wine-version" label={$t("s.wa.compatVersion")}>
           {#snippet control()}
             <PopoverSelect
-              value={bottle.wineVersion}
+              value={bottle.wineVersion ?? ""}
               options={versionOptions}
               ariaLabel={$t("s.wa.compatVersion")}
               onchange={(v) => bottle && patchBottle(bottle.id, { wineVersion: v })}
@@ -167,7 +180,7 @@
         <Row id="win-windows-version" label={$t("s.wa.winVersion")}>
           {#snippet control()}
             <SegmentedControl
-              value={bottle.windowsVersion}
+              value={bottle.windowsVersion ?? "10"}
               options={winVersionOptions}
               ariaLabel={$t("s.wa.winVersion")}
               onchange={(v) => bottle && patchBottle(bottle.id, { windowsVersion: v as Bottle["windowsVersion"] })}
@@ -177,7 +190,7 @@
         <Row id="win-dxvk" label={$t("s.wa.dxvk")}>
           {#snippet control()}
             <Switch
-              value={bottle.dxvk}
+              value={bottle.dxvk ?? false}
               ariaLabel={$t("s.wa.dxvkAria")}
               onchange={(v) => bottle && patchBottle(bottle.id, { dxvk: v })}
             />
@@ -186,7 +199,7 @@
         <Row id="win-scaling" label={$t("s.wa.scaling")}>
           {#snippet control()}
             <NumberInput
-              value={bottle.scaling}
+              value={bottle.scaling ?? 100}
               min={100}
               max={300}
               step={25}
@@ -199,7 +212,7 @@
         <Row id="win-window-mode" label={$t("s.wa.windowMode")}>
           {#snippet control()}
             <SegmentedControl
-              value={bottle.windowMode}
+              value={bottle.windowMode ?? "windowed"}
               options={windowModeOptions}
               ariaLabel={$t("s.wa.windowMode")}
               onchange={(v) => bottle && patchBottle(bottle.id, { windowMode: v as Bottle["windowMode"] })}
@@ -209,7 +222,7 @@
         <Row id="win-follow-theme" label={$t("s.wa.followTheme")}>
           {#snippet control()}
             <Switch
-              value={bottle.followsTheme}
+              value={bottle.followsTheme ?? false}
               ariaLabel={$t("s.wa.followTheme")}
               onchange={(v) => bottle && patchBottle(bottle.id, { followsTheme: v })}
             />
@@ -221,7 +234,7 @@
         <Row id="win-launch-args" label={$t("s.wa.args")}>
           {#snippet control()}
             <Input
-              value={bottle.launchArgs}
+              value={bottle.launchArgs ?? ""}
               placeholder={$t("s.wa.argsHint")}
               aria-label={$t("s.wa.args")}
               oninput={(e) => bottle && patchBottle(bottle.id, { launchArgs: e.currentTarget.value })}
@@ -231,7 +244,7 @@
         <Row id="win-working-dir" label={$t("s.wa.workDir")}>
           {#snippet control()}
             <Input
-              value={bottle.workingDir}
+              value={bottle.workingDir ?? ""}
               placeholder={$t("s.wa.default")}
               aria-label={$t("s.wa.workDir")}
               oninput={(e) => bottle && patchBottle(bottle.id, { workingDir: e.currentTarget.value })}
@@ -242,7 +255,7 @@
           {#snippet below()}
             <div class="chips">
               <ChipList
-                items={bottle.envVars}
+                items={bottle.envVars ?? []}
                 placeholder={$t("s.wa.envHint")}
                 onchange={(items) => bottle && patchBottle(bottle.id, { envVars: items })}
               />
@@ -256,7 +269,7 @@
           {#snippet below()}
             <div class="chips">
               <ChipList
-                items={bottle.dllOverrides}
+                items={bottle.dllOverrides ?? []}
                 placeholder={$t("s.wa.dllHint")}
                 onchange={(items) => bottle && patchBottle(bottle.id, { dllOverrides: items })}
               />
@@ -267,7 +280,7 @@
           {#snippet below()}
             <div class="chips">
               <ChipList
-                items={bottle.winetricks}
+                items={bottle.winetricks ?? []}
                 placeholder={$t("s.wa.winetricksHint")}
                 onchange={(items) => bottle && patchBottle(bottle.id, { winetricks: items })}
               />
@@ -275,6 +288,11 @@
           {/snippet}
         </Row>
       </Section>
+      {:else}
+        <Section label={$t("s.wa.compat")} class="span-full">
+          <p class="not-managed">{$t("s.wa.notManaged")}</p>
+        </Section>
+      {/if}
 
       <Section label={$t("s.wa.files")} class="span-full">
         <Row id="win-storage" label={$t("s.wa.storageUsed", { size: bottle.diskUsage })}>
