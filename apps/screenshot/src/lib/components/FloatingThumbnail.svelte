@@ -14,6 +14,7 @@
     onCopy,
     onSave,
     onDismiss,
+    sample = false,
     duration = 5000,
   }: {
     /// The captured image (the untouched base canvas).
@@ -23,6 +24,12 @@
     onSave?: () => void;
     /// Fired on timeout or the dismiss button - the auto-save path.
     onDismiss?: () => void;
+    /// Whether the picture is the drawn stand-in rather than a real capture.
+    /// The annotate surface has said so since it was written; this is the
+    /// surface the sample appears on FIRST, and it said nothing - a picture of a
+    /// plausible account card with a plausible token in it, unlabelled, for as
+    /// long as a reader looked at it before opening it.
+    sample?: boolean;
     duration?: number;
   } = $props();
 
@@ -80,6 +87,7 @@
   onclick={() => onAnnotate?.()}
 >
   {#if src}<img class="thumb-img" {src} alt={$t("s.screenCapture")} />{/if}
+  {#if sample}<p class="thumb-sample">{$t("s.sampleShot")}</p>{/if}
 
   <div class="thumb-actions" role="group" aria-label={$t("s.captureActions")}>
     <button class="thumb-btn" title={$t("s.annotate")} aria-label={$t("s.annotate")} onclick={(e) => { stop(e); onAnnotate?.(); }}>
@@ -201,5 +209,13 @@
     to {
       transform: scaleX(0);
     }
+  }
+  .thumb-sample {
+    margin: 0;
+    padding: 2px 6px;
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--color-fg-secondary);
+    text-align: center;
   }
 </style>
