@@ -9,6 +9,17 @@ is the pixel-level half of the verify pass the nested harness cannot do; OCR
 (tesseract) is wired so later, once the shell renders text, assertions can key on
 on-screen strings.
 
+WHAT A FRAME FROM HERE IS EVIDENCE OF, AND WHAT IT IS NOT. The guest paints
+through WebKitGTK on llvmpipe, which is not the renderer anybody will run this on.
+Text is text - a German boot showing an English sentence is that sentence, and no
+renderer invents words. Pixels are not: on 23 August the launcher's result list
+appeared to paint past its card's rounded edge, with the tail of the list repeated
+below it, on two frames six seconds apart. The same markup, the same CSS and the
+same eight results rendered inside the card in a browser
+(`/waypointer?searchmock=long`), so the artifact was the guest's compositing of a
+scrolling layer, not the shell. A LAYOUT defect seen only here is a claim about
+this renderer until a second one agrees; a WORDING defect needs no second opinion.
+
 Usage: dev/vm/verify.py [--image PATH] [--wait SECONDS] [--out PATH]
 Exit 0 if the frame rendered, non-zero otherwise.
 """
