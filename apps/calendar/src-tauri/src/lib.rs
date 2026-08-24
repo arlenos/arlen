@@ -433,6 +433,90 @@ fn calendar_delete_event(
     write_calendar(&path, &updated).map_err(|why| DeleteProblem::NotWritten { why })
 }
 
+/// What an edit may change, as the form sends it.
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct EventChangesDto {
+    summary: Option<String>,
+    date: Option<String>,
+    all_day: Option<bool>,
+    /// Double option on purpose: absent means "leave it", `null` means "clear it",
+    /// which an event becoming all-day needs to say.
+    #[serde(default, deserialize_with = "double_option")]
+    time: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    end_time: Option<Option<String>>,
+    location: Option<String>,
+}
+
+/// Tell an absent field from one sent as `null`.
+fn double_option<'de, D>(d: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    serde::Deserialize::deserialize(d).map(Some)
+}
+
+/// Why an event could not be changed.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum UpdateProblem {
+    NoHome,
+    NoSuchCalendar,
+    Unreadable { why: String },
+    /// The scope was not one of `this`, `following`, `all`.
+    BadScope,
+    /// Nothing has that uid, the occurrence was missing or unreadable for a scope
+    /// that needs one, or the change said nothing. Nothing was written.
+    NotAimed,
+    /// The write itself failed. Nothing was changed.
+    NotWritten { why: String },
+}
+
+/// Change an event, one occurrence of it, or the rest of its series.
+#[tauri::command]
+fn calendar_update_event(
+    uid: String,
+    calendar_id: String,
+    changes: EventChangesDto,
+    scope: String,
+    occurrence_date: Option<String>,
+) -> Result<(), UpdateProblem> {
+    use arlen_calendar_core::write::{EventChanges, Scope};
+    let scope = match scope.as_str() {
+        "this" => Scope::This,
+        "following" => Scope::Following,
+        "all" => Scope::All,
+        _ => return Err(UpdateProblem::BadScope),
+    };
+    let (path, text) = read_calendar(&calendar_id).map_err(|e| match e {
+        CalendarRead::NoHome => UpdateProblem::NoHome,
+        CalendarRead::NoSuchCalendar => UpdateProblem::NoSuchCalendar,
+        CalendarRead::Unreadable(why) => UpdateProblem::Unreadable { why },
+    })?;
+    let changes = EventChanges {
+        summary: changes.summary,
+        date: changes.date,
+        all_day: changes.all_day,
+        start: changes.time,
+        end: changes.end_time,
+        location: changes.location,
+    };
+    let Some(updated) = arlen_calendar_core::write::update_event(
+        &text,
+        &uid,
+        scope,
+        occurrence_date.as_deref(),
+        &changes,
+        // Only a `following` split uses it, and it is minted here rather than in
+        // the core so the core stays a pure function of its inputs.
+        &format!("{}@arlen", uuid::Uuid::now_v7()),
+    ) else {
+        return Err(UpdateProblem::NotAimed);
+    };
+    write_calendar(&path, &updated).map_err(|why| UpdateProblem::NotWritten { why })
+}
+
 /// One calendar as the sidebar lists it.
 #[derive(serde::Serialize)]
 struct CalendarInfo {
@@ -632,6 +716,7 @@ pub fn run() {
             calendar_calendars,
             calendar_set_color,
             calendar_delete_event,
+            calendar_update_event,
             launch_file,
             calendar_import,
             calendar_create_event
