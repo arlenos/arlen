@@ -22,6 +22,8 @@
     winActionFailed,
     launchFailed,
     launchFailureKey,
+    forgetFailed,
+    forgetFailureKey,
     defaults,
     wineVersions,
     load,
@@ -73,6 +75,11 @@
     {#if $winApps.unreadable.length > 0}
       <p class="note span-full" role="alert">
         {$t("s.wa.someUnreadable", { names: $winApps.unreadable.join(", ") })}
+      </p>
+    {/if}
+    {#if $forgetFailed}
+      <p class="note span-full" role="alert">
+        {$t(forgetFailureKey($forgetFailed.reason), { name: $forgetFailed.name })}
       </p>
     {/if}
     {#if $launchFailed}

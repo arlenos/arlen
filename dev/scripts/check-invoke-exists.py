@@ -354,7 +354,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # not on screen at all.
         "browse_bottle_files": "the Windows-app bottle browser (surface off the navigation)",
         "clear_bottle_caches": "bottle cache clearing (surface off the navigation)",
-        "delete_bottle": "deleting a bottle (surface off the navigation)",
         "install_windows_app": "installing a Windows app (surface off the navigation)",
         "set_bottle_config": "bottle settings (surface off the navigation)",
         "set_windows_defaults": "the Windows-app defaults (surface off the navigation)",

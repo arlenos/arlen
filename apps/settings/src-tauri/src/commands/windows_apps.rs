@@ -165,3 +165,23 @@ fn problem_token(problem: arlen_wine_core::protocol::Problem) -> String {
         // start and nobody can say why".
         .unwrap_or_else(|| "could-not-start".to_string())
 }
+
+/// Forget a bottle: its prefix goes to the trash and its description is removed.
+///
+/// Answers with WHERE the prefix went, so the panel can say it rather than imply
+/// it. `None` means there was no prefix on disk to move.
+///
+/// The runtime admits only this app for this ask and records it in the ledger
+/// before it happens, so a refusal here can also mean the ledger was unreachable -
+/// which is the fail-closed answer, not a bug to route around.
+#[tauri::command]
+pub async fn delete_bottle(id: String) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || match ask(&socket_path(), &Request::Forget { id }) {
+        Ok(Response::Forgotten { trashed_to }) => Ok(trashed_to),
+        Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+        Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+        Err(e) => Err(e.to_string()),
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
