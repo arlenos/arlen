@@ -32,7 +32,17 @@ async fn main() -> std::process::ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+                // BOTH crates this daemon is made of, and not a bare level. A
+                // level set for everything puts a dependency's chatter in the
+                // journal; naming only one of the two leaves the other mute,
+                // because a tracing target roots at the crate the line was
+                // compiled into - the serve loop is `arlen_wine_core`, the startup
+                // and shutdown lines are `arlen_bottled`.
+                .unwrap_or_else(|_| {
+                    tracing_subscriber::EnvFilter::new(
+                        "warn,arlen_bottled=info,arlen_wine_core=info",
+                    )
+                }),
         )
         .init();
 

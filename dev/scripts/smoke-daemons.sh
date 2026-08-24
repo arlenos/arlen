@@ -39,6 +39,7 @@ DAEMONS=(
     "arlen-consent-broker|consent-intake.sock|"
     "arlen-store-backend|store.sock|"
     "arlen-auditd|audit-ingest.sock|"
+    "arlen-bottled|bottled.sock|"
     "arlen-capsuled|capsule.sock|"
     "arlen-settings-broker|settings-broker.sock|"
     "arlen-modulesd|modulesd.sock|"
