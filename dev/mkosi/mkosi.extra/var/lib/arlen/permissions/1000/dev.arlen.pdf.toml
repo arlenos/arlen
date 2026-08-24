@@ -17,19 +17,29 @@
 #                     lands, the grant lands with it and is decided then.
 #   no folder walk    unlike the viewer it does not step to the next file in the
 #                     directory, so it needs the file it was given and nothing
-#                     around it. The read grants below are still directory-wide
-#                     because a reader that can only open one blessed path is not
-#                     a reader; they are the places documents live.
+#                     around it. The grants below are still directory-wide because
+#                     a reader that can only open one blessed path is not a reader;
+#                     they are the places documents live.
 [info]
 app_id = "dev.arlen.pdf"
 tier = "first-party"
 
 [filesystem]
-# Where a document is opened from. Read-only throughout: every one of the six
-# commands reads.
-read = [
+# `read_only`, not `home = true` and not `custom`. Both of those bind READ-WRITE,
+# and this app has no command that writes: every one of its six reads. Handing a
+# reader the ability to overwrite the document it is displaying is a grant nobody
+# needs and the launcher would honour.
+#
+# `/media` and `/mnt` are NOT here, and their absence is a real limitation rather
+# than an oversight. `read_only_grant_ok` refuses a path two components deep - a
+# read-only bind of a whole mount root is still the shape that rule exists to stop
+# - so they cannot be said in this grammar. The alternative is to name them in
+# `custom`, which would open a reader onto every mount point read-WRITE to solve a
+# read problem, and that trade is the one this field was added to avoid. A PDF on a
+# disk the system mounted at `/run/media/<user>/<label>` opens; one at a
+# hand-mounted `/mnt/stick` does not, until either that path is expressible or the
+# document portal hands the file over directly.
+read_only = [
     "/home/$USER",
-    "/media",
     "/run/media/$USER",
-    "/mnt",
 ]

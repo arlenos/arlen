@@ -24,6 +24,14 @@ WHAT COUNTS. A user-directory grant: `home`, or `documents`/`downloads`/`picture
 the calendar had one, and it was the bug. A file arrives the ordinary way, as something
 saved anywhere, so a grant naming one directory the app made itself cannot reach it.
 
+A `read_only` entry naming a user directory counts too, and did not until 25 Aug. That
+field was added after this gate and the gate did not learn about it, so the only shape
+it accepted was one that binds read-WRITE. For an app that never writes - a reader, a
+viewer - that pushed the author toward the stronger grant to satisfy a check about
+reading, which is the exact grammar problem `read_only` exists to fix, reproduced in
+the thing meant to enforce it. `$USER` is expanded to a `*` here because the profile
+is written for whatever account the image creates.
+
 This does not check the reverse. An app granted `home = true` that opens nothing is a
 question about over-granting, which is a different check with a different argument.
 
@@ -50,6 +58,16 @@ MIME = re.compile(r"^MimeType=\s*\S", re.M)
 APP_ID = re.compile(r"^X-Arlen-AppId=(\S+)", re.M)
 
 
+#: A `read_only` path that reaches where a person keeps documents. `/home/$USER` and
+#: the udisks mount root for removable media; a deeper subtree under either counts,
+#: since it still reaches saved files. A bare `/media` cannot appear (the SDK refuses
+#: a two-component read-only grant), so it is not listed.
+READ_ONLY_USER_DIRS = (
+    re.compile(r"^/home/[^/\s\"]+"),
+    re.compile(r"^/run/media/[^/\s\"]+"),
+)
+
+
 def grants_a_user_dir(profile: str) -> bool:
     """Whether the profile's `[filesystem]` section names a user directory."""
     section = profile.split("[filesystem]", 1)
@@ -58,7 +76,22 @@ def grants_a_user_dir(profile: str) -> bool:
     # Up to the next section header, so a `documents = true` under `[network]`
     # (which would be a different bug) cannot satisfy this one.
     body = re.split(r"^\[", section[1], maxsplit=1, flags=re.M)[0]
-    return any(re.search(rf"^\s*{g}\s*=\s*true", body, re.M) for g in USER_DIR_GRANTS)
+    if any(re.search(rf"^\s*{g}\s*=\s*true", body, re.M) for g in USER_DIR_GRANTS):
+        return True
+    return _read_only_reaches_a_user_dir(body)
+
+
+def _read_only_reaches_a_user_dir(body: str) -> bool:
+    """Whether a `read_only` list in `body` names somewhere a person keeps files."""
+    match = re.search(r"^\s*read_only\s*=\s*\[(.*?)\]", body, re.M | re.S)
+    if not match:
+        return False
+    for raw in re.findall(r"\"([^\"]*)\"", match.group(1)):
+        # `$USER` is whatever account the image creates, so it matches any name.
+        path = raw.replace("$USER", "arlen")
+        if any(p.match(path) for p in READ_ONLY_USER_DIRS):
+            return True
+    return False
 
 
 def main() -> int:
@@ -92,8 +125,9 @@ def main() -> int:
                 f"{profile.relative_to(ROOT)} grants no user directory.\n"
                 f"    A confined launch would refuse the file the person double-clicked, and the "
                 f"failure reads as a broken app rather than a missing grant. Add `home = true` "
-                f"(or the narrower user dir the app really needs) - a `custom` path naming a "
-                f"directory the app made itself cannot reach a saved attachment."
+                f"(or the narrower user dir the app really needs, or a `read_only` entry "
+                f"under one if the app never writes) - a `custom` path naming a directory "
+                f"the app made itself cannot reach a saved attachment."
             )
 
     if problems:
