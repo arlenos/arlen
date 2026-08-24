@@ -750,6 +750,8 @@ export const b: Catalogs = {
     "s.wa.confirmLabel": "Delete",
     "s.wa.launchApp": "Launch",
     "s.wa.launchFailed": "\"{$name}\" was not launched: the Windows service did not take the request.",
+    "s.wa.someUnreadable":
+      "These bottles are on this machine and could not be read, so they are missing from the list: {$names}.",
     "s.wa.launchNothing":
       "\"{$name}\" has nothing to start yet: no Windows program has been installed into it.",
     "s.wa.launchNoWine":
@@ -1688,6 +1690,8 @@ export const b: Catalogs = {
     "s.wa.confirmLabel": "L\u00f6schen",
     "s.wa.launchApp": "Starten",
     "s.wa.launchFailed": "\u201e{$name}\u201c wurde nicht gestartet: Der Windows-Dienst hat die Anfrage nicht angenommen.",
+    "s.wa.someUnreadable":
+      "Diese Bottles liegen auf dieser Maschine und waren nicht lesbar, sie fehlen deshalb in der Liste: {$names}.",
     "s.wa.launchNothing":
       "\u201e{$name}\u201c hat noch nichts zu starten: Es wurde kein Windows-Programm hineininstalliert.",
     "s.wa.launchNoWine":
