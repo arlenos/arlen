@@ -74,3 +74,28 @@ export function repeatLabel(
   const days = e.on_days.map((d) => (DAY_KEY[d] ? t(DAY_KEY[d]) : d)).join(", ");
   return t("cal.onDays", { every, days });
 }
+
+/// The bar title for a month: "August 2026", in the reader's language.
+export function monthTitle(date: string, loc: string): string {
+  const [y, m] = date.split("-").map(Number);
+  return new Intl.DateTimeFormat(loc, { month: "long", year: "numeric" }).format(new Date(y, m - 1, 1));
+}
+
+/// The bar title for a week: its span, month names only where they change.
+export function weekTitle(monday: string, loc: string): string {
+  const [y, m, d] = monday.split("-").map(Number);
+  const start = new Date(y, m - 1, d);
+  const end = new Date(y, m - 1, d + 6);
+  return new Intl.DateTimeFormat(loc, { day: "numeric", month: "short", year: "numeric" }).formatRange(start, end);
+}
+
+/// The bar title for a day: the full date.
+export function dayTitle(date: string, loc: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Intl.DateTimeFormat(loc, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(y, m - 1, d));
+}
