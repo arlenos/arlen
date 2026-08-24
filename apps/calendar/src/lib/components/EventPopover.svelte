@@ -53,16 +53,12 @@
         {/if}
       {/if}
       {#if onedit}
-        {#if event.repeats}
-          <p class="d-line quiet">{$t("cal.series.notYet")}</p>
-        {:else}
-          <div class="d-actions">
-            <Button variant="outline" size="sm" id="event-edit" onclick={() => onedit(event)}>
-              <Pencil size={13} strokeWidth={1.75} />
-              {$t("cal.edit.title")}
-            </Button>
-          </div>
-        {/if}
+        <div class="d-actions">
+          <Button variant="outline" size="sm" id="event-edit" onclick={() => onedit(event)}>
+            <Pencil size={13} strokeWidth={1.75} />
+            {$t("cal.edit.title")}
+          </Button>
+        </div>
       {/if}
     </div>
   </Popover.Content>
