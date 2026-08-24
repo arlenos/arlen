@@ -5,6 +5,14 @@ version = "0.1.0"
 edition = "2021"
 description = "What a Wine prefix reaches by default, and the drive map a capability-scoped bottle replaces it with (wine-proton-plan.md)"
 
+[[bin]]
+name = "arlen-bottled"
+path = "src/main.rs"
+
+[lib]
+name = "arlen_wine_core"
+path = "src/lib.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 # The bottle IS a confinement, so the bwrap spec comes from the one crate that
