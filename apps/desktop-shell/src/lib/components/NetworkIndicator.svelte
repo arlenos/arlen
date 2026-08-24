@@ -43,13 +43,19 @@
 
   async function poll() {
     const [air, net] = await Promise.all([
-      invoke<boolean>("get_airplane_mode").catch(() => false),
+      // `undefined`, not `false`. A read that failed used to become "aeroplane
+      // mode is off", which the icon then drew as an ordinary radio state - the
+      // guess this component's own note says it stopped making, left in the one
+      // branch that still made it.
+      invoke<boolean>("get_airplane_mode")
+        .then((a) => a as boolean | undefined)
+        .catch(() => undefined),
       invoke<NetworkStatus>("get_network_status")
         .then((n) => n as NetworkStatus | null)
         .catch(() => undefined),
     ]);
-    airplaneMode = air;
-    unknown = net === undefined;
+    airplaneMode = air === true;
+    unknown = net === undefined || air === undefined;
     status = air ? null : (net ?? null);
   }
 
