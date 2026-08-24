@@ -152,6 +152,13 @@ pub async fn serve_connection(
         let response = match handle_request(bottles_dir, &request) {
             Some(r) => r,
             None => {
+                if matches!(request, Request::Runtimes) {
+                    let response = runtimes().await;
+                    if write_frame(&mut stream, &response).await.is_err() {
+                        return;
+                    }
+                    continue;
+                }
                 if let Request::Forget { id } = &request {
                     let response = forget_for(bottles_dir, id, app_id.as_deref(), &*audit).await;
                     if write_frame(&mut stream, &response).await.is_err() {
@@ -207,6 +214,33 @@ pub async fn run(
             serve_connection(stream, &dir, uid, sink).await;
         });
     }
+}
+
+/// What this machine can run Windows programs with, by asking it.
+///
+/// ASKED, not looked up: a version string that comes from running `wine
+/// --version` is the version that will actually run, where a path check would
+/// only say a file is there. A machine with no Wine answers `None`, which is the
+/// answer, and it takes a bounded time to say so.
+async fn runtimes() -> Response {
+    let wine = match tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new(crate::launch::WINE)
+            .arg("--version")
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(out)) if out.status.success() => {
+            let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            // An empty answer from a program that exited cleanly is not a version.
+            (!v.is_empty()).then_some(v)
+        }
+        // Absent, broken, or too slow to say. All three mean the same thing to
+        // somebody wondering whether a Windows program can run here.
+        _ => None,
+    };
+    Response::Runtimes { wine }
 }
 
 /// Forget a bottle, if the caller may and the ledger recorded that it happened.

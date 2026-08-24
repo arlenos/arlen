@@ -185,3 +185,19 @@ pub async fn delete_bottle(id: String) -> Result<Option<String>, String> {
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// What this machine can run Windows programs with.
+///
+/// `None` means there is no Wine here, which is a fact somebody needs before they
+/// wonder why nothing starts. The panel used to open with a list of runtimes as
+/// though they were installed; this is the same list, measured.
+#[tauri::command]
+pub async fn windows_runtimes() -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(|| match ask(&socket_path(), &Request::Runtimes) {
+        Ok(Response::Runtimes { wine }) => Ok(wine),
+        Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+        Err(e) => Err(e.to_string()),
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

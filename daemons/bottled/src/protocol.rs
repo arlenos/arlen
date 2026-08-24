@@ -29,6 +29,8 @@ pub enum Request {
     ListBottles,
     /// One bottle, checked against what is actually on disk.
     Health { id: String },
+    /// What this machine can actually run Windows programs with.
+    Runtimes,
     /// Forget a bottle: its description is removed and its prefix goes to the
     /// trash.
     ///
@@ -108,6 +110,14 @@ pub enum Response {
     /// `--die-with-parent`, so when the daemon goes, so does the program, which is
     /// the lifetime a desktop app should have.
     Launched { pid: u32 },
+    /// The compatibility runtimes on this machine.
+    ///
+    /// MEASURED, never listed from a catalogue of things that might exist. The
+    /// panel used to show "Wine 9.0 installed, Proton 9.0 installed, DXVK 2.4
+    /// installed" as an opening value, which stated the contents of a disk nobody
+    /// had read. `wine` is `None` when there is none, which is a fact a person
+    /// needs before they wonder why nothing starts.
+    Runtimes { wine: Option<String> },
     /// The bottle is gone, and this is where its prefix went.
     ///
     /// `trashed_to` is `None` when there was no prefix on disk to move - the
@@ -325,7 +335,10 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
         },
         // Neither is answered here: a launch needs the host it will run on, and a
         // forget needs a trash and a caller allowed to ask. Both are the server's.
-        Request::Launch { .. } | Request::Forget { .. } => return None,
+        // Neither is answered here: a launch needs the host it will run on, a
+        // forget needs a trash and a caller allowed to ask, and reading a runtime
+        // version means running the thing. All three are the server's.
+        Request::Launch { .. } | Request::Forget { .. } | Request::Runtimes => return None,
         Request::Health { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => match check_bottle(&bottle) {
                 Ok(health) => Response::Health {

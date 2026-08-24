@@ -743,6 +743,9 @@ export const b: Catalogs = {
     "s.wa.newAppsGetDesc": "A private bottle keeps each app isolated. A shared one saves disk space.",
     "s.wa.runtimeInstalled": "Installed",
     "s.wa.runtimesUnknown": "Runtimes not known",
+    "s.wa.runtimesNone": "No compatibility runtime installed",
+    "s.wa.runtimesNoneDesc":
+      "This machine has no Wine, so no Windows program can run here yet.",
     "s.wa.runtimesUnknownDesc": "Nothing reports which Wine or Proton versions are installed.",
     "s.wa.install": "Install",
     "s.wa.confirmTitle": "Delete this app?",
@@ -1691,6 +1694,9 @@ export const b: Catalogs = {
     "s.wa.newAppsGetDesc": "Eine eigene Flasche h\u00e4lt jede App getrennt. Eine gemeinsame spart Plattenplatz.",
     "s.wa.runtimeInstalled": "Installiert",
     "s.wa.runtimesUnknown": "Laufzeitumgebungen nicht bekannt",
+    "s.wa.runtimesNone": "Keine Kompatibilit\u00e4tsumgebung installiert",
+    "s.wa.runtimesNoneDesc":
+      "Auf dieser Maschine gibt es kein Wine, hier kann also noch kein Windows-Programm laufen.",
     "s.wa.runtimesUnknownDesc": "Nichts meldet, welche Wine- oder Proton-Versionen installiert sind.",
     "s.wa.install": "Installieren",
     "s.wa.confirmTitle": "Diese App l\u00f6schen?",
