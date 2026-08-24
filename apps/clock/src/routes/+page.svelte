@@ -13,6 +13,8 @@
   import { clockMocked, clockUnavailable,
     clockAbsent, clockActionFailed } from "$lib/stores/clock";
   import { requestAdd } from "$lib/stores/ui";
+  import { onMount, tick } from "svelte";
+  import { initAppMenu, menuAction } from "$lib/menu";
   import { t, dir } from "$lib/i18n/messages";
 
   const TABS = [
@@ -24,6 +26,22 @@
   ] as const;
   type TabKey = (typeof TABS)[number]["key"];
   let tab = $state<TabKey>("alarms");
+
+  onMount(() => {
+    void initAppMenu();
+  });
+  // The shell menu's dispatch: a New entry lands on its tab first, then rings
+  // the same per-view add bell the header button rings.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a.startsWith("view.")) tab = a.slice(5) as TabKey;
+    else if (a === "new.alarm" || a === "new.timer" || a === "new.city") {
+      tab = a === "new.alarm" ? "alarms" : a === "new.timer" ? "timers" : "world";
+      void tick().then(() => requestAdd());
+    }
+  });
 
   // Window chrome: explicit startDragging (the drag attribute is unreliable on
   // Wayland in Tauri v2), guarded so vite still renders.

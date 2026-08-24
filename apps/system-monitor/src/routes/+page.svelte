@@ -9,6 +9,7 @@
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
   import { processes, mocked, unavailable, lastError, load, startProcessPolling, stopProcessPolling, stop, stopRow, pause, resume, limit, unlimit, pauseRow, resumeRow, limitRow, unlimitRow, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
+  import { initAppMenu, menuAction } from "$lib/menu";
   import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers } from "lucide-svelte";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
@@ -40,7 +41,19 @@
     return row ? onRow(row) : onPid(id);
   }
 
-  onMount(load);
+  onMount(() => {
+    void initAppMenu();
+    void load();
+  });
+  // The shell menu's dispatch.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "view.refresh") void load();
+    else if (a === "view.processes") tab = "Processes";
+    else if (a === "view.performance") tab = "Performance";
+  });
 
   // Run the ~1 Hz Performance ticks only while that tab is visible.
   $effect(() => {

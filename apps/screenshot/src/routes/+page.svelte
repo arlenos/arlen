@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import { initAppMenu, menuAction } from "$lib/menu";
   /// The screenshot annotate surface (SC-R2). A captured image on one canvas with
   /// a floating tool palette; annotate directly on it, then copy on Enter or save.
   /// Satty/Flameshot model, on the @arlen/ui-kit tool archetype, flat house style.
@@ -102,7 +103,18 @@
 
   let seq = 0;
 
+  // The shell menu's dispatch, the same verbs the keys run.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "edit.undo") undo();
+    else if (a === "edit.redo") redo();
+    else if (a === "edit.copy") void copy();
+  });
+
   onMount(async () => {
+    void initAppMenu();
     const cs = getComputedStyle(document.documentElement);
     swatches = SWATCH_TOKENS.map((t) => ({ token: t, hex: (cs.getPropertyValue(t).trim() || "#ffffff") }));
     color = swatches[0]?.hex ?? color;

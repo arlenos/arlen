@@ -12,6 +12,7 @@
   import { loadLens } from "$lib/stores/lens";
   import { openDocument, openError, openTarget, loadInitialFile } from "$lib/stores/document";
   import { onMount } from "svelte";
+  import { initAppMenu, menuAction } from "$lib/menu";
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
   import { t, dir } from "$lib/i18n/messages";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
@@ -210,7 +211,17 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
       : FILES.map((f, i) => ({ value: String(i), label: f.name })),
   );
 
+  // The shell menu's dispatch: the same verbs the keys and buttons run.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "file.save") void save();
+    else if (a === "file.print") void print();
+  });
+
   onMount(() => {
+    void initAppMenu();
     void loadInitialFile();
   });
 

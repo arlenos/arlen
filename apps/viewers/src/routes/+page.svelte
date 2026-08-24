@@ -1,6 +1,7 @@
 <script lang="ts">
   import { printProblem, restoreProblem, trashProblem } from "$lib/trashProblem";
   import { t } from "$lib/i18n/messages";
+  import { initAppMenu, menuAction } from "$lib/menu";
   /// The viewer routes one window to one file by media type. When launched on a
   /// real file (`viewer <path>`, the `.desktop` `%f`, or a double-click) it loads
   /// it through the decode backend on mount; absent a real file it falls back to
@@ -77,7 +78,20 @@
     return p.split("/").filter(Boolean).pop() ?? p;
   }
 
+  // The shell menu's dispatch, the same verbs the keys run.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "file.print") void printCurrent();
+    else if (a === "file.trash") void deleteCurrent();
+    else if (a === "file.undo") void undoDelete();
+    else if (a === "go.next") void step("next");
+    else if (a === "go.previous") void step("previous");
+  });
+
   onMount(async () => {
+    void initAppMenu();
     if (pinnedState === "load-error") {
       loadError = "decode-image: unsupported JPEG progressive scan";
       return;

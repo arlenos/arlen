@@ -11,6 +11,10 @@
   import { apps } from "$lib/stores/catalog";
   import { t, dir } from "$lib/i18n/messages";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
+  import { goto } from "$app/navigation";
+  import { initAppMenu, menuAction } from "$lib/menu";
+  import { loadCatalog } from "$lib/stores/catalog";
+  import { loadUpdates, applyAllRoutine } from "$lib/stores/updates";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
 
   let { children } = $props();
@@ -18,7 +22,21 @@
   // The chosen language and the live theme, the same two lines every other
   // app runs. The German catalogue in messages.ts was unreachable without
   // the first one.
+  // The shell menu's dispatch: refresh and update verbs work from any route.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "store.refresh") void loadCatalog();
+    else if (a === "store.check") void loadUpdates();
+    else if (a === "store.update_all") void applyAllRoutine();
+    else if (a === "go.browse") void goto("/");
+    else if (a === "go.installed") void goto("/installed");
+    else if (a === "go.updates") void goto("/updates");
+  });
+
   onMount(() => {
+    void initAppMenu();
     void initArlenLocale();
     void initArlenTheme();
   });
