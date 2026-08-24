@@ -263,17 +263,32 @@ export async function loadCalendars(): Promise<void> {
   }
 }
 
-/// Recolour one calendar. Live: the intended `calendar_set_color`; the local
-/// update applies either way so the choice is visible at once (and the next
-/// re-read corrects it if the write was refused).
+/// Recolour one calendar.
+///
+/// Optimistic, then PUT BACK if the write was refused. The comment this replaces
+/// said the next re-read would correct it, which was true only if one happened -
+/// and a sidebar showing a colour the file does not carry is a small lie that
+/// survives until something else reloads the page. Under the fixture there is
+/// nothing to write to, so the local colour stands and says nothing.
 export async function setCalendarColor(id: string, color: string): Promise<void> {
+  const before = get(calendars);
   calendars.update((all) => all.map((c) => (c.id === id ? { ...c, color } : c)));
+  colorFailed.set(null);
   try {
     await invoke("calendar_set_color", { id, color });
-  } catch {
-    /* fixture, or the seam not landed - the local colour stands for now */
+  } catch (e) {
+    let mocked = false;
+    calendarMocked.update((m) => ((mocked = m), m));
+    if (mocked) return;
+    calendars.set(before);
+    colorFailed.set(get(t)("cal.color.failed", { reason: String(e) }));
   }
 }
+
+/// The message for a refused recolour, or `null`. Its own store because a colour
+/// that did not stick is not the same event as an edit that did not stick, and
+/// the two would overwrite each other's sentence.
+export const colorFailed = writable<string | null>(null);
 
 /// Toggle one calendar's visibility (session-local).
 export function toggleCalendar(id: string): void {

@@ -62,6 +62,7 @@ const messages: Catalogs = {
     "cal.edit.title": "Edit event",
     "cal.delete": "Delete",
     "cal.edit.failed": "That change did not go through: {$reason}",
+    "cal.color.failed": "The colour did not stick, so this calendar keeps the one it had: {$reason}",
     "cal.scope.title": "This event repeats",
     "cal.scope.editQ": "Which part of the series should the change touch?",
     "cal.scope.deleteQ": "Which part of the series should go?",
@@ -165,6 +166,8 @@ const messages: Catalogs = {
     "cal.edit.title": "Termin bearbeiten",
     "cal.delete": "Löschen",
     "cal.edit.failed": "Diese Änderung ging nicht durch: {$reason}",
+    "cal.color.failed":
+      "Die Farbe wurde nicht \u00fcbernommen, dieser Kalender beh\u00e4lt seine bisherige: {$reason}",
     "cal.scope.title": "Dieser Termin wiederholt sich",
     "cal.scope.editQ": "Welchen Teil der Serie soll die Änderung treffen?",
     "cal.scope.deleteQ": "Welcher Teil der Serie soll weg?",
