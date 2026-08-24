@@ -3,21 +3,58 @@
   /// the row itself toggles visibility (the universal calendar convention).
   /// The dot is its own button and opens the eight-colour palette; a hidden
   /// calendar's row steps back rather than disappearing.
-  import { Check } from "@lucide/svelte";
+  import { Check, Plus } from "@lucide/svelte";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { Input } from "@arlen/ui-kit/components/ui/input";
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { SidebarGroupLabel } from "@arlen/ui-kit/components/ui/sidebar";
   import { t } from "$lib/i18n/messages";
   import {
     calendars,
+    calendarSets,
     hiddenCalendars,
     toggleCalendar,
     setCalendarColor,
+    saveSet,
+    applySet,
     CALENDAR_PALETTE,
   } from "$lib/stores/calendar";
+
+  let naming = $state(false);
+  let setName = $state("");
+
+  function commitSet(): void {
+    const name = setName.trim();
+    if (name) saveSet(name);
+    setName = "";
+    naming = false;
+  }
 </script>
 
 {#if $calendars.length > 0}
   <SidebarGroupLabel>{$t("cal.calendars")}</SidebarGroupLabel>
+  <div class="sets">
+    <button type="button" class="set-chip" onclick={() => applySet(null)}>{$t("cal.sets.all")}</button>
+    {#each $calendarSets as set (set.name)}
+      <button type="button" class="set-chip" onclick={() => applySet(set)}>{set.name}</button>
+    {/each}
+    <IconAction label={$t("cal.sets.save")} onclick={() => (naming = true)}>
+      <Plus size={13} strokeWidth={2} />
+    </IconAction>
+  </div>
+  {#if naming}
+    <div class="set-name">
+      <Input
+        bind:value={setName}
+        placeholder={$t("cal.sets.name")}
+        aria-label={$t("cal.sets.name")}
+        onkeydown={(e: KeyboardEvent) => {
+          if (e.key === "Enter") commitSet();
+          else if (e.key === "Escape") (naming = false), (setName = "");
+        }}
+      />
+    </div>
+  {/if}
   <ul class="cal-list">
     {#each $calendars as cal (cal.id)}
       {@const hidden = $hiddenCalendars.has(cal.id)}
@@ -68,6 +105,37 @@
 {/if}
 
 <style>
+  .sets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0 0.5rem 0.35rem;
+  }
+  .set-chip {
+    max-width: 8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0.15rem 0.55rem;
+    border: none;
+    border-radius: var(--radius-chip, 4px);
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    font: inherit;
+    font-size: var(--text-2xs, 11px);
+    color: inherit;
+    cursor: pointer;
+  }
+  .set-chip:hover {
+    background: color-mix(in srgb, currentColor 14%, transparent);
+  }
+  .set-chip:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+  .set-name {
+    padding: 0 0.5rem 0.4rem;
+  }
   .cal-list {
     list-style: none;
     margin: 0;

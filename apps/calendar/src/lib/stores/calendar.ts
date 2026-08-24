@@ -481,3 +481,23 @@ export async function deleteEvent(
     return null;
   }
 }
+
+/// Named visibility presets (Fantastical's calendar sets). Session-local; the
+/// persistence home is the per-app-settings strand, same as visibility.
+export interface CalendarSet {
+  name: string;
+  hidden: string[];
+}
+export const calendarSets = writable<CalendarSet[]>([]);
+
+/// Save the current selection under a name.
+export function saveSet(name: string): void {
+  let hidden: string[] = [];
+  hiddenCalendars.update((h) => ((hidden = [...h]), h));
+  calendarSets.update((sets) => [...sets.filter((s) => s.name !== name), { name, hidden }]);
+}
+
+/// Apply a set (or everything visible for `null` - the "All" chip).
+export function applySet(set: CalendarSet | null): void {
+  hiddenCalendars.set(new Set(set?.hidden ?? []));
+}
