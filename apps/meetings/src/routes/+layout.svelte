@@ -114,10 +114,12 @@
          usable strip. Same reasoning as the harness chat history. -->
     <Sidebar>
       <SidebarContent>
-        <!-- pt-1: the first row's centre sits on the h-10 header-bar line (a
-             32px row in the 40px band needs a 4px top inset, not the group's
-             8px). -->
-        <SidebarGroup class="pt-1">
+        <!-- The first group keeps a 6px top inset so its row clears the
+         window edge by the same gap as the header-bar icons; the row itself
+         stays the rail's uniform 32px box - an earlier pass shrank only the
+         first box to 28px and it read as broken, smaller and shifted against
+         its siblings. -->
+        <SidebarGroup class="pt-1.5">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton id="start-meeting" isActive={capturing} onclick={() => goto("/capture")}>

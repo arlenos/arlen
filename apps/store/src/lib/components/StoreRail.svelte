@@ -32,9 +32,11 @@
 
 <Sidebar collapsible="icon">
   <SidebarContent>
-    <!-- pt-1: the first row's centre sits on the h-10 header-bar line (a 32px
-         row in the 40px band needs a 4px top inset, not the group's 8px). -->
-    <SidebarGroup class="pt-1">
+    <!-- pt-1: the group label's centre sits on the h-10 header-bar line.
+         Collapsed the label vanishes, so the first icon row takes the edge
+         with the same 6px gap the header-bar icons keep; the box stays the
+         rail's uniform size. -->
+    <SidebarGroup class="pt-1 group-data-[collapsible=icon]:pt-1.5">
       <SidebarGroupLabel>{$t("st.section.places")}</SidebarGroupLabel>
       <SidebarMenu>
         {#each PLACES as p (p.href)}
