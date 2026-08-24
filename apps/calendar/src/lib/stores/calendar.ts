@@ -281,7 +281,7 @@ export async function setCalendarColor(id: string, color: string): Promise<void>
     calendarMocked.update((m) => ((mocked = m), m));
     if (mocked) return;
     calendars.set(before);
-    colorFailed.set(get(t)("cal.color.failed", { reason: String(e) }));
+    colorFailed.set(colorRefusal(e));
   }
 }
 
@@ -345,7 +345,74 @@ function refusal(e: unknown): string {
     case "not-written":
       return write("cal.create.notWritten", { why: p.why });
     default:
-      return write("cal.create.other", { reason: String(e) });
+      // A tag this does not know: the sentence says what happened and nothing
+      // more, because the alternative is `[object Object]` on the surface. The
+      // value goes where whoever added the tag will look for it.
+      console.warn("calendar: unrecognised create refusal", e);
+      return write("cal.create.other");
+  }
+}
+
+/// Why a recolour was refused, as a sentence in the reader's language.
+///
+/// Same rule as [`refusal`], and this path had broken it: `String(e)` on a
+/// `#[serde(tag = "problem")]` enum is `[object Object]`, so the sentence ended
+/// with that rather than with a reason.
+type ColorProblem =
+  | { problem: "no-home" }
+  | { problem: "no-such-calendar" }
+  | { problem: "unreadable"; why: string }
+  | { problem: "bad-color" }
+  | { problem: "not-written"; why: string };
+
+function colorRefusal(e: unknown): string {
+  const write = get(t);
+  const p = e as ColorProblem | null;
+  switch (p?.problem) {
+    case "no-home":
+      return write("cal.color.noHome");
+    case "no-such-calendar":
+      return write("cal.color.noSuchCalendar");
+    case "unreadable":
+      return write("cal.color.unreadable", { why: p.why });
+    case "bad-color":
+      return write("cal.color.badColor");
+    case "not-written":
+      return write("cal.color.notWritten", { why: p.why });
+    default:
+      console.warn("calendar: unrecognised colour refusal", e);
+      return write("cal.color.failed");
+  }
+}
+
+/// Why a change was refused, as a sentence in the reader's language.
+type UpdateProblem =
+  | { problem: "no-home" }
+  | { problem: "no-such-calendar" }
+  | { problem: "unreadable"; why: string }
+  | { problem: "bad-scope" }
+  | { problem: "not-aimed" }
+  | { problem: "not-written"; why: string };
+
+function editRefusal(e: unknown): string {
+  const write = get(t);
+  const p = e as UpdateProblem | null;
+  switch (p?.problem) {
+    case "no-home":
+      return write("cal.edit.noHome");
+    case "no-such-calendar":
+      return write("cal.edit.noSuchCalendar");
+    case "unreadable":
+      return write("cal.edit.unreadable", { why: p.why });
+    case "bad-scope":
+      return write("cal.edit.badScope");
+    case "not-aimed":
+      return write("cal.edit.notAimed");
+    case "not-written":
+      return write("cal.edit.notWritten", { why: p.why });
+    default:
+      console.warn("calendar: unrecognised edit refusal", e);
+      return write("cal.edit.failed");
   }
 }
 
@@ -431,7 +498,7 @@ export async function updateEvent(
   } catch (e) {
     let mocked = false;
     calendarMocked.update((m) => ((mocked = m), m));
-    if (!mocked) return get(t)("cal.edit.failed", { reason: String(e) });
+    if (!mocked) return editRefusal(e);
     agenda.update((a) => {
       if (!a) return a;
       // The date delta a moved occurrence implies, applied to the whole span
@@ -482,7 +549,7 @@ export async function deleteEvent(
   } catch (e) {
     let mocked = false;
     calendarMocked.update((m) => ((mocked = m), m));
-    if (!mocked) return get(t)("cal.edit.failed", { reason: String(e) });
+    if (!mocked) return editRefusal(e);
     agenda.update((a) => {
       if (!a) return a;
       const keep = (ev: AgendaEvent): boolean => {

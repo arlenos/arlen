@@ -40,8 +40,11 @@
         return $t("ml.attach.failed.notWritten", { why: p.why });
       default:
         // Not one of ours: no host at all, or a transport that failed before the
-        // command answered. Its own words are the only detail there is.
-        return $t("ml.attach.failed.other", { reason: String(e) });
+        // command answered. Its own words are the only detail there is - and they
+        // are developer English, or `[object Object]` for a tag added later, so
+        // they go to the console rather than into a translated sentence.
+        console.warn("mail: unrecognised attachment refusal", e);
+        return $t("ml.attach.failed.other");
     }
   }
 

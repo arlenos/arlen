@@ -60,7 +60,7 @@ const messages: Catalogs = {
     "ml.attach.failed.noSuchAttachment": "That attachment is not in the message.",
     "ml.attach.failed.noFolder": "There is no downloads folder to save into.",
     "ml.attach.failed.notWritten": "The file was not written. {$why}",
-    "ml.attach.failed.other": "Saving did not go through: {$reason}",
+    "ml.attach.failed.other": "Saving did not go through.",
     // A `text/calendar` part, NAMED and not read. The core does not parse the
     // payload - who processes iTIP is an open call between this app and the
     // calendar daemon - so these say what the message CLAIMS the part is for and
@@ -144,7 +144,7 @@ const messages: Catalogs = {
     "ml.attach.failed.noSuchAttachment": "Dieser Anhang ist nicht in der Nachricht.",
     "ml.attach.failed.noFolder": "Es gibt keinen Download-Ordner zum Speichern.",
     "ml.attach.failed.notWritten": "Die Datei wurde nicht geschrieben. {$why}",
-    "ml.attach.failed.other": "Speichern ging nicht durch: {$reason}",
+    "ml.attach.failed.other": "Speichern ging nicht durch.",
     "ml.invitation.request": "Diese Nachricht enthält eine Einladung. Diese App hat sie nicht gelesen.",
     "ml.invitation.cancel": "Diese Nachricht enthält eine Absage zu einem Termin. Diese App hat sie nicht gelesen.",
     "ml.invitation.reply": "Diese Nachricht enthält jemandes Antwort auf eine Einladung. Diese App hat sie nicht gelesen.",
