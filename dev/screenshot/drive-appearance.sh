@@ -112,7 +112,9 @@ python3 - "$out/appearance-system-persisted.png" <<'PY'
 import sys
 from PIL import Image
 im = Image.open(sys.argv[1]).convert("RGB")
-red, green = im.getpixel((310, 285)), im.getpixel((350, 285))
+# Coordinates track the ANSI strip's position; the sound section moving to its
+# own page (24 Aug) lifted the preview column, so the row sits higher now.
+red, green = im.getpixel((322, 280)), im.getpixel((360, 280))
 if red != (255, 0, 85):
     raise SystemExit(f"!! the preview's red swatch is {red}, not the overridden #ff0055")
 if green != (22, 163, 74):
