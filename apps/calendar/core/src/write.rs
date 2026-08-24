@@ -96,7 +96,10 @@ pub fn vcalendar(event: &NewEvent) -> String {
         None => {
             // A whole day has no time of day, and `VALUE=DATE` is how the file
             // says so. Writing midnight instead would invent one.
-            lines.push(format!("DTSTART;VALUE=DATE:{}", event.date.format("%Y%m%d")));
+            lines.push(format!(
+                "DTSTART;VALUE=DATE:{}",
+                event.date.format("%Y%m%d")
+            ));
         }
         Some(t) => {
             lines.push(format!(
@@ -132,6 +135,44 @@ pub fn vcalendar(event: &NewEvent) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_colour_is_replaced_or_inserted_and_nothing_else_moves() {
+        let with_event = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-WR-CALNAME:Arbeit\r\n\
+                          BEGIN:VEVENT\r\nUID:a\r\nCOLOR:red\r\nEND:VEVENT\r\n\
+                          END:VCALENDAR\r\n";
+        let out = set_calendar_color(with_event, "turquoise").unwrap();
+        // Inserted before the first component, and the EVENT's own colour is
+        // untouched - it is not the calendar's.
+        assert!(out.contains("COLOR:turquoise\r\nBEGIN:VEVENT"), "{out}");
+        assert!(
+            out.contains("UID:a\r\nCOLOR:red"),
+            "the event kept its own: {out}"
+        );
+        assert!(
+            out.contains("X-WR-CALNAME:Arbeit"),
+            "the rest of the file survives"
+        );
+
+        // A second write replaces rather than stacking.
+        let again = set_calendar_color(&out, "orange").unwrap();
+        assert_eq!(again.matches("COLOR:orange").count(), 1);
+        assert_eq!(again.matches("COLOR:turquoise").count(), 0);
+        assert!(
+            again.contains("UID:a\r\nCOLOR:red"),
+            "still the event's own"
+        );
+
+        // A calendar with nothing in it yet.
+        let empty = "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n";
+        let out = set_calendar_color(empty, "blue").unwrap();
+        assert!(out.contains("COLOR:blue\nEND:VCALENDAR"), "{out}");
+
+        // Not a calendar, and a value that would forge a line: neither is written.
+        assert_eq!(set_calendar_color("hello", "blue"), None);
+        assert_eq!(set_calendar_color(empty, "blue\r\nSUMMARY:x"), None);
+        assert_eq!(set_calendar_color(empty, "  "), None);
+    }
     use crate::{parse_events, CalTime};
 
     fn at(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -195,7 +236,11 @@ mod tests {
         let long = "Besprechung über die Größe der Änderungen an der Benutzeroberfläche und was daraus folgt";
         let text = vcalendar(&draft(long));
         for line in text.split("\r\n") {
-            assert!(line.len() <= 75, "unfolded line of {} octets: {line}", line.len());
+            assert!(
+                line.len() <= 75,
+                "unfolded line of {} octets: {line}",
+                line.len()
+            );
         }
         // And it still reads back whole, which is what folding is for.
         assert_eq!(parse_events(&text).unwrap()[0].summary, long);
@@ -220,4 +265,72 @@ mod tests {
         d.location = "Studio".into();
         assert_eq!(parse_events(&vcalendar(&d)).unwrap()[0].location, "Studio");
     }
+}
+
+/// Set a calendar's own `COLOR`, leaving everything else where it was.
+///
+/// LINE SURGERY, not a re-serialise. The file is somebody's calendar and may
+/// carry properties, comments in the form of X- lines, and events this crate does
+/// not model; writing back a parsed-and-regenerated file would quietly drop all of
+/// it. So this replaces the one line if it is there and inserts it if it is not,
+/// and touches nothing else.
+///
+/// The insert goes after `BEGIN:VCALENDAR` rather than at the end of the header:
+/// it must land before the first component, and that is the only position that is
+/// certainly before one.
+///
+/// Returns `None` when the text is not a calendar - no `BEGIN:VCALENDAR` line at
+/// all - because writing a colour into a file that is not one would make it
+/// neither.
+pub fn set_calendar_color(text: &str, color: &str) -> Option<String> {
+    // The value travels into a line-based format, so a newline in it would forge
+    // a property. Refused rather than escaped: ICS has no escape for this
+    // position, and a colour with a line break in it is not a colour.
+    if color.contains(['\r', '\n']) || color.trim().is_empty() {
+        return None;
+    }
+    let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut out: Vec<String> = Vec::new();
+    // Two states, kept apart because conflating them was the first bug here: the
+    // calendar's own header is what lies BETWEEN `BEGIN:VCALENDAR` and the first
+    // component, and only a COLOR in there is the calendar's.
+    let mut in_header = false;
+    let mut seen_calendar = false;
+    let mut wrote = false;
+    for raw in text.split('\n') {
+        let line = raw.strip_suffix('\r').unwrap_or(raw);
+        let upper = line.to_ascii_uppercase();
+
+        if in_header && (upper.starts_with("COLOR:") || upper.starts_with("COLOR;")) {
+            out.push(format!("COLOR:{color}"));
+            wrote = true;
+            continue;
+        }
+        // A component starts: the header is over, and if nothing was replaced the
+        // colour goes in just above it.
+        if in_header && upper.starts_with("BEGIN:V") {
+            if !wrote {
+                out.push(format!("COLOR:{color}"));
+                wrote = true;
+            }
+            in_header = false;
+        }
+        out.push(line.to_string());
+        if upper.starts_with("BEGIN:VCALENDAR") {
+            in_header = true;
+            seen_calendar = true;
+        }
+    }
+    if !seen_calendar {
+        return None;
+    }
+    if !wrote {
+        // A calendar with no components at all: the colour goes before END.
+        let at = out
+            .iter()
+            .position(|l| l.to_ascii_uppercase().starts_with("END:VCALENDAR"))
+            .unwrap_or(out.len());
+        out.insert(at, format!("COLOR:{color}"));
+    }
+    Some(out.join(ending))
 }
