@@ -6,7 +6,7 @@
 // inside the component, where the only way to exercise them was to render it.
 
 import { describe, expect, it } from "vitest";
-import { formatSent, invitationWords } from "./wording";
+import { formatSent, invitationWords, threadKey } from "./wording";
 
 // Returns the id it was asked for, so a test can assert WHICH sentence was
 // chosen without depending on any wording.
@@ -50,5 +50,20 @@ describe("formatSent", () => {
     // The raw line is what the sender wrote, and it is the only thing anybody
     // has for a malformed date. An empty field or today's date are both worse.
     expect(formatSent("sometime next week", "en-GB")).toBe("sometime next week");
+  });
+});
+
+describe("threadKey", () => {
+  it("folds reply and forward prefixes into one conversation", () => {
+    expect(threadKey("Re: Re: AW: Plans")).toBe("plans");
+    expect(threadKey("Fwd: plans")).toBe("plans");
+    expect(threadKey("Plans")).toBe("plans");
+  });
+  it("keeps a prefix-looking word inside the subject", () => {
+    expect(threadKey("Rethinking the plan")).toBe("rethinking the plan");
+  });
+  it("names the empty subject rather than keying everything together", () => {
+    expect(threadKey(null)).toBe("(no subject)");
+    expect(threadKey("Re:")).toBe("(no subject)");
   });
 });
