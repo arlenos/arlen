@@ -304,5 +304,17 @@ pub fn hide(app: &AppHandle) {
         gtk_window.hide();
     });
     let _ = w.hide();
-    log::info!("consent_window::hide: dropped");
+    // WHAT THE WINDOW SAYS ABOUT ITSELF AFTERWARDS, not only that hide was called.
+    // On the image of 24 August an answered card stays on screen: the broker
+    // resolves, the frontend reports the card out of the DOM, this line logs, and
+    // the pixels are still there minutes later, at full brightness, visible
+    // through the launcher's backdrop when something else paints on top. Whether
+    // the client believes it is hidden is the fork in that road - it separates a
+    // hide that never reached the compositor from a compositor still showing an
+    // unmapped surface - and nothing was saying it.
+    match w.is_visible() {
+        Ok(true) => log::warn!("consent_window::hide: dropped, but the window still reports visible"),
+        Ok(false) => log::info!("consent_window::hide: dropped, window reports hidden"),
+        Err(e) => log::info!("consent_window::hide: dropped, visibility unreadable: {e}"),
+    }
 }
