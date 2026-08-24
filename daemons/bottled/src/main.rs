@@ -65,7 +65,13 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    let serving = run(&socket, dir);
+    // The ledger, for the one ask that throws files away. Lazy by construction:
+    // an audit daemon that is not up yet is a failed submit at the moment somebody
+    // asks to forget something, which is the fail-closed answer, not a reason to
+    // refuse to start.
+    let audit: std::sync::Arc<dyn audit_proto::AuditSink> =
+        std::sync::Arc::new(audit_proto::sink::LedgerAuditSink::at_default_socket());
+    let serving = run(&socket, dir, audit);
     tokio::select! {
         result = serving => {
             if let Err(e) = result {

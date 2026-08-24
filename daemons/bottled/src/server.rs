@@ -16,13 +16,15 @@
 //! needs its own admission and its own audit, and this note is where that starts.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tokio::net::{UnixListener, UnixStream};
 
 use arlen_permissions::peer_pidfd::PeerPidfd;
 
-use crate::protocol::{handle_request, launch, Request};
+use crate::protocol::{forget, handle_request, launch, Problem, Request, Response};
+use audit_proto::{AuditKind, AuditSink, IngestRequest, StructuralRecord};
 
 /// The largest accepted frame body. A bottle list is a handful of short strings
 /// per bottle, so 64 KiB is generous; a larger declared length is refused before
@@ -84,8 +86,36 @@ where
     writer.flush().await
 }
 
+/// App ids permitted to FORGET a bottle.
+///
+/// The reading vocabulary is open to any same-uid caller - the bottles are the
+/// person's own and a read tells them nothing they could not read off the disk.
+/// Forgetting is different: it throws away what somebody installed, so it is not
+/// something every process that can reach this socket gets to ask for. The Settings
+/// panel is the surface that offers it, and it is the only id here.
+///
+/// EXACT, never a prefix: a prefix match would admit every locally-built binary to
+/// the one operation this gate exists for. The `dev.arlen-settings` spelling is the
+/// cargo-run id and is admitted in debug only, the convention the capsule daemon
+/// and the audit ingest both follow.
+fn forget_caller_admitted(app_id: &str) -> bool {
+    if app_id == "dev.arlen.settings" {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    if app_id == "dev.arlen-settings" {
+        return true;
+    }
+    false
+}
+
 /// Field requests on one connection until the peer closes or dies.
-pub async fn serve_connection(mut stream: UnixStream, bottles_dir: &Path, caller_uid: u32) {
+pub async fn serve_connection(
+    mut stream: UnixStream,
+    bottles_dir: &Path,
+    caller_uid: u32,
+    audit: Arc<dyn AuditSink>,
+) {
     // Read once per connection rather than per launch: they do not change while a
     // session runs, and a launch that asked the environment again could start a
     // program against a display the rest of the session is not using.
@@ -100,6 +130,10 @@ pub async fn serve_connection(mut stream: UnixStream, bottles_dir: &Path, caller
             return;
         }
     };
+    // Resolved once, from the pinned pid. A caller whose id cannot be read is not
+    // refused the connection - the reads are open to any same-uid peer - but it
+    // will not pass the forget gate, which is the fail-closed direction.
+    let app_id = arlen_permissions::identity::app_id_from_pid(peer.pid()).ok();
     loop {
         // Re-checked per request rather than once: a pid that has been recycled
         // must not inherit the session the original process opened.
@@ -118,10 +152,14 @@ pub async fn serve_connection(mut stream: UnixStream, bottles_dir: &Path, caller
         let response = match handle_request(bottles_dir, &request) {
             Some(r) => r,
             None => {
+                if let Request::Forget { id } = &request {
+                    let response = forget_for(bottles_dir, id, app_id.as_deref(), &*audit).await;
+                    if write_frame(&mut stream, &response).await.is_err() {
+                        return;
+                    }
+                    continue;
+                }
                 let Request::Launch { id } = &request else {
-                    // `None` means exactly one variant today; a new one that also
-                    // needs the host must be routed here rather than silently
-                    // dropping the connection.
                     tracing::error!("no answer for this ask and no route for it");
                     return;
                 };
@@ -143,7 +181,11 @@ pub async fn serve_connection(mut stream: UnixStream, bottles_dir: &Path, caller
 }
 
 /// Bind the socket 0600 and serve until the future is dropped.
-pub async fn run(socket: &Path, bottles_dir: PathBuf) -> std::io::Result<()> {
+pub async fn run(
+    socket: &Path,
+    bottles_dir: PathBuf,
+    audit: Arc<dyn AuditSink>,
+) -> std::io::Result<()> {
     if let Some(parent) = socket.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -160,9 +202,69 @@ pub async fn run(socket: &Path, bottles_dir: PathBuf) -> std::io::Result<()> {
     loop {
         let (stream, _) = listener.accept().await?;
         let dir = bottles_dir.clone();
+        let sink = Arc::clone(&audit);
         tokio::spawn(async move {
-            serve_connection(stream, &dir, uid).await;
+            serve_connection(stream, &dir, uid, sink).await;
         });
+    }
+}
+
+/// Forget a bottle, if the caller may and the ledger recorded that it happened.
+///
+/// AUDITED BEFORE THE ACT, and refused when the sink is down. This is the one ask
+/// here that throws away somebody's files; a copy of it that happened with no
+/// record is exactly what the ledger exists to make impossible. The read asks are
+/// not audited, because reading a bottle list tells nobody anything they could not
+/// read off their own disk.
+async fn forget_for(
+    bottles_dir: &Path,
+    id: &str,
+    app_id: Option<&str>,
+    audit: &dyn AuditSink,
+) -> Response {
+    if !app_id.is_some_and(forget_caller_admitted) {
+        tracing::warn!(app_id = app_id.unwrap_or("unresolved"), "refused a forget");
+        // Best-effort: a refusal is worth recording, and the answer is the refusal
+        // whether or not the ledger took it.
+        let _ = audit.submit(forget_event("refused", id)).await;
+        return Response::Refused {
+            problem: Problem::NotAllowed,
+        };
+    }
+    if audit.submit(forget_event("forgetting", id)).await.is_err() {
+        tracing::warn!("audit unavailable, so nothing was forgotten");
+        return Response::Refused {
+            problem: Problem::CouldNotForget,
+        };
+    }
+    forget(bottles_dir, id, |p| {
+        arlen_freedesktop_trash::trash_for_current_user(&p.to_string_lossy())
+            .map(|slot| PathBuf::from(slot.trashed().as_str()))
+            .map_err(|e| format!("{e:?}"))
+    })
+}
+
+/// The ledger entry for a forget attempt.
+///
+/// The bottle id travels; what was inside it does not. An id is what the person
+/// named the thing, which is the least a record can carry and still be a record of
+/// something.
+fn forget_event(outcome: &str, id: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject: format!("bottle.forget:{id}"),
+            node_types: Vec::new(),
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
     }
 }
 
@@ -194,6 +296,32 @@ fn current_uid() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_panel_may_forget_a_bottle() {
+        assert!(forget_caller_admitted("dev.arlen.settings"));
+        // Everything else, including the assistant and this daemon's own siblings.
+        for other in [
+            "ai-agent",
+            "ai-daemon",
+            "knowledge",
+            "bottled",
+            "dev.arlen.harness",
+            "com.example.app",
+            "",
+        ] {
+            assert!(
+                !forget_caller_admitted(other),
+                "{other} must not be able to throw away somebody's installed program"
+            );
+        }
+        // The cargo-run spelling is a debug convenience and must never be a
+        // release one.
+        assert_eq!(
+            forget_caller_admitted("dev.arlen-settings"),
+            cfg!(debug_assertions)
+        );
+    }
 
     #[tokio::test]
     async fn a_frame_survives_the_round_trip_and_an_over_long_one_is_refused() {
