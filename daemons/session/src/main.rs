@@ -24,13 +24,14 @@ use arlen_session::env::{import_list, session_env, MUST_BE_UNSET, WAYLAND_DISPLA
 use arlen_session::session_id::{session_id, SESSION_ID_VAR};
 use arlen_permissions::identity::app_id_for_program;
 use arlen_session::stamp::{grants_for, COMPOSITOR, SHELL, SUPERVISOR};
-use arlen_session::verify_app::requested_app;
+use arlen_session::verify_app::{requested_app, requested_file};
 use arlen_session::wayland::{wait_for_display, WAIT_STEPS};
 
 /// Where the kernel's DMI driver exposes the SMBIOS fields the boot-verify
 /// harness passes in. World-readable, no kernel module needed.
 const PRODUCT_SKU: &str = "/sys/class/dmi/id/product_sku";
 const PRODUCT_FAMILY: &str = "/sys/class/dmi/id/product_family";
+const PRODUCT_VERSION: &str = "/sys/class/dmi/id/product_version";
 
 /// Read a sysfs string, or empty when it is not there. Absent is the normal case:
 /// QEMU leaves these empty and real hardware has its own values.
@@ -41,8 +42,22 @@ fn dmi(path: &str) -> String {
 /// Run a command with its output routed into the journal under `tag`, so a
 /// headless boot can be read from the serial console. Returns the child.
 fn spawn_logged(tag: &str, program: &str, env: &BTreeMap<String, String>) -> std::io::Result<std::process::Child> {
+    spawn_logged_with_args(tag, program, &[], env)
+}
+
+/// [`spawn_logged`], with arguments handed over as argv elements.
+///
+/// ARGV, never a shell string: the one caller that passes anything passes a path
+/// that came from outside this process, and a path with a space in it is a file
+/// with a space in its name rather than two words.
+fn spawn_logged_with_args(
+    tag: &str,
+    program: &str,
+    args: &[&str],
+    env: &BTreeMap<String, String>,
+) -> std::io::Result<std::process::Child> {
     let mut cmd = Command::new("systemd-cat");
-    cmd.arg(format!("--identifier={tag}")).arg(program);
+    cmd.arg(format!("--identifier={tag}")).arg(program).args(args);
     for (k, v) in env {
         cmd.env(k, v);
     }
@@ -217,8 +232,22 @@ fn main() -> std::process::ExitCode {
                 .status()
                 .is_ok_and(|s| s.success())
             {
-                say(&format!("launching verify app '{app}'"));
-                let _ = spawn_logged("verify-app", &app, &env);
+                // The file the boot asked the app to open, when it asked for
+                // one. Checked to EXIST here rather than taken on trust: an app
+                // launched on a missing path opens its empty state, and a run
+                // that photographs that has proved something about nothing.
+                let file = requested_file(&dmi(PRODUCT_VERSION))
+                    .filter(|f| std::path::Path::new(f).is_file());
+                match &file {
+                    Some(f) => {
+                        say(&format!("launching verify app '{app}' on '{f}'"));
+                        let _ = spawn_logged_with_args("verify-app", &app, &[f.as_str()], &env);
+                    }
+                    None => {
+                        say(&format!("launching verify app '{app}'"));
+                        let _ = spawn_logged("verify-app", &app, &env);
+                    }
+                }
             } else {
                 say(&format!("verify app '{app}' is not an installed binary"));
             }

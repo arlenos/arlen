@@ -27,6 +27,33 @@ pub fn requested_app(sku: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
+/// The FILE a verify boot asks the app to open, or `None`.
+///
+/// Rides in the SMBIOS product VERSION beside the app name in the SKU, because
+/// the SKU's charset deliberately cannot carry a path - that charset is the
+/// reason a SKU can never become an argument, and widening it would spend the
+/// property this module exists for.
+///
+/// The rule here is narrower than "a string": an ABSOLUTE path, one line, no
+/// `..` segment, and nothing but the characters a path needs. It is handed to
+/// the app as a single argv element and never through a shell, so a value that
+/// gets this far can name a file and nothing else - no second command, no
+/// redirection, no word splitting. The caller still checks the file EXISTS,
+/// because a launch that opens nothing is a boot that quietly proves nothing.
+pub fn requested_file(version: &str) -> Option<String> {
+    let line = version.trim();
+    if !line.starts_with('/') || line.len() > 4096 {
+        return None;
+    }
+    if line.chars().any(|c| c.is_control() || c == '\0') {
+        return None;
+    }
+    if line.split('/').any(|part| part == "..") {
+        return None;
+    }
+    Some(line.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,5 +88,31 @@ mod tests {
                 assert!(!got.contains(bad), "{hostile:?} kept {bad:?}: {got:?}");
             }
         }
+    }
+
+    #[test]
+    fn a_file_must_be_one_absolute_path_and_nothing_else() {
+        assert_eq!(
+            requested_file("/home/arlen/rechnung.eml"),
+            Some("/home/arlen/rechnung.eml".into())
+        );
+        // The whole point of the separate field: what the SKU may not carry.
+        assert_eq!(requested_file("rechnung.eml"), None, "relative");
+        assert_eq!(requested_file(""), None);
+        assert_eq!(requested_file("   "), None);
+        assert_eq!(requested_file("/home/../etc/shadow"), None, "traversal");
+        assert_eq!(requested_file("/tmp/a\nrm -rf /"), None, "a second line");
+        assert_eq!(requested_file("/tmp/a\0b"), None, "a NUL");
+    }
+
+    #[test]
+    fn a_path_with_spaces_is_still_one_path() {
+        // It is handed over as one argv element, so a space is a character in a
+        // filename rather than a word break - the reason this is not sanitised
+        // to the app-name charset.
+        assert_eq!(
+            requested_file("/home/arlen/Meine Datei.eml"),
+            Some("/home/arlen/Meine Datei.eml".into())
+        );
     }
 }
