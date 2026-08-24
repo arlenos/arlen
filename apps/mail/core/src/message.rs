@@ -148,6 +148,70 @@ pub struct Attachment {
     pub bytes: usize,
 }
 
+/// How this message is sealed, if it is. Extracted so the attachment list and a
+/// reader of one attachment's bytes cannot disagree about which parts are the
+/// envelope: they ask the same function.
+fn sealed_of(parsed: &mail_parser::Message<'_>) -> Option<Sealed> {
+    parsed.parts.iter().find_map(|part| {
+        let ct = part.content_type()?;
+        let ctype = ct.ctype();
+        let subtype = ct.subtype().unwrap_or_default();
+        if ctype.eq_ignore_ascii_case("multipart") && subtype.eq_ignore_ascii_case("encrypted") {
+            let protocol = ct.attribute("protocol").unwrap_or_default().to_ascii_lowercase();
+            return Some(if protocol.contains("pgp") { Sealed::Pgp } else { Sealed::Unknown });
+        }
+        if ctype.eq_ignore_ascii_case("application")
+            && subtype.eq_ignore_ascii_case("pkcs7-mime")
+        {
+            // `signed-data` is a signature wrapper, not a seal a reader must give
+            // up on - but its content is still not text this app can show, so it
+            // is named too rather than left as an empty message.
+            return Some(Sealed::Smime);
+        }
+        None
+    })
+}
+
+/// The `text/calendar` part's index, if the message carries one. Same reason as
+/// [`sealed_of`]: one answer, two readers.
+fn calendar_part_of(parsed: &mail_parser::Message<'_>) -> Option<usize> {
+    parsed.parts.iter().position(|part| {
+        part.content_type().is_some_and(|ct| {
+            ct.ctype().eq_ignore_ascii_case("text")
+                && ct.subtype().is_some_and(|s| s.eq_ignore_ascii_case("calendar"))
+        })
+    })
+}
+
+/// The parts `read` lists as attachments, in the order it lists them, as indices
+/// into `parsed.parts`.
+///
+/// The INDEX IS A CONTRACT: the surface presses "save" on attachment 2, and this
+/// is what says which part that is. Written once and used by both, because two
+/// copies of a filter chain that agree today are two copies that will not.
+fn attachment_part_indices(parsed: &mail_parser::Message<'_>) -> Vec<usize> {
+    let sealed = sealed_of(parsed);
+    let calendar_part = calendar_part_of(parsed);
+    parsed
+        .attachments()
+        .filter(|_| sealed.is_none())
+        .filter(|part| calendar_part.is_none_or(|i| !std::ptr::eq(*part, &parsed.parts[i])))
+        .filter_map(|part| parsed.parts.iter().position(|p| std::ptr::eq(p, part)))
+        .collect()
+}
+
+/// One attachment's decoded bytes, by the index [`read`] listed it under.
+///
+/// `None` when the message does not parse or carries no such attachment. The
+/// caller writes the file; this only reads the part, and it does NOT touch the
+/// sender's filename - see [`Attachment::name`] for why that string is a
+/// suggestion and not a destination.
+pub fn attachment_bytes(raw: &[u8], index: usize) -> Option<Vec<u8>> {
+    let parsed = mail_parser::MessageParser::default().parse(raw)?;
+    let at = *attachment_part_indices(&parsed).get(index)?;
+    Some(parsed.parts[at].contents().to_vec())
+}
+
 /// Read one message.
 ///
 /// `Err` only when nothing could be parsed at all. A message that parses but is
@@ -211,31 +275,9 @@ pub fn read(raw: &[u8]) -> Result<Message, String> {
     // SEALED, not empty. Checked over every part rather than the top level alone,
     // because an S/MIME message carries its envelope as the body part and a
     // PGP/MIME one declares it on the message itself.
-    let sealed = parsed.parts.iter().find_map(|part| {
-        let ct = part.content_type()?;
-        let ctype = ct.ctype();
-        let subtype = ct.subtype().unwrap_or_default();
-        if ctype.eq_ignore_ascii_case("multipart") && subtype.eq_ignore_ascii_case("encrypted") {
-            let protocol = ct.attribute("protocol").unwrap_or_default().to_ascii_lowercase();
-            return Some(if protocol.contains("pgp") { Sealed::Pgp } else { Sealed::Unknown });
-        }
-        if ctype.eq_ignore_ascii_case("application")
-            && subtype.eq_ignore_ascii_case("pkcs7-mime")
-        {
-            // `signed-data` is a signature wrapper, not a seal a reader must give
-            // up on - but its content is still not text this app can show, so it
-            // is named too rather than left as an empty message.
-            return Some(Sealed::Smime);
-        }
-        None
-    });
+    let sealed = sealed_of(&parsed);
 
-    let calendar_part = parsed.parts.iter().position(|part| {
-        part.content_type().is_some_and(|ct| {
-            ct.ctype().eq_ignore_ascii_case("text")
-                && ct.subtype().is_some_and(|s| s.eq_ignore_ascii_case("calendar"))
-        })
-    });
+    let calendar_part = calendar_part_of(&parsed);
 
     // The invitation is NOT listed again here. `attachments()` includes a
     // `text/calendar` part whether or not the sender marked it as one, so the
@@ -561,6 +603,48 @@ BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n--b--\r\n";
         // Named once, as what it is. Its size is on the invitation.
         assert!(m.attachments.is_empty(), "{:?}", m.attachments);
         assert!(inv.bytes > 0);
+    }
+
+    #[test]
+    fn the_bytes_come_from_the_part_the_list_named() {
+        // The index is the contract between the list and the save button, and a
+        // calendar part sitting BETWEEN two attachments is what breaks a second
+        // enumeration that filters differently: `attachments()` would hand back
+        // three parts where `read` listed two, and saving the second would write
+        // the invitation.
+        let raw = b"From: ada@example.org\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\n\
+Lunch?\r\n--b\r\nContent-Type: application/pdf\r\n\
+Content-Disposition: attachment; filename=first.pdf\r\n\r\nFIRST\r\n\
+--b\r\nContent-Type: text/calendar; method=REQUEST\r\n\r\n\
+BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n--b\r\nContent-Type: application/pdf\r\n\
+Content-Disposition: attachment; filename=second.pdf\r\n\r\nSECOND\r\n--b--\r\n";
+        let m = read(raw).unwrap();
+        assert_eq!(m.attachments.len(), 2);
+        assert_eq!(m.attachments[0].name.as_deref(), Some("first.pdf"));
+        assert_eq!(m.attachments[1].name.as_deref(), Some("second.pdf"));
+
+        let first = attachment_bytes(raw, 0).expect("attachment 0");
+        let second = attachment_bytes(raw, 1).expect("attachment 1");
+        assert!(String::from_utf8_lossy(&first).contains("FIRST"), "{first:?}");
+        assert!(
+            String::from_utf8_lossy(&second).contains("SECOND"),
+            "the second listed attachment must be the second saved: {second:?}"
+        );
+        assert!(attachment_bytes(raw, 2).is_none(), "there is no third");
+    }
+
+    #[test]
+    fn a_sealed_message_hands_out_no_bytes() {
+        // It lists no attachments, so there is no index to ask about - and the
+        // parts out here are the envelope rather than anything the sender sent.
+        let raw = b"From: ada@example.org\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=b\r\n\r\n\
+--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n\
+--b\r\nContent-Type: application/octet-stream\r\n\r\nCIPHER\r\n--b--\r\n";
+        let m = read(raw).unwrap();
+        assert!(m.attachments.is_empty());
+        assert!(attachment_bytes(raw, 0).is_none());
     }
 
     #[test]
