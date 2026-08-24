@@ -22,7 +22,7 @@ use tokio::net::{UnixListener, UnixStream};
 
 use arlen_permissions::peer_pidfd::PeerPidfd;
 
-use crate::protocol::{handle_request, Request};
+use crate::protocol::{handle_request, launch, Request};
 
 /// The largest accepted frame body. A bottle list is a handful of short strings
 /// per bottle, so 64 KiB is generous; a larger declared length is refused before
@@ -86,6 +86,13 @@ where
 
 /// Field requests on one connection until the peer closes or dies.
 pub async fn serve_connection(mut stream: UnixStream, bottles_dir: &Path, caller_uid: u32) {
+    // Read once per connection rather than per launch: they do not change while a
+    // session runs, and a launch that asked the environment again could start a
+    // program against a display the rest of the session is not using.
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/run"));
+    let display = std::env::var("DISPLAY").ok();
     let peer = match PeerPidfd::from_socket(&stream, caller_uid) {
         Ok(p) => p,
         Err(e) => {
@@ -105,7 +112,30 @@ pub async fn serve_connection(mut stream: UnixStream, bottles_dir: &Path, caller
             // A closed connection or a frame this cannot read ends the session.
             Err(_) => return,
         };
-        let response = handle_request(bottles_dir, &request);
+        // A launch is the one ask the pure dispatch cannot answer: it needs the
+        // host this program will run on. Everything else is filesystem-only and
+        // goes through the same function the tests drive.
+        let response = match handle_request(bottles_dir, &request) {
+            Some(r) => r,
+            None => {
+                let Request::Launch { id } = &request else {
+                    // `None` means exactly one variant today; a new one that also
+                    // needs the host must be routed here rather than silently
+                    // dropping the connection.
+                    tracing::error!("no answer for this ask and no route for it");
+                    return;
+                };
+                launch(
+                    bottles_dir,
+                    id,
+                    std::path::Path::new("/usr"),
+                    &runtime_dir,
+                    display.as_deref(),
+                    |p| p.exists(),
+                    spawn_detached,
+                )
+            }
+        };
         if write_frame(&mut stream, &response).await.is_err() {
             return;
         }
@@ -134,6 +164,25 @@ pub async fn run(socket: &Path, bottles_dir: PathBuf) -> std::io::Result<()> {
             serve_connection(stream, &dir, uid).await;
         });
     }
+}
+
+/// Start a confinement and answer with its pid, without waiting for it.
+///
+/// NOT WAITED ON, which is the point of the daemon: the Windows program outlives
+/// the window that asked for it. It is reaped rather than left a zombie - a task
+/// waits on it and throws the status away - and it still dies with this daemon,
+/// because the shared confiner passes `--die-with-parent`. That is the lifetime a
+/// desktop app should have: longer than the panel, no longer than the session.
+fn spawn_detached(argv: &[String]) -> std::io::Result<u32> {
+    let mut child = tokio::process::Command::new("bwrap")
+        .args(argv)
+        .kill_on_drop(false)
+        .spawn()?;
+    let pid = child.id().unwrap_or(0);
+    tokio::spawn(async move {
+        let _ = child.wait().await;
+    });
+    Ok(pid)
 }
 
 /// This process's uid, which every admitted peer must share.

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::bottle::{Bottle, Egress};
 use crate::health::{check_bottle, is_booted};
+use crate::launch::{launch_argv, LaunchError};
 use crate::map_drives;
 use crate::registry::{list_bottles, load_bottle, RegistryError};
 
@@ -28,6 +29,12 @@ pub enum Request {
     ListBottles,
     /// One bottle, checked against what is actually on disk.
     Health { id: String },
+    /// Start the Windows program this bottle exists to run.
+    ///
+    /// The caller names the bottle, not the program: what runs is what the bottle
+    /// records, so a caller cannot use this to run something else inside somebody
+    /// else's confinement.
+    Launch { id: String },
 }
 
 /// One bottle as a caller sees it.
@@ -86,6 +93,14 @@ pub enum Response {
         /// Links that leave the prefix without a grant behind them.
         escapes: usize,
     },
+    /// The program was started, and this is the process it became.
+    ///
+    /// STARTED, not finished: the daemon does not wait for it. That is the whole
+    /// reason this is a daemon - the program outlives the window that asked for
+    /// it. It does not outlive the SESSION: the shared confiner passes
+    /// `--die-with-parent`, so when the daemon goes, so does the program, which is
+    /// the lifetime a desktop app should have.
+    Launched { pid: u32 },
     /// The ask could not be answered. A token, not prose: the window writes the
     /// sentence, in the reader's language.
     Refused { problem: Problem },
@@ -101,6 +116,16 @@ pub enum Problem {
     BadId,
     /// The bottles directory could not be read.
     Unreadable,
+    /// The bottle is there and has no program recorded, so there is nothing to
+    /// start. Distinct from every failure below: nothing went wrong.
+    NothingToRun,
+    /// There is no Wine on this machine, so no Windows program can run at all.
+    NoWine,
+    /// The drive table promises reach the confinement does not give. Refused
+    /// rather than started: the program would see a drive it cannot open.
+    DrivesUnmet,
+    /// The confinement could not be started.
+    CouldNotStart,
 }
 
 /// A bottle as a caller sees it.
@@ -128,12 +153,83 @@ pub fn view(bottle: &Bottle) -> BottleView {
     }
 }
 
-/// Answer one request against a bottles directory.
+/// Start a bottle's own program, and answer with the process it became.
 ///
-/// Pure over the filesystem it is handed, so the whole vocabulary is testable
-/// without a socket, a peer or a running Wine.
-pub fn handle_request(bottles_dir: &Path, request: &Request) -> Response {
-    match request {
+/// The spawn is injected so the refusals can be tested without putting a Windows
+/// program on a build machine: everything up to the spawn is this crate's, and
+/// what the spawn does with the argv is the caller's.
+pub fn launch(
+    bottles_dir: &Path,
+    id: &str,
+    usr: &Path,
+    runtime_dir: &Path,
+    display: Option<&str>,
+    exists: impl Fn(&Path) -> bool,
+    spawn: impl FnOnce(&[String]) -> std::io::Result<u32>,
+) -> Response {
+    let bottle = match load_bottle(bottles_dir, id) {
+        Ok(b) => b,
+        Err(RegistryError::BadId(_)) => {
+            return Response::Refused {
+                problem: Problem::BadId,
+            }
+        }
+        Err(RegistryError::NoSuchBottle(_)) => {
+            return Response::Refused {
+                problem: Problem::NoSuchBottle,
+            }
+        }
+        Err(_) => {
+            return Response::Refused {
+                problem: Problem::Unreadable,
+            }
+        }
+    };
+    // Asked before the argv is built, so "you have not installed anything in this
+    // bottle yet" does not arrive as "no program was named", which reads like a
+    // caller mistake.
+    if bottle.program.is_empty() {
+        return Response::Refused {
+            problem: Problem::NothingToRun,
+        };
+    }
+    let argv = match launch_argv(&bottle, usr, runtime_dir, display, &bottle.program, exists) {
+        Ok(v) => v,
+        Err(LaunchError::NoRuntime(_)) => {
+            return Response::Refused {
+                problem: Problem::NoWine,
+            }
+        }
+        Err(LaunchError::UnmetDrives(_)) => {
+            return Response::Refused {
+                problem: Problem::DrivesUnmet,
+            }
+        }
+        Err(_) => {
+            return Response::Refused {
+                problem: Problem::CouldNotStart,
+            }
+        }
+    };
+    match spawn(&argv) {
+        Ok(pid) => Response::Launched { pid },
+        Err(_) => Response::Refused {
+            problem: Problem::CouldNotStart,
+        },
+    }
+}
+
+/// Answer one request against a bottles directory, or say it is not this
+/// function's to answer.
+///
+/// Pure over the filesystem it is handed, so the reading vocabulary is testable
+/// without a socket, a peer or a running Wine. `None` is [`Request::Launch`],
+/// which needs the host it will run on - where `/usr` is, the runtime dir, the
+/// display - and is answered by [`launch`] instead. Returning `None` rather than a
+/// refusal keeps that boundary honest: nothing was attempted, so no refusal would
+/// be true.
+pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response> {
+    Some(match request {
         Request::ListBottles => match list_bottles(bottles_dir) {
             Ok(listing) => Response::Bottles {
                 bottles: listing.bottles.iter().map(view).collect(),
@@ -155,6 +251,7 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Response {
                 problem: Problem::Unreadable,
             },
         },
+        Request::Launch { .. } => return None,
         Request::Health { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => match check_bottle(&bottle) {
                 Ok(health) => Response::Health {
@@ -182,7 +279,7 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Response {
                 problem: Problem::Unreadable,
             },
         },
-    }
+    })
 }
 
 #[cfg(test)]
@@ -194,10 +291,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(
             handle_request(dir.path(), &Request::ListBottles),
-            Response::Bottles {
+            Some(Response::Bottles {
                 bottles: vec![],
                 unreadable: vec![]
-            },
+            }),
             "a machine with no bottles has none, which is not a failure to read them"
         );
     }
@@ -208,10 +305,10 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("broken")).unwrap();
         std::fs::write(dir.path().join("broken/bottle.toml"), "id = [not toml").unwrap();
 
-        let Response::Bottles {
+        let Some(Response::Bottles {
             bottles,
             unreadable,
-        } = handle_request(dir.path(), &Request::ListBottles)
+        }) = handle_request(dir.path(), &Request::ListBottles)
         else {
             panic!("a list ask is answered with a list");
         };
@@ -237,9 +334,9 @@ mod tests {
                     id: "../etc".into()
                 }
             ),
-            Response::Refused {
+            Some(Response::Refused {
                 problem: Problem::BadId
-            }
+            })
         );
         assert_eq!(
             handle_request(
@@ -248,8 +345,63 @@ mod tests {
                     id: "not-here".into()
                 }
             ),
-            Response::Refused {
+            Some(Response::Refused {
                 problem: Problem::NoSuchBottle
+            })
+        );
+    }
+
+    #[test]
+    fn a_launch_says_which_thing_stopped_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let never = |_: &[String]| -> std::io::Result<u32> {
+            panic!("nothing may be spawned once the launch is refused")
+        };
+
+        // A bottle with nothing installed in it yet. "You have not put anything
+        // in here" is not a failure, and must not arrive as one.
+        std::fs::create_dir_all(dir.path().join("empty")).unwrap();
+        std::fs::write(
+            dir.path().join("empty/bottle.toml"),
+            "id = \"empty\"\nprefix_root = \"/nowhere/pfx\"\negress = \"none\"\ngrants = []\n",
+        )
+        .unwrap();
+        assert_eq!(
+            launch(
+                dir.path(),
+                "empty",
+                std::path::Path::new("/usr"),
+                std::path::Path::new("/run/user/1000"),
+                None,
+                |_| true,
+                never,
+            ),
+            Response::Refused {
+                problem: Problem::NothingToRun
+            }
+        );
+
+        // A machine with no Wine says so, rather than starting a confinement in
+        // which the program is missing.
+        std::fs::create_dir_all(dir.path().join("has-one")).unwrap();
+        std::fs::write(
+            dir.path().join("has-one/bottle.toml"),
+            "id = \"has-one\"\nprefix_root = \"/nowhere/pfx\"\negress = \"none\"\ngrants = []\n\
+             program = [\"notepad.exe\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            launch(
+                dir.path(),
+                "has-one",
+                std::path::Path::new("/usr"),
+                std::path::Path::new("/run/user/1000"),
+                None,
+                |_| false,
+                never,
+            ),
+            Response::Refused {
+                problem: Problem::NoWine
             }
         );
     }

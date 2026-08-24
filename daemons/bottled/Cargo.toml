@@ -30,7 +30,7 @@ arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }
 # hand-rolled credential read.
 arlen-permissions = { path = "../../sdk/permissions" }
 serde_json = "1"
-tokio = { version = "1", features = ["net", "io-util", "rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1", features = ["net", "io-util", "rt-multi-thread", "macros", "signal", "process"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 libc = "0.2"
