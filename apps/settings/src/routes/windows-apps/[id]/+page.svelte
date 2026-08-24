@@ -27,6 +27,8 @@
     winActionFailed,
     launchFailed,
     launchFailureKey,
+    forgetFailed,
+    forgetFailureKey,
     wineVersions,
     load,
     patchBottle,
@@ -103,6 +105,11 @@
     {/if}
     {#if $winActionFailed}
       <p class="note span-full" role="alert">{$t("s.wa.actionFailed")}</p>
+    {/if}
+    {#if $forgetFailed}
+      <p class="note span-full" role="alert">
+        {$t(forgetFailureKey($forgetFailed.reason), { name: $forgetFailed.name })}
+      </p>
     {/if}
     {#if $launchFailed}
       <p class="note span-full" role="alert">{$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}</p>

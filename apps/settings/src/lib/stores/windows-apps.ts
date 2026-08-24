@@ -340,15 +340,39 @@ export async function clearCaches(id: string): Promise<void> {
 export async function deleteBottle(id: string): Promise<void> {
   const before = get(winApps).bottles;
   winApps.update((s) => ({ ...s, bottles: s.bottles.filter((b) => b.id !== id) }));
-  winActionFailed.set(false);
+  forgetFailed.set(null);
   try {
     await invoke("delete_bottle", { id });
-  } catch {
+  } catch (e) {
     if (!tauriAvailable) return;
     // The app and its prefix are still on disk; a list that hides them is a
     // machine the user thinks is cleaner than it is.
     winApps.update((s) => ({ ...s, bottles: before }));
-    winActionFailed.set(true);
+    const name = before.find((b) => b.id === id)?.appName ?? id;
+    forgetFailed.set({ name, reason: String(e) });
+  }
+}
+
+/// Why a bottle was not forgotten, and which one.
+///
+/// Its own store rather than `winActionFailed`, which says a CONFIG change did not
+/// stick. Two of these reasons are not that at all: the runtime may refuse the
+/// caller outright, and it refuses when the ledger cannot record the removal -
+/// "nothing happened because nobody could write it down" is a different thing to
+/// tell somebody than "your setting did not save".
+export const forgetFailed = writable<{ name: string; reason: string } | null>(null);
+
+/// The message key for a refused forget.
+export function forgetFailureKey(reason: string): string {
+  switch (reason) {
+    case "not-allowed":
+      return "s.wa.forgetNotAllowed";
+    case "could-not-forget":
+      return "s.wa.forgetNotRecorded";
+    case "no-such-bottle":
+      return "s.wa.forgetGone";
+    default:
+      return "s.wa.forgetFailed";
   }
 }
 

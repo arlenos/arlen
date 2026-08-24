@@ -750,6 +750,14 @@ export const b: Catalogs = {
     "s.wa.confirmLabel": "Delete",
     "s.wa.launchApp": "Launch",
     "s.wa.launchFailed": "\"{$name}\" was not launched: the Windows service did not take the request.",
+    "s.wa.forgetFailed":
+      "\"{$name}\" was not removed, so it and its files are still on this machine.",
+    "s.wa.forgetNotAllowed":
+      "\"{$name}\" was not removed: this app is not allowed to remove Windows apps.",
+    "s.wa.forgetNotRecorded":
+      "\"{$name}\" was not removed, because the removal could not be written to the activity record first. Nothing was thrown away.",
+    "s.wa.forgetGone":
+      "\"{$name}\" was already gone, so there was nothing to remove.",
     "s.wa.someUnreadable":
       "These bottles are on this machine and could not be read, so they are missing from the list: {$names}.",
     "s.wa.launchNothing":
@@ -1690,6 +1698,14 @@ export const b: Catalogs = {
     "s.wa.confirmLabel": "L\u00f6schen",
     "s.wa.launchApp": "Starten",
     "s.wa.launchFailed": "\u201e{$name}\u201c wurde nicht gestartet: Der Windows-Dienst hat die Anfrage nicht angenommen.",
+    "s.wa.forgetFailed":
+      "\u201e{$name}\u201c wurde nicht entfernt, es liegt mit seinen Dateien weiter auf dieser Maschine.",
+    "s.wa.forgetNotAllowed":
+      "\u201e{$name}\u201c wurde nicht entfernt: Diese App darf keine Windows-Apps entfernen.",
+    "s.wa.forgetNotRecorded":
+      "\u201e{$name}\u201c wurde nicht entfernt, weil das Entfernen vorher nicht im Aktivit\u00e4tsprotokoll festgehalten werden konnte. Es wurde nichts weggeworfen.",
+    "s.wa.forgetGone":
+      "\u201e{$name}\u201c war bereits weg, es gab also nichts zu entfernen.",
     "s.wa.someUnreadable":
       "Diese Bottles liegen auf dieser Maschine und waren nicht lesbar, sie fehlen deshalb in der Liste: {$names}.",
     "s.wa.launchNothing":
