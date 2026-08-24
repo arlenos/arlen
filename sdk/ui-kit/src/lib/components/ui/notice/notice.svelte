@@ -1,5 +1,5 @@
 <script lang="ts">
-  /// One inline notice line: an icon, one finished sentence, a tone border.
+  /// One inline notice line: an icon, one finished sentence, a tone frame.
   /// The three tones are a statement about trust, not decoration - `error`
   /// says the content below cannot be believed, `caution` says it is doing
   /// something worth your eyes, `neutral` states a fact once. The sentence
@@ -36,13 +36,16 @@
 </p>
 
 <style>
+  /* An even 1px frame in the tone's colour, not an accent edge: the strip
+     reads as one quiet object, the same register as the page-level warning
+     banners. */
   .notice {
     display: flex;
     gap: 0.55rem;
     align-items: flex-start;
     margin: 0;
     padding: 0.5rem 0.7rem;
-    border-inline-start: 2px solid transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius-input);
     font-size: var(--text-xs);
     line-height: 1.5;
@@ -52,18 +55,27 @@
     margin-top: 0.15rem;
   }
   .error {
-    border-color: var(--color-error);
+    border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
     background: color-mix(in srgb, var(--color-error) 8%, transparent);
     color: var(--color-fg-primary);
   }
+  .error :global(svg) {
+    color: var(--color-error);
+  }
   .caution {
-    border-color: var(--color-warning);
+    border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
     background: color-mix(in srgb, var(--color-warning) 7%, transparent);
     color: var(--color-fg-primary);
   }
+  .caution :global(svg) {
+    color: var(--color-warning);
+  }
   .neutral {
-    border-color: color-mix(in srgb, var(--color-fg-primary) 25%, transparent);
-    background: color-mix(in srgb, var(--color-fg-primary) 3%, transparent);
+    border-color: color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
+    background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
+  }
+  .neutral :global(svg) {
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
 </style>
