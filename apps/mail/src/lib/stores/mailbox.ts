@@ -405,10 +405,17 @@ export function saveDraft(to: string, subject: string, body: string): string {
 /// command is `mail_sender_person(address)` reading `shared.Person` from the
 /// Knowledge Graph (contacts-decision.md: mail READS people, it never owns
 /// them). Fixture: one known sender, so the affordance is visible.
+///
+/// UNDER A HOST, NOBODY. The fixture used to answer here whatever went wrong, so
+/// a real machine reading a message from that one address showed a resolved
+/// person the graph had never been asked about - a claim that this desktop knows
+/// who wrote to you. It knows nothing until contacts exist; saying so is the
+/// whole affordance.
 export async function senderPerson(address: string): Promise<{ name: string } | null> {
   try {
     return await invoke<{ name: string } | null>("mail_sender_person", { address });
   } catch {
+    if (tauriAvailable) return null;
     return address === "mara@example.org" ? { name: "Mara Winter" } : null;
   }
 }
