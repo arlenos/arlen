@@ -31,14 +31,25 @@ about the build: a debug log, a dev-only route, a `?nowake` query parameter. It 
 refused in a file that also calls `invoke`, because there the branch is about the
 backend and the build mode is standing in for it.
 
-The query-parameter case is a carve-out worth naming, because it is the one place
-`import.meta.env.DEV` is not only acceptable but REQUIRED. The clock's `?nowake`
-and the viewer's `?state=` pin a surface into a state so it can be photographed,
-and the gate is the build: a DEV check compiles the branch out of the shipped
-bundle, so a released app cannot be talked into displaying a failure that did not
-happen. `tauriAvailable` would not do that - a release build with no host would
-still honour the parameter. So an occurrence whose own statement reads a query
-parameter is left alone.
+Two carve-outs, and they rest on the SAME argument: a DEV check compiles the branch
+out of the shipped bundle, and there are things that must not exist in a shipped
+bundle at all. `tauriAvailable` cannot do that - a release build with no host is
+still a release build.
+
+The first is the query parameter. The clock's `?nowake` and the viewer's `?state=`
+pin a surface into a state so it can be photographed, so a released app must not be
+talkable into displaying a failure that did not happen. An occurrence whose own
+statement reads a query parameter is left alone.
+
+The second is the kill switch: `if (!import.meta.env.DEV) return;` at the top of a
+dev-only helper. That is not a fork between a real answer and a substitute - there
+is no substitute, the function simply does not run - and it is how a screenshot
+helper is kept out of a shipped build. `apps/desktop-shell`'s `mockRegisterMenu`
+hands a menu tree to the store so the bar can be photographed under vite, where no
+app process exists to register one; the gate called it a defect on 25 August
+because the file also calls `invoke`, which is the gate matching a shape rather
+than an argument. An occurrence that is a negated DEV check whose whole body is a
+bare `return` is left alone.
 
 THE BASELINE. Every app was swept except the harness, whose frontend is another
 lane's live work - listing it is how the gate stays green without reaching into it.
@@ -85,6 +96,11 @@ def sources(root: pathlib.Path) -> list[pathlib.Path]:
 #: switch, which the build is the right gate for. See the carve-out above.
 QUERY_READ = re.compile(r"searchParams|location\.search")
 
+#: `if (!import.meta.env.DEV) return;` - the kill switch that keeps a dev-only
+#: helper out of a shipped bundle. Nothing is substituted, so there is no wrong
+#: answer to give. See the second carve-out above.
+KILL_SWITCH = re.compile(r"if\s*\(\s*!\s*import\.meta\.env\.DEV\s*\)\s*return\s*;")
+
 
 def asks_the_build(text: str) -> bool:
     """Does this file branch on the build mode while also calling a command?
@@ -103,7 +119,7 @@ def asks_the_build(text: str) -> bool:
     if re.search(r"\binvoke\s*[<(]", text) is None:
         return False
     for line in text.splitlines():
-        if DEV in line and not QUERY_READ.search(line):
+        if DEV in line and not QUERY_READ.search(line) and not KILL_SWITCH.search(line):
             return True
     return False
 

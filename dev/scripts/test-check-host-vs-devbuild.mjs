@@ -79,6 +79,34 @@ export function trace(msg) {
 );
 
 check(
+  "a kill switch keeping a dev-only helper out of a shipped build passes",
+  // The real one: `mockRegisterMenu` in the shell's menu store, in a file that
+  // also calls commands. Nothing is substituted - the function does not run - and
+  // the build is the only gate that can keep it out of a shipped bundle.
+  !asksTheBuild(`
+import { invoke } from "@tauri-apps/api/core";
+export function mockRegisterMenu(appId, groups) {
+    if (!import.meta.env.DEV) return;
+    appMenus.update(($m) => new Map($m).set(appId, groups));
+}
+export async function load() { menus.set(await invoke("get_menu")); }
+`),
+);
+
+check(
+  "a DEV check that returns a SUBSTITUTE is still caught",
+  // The distinction the carve-out rests on. This one also returns early, but on
+  // the positive branch and with something invented in hand, which is the defect.
+  asksTheBuild(`
+import { invoke } from "@tauri-apps/api/core";
+export async function load() {
+  try { menus.set(await invoke("get_menu")); }
+  catch { if (import.meta.env.DEV) { menus.set(FIXTURE); return; } failed.set(true); }
+}
+`),
+);
+
+check(
   "a file that calls a command but never asks the build passes",
   !asksTheBuild(`
 import { invoke } from "@tauri-apps/api/core";
