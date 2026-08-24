@@ -62,6 +62,7 @@
   let preset = $state<{ to: string; subject: string; body: string }>({ to: "", subject: "", body: "" });
 
   type Failure =
+    | { problem: "launch"; reason: string }
     | { problem: "unreadable"; why: string }
     | { problem: "not-a-message" }
     | { problem: "other"; reason: string };
@@ -71,7 +72,18 @@
     void loadMailbox();
     if (!tauriAvailable) return;
     void (async () => {
-      const launched = await invoke<string | null>("launch_file").catch(() => null);
+      // A THROW AND A NULL ARE DIFFERENT ANSWERS. `null` means the window was
+      // opened with no file, which is how the mailbox is normally started; a
+      // throw means the host could not say what it was asked to open, and folding
+      // the two together tells somebody who just double-clicked a message that no
+      // account is connected. The reader fixed the same shape one app over.
+      let launched: string | null = null;
+      try {
+        launched = await invoke<string | null>("launch_file");
+      } catch (e) {
+        failure = { problem: "launch", reason: String(e) };
+        return;
+      }
       if (!launched) return;
       try {
         const m = await invoke<Message>("mail_read", { path: launched });
@@ -384,7 +396,8 @@
         {:else if failure}
           <div class="center">
             <p class="note bad" role="alert">
-              {#if failure.problem === "unreadable"}{$t("ml.failed.unreadable", { why: failure.why })}
+              {#if failure.problem === "launch"}{$t("ml.failed.launch", { reason: failure.reason })}
+              {:else if failure.problem === "unreadable"}{$t("ml.failed.unreadable", { why: failure.why })}
               {:else if failure.problem === "not-a-message"}{$t("ml.failed.notAMessage")}
               {:else}{$t("ml.failed.other", { reason: failure.reason })}{/if}
             </p>
