@@ -302,6 +302,59 @@ fn rrule_of(repeat: &str, on_days: &[String]) -> Option<String> {
     }
 }
 
+/// Why a calendar could not be recoloured.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum ColorProblem {
+    /// Nowhere to keep calendars: no home directory for this session.
+    NoHome,
+    /// No calendar by that name here.
+    NoSuchCalendar,
+    /// It is there and could not be read.
+    Unreadable { why: String },
+    /// The colour is not one a calendar file can carry.
+    BadColor,
+    /// The write itself failed. Nothing was changed: the file is written whole or
+    /// not at all.
+    NotWritten { why: String },
+}
+
+/// Recolour one calendar.
+///
+/// WHOLE-FILE, through a temporary beside it: a calendar half-written because the
+/// disk filled mid-save is worse than one that kept its old colour. The colour
+/// itself goes in as line surgery, so everything else in the file - properties
+/// this app does not model, events, the person's own X- lines - is where it was.
+#[tauri::command]
+fn calendar_set_color(id: String, color: String) -> Result<(), ColorProblem> {
+    let Some(dir) = calendar_dir() else {
+        return Err(ColorProblem::NoHome);
+    };
+    // The id names a file, so it must be a name and not a path.
+    if id.is_empty() || id.contains(['/', '\\']) || id.starts_with('.') {
+        return Err(ColorProblem::NoSuchCalendar);
+    }
+    let path = dir.join(format!("{id}.ics"));
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(ColorProblem::NoSuchCalendar)
+        }
+        Err(e) => return Err(ColorProblem::Unreadable { why: e.to_string() }),
+    };
+    let Some(updated) = arlen_calendar_core::write::set_calendar_color(&text, &color) else {
+        return Err(ColorProblem::BadColor);
+    };
+    let tmp = path.with_extension("ics.tmp");
+    std::fs::write(&tmp, updated).map_err(|e| ColorProblem::NotWritten { why: e.to_string() })?;
+    std::fs::rename(&tmp, &path).map_err(|e| {
+        // The temporary is this function's litter, not the person's calendar.
+        let _ = std::fs::remove_file(&tmp);
+        ColorProblem::NotWritten { why: e.to_string() }
+    })?;
+    Ok(())
+}
+
 /// One calendar as the sidebar lists it.
 #[derive(serde::Serialize)]
 struct CalendarInfo {
@@ -499,6 +552,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             calendar_agenda,
             calendar_calendars,
+            calendar_set_color,
             launch_file,
             calendar_import,
             calendar_create_event
