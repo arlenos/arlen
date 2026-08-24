@@ -4,6 +4,7 @@
   /// press files the draft into Drafts, which is the true thing it can do.
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { t } from "$lib/i18n/messages";
   import { saveDraft } from "$lib/stores/mailbox";
 
@@ -46,13 +47,15 @@
       <Input id="compose-subject" bind:value={subject} />
     </label>
   </div>
-  <textarea
+  <Textarea
     id="compose-body"
-    class="body"
+    class="compose-body"
     bind:value={body}
+    rows={10}
+    maxRows={24}
     placeholder={$t("ml.compose.body")}
     aria-label={$t("ml.compose.body")}
-  ></textarea>
+  />
   <p class="cant-send">{$t("ml.compose.cantSend")}</p>
   <div class="actions">
     <Button id="compose-send" onclick={send}>{$t("ml.send")}</Button>
@@ -86,23 +89,6 @@
   .k {
     font-size: var(--text-sm, 13px);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-  }
-  .body {
-    flex: 1;
-    min-height: 12rem;
-    resize: none;
-    padding: 0.7rem 0.8rem;
-    border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: var(--radius-input, 8px);
-    background: var(--color-bg-card, #171717);
-    color: var(--color-fg-primary, #e6e8ee);
-    font: inherit;
-    font-size: var(--text-sm, 13px);
-    line-height: 1.6;
-  }
-  .body:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: -1px;
   }
   .cant-send {
     margin: 0;

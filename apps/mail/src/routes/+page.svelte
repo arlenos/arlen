@@ -379,6 +379,6 @@
     color: var(--color-fg-secondary, #a3a3a3);
   }
   .note.bad {
-    color: var(--color-fg-warning, #eab308);
+    color: var(--color-warning, #eab308);
   }
 </style>

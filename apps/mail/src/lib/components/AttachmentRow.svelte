@@ -52,7 +52,7 @@
     gap: 0.4rem;
     padding: 0.3rem 0.6rem;
     border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: var(--radius-chip, 999px);
+    border-radius: var(--radius-chip, 4px);
     font-size: var(--text-xs, 12px);
     color: color-mix(in srgb, var(--color-fg-primary) 80%, transparent);
   }
