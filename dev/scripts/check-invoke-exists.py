@@ -292,6 +292,31 @@ HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
 # The commands with no host, as of 9 August, with what each one is. Keeping the
 # reason next to the name is the difference between an inventory and an alibi.
 KNOWN: dict[str, dict[str, str]] = {
+    # The mailbox MODEL, which `mail-app.md` §6 leaves open: what a folder is on
+    # this machine and what an id names. Not a missing function - a shape nobody
+    # has decided, and writing one into a command would decide it by accident.
+    # The store answers a real host with an empty, honestly unconnected mailbox
+    # rather than a sample, so the catch does not invent a mailbox either.
+    "mail": {
+        "mail_folders": (
+            "the mailbox model is undecided (mail-app.md §6); a real host gets an "
+            "unconnected mailbox rather than a sample"
+        ),
+        "mail_list": (
+            "the mailbox model is undecided (mail-app.md §6); a real host gets an "
+            "unconnected mailbox rather than a sample"
+        ),
+        "mail_open": (
+            "the mailbox model is undecided (mail-app.md §6); a real host gets an "
+            "unconnected mailbox rather than a sample, and a failed open says so"
+        ),
+        "mail_sender_person": (
+            "NEEDS A PRODUCER: `shared.Person` has an owner and a decided contract "
+            "(contacts-decision.md - mail reads people, never owns them) and "
+            "nothing writes one yet, so the command would answer nobody to every "
+            "address until contacts or the CardDAV bridge exists"
+        ),
+    },
     # The file picker. Both of these are NEEDS A PRODUCER: the portal daemon has
     # no recent-files source and no thumbnailer, so on a real machine the Recent
     # group never appears and the grid shows icons only. They read as features in

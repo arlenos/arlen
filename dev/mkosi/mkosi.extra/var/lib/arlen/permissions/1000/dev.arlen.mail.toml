@@ -10,9 +10,18 @@
 #                  double-clicked. This is the same shape as the viewers app,
 #                  which opens whatever it is handed.
 #
-# NO write anywhere. The window has never written a byte: there is no reply, no
-# draft, no store, and no "keep this message". When one of those arrives it
-# lands as a write grant decided then, against a feature that exists.
+# ONE WRITE, and it arrived on 24 August: `mail_save_attachment` puts a part of a
+# message into the downloads folder, which is under home and so already inside
+# the grant above. Named here because this comment used to say the window had
+# never written a byte, and a profile that describes an app that no longer exists
+# is worse than one that grants too much - the next reader trusts it.
+#
+# Still NO reply, NO draft store and NO "keep this message". Those want a write
+# grant decided against the feature, not this one widened by habit.
+#
+# The save itself is the narrow shape: the command takes an INDEX and never the
+# sender's filename, so nothing a message carries can steer where the byte lands
+# (`apps/mail/src-tauri/src/lib.rs`, and the rule at `Attachment::name`).
 #
 # NO network, and it is the interesting one. This app deliberately does not
 # render the HTML part, precisely because `mail-app.md` section 3 finds that mail
