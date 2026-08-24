@@ -66,6 +66,15 @@
     {#if $winActionFailed}
       <p class="note span-full" role="alert">{$t("s.wa.actionFailed")}</p>
     {/if}
+    <!-- A bottle that is on disk and will not read. Named rather than dropped:
+         the list above cannot hold it, so without this line it simply is not
+         there and the count reads as the truth about this machine. The daemon
+         keeps it apart from the ones that read for the same reason. -->
+    {#if $winApps.unreadable.length > 0}
+      <p class="note span-full" role="alert">
+        {$t("s.wa.someUnreadable", { names: $winApps.unreadable.join(", ") })}
+      </p>
+    {/if}
     {#if $launchFailed}
       <p class="note span-full" role="alert">{$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}</p>
     {/if}
