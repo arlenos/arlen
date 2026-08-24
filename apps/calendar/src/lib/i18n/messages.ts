@@ -13,6 +13,13 @@ const messages: Catalogs = {
   en: {
     "cal.app.title": "Calendar",
     "cal.agenda": "Agenda",
+    // Why a new event was not written, one line per cause. The command answers
+    // with a tagged word and the store writes the sentence.
+    "cal.create.noHome": "There is no home directory to keep calendars in, so the event was not written.",
+    "cal.create.cannotMakeDir": "The calendar folder could not be made, so the event was not written. {$why}",
+    "cal.create.badDate": "That date or time did not read as one, so nothing was written.",
+    "cal.create.notWritten": "The event was not written. {$why}",
+    "cal.create.other": "The event was not created: {$reason}",
     "cal.view.week": "Week",
     "cal.view.month": "Month",
     "cal.view.day": "Day",
@@ -83,6 +90,11 @@ const messages: Catalogs = {
   de: {
     "cal.app.title": "Kalender",
     "cal.agenda": "Termine",
+    "cal.create.noHome": "Es gibt kein Home-Verzeichnis für Kalender, der Termin wurde also nicht geschrieben.",
+    "cal.create.cannotMakeDir": "Der Kalenderordner ließ sich nicht anlegen, der Termin wurde also nicht geschrieben. {$why}",
+    "cal.create.badDate": "Dieses Datum oder diese Uhrzeit ließ sich nicht lesen, es wurde nichts geschrieben.",
+    "cal.create.notWritten": "Der Termin wurde nicht geschrieben. {$why}",
+    "cal.create.other": "Der Termin wurde nicht angelegt: {$reason}",
     "cal.view.week": "Woche",
     "cal.view.month": "Monat",
     "cal.view.day": "Tag",

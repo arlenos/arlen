@@ -9,9 +9,10 @@
 /// and the reminder daemon pick it up with no further wiring. Until it exists
 /// a live press answers with an honest refusal; the fixture applies locally so
 /// the whole flow drives.
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
+import { t } from "$lib/i18n/messages";
 
 /// One expanded occurrence, exactly as the backend serialises it (snake_case).
 export type AgendaEvent = {
@@ -219,6 +220,36 @@ export async function loadAgenda(file: string | null): Promise<void> {
   calendarMocked.set(false);
 }
 
+/// What the command says went wrong, as a sentence in the reader's language.
+///
+/// A TAGGED word, not a stringified object: `String(e)` on a typed refusal puts
+/// `[object Object]` on the surface. Read here rather than in the form, because
+/// `check-i18n-reactivity` refuses `get(t)` inside a `.svelte` file and a
+/// refusal is a snapshot taken at the moment it happened rather than markup that
+/// has to re-render.
+type CreateProblem =
+  | { problem: "no-home" }
+  | { problem: "cannot-make-dir"; why: string }
+  | { problem: "bad-date" }
+  | { problem: "not-written"; why: string };
+
+function refusal(e: unknown): string {
+  const write = get(t);
+  const p = e as CreateProblem | null;
+  switch (p?.problem) {
+    case "no-home":
+      return write("cal.create.noHome");
+    case "cannot-make-dir":
+      return write("cal.create.cannotMakeDir", { why: p.why });
+    case "bad-date":
+      return write("cal.create.badDate");
+    case "not-written":
+      return write("cal.create.notWritten", { why: p.why });
+    default:
+      return write("cal.create.other", { reason: String(e) });
+  }
+}
+
 /// Create one event. Live: the intended `calendar_create_event(draft)` writing
 /// a VEVENT into the store directory (the watcher re-reads, the daemon arms
 /// the reminder). Fixture: applied locally so the flow drives. Returns the
@@ -230,7 +261,7 @@ export async function createEvent(draft: EventDraft): Promise<string | null> {
   } catch (e) {
     let mocked = false;
     calendarMocked.update((m) => ((mocked = m), m));
-    if (!mocked) return String(e);
+    if (!mocked) return refusal(e);
     agenda.update((a) => {
       if (!a) return a;
       const base: AgendaEvent = {

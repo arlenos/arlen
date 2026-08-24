@@ -117,7 +117,10 @@
       </div>
     {/if}
     {#if failed}
-      <p class="failed" role="alert">{$t("cal.form.failed", { reason: failed })}</p>
+      <!-- The store hands over a finished sentence: the command names a cause
+           and the catalog writes it. Wrapping it in another frame put a reason
+           inside a sentence that already was one. -->
+      <p class="failed" role="alert">{failed}</p>
     {/if}
     <div class="actions">
       <Button id="event-create" onclick={create}>{$t("cal.form.create")}</Button>

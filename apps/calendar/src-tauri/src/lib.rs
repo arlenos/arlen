@@ -188,6 +188,120 @@ async fn calendar_import(path: String) -> ImportResult {
     }
 }
 
+/// Why an event was not created, as a word rather than a sentence.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum CreateProblem {
+    /// Nowhere to keep calendars: no home directory for this session.
+    NoHome,
+    /// The calendar directory could not be made. `why` is the filesystem's.
+    CannotMakeDir { why: String },
+    /// The date or a time did not read as one.
+    BadDate,
+    /// The write itself failed.
+    NotWritten { why: String },
+}
+
+/// The event as the form collects it.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EventDraft {
+    summary: String,
+    date: String,
+    all_day: bool,
+    time: Option<String>,
+    end_time: Option<String>,
+    location: String,
+    repeat: String,
+    on_days: Vec<String>,
+}
+
+/// Write one event into the calendar directory, as its own file.
+///
+/// ITS OWN FILE, not an edit of an existing one. Rewriting a file that holds
+/// several events would put whatever this app does not model at risk - and it
+/// models a subset on purpose. A new file is additive, and the watcher picks it
+/// up the same way it picks up one that was copied in.
+///
+/// # Errors
+/// When there is no home, the directory cannot be made, the date does not read,
+/// or the write fails.
+#[tauri::command]
+async fn calendar_create_event(draft: EventDraft) -> Result<(), CreateProblem> {
+    use arlen_calendar_core::write::{vcalendar, NewEvent};
+
+    let dir = calendar_dir().ok_or(CreateProblem::NoHome)?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| CreateProblem::CannotMakeDir { why: e.to_string() })?;
+
+    let date = chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
+        .map_err(|_| CreateProblem::BadDate)?;
+    let parse_time = |t: &Option<String>| -> Result<Option<chrono::NaiveTime>, CreateProblem> {
+        match t.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            None => Ok(None),
+            Some(s) => chrono::NaiveTime::parse_from_str(s, "%H:%M")
+                .map(Some)
+                .map_err(|_| CreateProblem::BadDate),
+        }
+    };
+    let (start, end) = if draft.all_day {
+        (None, None)
+    } else {
+        (parse_time(&draft.time)?, parse_time(&draft.end_time)?)
+    };
+
+    let event = NewEvent {
+        // Ours and unique: the file's identity, which every reader keys on.
+        uid: format!("{}@arlen", uuid::Uuid::now_v7()),
+        summary: draft.summary,
+        date,
+        start,
+        end,
+        location: draft.location,
+        rrule: rrule_of(&draft.repeat, &draft.on_days),
+        stamp: chrono::Utc::now().naive_utc(),
+    };
+
+    // The filename carries the date and the uid's first field, so a directory
+    // listing is readable and two events on one day cannot collide.
+    let short = event.uid.split('-').next().unwrap_or("event").to_string();
+    let target = dir.join(format!("{}-{short}.ics", date.format("%Y%m%d")));
+    std::fs::write(&target, vcalendar(&event))
+        .map_err(|e| CreateProblem::NotWritten { why: e.to_string() })
+}
+
+/// The `RRULE` value for a repeat the form offers, or `None` for a single event.
+///
+/// A weekly repeat with no day chosen is not weekly-on-nothing: it repeats on
+/// the day the event is on, which is what leaving `BYDAY` out means.
+fn rrule_of(repeat: &str, on_days: &[String]) -> Option<String> {
+    match repeat {
+        "daily" => Some("FREQ=DAILY".into()),
+        "weekly" => {
+            let days: Vec<String> = on_days
+                .iter()
+                .filter_map(|d| match d.to_ascii_lowercase().as_str() {
+                    "mon" => Some("MO"),
+                    "tue" => Some("TU"),
+                    "wed" => Some("WE"),
+                    "thu" => Some("TH"),
+                    "fri" => Some("FR"),
+                    "sat" => Some("SA"),
+                    "sun" => Some("SU"),
+                    _ => None,
+                })
+                .map(str::to_string)
+                .collect();
+            Some(if days.is_empty() {
+                "FREQ=WEEKLY".into()
+            } else {
+                format!("FREQ=WEEKLY;BYDAY={}", days.join(","))
+            })
+        }
+        _ => None,
+    }
+}
+
 #[tauri::command]
 async fn calendar_agenda(file: Option<String>) -> Result<Agenda, AgendaProblem> {
     // Opened ON a file: that file is the whole agenda. Reading the directory too
@@ -329,7 +443,12 @@ pub fn run() {
         .manage(LaunchFile(
             std::env::args().skip(1).find(|a| !a.starts_with('-')),
         ))
-        .invoke_handler(tauri::generate_handler![calendar_agenda, launch_file, calendar_import])
+        .invoke_handler(tauri::generate_handler![
+            calendar_agenda,
+            launch_file,
+            calendar_import,
+            calendar_create_event
+        ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-calendar");
 }
@@ -354,7 +473,7 @@ mod tests {
         )
         .expect("write");
 
-        let agenda = agenda_of_file(&path).expect("reads");
+        let agenda = agenda_of_file(&path);
         assert_eq!(agenda.files, 1);
         assert_eq!(agenda.unreadable, 0);
         assert_eq!(agenda.events.len(), 1);
@@ -372,9 +491,25 @@ mod tests {
         let path = dir.join("notes.ics");
         std::fs::write(&path, "just some text").expect("write");
 
-        let agenda = agenda_of_file(&path).expect("reads");
+        let agenda = agenda_of_file(&path);
         assert_eq!(agenda.unreadable, 1);
         assert!(agenda.events.is_empty());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_repeat_becomes_a_rule_the_reader_understands() {
+        assert_eq!(rrule_of("none", &[]), None);
+        assert_eq!(rrule_of("daily", &[]), Some("FREQ=DAILY".into()));
+        assert_eq!(
+            rrule_of("weekly", &["mon".into(), "fri".into()]),
+            Some("FREQ=WEEKLY;BYDAY=MO,FR".into())
+        );
+        // Weekly with no day chosen repeats on the event's own day, which is
+        // what leaving BYDAY out means - not weekly-on-nothing.
+        assert_eq!(rrule_of("weekly", &[]), Some("FREQ=WEEKLY".into()));
+        // A day name nobody writes is dropped rather than passed through into a
+        // rule the reader would then fail on.
+        assert_eq!(rrule_of("weekly", &["montag".into()]), Some("FREQ=WEEKLY".into()));
     }
 }
