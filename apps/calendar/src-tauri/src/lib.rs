@@ -302,6 +302,59 @@ fn rrule_of(repeat: &str, on_days: &[String]) -> Option<String> {
     }
 }
 
+/// One calendar as the sidebar lists it.
+#[derive(serde::Serialize)]
+struct CalendarInfo {
+    /// The file stem, which is what every other command names a calendar by.
+    id: String,
+    /// What the file calls itself, else its own name.
+    name: String,
+    /// `null` when the file names no colour. NOT a default picked here: the
+    /// surface decides what an uncoloured calendar looks like, and inventing one
+    /// would make every calendar claim a colour somebody chose.
+    color: Option<String>,
+}
+
+/// The calendars in the store directory.
+///
+/// A directory that is not there is not an error - it is a person who has not put
+/// a calendar on this machine yet, and the empty list says exactly that. A file
+/// that will not parse still appears, under its own name, because a calendar that
+/// vanishes from the list is worse than one that is there and empty.
+#[tauri::command]
+fn calendar_calendars() -> Vec<CalendarInfo> {
+    let Some(dir) = calendar_dir() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<CalendarInfo> = entries
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.path()
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("ics"))
+        })
+        .filter_map(|e| {
+            let path = e.path();
+            let id = path.file_stem()?.to_string_lossy().into_owned();
+            let props = std::fs::read_to_string(&path)
+                .map(|text| arlen_calendar_core::calendar_properties(&text))
+                .unwrap_or_default();
+            Some(CalendarInfo {
+                name: props.name.unwrap_or_else(|| id.clone()),
+                color: props.color,
+                id,
+            })
+        })
+        .collect();
+    // By what the person sees, not by what the filesystem happened to hand back:
+    // `read_dir` has no order, so an unsorted list reshuffles between reads.
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out
+}
+
 #[tauri::command]
 async fn calendar_agenda(file: Option<String>) -> Result<Agenda, AgendaProblem> {
     // Opened ON a file: that file is the whole agenda. Reading the directory too
@@ -445,6 +498,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             calendar_agenda,
+            calendar_calendars,
             launch_file,
             calendar_import,
             calendar_create_event
