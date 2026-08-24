@@ -88,6 +88,8 @@ pub fn run() {
             commands::ai::ai_status,
             commands::ai::ai_explain,
             commands::ai::ai_providers_list,
+            commands::sound::sound_settings,
+            commands::sound::sound_set,
             commands::windows_apps::list_bottles,
             commands::windows_apps::bottle_health,
             commands::windows_apps::launch_windows_app,
