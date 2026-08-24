@@ -160,10 +160,19 @@ fn main() -> std::process::ExitCode {
         &chosen,
         &read_generated_locales(std::path::Path::new(GENERATED_LOCALES)),
     );
-    if language.is_empty() && chosen != arlen_i18n::SOURCE_LOCALE {
-        say(&format!(
+    // SAID EITHER WAY, which the negative case alone was not enough for. This one
+    // decision changes how every date, time and number in the session is drawn, and
+    // the first boot after it landed left me reading a compositor locale error and
+    // inferring backwards whether the variable had been set at all. A boot that
+    // says which locale it chose answers that in one line.
+    match language.get("LANG") {
+        Some(name) => say(&format!(
+            "session language {chosen}, C library locale {name}"
+        )),
+        None if chosen != arlen_i18n::SOURCE_LOCALE => say(&format!(
             "no generated locale for {chosen}, so dates and times keep the C formats"
-        ));
+        )),
+        None => say("no C library locale for this session, so dates and times keep the C formats"),
     }
     env.extend(language);
 
