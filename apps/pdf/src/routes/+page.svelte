@@ -29,6 +29,10 @@
 
   let doc = $state<DocumentInfo | null>(null);
   let failure = $state<string | null>(null);
+  /// Separate from `failure`, which is about a document: this one is about not
+  /// learning which document there was. Kept apart so neither sentence has to
+  /// stand in for the other.
+  let launchFailure = $state<string | null>(null);
   let query = $state("");
   let results = $state<SearchOutcome | null>(null);
   let current = $state(1);
@@ -88,7 +92,20 @@
   onMount(() => {
     if (!tauriAvailable) return;
     void (async () => {
-      const launched = await invoke<string | null>("launch_file").catch(() => null);
+      // A THROW AND A NULL ARE DIFFERENT ANSWERS, and folding them together is
+      // how a reader who just double-clicked a PDF in Files gets told to open a
+      // PDF from Files. `null` means nothing was passed on the command line, which
+      // is an ordinary way to start the reader; a throw means the host could not
+      // say what it was asked to open, which is a failure and has to read as one.
+      // The viewers app records this exact defect one branch over - it survived
+      // its first fix because only the `!path` case was covered.
+      let launched: string | null = null;
+      try {
+        launched = await invoke<string | null>("launch_file");
+      } catch (e) {
+        launchFailure = String(e);
+        return;
+      }
       if (!launched) return;
       try {
         doc = await invoke<DocumentInfo>("pdf_open", { path: launched });
@@ -185,6 +202,8 @@
   <div class="pdf-body">
     {#if !tauriAvailable}
       <p class="quiet">{$t("pdf.hostAbsent")}</p>
+    {:else if launchFailure}
+      <p class="quiet">{$t("pdf.launchUnknown", { reason: launchFailure })}</p>
     {:else if failure === "locked"}
       <!-- The host sends a token for this one, so the sentence is written here
            and reaches a German reader in German. -->
