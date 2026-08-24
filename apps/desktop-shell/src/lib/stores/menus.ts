@@ -36,6 +36,18 @@ export const activeMenu = derived([appMenus, activeAppId], ([$menus, $id]) =>
     $id ? ($menus.get($id) ?? null) : null,
 );
 
+/// DEV render path (the `?popover=` family): hand a menu tree straight to the
+/// store so the bar is screenshot-able under vite, where no app process exists
+/// to register one. Inert outside dev.
+export function mockRegisterMenu(appId: string, groups: MenuGroup[]): void {
+    if (!import.meta.env.DEV) return;
+    appMenus.update(($m) => {
+        const next = new Map($m);
+        next.set(appId, groups);
+        return next;
+    });
+}
+
 let started = false;
 let teardown: (() => void) | null = null;
 
