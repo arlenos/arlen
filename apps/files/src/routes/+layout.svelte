@@ -32,6 +32,7 @@
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
   import { t, dir } from "$lib/i18n/messages";
+  import { templates } from "$lib/stores/templates";
   import { publishAppMenu } from "$lib/menu";
   import { setWindowTitle } from "$lib/window-title";
   import { facetOpen } from "$lib/stores/facets";
@@ -68,12 +69,17 @@
     // and that came from tauri.conf.json - so the catalog said "Dateien"
     // while every surface outside this window said "Files".
     const stopMenu = t.subscribe((tr) => {
-      void publishAppMenu(tr);
+      void publishAppMenu(tr, get(templates));
       void setWindowTitle(tr("f.app.title"));
+    });
+    // The template list lands after startup; the New submenu rides it.
+    const stopTemplates = templates.subscribe(() => {
+      void publishAppMenu(get(t), get(templates));
     });
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {
       stopMenu();
+      stopTemplates();
       document.removeEventListener("contextmenu", suppressBrowserContextMenu);
     };
   });

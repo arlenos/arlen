@@ -10,11 +10,13 @@
 /// like "Rename" is translated in one place and cannot drift between the two
 /// surfaces that show it.
 import type { Translate } from "@arlen/ui-kit/i18n";
+import type { Template } from "$lib/stores/templates";
 
 /// One entry, in the shape `os_sdk::menu::MenuItem` deserializes.
 export type MenuItem = {
   label: string;
   action?: string;
+  shortcut?: string;
   type: "item" | "separator" | "submenu";
   children?: MenuItem[];
 };
@@ -22,7 +24,7 @@ export type MenuItem = {
 /// One top-level group, in the shape `os_sdk::menu::MenuGroup` deserializes.
 export type MenuGroup = { label: string; items: MenuItem[] };
 
-const item = (label: string, action: string): MenuItem => ({ label, action, type: "item" });
+const item = (label: string, action: string, shortcut?: string): MenuItem => ({ label, action, shortcut, type: "item" });
 const sep = (): MenuItem => ({ label: "", type: "separator" });
 const sub = (label: string, children: MenuItem[]): MenuItem => ({
   label,
@@ -32,13 +34,18 @@ const sub = (label: string, children: MenuItem[]): MenuItem => ({
 
 /// The menu as the reader's language renders it. Pure, so a test can read the
 /// labels without a running app or a shell to publish into.
-export function appMenuGroups(t: Translate): MenuGroup[] {
+export function appMenuGroups(t: Translate, templates: Template[] = []): MenuGroup[] {
   return [
     {
       label: t("f.gm.file"),
       items: [
         item(t("f.menu.newFolder"), "file.new_folder"),
-        item(t("f.gm.newWindow"), "file.new_window"),
+        item(t("f.gm.newTab"), "file.new_tab"),
+        // Only when ~/Templates holds anything: an empty submenu is a promise
+        // with nothing behind it.
+        ...(templates.length > 0
+          ? [sub(t("f.menu.newFromTemplate"), templates.map((tp, i) => item(tp.label, `file.template.${i}`)))]
+          : []),
         sep(),
         item(t("f.gm.properties"), "file.properties"),
         sep(),
@@ -48,15 +55,15 @@ export function appMenuGroups(t: Translate): MenuGroup[] {
     {
       label: t("f.gm.edit"),
       items: [
-        item(t("f.gm.undo"), "edit.undo"),
+        item(t("f.gm.undo"), "edit.undo", "Ctrl+Z"),
         sep(),
-        item(t("f.menu.cut"), "edit.cut"),
-        item(t("f.menu.copy"), "edit.copy"),
-        item(t("f.menu.paste"), "edit.paste"),
+        item(t("f.menu.cut"), "edit.cut", "Ctrl+X"),
+        item(t("f.menu.copy"), "edit.copy", "Ctrl+C"),
+        item(t("f.menu.paste"), "edit.paste", "Ctrl+V"),
         sep(),
-        item(t("f.menu.rename"), "edit.rename"),
-        item(t("f.menu.moveToTrash"), "edit.trash"),
-        item(t("f.gm.selectAll"), "edit.select_all"),
+        item(t("f.menu.rename"), "edit.rename", "F2"),
+        item(t("f.menu.moveToTrash"), "edit.trash", "Del"),
+        item(t("f.gm.selectAll"), "edit.select_all", "Ctrl+A"),
       ],
     },
     {
@@ -90,10 +97,10 @@ export function appMenuGroups(t: Translate): MenuGroup[] {
 /// Send the menu to the shell. Best-effort, like every other topbar surface:
 /// without a shell (or a bus) the app runs on with no menu bar, which is what
 /// happened whenever the publish failed before too.
-export async function publishAppMenu(t: Translate): Promise<void> {
+export async function publishAppMenu(t: Translate, templates: Template[] = []): Promise<void> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("publish_menu", { groups: appMenuGroups(t) });
+    await invoke("publish_menu", { groups: appMenuGroups(t, templates) });
   } catch (e) {
     console.warn("publishAppMenu: the topbar menu was not published:", e);
   }

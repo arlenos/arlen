@@ -27,6 +27,7 @@
   import { focusedController, focusedPane, paneB, splitView } from "$lib/stores/panes";
   import { addBookmark, homePath, loadPlaces } from "$lib/stores/places";
   import { infoOpen } from "$lib/stores/ui";
+  import { templates, loadTemplates, type Template } from "$lib/stores/templates";
   import { clipboard, paste, runOp, bulkRename, extractArchive, compressPaths } from "$lib/stores/ops";
   import FmStatusBar from "$lib/components/FmStatusBar.svelte";
   import { locationReadReason } from "$lib/stores/location-read";
@@ -318,14 +319,6 @@
     }
   }
 
-  /// The user's `~/Templates` entries (the backend `files_templates`), offered
-  /// in the context menu's "New from template" submenu.
-  interface Template {
-    label: string;
-    icon: string;
-    path: string;
-  }
-  const templates = writable<Template[]>([]);
 
   /// Create a new file in the current folder from `t` by copying the template
   /// (the existing copy op, so no separate command), then start an inline
@@ -371,13 +364,16 @@
   /// operation its keyboard/context-menu equivalent runs.
   async function runMenuAction(action: string) {
     const c = get(focusedController);
+    if (action.startsWith("file.template.")) {
+      const tpl = get(templates)[Number(action.slice("file.template.".length))];
+      if (tpl) await newFromTemplate(tpl);
+      return;
+    }
     switch (action) {
       case "file.new_folder":
         await newFolder();
         break;
-      case "file.new_window":
-        // A separate top-level window is a follow-up; open a new tab at
-        // the current location so the item is not inert.
+      case "file.new_tab":
         newTab(currentPath());
         break;
       case "file.properties":
@@ -501,9 +497,7 @@
     void loadAskCapability();
     if (get(tabs).length === 0) newTab(get(homePath));
     if (tauriAvailable) {
-      invoke<Template[]>("files_templates")
-        .then((t) => templates.set(t))
-        .catch(() => {});
+      void loadTemplates();
       unlistenMenu = await listen<{ action: string }>(
         "arlen://menu-action",
         (e) => void runMenuAction(e.payload.action),

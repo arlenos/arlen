@@ -9,29 +9,36 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { goto } from "$app/navigation";
+import type { Translate } from "@arlen/ui-kit/i18n";
+import { t } from "$lib/i18n/messages";
 import { newSession } from "$lib/stores/conversation";
 import { openImportChat } from "$lib/stores/importChat";
 
 const APP_ID = "dev.arlen.harness";
 
-const MENU = [
-  {
-    label: "Chat",
-    items: [
-      { label: "New chat", action: "chat.new", shortcut: "Ctrl+N", type: "item" },
-      { label: "", action: "", type: "separator" },
-      { label: "Import chat…", action: "chat.import", type: "item" },
-    ],
-  },
-];
+/// The menu as the reader's language renders it - this was the tree's last
+/// hardcoded-English menu; the shell holds no catalogue and shows the string
+/// as it arrives. Pure, so a test can read the labels.
+export function appMenuGroups(t: Translate) {
+  return [
+    {
+      label: t("h.menu.chat"),
+      items: [
+        { label: t("h.sidebar.newChat"), action: "chat.new", shortcut: "Ctrl+N", type: "item" },
+        { label: "", action: "", type: "separator" },
+        { label: t("h.menu.import"), action: "chat.import", type: "item" },
+      ],
+    },
+  ];
+}
 
 /// Register the menu and route dispatched actions into the stores.
 export async function initAppMenu(): Promise<void> {
-  try {
-    await invoke("register_menu", { appId: APP_ID, items: MENU });
-  } catch {
-    // No shell relay yet: the menu is simply absent.
-  }
+  t.subscribe((tr) => {
+    void invoke("register_menu", { appId: APP_ID, items: appMenuGroups(tr) }).catch(() => {
+      // No shell relay yet: the menu is simply absent.
+    });
+  });
   try {
     await listen<{ app_id: string; action: string }>("arlen://menu-action", ({ payload }) => {
       if (payload.app_id !== APP_ID) return;
