@@ -23,6 +23,7 @@
 pub mod reminders;
 pub mod view;
 pub mod rrule;
+pub mod write;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 
