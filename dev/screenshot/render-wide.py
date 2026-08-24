@@ -450,10 +450,41 @@ class Render:
             self.fail(f"snapshot failed: {e}", 7)
             return
         print("wrote", self.args.out)
+        # A frame of one flat colour is a shot of nothing, and it must not pass
+        # silently. Measured on 24 August: a calendar whose backend was failing
+        # came back 1920000 pixels of a single grey, which reads as "the app
+        # renders nothing when its daemon is down" - a defect I nearly filed.
+        # Rendered again by hand the same page showed its sidebar, its toolbar and
+        # its refusal, so the black frame was this harness, not the app. A sweep
+        # that records those quietly teaches the reader something false about
+        # every app it touches.
+        self.warn_if_flat()
         # A violation is a finding, not a rendering problem, so the PNG is still
         # written - but the exit status carries it, so this can be a gate.
         self.status = 1 if self.axe_failures else 0
         self.app.quit()
+
+    def warn_if_flat(self):
+        """Say so when the written frame carries no second colour."""
+        try:
+            from PIL import Image
+        except ImportError:
+            # Without it this check simply does not run. It must never be the
+            # reason a shot fails.
+            return
+        try:
+            with Image.open(self.args.out) as im:
+                colours = im.convert("RGB").getcolors(maxcolors=2)
+        except Exception:  # noqa: BLE001
+            return
+        # `getcolors` returns None once the image passes the cap, which is the
+        # ordinary case and the one that needs no words.
+        if colours is not None and len(colours) <= 1:
+            print(
+                "FLAT: every pixel in this frame is the same colour, so it shows "
+                "nothing. Read it as a failure of this harness before reading it "
+                "as a failure of the page."
+            )
 
 
 def main():
