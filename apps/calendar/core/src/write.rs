@@ -204,6 +204,78 @@ pub fn set_calendar_color(text: &str, color: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn block_of(lines: &str) -> Vec<String> {
+        lines.split('\n').map(str::to_string).collect()
+    }
+
+    #[test]
+    fn an_edit_touches_only_what_it_names() {
+        let mut block = block_of(
+            "BEGIN:VEVENT\nUID:a@x\nSUMMARY:Standup\nDTSTART:20260302T090000\n\
+DTEND:20260302T091500\nATTENDEE:mailto:mara@example.com\nEND:VEVENT",
+        );
+        let changed = apply_changes(
+            &mut block,
+            &EventChanges {
+                summary: Some("Standup, then coffee".into()),
+                ..Default::default()
+            },
+        );
+        assert!(changed);
+        let out = block.join("\n");
+        // The comma is escaped, the time is untouched, and the attendee this
+        // crate does not model is still there - which a rebuilt block would have
+        // dropped without a word.
+        assert!(out.contains("SUMMARY:Standup\\, then coffee"), "{out}");
+        assert!(out.contains("DTSTART:20260302T090000"), "{out}");
+        assert!(out.contains("ATTENDEE:mailto:mara@example.com"), "{out}");
+    }
+
+    #[test]
+    fn moving_a_day_keeps_the_times_and_moving_to_all_day_rewrites_both() {
+        let mut block = block_of(
+            "BEGIN:VEVENT\nUID:a@x\nDTSTART:20260302T090000\nDTEND:20260302T101500\nEND:VEVENT",
+        );
+        apply_changes(
+            &mut block,
+            &EventChanges {
+                date: Some("2026-03-05".into()),
+                ..Default::default()
+            },
+        );
+        let out = block.join("\n");
+        assert!(out.contains("DTSTART:20260305T090000"), "{out}");
+        assert!(
+            out.contains("DTEND:20260305T101500"),
+            "the end keeps its own time: {out}"
+        );
+
+        apply_changes(
+            &mut block,
+            &EventChanges {
+                all_day: Some(true),
+                ..Default::default()
+            },
+        );
+        let out = block.join("\n");
+        // An all-day end is the NEXT day, exclusive.
+        assert!(out.contains("DTSTART;VALUE=DATE:20260305"), "{out}");
+        assert!(out.contains("DTEND;VALUE=DATE:20260306"), "{out}");
+        assert_eq!(
+            out.matches("DTSTART").count(),
+            1,
+            "replaced, not doubled: {out}"
+        );
+    }
+
+    #[test]
+    fn an_edit_that_says_nothing_changes_nothing() {
+        let mut block = block_of("BEGIN:VEVENT\nUID:a@x\nEND:VEVENT");
+        let before = block.clone();
+        assert!(!apply_changes(&mut block, &EventChanges::default()));
+        assert_eq!(block, before);
+    }
+
     const SERIES: &str = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:weekly@x\r\n\
 SUMMARY:Standup\r\nDTSTART:20260302T090000Z\r\nRRULE:FREQ=WEEKLY;COUNT=8\r\n\
 END:VEVENT\r\nBEGIN:VEVENT\r\nUID:other@x\r\nSUMMARY:Keep me\r\n\
@@ -569,4 +641,144 @@ fn end_rule_before(block: &mut [String], stamp: &str) {
 fn day_before(stamp: &str) -> Option<String> {
     let date = chrono::NaiveDate::parse_from_str(stamp, "%Y%m%d").ok()?;
     Some(date.pred_opt()?.format("%Y%m%d").to_string())
+}
+
+/// What an edit changes about an event. Every field optional: a change says what
+/// it touched, so an edit of the title cannot silently rewrite a time.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EventChanges {
+    pub summary: Option<String>,
+    /// `YYYY-MM-DD`.
+    pub date: Option<String>,
+    pub all_day: Option<bool>,
+    /// `HH:MM`, or `None` to clear it (which an all-day event needs).
+    pub start: Option<Option<String>>,
+    pub end: Option<Option<String>>,
+    pub location: Option<String>,
+}
+
+impl EventChanges {
+    /// Whether anything at all would change.
+    pub fn is_empty(&self) -> bool {
+        self.summary.is_none()
+            && self.date.is_none()
+            && self.all_day.is_none()
+            && self.start.is_none()
+            && self.end.is_none()
+            && self.location.is_none()
+    }
+}
+
+/// Apply changes to one VEVENT block, in place.
+///
+/// PROPERTY BY PROPERTY, not by rebuilding the block: an event carries things this
+/// crate does not model - attendees, attachments, an organiser, alarms somebody
+/// set - and a rebuilt block loses every one of them silently. Each changed
+/// property replaces its line if there is one and is appended before `END:VEVENT`
+/// if there is not.
+///
+/// Returns false when nothing was changed, so a caller can tell "edited" from
+/// "asked for an edit that says nothing".
+pub fn apply_changes(block: &mut Vec<String>, changes: &EventChanges) -> bool {
+    if changes.is_empty() || block.is_empty() {
+        return false;
+    }
+    // The date and the times are one decision: iCalendar writes an all-day event
+    // as `DTSTART;VALUE=DATE:20260302` and a timed one as `DTSTART:20260302T090000`,
+    // so a change to either has to rewrite the whole property rather than patch
+    // half of it.
+    let all_day = changes.all_day.unwrap_or_else(|| {
+        block
+            .iter()
+            .find(|l| l.to_ascii_uppercase().starts_with("DTSTART"))
+            .is_some_and(|l| l.to_ascii_uppercase().contains("VALUE=DATE"))
+    });
+    let date = changes
+        .date
+        .clone()
+        .and_then(|d| compact_date(&d))
+        .or_else(|| current_stamp(block, "DTSTART").map(|s| s[..8.min(s.len())].to_string()));
+
+    if let Some(summary) = &changes.summary {
+        set_property(block, "SUMMARY", &format!("SUMMARY:{}", escape(summary)));
+    }
+    if let Some(location) = &changes.location {
+        set_property(block, "LOCATION", &format!("LOCATION:{}", escape(location)));
+    }
+    if let Some(date) = date {
+        if all_day {
+            set_property(block, "DTSTART", &format!("DTSTART;VALUE=DATE:{date}"));
+            // An all-day event's end is the NEXT day, exclusive, which is the one
+            // place iCalendar's dates are not what a person would write.
+            let end = day_after(&date).unwrap_or_else(|| date.clone());
+            set_property(block, "DTEND", &format!("DTEND;VALUE=DATE:{end}"));
+        } else {
+            let start = changes
+                .start
+                .clone()
+                .flatten()
+                .or_else(|| current_time(block, "DTSTART"))
+                .unwrap_or_else(|| "09:00".to_string());
+            let end = changes
+                .end
+                .clone()
+                .flatten()
+                .or_else(|| current_time(block, "DTEND"))
+                .unwrap_or_else(|| "10:00".to_string());
+            set_property(
+                block,
+                "DTSTART",
+                &format!("DTSTART:{date}T{}", hhmmss(&start)),
+            );
+            set_property(block, "DTEND", &format!("DTEND:{date}T{}", hhmmss(&end)));
+        }
+    }
+    true
+}
+
+/// Replace a property line, or append one before `END:VEVENT`.
+fn set_property(block: &mut Vec<String>, name: &str, line: &str) {
+    let upper_name = name.to_ascii_uppercase();
+    if let Some(at) = block.iter().position(|l| {
+        let u = l.to_ascii_uppercase();
+        u.starts_with(&format!("{upper_name}:")) || u.starts_with(&format!("{upper_name};"))
+    }) {
+        block[at] = line.to_string();
+        return;
+    }
+    let at = block
+        .iter()
+        .position(|l| l.to_ascii_uppercase().starts_with("END:VEVENT"))
+        .unwrap_or(block.len());
+    block.insert(at, line.to_string());
+}
+
+/// The raw value of a date-ish property, without its parameters.
+fn current_stamp(block: &[String], name: &str) -> Option<String> {
+    let upper_name = name.to_ascii_uppercase();
+    block.iter().find_map(|l| {
+        let u = l.to_ascii_uppercase();
+        (u.starts_with(&format!("{upper_name}:")) || u.starts_with(&format!("{upper_name};")))
+            .then(|| l.split_once(':').map(|(_, v)| v.trim().to_string()))
+            .flatten()
+    })
+}
+
+/// A property's time as `HH:MM`, when it has one.
+fn current_time(block: &[String], name: &str) -> Option<String> {
+    let stamp = current_stamp(block, name)?;
+    let (_, time) = stamp.split_once('T')?;
+    (time.len() >= 4).then(|| format!("{}:{}", &time[..2], &time[2..4]))
+}
+
+/// `HH:MM` to the `HHMMSS` iCalendar writes.
+fn hhmmss(time: &str) -> String {
+    let digits: String = time.chars().filter(char::is_ascii_digit).collect();
+    format!("{:0<6}", &digits[..digits.len().min(4)])
+}
+
+/// The day after a `YYYYMMDD` stamp.
+fn day_after(stamp: &str) -> Option<String> {
+    let date = chrono::NaiveDate::parse_from_str(stamp, "%Y%m%d").ok()?;
+    Some(date.succ_opt()?.format("%Y%m%d").to_string())
 }
