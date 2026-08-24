@@ -156,18 +156,16 @@ fn main() -> std::process::ExitCode {
     // Silent when the machine has no such locale, which is every system that is not
     // this image.
     let chosen = arlen_i18n::chosen_locale();
-    match language_env(
+    let language = language_env(
         &chosen,
         &read_generated_locales(std::path::Path::new(GENERATED_LOCALES)),
-    ) {
-        Some((key, value)) => {
-            env.insert(key, value);
-        }
-        None if chosen != arlen_i18n::SOURCE_LOCALE => say(&format!(
+    );
+    if language.is_empty() && chosen != arlen_i18n::SOURCE_LOCALE {
+        say(&format!(
             "no generated locale for {chosen}, so dates and times keep the C formats"
-        )),
-        None => {}
+        ));
     }
+    env.extend(language);
 
     // Name the identity broker's uid for everything this session will start.
     //
