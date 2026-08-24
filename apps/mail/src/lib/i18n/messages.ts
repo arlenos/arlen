@@ -49,7 +49,16 @@ const messages: Catalogs = {
     "ml.unnamedAttachment": "a file the sender did not name",
     "ml.attach.save": "Save {$name} to your files",
     "ml.attach.saved": "Saved to {$path}",
-    "ml.attach.failed": "Saving did not go through: {$reason}",
+    // Why a save did not happen, one line per cause. The command answers with a
+    // tagged word and this writes the sentence; passing its payload through
+    // `String(e)` would put `[object Object]` on the surface, which is what a
+    // catch that stringifies a typed refusal always renders.
+    "ml.attach.failed.unreadable": "The message file could not be read. {$why}",
+    "ml.attach.failed.notAMessage": "That file is not a message any more, so nothing could be taken out of it.",
+    "ml.attach.failed.noSuchAttachment": "That attachment is not in the message.",
+    "ml.attach.failed.noFolder": "There is no downloads folder to save into.",
+    "ml.attach.failed.notWritten": "The file was not written. {$why}",
+    "ml.attach.failed.other": "Saving did not go through: {$reason}",
     // A `text/calendar` part, NAMED and not read. The core does not parse the
     // payload - who processes iTIP is an open call between this app and the
     // calendar daemon - so these say what the message CLAIMS the part is for and
@@ -124,7 +133,12 @@ const messages: Catalogs = {
     "ml.unnamedAttachment": "eine Datei, die die absendende Seite nicht benannt hat",
     "ml.attach.save": "{$name} in deine Dateien sichern",
     "ml.attach.saved": "Gespeichert nach {$path}",
-    "ml.attach.failed": "Speichern ging nicht durch: {$reason}",
+    "ml.attach.failed.unreadable": "Die Nachrichtendatei ließ sich nicht lesen. {$why}",
+    "ml.attach.failed.notAMessage": "Diese Datei ist keine Nachricht mehr, es war also nichts herauszunehmen.",
+    "ml.attach.failed.noSuchAttachment": "Dieser Anhang ist nicht in der Nachricht.",
+    "ml.attach.failed.noFolder": "Es gibt keinen Download-Ordner zum Speichern.",
+    "ml.attach.failed.notWritten": "Die Datei wurde nicht geschrieben. {$why}",
+    "ml.attach.failed.other": "Speichern ging nicht durch: {$reason}",
     "ml.invitation.request": "Diese Nachricht enthält eine Einladung. Diese App hat sie nicht gelesen.",
     "ml.invitation.cancel": "Diese Nachricht enthält eine Absage zu einem Termin. Diese App hat sie nicht gelesen.",
     "ml.invitation.reply": "Diese Nachricht enthält jemandes Antwort auf eine Einladung. Diese App hat sie nicht gelesen.",
