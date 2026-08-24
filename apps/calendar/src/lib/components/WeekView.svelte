@@ -9,9 +9,9 @@
   /// the quick-create; press a block and drag to move it (15-minute snap,
   /// across days), drag its lower edge to resize, hold Alt while dropping to
   /// duplicate. Every drag has a single-pointer alternative (SC 2.5.7): the
-  /// block's popover opens the full edit dialog. A repeating occurrence does
-  /// not drag - the series dialog is the next phase, and silently moving one
-  /// occurrence of a rule would be a lie about the others.
+  /// block's popover opens the full edit dialog. Dropping a repeating
+  /// occurrence asks the three-way series question first - never a silent
+  /// claim about the other occurrences.
   import { t, locale } from "$lib/i18n/messages";
   import { isToday } from "$lib/wording";
   import {
@@ -31,6 +31,7 @@
     events,
     onquick,
     onedit,
+    onmoverepeat,
   }: {
     /// The visible dates (YYYY-MM-DD), Monday-first for a week, one for a day.
     days: string[];
@@ -39,6 +40,9 @@
     onquick: (q: { date: string; time: string; endTime: string; x: number; y: number }) => void;
     /// Open the full edit dialog for one event.
     onedit: (e: AgendaEvent) => void;
+    /// A repeating occurrence was dropped somewhere: ask the scope question
+    /// before anything is written.
+    onmoverepeat: (e: AgendaEvent, changes: { date: string; time: string; endTime: string }) => void;
   } = $props();
 
   const HOUR = 48; // px per hour -> 24px per half-hour slot, the floor.
@@ -140,7 +144,7 @@
   let drag = $state<DragState | null>(null);
 
   function blockDown(e: PointerEvent, ev: AgendaEvent, startMin: number, endMin: number): void {
-    if (e.button !== 0 || ev.repeats) return;
+    if (e.button !== 0) return;
     const nearBottom = (endMin - minAtY(e.clientY)) * (HOUR / 60) < 8;
     drag = {
       event: ev,
@@ -188,6 +192,10 @@
       time: minToTime(d.startMin),
       endTime: minToTime(d.endMin),
     };
+    if (d.event.repeats) {
+      onmoverepeat(d.event, changes);
+      return;
+    }
     if (d.duplicate || e.altKey) {
       await createEvent({
         summary: d.event.summary,
@@ -298,7 +306,7 @@
                     type="button"
                     class="block"
                     class:dragging={isDragged && drag?.moved}
-                    class:fixed-series={b.event.repeats}
+                   
                     style="top: {top}px; height: {height}px; left: calc({(b.col / b.cols) * 100}% + 2px); width: calc({100 / b.cols}% - 4px); --cal: {colorOf($calendars, b.event)}"
                     onpointerdown={(e) => blockDown(e, b.event, b.startMin, b.endMin)}
                     onpointermove={blockMove}
@@ -318,9 +326,7 @@
                           : (b.event.end_time ?? "")}</span
                       >
                     {/if}
-                    {#if !b.event.repeats}
-                      <span class="resize-handle" aria-hidden="true"></span>
-                    {/if}
+                    <span class="resize-handle" aria-hidden="true"></span>
                   </button>
                 {/snippet}
               </EventPopover>
@@ -498,9 +504,6 @@
     z-index: 4;
     opacity: 0.85;
     cursor: grabbing;
-  }
-  .block.fixed-series {
-    cursor: default;
   }
   .block:focus-visible,
   .allday-pill:focus-visible {

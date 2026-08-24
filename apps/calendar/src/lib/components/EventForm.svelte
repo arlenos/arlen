@@ -36,15 +36,18 @@
     open,
     date,
     editing = null,
+    editScope = "this",
     seed = null,
     onclose,
   }: {
     open: boolean;
     /// The focused date the form starts on.
     date: string;
-    /// The event being edited, or null for a new one. Repeating events do not
-    /// reach this form until the series scope dialog exists (phase 3).
+    /// The event being edited, or null for a new one. A repeating event
+    /// arrives here AFTER the three-way scope question; `editScope` carries
+    /// the answer into the write.
     editing?: AgendaEvent | null;
+    editScope?: "this" | "following" | "all";
     /// A slot handed over from the quick-create ("All options").
     seed?: { time: string; endTime: string; title: string } | null;
     onclose: () => void;
@@ -107,14 +110,20 @@
   async function submit(): Promise<void> {
     let refusal: string | null;
     if (editing) {
-      refusal = await updateEvent(editing.uid, editing.calendar ?? calendarId, {
-        summary: summary.trim(),
-        date: day,
-        allDay,
-        time: allDay ? null : from,
-        endTime: allDay ? null : to,
-        location: location.trim(),
-      });
+      refusal = await updateEvent(
+        editing.uid,
+        editing.calendar ?? calendarId,
+        {
+          summary: summary.trim(),
+          date: day,
+          allDay,
+          time: allDay ? null : from,
+          endTime: allDay ? null : to,
+          location: location.trim(),
+        },
+        editScope,
+        editing.date,
+      );
     } else {
       const draft: EventDraft = {
         summary: summary.trim(),
@@ -139,7 +148,7 @@
 
   async function remove(): Promise<void> {
     if (!editing) return;
-    const refusal = await deleteEvent(editing.uid, editing.calendar ?? calendarId);
+    const refusal = await deleteEvent(editing.uid, editing.calendar ?? calendarId, editScope, editing.date);
     if (refusal) {
       failed = refusal;
       return;

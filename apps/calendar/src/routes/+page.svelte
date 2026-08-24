@@ -32,11 +32,13 @@
     addDays,
     startOfWeek,
     ymd,
+    updateEvent,
     type Agenda,
     type AgendaEvent,
   } from "$lib/stores/calendar";
   import CalendarSidebar from "$lib/components/CalendarSidebar.svelte";
   import QuickCreate from "$lib/components/QuickCreate.svelte";
+  import RecurrenceScopeDialog, { type Scope } from "$lib/components/RecurrenceScopeDialog.svelte";
   import WeekView from "$lib/components/WeekView.svelte";
   import MonthView from "$lib/components/MonthView.svelte";
   import AgendaView from "$lib/components/AgendaView.svelte";
@@ -53,8 +55,39 @@
   /// A slot the full dialog was seeded with from the quick-create.
   let seed = $state<{ date: string; time: string; endTime: string; title: string } | null>(null);
 
+  /// The pending series question: which event, what for, and (for a drop)
+  /// the changes waiting on the answer.
+  let scopeAsk = $state<{
+    event: AgendaEvent;
+    action: "edit" | "delete" | "move";
+    changes?: { date: string; time: string; endTime: string };
+  } | null>(null);
+  let editScope = $state<Scope>("this");
+
   function openEdit(e: AgendaEvent): void {
+    if (e.repeats) {
+      scopeAsk = { event: e, action: "edit" };
+      return;
+    }
+    editScope = "this";
     editing = e;
+    creating = true;
+  }
+
+  function moveRepeat(e: AgendaEvent, changes: { date: string; time: string; endTime: string }): void {
+    scopeAsk = { event: e, action: "move", changes };
+  }
+
+  async function scopePicked(scope: Scope): Promise<void> {
+    const ask = scopeAsk;
+    scopeAsk = null;
+    if (!ask) return;
+    if (ask.action === "move" && ask.changes) {
+      await updateEvent(ask.event.uid, ask.event.calendar ?? "", ask.changes, scope, ask.event.date);
+      return;
+    }
+    editScope = scope;
+    editing = ask.event;
     creating = true;
   }
   function quickMore(title: string): void {
@@ -279,9 +312,21 @@
             <AgendaView agenda={visibleAgenda as Agenda} />
           </div>
         {:else if view === "week"}
-          <WeekView days={weekDays} events={visibleEvents} onquick={(q) => (quick = q)} onedit={openEdit} />
+          <WeekView
+            days={weekDays}
+            events={visibleEvents}
+            onquick={(q) => (quick = q)}
+            onedit={openEdit}
+            onmoverepeat={moveRepeat}
+          />
         {:else if view === "day"}
-          <WeekView days={[focus]} events={visibleEvents} onquick={(q) => (quick = q)} onedit={openEdit} />
+          <WeekView
+            days={[focus]}
+            events={visibleEvents}
+            onquick={(q) => (quick = q)}
+            onedit={openEdit}
+            onmoverepeat={moveRepeat}
+          />
         {:else}
           <MonthView month={focus} events={visibleEvents} onopenday={openDay} onedit={openEdit} />
         {/if}
@@ -295,12 +340,17 @@
   date={seed?.date ?? focus}
   seed={seed ? { time: seed.time, endTime: seed.endTime, title: seed.title } : null}
   {editing}
+  {editScope}
   onclose={() => {
     creating = false;
     editing = null;
     seed = null;
   }}
 />
+
+{#if scopeAsk}
+  <RecurrenceScopeDialog open={true} action={scopeAsk.action} onpick={scopePicked} oncancel={() => (scopeAsk = null)} />
+{/if}
 
 {#if quick}
   <QuickCreate

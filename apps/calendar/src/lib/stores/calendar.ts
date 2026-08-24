@@ -394,18 +394,24 @@ export interface EventChanges {
   location?: string;
 }
 
-/// Update one (non-repeating) event. INTENDED SEAM:
-/// `calendar_update_event(uid, calendarId, changes)` rewriting the VEVENT in
-/// its file; repeating series come with the scope parameter (phase 3 of the
-/// plan, `"this" | "following" | "all"`). Fixture applies locally; live
-/// without the command answers with the refusal.
+/// Which part of a repeating series a change touches. In-file semantics for
+/// the seam: `this` = EXDATE + an override VEVENT (RECURRENCE-ID),
+/// `following` = an UNTIL split, `all` = the series itself.
+export type EditScope = "this" | "following" | "all";
+
+/// Update one event. INTENDED SEAM: `calendar_update_event(uid, calendarId,
+/// changes, scope, occurrenceDate)` rewriting the VEVENT (or the series per
+/// scope) in its file. Fixture applies the three scopes visibly; live without
+/// the command answers with the refusal.
 export async function updateEvent(
   uid: string,
   calendarId: string,
   changes: EventChanges,
+  scope: EditScope = "this",
+  occurrenceDate?: string,
 ): Promise<string | null> {
   try {
-    await invoke("calendar_update_event", { uid, calendarId, changes });
+    await invoke("calendar_update_event", { uid, calendarId, changes, scope, occurrenceDate: occurrenceDate ?? null });
     return null;
   } catch (e) {
     let mocked = false;
@@ -413,13 +419,28 @@ export async function updateEvent(
     if (!mocked) return get(t)("cal.edit.failed", { reason: String(e) });
     agenda.update((a) => {
       if (!a) return a;
+      // The date delta a moved occurrence implies, applied to the whole span
+      // for the following/all scopes so the series shifts as one.
+      const from = occurrenceDate ?? changes.date ?? "";
+      const delta =
+        changes.date && occurrenceDate
+          ? Math.round((parseYmd(changes.date).getTime() - parseYmd(occurrenceDate).getTime()) / 86_400_000)
+          : 0;
+      const touches = (ev: AgendaEvent): boolean => {
+        if (ev.uid !== uid) return false;
+        if (scope === "all") return true;
+        if (scope === "following") return ev.date >= from;
+        return ev.date === (occurrenceDate ?? ev.date);
+      };
       const events = a.events.map((ev) => {
-        if (ev.uid !== uid) return ev;
+        if (!touches(ev)) return ev;
+        const movedDate =
+          scope === "this" ? (changes.date ?? ev.date) : delta !== 0 ? addDays(ev.date, delta) : ev.date;
         return {
           ...ev,
           summary: changes.summary ?? ev.summary,
           location: changes.location ?? ev.location,
-          date: changes.date ?? ev.date,
+          date: movedDate,
           time: changes.allDay ? null : changes.time !== undefined ? changes.time : ev.time,
           end_time: changes.allDay ? null : changes.endTime !== undefined ? changes.endTime : ev.end_time,
           kind: changes.allDay ? "day" : changes.allDay === false && ev.kind === "day" ? "floating" : ev.kind,
@@ -432,17 +453,31 @@ export async function updateEvent(
   }
 }
 
-/// Delete one (non-repeating) event. INTENDED SEAM:
-/// `calendar_delete_event(uid, calendarId)`; scope joins in phase 3.
-export async function deleteEvent(uid: string, calendarId: string): Promise<string | null> {
+/// Delete one event (or part of its series, per scope). INTENDED SEAM:
+/// `calendar_delete_event(uid, calendarId, scope, occurrenceDate)`.
+export async function deleteEvent(
+  uid: string,
+  calendarId: string,
+  scope: EditScope = "this",
+  occurrenceDate?: string,
+): Promise<string | null> {
   try {
-    await invoke("calendar_delete_event", { uid, calendarId });
+    await invoke("calendar_delete_event", { uid, calendarId, scope, occurrenceDate: occurrenceDate ?? null });
     return null;
   } catch (e) {
     let mocked = false;
     calendarMocked.update((m) => ((mocked = m), m));
     if (!mocked) return get(t)("cal.edit.failed", { reason: String(e) });
-    agenda.update((a) => (a ? { ...a, events: a.events.filter((ev) => ev.uid !== uid) } : a));
+    agenda.update((a) => {
+      if (!a) return a;
+      const keep = (ev: AgendaEvent): boolean => {
+        if (ev.uid !== uid) return true;
+        if (scope === "all") return false;
+        if (scope === "following") return ev.date < (occurrenceDate ?? "");
+        return ev.date !== (occurrenceDate ?? ev.date);
+      };
+      return { ...a, events: a.events.filter(keep) };
+    });
     return null;
   }
 }
