@@ -1,0 +1,64 @@
+[Unit]
+Description=Arlen Windows-app runtime (user service)
+Documentation=https://github.com/arlenos/arlen
+# The bottle daemon holds the capability-scoped Wine prefixes: the drive table a
+# bottle's grants become, the prefix check, and the launch that puts a Windows
+# program inside one. `windows-apps-plan.md` decided it is a daemon rather than a
+# library the Settings backend links, for one reason: a launched Windows program
+# has to outlive the window that started it, and a panel gets closed.
+# No ordering dependency. Nothing must wait on it: a caller that cannot connect
+# gets a failed connect, which the Settings panel already reads as "not running"
+# rather than as an empty machine.
+
+[Service]
+# Type=simple: bottled does not call sd_notify. A caller connects lazily, so an
+# unbound socket is a failed connect and no readiness barrier is needed.
+Type=simple
+ExecStart=/usr/lib/arlen/libexec/arlen-bottled
+# A daemon that cannot tell where the person's data lives exits non-zero rather
+# than putting bottles somewhere nobody looks; restart with back-off so a
+# persistent fault surfaces instead of crash-looping fast.
+Restart=on-failure
+RestartSec=2
+
+# THE SESSION USER, deliberately, and this is the opposite decision from the
+# config broker next door. The bottles ARE the person's data, under their
+# $XDG_DATA_HOME, and the Windows program it launches has to be their process:
+# their files, their display, their audio. A separate uid would have to be granted
+# all of that back, one bind mount at a time, and would still own the prefixes the
+# person is meant to own.
+
+# NO MOUNT-NAMESPACE OPTIONS - not ProtectSystem, ProtectHome, PrivateTmp,
+# PrivateDevices or ProtectKernel*. Two independent reasons, both already paid for
+# once in this tree:
+#
+#   * A private mount namespace makes a mount this service performs invisible to
+#     the user's session. The knowledge daemon's FUSE timeline is unreachable in
+#     deployment for exactly that, and a bottle's bind mounts have the same shape.
+#   * Peer authentication reads the caller through /proc. Under any single one of
+#     those options a same-uid /proc/<pid> read fails EACCES - measured on this
+#     host for capsuled, the audit daemon and the consent broker, each of which
+#     omits them for the same reason. A daemon that rejects every connection is
+#     not hardened, it is off.
+#
+# The daemon's boundary is the peer credential plus the bwrap confinement it puts
+# the Windows program in, not this unit's filesystem view. The hardening that does
+# NOT create a mount namespace is kept.
+RestrictNamespaces=no
+LockPersonality=yes
+NoNewPrivileges=yes
+UMask=0077
+
+# MemoryDenyWriteExecute is NOT set, and its absence is a decision rather than an
+# oversight: the sibling user services keep it. Wine and the Windows programs it
+# runs generate code at runtime, and the option applies to everything in the
+# service, children included - so setting it here would leave the daemon healthy
+# and every launched program dead on its first JIT.
+
+# RestrictNamespaces is explicitly OFF above rather than absent: the launch path
+# runs bubblewrap, which needs user + mount namespaces to build the bottle's
+# confinement. Denying them here would leave every Windows program unlaunchable
+# while the daemon looked healthy.
+
+[Install]
+WantedBy=default.target

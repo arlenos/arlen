@@ -155,6 +155,11 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-ai-undo-signer.service", "ai-undo-signer"),
     ("arlen-anomalyd.service", "anomalyd"),
     ("arlen-auditd.service", "auditd"),
+    // The Windows-app runtime. It installs at `/usr/lib/arlen/libexec/`, so the
+    // path rules alone would resolve it to the basename `arlen-bottled`; the id
+    // the rest of the system knows it by is `bottled`, which is what the profile
+    // and any future admission list are filed under.
+    ("arlen-bottled.service", "bottled"),
     ("arlen-capsuled.service", "capsuled"),
     // Moved from the SYSTEM table on 15 Aug with the units themselves: the graph
     // daemon and its timeline view now run under the user manager, so the
