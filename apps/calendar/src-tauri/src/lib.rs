@@ -735,9 +735,8 @@ mod tests {
     /// the surface can name what it read when there is nothing in it.
     #[test]
     fn opened_on_a_file_the_agenda_is_that_file_and_names_it() {
-        let dir = std::env::temp_dir().join(format!("arlen-cal-host-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
-        let path = dir.join("one.ics");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("one.ics");
         std::fs::write(
             &path,
             "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:only\nSUMMARY:The only one\n\
@@ -753,20 +752,17 @@ mod tests {
         // The FILE, not the calendar folder: "no events in <this file>" is the
         // honest sentence when the thing somebody opened turns out to be empty.
         assert_eq!(agenda.directory, path.display().to_string());
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn a_file_that_is_not_a_calendar_is_counted_rather_than_erroring() {
-        let dir = std::env::temp_dir().join(format!("arlen-cal-bad-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
-        let path = dir.join("notes.ics");
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("notes.ics");
         std::fs::write(&path, "just some text").expect("write");
 
         let agenda = agenda_of_file(&path);
         assert_eq!(agenda.unreadable, 1);
         assert!(agenda.events.is_empty());
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
