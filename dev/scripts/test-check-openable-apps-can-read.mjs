@@ -71,6 +71,30 @@ function run(root) {
 }
 
 {
+  // A reader that never writes says so with `read_only`, and that reaches the file
+  // just as well. Before 25 Aug this failed, so the only way past the gate was the
+  // read-write grant the app does not want.
+  const root = tree({
+    entry: OPENS_FILES,
+    profile: `[info]\napp_id = "dev.arlen.thing"\n\n[filesystem]\nread_only = [\n    "/home/$USER",\n]\n`,
+  });
+  const rc = run(root);
+  rc === 0 ? ok("a read-only grant on a user directory passes") : bad("a read-only grant on a user directory passes", `expected 0, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // A read-only path that reaches nowhere a person keeps files is still no answer.
+  const root = tree({
+    entry: OPENS_FILES,
+    profile: `[info]\napp_id = "dev.arlen.thing"\n\n[filesystem]\nread_only = [\n    "/sys/class/power_supply",\n]\n`,
+  });
+  const rc = run(root);
+  rc === 1 ? ok("a read-only path outside the user's files is not a read grant") : bad("a read-only path outside the user's files is not a read grant", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   // A narrower user dir is a real answer, not a workaround.
   const root = tree({
     entry: OPENS_FILES,

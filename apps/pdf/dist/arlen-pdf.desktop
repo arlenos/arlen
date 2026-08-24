@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Version=1.5
-Name=Document reader
-Name[de]=Dokumentbetrachter
+Name=Document
+Name[de]=Dokument
 Comment=Read PDFs, with the text of a page when its layout cannot be drawn
 Comment[de]=PDFs lesen, mit dem Text einer Seite, wenn ihr Layout nicht gezeichnet werden kann
 Exec=arlen-pdf %f
