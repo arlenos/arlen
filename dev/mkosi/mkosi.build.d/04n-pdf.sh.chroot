@@ -33,6 +33,15 @@ else
     npm ci --no-audit --no-fund --loglevel=error
 fi
 
+# NOT BUILT HERE, and named so the gap is visible: `apps/pdf/decode-page` is a
+# second binary (`arlen-pdf-decode-page`) that draws one page in a sandboxed
+# process. It links `pdfium-render`, and there is no libpdfium in this image, so
+# building it would fail the whole image build to ship something that could not
+# run. Without it the reader opens a document, lists its contents, searches inside
+# it and shows each page as text - which is why the reader is here at all. When a
+# rasteriser is settled, this step gains the worker beside the app binary: the app
+# looks for it next to its own executable (`worker_dir`), and answers `no-renderer`
+# until it is there.
 echo ">> tauri build --no-bundle (production) arlen-pdf"
 ./node_modules/.bin/tauri build --no-bundle
 

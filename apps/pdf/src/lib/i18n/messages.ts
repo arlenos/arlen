@@ -45,7 +45,8 @@ const messages: Catalogs = {
     "pdf.lastPage": "Last page",
     "pdf.showContents": "Show contents",
     "pdf.hostAbsent": "The reader reads documents through its own host, which is not running here.",
-    "pdf.pageFailed": "This page could not be drawn: {$reason}",
+    "pdf.pageFailed": "This page could not be drawn.",
+    "pdf.pageNoRenderer": "This machine has nothing installed that can draw a page.",
     "pdf.textInstead": "The text of this page, without its layout:",
   },
   de: {
@@ -85,7 +86,8 @@ const messages: Catalogs = {
     "pdf.lastPage": "Letzte Seite",
     "pdf.showContents": "Inhalt anzeigen",
     "pdf.hostAbsent": "Der Reader liest Dokumente über seinen eigenen Host, der hier nicht läuft.",
-    "pdf.pageFailed": "Diese Seite konnte nicht gezeichnet werden: {$reason}",
+    "pdf.pageFailed": "Diese Seite konnte nicht gezeichnet werden.",
+    "pdf.pageNoRenderer": "Auf diesem Rechner ist nichts installiert, das eine Seite zeichnen kann.",
     "pdf.textInstead": "Der Text dieser Seite, ohne ihr Layout:",
   },
 };

@@ -146,7 +146,13 @@ export async function fetchPage(page: number, scale: number): Promise<PageState>
     return { image, lines, failure: null, words: "", scale };
   } catch (e) {
     const words = await invoke<string>("pdf_page_text", { page }).catch(() => "");
-    return { image: null, lines: [], failure: String(e), words, scale };
+    // The backend answers with a token, not a sentence: `no-renderer` when this
+    // machine has nothing to draw with, `refused` when it had and would not. An
+    // unrecognised value is passed through as `refused` rather than shown, so a
+    // future token cannot arrive on screen as a bare word.
+    const token = String(e);
+    const failure = token === "no-renderer" ? token : "refused";
+    return { image: null, lines: [], failure, words, scale };
   }
 }
 
