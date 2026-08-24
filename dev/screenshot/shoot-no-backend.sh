@@ -22,6 +22,13 @@
 #   dev/screenshot/shoot-no-backend.sh knowledge "" out/kg.png 1280 900
 #   SHOOT_OPEN='button[data-place=library]' dev/screenshot/shoot-no-backend.sh knowledge
 #
+# `SHOOT_FAILING_HOST=1` installs a Tauri runtime that is PRESENT and refuses
+# every command. Without it this script renders the NO-RUNTIME path, and for a
+# Tauri app that is the browser preview: `tauriAvailable` is false, so every
+# fixture guard fires and the picture is the demo the author put there on purpose.
+# With it the page takes the path a person actually meets - runtime there, backend
+# broken - which is where a fixture standing in for a failed read lives.
+#
 # `SHOOT_OPEN` is a CSS selector clicked before the shot, for a view that lives
 # behind a click rather than behind a route. The knowledge app switches Timeline,
 # Projects, Searches and Library inside one route, so without this three of its
@@ -179,12 +186,14 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
     # A selector is one argument even when it contains spaces or a comma:
     # `.toolbar button, header + div button` is a perfectly ordinary selector and
     # the word-split version passed its tail to argparse, which refused the run.
+    stub=""
+    [ -n "${6:-}" ] && stub="--stub-host"
     if [ -n "${5:-}" ]; then
       python3 "$1/dev/screenshot/render-wide.py" \
-        --url "$2" --out "$3" --width "$4" --require-width "$4" --open "$5"
+        --url "$2" --out "$3" --width "$4" --require-width "$4" --open "$5" $stub
     else
       python3 "$1/dev/screenshot/render-wide.py" \
-        --url "$2" --out "$3" --width "$4" --require-width "$4"
+        --url "$2" --out "$3" --width "$4" --require-width "$4" $stub
     fi
     rc=$?
     # Kill AND wait: the display goes away with xvfb-run the moment this returns,
@@ -192,7 +201,7 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
     # reads like a failure of the shot.
     if [ -n "$ob" ]; then kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null; fi
     exit $rc
-  ' _ "$ROOT" "$URL" "$OUT" "$W" "${SHOOT_OPEN:-}" \
+  ' _ "$ROOT" "$URL" "$OUT" "$W" "${SHOOT_OPEN:-}" "${SHOOT_FAILING_HOST:-}" \
   2>&1 | grep -v "Gdk-WARNING" || true
 
 # Did we photograph the app, or the preview server's corpse? A page whose text is

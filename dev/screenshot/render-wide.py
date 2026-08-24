@@ -89,9 +89,46 @@ class Render:
         self.status = status
         self.app.quit()
 
+    # A Tauri runtime that is PRESENT and answers every command with a refusal.
+    #
+    # Without it this harness can only render the no-runtime path, and for a Tauri
+    # app that is the browser preview - `tauriAvailable` is false, so every
+    # `if (!tauriAvailable) { fixture }` guard fires and what gets photographed is
+    # the demo the author put there on purpose. The path a person actually meets
+    # is the other one: the runtime is there from the moment the webview loads, and
+    # the BACKEND fails. That is where the fixture-on-failure defects live, and
+    # nothing here could reach it.
+    #
+    # The refusal is deliberately unnameable. An app that decodes named problems
+    # falls through to its escape branch, which is exactly the branch worth looking
+    # at: it is the one that ends up quoting machinery at a person.
+    STUB_HOST = """
+      window.__TAURI_INTERNALS__ = {
+        invoke: function (cmd) {
+          return Promise.reject('stub-host: no backend behind this window (' + cmd + ')');
+        },
+        transformCallback: function (cb) { return cb; },
+        metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
+      };
+      window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: function () {} };
+    """
+
     def on_activate(self, app):
         self.win = Gtk.ApplicationWindow(application=app)
-        self.view = WebKit.WebView()
+        if self.args.stub_host:
+            ucm = WebKit.UserContentManager()
+            ucm.add_script(
+                WebKit.UserScript.new(
+                    self.STUB_HOST,
+                    WebKit.UserContentInjectedFrames.TOP_FRAME,
+                    WebKit.UserScriptInjectionTime.START,
+                    None,
+                    None,
+                )
+            )
+            self.view = WebKit.WebView(user_content_manager=ucm)
+        else:
+            self.view = WebKit.WebView()
         self.view.set_hexpand(True)
         self.view.set_vexpand(True)
         self.win.set_child(self.view)
@@ -436,6 +473,10 @@ def main():
                          " only exists once a menu or panel is open. Repeatable:"
                          " each is clicked in turn, so a press INSIDE an opened"
                          " menu is reachable")
+    ap.add_argument("--stub-host", action="store_true",
+                    help="install a Tauri runtime whose every command FAILS, so "
+                         "the page takes its backend-is-broken path rather than "
+                         "its no-runtime path")
     ap.add_argument("--probe", default=None,
                     help="evaluate one JS expression against the rendered page and"
                          " print its value; writes no image")
