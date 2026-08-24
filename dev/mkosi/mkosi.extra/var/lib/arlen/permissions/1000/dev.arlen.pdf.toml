@@ -1,0 +1,35 @@
+# The document reader's profile, under the uid it applies to, like every other app
+# here.
+#
+# NARROWER THAN ANY OF ITS NEIGHBOURS, because the reader is narrower. It is handed
+# ONE path on the command line, opens it, and answers six questions about it:
+# how many pages, the text of a page, a rendered page, the text layer over that
+# render, and a search across them. That is the whole surface (`src-tauri/src/lib.rs`).
+#
+# What it therefore does NOT have, each absent on purpose rather than forgotten:
+#
+#   no [graph]        it asks the knowledge graph nothing. An empty section would
+#                     be a different statement - that it may read and happens to
+#                     read nothing - so there is none at all, the same way the
+#                     viewer's profile says it.
+#   no write anywhere it cannot change a document, cannot trash one, and has no
+#                     command that could. When an annotation or a save-a-copy
+#                     lands, the grant lands with it and is decided then.
+#   no folder walk    unlike the viewer it does not step to the next file in the
+#                     directory, so it needs the file it was given and nothing
+#                     around it. The read grants below are still directory-wide
+#                     because a reader that can only open one blessed path is not
+#                     a reader; they are the places documents live.
+[info]
+app_id = "dev.arlen.pdf"
+tier = "first-party"
+
+[filesystem]
+# Where a document is opened from. Read-only throughout: every one of the six
+# commands reads.
+read = [
+    "/home/$USER",
+    "/media",
+    "/run/media/$USER",
+    "/mnt",
+]

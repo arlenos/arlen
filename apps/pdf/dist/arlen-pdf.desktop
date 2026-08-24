@@ -1,0 +1,33 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Document reader
+Name[de]=Dokumentbetrachter
+Comment=Read PDFs, with the text of a page when its layout cannot be drawn
+Comment[de]=PDFs lesen, mit dem Text einer Seite, wenn ihr Layout nicht gezeichnet werden kann
+Exec=arlen-pdf %f
+Icon=arlen-pdf
+Terminal=false
+# Viewer, not editor: this reads documents and cannot change them.
+Categories=Office;Viewer;
+Keywords=pdf;document;read;reader;view;
+Keywords[de]=pdf;dokument;lesen;betrachter;anzeigen;
+StartupNotify=true
+
+# WHAT IT CAN DO ON THIS IMAGE, since the entry is a promise. There is no
+# `libpdfium` here, so the reader cannot DRAW a page: it opens the document, shows
+# the text of each page under a line saying that is the text and not the layout,
+# and searches inside it. That was judged better than no reader at all - a product
+# call, made by the planner on 24 August; before that this app was deliberately
+# unstaged for exactly this reason. When pdfium ships, the pages draw and nothing
+# here changes.
+#
+# PDF only, and deliberately only that. The reader decodes PDF pages and nothing
+# else; claiming the neighbouring document types (djvu, postscript, the office
+# formats) would put this app in front of files it can do nothing with, which is
+# worse for the person than not being offered at all.
+MimeType=application/pdf;
+
+# The identity the permission system keys on, stated rather than derived from the
+# desktop-id, as the other apps do.
+X-Arlen-AppId=dev.arlen.pdf
