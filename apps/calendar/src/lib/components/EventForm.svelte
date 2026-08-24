@@ -20,6 +20,7 @@
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { t, locale } from "$lib/i18n/messages";
   import { dayLabel } from "$lib/wording";
+  import { parseQuick } from "$lib/quickparse";
   import {
     calendars,
     CALENDAR_PALETTE,
@@ -100,6 +101,30 @@
 
   const DAY_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
+  /// The live parse of the title line (create mode only). Recognised pieces
+  /// set the fields as they appear - the fields stay editable, and the words
+  /// leave the title only when the event is written.
+  const parsed = $derived(editing ? null : parseQuick(summary, new Date()));
+  $effect(() => {
+    if (!parsed) return;
+    if (parsed.date) day = parsed.date;
+    if (parsed.time) {
+      allDay = false;
+      from = parsed.time;
+      to = parsed.endTime ?? parsed.time;
+    }
+    if (parsed.calendar) {
+      const hit = $calendars.find(
+        (c) => c.id.toLowerCase() === parsed.calendar || c.name.toLowerCase() === parsed.calendar,
+      );
+      if (hit) calendarId = hit.id;
+    }
+    if (parsed.location) location = parsed.location;
+  });
+  const anyParsed = $derived(
+    parsed !== null && !!(parsed.date || parsed.time || parsed.location || parsed.calendar),
+  );
+
   function reset(): void {
     summary = "";
     location = "";
@@ -126,7 +151,7 @@
       );
     } else {
       const draft: EventDraft = {
-        summary: summary.trim(),
+        summary: (parsed?.title || summary).trim(),
         date: day,
         allDay,
         time: allDay ? null : from,
@@ -168,6 +193,16 @@
       placeholder={$t("cal.form.titlePlaceholder")}
       aria-label={$t("cal.form.summary")}
     />
+
+    {#if anyParsed && parsed}
+      <p class="parsed" aria-live="polite">
+        <span class="p-label">{$t("cal.parsed")}</span>
+        {#if parsed.date}<span class="p-chip">{dayLabel(parsed.date, $locale)}</span>{/if}
+        {#if parsed.time}<span class="p-chip">{parsed.time}{#if parsed.endTime}&#8211;{parsed.endTime}{/if}</span>{/if}
+        {#if parsed.location}<span class="p-chip">{parsed.location}</span>{/if}
+        {#if parsed.calendar}<span class="p-chip">/{parsed.calendar}</span>{/if}
+      </p>
+    {/if}
 
     <div class="row">
       <CalendarDays size={15} strokeWidth={1.75} aria-hidden="true" />
@@ -295,6 +330,24 @@
   .title:focus-visible {
     outline: none;
     border-bottom-color: var(--color-accent, #6366f1);
+  }
+  .parsed {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin: -0.35rem 0 0;
+    font-size: var(--text-xs, 12px);
+  }
+  .p-label {
+    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+  }
+  .p-chip {
+    padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-chip, 4px);
+    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 80%, transparent);
+    font-variant-numeric: tabular-nums;
   }
   .row {
     display: flex;
