@@ -70,9 +70,27 @@ def listed() -> dict[str, tuple[str, str]]:
 
 
 def called(root: pathlib.Path) -> set[str]:
-    """Every literal binary name passed to `Command::new`."""
+    """Every binary name this tree spawns, by literal or by path constant.
+
+    TWO SHAPES, because the tree has two. `Command::new("wineboot")` is the common
+    one. `Command::new(WINE)`, where a `const WINE: &str = "/usr/bin/wine"` sits a
+    few lines up, is what a component uses when it needs the absolute path for a
+    reason - the bottle daemon checks that Wine exists before it builds an argv,
+    and a bare name would not answer that. Reading only the first shape, this said
+    "nothing spawns wine any more" about a daemon whose whole job is spawning it.
+    """
     found: set[str] = set()
     pattern = re.compile(r'Command::new\(\s*"([a-z0-9_.+-]+)"\s*\)')
+    # `const NAME: &str = "/usr/bin/thing";` declared in one file and handed to
+    # `Command::new(path::to::NAME)` in another - which is where the bottle
+    # daemon's Wine lives, so a same-file rule would still have missed it. Two
+    # passes: collect the constants, then the identifiers actually spawned.
+    const_path = re.compile(
+        r'const\s+([A-Z_]+)\s*:\s*&str\s*=\s*"/(?:usr/)?(?:s?bin|libexec)/([a-z0-9_.+-]+)"'
+    )
+    spawned_ident = re.compile(r'Command::new\(\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*([A-Z_]+)\s*\)')
+    consts: dict[str, str] = {}
+    idents: set[str] = set()
     for sub in SCAN:
         base = root / sub
         if not base.is_dir():
@@ -80,7 +98,13 @@ def called(root: pathlib.Path) -> set[str]:
         for path in base.rglob("*.rs"):
             if {"target", "node_modules"} & set(path.parts):
                 continue
-            found.update(pattern.findall(path.read_text(encoding="utf-8", errors="replace")))
+            text = path.read_text(encoding="utf-8", errors="replace")
+            found.update(pattern.findall(text))
+            consts.update(dict(const_path.findall(text)))
+            idents.update(spawned_ident.findall(text))
+    # A constant counts only when something actually spawns it: a path that is
+    # merely compared against is not a call on this image.
+    found.update(binary for name, binary in consts.items() if name in idents)
     return found
 
 

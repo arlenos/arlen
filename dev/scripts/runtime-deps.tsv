@@ -71,6 +71,7 @@ rclone	rclone	online-accounts	absent	cloud storage sync; online-accounts is not 
 ffmpeg	ffmpeg	viewers	absent	video thumbnailing and transcode
 wf-recorder	wf-recorder	desktop-shell	absent	screen recording
 glib-compile-schemas	libglib2.0-bin	installd	absent	compiling GSettings schemas for an installed app
+wine	wine	bottled	absent	running a Windows program at all, and reading which compatibility version this machine has - the daemon calls it by absolute path, which no gate scans, so it is here by hand
 wineboot	wine	bottled	absent	creating a bottle's prefix; without it no Windows program runs at all
 wineserver	wine	bottled	absent	stopping the server a bottle's boot started, so it is not inherited by the next launch
 appstreamcli	appstream	forage pipeline, store	ships	composes a built package's own catalogue; the compose half is a separate Debian package
