@@ -135,8 +135,8 @@
   }
   /* The applied receipt drops the warning register for a quiet confirmed one. */
   .gate.done {
-    border-color: color-mix(in srgb, #8fae74 35%, transparent);
-    background: color-mix(in srgb, #8fae74 6%, transparent);
+    border-color: color-mix(in srgb, var(--color-success, #8fae74) 35%, transparent);
+    background: color-mix(in srgb, var(--color-success, #8fae74) 6%, transparent);
   }
   .gate-head {
     display: flex;
@@ -145,7 +145,7 @@
     color: var(--color-warning, #d4b483);
   }
   .gate.done .gate-head {
-    color: #8fae74;
+    color: var(--color-success, #8fae74);
   }
   .gate-head :global(svg) {
     flex-shrink: 0;
@@ -169,11 +169,11 @@
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .diff-summary .add {
-    color: #8fae74;
+    color: var(--color-success, #8fae74);
     font-variant-numeric: tabular-nums;
   }
   .diff-summary .del {
-    color: #c96a6a;
+    color: var(--color-error, #c96a6a);
     font-variant-numeric: tabular-nums;
   }
   .gate-actions {
@@ -187,7 +187,7 @@
     align-items: center;
     gap: 0.4rem;
     font-size: var(--text-xs);
-    color: #8fae74;
+    color: var(--color-success, #8fae74);
     margin-inline-end: auto;
   }
   .done-note .via {
@@ -202,8 +202,8 @@
     margin-inline-start: 0.125rem;
     padding: 0.05rem 0.35rem;
     border-radius: var(--radius-chip);
-    background: color-mix(in srgb, #8fae74 16%, transparent);
-    color: #8fae74;
+    background: color-mix(in srgb, var(--color-success, #8fae74) 16%, transparent);
+    color: var(--color-success, #8fae74);
     font-size: var(--text-2xs);
     font-weight: 600;
     text-transform: uppercase;
