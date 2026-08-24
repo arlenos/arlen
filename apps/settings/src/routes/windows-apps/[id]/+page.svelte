@@ -8,7 +8,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
-  import { ShieldAlert, FolderOpen, Eraser, AppWindow } from "lucide-svelte";
+  import { ShieldAlert, FolderOpen, Eraser, ArrowLeft } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -20,7 +20,6 @@
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
   import { Input } from "@arlen/ui-kit/components/ui/input";
-  import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import {
@@ -89,6 +88,15 @@
      repeat the name. -->
 <Page>
   <SectionGrid>
+    <!-- The way back. Every other sub-page's parent sits in the sidebar; this
+         panel is delisted until the daemon lands, so the page carries its own
+         return, named after where it goes. -->
+    <div class="back span-full">
+      <Button variant="ghost" size="sm" onclick={() => goto("/windows-apps")}>
+        <ArrowLeft size={15} strokeWidth={2} /> {$t("s.wa.allApps")}
+      </Button>
+    </div>
+
     {#if $winApps.mocked}
       <p class="note span-full">{$t("s.wa.mocked")}</p>
     {/if}
@@ -105,11 +113,6 @@
       <Section class="span-full">
         <p class="empty">{$t("s.wa.notFound")}</p>
       </Section>
-      <div class="span-full">
-        <LinkCard href="/windows-apps" title={$t("s.wa.allApps")} description={$t("s.wa.allAppsDesc")}>
-          {#snippet icon()}<AppWindow size={20} strokeWidth={1.75} />{/snippet}
-        </LinkCard>
-      </div>
     {:else}
       <div class="head span-full">
         <AppAvatar appId={bottle.appId ?? bottle.id} label={bottle.appName ?? bottle.id} size={48} />
@@ -320,12 +323,6 @@
           {/snippet}
         </Row>
       </Section>
-
-      <div class="span-full">
-        <LinkCard href="/windows-apps" title={$t("s.wa.allApps")} description={$t("s.wa.allAppsDesc")}>
-          {#snippet icon()}<AppWindow size={20} strokeWidth={1.75} />{/snippet}
-        </LinkCard>
-      </div>
     {/if}
   </SectionGrid>
 </Page>
@@ -341,6 +338,12 @@
 />
 
 <style>
+  /* The ghost button carries its own padding; pulled in so its label sits on
+     the grid edge with the sections below. */
+  .back {
+    margin-inline-start: -0.65rem;
+  }
+
   .note {
     margin: 0;
     padding: 0 0.25rem 0.5rem;
