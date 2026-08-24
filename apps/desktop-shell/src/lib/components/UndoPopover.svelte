@@ -9,7 +9,24 @@
   import { Undo2, Check } from "lucide-svelte";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
-  import { undoHistory, undoMocked, undoUnavailable, enact } from "$lib/stores/undoHistory";
+  import {
+    undoHistory,
+    undoMocked,
+    undoUnavailable,
+    enact,
+    type UndoProducer,
+  } from "$lib/stores/undoHistory";
+
+  // Who journalled the act - the kernel-attested actor the service reports.
+  // On a trust surface "the agent moved this" and "you moved this in Files"
+  // are different facts, so the row leads with the one word that separates
+  // them. A map of literals, because the key gate reads keys, not templates.
+  const WHO: Record<UndoProducer, string> = {
+    agent: "sh.undo.by.agent",
+    files: "sh.undo.by.files",
+    terminal: "sh.undo.by.terminal",
+    settings: "sh.undo.by.settings",
+  };
 
   // Compact ages so the row stays one calm line ("now", "4m", "2h").
   function ago(at: number): string {
@@ -41,6 +58,7 @@
       {#each $undoHistory as e (e.opId)}
         <div class="undo-row" class:done={e.state === "done"}>
           <span class="undo-text">
+            <span class="undo-who">{$t(WHO[e.producer])}</span>
             <span class="undo-verb">{e.verb}</span>
             <span class="undo-object">{e.object}</span>
           </span>
@@ -102,6 +120,12 @@
   .undo-text {
     min-width: 0;
     line-height: 1.35;
+  }
+  /* The actor leads the sentence in the same quiet register as the verb;
+     the word itself carries the distinction, not a chip. */
+  .undo-who {
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .undo-verb {
     font-size: var(--text-xs);
