@@ -186,16 +186,30 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
     # A selector is one argument even when it contains spaces or a comma:
     # `.toolbar button, header + div button` is a perfectly ordinary selector and
     # the word-split version passed its tail to argparse, which refused the run.
+    # `both` renders the page twice from this one build and this one X server:
+    # once with no runtime, once with a runtime that refuses. The pair is the
+    # point - either alone is a picture of half the failures - and doing it here
+    # rather than by calling this script twice is what keeps a sweep from paying
+    # for a second production build per app.
+    rc=0
+    shots="$3"
     stub=""
-    [ -n "${6:-}" ] && stub="--stub-host"
-    if [ -n "${5:-}" ]; then
-      python3 "$1/dev/screenshot/render-wide.py" \
-        --url "$2" --out "$3" --width "$4" --require-width "$4" --open "$5" $stub
-    else
-      python3 "$1/dev/screenshot/render-wide.py" \
-        --url "$2" --out "$3" --width "$4" --require-width "$4" $stub
-    fi
-    rc=$?
+    case "${6:-}" in
+      both) shots="$3 ${3%.png}-hostfails.png" ;;
+      "") ;;
+      *) stub="--stub-host" ;;
+    esac
+    for out in $shots; do
+      flags="$stub"
+      case "$out" in *-hostfails.png) flags="--stub-host" ;; esac
+      if [ -n "${5:-}" ]; then
+        python3 "$1/dev/screenshot/render-wide.py" \
+          --url "$2" --out "$out" --width "$4" --require-width "$4" --open "$5" $flags || rc=$?
+      else
+        python3 "$1/dev/screenshot/render-wide.py" \
+          --url "$2" --out "$out" --width "$4" --require-width "$4" $flags || rc=$?
+      fi
+    done
     # Kill AND wait: the display goes away with xvfb-run the moment this returns,
     # and a WM still shutting down against a vanishing server logs noise that
     # reads like a failure of the shot.
