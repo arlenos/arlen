@@ -113,6 +113,8 @@ const messages: Catalogs = {
     "h.aa.unreachable": "Could not reach the agent.",
     // Sidebar
     "h.sidebar.newChat": "New chat",
+    "h.menu.chat": "Chat",
+    "h.menu.import": "Import chat…",
     "h.sidebar.newChatTitle": "New chat (Ctrl+N)",
     "h.sidebar.search": "Search chats",
     "h.sidebar.emptyChats": "Your chats will show up here.",
@@ -383,6 +385,8 @@ const messages: Catalogs = {
     "h.aa.failed": "Beim Erreichen des Agenten ist etwas schiefgegangen.",
     "h.aa.unreachable": "Der Agent war nicht erreichbar.",
     "h.sidebar.newChat": "Neue Unterhaltung",
+    "h.menu.chat": "Chat",
+    "h.menu.import": "Chat importieren…",
     "h.sidebar.newChatTitle": "Neue Unterhaltung (Ctrl+N)",
     "h.sidebar.search": "Unterhaltungen suchen",
     "h.sidebar.emptyChats": "Deine Unterhaltungen erscheinen hier.",
