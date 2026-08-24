@@ -22,9 +22,14 @@ const messages: Catalogs = {
     "pdf.search.unsearchable":
       "{$count} pages could not be read, so anything on them is missing from these results.",
     "pdf.nothingOpen": "No document is open. Open a PDF from Files, or pass one on the command line.",
-    "pdf.failed": "Could not open this document: {$reason}",
+    "pdf.failed": "This document could not be opened.",
+    "pdf.notFound": "There is no file at {$path}.",
+    "pdf.noPermission": "This account may not read {$path}.",
+    "pdf.unreadableFile": "{$path} could not be read.",
+    "pdf.notAPdf": "This file is not a PDF this reader can read.",
+    "pdf.noPages": "This PDF contains no pages.",
     "pdf.launchUnknown":
-      "The reader could not find out which document it was asked to open, so it opened none: {$reason}",
+      "The reader could not find out which document it was asked to open, so it opened none.",
     "pdf.locked": "This document is locked with a password. This reader cannot ask for one yet, so it cannot be opened here.",
     "pdf.menu.view": "View",
     "pdf.menu.go": "Go",
@@ -63,9 +68,14 @@ const messages: Catalogs = {
       "{$count} Seiten konnten nicht gelesen werden, deshalb fehlt alles darauf in diesen Ergebnissen.",
     "pdf.nothingOpen":
       "Es ist kein Dokument geöffnet. Öffne ein PDF aus Dateien oder übergib eins auf der Kommandozeile.",
-    "pdf.failed": "Dieses Dokument konnte nicht geöffnet werden: {$reason}",
+    "pdf.failed": "Dieses Dokument konnte nicht geöffnet werden.",
+    "pdf.notFound": "Unter {$path} liegt keine Datei.",
+    "pdf.noPermission": "Dieses Konto darf {$path} nicht lesen.",
+    "pdf.unreadableFile": "{$path} konnte nicht gelesen werden.",
+    "pdf.notAPdf": "Diese Datei ist kein PDF, das dieser Leser lesen kann.",
+    "pdf.noPages": "Dieses PDF enthält keine Seiten.",
     "pdf.launchUnknown":
-      "Der Reader konnte nicht herausfinden, welches Dokument er öffnen sollte, deshalb hat er keines geöffnet: {$reason}",
+      "Der Leser konnte nicht herausfinden, welches Dokument er öffnen sollte, deshalb hat er keines geöffnet.",
     "pdf.locked": "Dieses Dokument ist mit einem Passwort gesperrt. Dieser Leser kann noch keins abfragen, also lässt es sich hier nicht öffnen.",
     "pdf.menu.view": "Ansicht",
     "pdf.menu.go": "Gehe zu",

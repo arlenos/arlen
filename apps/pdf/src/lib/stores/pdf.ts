@@ -30,6 +30,10 @@ export interface PageState {
 
 export const doc = writable<DocumentInfo | null>(null);
 export const failure = writable<string | null>(null);
+/// The path the reader was launched on, kept so a failure sentence can name the
+/// file. The backend answers open failures with a token and no path - it knows
+/// this side already asked for one - so this is where the name comes from.
+export const launchedPath = writable<string | null>(null);
 /// Separate from `failure`, which is about a document: this one is about not
 /// learning which document there was.
 export const launchFailure = writable<string | null>(null);
@@ -117,6 +121,7 @@ export async function openLaunched(): Promise<void> {
     return;
   }
   if (!launched) return;
+  launchedPath.set(launched);
   try {
     doc.set(await invoke<DocumentInfo>("pdf_open", { path: launched }));
     failure.set(null);

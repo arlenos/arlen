@@ -28,6 +28,7 @@
     doc,
     failure,
     launchFailure,
+    launchedPath,
     openLaunched,
     search,
     type SearchOutcome,
@@ -223,6 +224,18 @@
       /* no window in standalone */
     }
   }
+
+  /// The open failures the host names, each with its own sentence. A token the
+  /// map does not carry falls to `pdf.failed`, so a token added later cannot
+  /// arrive on screen as a bare word.
+  const OPEN_FAILURE: Record<string, string> = {
+    "not-found": "pdf.notFound",
+    "no-permission": "pdf.noPermission",
+    "unreadable-file": "pdf.unreadableFile",
+    "not-a-pdf": "pdf.notAPdf",
+    "no-pages": "pdf.noPages",
+    locked: "pdf.locked",
+  };
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -313,13 +326,14 @@
         {#if !tauriAvailable && !$doc}
           <p class="center-note">{$t("pdf.hostAbsent")}</p>
         {:else if $launchFailure}
-          <p class="center-note">{$t("pdf.launchUnknown", { reason: $launchFailure })}</p>
-        {:else if $failure === "locked"}
-          <!-- The host sends a token for this one, so the sentence is written
-               here and reaches a German reader in German. -->
-          <p class="center-note">{$t("pdf.locked")}</p>
+          <p class="center-note">{$t("pdf.launchUnknown")}</p>
         {:else if $failure}
-          <p class="center-note">{$t("pdf.failed", { reason: $failure })}</p>
+          <!-- Every open failure arrives as a token and the sentence is written
+               here, so it reaches a German reader in German. It used to be Rust's
+               English prose interpolated into a translated frame, with the PDF
+               parser's own account of the bytes on the end of it. An unrecognised
+               token falls to the plain sentence rather than being shown. -->
+          <p class="center-note">{$t(OPEN_FAILURE[$failure] ?? "pdf.failed", { path: $launchedPath ?? "" })}</p>
         {:else if !$doc}
           <div class="empty">
             <FileText size={28} strokeWidth={1.5} aria-hidden="true" />

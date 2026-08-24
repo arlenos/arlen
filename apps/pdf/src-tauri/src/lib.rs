@@ -85,21 +85,32 @@ fn launch_file(state: tauri::State<'_, LaunchFile>) -> Option<String> {
 #[tauri::command]
 fn pdf_open(path: String, state: tauri::State<'_, Open>) -> Result<DocumentInfo, String> {
     let path = PathBuf::from(path);
+    // TOKENS, not sentences. This used to send Rust's English prose to a window
+    // that speaks the reader's language, and the file's own comment called it a
+    // debt the app carries. A German reader met "Dieses Dokument konnte nicht
+    // geöffnet werden: this file could not be read as a PDF: <lopdf detail>", half
+    // translated with a parser internal on the end. The window knows the path it
+    // asked for, so none of these has to carry it.
     let bytes = std::fs::read(&path).map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => format!("there is no file at {}", path.display()),
-        std::io::ErrorKind::PermissionDenied => {
-            format!("this account may not read {}", path.display())
+        std::io::ErrorKind::NotFound => "not-found".to_string(),
+        std::io::ErrorKind::PermissionDenied => "no-permission".to_string(),
+        _ => {
+            log::warn!("{} could not be read: {e}", path.display());
+            "unreadable-file".to_string()
         }
-        _ => format!("{} could not be read: {e}", path.display()),
     })?;
-    // LOCKED IS A TOKEN, not a sentence. Every other failure here is still an
-    // English string from Rust reaching a window that speaks the reader's
-    // language, which is a debt this app carries; the locked case is the one a
-    // person actually meets - bank statements and payslips arrive with a
-    // password - so it travels as `locked` and the window writes the sentence.
     let doc = Document::open(&bytes).map_err(|e| match e {
+        // A real PDF and a real refusal, and the one a person actually meets:
+        // bank statements and payslips arrive with a password.
         arlen_pdf_core::PdfError::Locked => "locked".to_string(),
-        other => other.to_string(),
+        arlen_pdf_core::PdfError::NoPages => "no-pages".to_string(),
+        other => {
+            // The parser's own account of what is wrong with the bytes is for
+            // whoever debugs it; the reader is told the file is not a PDF it can
+            // read, which is the whole of what it can act on.
+            log::warn!("{} could not be opened: {other}", path.display());
+            "not-a-pdf".to_string()
+        }
     })?;
     let info = DocumentInfo {
         path: path.display().to_string(),
