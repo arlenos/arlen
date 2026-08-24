@@ -18,6 +18,7 @@ const messages: Catalogs = {
     // Two named causes rather than whatever the layer below said. `unreadable`
     // keeps the filesystem's own words because they are the only detail there is,
     // inside a sentence a reader can act on.
+    "wn.failed.noHost": "Windows programs are managed through this app's own host, which is not running here.",
     "wn.failed.noHome": "There is nowhere on this machine where bottles could be kept, so there is nothing to list. That happens when neither HOME nor XDG_DATA_HOME is set for this session.",
     "wn.failed.unreadable": "The folder that holds the bottles could not be read, so none of them are shown: {$why}",
     "wn.failed.other": "The bottles could not be listed: {$reason}",
@@ -62,6 +63,7 @@ const messages: Catalogs = {
     "wn.whereBottles": "Flaschen liegen in {$dir}.",
     "wn.noWineWithBottles": "Wine ist auf diesem Rechner nicht installiert, keine dieser Flaschen kann also ein Programm starten. Was sie freigegeben haben, steht trotzdem hier und stimmt weiterhin.",
     "wn.noWine": "Wine ist auf diesem Rechner nicht installiert, es kann also noch kein Windows-Programm laufen. Eine Flasche wäre ein Windows-Programm mit eigenem Prefix; es erreicht nur die Ordner, die du freigibst.",
+    "wn.failed.noHost": "Windows-Programme werden über den eigenen Host dieser App verwaltet, und der läuft hier nicht.",
     "wn.failed.noHome": "Auf dieser Maschine gibt es keinen Ort, an dem Bottles liegen könnten, also gibt es nichts aufzulisten. Das passiert, wenn für diese Sitzung weder HOME noch XDG_DATA_HOME gesetzt ist.",
     "wn.failed.unreadable": "Der Ordner mit den Bottles konnte nicht gelesen werden, deshalb wird keines davon gezeigt: {$why}",
     "wn.failed.other": "Die Bottles konnten nicht aufgelistet werden: {$reason}",
