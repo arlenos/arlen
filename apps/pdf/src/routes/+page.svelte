@@ -477,4 +477,13 @@
     max-width: 42ch;
     margin: 8px 0;
   }
+  /* The four states that replace the whole document view - no host, locked,
+     failed, nothing open - are direct children of a flex body that carries no
+     padding, on purpose: the sidebar and the page area have to reach the frame.
+     Without this the sentence a reader meets when a document does not open
+     starts at x=0, touching the window edge. The nested ones inside the panels
+     are left alone; those containers pad their own contents. */
+  .pdf-body > .quiet {
+    margin-inline: 12px;
+  }
 </style>
