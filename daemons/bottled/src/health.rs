@@ -158,13 +158,16 @@ mod tests {
             grants,
             egress: Egress::None,
             plumbing: Default::default(),
+            program: Vec::new(),
         };
         (b, dir)
     }
 
-
     fn grant(host: &str) -> PathGrant {
-        PathGrant { host: PathBuf::from(host), access: Access::ReadOnly }
+        PathGrant {
+            host: PathBuf::from(host),
+            access: Access::ReadOnly,
+        }
     }
 
     #[test]
@@ -191,7 +194,11 @@ mod tests {
     fn a_granted_folder_with_no_letter_is_reported() {
         let (b, _d) = bottle("missing", vec![grant("/srv/a")]);
         let h = check_bottle(&b).unwrap();
-        assert_eq!(h.missing, vec!['D'], "the program cannot see the folder at all");
+        assert_eq!(
+            h.missing,
+            vec!['D'],
+            "the program cannot see the folder at all"
+        );
     }
 
     #[test]
@@ -225,7 +232,11 @@ mod tests {
         let once = revoke_grant(&b, 'D');
         assert!(once.grants.is_empty());
         assert_eq!(revoke_grant(&once, 'D').grants.len(), 0);
-        assert_eq!(revoke_grant(&b, 'M').grants.len(), 1, "an ungranted letter takes nothing away");
+        assert_eq!(
+            revoke_grant(&b, 'M').grants.len(),
+            1,
+            "an ungranted letter takes nothing away"
+        );
     }
 
     #[test]
@@ -241,8 +252,14 @@ mod tests {
 
         let after = repair_bottle(&b).unwrap();
         assert!(after.agrees(), "{after:?}");
-        assert!(!b.prefix_root.join("dosdevices/z:").exists(), "the filesystem drive is gone");
-        assert!(!b.prefix_root.join("dosdevices/m:").exists(), "and so is the letter nobody granted");
+        assert!(
+            !b.prefix_root.join("dosdevices/z:").exists(),
+            "the filesystem drive is gone"
+        );
+        assert!(
+            !b.prefix_root.join("dosdevices/m:").exists(),
+            "and so is the letter nobody granted"
+        );
         assert_eq!(
             std::fs::read_link(b.prefix_root.join("dosdevices/d:")).unwrap(),
             PathBuf::from("/srv/a"),
@@ -264,6 +281,7 @@ mod tests {
             grants: vec![grant("/srv/a")],
             egress: Egress::None,
             plumbing: Default::default(),
+            program: Vec::new(),
         };
         assert_eq!(repair_bottle(&b).unwrap(), Health::default());
     }
@@ -277,6 +295,7 @@ mod tests {
             grants: vec![grant("/srv/a")],
             egress: Egress::None,
             plumbing: Default::default(),
+            program: Vec::new(),
         };
         assert_eq!(check_bottle(&b).unwrap(), Health::default());
         assert!(!is_booted(&b.prefix_root));

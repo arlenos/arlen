@@ -175,7 +175,10 @@ mod tests {
             (root.join("dosdevices/c:"), root.join("drive_c")),
             (root.join("dosdevices/z:"), PathBuf::from("/")),
             (root.join("dosdevices/com1"), PathBuf::from("/dev/ttyS0")),
-            (root.join("drive_c/users/u/Documents"), PathBuf::from("/home/u/Documents")),
+            (
+                root.join("drive_c/users/u/Documents"),
+                PathBuf::from("/home/u/Documents"),
+            ),
         ];
         assert_eq!(
             plan(&root, &links, &[]),
@@ -207,10 +210,25 @@ mod tests {
         // The shell folder is now a real directory a program can save into, not a
         // hole where My Documents used to be.
         assert!(user.join("Documents").is_dir());
-        assert!(!user.join("Documents").symlink_metadata().unwrap().file_type().is_symlink());
+        assert!(!user
+            .join("Documents")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
         // The system drive and the serial links are untouched.
-        assert!(dos.join("c:").symlink_metadata().unwrap().file_type().is_symlink());
-        assert!(dos.join("com1").symlink_metadata().unwrap().file_type().is_symlink());
+        assert!(dos
+            .join("c:")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(dos
+            .join("com1")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
 
         // A second pass finds nothing to do and does not fail.
         assert_eq!(
@@ -225,7 +243,10 @@ mod tests {
         let root = PathBuf::from("/p");
         let links = vec![
             (root.join("dosdevices/y:"), PathBuf::from("/etc")),
-            (root.join("drive_c/users/u/Documents"), PathBuf::from("/home/u/Documents")),
+            (
+                root.join("drive_c/users/u/Documents"),
+                PathBuf::from("/home/u/Documents"),
+            ),
         ];
         assert_eq!(
             plan(&root, &links, &[]),

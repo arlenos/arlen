@@ -46,9 +46,17 @@ impl std::fmt::Display for LaunchError {
         match self {
             LaunchError::Bottle(e) => write!(f, "{e}"),
             LaunchError::UnmetDrives(u) => {
-                write!(f, "{} drive(s) promise more than the sandbox gives:", u.len())?;
+                write!(
+                    f,
+                    "{} drive(s) promise more than the sandbox gives:",
+                    u.len()
+                )?;
                 for d in u {
-                    write!(f, " {}: {:?} promised, {:?} given", d.letter, d.promised, d.actual)?;
+                    write!(
+                        f,
+                        " {}: {:?} promised, {:?} given",
+                        d.letter, d.promised, d.actual
+                    )?;
                 }
                 Ok(())
             }
@@ -116,8 +124,8 @@ pub fn launch_argv(
         return Err(LaunchError::NoRuntime(PathBuf::from(WINE)));
     }
     let binds = plumbing_binds(&bottle.plumbing, runtime_dir, &exists);
-    let run = bottle_run(bottle, usr, launch_env(bottle, display), binds)
-        .map_err(LaunchError::Bottle)?;
+    let run =
+        bottle_run(bottle, usr, launch_env(bottle, display), binds).map_err(LaunchError::Bottle)?;
     let unmet = unmet_drives(&run.confinement, &run.drives);
     if !unmet.is_empty() {
         return Err(LaunchError::UnmetDrives(unmet));
@@ -157,7 +165,12 @@ mod tests {
                 access: Access::ReadWrite,
             }],
             egress: Egress::None,
-            plumbing: Plumbing { display: Display::X11, gpu: false, fonts: true },
+            plumbing: Plumbing {
+                display: Display::X11,
+                gpu: false,
+                fonts: true,
+            },
+            program: Vec::new(),
         }
     }
 
@@ -185,7 +198,10 @@ mod tests {
         let env = launch_env(&bottle(), None);
         assert_eq!(env.get("WINEPREFIX").unwrap(), "/data/bottles/notepad/pfx");
         assert_eq!(env.get("HOME").unwrap(), "/data/bottles/notepad/pfx");
-        assert!(!env.contains_key("DISPLAY"), "a bottle that draws nothing is told nothing");
+        assert!(
+            !env.contains_key("DISPLAY"),
+            "a bottle that draws nothing is told nothing"
+        );
         assert_eq!(env.get("WINEDLLOVERRIDES").unwrap(), "mscoree,mshtml=");
     }
 
@@ -253,6 +269,9 @@ mod tests {
             |p| p != Path::new("/lib64"),
         )
         .unwrap();
-        assert!(!argv.iter().any(|a| a == "/lib64"), "bwrap fails the whole launch on a missing source");
+        assert!(
+            !argv.iter().any(|a| a == "/lib64"),
+            "bwrap fails the whole launch on a missing source"
+        );
     }
 }

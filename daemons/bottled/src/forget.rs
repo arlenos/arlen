@@ -39,7 +39,10 @@ pub enum ForgetError {
 impl std::fmt::Display for ForgetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ForgetError::Trash(e) => write!(f, "the bottle was kept, because its files could not be moved to the trash: {e}"),
+            ForgetError::Trash(e) => write!(
+                f,
+                "the bottle was kept, because its files could not be moved to the trash: {e}"
+            ),
             ForgetError::Io(e) => write!(f, "{e}"),
             ForgetError::Registry(e) => write!(f, "{e}"),
         }
@@ -58,8 +61,8 @@ pub fn forget_bottle(
     bottle: &Bottle,
     trash: impl Fn(&Path) -> Result<PathBuf, String>,
 ) -> Result<Forgotten, ForgetError> {
-    let description =
-        registry::bottle_path(bottles_dir, &bottle.id).map_err(|e| ForgetError::Registry(e.to_string()))?;
+    let description = registry::bottle_path(bottles_dir, &bottle.id)
+        .map_err(|e| ForgetError::Registry(e.to_string()))?;
 
     // A prefix that is not there is not a reason to keep the description: the
     // bottle was recorded and never booted, or somebody removed the directory by
@@ -86,7 +89,10 @@ pub fn forget_bottle(
 }
 
 /// [`forget_bottle`] moving the prefix to this user's freedesktop trash.
-pub fn forget_bottle_to_trash(bottles_dir: &Path, bottle: &Bottle) -> Result<Forgotten, ForgetError> {
+pub fn forget_bottle_to_trash(
+    bottles_dir: &Path,
+    bottle: &Bottle,
+) -> Result<Forgotten, ForgetError> {
     forget_bottle(bottles_dir, bottle, |p| {
         arlen_freedesktop_trash::trash_for_current_user(&p.to_string_lossy())
             .map(|slot| PathBuf::from(slot.trashed().as_str()))
@@ -112,9 +118,13 @@ mod tests {
         Bottle {
             id: id.into(),
             prefix_root: dir.join(id).join("pfx"),
-            grants: vec![PathGrant { host: PathBuf::from("/srv/a"), access: Access::ReadOnly }],
+            grants: vec![PathGrant {
+                host: PathBuf::from("/srv/a"),
+                access: Access::ReadOnly,
+            }],
             egress: Egress::None,
             plumbing: Default::default(),
+            program: Vec::new(),
         }
     }
 
@@ -135,7 +145,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(out.trashed_to.as_deref(), Some(bin.join("pfx").as_path()));
-        assert!(registry::load_bottle(&d, "gone").is_err(), "the record is gone");
+        assert!(
+            registry::load_bottle(&d, "gone").is_err(),
+            "the record is gone"
+        );
         assert_eq!(
             std::fs::read_to_string(bin.join("pfx/kept.txt")).unwrap(),
             "work",
@@ -156,7 +169,10 @@ mod tests {
 
         let err = forget_bottle(&d, &b, |_| Err("no trash on this machine".into()));
         assert!(matches!(err, Err(ForgetError::Trash(_))), "{err:?}");
-        assert!(registry::load_bottle(&d, "stuck").is_ok(), "the record is still there");
+        assert!(
+            registry::load_bottle(&d, "stuck").is_ok(),
+            "the record is still there"
+        );
         assert!(b.prefix_root.exists(), "and so is the prefix");
         std::fs::remove_dir_all(&d).unwrap();
     }

@@ -100,7 +100,10 @@ pub fn write_drives(prefix_root: &Path, drives: &[Drive]) -> Result<DriveChanges
     if !dos.is_dir() {
         return Err(WriteError::NoPrefix(prefix_root.to_path_buf()));
     }
-    if drives.iter().any(|d| d.letter.to_ascii_uppercase() == UNMAPPED_DRIVE) {
+    if drives
+        .iter()
+        .any(|d| d.letter.to_ascii_uppercase() == UNMAPPED_DRIVE)
+    {
         return Err(WriteError::ClaimsUnmappedDrive);
     }
 
@@ -149,16 +152,30 @@ mod tests {
     fn a_withdrawn_grant_loses_its_letter() {
         let p = prefix("withdrawn");
         let two = map_drives(&[
-            PathGrant { host: PathBuf::from("/srv/a"), access: Access::ReadOnly },
-            PathGrant { host: PathBuf::from("/srv/b"), access: Access::ReadOnly },
+            PathGrant {
+                host: PathBuf::from("/srv/a"),
+                access: Access::ReadOnly,
+            },
+            PathGrant {
+                host: PathBuf::from("/srv/b"),
+                access: Access::ReadOnly,
+            },
         ])
         .unwrap();
         assert_eq!(write_drives(&p, &two).unwrap().written, vec!['D', 'E']);
         assert_eq!(granted_letters(&p).unwrap(), vec!['D', 'E']);
 
-        let one = map_drives(&[PathGrant { host: PathBuf::from("/srv/a"), access: Access::ReadOnly }]).unwrap();
+        let one = map_drives(&[PathGrant {
+            host: PathBuf::from("/srv/a"),
+            access: Access::ReadOnly,
+        }])
+        .unwrap();
         let changes = write_drives(&p, &one).unwrap();
-        assert_eq!(changes.revoked, vec!['E'], "revoking has to take the letter away");
+        assert_eq!(
+            changes.revoked,
+            vec!['E'],
+            "revoking has to take the letter away"
+        );
         assert_eq!(granted_letters(&p).unwrap(), vec!['D']);
         assert!(!p.join("dosdevices/e:").exists());
         std::fs::remove_dir_all(&p).unwrap();
@@ -181,8 +198,18 @@ mod tests {
     fn the_system_drive_and_the_ports_are_left_alone() {
         let p = prefix("left_alone");
         write_drives(&p, &[]).unwrap();
-        assert!(p.join("dosdevices/c:").symlink_metadata().unwrap().file_type().is_symlink());
-        assert!(p.join("dosdevices/com1").symlink_metadata().unwrap().file_type().is_symlink());
+        assert!(p
+            .join("dosdevices/c:")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(p
+            .join("dosdevices/com1")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
         assert_eq!(granted_letters(&p).unwrap(), Vec::<char>::new());
         std::fs::remove_dir_all(&p).unwrap();
     }
@@ -190,8 +217,24 @@ mod tests {
     #[test]
     fn a_grant_that_moved_stops_pointing_at_the_old_directory() {
         let p = prefix("moved");
-        write_drives(&p, &map_drives(&[PathGrant { host: PathBuf::from("/srv/old"), access: Access::ReadOnly }]).unwrap()).unwrap();
-        write_drives(&p, &map_drives(&[PathGrant { host: PathBuf::from("/srv/new"), access: Access::ReadOnly }]).unwrap()).unwrap();
+        write_drives(
+            &p,
+            &map_drives(&[PathGrant {
+                host: PathBuf::from("/srv/old"),
+                access: Access::ReadOnly,
+            }])
+            .unwrap(),
+        )
+        .unwrap();
+        write_drives(
+            &p,
+            &map_drives(&[PathGrant {
+                host: PathBuf::from("/srv/new"),
+                access: Access::ReadOnly,
+            }])
+            .unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             std::fs::read_link(p.join("dosdevices/d:")).unwrap(),
             PathBuf::from("/srv/new")
@@ -211,7 +254,10 @@ mod tests {
             write_drives(&p, &[smuggled]),
             Err(WriteError::ClaimsUnmappedDrive)
         ));
-        assert!(!p.join("dosdevices/z:").exists(), "and nothing was written before the refusal");
+        assert!(
+            !p.join("dosdevices/z:").exists(),
+            "and nothing was written before the refusal"
+        );
         std::fs::remove_dir_all(&p).unwrap();
     }
 
@@ -219,7 +265,10 @@ mod tests {
     fn an_unbooted_prefix_is_named_rather_than_silently_skipped() {
         let tmp = std::env::temp_dir().join(format!("arlen-nodos-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
-        assert!(matches!(write_drives(&tmp, &[]), Err(WriteError::NoPrefix(_))));
+        assert!(matches!(
+            write_drives(&tmp, &[]),
+            Err(WriteError::NoPrefix(_))
+        ));
         std::fs::remove_dir_all(&tmp).unwrap();
     }
 }
