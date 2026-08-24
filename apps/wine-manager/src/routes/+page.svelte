@@ -4,6 +4,7 @@
   /// list: a bottle that is on disk and unreadable has to say so here, or the
   /// person goes looking for it in the filesystem.
   import { onMount } from "svelte";
+  import { tauriAvailable } from "$lib/tauri";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { t } from "$lib/i18n/messages";
@@ -38,16 +39,24 @@
   let runtime = $state<Runtime | null>(null);
   // The named cause, not a sentence: the window writes the sentence, because only
   // the window is in the reader's language. `other` is the escape for a failure
-  // the command cannot name - today that is the host itself being absent, which a
-  // person never meets, and pasting an exception at them would be the same defect
-  // one layer up.
+  // the command cannot name, and it prints the raw reason - so nothing routine may
+  // reach it. The absent host is the routine one: it used to fall through here and
+  // put `TypeError: undefined is not an object (evaluating
+  // \'window.__TAURI_INTERNALS__.invoke\')` on screen, photographed by the
+  // no-backend shoot. The comment that stood here said a person never meets that
+  // case; a person meets it whenever the backend is not running.
   type Failure =
+    | { problem: "no-host" }
     | { problem: "no-home" }
     | { problem: "unreadable"; why: string }
     | { problem: "other"; reason: string };
   let failure = $state<Failure | null>(null);
 
   onMount(async () => {
+    if (!tauriAvailable) {
+      failure = { problem: "no-host" };
+      return;
+    }
     try {
       list = await invoke<BottleList>("wine_bottles");
       runtime = await invoke<Runtime>("wine_runtime");
@@ -126,7 +135,8 @@
   {/if}
   {#if failure}
     <p class="failure">
-      {#if failure.problem === "no-home"}{$t("wn.failed.noHome")}
+      {#if failure.problem === "no-host"}{$t("wn.failed.noHost")}
+      {:else if failure.problem === "no-home"}{$t("wn.failed.noHome")}
       {:else if failure.problem === "unreadable"}{$t("wn.failed.unreadable", { why: failure.why })}
       {:else}{$t("wn.failed.other", { reason: failure.reason })}{/if}
     </p>
