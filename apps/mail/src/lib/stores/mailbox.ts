@@ -386,6 +386,18 @@ export function saveDraft(to: string, subject: string, body: string): string {
   return id;
 }
 
+/// Whether the sender is a person this machine already knows. The intended
+/// command is `mail_sender_person(address)` reading `shared.Person` from the
+/// Knowledge Graph (contacts-decision.md: mail READS people, it never owns
+/// them). Fixture: one known sender, so the affordance is visible.
+export async function senderPerson(address: string): Promise<{ name: string } | null> {
+  try {
+    return await invoke<{ name: string } | null>("mail_sender_person", { address });
+  } catch {
+    return address === "mara@example.org" ? { name: "Mara Winter" } : null;
+  }
+}
+
 /// The message a launch handed over (`launch_file` + `mail_read`) - kept beside
 /// the mailbox because it belongs to no folder.
 export const openedFile = writable<Message | null>(null);

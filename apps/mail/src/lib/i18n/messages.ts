@@ -22,6 +22,7 @@ const messages: Catalogs = {
     "ml.to": "To",
     "ml.cc": "Copied",
     "ml.unsigned": "as written by the sender, not verified",
+    "ml.knownPerson": "In your Knowledge Graph as {$name}",
     "ml.noText": "This message has no plain-text part.",
     "ml.sealed.pgp": "This message is encrypted with PGP. Nothing here can open it, so there is nothing to show.",
     "ml.sealed.smime": "This message is sealed with S/MIME. Nothing here can open it, so there is nothing to show.",
@@ -46,6 +47,9 @@ const messages: Catalogs = {
       ".input {$count :number}\n.match $count\none {{This message carries one file, not opened:}}\n* {{This message carries {$count} files, not opened:}}",
     "ml.attachment": "{$name}, {$type}, {$size}",
     "ml.unnamedAttachment": "a file the sender did not name",
+    "ml.attach.save": "Save {$name} to your files",
+    "ml.attach.saved": "Saved to {$path}",
+    "ml.attach.failed": "Saving did not go through: {$reason}",
     // A `text/calendar` part, NAMED and not read. The core does not parse the
     // payload - who processes iTIP is an open call between this app and the
     // calendar daemon - so these say what the message CLAIMS the part is for and
@@ -101,6 +105,7 @@ const messages: Catalogs = {
     "ml.to": "An",
     "ml.cc": "Kopie",
     "ml.unsigned": "so geschrieben von der absendenden Seite, nicht geprüft",
+    "ml.knownPerson": "In deinem Knowledge Graph als {$name}",
     "ml.noText": "Diese Nachricht hat keinen reinen Textteil.",
     "ml.sealed.pgp": "Diese Nachricht ist mit PGP verschlüsselt. Hier kann sie nichts öffnen, es gibt also nichts zu zeigen.",
     "ml.sealed.smime": "Diese Nachricht ist mit S/MIME versiegelt. Hier kann sie nichts öffnen, es gibt also nichts zu zeigen.",
@@ -115,6 +120,9 @@ const messages: Catalogs = {
       ".input {$count :number}\n.match $count\none {{Diese Nachricht trägt eine Datei bei sich, nicht geöffnet:}}\n* {{Diese Nachricht trägt {$count} Dateien bei sich, nicht geöffnet:}}",
     "ml.attachment": "{$name}, {$type}, {$size}",
     "ml.unnamedAttachment": "eine Datei, die die absendende Seite nicht benannt hat",
+    "ml.attach.save": "{$name} in deine Dateien sichern",
+    "ml.attach.saved": "Gespeichert nach {$path}",
+    "ml.attach.failed": "Speichern ging nicht durch: {$reason}",
     "ml.invitation.request": "Diese Nachricht enthält eine Einladung. Diese App hat sie nicht gelesen.",
     "ml.invitation.cancel": "Diese Nachricht enthält eine Absage zu einem Termin. Diese App hat sie nicht gelesen.",
     "ml.invitation.reply": "Diese Nachricht enthält jemandes Antwort auf eine Einladung. Diese App hat sie nicht gelesen.",
