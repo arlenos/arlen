@@ -69,7 +69,7 @@
   }
 </script>
 
-<Dialog {open} onClose={onclose} ariaLabel={$t("cal.form.title")}>
+<Dialog {open} onClose={onclose} size="lg" ariaLabel={$t("cal.form.title")}>
   <div class="form">
     <h2 class="f-title">{$t("cal.form.title")}</h2>
     <label class="field">
@@ -130,18 +130,19 @@
   .form {
     display: flex;
     flex-direction: column;
-    gap: 0.7rem;
+    gap: 1rem;
+    padding: 0.5rem 0.25rem;
   }
   .f-title {
-    margin: 0 0 0.25rem;
-    font-size: var(--text-base, 15px);
+    margin: 0 0 0.5rem;
+    font-size: var(--text-lg, 17px);
     font-weight: 600;
   }
   .field {
     display: grid;
-    grid-template-columns: 6rem 1fr;
+    grid-template-columns: 7.5rem 1fr;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.9rem;
   }
   .k {
     font-size: var(--text-sm, 13px);
@@ -159,7 +160,7 @@
   }
   .actions {
     display: flex;
-    gap: 0.5rem;
-    padding-top: 0.25rem;
+    gap: 0.6rem;
+    padding-top: 0.75rem;
   }
 </style>
