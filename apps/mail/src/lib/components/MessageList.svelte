@@ -16,7 +16,7 @@
     onarchive,
     ondelete,
   }: {
-    rows: Envelope[];
+    rows: (Envelope & { count?: number })[];
     /// The selected message ids; one id means the reading pane shows it.
     selected: Set<string>;
     onchange: (sel: Set<string>) => void;
@@ -141,7 +141,12 @@
             <span class="from" class:strong={e.unread}>{e.from}</span>
             <span class="when">{listDate(e.dateMs, $locale)}</span>
           </span>
-          <span class="subject" class:strong={e.unread}>{e.subject}</span>
+          <span class="subject-line">
+            <span class="subject" class:strong={e.unread}>{e.subject}</span>
+            {#if e.count}
+              <span class="count" aria-label={$t("ml.threadCount", { n: e.count })}>{e.count}</span>
+            {/if}
+          </span>
           <span class="snippet">{e.snippet}</span>
         </span>
       </button>
@@ -238,7 +243,23 @@
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
     font-variant-numeric: tabular-nums;
   }
+  .subject-line {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .count {
+    flex-shrink: 0;
+    padding: 0 0.3rem;
+    border-radius: var(--radius-chip, 4px);
+    background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    font-size: var(--text-2xs, 11px);
+    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
+    font-variant-numeric: tabular-nums;
+  }
   .subject {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

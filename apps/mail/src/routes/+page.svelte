@@ -14,6 +14,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Mail, Reply, Forward, Archive, Trash2, FileText } from "@lucide/svelte";
   import { t } from "$lib/i18n/messages";
+  import { displayName, threadKey } from "$lib/wording";
   import {
     SidebarProvider,
     SidebarInset,
@@ -25,10 +26,12 @@
   import FolderRail from "$lib/components/FolderRail.svelte";
   import MessageList from "$lib/components/MessageList.svelte";
   import MessageView from "$lib/components/MessageView.svelte";
+  import ThreadView from "$lib/components/ThreadView.svelte";
   import ComposeView from "$lib/components/ComposeView.svelte";
   import {
     folders,
     envelopes,
+    type Envelope,
     mailboxMocked,
     openedFile,
     loadMailbox,
@@ -49,7 +52,9 @@
   /// "@file" is the launched-file pseudo-selection and never joins a set.
   let selected = $state<Set<string>>(new Set());
   let fileOpen = $state(false);
-  let reading = $state<Message | null>(null);
+  /// The open conversation: its subject and its messages in sent order. One
+  /// message is the common case and renders as the plain reading surface.
+  let reading = $state<{ subject: string; messages: Message[] } | null>(null);
   let composing = $state(false);
   let preset = $state<{ to: string; subject: string; body: string }>({ to: "", subject: "", body: "" });
 
@@ -96,9 +101,56 @@
     })();
   });
 
-  const rows = $derived(
-    $envelopes.filter((e) => e.folderId === selectedFolder).sort((a, b) => b.dateMs - a.dateMs),
-  );
+  /// The reading folders thread by subject ACROSS inbox/sent/archive, so your
+  /// own reply sits in the conversation it answers. Drafts and trash list
+  /// flat: a draft is not a conversation event, and a bin is a bin.
+  const THREAD_SCOPE = ["inbox", "sent", "archive"];
+  const threaded = $derived(THREAD_SCOPE.includes(selectedFolder));
+
+  const grouped = $derived.by(() => {
+    if (!threaded) {
+      const flat = $envelopes
+        .filter((e) => e.folderId === selectedFolder)
+        .sort((a, b) => b.dateMs - a.dateMs);
+      return {
+        rows: flat as (Envelope & { count?: number })[],
+        members: new Map(flat.map((e) => [e.id, [e]])),
+      };
+    }
+    const buckets = new Map<string, Envelope[]>();
+    for (const e of $envelopes) {
+      if (!THREAD_SCOPE.includes(e.folderId)) continue;
+      const key = threadKey(e.subject);
+      const list = buckets.get(key);
+      if (list) list.push(e);
+      else buckets.set(key, [e]);
+    }
+    const rows: (Envelope & { count?: number })[] = [];
+    const members = new Map<string, Envelope[]>();
+    for (const [key, list] of buckets) {
+      if (!list.some((e) => e.folderId === selectedFolder)) continue;
+      const asc = [...list].sort((a, b) => a.dateMs - b.dateMs);
+      const newest = asc[asc.length - 1];
+      const names = [...new Set(asc.map((e) => displayName(e.from)))];
+      const id = `t:${key}`;
+      members.set(id, asc);
+      rows.push({
+        id,
+        folderId: selectedFolder,
+        from: names.length > 2 ? `${names[0]}, ${names[1]} +${names.length - 2}` : names.join(", "),
+        // The FIRST message's subject names the conversation - "Re: Re: X"
+        // is a wire artefact, not a title.
+        subject: asc[0].subject,
+        snippet: newest.snippet,
+        dateMs: newest.dateMs,
+        unread: asc.some((e) => e.unread && e.folderId === selectedFolder),
+        count: asc.length > 1 ? asc.length : undefined,
+      });
+    }
+    rows.sort((a, b) => b.dateMs - a.dateMs);
+    return { rows, members };
+  });
+  const rows = $derived(grouped.rows);
 
   function selectFolder(id: string): void {
     selectedFolder = id;
@@ -109,15 +161,25 @@
     composing = false;
   }
 
+  /// Open one row: the conversation's messages load in sent order and reading
+  /// them marks them read.
+  function loadRow(id: string): void {
+    const mem = grouped.members.get(id) ?? [];
+    for (const e of mem) markRead(e.id);
+    void Promise.all(mem.map((e) => openMessage(e.id))).then((list) => {
+      if (!(selected.size === 1 && selected.has(id))) return;
+      const messages = list.filter((m): m is Message => m !== null);
+      if (messages.length === 0) return;
+      reading = { subject: mem[0].subject, messages };
+    });
+  }
+
   /// A plain click or a keyboard step: single-select and read.
   function openOne(id: string): void {
     selected = new Set([id]);
     fileOpen = false;
     composing = false;
-    markRead(id);
-    void openMessage(id).then((m) => {
-      if (selected.size === 1 && selected.has(id)) reading = m;
-    });
+    loadRow(id);
   }
 
   /// Ctrl/shift selection from the list: several rows arm the bulk actions,
@@ -127,13 +189,7 @@
     fileOpen = false;
     composing = false;
     if (sel.size !== 1) reading = null;
-    else {
-      const id = [...sel][0];
-      markRead(id);
-      void openMessage(id).then((m) => {
-        if (selected.size === 1 && selected.has(id)) reading = m;
-      });
-    }
+    else loadRow([...sel][0]);
   }
 
   function startCompose(to = "", subject = "", body = ""): void {
@@ -149,28 +205,41 @@
     }
   }
 
+  /// Reply and forward speak to the NEWEST message of the conversation.
   function reply(): void {
-    if (!reading) return;
-    startCompose(reading.from ?? "", reading.subject ? `Re: ${reading.subject}` : "");
+    const m = reading?.messages[reading.messages.length - 1];
+    if (!m) return;
+    startCompose(m.from ?? "", m.subject ? `Re: ${m.subject}` : "");
   }
   function forward(): void {
-    if (!reading) return;
-    startCompose("", reading.subject ? `Fwd: ${reading.subject}` : "", reading.text ? `\n\n${reading.text}` : "");
+    const m = reading?.messages[reading.messages.length - 1];
+    if (!m) return;
+    startCompose("", m.subject ? `Fwd: ${m.subject}` : "", m.text ? `\n\n${m.text}` : "");
+  }
+  /// Bulk moves act on the CURRENT folder's members of each conversation -
+  /// deleting a thread from the inbox does not eat your sent copy.
+  function folderMembers(): string[] {
+    const out: string[] = [];
+    for (const id of selected)
+      for (const e of grouped.members.get(id) ?? []) if (e.folderId === selectedFolder) out.push(e.id);
+    return out;
   }
   function archiveSelected(): void {
-    if (selected.size === 0) return;
-    for (const id of selected) moveMessage(id, "archive");
-    selected = new Set();
-    reading = null;
+    for (const id of folderMembers()) moveMessage(id, "archive");
+    if (selected.size > 0) {
+      selected = new Set();
+      reading = null;
+    }
   }
   function deleteSelected(): void {
-    if (selected.size === 0) return;
-    for (const id of selected) {
+    for (const id of folderMembers()) {
       if (selectedFolder === "trash") deleteForever(id);
       else moveMessage(id, "trash");
     }
-    selected = new Set();
-    reading = null;
+    if (selected.size > 0) {
+      selected = new Set();
+      reading = null;
+    }
   }
 
   // Spelled out for the key gate, like the rail's names.
@@ -187,7 +256,7 @@
     if (composing) return $t("ml.compose.title");
     if (fileOpen && $openedFile) return $openedFile.subject ?? $t("ml.openedFile");
     if (selected.size > 1) return $t("ml.selectedCount", { n: selected.size });
-    if (selected.size === 1 && reading) return reading.subject ?? "-";
+    if (selected.size === 1 && reading) return reading.subject;
     const kind = $folders.find((f) => f.id === selectedFolder)?.kind;
     return kind ? $t(FOLDER_NAMES[kind]) : $t("ml.app.title");
   });
@@ -312,7 +381,11 @@
         {:else if fileOpen && $openedFile}
           <MessageView message={$openedFile} />
         {:else if selected.size === 1 && reading}
-          <MessageView message={reading} />
+          {#if reading.messages.length === 1}
+            <MessageView message={reading.messages[0]} />
+          {:else}
+            <ThreadView subject={reading.subject} messages={reading.messages} />
+          {/if}
         {:else if selected.size > 1}
           <div class="center">
             <Mail size={28} strokeWidth={1.5} aria-hidden="true" />

@@ -53,6 +53,18 @@ export function displayName(from: string): string {
   return name || from;
 }
 
+/// The conversation key for a subject: the reply/forward prefixes stripped,
+/// case folded. "Re: Re: AW: Plans" and "plans" are one conversation. This is
+/// the pragmatic subject-threading a client can do without the References
+/// chain; real RFC threading is the backend's to add (mail-app.md §7 lists
+/// threading algorithms as unresearched).
+export function threadKey(subject: string | null): string {
+  let s = (subject ?? "").trim();
+  const prefix = /^(re|fwd|fw|aw|wg)\s*(\[\d+\])?\s*:\s*/i;
+  while (prefix.test(s)) s = s.replace(prefix, "");
+  return s.toLowerCase() || "(no subject)";
+}
+
 /// The Date header, written the way the reader's language writes one.
 ///
 /// A header that will not parse is returned VERBATIM. The raw line is what the
