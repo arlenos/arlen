@@ -211,7 +211,9 @@
     width: 0.4rem;
     height: 0.4rem;
     margin-top: 0.45rem;
-    border-radius: var(--radius-full, 9999px);
+    /* The chip radius, not a circle: same shape family as the calendar's
+       colour dots - the house geometry has no perfect rounds. */
+    border-radius: var(--radius-chip, 4px);
   }
   .dot.unread {
     background: var(--color-accent, #7aa2f7);
