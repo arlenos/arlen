@@ -53,6 +53,15 @@ export function displayName(from: string): string {
   return name || from;
 }
 
+/// The address half of a mailbox line: `Mara <mara@example.org>` yields the
+/// address, a bare address yields itself, anything else nothing.
+export function addressOf(from: string): string | null {
+  const angled = from.match(/<([^<>\s]+@[^<>\s]+)>/);
+  if (angled) return angled[1].toLowerCase();
+  const bare = from.trim();
+  return /^[^\s]+@[^\s]+$/.test(bare) ? bare.toLowerCase() : null;
+}
+
 /// The conversation key for a subject: the reply/forward prefixes stripped,
 /// case folded. "Re: Re: AW: Plans" and "plans" are one conversation. This is
 /// the pragmatic subject-threading a client can do without the References

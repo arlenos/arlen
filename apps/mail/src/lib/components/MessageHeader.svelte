@@ -4,15 +4,27 @@
   /// name is whatever the sender typed and this is the field a reader trusts
   /// hardest. Recipients stay one quiet line each; the date is written in the
   /// reader's language (a malformed header shows verbatim, wording.ts).
+  import { UserRound } from "@lucide/svelte";
   import { Avatar, AvatarFallback } from "@arlen/ui-kit/components/ui/avatar";
   import { t, locale } from "$lib/i18n/messages";
-  import { displayName, formatSent } from "$lib/wording";
-  import type { Message } from "$lib/stores/mailbox";
+  import { addressOf, displayName, formatSent } from "$lib/wording";
+  import { senderPerson, type Message } from "$lib/stores/mailbox";
 
   let { message }: { message: Message } = $props();
 
   const name = $derived(message.from ? displayName(message.from) : "?");
   const letter = $derived((name.trim()[0] ?? "?").toUpperCase());
+
+  /// The graph's name for this sender, when the machine knows one. Reading the
+  /// Knowledge Graph is the intended `mail_sender_person` seam; nothing here
+  /// writes to it (contacts-decision.md: mail reads people, it never owns them).
+  let known = $state<string | null>(null);
+  $effect(() => {
+    known = null;
+    const addr = message.from ? addressOf(message.from) : null;
+    if (!addr) return;
+    void senderPerson(addr).then((p) => (known = p?.name ?? null));
+  });
 </script>
 
 <header class="head">
@@ -27,6 +39,12 @@
         {message.from ?? "-"}
         <span class="caveat">({$t("ml.unsigned")})</span>
       </p>
+      {#if known}
+        <p class="known">
+          <UserRound size={12} strokeWidth={1.75} aria-hidden="true" />
+          {$t("ml.knownPerson", { name: known })}
+        </p>
+      {/if}
       {#if message.to.length > 0}
         <p class="rcpt">{$t("ml.to")}: {message.to.join(", ")}</p>
       {/if}
@@ -77,6 +95,14 @@
   .caveat {
     font-weight: 400;
     color: color-mix(in srgb, var(--color-fg-primary) 48%, transparent);
+  }
+  .known {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    font-size: var(--text-xs, 12px);
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .rcpt {
     margin: 0;
