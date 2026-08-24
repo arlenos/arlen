@@ -634,6 +634,7 @@
 {:else if phase === "thumbnail" && base}
   <FloatingThumbnail
     image={base}
+    sample={isSample}
     onAnnotate={() => (phase = "annotate")}
     onCopy={() => base && copyCanvas(base)}
     onSave={() => base && saveCanvas(base)}
