@@ -30,7 +30,13 @@
   // svelte-ignore state_referenced_locally
   let body = $state(presetBody);
 
-  function send(): void {
+  // NAMED FOR WHAT IT DOES. This was `send`, behind a button reading Send, and it
+  // has only ever written a draft - there is no account to send through and no
+  // submission path behind it. The standing note under the fields explained that,
+  // which is not the same as the control being honest: a reader presses the verb,
+  // not the paragraph. When sending exists, the label and this function change
+  // together, and nothing else has to.
+  function saveToDrafts(): void {
     const id = saveDraft(to, subject, body);
     ondone(id);
   }
@@ -58,7 +64,7 @@
   />
   <p class="cant-send">{$t("ml.compose.cantSend")}</p>
   <div class="actions">
-    <Button id="compose-send" onclick={send}>{$t("ml.send")}</Button>
+    <Button id="compose-save-draft" onclick={saveToDrafts}>{$t("ml.compose.saveToDrafts")}</Button>
     <Button variant="ghost" id="compose-discard" onclick={() => ondone(null)}>{$t("ml.compose.discard")}</Button>
   </div>
 </div>
