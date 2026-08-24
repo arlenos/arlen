@@ -83,12 +83,12 @@
           <button
             type="button"
             class="win-go"
-            aria-label={b.appName}
+            aria-label={b.appName ?? b.id}
             onclick={() => goto(`/windows-apps/${b.id}`)}
           ></button>
-          <AppAvatar appId={b.appId} label={b.appName} size={32} />
+          <AppAvatar appId={b.appId ?? b.id} label={b.appName ?? b.id} size={32} />
           <span class="win-text">
-            <span class="win-name">{b.appName}</span>
+            <span class="win-name">{b.appName ?? b.id}</span>
             <span class="win-tier">{compatLine(b)}</span>
           </span>
           <span class="win-launch">
