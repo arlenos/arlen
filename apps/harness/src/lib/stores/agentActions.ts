@@ -8,7 +8,7 @@
 /// from a callback (that does not re-render reliably).
 
 import { writable } from "svelte/store";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 /// A structured change carried by a proposal / receipt (a file move, an edit).
 /// Absent (null) for graph writes, which have no file body.
@@ -48,23 +48,30 @@ export interface CompletedAction {
 }
 
 /// The agent's proposals awaiting approval, and the recently applied actions.
-export const pendingProposals = writable<PendingProposal[]>([]);
-export const completedActions = writable<CompletedAction[]>([]);
+/// `null` means COULD NOT READ - a refusal or an unreachable bridge - and it is
+/// never collapsed into `[]`: an empty tray says "nothing is pending", and
+/// saying that about a denied read is the one sentence this surface must not
+/// get wrong (the `ai_access_grants` rule, applied here).
+export const pendingProposals = writable<PendingProposal[] | null>([]);
+export const completedActions = writable<CompletedAction[] | null>([]);
 
 let seq = 0;
 
+/// Parse one list. Anything that is not a JSON array THROWS instead of
+/// becoming `[]`: the daemons answer refusals as errors now, and turning one
+/// back into an empty list at the last step is how a denial used to render as
+/// "nothing happened". Today the bridge's `call_string` still substitutes
+/// `"[]"` before an error can reach us - the moment it signals instead (its
+/// own `try_call_string`), this path shows the refusal without another change.
 async function fetchList<T>(command: string): Promise<T[]> {
   const raw = await invoke<string>(command);
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
-    return [];
-  }
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error("not a list");
+  return parsed as T[];
 }
 
 /// Poll both lists once. A monotonic token drops a stale response that lands
-/// after a newer one. Failure (agent bridge unavailable) empties the tray.
+/// after a newer one. Failure sets both to null - unread, not empty.
 export async function refresh(): Promise<void> {
   const mine = ++seq;
   try {
@@ -76,7 +83,14 @@ export async function refresh(): Promise<void> {
     pendingProposals.set(pending);
     completedActions.set(completed);
   } catch {
-    if (mine === seq) {
+    if (mine !== seq) return;
+    if (isTauri()) {
+      // A real session whose read failed: unread, not empty.
+      pendingProposals.set(null);
+      completedActions.set(null);
+    } else {
+      // Under vite there is no bridge to refuse; the design fixtures come from
+      // `_gatetest`, and the live chat's tray simply stays out of the way.
       pendingProposals.set([]);
       completedActions.set([]);
     }

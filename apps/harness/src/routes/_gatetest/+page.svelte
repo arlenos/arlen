@@ -8,6 +8,12 @@
   import { pendingProposals, completedActions } from "$lib/stores/agentActions";
 
   onMount(() => {
+    // `?state=unreadable` renders the refused-read line (both lists null).
+    if (new URLSearchParams(window.location.search).get("state") === "unreadable") {
+      pendingProposals.set(null);
+      completedActions.set(null);
+      return;
+    }
     pendingProposals.set([
       {
         id: 42,
