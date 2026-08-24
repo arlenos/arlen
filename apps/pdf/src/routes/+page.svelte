@@ -1,170 +1,209 @@
 <script lang="ts">
   import { clampPage, pageIntent } from "$lib/paging";
-  /// The reader: what is in this document, and where in it a word appears.
+  /// The reader, two faces over one document. The reading face: the files
+  /// chrome - contents/search in the rail, the h-10 bar with page and zoom
+  /// clusters - around a continuous scroll of lazily rendered pages on the
+  /// viewer family's dark ground. The document-only face (Tim's macOS
+  /// reference): nothing but the pages; moving the mouse floats a small
+  /// overlay that fades after a beat, the keyboard stays fully armed, and the
+  /// depth lives in the shell's top-left app menu.
   ///
-  /// Every empty-looking state here is a DIFFERENT state and says so. No host is
-  /// not no document; a document with no contents page is not a document that
-  /// failed to open; and a search that matched nothing is not a search that could
-  /// not read half the pages. The last one is why `unsearchable` is carried all
-  /// the way from the parser to this screen rather than dropped on the way.
-  ///
-  /// The page itself is drawn by a separate confined process and put on a canvas
-  /// here. A page that will not render says so WHERE THE PAGE WOULD BE: a reader
-  /// looking at a blank frame cannot tell a genuinely blank page from a renderer
-  /// that refused, and those are different facts about their document.
+  /// Every empty-looking state is a DIFFERENT state and says so; a page that
+  /// will not render says so where the page would be, with its words below.
   import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
-  import { FileText, Search } from "@lucide/svelte";
+  import {
+    SidebarProvider,
+    SidebarInset,
+    SidebarTrigger,
+  } from "@arlen/ui-kit/components/ui/sidebar";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { ChevronLeft, ChevronRight, FileText, Minus, Plus, PanelLeft, Scan, X } from "@lucide/svelte";
   import { tauriAvailable } from "$lib/tauri";
   import { t } from "$lib/i18n/messages";
+  import { initAppMenu, menuAction } from "$lib/menu";
+  import {
+    doc,
+    failure,
+    launchFailure,
+    openLaunched,
+    search,
+    type SearchOutcome,
+  } from "$lib/stores/pdf";
+  import PdfSidebar from "$lib/components/PdfSidebar.svelte";
+  import PageCanvas from "$lib/components/PageCanvas.svelte";
 
-  type OutlineEntry = { title: string; depth: number; page: number | null };
-  type Hit = { page: number; snippet: string };
-  type SearchOutcome = { hits: Hit[]; unsearchable: number[] };
-  type DocumentInfo = { path: string; pages: number; outline: OutlineEntry[] };
-  type PageImage = { width: number; height: number; rgba: number[] };
-  type TextLine = { text: string; x: number; y: number; width: number; height: number };
-
-  let doc = $state<DocumentInfo | null>(null);
-  let failure = $state<string | null>(null);
-  /// Separate from `failure`, which is about a document: this one is about not
-  /// learning which document there was. Kept apart so neither sentence has to
-  /// stand in for the other.
-  let launchFailure = $state<string | null>(null);
+  let current = $state(1);
   let query = $state("");
   let results = $state<SearchOutcome | null>(null);
-  let current = $state(1);
-  let canvas = $state<HTMLCanvasElement | null>(null);
-  let pageFailure = $state<string | null>(null);
-  /// The page's text, shown only when the page itself could not be drawn.
-  let pageWords = $state("");
-  let lines = $state<TextLine[]>([]);
+  let clean = $state(false);
 
-  /// The zoom the page and its words are both drawn at.
-  ///
-  /// One constant for both on purpose: the boxes come back in the raster's own
-  /// pixel space, so a page rendered at one scale and a text layer fetched at
-  /// another would put every box beside its word instead of on it.
-  const SCALE = 1.5;
+  // --- Zoom and fit --------------------------------------------------------
+  // One scale for the raster AND the text layer, always: the boxes come back
+  // in the raster's own pixel space (the coder's one-constant rule, now a
+  // one-state rule). Fit modes derive it from the page's own point width.
+  const ZOOM_STEPS = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400];
+  const PT_TO_PX = 96 / 72;
+  let fitMode = $state<"width" | "page" | "custom">("width");
+  let percent = $state(100);
+  let ratio = $state(842 / 595);
+  let ptWidth = $state(595);
+  let viewportW = $state(0);
+  let viewportH = $state(0);
 
-  /// Draw the current page.
-  ///
-  /// A page that will not render is reported where the page would be, not
-  /// swallowed: a reader looking at a blank frame has no way to tell a scanned
-  /// blank page from a renderer that refused.
-  async function drawPage() {
-    if (!doc || !canvas) return;
-    try {
-      const img = await invoke<PageImage>("pdf_page_image", { page: current, scale: SCALE });
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const data = new ImageData(new Uint8ClampedArray(img.rgba), img.width, img.height);
-      ctx.putImageData(data, 0, 0);
-      pageFailure = null;
-      pageWords = "";
-      // Selectable text is a nicety over a drawn page, so a text layer that
-      // will not come back leaves the page shown rather than taking it down
-      // with it. A scan has no text and that is not a failure either.
-      lines = await invoke<TextLine[]>("pdf_text_layer", { page: current, scale: SCALE })
-        .catch(() => []);
-    } catch (e) {
-      pageFailure = String(e);
-      lines = [];
-      // The page could not be drawn, so ask for its words instead. This read is
-      // `lopdf` in the host and needs no engine, which is the whole point: it is
-      // the path that still works on a machine with no rasteriser.
-      pageWords = await invoke<string>("pdf_page_text", { page: current }).catch(() => "");
-    }
+  const scale = $derived.by(() => {
+    let s: number;
+    if (fitMode === "width" && viewportW > 0) s = (viewportW - 96) / ptWidth;
+    else if (fitMode === "page" && viewportH > 0)
+      s = Math.min((viewportW - 96) / ptWidth, (viewportH - 48) / (ptWidth * ratio));
+    else s = (percent / 100) * PT_TO_PX;
+    return Math.min(8, Math.max(0.1, Math.round(s * 100) / 100));
+  });
+  const shownPercent = $derived(Math.round((scale / PT_TO_PX) * 100));
+
+  function zoom(delta: number): void {
+    const now = shownPercent;
+    const next =
+      delta > 0
+        ? (ZOOM_STEPS.find((z) => z > now) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1])
+        : ([...ZOOM_STEPS].reverse().find((z) => z < now) ?? ZOOM_STEPS[0]);
+    fitMode = "custom";
+    percent = next;
+  }
+  function actualSize(): void {
+    fitMode = "custom";
+    percent = 100;
   }
 
-  // Redrawn when the page changes or a document arrives, which is also what a
-  // contents-entry click and a search hit do.
+  // --- Search (debounced; the core rescans the document per query) ---------
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
-    void current;
-    void doc;
-    void drawPage();
+    const q = query;
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      void search(q)
+        .then((r) => (results = r))
+        .catch((e) => failure.set(String(e)));
+    }, 200);
   });
 
-  onMount(() => {
-    if (!tauriAvailable) return;
-    void (async () => {
-      // A THROW AND A NULL ARE DIFFERENT ANSWERS, and folding them together is
-      // how a reader who just double-clicked a PDF in Files gets told to open a
-      // PDF from Files. `null` means nothing was passed on the command line, which
-      // is an ordinary way to start the reader; a throw means the host could not
-      // say what it was asked to open, which is a failure and has to read as one.
-      // The viewers app records this exact defect one branch over - it survived
-      // its first fix because only the `!path` case was covered.
-      let launched: string | null = null;
-      try {
-        launched = await invoke<string | null>("launch_file");
-      } catch (e) {
-        launchFailure = String(e);
-        return;
-      }
-      if (!launched) return;
-      try {
-        doc = await invoke<DocumentInfo>("pdf_open", { path: launched });
-        failure = null;
-      } catch (e) {
-        failure = String(e);
-      }
-    })();
-  });
+  // --- Continuous scroll: sync and jumps -----------------------------------
+  let scroller = $state<HTMLElement | null>(null);
+  let suppressSync = 0;
 
-  async function run() {
-    // An empty box is not a query. The core says the same thing, and saying it
-    // here too keeps the surface from flashing a "nothing found" for a search
-    // nobody made.
-    if (!query.trim()) {
-      results = null;
-      return;
-    }
-    try {
-      results = await invoke<SearchOutcome>("pdf_search", { query });
-    } catch (e) {
-      failure = String(e);
+  function goTo(page: number): void {
+    if (!$doc) return;
+    current = clampPage(page, 0, $doc.pages);
+    const el = scroller?.querySelector(`[data-page="${current}"]`);
+    if (el) {
+      suppressSync = Date.now() + 600;
+      el.scrollIntoView({ block: "start" });
     }
   }
-
-  const title = $derived(doc ? doc.path.split("/").pop() : null);
-
-  /// Move by `delta` pages, stopping at the ends.
-  ///
-  /// Clamped rather than wrapping: a reader who presses Right on the last page
-  /// of a report has reached the end of it, and jumping back to page one reads
-  /// as the document having restarted.
-  function step(delta: number) {
-    if (!doc) return;
-    current = clampPage(current, delta, doc.pages);
+  function step(delta: number): void {
+    if (!$doc) return;
+    goTo(clampPage(current, delta, $doc.pages));
   }
 
-  /// Keyboard first, as the viewer conventions have it.
-  ///
-  /// Ignored while the search box has focus, because there Space and the arrows
-  /// belong to the text being typed - a reader mid-word does not expect the page
-  /// to turn under them.
+  function onScroll(): void {
+    if (!scroller || !$doc || Date.now() < suppressSync) return;
+    const top = scroller.getBoundingClientRect().top + 40;
+    let best = current;
+    for (const el of scroller.querySelectorAll("[data-page]")) {
+      const r = el.getBoundingClientRect();
+      if (r.top <= top && r.bottom > top) {
+        best = Number((el as HTMLElement).dataset.page);
+        break;
+      }
+    }
+    current = best;
+  }
+
+  // --- Keyboard: the tested paging vocabulary, plus zoom and the mode ------
   function onKey(event: KeyboardEvent) {
-    if (!doc) return;
+    if (!$doc) return;
     const target = event.target as HTMLElement | null;
-    const intent = pageIntent(event.key, event.shiftKey, target?.tagName === "INPUT");
+    const inInput = target?.tagName === "INPUT";
+    const intent = pageIntent(event.key, event.shiftKey, inInput);
     if (intent) {
       event.preventDefault();
       if (intent.kind === "step") step(intent.delta);
-      else if (intent.kind === "first") current = 1;
-      else current = doc.pages;
+      else if (intent.kind === "first") goTo(1);
+      else goTo($doc.pages);
+      return;
+    }
+    if (inInput) return;
+    if (event.key === "+" || event.key === "=") zoom(1);
+    else if (event.key === "-") zoom(-1);
+    else if (event.key === "0") actualSize();
+    else if (event.key === ".") clean = !clean;
+    else if (event.key === "Escape" && clean) clean = false;
+    else return;
+    event.preventDefault();
+  }
+
+  function onWheel(event: WheelEvent): void {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    zoom(event.deltaY < 0 ? 1 : -1);
+  }
+
+  // --- The document-only overlay -------------------------------------------
+  let overlayShown = $state(false);
+  let overlayTimer: ReturnType<typeof setTimeout> | null = null;
+  function wake(): void {
+    if (!clean) return;
+    overlayShown = true;
+    if (overlayTimer) clearTimeout(overlayTimer);
+    overlayTimer = setTimeout(() => (overlayShown = false), 2000);
+  }
+
+  async function winMin(): Promise<void> {
+    try {
+      await getCurrentWindow().minimize();
+    } catch {
+      /* standalone */
     }
   }
+  async function winClose(): Promise<void> {
+    try {
+      await getCurrentWindow().close();
+    } catch {
+      /* standalone */
+    }
+  }
+
+  // --- Menu actions from the shell topbar ----------------------------------
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "view.document-only") clean = !clean;
+    else if (a === "view.contents") query = "";
+    else if (a === "view.zoom-in") zoom(1);
+    else if (a === "view.zoom-out") zoom(-1);
+    else if (a === "view.actual-size") actualSize();
+    else if (a === "view.fit-width") fitMode = "width";
+    else if (a === "view.fit-page") fitMode = "page";
+    else if (a === "go.next") step(1);
+    else if (a === "go.previous") step(-1);
+    else if (a === "go.first") goTo(1);
+    else if (a === "go.last" && $doc) goTo($doc.pages);
+  });
+
+  onMount(() => {
+    void openLaunched();
+    void initAppMenu();
+  });
+
+  const title = $derived($doc ? $doc.path.split("/").pop() : null);
 
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
     return !!target?.closest("button, a, input, [role='button']");
   }
-
   async function startDrag(e: PointerEvent) {
     if (e.button !== 0 || e.pointerType !== "mouse") return;
     if (isInteractive(e)) return;
@@ -174,7 +213,6 @@
       /* standalone (vite) has no toplevel to drag */
     }
   }
-
   async function toggleMax(e: MouseEvent) {
     if (isInteractive(e)) return;
     try {
@@ -189,320 +227,239 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="pdf-app">
-  <!-- The header is a drag surface (a non-keyboard pointer interaction); its
-       actual controls are the accessible WindowButtons, so the
-       static-interaction lint is a false positive here. -->
+{#if clean && $doc}
+  <!-- The document-only face: the window is the content. The overlay is a
+       courtesy that appears under a moving mouse and leaves; the keyboard and
+       the shell app menu carry everything else. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <header class="pdf-bar" onpointerdown={startDrag} ondblclick={toggleMax}>
-    <span class="pdf-title">{title ?? $t("pdf.app.title")}</span>
-    <WindowButtons />
-  </header>
+  <div class="clean" onpointermove={wake} onwheel={onWheel}>
+    <div
+      class="pages clean-pages"
+      bind:this={scroller}
+      bind:clientWidth={viewportW}
+      bind:clientHeight={viewportH}
+      onscroll={onScroll}
+    >
+      {#each Array.from({ length: $doc.pages }, (_, i) => i + 1) as page (page)}
+        <PageCanvas {page} {scale} {ratio} {query} onmetrics={(r, w) => ((ratio = r), (ptWidth = w))} />
+      {/each}
+    </div>
+    <div class="overlay" class:shown={overlayShown}>
+      <div class="ov-top">
+        <IconAction label={$t("pdf.readingView")} size="control" onclick={() => (clean = false)}>
+          <PanelLeft size={15} strokeWidth={1.75} />
+        </IconAction>
+        <span class="ov-spacer"></span>
+        <IconAction label={$t("pdf.minimize")} size="control" onclick={winMin}>
+          <Minus size={15} strokeWidth={1.75} />
+        </IconAction>
+        <IconAction label={$t("pdf.close")} size="control" onclick={winClose}>
+          <X size={15} strokeWidth={1.75} />
+        </IconAction>
+      </div>
+      <span class="ov-pill">{$t("pdf.pageOf", { number: current, total: $doc.pages })}</span>
+    </div>
+  </div>
+{:else}
+  <SidebarProvider class="h-screen min-h-0 overflow-hidden">
+    {#if $doc}
+      <PdfSidebar doc={$doc} bind:query {results} {current} onjump={goTo} />
+    {/if}
 
-  <div class="pdf-body">
-    {#if !tauriAvailable}
-      <p class="quiet">{$t("pdf.hostAbsent")}</p>
-    {:else if launchFailure}
-      <p class="quiet">{$t("pdf.launchUnknown", { reason: launchFailure })}</p>
-    {:else if failure === "locked"}
-      <!-- The host sends a token for this one, so the sentence is written here
-           and reaches a German reader in German. -->
-      <p class="quiet">{$t("pdf.locked")}</p>
-    {:else if failure}
-      <p class="quiet">{$t("pdf.failed", { reason: failure })}</p>
-    {:else if !doc}
-      <p class="quiet">{$t("pdf.nothingOpen")}</p>
-    {:else}
-      <aside class="pdf-side">
-        <div class="pdf-count">
-          {doc.pages === 1 ? $t("pdf.onePage") : $t("pdf.pages", { count: doc.pages })}
-        </div>
+    <SidebarInset class="h-svh min-h-0">
+      <!-- The header is a drag surface (a non-keyboard pointer interaction);
+           its actual controls are the accessible buttons inside it, so the
+           static-interaction lint is a false positive here. -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <header
+        onpointerdown={startDrag}
+        ondblclick={toggleMax}
+        class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+      >
+        {#if $doc}
+          <SidebarTrigger class="-ml-1" />
+          <Separator orientation="vertical" class="me-1 h-4" />
+        {/if}
+        <span class="select-none truncate text-sm font-medium text-foreground">{title ?? $t("pdf.app.title")}</span>
+        {#if $doc}
+          <IconAction label={$t("pdf.prevPage")} size="control" onclick={() => step(-1)}>
+            <ChevronLeft size={15} strokeWidth={1.75} />
+          </IconAction>
+          <span class="page-of">{$t("pdf.pageOf", { number: current, total: $doc.pages })}</span>
+          <IconAction label={$t("pdf.nextPage")} size="control" onclick={() => step(1)}>
+            <ChevronRight size={15} strokeWidth={1.75} />
+          </IconAction>
+        {/if}
+        <div class="flex-1"></div>
+        {#if $doc}
+          <IconAction label={$t("pdf.zoomOut")} size="control" onclick={() => zoom(-1)}>
+            <Minus size={15} strokeWidth={1.75} />
+          </IconAction>
+          <button type="button" class="zoom-pct" onclick={actualSize}>{shownPercent}%</button>
+          <IconAction label={$t("pdf.zoomIn")} size="control" onclick={() => zoom(1)}>
+            <Plus size={15} strokeWidth={1.75} />
+          </IconAction>
+          <IconAction label={$t("pdf.fitWidth")} size="control" active={fitMode === "width"} onclick={() => (fitMode = "width")}>
+            <Scan size={15} strokeWidth={1.75} />
+          </IconAction>
+          <IconAction label={$t("pdf.documentOnly")} size="control" onclick={() => (clean = true)}>
+            <FileText size={15} strokeWidth={1.75} />
+          </IconAction>
+        {/if}
+        <WindowButtons />
+      </header>
 
-        <label class="pdf-search">
-          <Search size={14} aria-hidden="true" />
-          <input
-            type="search"
-            bind:value={query}
-            oninput={run}
-            aria-label={$t("pdf.search.label")}
-            placeholder={$t("pdf.search.label")}
-          />
-        </label>
-
-        {#if results}
-          {#if results.hits.length === 0}
-            <p class="quiet">{$t("pdf.search.none")}</p>
-          {:else}
-            <ul class="pdf-hits">
-              {#each results.hits as hit (hit.page)}
-                <li>
-                  <button type="button" onclick={() => (current = hit.page)}>
-                    <span class="pdf-hit-page">{$t("pdf.page", { number: hit.page })}</span>
-                    <span class="pdf-hit-text">{hit.snippet}</span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-          <!-- Said whether or not there were hits: pages nobody could read are
-               missing from BOTH answers, and the empty one is where a reader is
-               most likely to conclude the word is not in the document. -->
-          {#if results.unsearchable.length > 0}
-            <p class="quiet">
-              {$t("pdf.search.unsearchable", { count: results.unsearchable.length })}
-            </p>
-          {/if}
-        {:else}
-          <div class="pdf-contents">
-            <h2>{$t("pdf.contents")}</h2>
-            {#if doc.outline.length === 0}
-              <p class="quiet">{$t("pdf.noContents")}</p>
-            {:else}
-              <ul>
-                {#each doc.outline as entry, i (i)}
-                  <li style="padding-inline-start: {entry.depth * 12}px">
-                    <!-- An entry whose target this reader could not resolve is
-                         still shown, with the jump disabled. Hiding it would
-                         lose a heading the document plainly has. -->
-                    <button
-                      type="button"
-                      disabled={entry.page === null}
-                      onclick={() => entry.page && (current = entry.page)}
-                    >
-                      {entry.title}
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
+      <div class="content">
+        {#if !tauriAvailable && !$doc}
+          <p class="center-note">{$t("pdf.hostAbsent")}</p>
+        {:else if $launchFailure}
+          <p class="center-note">{$t("pdf.launchUnknown", { reason: $launchFailure })}</p>
+        {:else if $failure === "locked"}
+          <!-- The host sends a token for this one, so the sentence is written
+               here and reaches a German reader in German. -->
+          <p class="center-note">{$t("pdf.locked")}</p>
+        {:else if $failure}
+          <p class="center-note">{$t("pdf.failed", { reason: $failure })}</p>
+        {:else if !$doc}
+          <div class="empty">
+            <FileText size={28} strokeWidth={1.5} aria-hidden="true" />
+            <p class="center-note">{$t("pdf.nothingOpen")}</p>
           </div>
-        {/if}
-      </aside>
-
-      <main class="pdf-page">
-        {#if pageFailure}
-          <FileText size={28} aria-hidden="true" />
-          <p class="quiet">{$t("pdf.pageFailed", { reason: pageFailure })}</p>
-          <!-- The words, when the picture cannot be had. Said to be the text and
-               not the page, because it has none of the layout: a table comes
-               back as its cells in reading order and a two-column article reads
-               straight through. Better than an empty sheet, and only if the
-               reader is told which one they are looking at. -->
-          {#if pageWords}
-            <p class="quiet">{$t("pdf.textInstead")}</p>
-            <pre class="pdf-words" data-selectable>{pageWords}</pre>
-          {/if}
-        {/if}
-        <div class="pdf-sheet" class:hidden={pageFailure !== null}>
-          <canvas bind:this={canvas} class="pdf-canvas"></canvas>
-          <!-- The words, invisible, laid exactly over the ones in the picture.
-               This is what makes a rendered page selectable at all: the canvas
-               is pixels and carries no text a browser can reach, so the page's
-               own lines are placed over it as transparent text and the ordinary
-               selection works on those. -->
-          <!-- `data-selectable` because the app shell turns selection OFF for
-               everything by default - dragging across a button label reads as a
-               bug - and opts back in through this attribute. The text layer was
-               positioned correctly and selected nothing until it carried it,
-               which is the difference between a layer that exists and one that
-               works. -->
-          <div class="pdf-text-layer" data-selectable>
-            {#each lines as line, i (i)}
-              <span
-                style="left: {line.x}px; top: {line.y}px; width: {line.width}px; height: {line.height}px; font-size: {line.height * 0.8}px"
-              >{line.text}</span>
+        {:else}
+          <div
+            class="pages"
+            bind:this={scroller}
+            bind:clientWidth={viewportW}
+            bind:clientHeight={viewportH}
+            onscroll={onScroll}
+            onwheel={onWheel}
+          >
+            {#each Array.from({ length: $doc.pages }, (_, i) => i + 1) as page (page)}
+              <PageCanvas {page} {scale} {ratio} {query} onmetrics={(r, w) => ((ratio = r), (ptWidth = w))} />
             {/each}
           </div>
-        </div>
-        <p class="pdf-page-number">
-          {$t("pdf.pageOf", { number: current, total: doc.pages })}
-        </p>
-      </main>
-    {/if}
-  </div>
-</div>
+        {/if}
+      </div>
+    </SidebarInset>
+  </SidebarProvider>
+{/if}
 
 <style>
-  .pdf-words {
-    max-width: 62ch;
-    margin: 8px auto 0;
-    padding: 12px 14px;
-    border-radius: 6px;
-    background: var(--color-bg-card, #171717);
-    color: var(--color-fg-primary, #e5e5e5);
-    font-size: 13px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    text-align: start;
-  }
-  .pdf-app {
+  .content {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    background: var(--color-bg-app);
-    color: var(--color-fg-primary);
-  }
-  .pdf-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 0 8px;
-    height: 2.5rem;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--color-border-default);
-  }
-  .pdf-title {
-    font-size: 14px;
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-  }
-  .pdf-body {
-    display: flex;
     flex: 1;
     min-height: 0;
   }
-  .pdf-side {
-    width: 280px;
-    flex-shrink: 0;
-    border-inline-end: 1px solid var(--color-border-default);
-    padding: 12px;
-    overflow-y: auto;
-  }
-  .pdf-count {
-    font-size: 12px;
-    color: var(--color-fg-secondary);
-    margin-bottom: 8px;
-  }
-  .pdf-search {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border: 1px solid var(--color-border-default);
-    border-radius: 6px;
-    margin-bottom: 12px;
-  }
-  .pdf-search input {
+  /* The letterbox ground of the viewer family. */
+  .pages {
     flex: 1;
-    min-width: 0;
-    border: 0;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
+    padding: 24px;
+    background: #0a0a0a;
+    scroll-padding-top: 12px;
+  }
+  .page-of {
+    font-size: var(--text-xs, 12px);
+    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .zoom-pct {
+    min-width: 3.2rem;
+    padding: 0.2rem 0.3rem;
+    border: none;
+    border-radius: var(--radius-chip, 4px);
     background: transparent;
-    color: inherit;
-    font-size: 13px;
-    outline: none;
-  }
-  .pdf-contents h2 {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-fg-secondary);
-    margin: 0 0 6px;
-  }
-  .pdf-contents ul,
-  .pdf-hits {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  .pdf-contents button,
-  .pdf-hits button {
-    display: block;
-    width: 100%;
-    text-align: start;
-    background: transparent;
-    border: 0;
-    color: inherit;
     font: inherit;
-    padding: 4px 6px;
-    border-radius: 4px;
+    font-size: var(--text-xs, 12px);
+    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
+    font-variant-numeric: tabular-nums;
     cursor: pointer;
   }
-  .pdf-contents button:hover:not(:disabled),
-  .pdf-hits button:hover {
-    background: var(--color-bg-card);
+  .zoom-pct:hover {
+    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
   }
-  .pdf-contents button:disabled {
-    cursor: default;
-    color: var(--color-fg-disabled);
+  .center-note {
+    margin: auto;
+    max-width: 46ch;
+    padding: 24px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-fg-secondary, #a3a3a3);
   }
-  .pdf-hit-page {
-    display: block;
-    font-size: 11px;
-    color: var(--color-fg-secondary);
-  }
-  .pdf-hit-text {
-    display: block;
-    font-size: 12px;
-  }
-  .pdf-sheet {
-    position: relative;
-    max-width: 100%;
-    max-height: calc(100vh - 100px);
-    box-shadow: var(--shadow-lg);
-  }
-  .pdf-canvas {
-    display: block;
-    max-width: 100%;
-    max-height: calc(100vh - 100px);
-    background: #fff;
-  }
-  /* Transparent, but selectable: `color: transparent` keeps the glyphs in the
-     document for selection and search while the canvas underneath is what a
-     reader actually sees. Sized per line rather than per glyph, so the text is
-     stretched to its box - the selection highlight then follows the words
-     closely enough to read as theirs. */
-  .pdf-text-layer {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-  }
-  .pdf-text-layer span {
-    position: absolute;
-    color: transparent;
-    white-space: pre;
-    transform-origin: 0 0;
-    cursor: text;
-    line-height: 1;
-  }
-  .pdf-text-layer span::selection {
-    background: color-mix(in srgb, var(--color-accent) 40%, transparent);
-  }
-  .hidden {
-    display: none;
-  }
-  .pdf-page {
-    flex: 1;
-    min-width: 0;
+  .empty {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 24px;
-    text-align: center;
-    color: var(--color-fg-secondary);
+    gap: 0.5rem;
+    margin: auto;
+    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
   }
-  .pdf-page-number {
-    font-size: 13px;
+  .empty .center-note {
     margin: 0;
   }
-  .quiet {
-    font-size: 12px;
-    color: var(--color-fg-secondary);
-    max-width: 42ch;
-    margin: 8px 0;
+
+  /* The document-only face. */
+  .clean {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    background: #0a0a0a;
   }
-  /* The four states that replace the whole document view - no host, locked,
-     failed, nothing open - are direct children of a flex body that carries no
-     padding, on purpose: the sidebar and the page area have to reach the frame.
-     Without this the sentence a reader meets when a document does not open
-     starts at x=0, touching the window edge. The nested ones inside the panels
-     are left alone; those containers pad their own contents. */
-  .pdf-body > .quiet {
-    margin-inline: 12px;
+  .clean-pages {
+    flex: 1;
+  }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 10px 12px 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+  .overlay.shown {
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .overlay {
+      transition: none;
+    }
+  }
+  .ov-top {
+    display: flex;
+    gap: 4px;
+    pointer-events: auto;
+    align-self: stretch;
+  }
+  .ov-top :global(.ia) {
+    background: color-mix(in srgb, #0a0a0a 70%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .ov-spacer {
+    flex: 1;
+    pointer-events: none;
+  }
+  .ov-pill {
+    align-self: center;
+    padding: 4px 12px;
+    border-radius: var(--radius-chip, 4px);
+    background: color-mix(in srgb, #0a0a0a 70%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    font-size: var(--text-xs, 12px);
+    color: #e5e5e5;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
   }
 </style>

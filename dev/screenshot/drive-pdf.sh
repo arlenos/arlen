@@ -129,7 +129,7 @@ JS
 )
 
 say "a document opened from the file manager is the one shown" \
-  "$(printf '%s' "$dom" | grep -q "3 pages" && echo 1 || echo 0)" "$dom"
+  "$(printf '%s' "$dom" | grep -qE "of 3|von 3" && echo 1 || echo 0)" "$dom"
 
 # The whole point of reading the outline rather than counting pages: the author's
 # own headings, in their own order.
@@ -185,7 +185,7 @@ fi
 # mouse to turn a page is not reading.
 nav=$(SHOOT_APP_ARGS="$fix/sample.pdf" SHOOT_INJECT=/dev/stdin "$here/shoot-app.sh" "$app" "" 2>&1 <<'JS' \
   | sed -n 's/^inject result: //p'
-const at = () => document.querySelector(".pdf-page-number")?.innerText ?? "?";
+const at = () => document.querySelector(".page-of")?.innerText ?? "?";
 const press = (key, shiftKey = false) =>
   window.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true }));
 const start = at();
@@ -216,8 +216,8 @@ say "the last page is the last page, not a wrap to the first" \
 # reader pointed at and looks identical from the DOM.
 sel=$(SHOOT_APP_ARGS="$fix/sample.pdf" SHOOT_INJECT=/dev/stdin "$here/shoot-app.sh" "$app" "" 2>&1 <<'JS' \
   | sed -n 's/^inject result: //p'
-const span = document.querySelector(".pdf-text-layer span");
-const canvas = document.querySelector(".pdf-canvas");
+const span = document.querySelector(".text-layer span");
+const canvas = document.querySelector(".page-canvas");
 if (!span || !canvas) return "no text layer";
 const s = span.getBoundingClientRect();
 const c = canvas.getBoundingClientRect();
@@ -264,7 +264,7 @@ const hits = [...document.querySelectorAll(".pdf-hits li")].map((li) => li.inner
 // Jump to the hit and report which page the reader is on afterwards, since a
 // result list nobody can act on is a list, not a search.
 const before = (document.querySelector(".pdf-page-indicator, [class*=indicator]")?.innerText ?? "").trim();
-document.querySelector(".pdf-hits button")?.click();
+document.querySelector(".pdf-hits .hit")?.click();
 await new Promise((r) => setTimeout(r, 600));
 const dom = document.body.innerText.replace(/\s+/g, " ").trim();
 // And a word that is not in the document, to prove the first answer was about
@@ -334,7 +334,7 @@ bare=$(SHOOT_INJECT="$fix/p-bare.js" \
   "$here/shoot-app.sh" "$app" "$here/out/pdf-no-file.png" 2>&1 | sed -n 's/^inject result: //p')
 
 say "launched with no document, it says where one comes from" \
-  "$(printf '%s' "$bare" | grep -qE "file manager|Dateiverwaltung" && echo 1 || echo 0)" "$bare"
+  "$(printf '%s' "$bare" | grep -qE "Files|Dateien" && echo 1 || echo 0)" "$bare"
 
 [ "$fail" = 0 ] && echo "the reader opens a real document, says what is in it, and an empty window says where to get one"
 exit "$fail"
