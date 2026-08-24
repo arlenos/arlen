@@ -1,26 +1,21 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
-  /// System: cursor, icons, sounds, and the terminal palette. The terminal's
-  /// 16-ANSI IS live-previewable (a mini terminal); cursor / icons / sounds are
-  /// OS-level and can't be faked in a Settings webview, so they show the control +
-  /// honest indicators, not a fake preview (same principle as GTK). Same split +
+  /// System: cursor, icons, and the terminal palette. The terminal's 16-ANSI IS
+  /// live-previewable (a mini terminal); cursor / icons are OS-level and can't
+  /// be faked in a Settings webview, so they show the control + honest
+  /// indicators, not a fake preview (same principle as GTK). Same split +
   /// override language. Rich by structure, not omission (appearance-surface.md).
+  /// Sounds have their own page (/appearance/sound).
   ///
   /// Mock-vs-live: the biggest backend gap - cursor/icon theme listing + setting +
-  /// generator, the sound map + playback, and terminal per-slot editing all need
-  /// coder backend. Fixture-backed until then.
-  import { ChevronRight, MousePointer2, Image, Play } from "lucide-svelte";
+  /// generator, and terminal per-slot editing need coder backend. Fixture-backed
+  /// until then.
+  import { MousePointer2, Image } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
-  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import {
-    Collapsible,
-    CollapsibleTrigger,
-    CollapsibleContent,
-  } from "@arlen/ui-kit/components/ui/collapsible";
   import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
   import {
     overrides,
@@ -34,49 +29,16 @@
     CURSOR_THEMES,
     ICON_THEMES,
     sysOptions,
-    SOUND_EVENTS,
     ANSI_META,
-    previewSound,
-    installedSoundThemes,
-    themeCues,
-    type PreviewOutcome,
-    type SoundThemeOption,
   } from "$lib/stores/themeSystem";
 
-  /// What the last preview of each event did, so a click that made no sound can
-  /// say which kind of nothing it was. Keyed by event, cleared after a moment so
-  /// the row does not keep a stale verdict.
-  let previewed = $state<Record<string, PreviewOutcome>>({});
-
-  /// The sound themes this machine has. `undefined` until the read answers;
-  /// empty means the read happened and found none, which the picker says rather
-  /// than falling back to the invented list it used to show.
-  let soundThemes = $state<SoundThemeOption[] | undefined>(undefined);
-
-  /// The cue names the active theme ships. Empty means the read happened and the
-  /// theme provides none, which the row says rather than offering invented ones.
-  let cues = $state<string[] | undefined>(undefined);
-
   $effect(() => {
-    void installedSoundThemes().then((t) => (soundThemes = t));
-    void themeCues().then((c) => (cues = c));
     // What `theme.toml` already holds, so a value set on an earlier launch is
     // shown as set instead of the page opening on the theme's own defaults.
     void loadSys();
   });
 
-  async function play(eventKey: string, name: string) {
-    const outcome = await previewSound(name);
-    previewed = { ...previewed, [eventKey]: outcome };
-    // Long enough to read, short enough not to look like row state.
-    setTimeout(() => {
-      const { [eventKey]: _drop, ...rest } = previewed;
-      previewed = rest;
-    }, 2500);
-  }
-
   const cursorSize = $derived(Number($effective.cursorSize));
-  const soundsOn = $derived(Boolean($effective.soundsEnabled));
   const iconTheme = $derived(String($effective.iconTheme));
   const termFg = $derived(String($effective.termFg));
   const termBg = $derived(String($effective.termBg));
@@ -133,109 +95,6 @@
             <PopoverSelect value={iconTheme} options={sysOptions(ICON_THEMES, $t)} ariaLabel={$t("s.sys.iconTheme")} onchange={(v) => setSys("iconTheme", v)} />
           {/snippet}
         </OverrideRow>
-      </Section>
-
-      <Section label={$t("s.sys.sounds")}>
-        <OverrideRow
-          label={$t("s.sys.sysSounds")}
-          hint={$t("s.sys.sysSoundsHint")}
-          overridden={isOverridden($overrides, "soundsEnabled")}
-          onreset={() => resetSys("soundsEnabled")}
-          id="sys-soundsEnabled"
-        >
-          {#snippet control()}
-            <Switch value={soundsOn} ariaLabel={$t("s.sys.sounds")} onchange={(v) => setSys("soundsEnabled", v)} />
-          {/snippet}
-        </OverrideRow>
-        <OverrideRow
-          label={$t("s.sys.soundTheme")}
-          hint={$t("s.sys.soundThemeHint")}
-          overridden={isOverridden($overrides, "soundTheme")}
-          onreset={() => resetSys("soundTheme")}
-          id="sys-soundTheme"
-        >
-          {#snippet control()}
-            <!-- The installed themes, read from the sound roots. This offered
-                 "Chime" and "Soft" until 19 Aug - names of themes that exist on
-                 no machine, so picking one wrote a `[sound] theme` the resolver
-                 could never find and every cue fell through to the synth while
-                 the row showed a confident selection. -->
-            {#if soundThemes === undefined}
-              <span class="snd-said">{$t("s.snd.themesReading")}</span>
-            {:else if soundThemes.length === 0}
-              <span class="snd-said">{$t("s.snd.themesNone")}</span>
-            {:else}
-              {#if !soundThemes.some((t) => t.id === String($effective.soundTheme))}
-                <!-- The configured theme is not on this machine. Worth saying:
-                     the resolver will find nothing and every cue falls through to
-                     the synth, which otherwise just sounds like a different theme. -->
-                <span class="snd-said">{$t("s.snd.themeMissing")}</span>
-              {/if}
-              <PopoverSelect
-                value={String($effective.soundTheme)}
-                options={soundThemes.map((t) => ({ value: t.id, label: t.name }))}
-                ariaLabel={$t("s.sys.soundTheme")}
-                onchange={(v) => setSys("soundTheme", v)}
-              />
-            {/if}
-          {/snippet}
-        </OverrideRow>
-        <Collapsible class="expander">
-          <CollapsibleTrigger class="exp-trigger">
-            <ChevronRight size={15} strokeWidth={2} />
-            {$t("s.sys.allSounds")}
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <Section>
-              {#each SOUND_EVENTS as ev (ev.key)}
-                <OverrideRow
-                  label={$t(ev.label)}
-                  hint={$t(ev.hint)}
-                  overridden={isOverridden($overrides, ev.key)}
-                  onreset={() => resetSys(ev.key)}
-                  id={`sys-${ev.key}`}
-                >
-                  {#snippet control()}
-                    <span class="snd-control">
-                      <!-- The play-preview the earlier note here promised. It goes
-                           through the notification daemon's own resolver, so what
-                           you hear is what the system would play - not this page's
-                           idea of it. -->
-                      <button
-                        type="button"
-                        class="snd-play"
-                        aria-label={$t("s.snd.playAria", { event: $t(ev.label) })}
-                        onclick={() => play(ev.key, String($effective[ev.key]))}
-                      >
-                        <Play size={13} strokeWidth={2} />
-                      </button>
-                      {#if previewed[ev.key] && previewed[ev.key] !== "played"}
-                        <!-- Only ever shown when nothing was heard. "It played" is
-                             reported by the speaker. -->
-                        <span class="snd-said">{$t(`s.snd.outcome.${previewed[ev.key]}`)}</span>
-                      {/if}
-                      {#if cues === undefined}
-                        <span class="snd-said">{$t("s.snd.themesReading")}</span>
-                      {:else if cues.length === 0}
-                        <!-- The theme ships no cue at all. Said plainly, because
-                             the alternative is a list of names that resolve to
-                             nothing. -->
-                        <span class="snd-said">{$t("s.snd.cuesNone")}</span>
-                      {:else}
-                        <PopoverSelect
-                          value={String($effective[ev.key])}
-                          options={cues.map((c) => ({ value: c, label: c }))}
-                          ariaLabel={$t("s.snd.pickAria", { event: $t(ev.label) })}
-                          onchange={(v) => setSys(ev.key, v)}
-                        />
-                      {/if}
-                    </span>
-                  {/snippet}
-                </OverrideRow>
-              {/each}
-            </Section>
-          </CollapsibleContent>
-        </Collapsible>
       </Section>
 
       <Section label={$t("s.sys.terminal")}>
@@ -344,30 +203,6 @@
   }
 
   /* Terminal palette editor: a grid of 16 swatches + fg/bg. */
-  .snd-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .snd-play {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--color-fg-secondary, #a3a3a3);
-    cursor: pointer;
-  }
-  .snd-play:hover {
-    color: var(--color-fg-primary, #fafafa);
-  }
-  .snd-said {
-    font-size: 11px;
-    color: var(--color-fg-disabled, #737373);
-  }
   .term-editor {
     display: flex;
     flex-direction: column;
@@ -481,26 +316,4 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
-  /* The expander trigger (class rides the Collapsible root, so global). */
-  :global(.exp-trigger) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.5rem 0.25rem;
-    border: none;
-    background: transparent;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    cursor: pointer;
-  }
-  :global(.exp-trigger:hover) {
-    color: var(--foreground);
-  }
-  :global(.exp-trigger svg) {
-    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  :global(.exp-trigger[data-state="open"] svg) {
-    transform: rotate(90deg);
-  }
 </style>

@@ -23,6 +23,7 @@
     LayoutGrid,
     Image,
     RotateCcw,
+    Volume2,
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -84,6 +85,7 @@
     { href: "/appearance/geometry", titleKey: "s.appr.card.geometry", descKey: "s.appr.card.geometry.desc", icon: Frame },
     { href: "/appearance/typography", titleKey: "s.appr.card.typography", descKey: "s.appr.card.typography.desc", icon: Type },
     { href: "/appearance/motion-depth", titleKey: "s.appr.card.motiondepth", descKey: "s.appr.card.motiondepth.desc", icon: Zap },
+    { href: "/appearance/sound", titleKey: "s.appr.card.sound", descKey: "s.appr.card.sound.desc", icon: Volume2 },
     { href: "/appearance/system", titleKey: "s.appr.card.system", descKey: "s.appr.card.system.desc", icon: Terminal },
     { href: "/appearance/toolkits", titleKey: "s.appr.card.toolkits", descKey: "s.appr.card.toolkits.desc", icon: LayoutGrid },
   ];
