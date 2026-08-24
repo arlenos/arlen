@@ -363,6 +363,10 @@ export async function deleteBottle(id: string): Promise<void> {
 export const forgetFailed = writable<{ name: string; reason: string } | null>(null);
 
 /// The message key for a refused forget.
+///
+/// The three the runtime can answer here, plus everything else. `bad-id` and
+/// `unreadable` land on the generic sentence deliberately: to the person pressing
+/// Remove they mean the same thing, that it is still on the machine.
 export function forgetFailureKey(reason: string): string {
   switch (reason) {
     case "not-allowed":
@@ -386,7 +390,15 @@ export function forgetFailureKey(reason: string): string {
 /// exactly one of them.
 export const launchFailed = writable<{ name: string; reason: string } | null>(null);
 
-/// The message key for a refusal token, and the catch-all for one nobody knows.
+/// The message key for a refusal token.
+///
+/// THE RUNTIME'S WHOLE VOCABULARY IS LISTED, including the ones that end at the
+/// same sentence, so a reader can see the set rather than infer it from what is
+/// missing. The runtime can answer: nothing-to-run, no-wine, prefix-missing,
+/// drives-unmet, could-not-start, no-such-bottle, bad-id, unreadable, not-allowed,
+/// could-not-forget. A launch reaches the first five plus the three lookup ones;
+/// the last two belong to forgetting. A token this does not know still gets a
+/// sentence, because a person reading the screen should never be shown a token.
 export function launchFailureKey(reason: string): string {
   switch (reason) {
     case "nothing-to-run":
@@ -397,6 +409,9 @@ export function launchFailureKey(reason: string): string {
       return "s.wa.launchNoPrefix";
     case "drives-unmet":
       return "s.wa.launchDrives";
+    // could-not-start, no-such-bottle, bad-id, unreadable: the app is gone or the
+    // confinement would not come up, and "it did not start" is the honest summary
+    // of both. Named here so their absence below is a decision, not an oversight.
     default:
       return "s.wa.launchFailed";
   }
