@@ -71,6 +71,10 @@ export function threadKey(subject: string | null): string {
   let s = (subject ?? "").trim();
   const prefix = /^(re|fwd|fw|aw|wg)\s*(\[\d+\])?\s*:\s*/i;
   while (prefix.test(s)) s = s.replace(prefix, "");
+  // A GROUPING KEY, never shown. Lowercased like every other key this returns,
+  // and the list writes its own "(kein Betreff)" from the catalog when a row has
+  // no subject to show. Translating this would split one thread into one per
+  // language the reader has ever used.
   return s.toLowerCase() || "(no subject)";
 }
 

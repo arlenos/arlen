@@ -63,6 +63,12 @@ export interface Envelope {
 // attachments, a sealed message.
 // ---------------------------------------------------------------------------
 
+/// How the sample mailbox writes its own owner. Named rather than repeated, so
+/// the draft the compose flow saves borrows the FIXTURE's voice explicitly
+/// instead of putting an English word in live code and hoping a reader spots
+/// which side of the line it is on.
+const FIXTURE_SELF = "You";
+
 const DAY = 86_400_000;
 const now = Date.now();
 
@@ -375,8 +381,11 @@ export function saveDraft(to: string, subject: string, body: string): string {
   const env: Envelope = {
     id,
     folderId: "drafts",
-    from: "You",
-    subject: subject || "(no subject)",
+    from: FIXTURE_SELF,
+    // EMPTY, not a word. A subject the reader sees is the reader's language, and
+    // this store cannot know it; the list writes "(kein Betreff)" itself when
+    // there is nothing to show.
+    subject,
     snippet: body.split("\n")[0] ?? "",
     dateMs: Date.now(),
     unread: false,

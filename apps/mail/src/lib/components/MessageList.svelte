@@ -142,7 +142,7 @@
             <span class="when">{listDate(e.dateMs, $locale)}</span>
           </span>
           <span class="subject-line">
-            <span class="subject" class:strong={e.unread}>{e.subject}</span>
+            <span class="subject" class:strong={e.unread}>{e.subject || $t("ml.noSubject")}</span>
             {#if e.count}
               <span class="count" aria-label={$t("ml.threadCount", { n: e.count })}>{e.count}</span>
             {/if}
