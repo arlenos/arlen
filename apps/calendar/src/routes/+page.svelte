@@ -100,6 +100,7 @@
   // The named cause, not a sentence: only the window is in the reader's
   // language. `other` stays for a failure the command cannot name.
   type Failure =
+    | { problem: "launch"; reason: string }
     | { problem: "no-home" }
     | { problem: "unreadable"; why: string }
     | { problem: "other"; reason: string };
@@ -166,7 +167,16 @@
       return;
     }
     void (async () => {
-      launched = await invoke<string | null>("launch_file").catch(() => null);
+      // A THROW AND A NULL ARE DIFFERENT ANSWERS: `null` is a window opened with
+      // no file, a throw is the host failing to say what it was asked to open.
+      // Swallowed together, somebody who double-clicked an invitation gets the
+      // plain calendar and no sign that anything went wrong.
+      try {
+        launched = await invoke<string | null>("launch_file");
+      } catch (e) {
+        failure = { problem: "launch", reason: String(e) };
+        return;
+      }
       await read();
     })();
     // A file edited or synced while this window is open changes the answer, and
@@ -320,7 +330,8 @@
     <div class="content">
       {#if failure}
         <p class="note bad" role="alert">
-          {#if failure.problem === "no-home"}{$t("cal.failed.noHome")}
+          {#if failure.problem === "launch"}{$t("cal.failed.launch", { reason: failure.reason })}
+          {:else if failure.problem === "no-home"}{$t("cal.failed.noHome")}
           {:else if failure.problem === "unreadable"}{$t("cal.failed.unreadable", { why: failure.why })}
           {:else}{$t("cal.failed.other", { reason: failure.reason })}{/if}
         </p>

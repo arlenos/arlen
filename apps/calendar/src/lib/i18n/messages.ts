@@ -101,6 +101,8 @@ const messages: Catalogs = {
     // Named causes rather than whatever the layer below said. The five keep
     // failures used to reach the window as English sentences with no catalogue
     // around them at all.
+    "cal.failed.launch":
+      "This window could not find out which file it was asked to open, so it opened none: {$reason}",
     "cal.failed.noHome": "This session has no home directory, so there is no calendar folder to read.",
     "cal.failed.unreadable": "Your calendar folder could not be read, so nothing is shown: {$why}",
     "cal.failed.other": "Could not read your calendar files: {$reason}",
@@ -191,6 +193,8 @@ const messages: Catalogs = {
     "cal.unreadable": "{$count} deiner Kalenderdateien konnten nicht gelesen werden, die Termine darin fehlen also.",
     "cal.hostAbsent": "Der Kalender liest deine Dateien über seinen eigenen Host, der hier nicht läuft.",
     "cal.serviceDown": "Deine Dateien werden direkt gelesen: der Kalenderdienst läuft nicht, deshalb werden für diese Termine keine Erinnerungen gestellt.",
+    "cal.failed.launch":
+      "Dieses Fenster konnte nicht herausfinden, welche Datei es öffnen sollte, deshalb hat es keine geöffnet: {$reason}",
     "cal.failed.noHome": "Diese Sitzung hat kein Home-Verzeichnis, es gibt also keinen Kalenderordner zu lesen.",
     "cal.failed.unreadable": "Dein Kalenderordner konnte nicht gelesen werden, deshalb wird nichts gezeigt: {$why}",
     "cal.failed.other": "Deine Kalenderdateien konnten nicht gelesen werden: {$reason}",
