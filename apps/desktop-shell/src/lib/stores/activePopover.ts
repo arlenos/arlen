@@ -44,6 +44,10 @@ export const activePopover = writable<PopoverType>(
 /// on screen inviting clicks that go somewhere else. Not opening is the safe
 /// failure, and it is honest - nothing claimed to have opened.
 async function applyInputRegion(expanded: boolean): Promise<boolean> {
+  // No compositor, no input region to widen: under vite (the `?popover=` and
+  // `_*test` render paths) the revert below would close every popover the
+  // moment it opened, which is how the undo test page rendered an empty strip.
+  if (!tauriAvailable) return true;
   try {
     await invoke("set_popover_input_region", { expanded });
     return true;

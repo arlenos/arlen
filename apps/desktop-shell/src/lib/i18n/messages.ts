@@ -524,6 +524,10 @@ const messages: Catalogs = {
 
     // Undo popover
     "sh.undo.title": "Recent actions",
+    "sh.undo.by.agent": "Agent",
+    "sh.undo.by.files": "Files",
+    "sh.undo.by.terminal": "Terminal",
+    "sh.undo.by.settings": "Settings",
     "sh.undo.mocked": "Example actions - nothing here really ran.",
     "sh.undo.empty": "Nothing to take back right now.",
     "sh.undo.unavailable": "Cannot show your recent actions right now.",
@@ -1122,6 +1126,10 @@ const messages: Catalogs = {
     "sh.clip.clearConfirm": "Zum Löschen erneut klicken",
 
     "sh.undo.title": "Letzte Aktionen",
+    "sh.undo.by.agent": "Agent",
+    "sh.undo.by.files": "Dateien",
+    "sh.undo.by.terminal": "Terminal",
+    "sh.undo.by.settings": "Einstellungen",
     "sh.undo.mocked": "Beispielaktionen \u2013 hier ist nichts wirklich gelaufen.",
     "sh.undo.empty": "Gerade nichts zur\u00fcckzunehmen.",
     "sh.undo.irreversible": "Nicht r\u00fcckg\u00e4ngig zu machen",
