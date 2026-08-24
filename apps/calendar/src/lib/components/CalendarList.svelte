@@ -15,6 +15,7 @@
     hiddenCalendars,
     toggleCalendar,
     setCalendarColor,
+    colorFailed,
     saveSet,
     applySet,
     CALENDAR_PALETTE,
@@ -33,6 +34,11 @@
 
 {#if $calendars.length > 0}
   <SidebarGroupLabel>{$t("cal.calendars")}</SidebarGroupLabel>
+  <!-- Where the colour was chosen, so the sentence is beside the swatch that
+       went back rather than somewhere else on the page. -->
+  {#if $colorFailed}
+    <p class="color-failed" role="alert">{$colorFailed}</p>
+  {/if}
   <div class="sets">
     <button type="button" class="set-chip" onclick={() => applySet(null)}>{$t("cal.sets.all")}</button>
     {#each $calendarSets as set (set.name)}
@@ -105,6 +111,14 @@
 {/if}
 
 <style>
+  .color-failed {
+    margin: 0 0 6px;
+    padding: 0 4px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--color-fg-secondary);
+  }
+
   .sets {
     display: flex;
     flex-wrap: wrap;
