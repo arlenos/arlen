@@ -49,3 +49,74 @@ case "$out" in
         echo "--probe is running before --open again." >&2
         exit 1 ;;
 esac
+
+# --- the stub host, both directions ---------------------------------------
+#
+# `--stub-host` is what lets this harness render the failure a person actually
+# meets: the Tauri runtime present, the command refusing. Without it the only
+# reachable path is "no runtime", which for a Tauri app is the browser preview,
+# where every fixture guard fires. The flag going quietly inert would not fail a
+# sweep - it would just fill the sweep with the wrong picture again.
+
+probe() {  # $1 = flags, $2 = expression
+  xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+    env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
+      openbox >/dev/null 2>&1 &
+      ob=$!
+      sleep 1.5
+      python3 dev/screenshot/render-wide.py --url "data:text/html,<p>x" --out /dev/null \
+        --width 1280 --settle 1 $1 --probe "$2"
+      rc=$?
+      kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null
+      exit $rc
+    ' _ "$1" "$2" 2>/dev/null
+}
+
+with=$(probe "--stub-host" "typeof window.__TAURI_INTERNALS__.invoke")
+case "$with" in
+  *function*) echo "ok: --stub-host installs a runtime before the page runs" ;;
+  *) echo "FAIL: with --stub-host the page saw ${with@Q}, not a callable invoke." >&2
+     exit 1 ;;
+esac
+
+without=$(probe "" "typeof window.__TAURI_INTERNALS__")
+case "$without" in
+  *undefined*) echo "ok: without it the page has no runtime, as before" ;;
+  *) echo "FAIL: a plain run already carries a runtime (${without@Q}), so the" >&2
+     echo "two modes are the same picture." >&2
+     exit 1 ;;
+esac
+
+# --- the flat-frame warning, both directions ------------------------------
+#
+# A frame of one colour is a shot of nothing, and one arrived on 24 August that
+# read as "this app renders nothing when its daemon fails" - it was the harness.
+# Silent, that teaches something false about every app a sweep touches.
+
+shoot() {  # $1 = page, $2 = out
+  xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+    env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
+      openbox >/dev/null 2>&1 &
+      ob=$!
+      sleep 1.5
+      python3 dev/screenshot/render-wide.py --url "$1" --out "$2" --width 800 --settle 1
+      rc=$?
+      kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null
+      exit $rc
+    ' _ "$1" "$2" 2>/dev/null
+}
+
+flat=$(shoot 'data:text/html,<body style=background:%23111>' /tmp/render-wide-flat.png)
+case "$flat" in
+  *FLAT*) echo "ok: a frame with no second colour says so" ;;
+  *) echo "FAIL: a single-colour frame was written without a word about it." >&2
+     exit 1 ;;
+esac
+
+full=$(shoot 'data:text/html,<body style=background:%23111><p style=color:%23fff>text' /tmp/render-wide-full.png)
+case "$full" in
+  *FLAT*) echo "FAIL: a page with text was called flat, so the check cries wolf." >&2
+          exit 1 ;;
+  *) echo "ok: a frame with content is not called flat" ;;
+esac
+rm -f /tmp/render-wide-flat.png /tmp/render-wide-full.png
