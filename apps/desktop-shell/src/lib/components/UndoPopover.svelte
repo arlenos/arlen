@@ -59,7 +59,7 @@
         <div class="undo-row" class:done={e.state === "done"}>
           <span class="undo-text">
             <span class="undo-who">{$t(WHO[e.producer])}</span>
-            <span class="undo-verb">{e.verb}</span>
+            <span class="undo-verb">{$t(`sh.undo.did.${e.kind}`)}</span>
             <span class="undo-object">{e.object}</span>
           </span>
           {#if e.reversibility === "irreversible"}
@@ -69,9 +69,9 @@
               <Check size={13} strokeWidth={2} />
               {$t("sh.undo.done")}
             </span>
-          {:else}
+          {:else if e.enactable}
             <button class="undo-act" disabled={e.state === "enacting"} onclick={() => void enact(e.opId)}>
-              {e.inverseLabel ?? $t("sh.undo.action")}
+              {$t(`sh.undo.take.${e.kind}`)}
             </button>
           {/if}
           <span class="undo-time">{ago(e.at)}</span>
