@@ -18,8 +18,15 @@
 
   /// Show only the most recent receipts inline; the full history is on /agent.
   const RECEIPT_CAP = 4;
-  const recent = $derived($completedActions.slice(0, RECEIPT_CAP));
+  const recent = $derived(($completedActions ?? []).slice(0, RECEIPT_CAP));
+  const pending = $derived($pendingProposals ?? []);
 
+  /// Null on either list means the read was refused or never answered - a
+  /// different fact from "nothing pending", so it gets its own line instead
+  /// of the tray silently not rendering.
+  const unreadable = $derived($pendingProposals === null || $completedActions === null);
+
+  /// A message KEY, so the sentence re-renders in the current language.
   let notice = $state<string | null>(null);
 
   /// The proposal's concrete effect(s) + why, under the summary title.
@@ -35,10 +42,9 @@
   }
 
   function humanStatus(status: string): string {
-    if (status.startsWith("not-enabled")) return "Turn on live actions in the composer to apply this.";
-    if (status === "no-such-proposal" || status === "no-such-receipt")
-      return "That action is no longer available.";
-    return "Something went wrong reaching the agent.";
+    if (status.startsWith("not-enabled")) return "h.aa.notEnabled";
+    if (status === "no-such-proposal" || status === "no-such-receipt") return "h.aa.gone";
+    return "h.aa.failed";
   }
 
   async function run(fn: () => Promise<string>, ok: string[]) {
@@ -47,7 +53,7 @@
       const status = await fn();
       if (!ok.includes(status)) notice = humanStatus(status);
     } catch {
-      notice = "Could not reach the agent.";
+      notice = "h.aa.unreachable";
     }
   }
 
@@ -56,13 +62,16 @@
   const undo = (id: string) => run(() => undoAction(id), ["retracted", "nothing-to-undo"]);
 </script>
 
-{#if $pendingProposals.length > 0 || recent.length > 0}
+{#if unreadable || pending.length > 0 || recent.length > 0}
   <div class="agent-actions" role="region" aria-label={$t("h.agentActions.aria")}>
+    {#if unreadable}
+      <p class="aa-notice" role="status">{$t("h.aa.unreadable")}</p>
+    {/if}
     {#if notice}
-      <p class="aa-notice" role="status">{notice}</p>
+      <p class="aa-notice" role="status">{$t(notice)}</p>
     {/if}
 
-    {#each $pendingProposals as p (p.id)}
+    {#each pending as p (p.id)}
       <GateCard
         title={p.summary}
         detail={proposalDetail(p)}
@@ -76,7 +85,7 @@
       <GateCard title={c.what} diff={changeDiff(c.change)} done onundo={() => undo(c.id)} />
     {/each}
 
-    {#if $completedActions.length > recent.length}
+    {#if ($completedActions ?? []).length > recent.length}
       <a class="aa-all" href="/agent">{$t("h.agentActions.seeAll")}</a>
     {/if}
   </div>

@@ -107,6 +107,11 @@ const messages: Catalogs = {
     // Agent actions
     "h.agentActions.aria": "Agent actions",
     "h.agentActions.seeAll": "See everything it did",
+    "h.aa.unreadable": "The agent's pending proposals and recent actions could not be read right now.",
+    "h.aa.notEnabled": "Turn on live actions in the composer to apply this.",
+    "h.aa.gone": "That action is no longer available.",
+    "h.aa.failed": "Something went wrong reaching the agent.",
+    "h.aa.unreachable": "Could not reach the agent.",
     // Sidebar
     "h.sidebar.newChat": "New chat",
     "h.sidebar.newChatTitle": "New chat (Ctrl+N)",
@@ -374,6 +379,11 @@ const messages: Catalogs = {
     "h.gate.deny": "Ablehnen",
     "h.agentActions.aria": "Agent-Aktionen",
     "h.agentActions.seeAll": "Alles ansehen, was er getan hat",
+    "h.aa.unreadable": "Die offenen Vorschläge und letzten Aktionen des Agenten können gerade nicht gelesen werden.",
+    "h.aa.notEnabled": "Schalte Live-Aktionen im Eingabefeld ein, um das anzuwenden.",
+    "h.aa.gone": "Diese Aktion ist nicht mehr verfügbar.",
+    "h.aa.failed": "Beim Erreichen des Agenten ist etwas schiefgegangen.",
+    "h.aa.unreachable": "Der Agent war nicht erreichbar.",
     "h.sidebar.newChat": "Neue Unterhaltung",
     "h.sidebar.newChatTitle": "Neue Unterhaltung (Ctrl+N)",
     "h.sidebar.search": "Unterhaltungen suchen",
