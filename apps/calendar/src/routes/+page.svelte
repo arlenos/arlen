@@ -206,6 +206,7 @@
       {#if !launched}
         <SegmentedControl
           id="cal-view"
+          size="compact"
           bind:value={view}
           options={[
             { value: "week", label: $t("cal.view.week") },
