@@ -53,18 +53,19 @@
 </script>
 
 <Sidebar>
-  <SidebarHeader class="h-10 flex-row items-center py-0">
-    <span class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55">
-      {$t("pdf.app.title")}
-    </span>
+  <!-- Search leads the rail from the h-10 band (level with the content bar);
+       the app's own name used to sit here and said nothing the shell does not. -->
+  <SidebarHeader class="h-10 justify-center py-0">
+    <div class="head-search">
+      <SearchField id="pdf-search" bind:value={query} placeholder={$t("pdf.search.label")} aria-label={$t("pdf.search.label")} />
+    </div>
   </SidebarHeader>
   <SidebarContent>
-    <SidebarGroup>
-      <SearchField id="pdf-search" bind:value={query} placeholder={$t("pdf.search.label")} aria-label={$t("pdf.search.label")} />
-      {#if $pdfMocked}
+    {#if $pdfMocked}
+      <SidebarGroup>
         <p class="side-note">{$t("pdf.sample")}</p>
-      {/if}
-    </SidebarGroup>
+      </SidebarGroup>
+    {/if}
 
     {#if results}
       <SidebarGroup class="pt-0">
@@ -122,6 +123,13 @@
 </Sidebar>
 
 <style>
+  /* The field sits near the window's top-left corner, so its corners follow
+     that corner concentrically: the window radius minus its inset in the
+     h-10 band (the Settings-sidebar register). */
+  .head-search {
+    width: 100%;
+    --search-radius: max(0px, calc(var(--radius-window, var(--radius-card)) - 0.375rem));
+  }
   .side-note {
     margin: 6px 8px 2px;
     font-size: 11px;
