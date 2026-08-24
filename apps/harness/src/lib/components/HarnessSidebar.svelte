@@ -120,11 +120,22 @@
 </script>
 
 <Sidebar>
-  <SidebarHeader class="h-10 flex-row items-center py-0">
-    <span class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55">
-      {$t("h.app.title")}
-    </span>
-  </SidebarHeader>
+  <!-- Search leads the rail from the h-10 band (level with the content bar);
+       the app's own name used to sit here and said nothing the shell does not.
+       With no sessions there is nothing to search, so the band stays away and
+       New chat starts the rail. -->
+  {#if $orderedSessions.length > 0}
+    <SidebarHeader class="h-10 justify-center py-0">
+      <div class="head-search">
+        <SearchField
+          id="harness-session-search"
+          bind:value={query}
+          placeholder={$t("h.sidebar.search")}
+          aria-label={$t("h.sidebar.search")}
+        />
+      </div>
+    </SidebarHeader>
+  {/if}
   <SidebarContent>
     <SidebarGroup>
       <SidebarMenu>
@@ -135,15 +146,6 @@
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
-      {#if $orderedSessions.length > 0}
-        <SearchField
-          id="harness-session-search"
-          class="mb-1 mt-1"
-          bind:value={query}
-          placeholder={$t("h.sidebar.search")}
-          aria-label={$t("h.sidebar.search")}
-        />
-      {/if}
       {#if $orderedSessions.length === 0}
         <p class="px-2 py-2 text-xs leading-relaxed text-sidebar-foreground/55">
           {$t("h.sidebar.emptyChats")}
@@ -277,3 +279,13 @@
   }}
   onCancel={() => (confirmDeleteId = null)}
 />
+
+<style>
+  /* The field sits near the window's top-left corner, so its corners follow
+     that corner concentrically: the window radius minus its inset in the
+     h-10 band (the Settings-sidebar register). */
+  .head-search {
+    width: 100%;
+    --search-radius: max(0px, calc(var(--radius-window, var(--radius-card)) - 0.375rem));
+  }
+</style>
