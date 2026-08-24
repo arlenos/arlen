@@ -8,8 +8,8 @@
   import { t } from "$lib/i18n/messages";
   import { invitationWords } from "$lib/wording";
   import type { Message } from "$lib/stores/mailbox";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import MessageHeader from "./MessageHeader.svelte";
-  import MessageNotice from "./MessageNotice.svelte";
   import AttachmentRow from "./AttachmentRow.svelte";
 
   let { message }: { message: Message } = $props();
@@ -40,22 +40,22 @@
   {#if message.refusal || divergence || message.channels.length > 0 || sealedText || message.has_html || message.invitation}
     <div class="notices">
       {#if message.refusal}
-        <MessageNotice tone="error" text={$t("ml.refused", { reason: message.refusal })} />
+        <Notice tone="error" text={$t("ml.refused", { reason: message.refusal })} />
       {/if}
       {#if divergence}
-        <MessageNotice tone="caution" text={divergence} />
+        <Notice tone="caution" text={divergence} />
       {/if}
       {#if message.channels.length > 0}
-        <MessageNotice tone="caution" text={$t("ml.channels", { list: message.channels.join(", ") })} />
+        <Notice tone="caution" text={$t("ml.channels", { list: message.channels.join(", ") })} />
       {/if}
       {#if sealedText}
-        <MessageNotice tone="neutral" text={sealedText} />
+        <Notice tone="neutral" text={sealedText} />
       {/if}
       {#if message.invitation}
-        <MessageNotice tone="neutral" text={invitationWords(message.invitation.method, $t)} />
+        <Notice tone="neutral" text={invitationWords(message.invitation.method, $t)} />
       {/if}
       {#if message.has_html}
-        <MessageNotice tone="neutral" text={$t("ml.htmlNotShown")} />
+        <Notice tone="neutral" text={$t("ml.htmlNotShown")} />
       {/if}
     </div>
   {/if}

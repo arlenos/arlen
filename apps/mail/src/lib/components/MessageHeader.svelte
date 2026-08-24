@@ -4,6 +4,7 @@
   /// name is whatever the sender typed and this is the field a reader trusts
   /// hardest. Recipients stay one quiet line each; the date is written in the
   /// reader's language (a malformed header shows verbatim, wording.ts).
+  import { Avatar, AvatarFallback } from "@arlen/ui-kit/components/ui/avatar";
   import { t, locale } from "$lib/i18n/messages";
   import { displayName, formatSent } from "$lib/wording";
   import type { Message } from "$lib/stores/mailbox";
@@ -17,7 +18,10 @@
 <header class="head">
   <h2 class="subject">{message.subject ?? "-"}</h2>
   <div class="from-line">
-    <span class="avatar" aria-hidden="true">{letter}</span>
+    <!-- The kit avatar, on the radius system - never a hand-rolled circle. -->
+    <Avatar class="size-9" aria-hidden="true">
+      <AvatarFallback>{letter}</AvatarFallback>
+    </Avatar>
     <div class="who">
       <p class="from">
         {message.from ?? "-"}
@@ -54,19 +58,6 @@
     display: flex;
     gap: 0.7rem;
     align-items: flex-start;
-  }
-  .avatar {
-    display: flex;
-    flex-shrink: 0;
-    width: 2.25rem;
-    height: 2.25rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-full, 9999px);
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    font-size: var(--text-sm, 13px);
-    font-weight: 600;
-    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
   }
   .who {
     flex: 1;
