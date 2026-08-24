@@ -15,8 +15,10 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Plus } from "@lucide/svelte";
-  import { t } from "$lib/i18n/messages";
-  import { agenda, calendarMocked } from "$lib/stores/calendar";
+  import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { t, locale } from "$lib/i18n/messages";
+  import { dayLabel } from "$lib/wording";
+  import { agenda, calendarMocked, calendars, colorOf, type AgendaEvent } from "$lib/stores/calendar";
   import MiniMonth from "./MiniMonth.svelte";
   import CalendarList from "./CalendarList.svelte";
 
@@ -25,13 +27,28 @@
     launched,
     onpick,
     oncreate,
+    onresult,
   }: {
     focus: string;
     /// The file the app was opened on; the service note is suppressed then.
     launched: string | null;
     onpick: (date: string) => void;
     oncreate: () => void;
+    /// A search hit was chosen: jump the views to it.
+    onresult: (e: AgendaEvent) => void;
   } = $props();
+
+  let query = $state("");
+  /// Hits over the loaded expansion window, chronological; the honesty line
+  /// under the field names that reach until `calendar_search` (the whole-store
+  /// seam) lands.
+  const results = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return ($agenda?.events ?? [])
+      .filter((e) => e.summary.toLowerCase().includes(q) || e.location.toLowerCase().includes(q))
+      .slice(0, 50);
+  });
 
   const marked = $derived(new Set(($agenda?.events ?? []).map((e) => e.date)));
 </script>
@@ -55,12 +72,39 @@
     </SidebarGroup>
 
     <SidebarGroup class="pt-0">
-      <MiniMonth {focus} {marked} {onpick} />
+      <div class="search">
+        <SearchField id="cal-search" bind:value={query} placeholder={$t("cal.search")} aria-label={$t("cal.search")} />
+      </div>
     </SidebarGroup>
 
-    <SidebarGroup class="pt-0">
-      <CalendarList />
-    </SidebarGroup>
+    {#if query.trim() !== ""}
+      <SidebarGroup class="pt-0">
+        <p class="side-note">{$t("cal.search.range")}</p>
+        <ul class="hits">
+          {#each results as e (e.uid + e.date + (e.time ?? ""))}
+            <li>
+              <button type="button" class="hit" onclick={() => onresult(e)}>
+                <span class="hit-dot" style="background: {colorOf($calendars, e)}" aria-hidden="true"></span>
+                <span class="hit-body">
+                  <span class="hit-title">{e.summary}</span>
+                  <span class="hit-when">{dayLabel(e.date, $locale)}{#if e.time}, {e.time}{/if}</span>
+                </span>
+              </button>
+            </li>
+          {:else}
+            <li class="side-note">{$t("cal.search.none")}</li>
+          {/each}
+        </ul>
+      </SidebarGroup>
+    {:else}
+      <SidebarGroup class="pt-0">
+        <MiniMonth {focus} {marked} {onpick} />
+      </SidebarGroup>
+
+      <SidebarGroup class="pt-0">
+        <CalendarList />
+      </SidebarGroup>
+    {/if}
 
     <SidebarGroup class="pt-0">
       {#if $calendarMocked}
@@ -78,6 +122,62 @@
 </Sidebar>
 
 <style>
+  .search {
+    padding: 0.15rem 0.5rem 0.25rem;
+  }
+  .hits {
+    list-style: none;
+    margin: 0;
+    padding: 0 0.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow-y: auto;
+  }
+  .hit {
+    display: flex;
+    width: 100%;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.35rem 0.45rem;
+    border: none;
+    border-radius: var(--radius-input, 8px);
+    background: transparent;
+    font: inherit;
+    text-align: start;
+    color: inherit;
+    cursor: pointer;
+  }
+  .hit:hover {
+    background: color-mix(in srgb, currentColor 6%, transparent);
+  }
+  .hit:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+  .hit-dot {
+    flex-shrink: 0;
+    width: 0.55rem;
+    height: 0.55rem;
+    margin-top: 0.3rem;
+    border-radius: var(--radius-chip, 4px);
+  }
+  .hit-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .hit-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-sm, 13px);
+  }
+  .hit-when {
+    font-size: var(--text-2xs, 11px);
+    color: color-mix(in srgb, currentColor 55%, transparent);
+    font-variant-numeric: tabular-nums;
+  }
   .side-note {
     margin: 0 8px 4px;
     font-size: 11px;
