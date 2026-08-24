@@ -121,12 +121,32 @@ fn describe(correlation_id: &str, audit: &[StructuralView]) -> Option<ActionDesc
 /// fails, and a live audit daemon cannot be made to fail on demand.
 #[async_trait::async_trait]
 pub trait AuditChains: Send + Sync {
+    /// The entries stamped with `correlation_id`, or the reason the read could
+    /// not be made.
+    async fn try_chain(&self, correlation_id: &str) -> Result<Vec<StructuralView>, String>;
+
     /// The entries stamped with `correlation_id`, or an empty vec if the read
     /// found nothing OR could not be made. **The two cases are deliberately not
-    /// distinguished**, because they have the same consequence for the caller
-    /// (an undescribed row) and distinguishing them would invite a caller to
+    /// distinguished here**, because they have the same consequence for a LIST
+    /// row (it is undescribed) and distinguishing them would invite a caller to
     /// treat one of them as a reason to hide the action.
-    async fn chain(&self, correlation_id: &str) -> Vec<StructuralView>;
+    ///
+    /// A DETAIL view is the other case and must not use this: somebody opened a
+    /// disclosure to see the record, so "there is nothing further" and "I could
+    /// not read the ledger" are two different sentences and showing an empty
+    /// panel for both is the surface stating the first when it only knows the
+    /// second. That path takes [`AuditChains::try_chain`].
+    async fn chain(&self, correlation_id: &str) -> Vec<StructuralView> {
+        match self.try_chain(correlation_id).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                // Logged, not propagated: an audit daemon that is down must cost
+                // descriptions, never the undo itself.
+                tracing::debug!(error = %e, correlation_id, "audit chain unreadable");
+                Vec::new()
+            }
+        }
+    }
 }
 
 /// The real reader: the audit daemon's read socket, one query per chain.
@@ -157,17 +177,94 @@ impl LedgerChains {
 
 #[async_trait::async_trait]
 impl AuditChains for LedgerChains {
-    async fn chain(&self, correlation_id: &str) -> Vec<StructuralView> {
-        match self.client.for_call_chain(correlation_id, CHAIN_LIMIT).await {
-            Ok(page) => page.entries,
-            Err(e) => {
-                // Logged, not propagated: an audit daemon that is down must cost
-                // descriptions, never the undo itself.
-                tracing::debug!(error = %e, correlation_id, "audit chain unreadable");
-                Vec::new()
-            }
-        }
+    async fn try_chain(&self, correlation_id: &str) -> Result<Vec<StructuralView>, String> {
+        self.client
+            .for_call_chain(correlation_id, CHAIN_LIMIT)
+            .await
+            .map(|page| page.entries)
+            .map_err(|e| e.to_string())
     }
+}
+
+/// One step of an action's recorded chain, as a surface shows it under a
+/// disclosure.
+///
+/// Structural facts only, and the same four the list row already carries in its
+/// `description` - who acted, what kind of entry it is, what it was about, when.
+/// A disclosure is a bigger window on the SAME record, not a different and more
+/// revealing one: the ledger's Forensic tier is not served here and the captured
+/// previous VALUE an inverse holds is not either, because opening a detail view
+/// is not consent to put the old contents of a setting or a file on screen.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoStep {
+    /// The principal the ledger attests for this entry.
+    pub actor: String,
+    /// The entry kind, as the ledger names it.
+    pub kind: String,
+    /// What the entry was about, content-free.
+    pub subject: String,
+    /// Microseconds since the Unix epoch, from the ledger.
+    pub timestamp_micros: i64,
+}
+
+/// One action's recorded chain, for the disclosure behind a row.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoDetail {
+    /// The op the steps belong to, echoed so a late answer cannot be shown under
+    /// the wrong row.
+    pub op_id: String,
+    /// The chain, oldest first: the decision that authorised the action, then
+    /// what came of it.
+    pub steps: Vec<UndoStep>,
+}
+
+/// The chain behind one action, by op id.
+///
+/// Fails rather than emptying, at BOTH halves, and that is the whole difference
+/// from [`recent_rows`]. A list row survives an unreadable audit daemon because
+/// the action is still undoable and saying so is the job. A disclosure is the
+/// opposite case: somebody opened it to see the record, so an empty panel has to
+/// mean "there is nothing further", and returning that for a ledger nobody could
+/// read would be the surface stating the one thing it does not know. An unknown
+/// op id fails too - it is a stale row or a wrong handle, not an action that
+/// happened and left no trace.
+pub async fn detail_of(
+    signer_socket: &Path,
+    audit: &dyn AuditChains,
+    op_id: &str,
+    limit: u32,
+) -> Result<UndoDetail, String> {
+    let recent = crate::undo_signer::fetch_recent(signer_socket, limit)
+        .await
+        .map_err(|e| format!("the undo log could not be read: {e}"))?;
+
+    let entry = recent
+        .iter()
+        .find(|r| r.entry.op_id == op_id)
+        .ok_or_else(|| "no such action in the recent log".to_string())?;
+
+    let mut steps: Vec<UndoStep> = audit
+        .try_chain(&entry.entry.correlation_id)
+        .await
+        .map_err(|e| format!("the record could not be read: {e}"))?
+        .into_iter()
+        .map(|e| UndoStep {
+            actor: e.actor,
+            kind: e.kind.as_str().to_string(),
+            subject: e.structural.subject,
+            timestamp_micros: e.timestamp_micros,
+        })
+        .collect();
+    // Oldest first: a chain reads as a sequence, and the authorising decision is
+    // the one that explains the rest.
+    steps.sort_by_key(|s| s.timestamp_micros);
+
+    Ok(UndoDetail {
+        op_id: op_id.to_string(),
+        steps,
+    })
 }
 
 /// The recent-actions read: the signer's entries, newest first, each described
@@ -267,13 +364,14 @@ mod tests {
 
     #[async_trait::async_trait]
     impl AuditChains for FakeChains {
-        async fn chain(&self, correlation_id: &str) -> Vec<StructuralView> {
+        async fn try_chain(&self, correlation_id: &str) -> Result<Vec<StructuralView>, String> {
             self.asked.lock().unwrap().push(correlation_id.to_string());
-            self.answer
+            Ok(self
+                .answer
                 .iter()
                 .filter(|e| e.call_chain_id.as_deref() == Some(correlation_id))
                 .cloned()
-                .collect()
+                .collect())
         }
     }
 
@@ -290,6 +388,92 @@ mod tests {
             write_response(&mut stream, &Response::Recent(entries)).await.unwrap();
         });
         socket
+    }
+
+    /// The receipt the disclosure tests act on: one file move.
+    fn moved_file() -> InverseReceipt {
+        InverseReceipt::RestorePath {
+            now: path("/home/u/b.txt"),
+            prior: path("/home/u/a.txt"),
+        }
+    }
+
+    /// An audit side that cannot be read at all, which is what a down daemon
+    /// looks like from here. Distinct from `FakeChains` answering nothing:
+    /// that is a ledger that was read and held no entries.
+    struct UnreadableChains;
+
+    #[async_trait::async_trait]
+    impl AuditChains for UnreadableChains {
+        async fn try_chain(&self, _correlation_id: &str) -> Result<Vec<StructuralView>, String> {
+            Err("connection refused".to_string())
+        }
+    }
+
+    /// The chain reads oldest first, so the authorising decision leads.
+    #[tokio::test]
+    async fn a_disclosure_shows_the_chain_in_the_order_it_happened() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = serve_recent(dir.path(), vec![entry("op-1", "run-1", moved_file())]);
+        let audit = FakeChains {
+            asked: Arc::new(Mutex::new(Vec::new())),
+            answer: vec![
+                view(2, "run-1", "arlen-files", "moved a file", 200),
+                view(1, "run-1", "arlen-files", "decided to move a file", 100),
+            ],
+        };
+
+        let detail = detail_of(&socket, &audit, "op-1", 20)
+            .await
+            .expect("readable");
+        // Echoed, so a late answer cannot be shown under another row.
+        assert_eq!(detail.op_id, "op-1");
+        assert_eq!(detail.steps.len(), 2);
+        assert_eq!(detail.steps[0].timestamp_micros, 100, "oldest first");
+    }
+
+    /// The whole reason `detail` does not reuse the list's swallowing read. An
+    /// empty disclosure says "there is nothing further"; a ledger nobody could
+    /// read does not know that.
+    #[tokio::test]
+    async fn an_unreadable_ledger_refuses_rather_than_showing_an_empty_disclosure() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = serve_recent(dir.path(), vec![entry("op-1", "run-1", moved_file())]);
+        let err = detail_of(&socket, &UnreadableChains, "op-1", 20)
+            .await
+            .expect_err("an unreadable ledger is not an empty chain");
+        assert!(
+            err.contains("could not be read"),
+            "says which half failed: {err}"
+        );
+    }
+
+    /// A ledger that WAS read and holds nothing is the empty case, and it is
+    /// allowed to be empty. This is the other side of the test above.
+    #[tokio::test]
+    async fn a_ledger_that_holds_nothing_is_an_empty_disclosure_not_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = serve_recent(dir.path(), vec![entry("op-1", "run-1", moved_file())]);
+        let audit = FakeChains {
+            asked: Arc::new(Mutex::new(Vec::new())),
+            answer: Vec::new(),
+        };
+        let detail = detail_of(&socket, &audit, "op-1", 20)
+            .await
+            .expect("readable");
+        assert!(detail.steps.is_empty());
+    }
+
+    /// A stale row or a wrong handle, not an action that left no trace.
+    #[tokio::test]
+    async fn an_unknown_op_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = serve_recent(dir.path(), Vec::new());
+        let audit = FakeChains {
+            asked: Arc::new(Mutex::new(Vec::new())),
+            answer: Vec::new(),
+        };
+        assert!(detail_of(&socket, &audit, "op-nope", 20).await.is_err());
     }
 
     #[tokio::test]
