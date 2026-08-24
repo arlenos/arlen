@@ -29,6 +29,13 @@ pub enum Request {
     ListBottles,
     /// One bottle, checked against what is actually on disk.
     Health { id: String },
+    /// Forget a bottle: its description is removed and its prefix goes to the
+    /// trash.
+    ///
+    /// TRASH, NOT DELETE, and the core says why in its own code: the prefix holds
+    /// whatever the person installed and saved in there, and a button that
+    /// destroys that with no way back is not a button worth shipping.
+    Forget { id: String },
     /// Start the Windows program this bottle exists to run.
     ///
     /// The caller names the bottle, not the program: what runs is what the bottle
@@ -101,6 +108,12 @@ pub enum Response {
     /// `--die-with-parent`, so when the daemon goes, so does the program, which is
     /// the lifetime a desktop app should have.
     Launched { pid: u32 },
+    /// The bottle is gone, and this is where its prefix went.
+    ///
+    /// `trashed_to` is `None` when there was no prefix on disk to move - the
+    /// description was removed and nothing else existed. Said rather than implied,
+    /// so a window can tell somebody where their files are.
+    Forgotten { trashed_to: Option<String> },
     /// The ask could not be answered. A token, not prose: the window writes the
     /// sentence, in the reader's language.
     Refused { problem: Problem },
@@ -135,6 +148,13 @@ pub enum Problem {
     DrivesUnmet,
     /// The confinement could not be started.
     CouldNotStart,
+    /// The caller may not do this. Forgetting a bottle throws away what somebody
+    /// installed, so it is not something any process that can reach the socket
+    /// gets to ask for.
+    NotAllowed,
+    /// The bottle could not be forgotten - the trash refused it, or its files
+    /// would not move. Nothing was half-removed: the description goes last.
+    CouldNotForget,
 }
 
 /// A bottle as a caller sees it.
@@ -233,6 +253,44 @@ pub fn launch(
     }
 }
 
+/// Forget a bottle, and answer with where its prefix went.
+///
+/// The trash is injected for the same reason `forget_bottle` injects it: a machine
+/// with no home trash should decide what to do rather than have this decide for
+/// it, and the sequence is testable without one.
+pub fn forget(
+    bottles_dir: &Path,
+    id: &str,
+    trash: impl Fn(&Path) -> Result<std::path::PathBuf, String>,
+) -> Response {
+    let bottle = match load_bottle(bottles_dir, id) {
+        Ok(b) => b,
+        Err(RegistryError::BadId(_)) => {
+            return Response::Refused {
+                problem: Problem::BadId,
+            }
+        }
+        Err(RegistryError::NoSuchBottle(_)) => {
+            return Response::Refused {
+                problem: Problem::NoSuchBottle,
+            }
+        }
+        Err(_) => {
+            return Response::Refused {
+                problem: Problem::Unreadable,
+            }
+        }
+    };
+    match crate::forget::forget_bottle(bottles_dir, &bottle, trash) {
+        Ok(gone) => Response::Forgotten {
+            trashed_to: gone.trashed_to.map(|p| p.to_string_lossy().into_owned()),
+        },
+        Err(_) => Response::Refused {
+            problem: Problem::CouldNotForget,
+        },
+    }
+}
+
 /// Answer one request against a bottles directory, or say it is not this
 /// function's to answer.
 ///
@@ -265,7 +323,9 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
                 problem: Problem::Unreadable,
             },
         },
-        Request::Launch { .. } => return None,
+        // Neither is answered here: a launch needs the host it will run on, and a
+        // forget needs a trash and a caller allowed to ask. Both are the server's.
+        Request::Launch { .. } | Request::Forget { .. } => return None,
         Request::Health { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => match check_bottle(&bottle) {
                 Ok(health) => Response::Health {
@@ -437,6 +497,64 @@ mod tests {
             ),
             Response::Refused {
                 problem: Problem::NoWine
+            }
+        );
+    }
+
+    #[test]
+    fn forgetting_moves_the_prefix_and_says_where() {
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("pfx");
+        std::fs::create_dir_all(&prefix).unwrap();
+        std::fs::create_dir_all(dir.path().join("gone")).unwrap();
+        std::fs::write(
+            dir.path().join("gone/bottle.toml"),
+            format!(
+                "id = \"gone\"\nprefix_root = \"{}\"\negress = \"none\"\ngrants = []\n",
+                prefix.display()
+            ),
+        )
+        .unwrap();
+
+        let moved = dir.path().join("trash/pfx");
+        let answer = forget(dir.path(), "gone", |p| {
+            std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
+            std::fs::rename(p, &moved).unwrap();
+            Ok(moved.clone())
+        });
+        assert_eq!(
+            answer,
+            Response::Forgotten {
+                trashed_to: Some(moved.to_string_lossy().into_owned())
+            },
+            "a window can only tell somebody where their files went if this says it"
+        );
+        assert!(
+            !dir.path().join("gone/bottle.toml").exists(),
+            "the description is what makes the bottle exist"
+        );
+        assert!(
+            moved.exists(),
+            "the prefix moved rather than being destroyed"
+        );
+    }
+
+    #[test]
+    fn forgetting_something_that_is_not_there_says_which_kind_of_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let never = |_: &std::path::Path| -> Result<std::path::PathBuf, String> {
+            panic!("nothing may be trashed for a bottle that was never found")
+        };
+        assert_eq!(
+            forget(dir.path(), "../etc", never),
+            Response::Refused {
+                problem: Problem::BadId
+            }
+        );
+        assert_eq!(
+            forget(dir.path(), "absent", never),
+            Response::Refused {
+                problem: Problem::NoSuchBottle
             }
         );
     }
