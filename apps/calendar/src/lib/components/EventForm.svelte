@@ -9,6 +9,7 @@
   /// directory, the watcher and the reminder daemon do the rest - and a
   /// refusal comes back as a sentence, not a pretence.
   import { CalendarDays, Clock, MapPin, Repeat } from "@lucide/svelte";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Dialog } from "@arlen/ui-kit/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
@@ -19,7 +20,7 @@
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { t, locale } from "$lib/i18n/messages";
   import { dayLabel } from "$lib/wording";
-  import { createEvent, type EventDraft } from "$lib/stores/calendar";
+  import { calendars, CALENDAR_PALETTE, createEvent, type EventDraft } from "$lib/stores/calendar";
   import MiniMonth from "./MiniMonth.svelte";
 
   let {
@@ -45,6 +46,13 @@
   let failed = $state<string | null>(null);
   let dateOpen = $state(false);
   let titleEl = $state<HTMLInputElement | null>(null);
+  let calendarId = $state("");
+
+  // The first calendar is the resting choice; follows the list arriving.
+  $effect(() => {
+    if (!calendarId && $calendars.length > 0) calendarId = $calendars[0].id;
+  });
+  const calColor = $derived($calendars.find((c) => c.id === calendarId)?.color ?? CALENDAR_PALETTE[0]);
 
   $effect(() => {
     if (open) {
@@ -66,6 +74,7 @@
       location: location.trim(),
       repeat,
       onDays: repeat === "weekly" ? onDays.map((i) => DAY_NAMES[i]) : [],
+      calendarId,
     };
     const refusal = await createEvent(draft);
     if (refusal) {
@@ -126,6 +135,19 @@
           <span class="dash">&#8211;</span>
           <TimeInput value={to} ariaLabel={$t("cal.form.to")} onchange={(v) => (to = v)} />
         </span>
+      </div>
+    {/if}
+
+    {#if $calendars.length > 1}
+      <div class="row">
+        <span class="cal-dot" style="background: {calColor}" aria-hidden="true"></span>
+        <PopoverSelect
+          value={calendarId}
+          options={$calendars.map((c) => ({ value: c.id, label: c.name }))}
+          width="180px"
+          ariaLabel={$t("cal.form.calendar")}
+          onchange={(v) => (calendarId = v)}
+        />
       </div>
     {/if}
 
@@ -214,6 +236,13 @@
   .row :global(svg) {
     flex-shrink: 0;
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  }
+  .cal-dot {
+    flex-shrink: 0;
+    width: 0.7rem;
+    height: 0.7rem;
+    margin-inline: 2px;
+    border-radius: var(--radius-chip, 4px);
   }
   .date-btn {
     padding: 0.3rem 0.6rem;

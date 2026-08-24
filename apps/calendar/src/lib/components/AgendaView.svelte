@@ -8,7 +8,7 @@
   import { MapPin, Repeat } from "@lucide/svelte";
   import { t, locale } from "$lib/i18n/messages";
   import { dayLabel, isToday, repeatLabel } from "$lib/wording";
-  import type { Agenda, AgendaEvent } from "$lib/stores/calendar";
+  import { calendars, colorOf, type Agenda, type AgendaEvent } from "$lib/stores/calendar";
 
   let { agenda }: { agenda: Agenda } = $props();
 
@@ -44,6 +44,7 @@
       <ul class="events">
         {#each day.events as e (e.uid + e.date + (e.time ?? ""))}
           <li class="event">
+            <span class="cal-dot" style="background: {colorOf($calendars, e)}" aria-hidden="true"></span>
             <span class="when">
               {#if e.time}
                 {e.time}{#if e.end_time}<span class="dash">&#8211;</span>{e.end_time}{/if}
@@ -115,6 +116,13 @@
     font-weight: 600;
     color: var(--color-fg-secondary, #a3a3a3);
     margin: 0 0 6px;
+  }
+  .cal-dot {
+    flex-shrink: 0;
+    width: 0.55rem;
+    height: 0.55rem;
+    margin-top: 0.3rem;
+    border-radius: var(--radius-chip, 4px);
   }
   .event {
     display: flex;

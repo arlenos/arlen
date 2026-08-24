@@ -29,7 +29,21 @@ export type AgendaEvent = {
   every_n: number;
   on_days: string[];
   expanded: boolean;
+  /// The store file (stem) this event came from - the calendar it belongs to.
+  /// INTENDED SEAM: the core view does not carry this yet; until it does, a
+  /// live event falls back to the one unnamed calendar.
+  calendar?: string;
 };
+
+/// One calendar in the store: an .ics file, its display name and its colour.
+/// INTENDED SEAM: `calendar_calendars() -> CalendarInfo[]` (files of the store
+/// dir; colour from X-APPLE-CALENDAR-COLOR / RFC 7986 COLOR or a sidecar - the
+/// coder's call) and `calendar_set_color(id, color)`.
+export interface CalendarInfo {
+  id: string;
+  name: string;
+  color: string | null;
+}
 
 /// The agenda answer, verbatim.
 export type Agenda = {
@@ -54,6 +68,9 @@ export interface EventDraft {
   repeat: "none" | "daily" | "weekly";
   /// mon..sun, weekly only.
   onDays: string[];
+  /// The store file the event is written into. INTENDED SEAM: the live
+  /// command picks its default file until it learns this field.
+  calendarId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +158,12 @@ export function layoutDay(events: AgendaEvent[]): DayBlock[] {
 // block. English on purpose; the banner says it is an example.
 // ---------------------------------------------------------------------------
 
+const FIXTURE_CALENDARS: CalendarInfo[] = [
+  { id: "personal", name: "Personal", color: "#7aa2f7" },
+  { id: "work", name: "Work", color: "#9ece6a" },
+  { id: "family", name: "Family", color: "#e0af68" },
+];
+
 function fixtureAgenda(): Agenda {
   const today = ymd(new Date());
   const monday = startOfWeek(today);
@@ -170,20 +193,21 @@ function fixtureAgenda(): Agenda {
         every: "weekly",
         on_days: ["mon", "tue", "wed", "thu", "fri"],
         expanded: true,
+        calendar: "work",
       }),
     );
   }
   events.push(
-    ev({ uid: "review", summary: "Design review", date: today, time: "10:00", end_time: "11:30", location: "Studio" }),
-    ev({ uid: "oneone", summary: "1:1 Jonas", date: today, time: "10:30", end_time: "11:00" }),
-    ev({ uid: "nyc", summary: "Call with New York", date: today, time: "16:00", end_time: "16:45", kind: "zoned", tzid: "America/New_York" }),
-    ev({ uid: "holiday", summary: "Public holiday", date: addDays(monday, 3), kind: "day" }),
-    ev({ uid: "workshop", summary: "Print workshop", date: addDays(monday, 4), time: "14:00", end_time: "17:30", location: "Werkstatt" }),
-    ev({ uid: "birthday", summary: "Mara's birthday", date: addDays(monday, 5), kind: "day", repeats: true, every: "yearly", expanded: true }),
-    ev({ uid: "planning", summary: "Planning breakfast", date: addDays(monday, 7 + 1), time: "09:30", end_time: "10:30", location: "Cafe am Eck" }),
-    ev({ uid: "rent", summary: "Rent due", date: addDays(monday, 9), repeats: true, every: null, expanded: false }),
-    ev({ uid: "dentist", summary: "Dentist", date: addDays(monday, 16), time: "08:15", end_time: "09:00" }),
-    ev({ uid: "concert", summary: "Concert", date: addDays(monday, -3), time: "20:00", end_time: "22:30", location: "Stadthalle" }),
+    ev({ uid: "review", summary: "Design review", date: today, time: "10:00", end_time: "11:30", location: "Studio", calendar: "work" }),
+    ev({ uid: "oneone", summary: "1:1 Jonas", date: today, time: "10:30", end_time: "11:00", calendar: "work" }),
+    ev({ uid: "nyc", summary: "Call with New York", date: today, time: "16:00", end_time: "16:45", kind: "zoned", tzid: "America/New_York", calendar: "work" }),
+    ev({ uid: "holiday", summary: "Public holiday", date: addDays(monday, 3), kind: "day", calendar: "personal" }),
+    ev({ uid: "workshop", summary: "Print workshop", date: addDays(monday, 4), time: "14:00", end_time: "17:30", location: "Werkstatt", calendar: "personal" }),
+    ev({ uid: "birthday", summary: "Mara's birthday", date: addDays(monday, 5), kind: "day", repeats: true, every: "yearly", expanded: true, calendar: "family" }),
+    ev({ uid: "planning", summary: "Planning breakfast", date: addDays(monday, 7 + 1), time: "09:30", end_time: "10:30", location: "Cafe am Eck", calendar: "work" }),
+    ev({ uid: "rent", summary: "Rent due", date: addDays(monday, 9), repeats: true, every: null, expanded: false, calendar: "personal" }),
+    ev({ uid: "dentist", summary: "Dentist", date: addDays(monday, 16), time: "08:15", end_time: "09:00", calendar: "family" }),
+    ev({ uid: "concert", summary: "Concert", date: addDays(monday, -3), time: "20:00", end_time: "22:30", location: "Stadthalle", calendar: "personal" }),
   );
   events.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
   return {
@@ -200,6 +224,66 @@ function fixtureAgenda(): Agenda {
 export const agenda = writable<Agenda | null>(null);
 /// True while the agenda is the FIXTURE - the surface says so.
 export const calendarMocked = writable(false);
+
+/// The calendars of the store (fixture or live).
+export const calendars = writable<CalendarInfo[]>([]);
+/// Which calendars are showing. Session state; persistence is the
+/// per-app-settings strand's seam. `null` means "no choice yet" = all visible,
+/// so a new calendar appearing is never silently hidden.
+export const hiddenCalendars = writable<Set<string>>(new Set());
+
+/// The palette a calendar can wear - eight theme-safe fixed colours.
+export const CALENDAR_PALETTE = [
+  "#7aa2f7",
+  "#9ece6a",
+  "#e0af68",
+  "#f7768e",
+  "#bb9af7",
+  "#7dcfff",
+  "#ff9e64",
+  "#73daca",
+] as const;
+
+/// The colour an event renders with: its calendar's, or the first palette
+/// colour for the unnamed calendar a live event falls back to today.
+export function colorOf(cals: CalendarInfo[], event: AgendaEvent): string {
+  const cal = cals.find((c) => c.id === (event.calendar ?? ""));
+  return cal?.color ?? CALENDAR_PALETTE[0];
+}
+
+/// Load the calendar list. Live: the intended `calendar_calendars`; fixture:
+/// the three example calendars; a live host without the command answers with
+/// the one unnamed calendar so nothing pretends.
+export async function loadCalendars(): Promise<void> {
+  try {
+    calendars.set(await invoke<CalendarInfo[]>("calendar_calendars"));
+  } catch {
+    if (!tauriAvailable) calendars.set(structuredClone(FIXTURE_CALENDARS));
+    else calendars.set([]);
+  }
+}
+
+/// Recolour one calendar. Live: the intended `calendar_set_color`; the local
+/// update applies either way so the choice is visible at once (and the next
+/// re-read corrects it if the write was refused).
+export async function setCalendarColor(id: string, color: string): Promise<void> {
+  calendars.update((all) => all.map((c) => (c.id === id ? { ...c, color } : c)));
+  try {
+    await invoke("calendar_set_color", { id, color });
+  } catch {
+    /* fixture, or the seam not landed - the local colour stands for now */
+  }
+}
+
+/// Toggle one calendar's visibility (session-local).
+export function toggleCalendar(id: string): void {
+  hiddenCalendars.update((set) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+}
 
 /// The named read failure, decoded by the page (its wiring, unchanged).
 export type AgendaFailure =
@@ -267,6 +351,7 @@ export async function createEvent(draft: EventDraft): Promise<string | null> {
       const base: AgendaEvent = {
         uid: `draft-${Date.now()}`,
         summary: draft.summary || "(untitled)",
+        calendar: draft.calendarId,
         location: draft.location,
         date: draft.date,
         time: draft.allDay ? null : draft.time,
