@@ -126,3 +126,21 @@ pub async fn sound_set(patch: SoundPatch) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    /// The mute value this page writes is the one the daemon acts on.
+    ///
+    /// Two halves in two crates: the page writes a string into `sound.overrides`,
+    /// and the notification daemon's resolver decides what it means. They agreed
+    /// only by both being spelled by hand, which is how the value came to be
+    /// documented here for days while the resolver still treated it as a cue name
+    /// nobody's theme ships, i.e. as a missing sound rather than a chosen silence.
+    #[test]
+    fn the_documented_mute_value_is_the_one_the_resolver_honours() {
+        assert_eq!(
+            arlen_notification_daemon::sound::DISABLED_OVERRIDE,
+            "disabled"
+        );
+    }
+}
