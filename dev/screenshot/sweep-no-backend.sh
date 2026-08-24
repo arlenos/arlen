@@ -3,7 +3,16 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# Shoot every app's no-backend failure path, at desktop width, in one run.
+# Shoot every app's failure paths, at desktop width, in one run.
+#
+# TWO PICTURES PER PANEL, and the pair is the point. `<name>.png` is the page with
+# no runtime at all, which for a Tauri app is the browser preview: `tauriAvailable`
+# is false, so every fixture guard fires and what you get is the demo the author
+# put there deliberately. `<name>-hostfails.png` is the page a person actually
+# meets - the runtime is there from the moment the webview loads and the COMMAND
+# fails. Only the second reaches a fixture standing in for a failed read, and
+# until 24 August this sweep could not render it at all: three apps were turning a
+# thrown `launch_file` into "no document is open" and nothing here could see it.
 #
 # The set below was shot one panel at a time over several days, which is how it
 # came to be shot entirely at 372 CSS px without anyone noticing: each run looked
@@ -102,7 +111,8 @@ for entry in "${SHOTS[@]}"; do
   [ "$route" = "-" ] && route=""
   out="$here/out/${name}.png"
   echo "=== $app ${route:-/} -> $name at ${WIDTH}px"
-  if SHOOT_OPEN="${click:-}" "$here/shoot-no-backend.sh" "$app" "$route" "$out" "$WIDTH"; then
+  if SHOOT_OPEN="${click:-}" SHOOT_FAILING_HOST=both \
+      "$here/shoot-no-backend.sh" "$app" "$route" "$out" "$WIDTH"; then
     ok+=("$name")
   else
     # Carry on rather than stop: one app failing to build should not cost the
@@ -112,7 +122,8 @@ for entry in "${SHOTS[@]}"; do
 done
 
 echo
-echo "${#ok[@]} shot(s) written at ${WIDTH}px CSS."
+echo "${#ok[@]} panel(s) at ${WIDTH}px CSS, each as a pair: the plain name is the"
+echo "no-runtime path, the -hostfails one is the runtime-there-backend-broken path."
 if [ "${#bad[@]}" -gt 0 ]; then
   echo "${#bad[@]} did NOT produce a shot, so nothing about these panels is verified:"
   for b in "${bad[@]}"; do echo "  - $b"; done
