@@ -204,6 +204,123 @@ pub fn set_calendar_color(text: &str, color: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn editing_one_occurrence_leaves_the_series_where_it_was() {
+        let out = update_event(
+            SERIES,
+            "weekly@x",
+            Scope::This,
+            Some("2026-03-09"),
+            &EventChanges {
+                summary: Some("Moved".into()),
+                ..Default::default()
+            },
+            "new@x",
+        )
+        .unwrap();
+        // The rule is untouched, that date is excluded, and the replacement
+        // carries the SAME uid with a RECURRENCE-ID - which is what makes it a
+        // correction rather than a second event.
+        assert!(out.contains("RRULE:FREQ=WEEKLY;COUNT=8"), "{out}");
+        assert!(out.contains("EXDATE;VALUE=DATE:20260309"), "{out}");
+        assert!(out.contains("RECURRENCE-ID;VALUE=DATE:20260309"), "{out}");
+        assert_eq!(
+            out.matches("UID:weekly@x").count(),
+            2,
+            "master and override: {out}"
+        );
+        assert!(
+            !out.contains("RRULE") || out.matches("RRULE").count() == 1,
+            "the override is not a series: {out}"
+        );
+        assert!(
+            out.trim_end().ends_with("END:VCALENDAR"),
+            "the new block landed inside: {out}"
+        );
+    }
+
+    #[test]
+    fn editing_the_rest_splits_the_series_and_renames_the_new_half() {
+        let out = update_event(
+            SERIES,
+            "weekly@x",
+            Scope::Following,
+            Some("2026-03-16"),
+            &EventChanges {
+                summary: Some("Renamed".into()),
+                ..Default::default()
+            },
+            "split@x",
+        )
+        .unwrap();
+        assert!(
+            out.contains("UNTIL=20260315"),
+            "the old half ends the day before: {out}"
+        );
+        assert!(
+            out.contains("UID:split@x"),
+            "the new half is its own series: {out}"
+        );
+        assert!(
+            out.contains("DTSTART:20260316T090000"),
+            "and starts at the cut: {out}"
+        );
+        assert!(out.contains("SUMMARY:Renamed"), "{out}");
+        // The old half keeps its own summary: only the rest was renamed.
+        assert!(out.contains("SUMMARY:Standup"), "{out}");
+    }
+
+    #[test]
+    fn an_edit_of_the_whole_series_moves_every_occurrence() {
+        let out = update_event(
+            SERIES,
+            "weekly@x",
+            Scope::All,
+            None,
+            &EventChanges {
+                summary: Some("All of them".into()),
+                ..Default::default()
+            },
+            "unused@x",
+        )
+        .unwrap();
+        assert!(out.contains("SUMMARY:All of them"), "{out}");
+        assert_eq!(
+            out.matches("UID:weekly@x").count(),
+            1,
+            "no second block: {out}"
+        );
+        assert!(out.contains("UID:other@x"), "somebody else's event stays");
+    }
+
+    #[test]
+    fn an_edit_that_cannot_be_aimed_changes_nothing() {
+        let some = EventChanges {
+            summary: Some("x".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            update_event(SERIES, "weekly@x", Scope::This, None, &some, "n@x"),
+            None
+        );
+        assert_eq!(
+            update_event(SERIES, "ghost@x", Scope::All, None, &some, "n@x"),
+            None
+        );
+        // An edit that says nothing is not an edit.
+        assert_eq!(
+            update_event(
+                SERIES,
+                "weekly@x",
+                Scope::All,
+                None,
+                &EventChanges::default(),
+                "n@x"
+            ),
+            None
+        );
+    }
+
     fn block_of(lines: &str) -> Vec<String> {
         lines.split('\n').map(str::to_string).collect()
     }
@@ -781,4 +898,136 @@ fn hhmmss(time: &str) -> String {
 fn day_after(stamp: &str) -> Option<String> {
     let date = chrono::NaiveDate::parse_from_str(stamp, "%Y%m%d").ok()?;
     Some(date.succ_opt()?.format("%Y%m%d").to_string())
+}
+
+/// Change an event, or one occurrence, or the rest of a series.
+///
+/// THE THREE SCOPES ARE THREE DIFFERENT FILE EDITS, the mirror of `delete_event`:
+///
+///   * `All` edits the series block itself, so every occurrence moves together.
+///   * `This` leaves the rule alone, marks that one date `EXDATE`, and appends an
+///     override VEVENT carrying the same uid, a `RECURRENCE-ID` for the date it
+///     replaces, and the changes. That is how iCalendar says "this one is
+///     different" - editing the master instead would move the whole series.
+///   * `Following` ends the old rule the day before and appends a NEW series with
+///     a new uid, starting at the occurrence and carrying the rule and the
+///     changes. A new uid because it is a different series now: keeping the old
+///     one would make the two indistinguishable to anything syncing this file.
+///
+/// A non-recurring event has no scopes: whichever is asked for, it is edited.
+/// Returns `None` when nothing could be aimed, exactly like `delete_event`.
+pub fn update_event(
+    text: &str,
+    uid: &str,
+    scope: Scope,
+    occurrence: Option<&str>,
+    changes: &EventChanges,
+    new_uid: &str,
+) -> Option<String> {
+    if uid.is_empty() || changes.is_empty() {
+        return None;
+    }
+    let stamp = match scope {
+        Scope::All => None,
+        _ => Some(compact_date(occurrence?)?),
+    };
+    let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let lines: Vec<String> = text
+        .split('\n')
+        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
+        .collect();
+
+    let mut out: Vec<String> = Vec::new();
+    let mut block: Vec<String> = Vec::new();
+    let mut extra: Vec<String> = Vec::new();
+    let mut in_event = false;
+    let mut touched = false;
+
+    for line in lines {
+        let upper = line.to_ascii_uppercase();
+        if upper.starts_with("BEGIN:VEVENT") {
+            in_event = true;
+            block.clear();
+            block.push(line);
+            continue;
+        }
+        if !in_event {
+            // The new blocks go in before the calendar ends, not after it.
+            if upper.starts_with("END:VCALENDAR") && !extra.is_empty() {
+                out.append(&mut extra);
+            }
+            out.push(line);
+            continue;
+        }
+        block.push(line);
+        if !upper.starts_with("END:VEVENT") {
+            continue;
+        }
+        in_event = false;
+
+        if !block_has_uid(&block, uid) || block_recurrence_id(&block).is_some() {
+            // Somebody else's event, or a correction: an edit aimed at the series
+            // does not silently rewrite the exceptions somebody made to it.
+            out.append(&mut block);
+            continue;
+        }
+        match scope {
+            Scope::All => {
+                touched = apply_changes(&mut block, changes) || touched;
+                out.append(&mut block);
+            }
+            Scope::This => {
+                let stamp = stamp.as_deref().expect("checked above");
+                let mut override_block = block.clone();
+                // The override replaces one date and is not itself a series.
+                override_block.retain(|l| !l.to_ascii_uppercase().starts_with("RRULE"));
+                set_property(
+                    &mut override_block,
+                    "RECURRENCE-ID",
+                    &format!("RECURRENCE-ID;VALUE=DATE:{stamp}"),
+                );
+                if apply_changes(&mut override_block, changes) {
+                    let at = block.len() - 1;
+                    block.insert(at, format!("EXDATE;VALUE=DATE:{stamp}"));
+                    out.append(&mut block);
+                    extra.extend(override_block);
+                    touched = true;
+                } else {
+                    out.append(&mut block);
+                }
+            }
+            Scope::Following => {
+                let stamp = stamp.as_deref().expect("checked above");
+                let mut rest = block.clone();
+                set_property(&mut rest, "UID", &format!("UID:{new_uid}"));
+                // The new series starts at the occurrence, so its own date is the
+                // cut - and then the changes are applied on top of that.
+                let start_here = EventChanges {
+                    date: Some(spaced_date(stamp)),
+                    ..Default::default()
+                };
+                apply_changes(&mut rest, &start_here);
+                if apply_changes(&mut rest, changes) {
+                    end_rule_before(&mut block, stamp);
+                    out.append(&mut block);
+                    extra.extend(rest);
+                    touched = true;
+                } else {
+                    out.append(&mut block);
+                }
+            }
+        }
+        block.clear();
+    }
+    if !extra.is_empty() {
+        // A calendar with no END line of its own: the new blocks still belong in
+        // it rather than being dropped.
+        out.append(&mut extra);
+    }
+    touched.then(|| out.join(ending))
+}
+
+/// `YYYYMMDD` back to the `YYYY-MM-DD` the change vocabulary speaks.
+fn spaced_date(stamp: &str) -> String {
+    format!("{}-{}-{}", &stamp[..4], &stamp[4..6], &stamp[6..8])
 }
