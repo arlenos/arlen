@@ -808,6 +808,14 @@ def main():
                          "arlen-system-monitor) in the booted session via QEMU fw_cfg, "
                          "so its window renders for the screenshot (TIER-A 1b). Use a "
                          "longer --wait so the app has time to come up after the shell")
+    ap.add_argument("--app-file", default=None, metavar="/PATH/IN/GUEST",
+                    help="the file the --app should open, as an absolute path "
+                         "INSIDE the guest (preload it first). Rides in the "
+                         "SMBIOS product version rather than the SKU, whose "
+                         "charset deliberately cannot carry a path; the session "
+                         "checks the file exists before launching, so a typo "
+                         "reads as a refusal rather than as an app with an empty "
+                         "state")
     ap.add_argument("--webkit-compositing", action="store_true",
                     help="boot with WebKit's accelerated compositing left ON "
                          "(the session disables it by default for the VM's software "
@@ -1121,6 +1129,12 @@ def main():
     smbios_fields = []
     if args.app:
         smbios_fields.append(f"sku={args.app}")
+    if args.app_file:
+        if not args.app_file.startswith("/"):
+            print("VERIFY FAIL: --app-file wants an absolute path inside the guest",
+                  file=sys.stderr)
+            return 2
+        smbios_fields.append(f"version={args.app_file}")
     if args.webkit_compositing:
         smbios_fields.append("family=webkit-compositing")
     if smbios_fields:
