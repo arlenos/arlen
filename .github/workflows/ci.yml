@@ -416,6 +416,8 @@ jobs:
           node dev/scripts/test-check-network-scope-marked.mjs
           python3 dev/scripts/check-profile-claims.py
           node dev/scripts/test-check-profile-claims.mjs
+          python3 dev/scripts/check-profile-keys.py
+          node dev/scripts/test-check-profile-keys.mjs
           python3 dev/scripts/check-dependency-direction.py
           node dev/scripts/test-check-dependency-direction.mjs
           python3 dev/scripts/check-tests-run.py
