@@ -17,13 +17,21 @@ toml = "0.8"
 # directory holds whatever the person installed and saved in there, and a window
 # button that destroys that with no way back is not a button worth shipping.
 arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }
+# The socket: peer authentication (SO_PEERPIDFD + uid) is the same primitive
+# every other broker in this tree authenticates with, rather than a second
+# hand-rolled credential read.
+arlen-permissions = { path = "../../sdk/permissions" }
+serde_json = "1"
+tokio = { version = "1", features = ["net", "io-util", "rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+libc = "0.2"
 
 [dev-dependencies]
 # The examples build the launch argv, which needs the compat roots this crate
 # resolves against the host.
 arlen-confiner = { path = "../../sdk/confiner" }
 # The wire format is pinned by a test that reads the bytes a caller would see.
-serde_json = "1"
 tempfile = "3"
 
 [workspace]
