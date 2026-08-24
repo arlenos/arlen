@@ -283,8 +283,7 @@
     gap: 1rem;
   }
   main > :not(.bar) {
-    margin-left: 1.25rem;
-    margin-right: 1.25rem;
+    margin-inline: 1.25rem;
   }
   main > :last-child {
     margin-bottom: 1rem;
