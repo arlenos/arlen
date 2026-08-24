@@ -8,6 +8,7 @@
   } from "@arlen/ui-kit/components/ui/dropdown-menu/index.js";
   import { getContext } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { tauriAvailable } from "$lib/tauri";
   import { shellAction } from "$lib/shellAction";
   import type { Readable } from "svelte/store";
   function handleAction(action: string) {
@@ -75,6 +76,10 @@
   // popovers' `set_popover_input_region` signalling.
   $effect(() => {
     const wanted = openMenu;
+    // No compositor, no input region: under vite the refusal below would close
+    // every dropdown the moment it opened (the same trap the popover store
+    // guards against), so the dev render path skips the call.
+    if (!tauriAvailable) return;
     // A dropdown drawn without the widened region hands its clicks to the window
     // underneath, so a refusal closes the menu rather than leaving it hanging
     // over another app collecting them.
