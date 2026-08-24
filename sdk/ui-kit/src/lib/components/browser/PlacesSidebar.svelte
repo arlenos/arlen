@@ -31,10 +31,15 @@
   } = $props();
 </script>
 
-{#each groups as group (group.label)}
+{#each groups as group, gi (group.label)}
   {#if group.places.length > 0}
+    <!-- pt-1 on the first group: with no sidebar header band, the first row's
+         centre sits on the h-10 header-bar line (a 32px row in the 40px band
+         needs a 4px top inset, not the group's 8px). -->
     <SidebarGroup
-      class={group.railHidden ? "group-data-[collapsible=icon]:hidden" : ""}
+      class={[gi === 0 ? "pt-1" : "", group.railHidden ? "group-data-[collapsible=icon]:hidden" : ""]
+        .filter(Boolean)
+        .join(" ")}
     >
       <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
       <SidebarMenu>
