@@ -45,6 +45,15 @@ ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).reso
 #: in this list and not in that one.
 TREES = ["apps", "daemons", "sdk", "ai", "contracts", "forage", "store-backend"]
 SPAWN = re.compile(r'Command::new\("([a-z][a-z0-9_.-]*)"')
+# The other shape: `const WINE: &str = "/usr/bin/wine";` in one file, handed to
+# `Command::new(launch::WINE)` in another. Reading only the literal above, this
+# reported that nothing spawns `wine` any more - about the daemon whose whole job
+# is spawning it. Two passes, and a constant counts only when something really
+# spawns it; a path that is merely compared against is not a call.
+CONST_PATH = re.compile(
+    r'const\s+([A-Z_]+)\s*:\s*&str\s*=\s*"/(?:usr/)?(?:s?bin|libexec)/([a-z][a-z0-9_.-]*)"'
+)
+SPAWN_IDENT = re.compile(r'Command::new\(\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*([A-Z_]+)\s*\)')
 
 #: What the image carries, READ from `runtime-deps.tsv` rather than kept here.
 #:
@@ -80,6 +89,8 @@ def classified(root: Path) -> tuple[set[str], dict[str, str]]:
 def spawns() -> dict[str, list[str]]:
     """Every external tool the tree spawns, with one file that spawns it."""
     found: dict[str, list[str]] = {}
+    consts: dict[str, tuple[str, str]] = {}
+    idents: dict[str, str] = {}
     for tree in TREES:
         base = ROOT / tree
         if not base.is_dir():
@@ -90,6 +101,14 @@ def spawns() -> dict[str, list[str]]:
             text = path.read_text(encoding="utf-8", errors="replace")
             for tool in SPAWN.findall(text):
                 found.setdefault(tool, []).append(str(path.relative_to(ROOT)))
+            rel = str(path.relative_to(ROOT))
+            for name, binary in CONST_PATH.findall(text):
+                consts[name] = (binary, rel)
+            for name in SPAWN_IDENT.findall(text):
+                idents.setdefault(name, rel)
+    for name, where in idents.items():
+        if name in consts:
+            found.setdefault(consts[name][0], []).append(where)
     return found
 
 
