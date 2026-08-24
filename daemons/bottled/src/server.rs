@@ -146,31 +146,19 @@ pub async fn serve_connection(
             // A closed connection or a frame this cannot read ends the session.
             Err(_) => return,
         };
-        // A launch is the one ask the pure dispatch cannot answer: it needs the
-        // host this program will run on. Everything else is filesystem-only and
-        // goes through the same function the tests drive.
+        // The asks the pure dispatch cannot answer, because each needs something
+        // outside the bottles directory: the host a program will run on, a trash
+        // and a caller allowed to ask, or the runtime itself to be run. They come
+        // back here rather than each writing its own reply - one write path, so a
+        // fourth of them cannot quietly grow a different one.
         let response = match handle_request(bottles_dir, &request) {
             Some(r) => r,
-            None => {
-                if matches!(request, Request::Runtimes) {
-                    let response = runtimes().await;
-                    if write_frame(&mut stream, &response).await.is_err() {
-                        return;
-                    }
-                    continue;
+            None => match &request {
+                Request::Runtimes => runtimes().await,
+                Request::Forget { id } => {
+                    forget_for(bottles_dir, id, app_id.as_deref(), &*audit).await
                 }
-                if let Request::Forget { id } = &request {
-                    let response = forget_for(bottles_dir, id, app_id.as_deref(), &*audit).await;
-                    if write_frame(&mut stream, &response).await.is_err() {
-                        return;
-                    }
-                    continue;
-                }
-                let Request::Launch { id } = &request else {
-                    tracing::error!("no answer for this ask and no route for it");
-                    return;
-                };
-                launch(
+                Request::Launch { id } => launch(
                     bottles_dir,
                     id,
                     std::path::Path::new("/usr"),
@@ -178,8 +166,15 @@ pub async fn serve_connection(
                     display.as_deref(),
                     |p| p.exists(),
                     spawn_detached,
-                )
-            }
+                ),
+                // `handle_request` answered `None` for something this does not
+                // route. Dropping the connection is the fail-closed end of that:
+                // a new ask must be added in both places or it reaches nobody.
+                other => {
+                    tracing::error!(?other, "no answer for this ask and no route for it");
+                    return;
+                }
+            },
         };
         if write_frame(&mut stream, &response).await.is_err() {
             return;
