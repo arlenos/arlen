@@ -10,7 +10,6 @@
     SidebarContent,
     SidebarGroup,
     SidebarGroupLabel,
-    SidebarHeader,
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
@@ -84,15 +83,9 @@
 </script>
 
 <Sidebar collapsible="icon">
-  <SidebarHeader class="h-10 flex-row items-center py-0">
-    <span
-      class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
-    >
-      {$t("f.sidebar.files")}
-    </span>
-  </SidebarHeader>
-
-  <SidebarContent class="fm-sidebar-scroll">
+  <!-- With no header band the places start the rail; a small first inset so
+       the top row does not sit on the window edge. -->
+  <SidebarContent class="fm-sidebar-scroll pt-2">
     <PlacesSidebar
       groups={$placeGroups}
       {activePath}

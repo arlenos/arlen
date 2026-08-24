@@ -19,7 +19,6 @@
     Sidebar,
     SidebarContent,
     SidebarGroup,
-    SidebarHeader,
     SidebarInset,
     SidebarMenu,
     SidebarMenuButton,
@@ -114,13 +113,6 @@
          icon, so a 3rem rail would render wrapped text fragments instead of a
          usable strip. Same reasoning as the harness chat history. -->
     <Sidebar>
-      <SidebarHeader class="h-10 flex-row items-center py-0">
-        <span
-          class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55"
-        >
-          {$t("mt.title")}
-        </span>
-      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
