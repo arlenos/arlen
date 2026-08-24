@@ -4,31 +4,99 @@
   /// The selected row speaks the sidebar's selection language so the two rails
   /// read as one system.
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { t, locale } from "$lib/i18n/messages";
   import type { Envelope } from "$lib/stores/mailbox";
 
   let {
     rows,
-    selectedId,
-    onselect,
+    selected,
+    onchange,
+    onopen,
+    onarchive,
+    ondelete,
   }: {
     rows: Envelope[];
-    selectedId: string | null;
-    onselect: (id: string) => void;
+    /// The selected message ids; one id means the reading pane shows it.
+    selected: Set<string>;
+    onchange: (sel: Set<string>) => void;
+    /// A plain click or Enter: single-select and read.
+    onopen: (id: string) => void;
+    onarchive: () => void;
+    ondelete: () => void;
   } = $props();
 
+  /// The shift-range anchor: the last row a plain or ctrl click landed on.
+  let anchor = $state<string | null>(null);
+
   let query = $state("");
+  // All or unread only. Session state, deliberately not persisted: a filter a
+  // person forgot about is how "my mail disappeared" reports happen.
+  let show = $state("all");
 
   const filtered = $derived.by(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    let list = show === "unread" ? rows.filter((e) => e.unread) : rows;
+    if (!q) return list;
+    return list.filter(
       (e) =>
         e.from.toLowerCase().includes(q) ||
         e.subject.toLowerCase().includes(q) ||
         e.snippet.toLowerCase().includes(q),
     );
   });
+
+  function clickRow(e: MouseEvent, id: string): void {
+    const order = filtered.map((x) => x.id);
+    if (e.shiftKey && anchor && order.includes(anchor)) {
+      const a = order.indexOf(anchor);
+      const b = order.indexOf(id);
+      const range = order.slice(Math.min(a, b), Math.max(a, b) + 1);
+      onchange(new Set(range));
+    } else if (e.ctrlKey || e.metaKey) {
+      const next = new Set(selected);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      anchor = id;
+      onchange(next);
+    } else {
+      anchor = id;
+      onopen(id);
+    }
+  }
+
+  /// List keyboard: arrows or j/k walk the visible order and read as they go,
+  /// Enter reads the anchored row, Delete removes, e archives - the desktop
+  /// conventions, scoped to the list so typing in search stays typing.
+  function keydown(e: KeyboardEvent): void {
+    if ((e.target as HTMLElement | null)?.closest("input, textarea")) return;
+    const order = filtered.map((x) => x.id);
+    if (order.length === 0) return;
+    const cur = anchor ?? [...selected][0] ?? null;
+    const idx = cur ? order.indexOf(cur) : -1;
+    const step = (to: number) => {
+      const id = order[Math.max(0, Math.min(order.length - 1, to))];
+      anchor = id;
+      onopen(id);
+      document.getElementById(`msg-${id}`)?.focus();
+    };
+    if (e.key === "ArrowDown" || e.key === "j") {
+      e.preventDefault();
+      step(idx + 1);
+    } else if (e.key === "ArrowUp" || e.key === "k") {
+      e.preventDefault();
+      step(idx - 1);
+    } else if (e.key === "Enter" && cur) {
+      e.preventDefault();
+      onopen(cur);
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      ondelete();
+    } else if (e.key === "e") {
+      e.preventDefault();
+      onarchive();
+    }
+  }
 
   /// Today shows the clock time, everything older a short date - the reading
   /// pane carries the full sent line, the list only orients.
@@ -44,10 +112,29 @@
 <div class="list">
   <div class="list-search">
     <SearchField id="mail-search" bind:value={query} placeholder={$t("ml.search")} aria-label={$t("ml.search")} />
+    <SegmentedControl
+      id="mail-filter"
+      bind:value={show}
+      options={[
+        { value: "all", label: $t("ml.filter.all") },
+        { value: "unread", label: $t("ml.filter.unread") },
+      ]}
+    />
   </div>
-  <div class="rows">
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- Not in the tab order itself: Tab lands on the first row button, and the
+       key handler hears the rows' events as they bubble. -->
+  <div class="rows" role="listbox" aria-multiselectable="true" aria-label={$t("ml.search")} tabindex={-1} onkeydown={keydown}>
     {#each filtered as e (e.id)}
-      <button type="button" class="row" class:on={selectedId === e.id} id={`msg-${e.id}`} onclick={() => onselect(e.id)}>
+      <button
+        type="button"
+        class="row"
+        class:on={selected.has(e.id)}
+        id={`msg-${e.id}`}
+        role="option"
+        aria-selected={selected.has(e.id)}
+        onclick={(ev) => clickRow(ev, e.id)}
+      >
         <span class="dot" class:unread={e.unread} aria-hidden="true"></span>
         <span class="row-body">
           <span class="row-top">
@@ -59,7 +146,13 @@
         </span>
       </button>
     {:else}
-      <p class="empty">{rows.length === 0 ? $t("ml.emptyFolder") : $t("ml.noMatch")}</p>
+      <p class="empty">
+        {rows.length === 0
+          ? $t("ml.emptyFolder")
+          : show === "unread" && query.trim() === ""
+            ? $t("ml.noUnread")
+            : $t("ml.noMatch")}
+      </p>
     {/each}
   </div>
 </div>
@@ -74,6 +167,9 @@
     min-height: 0;
   }
   .list-search {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
     padding: 0.5rem 0.6rem;
     border-bottom: 1px solid var(--color-border-default, #2a2a2a);
   }
