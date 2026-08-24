@@ -44,7 +44,7 @@
   import AgendaView from "$lib/components/AgendaView.svelte";
   import EventForm from "$lib/components/EventForm.svelte";
 
-  type View = "week" | "month" | "day" | "agenda";
+  type View = "week" | "three" | "month" | "day" | "agenda";
   let view = $state<View>("week");
   let focus = $state(ymd(new Date()));
   let creating = $state(false);
@@ -186,18 +186,21 @@
     const monday = startOfWeek(focus);
     return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   });
+  const threeDays = $derived(Array.from({ length: 3 }, (_, i) => addDays(focus, i)));
 
   const barTitle = $derived.by(() => {
     if (launched) return $t("cal.agenda");
     if (view === "month") return monthTitle(focus, $locale);
     if (view === "day") return dayTitle(focus, $locale);
     if (view === "week") return weekTitle(startOfWeek(focus), $locale);
+    if (view === "three") return dayTitle(focus, $locale);
     return $t("cal.agenda");
   });
 
   function step(n: number): void {
     if (view === "week") focus = addDays(focus, 7 * n);
     else if (view === "day") focus = addDays(focus, n);
+    else if (view === "three") focus = addDays(focus, 3 * n);
     else if (view === "month") {
       const [y, m] = focus.split("-").map(Number);
       const d = new Date(y, m - 1 + n, 1);
@@ -208,6 +211,27 @@
   function openDay(d: string): void {
     focus = d;
     view = "day";
+  }
+
+  /// The desktop vocabulary: t today, arrows page, w/x/m/d/a switch views,
+  /// c creates. Quiet while typing or while any dialog/popover is up.
+  function globalKeys(e: KeyboardEvent): void {
+    if (creating || quick || scopeAsk || launched) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("input, textarea, [role='dialog']")) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key;
+    if (k === "t") focus = ymd(new Date());
+    else if (k === "ArrowLeft" || k === "PageUp") step(-1);
+    else if (k === "ArrowRight" || k === "PageDown") step(1);
+    else if (k === "w") view = "week";
+    else if (k === "x") view = "three";
+    else if (k === "m") view = "month";
+    else if (k === "d") view = "day";
+    else if (k === "a") view = "agenda";
+    else if (k === "c") creating = true;
+    else return;
+    e.preventDefault();
   }
 
   function isInteractive(e: Event): boolean {
@@ -237,8 +261,19 @@
   }
 </script>
 
+<svelte:window onkeydown={globalKeys} />
+
 <SidebarProvider class="h-screen min-h-0 overflow-hidden">
-  <CalendarSidebar {focus} {launched} onpick={(d) => (focus = d)} oncreate={() => (creating = true)} />
+  <CalendarSidebar
+    {focus}
+    {launched}
+    onpick={(d) => (focus = d)}
+    oncreate={() => (creating = true)}
+    onresult={(e) => {
+      focus = e.date;
+      view = "day";
+    }}
+  />
 
   <SidebarInset class="h-svh min-h-0">
     <!-- The header is a drag surface (a non-keyboard pointer interaction); its
@@ -272,6 +307,7 @@
           bind:value={view}
           options={[
             { value: "week", label: $t("cal.view.week") },
+            { value: "three", label: $t("cal.view.threeDays") },
             { value: "month", label: $t("cal.view.month") },
             { value: "day", label: $t("cal.view.day") },
             { value: "agenda", label: $t("cal.view.agenda") },
@@ -314,6 +350,14 @@
         {:else if view === "week"}
           <WeekView
             days={weekDays}
+            events={visibleEvents}
+            onquick={(q) => (quick = q)}
+            onedit={openEdit}
+            onmoverepeat={moveRepeat}
+          />
+        {:else if view === "three"}
+          <WeekView
+            days={threeDays}
             events={visibleEvents}
             onquick={(q) => (quick = q)}
             onedit={openEdit}
