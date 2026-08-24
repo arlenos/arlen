@@ -1,51 +1,50 @@
 <script lang="ts">
-  import { dayLabel, isToday, repeatLabel } from "$lib/wording";
-  /// The agenda: what is in your calendar files, grouped by the day each event
-  /// writes for itself.
+  /// The calendar: week, month, day and the agenda around one store
+  /// (calendar-app.md §6 - week default, year rejected). Every empty-looking
+  /// state is a DIFFERENT state and says so; the honesty lines (service not
+  /// arming reminders, unreadable files) live in the rail beside the views.
   ///
-  /// Every empty-looking state here is a DIFFERENT state and says so. No host is
-  /// not no files; no files is not no events; and a file that could not be read
-  /// is counted out loud rather than quietly missing from the list. Three kinds
-  /// of nothing rendered as one is the defect this app was written after.
+  /// Opened on a file, the app shows THAT file's agenda with the Keep action,
+  /// exactly as before - the merge stays the person's.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
-  import { CalendarDays, MapPin, Repeat } from "@lucide/svelte";
+  import {
+    SidebarProvider,
+    SidebarInset,
+    SidebarTrigger,
+  } from "@arlen/ui-kit/components/ui/sidebar";
+  import { Separator } from "@arlen/ui-kit/components/ui/separator";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { ChevronLeft, ChevronRight } from "@lucide/svelte";
   import { tauriAvailable } from "$lib/tauri";
   import { t, locale } from "$lib/i18n/messages";
+  import { dayTitle, monthTitle, weekTitle } from "$lib/wording";
+  import {
+    agenda,
+    loadAgenda,
+    addDays,
+    startOfWeek,
+    ymd,
+    type Agenda,
+  } from "$lib/stores/calendar";
+  import CalendarSidebar from "$lib/components/CalendarSidebar.svelte";
+  import WeekView from "$lib/components/WeekView.svelte";
+  import MonthView from "$lib/components/MonthView.svelte";
+  import AgendaView from "$lib/components/AgendaView.svelte";
+  import EventForm from "$lib/components/EventForm.svelte";
 
-  type AgendaEvent = {
-    uid: string;
-    summary: string;
-    location: string;
-    date: string;
-    time: string | null;
-    end_time: string | null;
-    kind: string;
-    tzid: string | null;
-    repeats: boolean;
-    every: string | null;
-    every_n: number;
-    on_days: string[];
-    expanded: boolean;
-  };
-  type Agenda = {
-    events: AgendaEvent[];
-    directory: string;
-    directory_exists: boolean;
-    files: number;
-    unreadable: number;
-    /// False when the app read the files itself. The same agenda either way; the
-    /// difference is that nothing is arming reminders.
-    service_running: boolean;
-  };
+  type View = "week" | "month" | "day" | "agenda";
+  let view = $state<View>("week");
+  let focus = $state(ymd(new Date()));
+  let creating = $state(false);
 
-  let agenda = $state<Agenda | null>(null);
   // The named cause, not a sentence: only the window is in the reader's
-  // language. `other` stays for a failure the command cannot name, which today
-  // means the host itself is absent - a state a person never meets.
+  // language. `other` stays for a failure the command cannot name.
   type Failure =
     | { problem: "no-home" }
     | { problem: "unreadable"; why: string }
@@ -82,7 +81,7 @@
 
   async function read() {
     try {
-      agenda = await invoke<Agenda>("calendar_agenda", { file: launched });
+      await loadAgenda(launched);
       failure = null;
     } catch (e) {
       // The payload arrives as an object here; `apps/viewers` documents the
@@ -107,8 +106,10 @@
   }
 
   onMount(() => {
-    // Asked before the try, because "nobody to ask" is not a failure to catch.
-    if (!tauriAvailable) return;
+    if (!tauriAvailable) {
+      void read();
+      return;
+    }
     void (async () => {
       launched = await invoke<string | null>("launch_file").catch(() => null);
       await read();
@@ -119,20 +120,33 @@
     return () => void stop.then((un) => un());
   });
 
-  /// Events under their day, in the order the host sorted them.
-  const days = $derived.by(() => {
-    const out: { date: string; events: AgendaEvent[] }[] = [];
-    for (const e of agenda?.events ?? []) {
-      const last = out[out.length - 1];
-      if (last && last.date === e.date) last.events.push(e);
-      else out.push({ date: e.date, events: [e] });
-    }
-    return out;
+  const weekDays = $derived.by(() => {
+    const monday = startOfWeek(focus);
+    return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   });
 
-  /// The day heading, through Intl off the shared locale - never a catalogue
-  /// string, so a German build says "Mittwoch, 19. August" rather than an
-  /// English order with German words in it.
+  const barTitle = $derived.by(() => {
+    if (launched) return $t("cal.agenda");
+    if (view === "month") return monthTitle(focus, $locale);
+    if (view === "day") return dayTitle(focus, $locale);
+    if (view === "week") return weekTitle(startOfWeek(focus), $locale);
+    return $t("cal.agenda");
+  });
+
+  function step(n: number): void {
+    if (view === "week") focus = addDays(focus, 7 * n);
+    else if (view === "day") focus = addDays(focus, n);
+    else if (view === "month") {
+      const [y, m] = focus.split("-").map(Number);
+      const d = new Date(y, m - 1 + n, 1);
+      focus = ymd(d);
+    }
+  }
+
+  function openDay(d: string): void {
+    focus = d;
+    view = "day";
+  }
 
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
@@ -161,159 +175,104 @@
   }
 </script>
 
-<main class="page">
-  <!-- The header is a drag surface (a non-keyboard pointer interaction); its
-       actual controls are the accessible WindowButtons, so the
-       static-interaction lint is a false positive here. -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <header class="bar" onpointerdown={startDrag} ondblclick={toggleMax}>
-    <CalendarDays size={16} strokeWidth={2} />
-    <h1>{$t("cal.agenda")}</h1>
-    <span class="spacer"></span>
-    <WindowButtons />
-  </header>
+<SidebarProvider class="h-screen min-h-0 overflow-hidden">
+  <CalendarSidebar {focus} {launched} onpick={(d) => (focus = d)} oncreate={() => (creating = true)} />
 
-  {#if !tauriAvailable}
-    <p class="note">{$t("cal.hostAbsent")}</p>
-  {:else if failure}
-    <p class="note bad" role="alert">
-      {#if failure.problem === "no-home"}{$t("cal.failed.noHome")}
-      {:else if failure.problem === "unreadable"}{$t("cal.failed.unreadable", { why: failure.why })}
-      {:else}{$t("cal.failed.other", { reason: failure.reason })}{/if}
-    </p>
-  {:else if agenda}
-    <!-- Said whenever the service is absent, not only when the list is empty:
-         the rows below are right either way, and what is missing is the arming
-         of reminders, which nothing else on this screen would reveal. Opened on
-         a single file the service is not involved at all, so there is nothing to
-         report. -->
-    {#if !agenda.service_running && !launched}
-      <p class="note bad" role="status">{$t("cal.serviceDown")}</p>
-    {/if}
-    {#if launched}
-      <!-- The only way a calendar gets onto this machine today. Opening a file
-           reads it where it lies, deliberately; without this the directory stays
-           empty on every install, the agenda is empty for everyone, and the
-           reminder daemon watches a folder that never gains a file. An action
-           rather than an automatic copy, so the merge stays the person's. -->
-      <p class="keep">
-        <button type="button" onclick={keep}>{$t("cal.keep")}</button>
-      </p>
-    {/if}
-    {#if kept?.problem}
-      <p class="note bad" role="alert">
-        {#if kept.problem.problem === "not-a-file"}{$t("cal.keep.notAFile")}
-        {:else if kept.problem.problem === "no-home"}{$t("cal.keep.noHome")}
-        {:else if kept.problem.problem === "cannot-make-dir"}{$t("cal.keep.cannotMakeDir", { why: kept.problem.why })}
-        {:else if kept.problem.problem === "already-kept"}{$t("cal.keep.alreadyKept", { name: kept.problem.name })}
-        {:else}{$t("cal.keep.copyFailed", { why: kept.problem.why })}{/if}
-      </p>
-    {/if}
-    {#if agenda.unreadable > 0}
-      <p class="note bad" role="alert">{$t("cal.unreadable", { count: agenda.unreadable })}</p>
-    {/if}
-    {#if agenda.events.length === 0 && agenda.unreadable === 0}
-      <!-- Both name the directory: "put files somewhere" is not an instruction.
-           No files and no events are different states - nothing has been put
-           there, versus what is there holds nothing. -->
-      <p class="note">
-        {agenda.files === 0
-          ? $t("cal.noFiles", { dir: agenda.directory })
-          : $t("cal.empty", { dir: agenda.directory })}
-      </p>
-    {/if}
-    <ul class="days">
-      {#each days as day (day.date)}
-        <li class="day">
-          <h2>
-            {dayLabel(day.date, $locale)}
-            {#if isToday(day.date, new Date())}<span class="today">{$t("cal.today")}</span>{/if}
-          </h2>
-          <ul class="events">
-            {#each day.events as e (e.uid + e.date + (e.time ?? ""))}
-              <li class="event">
-                <span class="when">
-                  {#if e.time}
-                    {e.time}{#if e.end_time}<span class="dash">–</span>{e.end_time}{/if}
-                  {:else}
-                    {$t("cal.allDay")}
-                  {/if}
-                </span>
-                <span class="what">
-                  <span class="summary">{e.summary}</span>
-                  <!-- A time written in UTC is not the reader's 16:00, and one
-                       written floating is whatever clock they are reading. Both
-                       say so; only a local zoned time can be shown bare. -->
-                  {#if e.tzid}
-                    <span class="tz">{e.tzid}</span>
-                  {:else if e.kind === "utc"}
-                    <span class="tz">{$t("cal.utc")}</span>
-                  {/if}
-                  {#if e.location}
-                    <span class="where"><MapPin size={12} strokeWidth={2} />{e.location}</span>
-                  {/if}
-                  {#if e.repeats}
-                    <!-- Said out loud: the rule is parsed but not worked out, so
-                         showing this one occurrence silently would be a claim
-                         about the others. -->
-                    <span
-                      class="repeat"
-                      title={e.expanded ? $t("cal.repeatsShown") : $t("cal.repeatsUnexpanded")}
-                    >
-                      <Repeat size={12} strokeWidth={2} />{repeatLabel(e, $t)}
-                    </span>
-                    {#if !e.expanded}
-                      <span class="unexpanded">{$t("cal.onlyThisOne")}</span>
-                    {/if}
-                  {/if}
-                </span>
-              </li>
-            {/each}
-          </ul>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</main>
+  <SidebarInset class="h-svh min-h-0">
+    <!-- The header is a drag surface (a non-keyboard pointer interaction); its
+         actual controls are the accessible buttons inside it, so the
+         static-interaction lint is a false positive here. -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <header
+      onpointerdown={startDrag}
+      ondblclick={toggleMax}
+      class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+    >
+      <SidebarTrigger class="-ml-1" />
+      <Separator orientation="vertical" class="me-1 h-4" />
+      <span class="select-none truncate text-sm font-medium text-foreground">{barTitle}</span>
+      {#if !launched && view !== "agenda"}
+        <IconAction label={$t("cal.prev")} size="control" onclick={() => step(-1)}>
+          <ChevronLeft size={15} strokeWidth={1.75} />
+        </IconAction>
+        <IconAction label={$t("cal.next")} size="control" onclick={() => step(1)}>
+          <ChevronRight size={15} strokeWidth={1.75} />
+        </IconAction>
+        <Button variant="ghost" size="sm" id="cal-today" onclick={() => (focus = ymd(new Date()))}>
+          {$t("cal.todayButton")}
+        </Button>
+      {/if}
+      <div class="flex-1"></div>
+      {#if !launched}
+        <SegmentedControl
+          id="cal-view"
+          bind:value={view}
+          options={[
+            { value: "week", label: $t("cal.view.week") },
+            { value: "month", label: $t("cal.view.month") },
+            { value: "day", label: $t("cal.view.day") },
+            { value: "agenda", label: $t("cal.view.agenda") },
+          ]}
+        />
+      {/if}
+      <WindowButtons />
+    </header>
+
+    <div class="content">
+      {#if failure}
+        <p class="note bad" role="alert">
+          {#if failure.problem === "no-home"}{$t("cal.failed.noHome")}
+          {:else if failure.problem === "unreadable"}{$t("cal.failed.unreadable", { why: failure.why })}
+          {:else}{$t("cal.failed.other", { reason: failure.reason })}{/if}
+        </p>
+      {:else if $agenda}
+        {#if launched}
+          <!-- The only way a calendar gets onto this machine today. Opening a
+               file reads it where it lies, deliberately; an action rather than
+               an automatic copy, so the merge stays the person's. -->
+          <p class="keep">
+            <button type="button" onclick={keep}>{$t("cal.keep")}</button>
+          </p>
+        {/if}
+        {#if kept?.problem}
+          <p class="note bad" role="alert">
+            {#if kept.problem.problem === "not-a-file"}{$t("cal.keep.notAFile")}
+            {:else if kept.problem.problem === "no-home"}{$t("cal.keep.noHome")}
+            {:else if kept.problem.problem === "cannot-make-dir"}{$t("cal.keep.cannotMakeDir", { why: kept.problem.why })}
+            {:else if kept.problem.problem === "already-kept"}{$t("cal.keep.alreadyKept", { name: kept.problem.name })}
+            {:else}{$t("cal.keep.copyFailed", { why: kept.problem.why })}{/if}
+          </p>
+        {/if}
+
+        {#if launched || view === "agenda"}
+          <div class="scroll-list">
+            <AgendaView agenda={$agenda as Agenda} />
+          </div>
+        {:else if view === "week"}
+          <WeekView days={weekDays} events={$agenda.events} />
+        {:else if view === "day"}
+          <WeekView days={[focus]} events={$agenda.events} />
+        {:else}
+          <MonthView month={focus} events={$agenda.events} onopenday={openDay} />
+        {/if}
+      {/if}
+    </div>
+  </SidebarInset>
+</SidebarProvider>
+
+<EventForm open={creating} date={focus} onclose={() => (creating = false)} />
 
 <style>
-  .today {
-    margin-inline-start: 8px;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--color-bg-app, #0f0f0f);
-    background: var(--color-accent, #6366f1);
-    vertical-align: middle;
-  }
-  :global(body) {
-    margin: 0;
-  }
-  .page {
-    min-height: 100vh;
-    background: var(--color-bg-app, #0f0f0f);
-    color: var(--color-fg-primary, #fafafa);
-    font-family: "Inter Variable", Inter, system-ui, sans-serif;
-  }
-  .bar {
+  .content {
     display: flex;
-    height: 2.5rem;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 8px;
-    padding: 0 8px;
-    border-bottom: 1px solid var(--color-border-default, #262626);
-  }
-  .bar h1 {
-    font-size: 14px;
-    font-weight: 500;
-    margin: 0;
-  }
-  .spacer {
+    flex-direction: column;
     flex: 1;
+    min-height: 0;
+  }
+  .scroll-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
   .note {
     margin: 16px 14px;
@@ -321,7 +280,7 @@
     color: var(--color-fg-secondary, #a3a3a3);
   }
   .note.bad {
-    color: var(--color-fg-warning, #eab308);
+    color: var(--color-warning, #eab308);
   }
   .keep {
     margin: 16px 14px 0;
@@ -338,58 +297,5 @@
   }
   .keep button:hover {
     border-color: var(--color-border-strong, #3a3a3a);
-  }
-  .days,
-  .events {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  .day {
-    padding: 10px 14px 4px;
-  }
-  .day h2 {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-fg-secondary, #a3a3a3);
-    margin: 0 0 6px;
-  }
-  .event {
-    display: flex;
-    gap: 12px;
-    padding: 7px 0;
-    border-top: 1px solid var(--color-border-subtle, #1f1f1f);
-    font-size: 13px;
-  }
-  .when {
-    min-width: 96px;
-    color: var(--color-fg-secondary, #a3a3a3);
-    font-variant-numeric: tabular-nums;
-  }
-  .dash {
-    padding: 0 2px;
-  }
-  .what {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-  }
-  .summary {
-    font-weight: 500;
-  }
-  .tz,
-  .where,
-  .unexpanded {
-    font-size: 0.75rem;
-    opacity: 0.75;
-  }
-
-  .repeat {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 11px;
-    color: var(--color-fg-secondary, #a3a3a3);
   }
 </style>

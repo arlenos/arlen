@@ -144,6 +144,12 @@ echo "calendar:"
 # and three cases failed for a reason that had nothing to do with them.
 cat > "$fix/p-agenda.js" <<'JS'
 await new Promise(r => setTimeout(r, 1200));
+// The client defaults to the week grid now; these cases assert the agenda's
+// sentences, so the probe walks over to it first ("Agenda" in both languages).
+const seg = document.getElementById("cal-view");
+const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
+if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
+
 return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1200);
 JS
 got=$(drive "$fix/p-agenda.js" "$fix" calendar-agenda.png)
@@ -167,6 +173,12 @@ say "a repetition the calendar cannot work out says so in the row" \
 # against a truncated string measures the slice, not the app.
 cat > "$fix/p-all.js" <<'JS'
 await new Promise(r => setTimeout(r, 1200));
+// The client defaults to the week grid now; these cases assert the agenda's
+// sentences, so the probe walks over to it first ("Agenda" in both languages).
+const seg = document.getElementById("cal-view");
+const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
+if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
+
 return (document.body.innerText || "").replace(/\s+/g, " ").trim();
 JS
 all=$(drive "$fix/p-all.js" "$fix" calendar-exdate.png)
@@ -217,7 +229,13 @@ empty="$fix/empty-home"
 mkdir -p "$empty"
 cat > "$fix/p-empty.js" <<'JS'
 await new Promise(r => setTimeout(r, 1000));
-return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 300);
+// The client defaults to the week grid now; these cases assert the agenda's
+// sentences, so the probe walks over to it first ("Agenda" in both languages).
+const seg = document.getElementById("cal-view");
+const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
+if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
+
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 700);
 JS
 got=$(drive "$fix/p-empty.js" "$empty" calendar-no-files.png)
 # Opening the app CREATES the directory (the watcher cannot watch a path that is
@@ -232,7 +250,13 @@ say "with nothing to show it names the path to put files in" \
 # in, from a background shell, because the probe cannot touch the filesystem.
 cat > "$fix/p-live.js" <<'JS'
 await new Promise(r => setTimeout(r, 5000));
-return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 400);
+// The client defaults to the week grid now; these cases assert the agenda's
+// sentences, so the probe walks over to it first ("Agenda" in both languages).
+const seg = document.getElementById("cal-view");
+const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
+if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
+
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1200);
 JS
 ( sleep 2; cat > "$fix/arlen/calendars/added.ics" <<'ICS'
 BEGIN:VCALENDAR
@@ -289,8 +313,13 @@ for (let i = 0; i < 50; i++) {
   await new Promise((r) => setTimeout(r, 100));
   if (!document.querySelector(".keep button")) break;
 }
+// Folder mode lands on the week grid; the kept event's day may be outside it,
+// so the assertion reads the agenda ("Agenda" in both languages).
+const seg = document.getElementById("cal-view");
+const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
+if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
 return `stillOffering=${document.querySelector(".keep button") ? 1 : 0} `
-  + `body=${JSON.stringify(document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 240))}`;
+  + `body=${JSON.stringify(document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 700))}`;
 JS
 keepdir="$fix/keep"
 rm -rf "$keepdir" && mkdir -p "$keepdir"
