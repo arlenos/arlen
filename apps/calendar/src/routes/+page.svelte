@@ -22,6 +22,7 @@
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { ChevronLeft, ChevronRight } from "@lucide/svelte";
   import { tauriAvailable } from "$lib/tauri";
+  import { initAppMenu, menuAction } from "$lib/menu";
   import { t, locale } from "$lib/i18n/messages";
   import { dayTitle, monthTitle, weekTitle } from "$lib/wording";
   import {
@@ -161,7 +162,20 @@
     }
   }
 
+  // The shell menu's dispatches, one at a time.
+  $effect(() => {
+    const a = $menuAction;
+    if (!a) return;
+    menuAction.set(null);
+    if (a === "event.new") creating = true;
+    else if (a === "go.today") focus = ymd(new Date());
+    else if (a === "go.back") step(-1);
+    else if (a === "go.forward") step(1);
+    else if (a.startsWith("view.")) view = a.slice(5) as View;
+  });
+
   onMount(() => {
+    void initAppMenu();
     if (!tauriAvailable) {
       void read();
       return;
