@@ -1,0 +1,64 @@
+#!/bin/sh
+# Phase 9e (CHROOT): the C library's locales, one per language the desktop can be
+# set to.
+#
+# WHY. Our own text comes from the message catalogues and our own dates go through
+# `Intl` with the tag passed explicitly, so both are right whatever the process
+# locale is. The NATIVE controls are not ours: WebKitGTK renders `<input
+# type="date">` and `<input type="time">` through glibc, and an image with no
+# locale at all runs in C - American. Measured in one renderer on 24 Aug, the same
+# page both ways: under `C` the calendar's date field reads `08/24/2026` and its
+# times `09:00 AM`, under `de_AT.UTF-8` it reads `24.08.2026` and `09:00`. Until
+# this ran, the German image wrote American dates in every form that has one.
+#
+# WHICH ONES. Exactly the languages the catalogues ship, because Settings offers
+# exactly those - its list is `Object.keys(CATALOGS)`. Each line is also the answer
+# to "which country's conventions does this language get": `arlen-session` takes
+# the FIRST locale generated for a language when the chosen tag names no region,
+# so the order below is the decision, made where the generating happens rather
+# than in a table somewhere else.
+#
+# WHY localedef AND NOT locale-gen. `locale-gen` compiles into the build chroot's
+# own /usr/lib/locale, which is thrown away; the image is assembled from $DESTDIR.
+# `localedef --prefix` writes the archive where it will actually be shipped.
+set -eu
+
+archive="$DESTDIR/usr/lib/locale"
+mkdir -p "$archive"
+
+# language:locale, in preference order per language.
+for entry in en_US.UTF-8 de_DE.UTF-8; do
+    input="${entry%%.*}"
+    charset="${entry#*.}"
+    if ! localedef -i "$input" -f "$charset" --prefix="$DESTDIR" "$entry"; then
+        echo "!! could not generate $entry" >&2
+        exit 1
+    fi
+done
+
+# The list the session reads, WRITTEN FROM THE FINISHED ARCHIVE rather than from
+# the loop above. A hand-kept list is a claim; this is a record. It matters
+# because the failure is silent - glibc handed a locale that was never generated
+# does not complain, it falls back to C and formats American, which is the exact
+# bug this file exists to fix, only now with a variable set that says otherwise.
+#
+# glibc normalises the CODESET only - `de_DE.UTF-8` is stored as `de_DE.utf8`,
+# with the region's case left alone - so each name is confirmed against the
+# listing in that form and the ordinary spelling is what gets written out.
+list="$DESTDIR/usr/share/arlen/locales"
+mkdir -p "$(dirname "$list")"
+{
+    echo "# The locales this image generated, most preferred first per language."
+    echo "# Written by dev/mkosi/mkosi.build.d/09e-locales.sh.chroot from the"
+    echo "# finished archive; read by arlen-session (env::GENERATED_LOCALES)."
+    for entry in en_US.UTF-8 de_DE.UTF-8; do
+        normalised="${entry%%.*}.$(echo "${entry#*.}" | tr 'A-Z' 'a-z' | tr -d '-')"
+        if localedef --list-archive "$archive/locale-archive" | grep -qx "$normalised"; then
+            echo "$entry"
+        else
+            echo "!! $entry is not in the built archive; leaving it out" >&2
+        fi
+    done
+} > "$list"
+
+echo ">> generated $(localedef --list-archive "$archive/locale-archive" | wc -l) locales"

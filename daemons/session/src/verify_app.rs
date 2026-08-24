@@ -68,8 +68,14 @@ mod tests {
 
     #[test]
     fn an_ordinary_app_name_survives_intact() {
-        assert_eq!(requested_app("arlen-files"), Some("arlen-files".to_string()));
-        assert_eq!(requested_app("arlen-files\n"), Some("arlen-files".to_string()));
+        assert_eq!(
+            requested_app("arlen-files"),
+            Some("arlen-files".to_string())
+        );
+        assert_eq!(
+            requested_app("arlen-files\n"),
+            Some("arlen-files".to_string())
+        );
     }
 
     #[test]

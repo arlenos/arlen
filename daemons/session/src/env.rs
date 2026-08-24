@@ -112,6 +112,125 @@ pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, S
     env
 }
 
+/// Where the image records the POSIX locales it actually generated, one per
+/// line, most-preferred first.
+///
+/// WRITTEN BY THE BUILD, not by hand: the build lists the finished locale archive
+/// and writes what is really in it. A hand-kept list would be a claim, and the
+/// failure it causes is silent - glibc handed a locale that was never generated
+/// falls back to C and formats American, which is exactly the bug this whole path
+/// exists to fix, now with a variable set that says otherwise.
+pub const GENERATED_LOCALES: &str = "/usr/share/arlen/locales";
+
+/// The locales the machine generated, or nothing at all.
+///
+/// A missing file is the normal answer on any system that is not our image, and
+/// it means "export no language" - the behaviour every boot had before this.
+pub fn read_generated_locales(path: &std::path::Path) -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter(|line| {
+            line.len() <= 32
+                && line
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// The POSIX locale to run the session under, given the UI language the user
+/// chose and the locales this machine has.
+///
+/// WHY THE SESSION SETS A LOCALE AT ALL. The webview renders our own text from the
+/// message catalogues and formats its own dates through `Intl` with the tag passed
+/// explicitly, so all of that is right whatever the process locale is. But the
+/// NATIVE controls are not ours: WebKitGTK renders `<input type="date">` and
+/// `<input type="time">` through the C library's locale, and with none set that is
+/// C - American. Measured in the same renderer on 24 Aug: under `C` the calendar's
+/// date field reads `08/24/2026` and its times `09:00 AM`, under `de_AT.UTF-8` the
+/// same page reads `24.08.2026` and `09:00`. A German desktop was writing American
+/// dates in every form, and no amount of catalogue work reaches them.
+///
+/// ONLY WHAT THE MACHINE HAS. glibc given a locale it never generated does not
+/// complain in the session log anybody reads; it silently falls back to C. So a
+/// name is exported only when it is in the machine's own list, and a language with
+/// nothing generated for it keeps the old behaviour rather than a variable that
+/// lies.
+///
+/// THE REGION COMES FROM THE IMAGE. `de` is a language, `de_DE.UTF-8` is a locale,
+/// and nothing in a bare tag says which country's conventions to use. Rather than
+/// keep a tag-to-region table here that would need editing every time a language
+/// is added, the first generated locale for that language wins - so the image's
+/// list, in its order, is what decides, next to the line that generates it.
+pub fn posix_locale_for(tag: &str, generated: &[String]) -> Option<String> {
+    let tag = tag.trim();
+    if tag.is_empty() {
+        return None;
+    }
+    let mut parts = tag.split('-');
+    let language = parts.next()?.to_ascii_lowercase();
+    if language.is_empty() || !language.chars().all(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let region = parts
+        .next()
+        .filter(|r| r.len() == 2 && r.chars().all(|c| c.is_ascii_alphabetic()))
+        .map(str::to_ascii_uppercase);
+
+    // The language of a POSIX name: everything before `_`, `.` or `@`.
+    let language_of = |name: &str| {
+        name.split(['_', '.', '@'])
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase()
+    };
+    let region_of = |name: &str| {
+        name.split('_')
+            .nth(1)
+            .map(|rest| rest.split(['.', '@']).next().unwrap_or(""))
+            .map(str::to_ascii_uppercase)
+    };
+
+    // The chosen region first, when the tag named one and the machine has it.
+    if let Some(region) = &region {
+        if let Some(exact) = generated.iter().find(|name| {
+            language_of(name) == language && region_of(name).as_deref() == Some(region)
+        }) {
+            return Some(exact.clone());
+        }
+    }
+    // Otherwise the image's first locale for that language.
+    generated
+        .iter()
+        .find(|name| language_of(name) == language)
+        .cloned()
+}
+
+/// The language variable, when there is one to set.
+///
+/// `LANG` rather than `LC_TIME` alone, on purpose. It is the category default, so
+/// one variable settles dates, times, numbers and the messages of every GTK
+/// program the desktop starts - a user who asked for German gets a German file
+/// chooser too. Our own surfaces are unaffected either way: they render from the
+/// catalogues and format through `Intl`.
+///
+/// It lands in the map rather than being exported here because the map is what
+/// [`import_list`] is derived from, and the apps are systemd user services: a
+/// variable that is not in the map reaches the session process and stops.
+///
+/// One knock-on worth naming: `xdg-user-dirs-update`, which this session already
+/// runs, reads `LANG` to name the user's folders. A German session will therefore
+/// get `~/Dokumente` - which is what that call was put there for, and what its own
+/// comment describes wanting.
+pub fn language_env(tag: &str, generated: &[String]) -> Option<(String, String)> {
+    posix_locale_for(tag, generated).map(|name| ("LANG".to_string(), name))
+}
+
 /// The greeter's screen-reader handoff: `1`, `0`, or absent. Matches
 /// `arlen_greeter_core::A11Y_SCREEN_READER_ENV`; the shell reads it once at
 /// session start and writes it to the user's config broker.
@@ -149,6 +268,83 @@ pub const MUST_BE_UNSET: &[&str] = &["DISPLAY", "WAYLAND_DISPLAY"];
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_language_is_exported_only_when_the_machine_generated_it() {
+        let have = vec!["en_US.UTF-8".to_string(), "de_DE.UTF-8".to_string()];
+
+        assert_eq!(
+            posix_locale_for("de", &have).as_deref(),
+            Some("de_DE.UTF-8"),
+            "a bare language takes the image's first locale for it"
+        );
+        assert_eq!(
+            posix_locale_for("en", &have).as_deref(),
+            Some("en_US.UTF-8")
+        );
+
+        // A region the image does not have falls back to the language rather
+        // than exporting a name glibc would drop to C.
+        assert_eq!(
+            posix_locale_for("de-AT", &have).as_deref(),
+            Some("de_DE.UTF-8")
+        );
+
+        // ...and is taken exactly when it IS there.
+        let with_at = vec!["de_AT.UTF-8".to_string(), "de_DE.UTF-8".to_string()];
+        assert_eq!(
+            posix_locale_for("de-AT", &with_at).as_deref(),
+            Some("de_AT.UTF-8")
+        );
+
+        // Nothing generated for the language: say nothing, keep the old boot.
+        assert_eq!(posix_locale_for("fr", &have), None);
+        assert_eq!(posix_locale_for("de", &[]), None);
+        assert_eq!(posix_locale_for("", &have), None);
+        assert_eq!(posix_locale_for("../etc", &have), None);
+
+        assert_eq!(
+            language_env("de", &have),
+            Some(("LANG".to_string(), "de_DE.UTF-8".to_string())),
+            "the apps are user services, so it has to be a map entry to reach them"
+        );
+        assert_eq!(language_env("fr", &have), None);
+    }
+
+    #[test]
+    fn the_generated_list_is_read_and_junk_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("locales");
+
+        // Absent is the normal answer off our image, and it means "say nothing".
+        assert!(read_generated_locales(&p).is_empty());
+
+        std::fs::write(
+            &p,
+            "# written by the image build
+en_US.UTF-8
+de_DE.UTF-8
+
+",
+        )
+        .unwrap();
+        assert_eq!(
+            read_generated_locales(&p),
+            vec!["en_US.UTF-8".to_string(), "de_DE.UTF-8".to_string()]
+        );
+
+        // The value is handed to a child process, so a line that is not a locale
+        // name is dropped rather than passed on to find out what happens.
+        std::fs::write(
+            &p,
+            "de_DE.UTF-8
+../../etc/passwd
+x y
+",
+        )
+        .unwrap();
+        assert_eq!(read_generated_locales(&p), vec!["de_DE.UTF-8".to_string()]);
+    }
 
     #[test]
     fn a_log_level_travels_only_when_somebody_set_one() {
@@ -238,7 +434,10 @@ mod tests {
     fn compositing_is_off_on_every_ordinary_boot() {
         for family in ["", "QEMU", "Standard PC", "\n", "webkit"] {
             assert!(!compositing_enabled(family), "{family:?}");
-            assert_eq!(session_env("s", family)["WEBKIT_DISABLE_COMPOSITING_MODE"], "1");
+            assert_eq!(
+                session_env("s", family)["WEBKIT_DISABLE_COMPOSITING_MODE"],
+                "1"
+            );
         }
     }
 
@@ -262,7 +461,10 @@ mod tests {
         let env = session_env("s", "");
         let imported = import_list(&env);
         for name in env.keys() {
-            assert!(imported.contains(name), "{name} is exported but never imported");
+            assert!(
+                imported.contains(name),
+                "{name} is exported but never imported"
+            );
         }
         assert!(
             imported.contains(&WAYLAND_DISPLAY.to_string()),

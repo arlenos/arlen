@@ -20,9 +20,12 @@ use std::collections::BTreeMap;
 use std::os::fd::AsFd;
 use std::process::{Command, Stdio};
 
-use arlen_session::env::{import_list, session_env, MUST_BE_UNSET, WAYLAND_DISPLAY};
-use arlen_session::session_id::{session_id, SESSION_ID_VAR};
 use arlen_permissions::identity::app_id_for_program;
+use arlen_session::env::{
+    import_list, language_env, read_generated_locales, session_env, GENERATED_LOCALES,
+    MUST_BE_UNSET, WAYLAND_DISPLAY,
+};
+use arlen_session::session_id::{session_id, SESSION_ID_VAR};
 use arlen_session::stamp::{grants_for, COMPOSITOR, SHELL, SUPERVISOR};
 use arlen_session::verify_app::{requested_app, requested_file};
 use arlen_session::wayland::{wait_for_display, WAIT_STEPS};
@@ -41,7 +44,11 @@ fn dmi(path: &str) -> String {
 
 /// Run a command with its output routed into the journal under `tag`, so a
 /// headless boot can be read from the serial console. Returns the child.
-fn spawn_logged(tag: &str, program: &str, env: &BTreeMap<String, String>) -> std::io::Result<std::process::Child> {
+fn spawn_logged(
+    tag: &str,
+    program: &str,
+    env: &BTreeMap<String, String>,
+) -> std::io::Result<std::process::Child> {
     spawn_logged_with_args(tag, program, &[], env)
 }
 
@@ -57,7 +64,9 @@ fn spawn_logged_with_args(
     env: &BTreeMap<String, String>,
 ) -> std::io::Result<std::process::Child> {
     let mut cmd = Command::new("systemd-cat");
-    cmd.arg(format!("--identifier={tag}")).arg(program).args(args);
+    cmd.arg(format!("--identifier={tag}"))
+        .arg(program)
+        .args(args);
     for (k, v) in env {
         cmd.env(k, v);
     }
@@ -113,7 +122,9 @@ fn stamp_child(child: &std::process::Child, program: &str) {
         &app_id,
         grants_for(program),
     ) {
-        say(&format!("'{app_id}' was not stamped ({e}); it resolves via /proc"));
+        say(&format!(
+            "'{app_id}' was not stamped ({e}); it resolves via /proc"
+        ));
     }
 }
 
@@ -133,6 +144,30 @@ fn say(message: &str) {
 fn main() -> std::process::ExitCode {
     let id = session_id(std::env::var(SESSION_ID_VAR).ok());
     let mut env = session_env(&id, &dmi(PRODUCT_FAMILY));
+
+    // The C library's language, from the one the user chose.
+    //
+    // Our own text never needed this - it comes from the message catalogues - but
+    // the native controls inside the webview do: WebKitGTK renders a date and time
+    // field through glibc, so with nothing set a German desktop was offering
+    // `08/24/2026` and `09:00 AM` in every form that has a date in it. Measured in
+    // one renderer, both ways, before this was written.
+    //
+    // Silent when the machine has no such locale, which is every system that is not
+    // this image.
+    let chosen = arlen_i18n::chosen_locale();
+    match language_env(
+        &chosen,
+        &read_generated_locales(std::path::Path::new(GENERATED_LOCALES)),
+    ) {
+        Some((key, value)) => {
+            env.insert(key, value);
+        }
+        None if chosen != arlen_i18n::SOURCE_LOCALE => say(&format!(
+            "no generated locale for {chosen}, so dates and times keep the C formats"
+        )),
+        None => {}
+    }
 
     // Name the identity broker's uid for everything this session will start.
     //
@@ -273,8 +308,10 @@ fn main() -> std::process::ExitCode {
     // register is granted by the session root to what the root started, so a
     // supervisor systemd started could not be given it.
     if spawn_logged("arlen-supervisor", SUPERVISOR, &env).is_err() {
-        say("the session supervisor could not be started; the per-user daemons keep \
-             whatever identity they can read for themselves");
+        say(
+            "the session supervisor could not be started; the per-user daemons keep \
+             whatever identity they can read for themselves",
+        );
     }
 
     // The session lives as long as the compositor does.
