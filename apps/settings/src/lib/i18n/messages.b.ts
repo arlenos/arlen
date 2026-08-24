@@ -508,7 +508,7 @@ export const b: Catalogs = {
     "s.appr.changeCount": ".input {$count :number}\n.match $count\none {{{$count} change}}\n*   {{{$count} changes}}",
     "s.appr.totalCount": ".input {$count :number}\n.match $count\none {{{$count} change in all}}\n*   {{{$count} changes in all}}",
     "s.sys.title": "System",
-    "s.sys.desc": "Cursor, icons, sounds, and the terminal colours. Change one and it overrides just that value, on top of the theme.",
+    "s.sys.desc": "Cursor, icons and the terminal colours. Change one and it overrides just that value, on top of the theme.",
     "s.sys.cursor": "Cursor",
     "s.sys.theme": "Theme",
     // Component props passed in markup, invisible to the born-translatable lint
@@ -750,6 +750,14 @@ export const b: Catalogs = {
     "s.wa.confirmLabel": "Delete",
     "s.wa.launchApp": "Launch",
     "s.wa.launchFailed": "\"{$name}\" was not launched: the Windows service did not take the request.",
+    "s.wa.launchNothing":
+      "\"{$name}\" has nothing to start yet: no Windows program has been installed into it.",
+    "s.wa.launchNoWine":
+      "\"{$name}\" was not launched: this machine has no Windows compatibility layer installed.",
+    "s.wa.launchNoPrefix":
+      "\"{$name}\" was not launched: its bottle was never finished, so there is nothing to run inside.",
+    "s.wa.launchDrives":
+      "\"{$name}\" was not launched: the folders it was granted are not reachable, and it would have seen drives it cannot open.",
     "s.wa.notFound": "This Windows app is not in the list that could be read.",
     "s.wa.allApps": "All Windows apps",
     "s.wa.driveOwn": "This app's own files",
@@ -1447,7 +1455,7 @@ export const b: Catalogs = {
     "s.appr.changeCount": ".input {$count :number}\n.match $count\none {{{$count} \u00c4nderung}}\n*   {{{$count} \u00c4nderungen}}",
     "s.appr.totalCount": ".input {$count :number}\n.match $count\none {{{$count} \u00c4nderung insgesamt}}\n*   {{{$count} \u00c4nderungen insgesamt}}",
     "s.sys.title": "System",
-    "s.sys.desc": "Zeiger, Symbole, Kl\u00e4nge und die Terminalfarben. Was du \u00e4nderst, \u00fcberschreibt genau diesen Wert \u00fcber dem Thema.",
+    "s.sys.desc": "Zeiger, Symbole und die Terminalfarben. Was du \u00e4nderst, \u00fcberschreibt genau diesen Wert \u00fcber dem Thema.",
     "s.sys.cursor": "Zeiger",
     "s.sys.theme": "Thema",
     "s.sys.iconHint": "Der Symbolsatz für deine Apps",
@@ -1680,6 +1688,14 @@ export const b: Catalogs = {
     "s.wa.confirmLabel": "L\u00f6schen",
     "s.wa.launchApp": "Starten",
     "s.wa.launchFailed": "\u201e{$name}\u201c wurde nicht gestartet: Der Windows-Dienst hat die Anfrage nicht angenommen.",
+    "s.wa.launchNothing":
+      "\u201e{$name}\u201c hat noch nichts zu starten: Es wurde kein Windows-Programm hineininstalliert.",
+    "s.wa.launchNoWine":
+      "\u201e{$name}\u201c wurde nicht gestartet: Auf dieser Maschine ist keine Windows-Kompatibilit\u00e4tsschicht installiert.",
+    "s.wa.launchNoPrefix":
+      "\u201e{$name}\u201c wurde nicht gestartet: Das Bottle wurde nie fertiggestellt, es gibt also nichts, worin es laufen k\u00f6nnte.",
+    "s.wa.launchDrives":
+      "\u201e{$name}\u201c wurde nicht gestartet: Die freigegebenen Ordner sind nicht erreichbar, und es h\u00e4tte Laufwerke gesehen, die es nicht \u00f6ffnen kann.",
     "s.wa.notFound": "Diese Windows-App ist nicht in der Liste, die gelesen werden konnte.",
     "s.wa.allApps": "Alle Windows-Apps",
     "s.wa.driveOwn": "Die eigenen Dateien dieser App",

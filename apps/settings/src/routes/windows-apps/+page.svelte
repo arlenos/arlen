@@ -21,6 +21,7 @@
     winApps,
     winActionFailed,
     launchFailed,
+    launchFailureKey,
     defaults,
     wineVersions,
     load,
@@ -66,7 +67,7 @@
       <p class="note span-full" role="alert">{$t("s.wa.actionFailed")}</p>
     {/if}
     {#if $launchFailed}
-      <p class="note span-full" role="alert">{$t("s.wa.launchFailed", { name: $launchFailed })}</p>
+      <p class="note span-full" role="alert">{$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}</p>
     {/if}
 
     <Section label={$t("s.wa.installed")} class="span-full">
