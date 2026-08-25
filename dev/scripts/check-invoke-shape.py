@@ -62,16 +62,6 @@ EXCUSED: dict[str, str] = {}
 # does not fail on them, so the debt stays visible and attributed. Keyed by
 # command name; remove the entry when the owner fixes it and the gate holds it shut.
 KNOWN_RETURN_MISMATCHES: dict[str, str] = {
-    "ai_behaviours": (
-        "the command returns the agent's JSON as a String and the page reads it as a "
-        "BehaviourReport with no parse, so the report is a string and every field is "
-        "undefined. Underneath that, `org.arlen.AIAgent1` serves no `list_skills` "
-        "member at all, so the call has never succeeded; the command now returns an "
-        "error instead of substituting `[]`, which at least makes the page's own "
-        "unavailable branch reachable. Implementing the member needs a shape decided "
-        "(the command described an array, the page declares {behaviours, errors}). "
-        "The call site is arlen-ui's Settings AI route."
-    ),
     "ai_working_set": (
         "same missing parse, and a second disagreement underneath it: the engine's "
         "`working_set` serves {status, behaviours[]} and the drawer's `WorkingSet` "
@@ -85,10 +75,6 @@ KNOWN_RETURN_MISMATCHES: dict[str, str] = {
         "the model picker's `Model` is the merged card shape the page builds from "
         "several sources; the Hugging Face hit is only one of them. Reworking it is "
         "arlen-ui's model-picker job, and its route is their live work."
-    ),
-    "store_search": (
-        "install variants are arlen-ui's store design item; the card model changes "
-        "with it."
     ),
 }
 
@@ -864,6 +850,12 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str], int
     problems: list[str] = []
     known: list[str] = []
     uncompared: list[str] = []
+    # Which routed entries actually matched something. An entry for a finding
+    # that no longer exists is as dead as one that was never right, and it sits
+    # there claiming a defect is known-and-parked while the surface is fixed.
+    # `ai_behaviours` went that way within the hour of being routed. The sibling
+    # D-Bus check learned the same lesson the same evening.
+    routed_used: set[str] = set()
     checked = 0
     # Counted, not just skipped. The difference between the calls this walks and
     # the shapes it compares was 73 and the summary said nothing about it, which
@@ -896,6 +888,7 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str], int
                     f"at the call, or give the command the struct it is being read as."
                 )
                 if cmd in KNOWN_RETURN_MISMATCHES:
+                    routed_used.add(cmd)
                     known.append(f"{text}\n      routed: {KNOWN_RETURN_MISMATCHES[cmd]}")
                 else:
                     problems.append(text)
@@ -931,9 +924,19 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str], int
             f"{sorted(missing)}; `{tsname}` declares them, so they arrive undefined"
         )
         if cmd in KNOWN_RETURN_MISMATCHES:
+            routed_used.add(cmd)
             known.append(f"{text}\n      routed: {KNOWN_RETURN_MISMATCHES[cmd]}")
         else:
             problems.append(text)
+    # Only against the real tree. These entries describe THIS repo, so in a
+    # fixture tree every one reads as stale - which is exactly what the controls
+    # reported the moment this was added, twice in one evening, in two different
+    # gates. The lesson did not transfer on its own.
+    for cmd in sorted(set(KNOWN_RETURN_MISMATCHES) - routed_used) if root == ROOT else []:
+        problems.append(
+            f"`{cmd}` is routed as a known shape mismatch and no longer mismatches "
+            f"anything. Drop the entry."
+        )
     return checked, problems, known, uncompared, opaque
 
 
