@@ -32,9 +32,15 @@
 
 <aside class="lens">
   {#if $lens.mocked}
-    <!-- Sample data, said first. Everything below - lineage, backlinks, project
-         membership - is invented until the graph queries land, and unlabelled it
-         reads as this file's real neighbourhood. -->
+    <!-- Sample data, said first, because unlabelled it reads as this file's real
+         neighbourhood.
+         This used to say "invented until the graph queries land". They have:
+         `provenance_of` and `related_of` are both registered in `lens.rs`. So on
+         a real machine this sample means the READ failed, not that the feature is
+         missing - and the sentence is worded for that, claiming only that it is a
+         sample rather than saying why. Kept, with the stale premise removed: a
+         comment that explains a fixture by a gap that has since closed invites
+         the next reader to leave it alone for a reason that no longer holds. -->
     <p class="sample">
       {$t("te.lens.sample")}
       <!-- And when a past time was asked for, say that it went nowhere. The
