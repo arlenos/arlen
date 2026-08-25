@@ -33,8 +33,16 @@ WHAT DOES NOT COUNT, and each of these is a real thing the tree does:
   * Anything that is not fed by `String(e)`: a count, a path, a filename. The
     taint is the whole point - a surface drawing its own data is not this.
 
-WHAT IT CANNOT SEE. A taint reaching the markup through a component PROP, a
-derived store, or two hops. Those need dataflow this deliberately does not do.
+WHAT IT CANNOT SEE, and the second one was measured rather than assumed:
+
+  * A taint reaching the markup through a component PROP or a derived store.
+  * TWO HOPS - a local assigned from a tainted field (`x = outcome.reason`) and
+    then drawn. That is the shape `apps/screenshot` had before 09:2x on 25 August,
+    so it is not hypothetical. A pattern for it was written and measured against
+    the tree: two findings, BOTH wrong (`editDraft = msg.text`, `draft = …text`,
+    where `text` is a field name tainted elsewhere in the same app), and none
+    right. A rule whose whole yield is false positives costs more than the hole,
+    so the hole stays and is written down here instead.
 
 THE CARRIED QUEUE. Eleven of the thirteen are in apps this lane does not edit, and
 a gate that lands red on eleven files somebody else owns is a standing red - which
