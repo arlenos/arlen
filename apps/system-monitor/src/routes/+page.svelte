@@ -144,8 +144,12 @@
     {/if}
     {#if $lastError}
       <!-- A refused action must be visible: the row already reverted, and this
-           says why, so a failed Stop never passes as a killed process. -->
-      <p class="note error" role="alert">{$t($lastError.key, $lastError.values)}</p>
+           says why, so a failed Stop never passes as a killed process. Both
+           halves are translated - the clause naming the action, and the reason,
+           which used to arrive as the kernel's own English. -->
+      <p class="note error" role="alert">
+        {$t($lastError.key, { ...$lastError.values, reason: $t($lastError.reason) })}
+      </p>
     {/if}
     <div class="toolbar">
       <span class="filter">

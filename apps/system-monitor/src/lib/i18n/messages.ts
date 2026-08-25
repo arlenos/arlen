@@ -86,6 +86,21 @@ const messages: Catalogs = {
     "sm.err.limitApp.some": "Limited {$done} of {$total}: {$reason}",
     "sm.err.unlimitApp": "Could not unlimit that app: {$reason}",
     "sm.err.unlimitApp.some": "Removed the limit from {$done} of {$total}: {$reason}",
+    // WHY an action was refused, one per token `stop_process` / `freeze_process`
+    // / `limit_process` / `renice_process` answer with. These are the half that
+    // used to arrive as the kernel's own words, so a German build ended
+    // "Dieser Prozess liess sich nicht beenden: Operation not permitted (os
+    // error 1)". Each reads as a clause, because it lands inside one of the
+    // sentences above after the colon.
+    "sm.why.unsafePid": "that process id does not name a single process",
+    "sm.why.notPermitted":
+      "the process is not yours, or the change needs a privilege this session does not have",
+    "sm.why.gone": "that process had already ended",
+    "sm.why.badPriority": "that is not a priority this app offers",
+    "sm.why.noCgroup": "this system has no CPU group that process could be limited in",
+    "sm.why.noDelegation":
+      "this session may not set CPU limits, which is decided when the session starts",
+    "sm.why.other": "the system gave no reason for it; the detail is in the log",
     "tm.filter.aria": "Filter processes",
     "tm.rate.label": "Refresh",
     "tm.rate.aria": "How often to re-read the system",
@@ -191,8 +206,17 @@ const messages: Catalogs = {
     "sm.err.resumeApp.some": "{$done} von {$total} fortgesetzt: {$reason}",
     "sm.err.limitApp": "Diese App ließ sich nicht begrenzen: {$reason}",
     "sm.err.limitApp.some": "{$done} von {$total} begrenzt: {$reason}",
-    "sm.err.unlimitApp": "Diese App ließ sich nicht begrenzen lassen: {$reason}",
+    "sm.err.unlimitApp": "Die Begrenzung dieser App ließ sich nicht aufheben: {$reason}",
     "sm.err.unlimitApp.some": "Begrenzung bei {$done} von {$total} aufgehoben: {$reason}",
+    "sm.why.unsafePid": "diese Prozessnummer benennt keinen einzelnen Prozess",
+    "sm.why.notPermitted":
+      "der Prozess gehört dir nicht, oder die Änderung braucht ein Recht, das diese Sitzung nicht hat",
+    "sm.why.gone": "dieser Prozess war schon beendet",
+    "sm.why.badPriority": "diese Priorität bietet die App nicht an",
+    "sm.why.noCgroup": "auf diesem System gibt es keine CPU-Gruppe, in der dieser Prozess begrenzt werden könnte",
+    "sm.why.noDelegation":
+      "diese Sitzung darf keine CPU-Grenzen setzen; das entscheidet sich beim Start der Sitzung",
+    "sm.why.other": "das System hat keinen Grund genannt; die Einzelheiten stehen im Protokoll",
     "tm.filter.aria": "Prozesse filtern",
     "tm.rate.label": "Aktualisierung",
     "tm.rate.aria": "Wie oft das System neu gelesen wird",
