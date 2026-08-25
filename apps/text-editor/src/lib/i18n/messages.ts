@@ -17,7 +17,15 @@ const messages: Catalogs = {
     "te.open.notAbsolute": "That is not a full path, so there is nothing to open.",
     "te.open.unreadable": "{$why}",
     "te.open.notText": "This is not text this editor can open. Opening it and saving it back would write something other than what is in it.",
-    "te.save.failed": "Could not save: {$reason}",
+    // WHY a save did not happen, one per `SaveProblem` tag. This used to be a
+    // single `te.save.failed` with `{$reason}` filled from the host's
+    // `"{path}: {e}"`, so a read-only file read "Could not save:
+    // /home/tim/notes.md: Permission denied (os error 13)" - the path already in
+    // the titlebar, and an errno, inside a translated sentence.
+    "te.save.notAbsolute": "Could not save: that is not a full path.",
+    "te.save.noParent": "Could not save: that path has no folder to write into.",
+    "te.save.unwritable": "Could not save: this file or its folder could not be written to.",
+    "te.save.other": "Could not save. The detail is in the log.",
     "te.save.changedOnDisk": "This file changed on disk since you opened it. Saving now would overwrite that.",
     "te.save.overwrite": "Overwrite anyway",
     "te.save.keepEditing": "Keep editing",
@@ -83,7 +91,10 @@ const messages: Catalogs = {
     "te.open.notAbsolute": "Das ist kein vollständiger Pfad, es gibt also nichts zu öffnen.",
     "te.open.unreadable": "{$why}",
     "te.open.notText": "Das ist kein Text, den dieser Editor öffnen kann. Öffnen und zurückspeichern würde etwas anderes schreiben als das, was darin steht.",
-    "te.save.failed": "Konnte nicht speichern: {$reason}",
+    "te.save.notAbsolute": "Konnte nicht speichern: das ist kein vollständiger Pfad.",
+    "te.save.noParent": "Konnte nicht speichern: zu diesem Pfad gibt es keinen Ordner, in den geschrieben werden könnte.",
+    "te.save.unwritable": "Konnte nicht speichern: diese Datei oder ihr Ordner ließ sich nicht beschreiben.",
+    "te.save.other": "Konnte nicht speichern. Die Einzelheiten stehen im Protokoll.",
     "te.save.changedOnDisk": "Diese Datei wurde seit dem Öffnen auf der Festplatte geändert. Jetzt zu speichern würde das überschreiben.",
     "te.save.overwrite": "Trotzdem überschreiben",
     "te.save.keepEditing": "Weiterschreiben",

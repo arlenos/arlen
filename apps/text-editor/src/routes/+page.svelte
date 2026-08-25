@@ -10,7 +10,7 @@
   import LensPanel from "$lib/components/editor/LensPanel.svelte";
   import AiEditReview from "$lib/components/editor/AiEditReview.svelte";
   import { loadLens } from "$lib/stores/lens";
-  import { openDocument, openError, openTarget, loadInitialFile } from "$lib/stores/document";
+  import { openDocument, openError, openTarget, loadInitialFile, saveProblemKey } from "$lib/stores/document";
   import { onMount } from "svelte";
   import { initAppMenu, menuAction } from "$lib/menu";
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
@@ -162,8 +162,11 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     } catch (e) {
       // Its own state, not an error string: this is a question for the person
       // rather than a failure, and it has an answer they can give.
+      // Still a substring test, and deliberately: the host answers this one with
+      // the tag `file-changed-on-disk`, and a Tauri error arrives here either as
+      // the object or as a string with the JSON inside it depending on the path.
       if (String(e).includes("file-changed-on-disk")) changedOnDisk = true;
-      else saveError = String(e);
+      else saveError = saveProblemKey(e);
     }
   }
   /// What the print portal last said, so the person is told rather than left
@@ -292,7 +295,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
                failure and must not be coloured as one. -->
           <span class="ss-ok" role="status">{printStatus}</span>
         {:else if saveError}
-          <span class="ss-bad" role="alert">{$t("te.save.failed", { reason: saveError })}</span>
+          <span class="ss-bad" role="alert">{$t(saveError)}</span>
         {:else if dirty}
           <span class="ss-dirty">{$t("te.save.unsaved")}</span>
         {:else if savedAt}

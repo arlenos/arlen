@@ -42,23 +42,56 @@ export type OpenProblem =
 
 export const openError = writable<OpenProblem | null>(null);
 
+/// Why a save did not happen, as the host now names it (`SaveProblem`).
+///
+/// `file-changed-on-disk` is not in this union on purpose: the page treats it as
+/// a question with an answer rather than a failure, and it has its own state.
+export type SaveProblem =
+  | { problem: "not-absolute" }
+  | { problem: "no-parent" }
+  | { problem: "unwritable"; why: string }
+  | { problem: "other" };
+
+/// The message key for a refused save.
+///
+/// The reason used to be `String(e)`, which the host built as `"{path}: {e}"` -
+/// so a read-only file put "/home/tim/notes.md: Permission denied (os error 13)"
+/// inside a translated sentence. The path is already on screen in the titlebar
+/// and the errno is for the log.
+export function saveProblemKey(e: unknown): string {
+  const bag = problemBag(e);
+  switch (bag?.problem) {
+    case "not-absolute":
+      return "te.save.notAbsolute";
+    case "no-parent":
+      return "te.save.noParent";
+    case "unwritable":
+      return "te.save.unwritable";
+    default:
+      // A tag this does not know is a host that changed. The console is where
+      // that belongs; the page says the vague true thing.
+      if (bag?.problem) console.warn("text-editor: unrecognised save problem", bag.problem);
+      return "te.save.other";
+  }
+}
+
 /// Read the host's answer, which arrives as an object here and as a string with
 /// JSON inside it elsewhere in the tree. Both are accepted rather than one
 /// assumed: guessing wrong sends every named cause down `other`, which looks
 /// exactly like the code working.
+export function problemBag(e: unknown): Record<string, unknown> | null {
+  if (e && typeof e === "object") return e as Record<string, unknown>;
+  const raw = String(e);
+  const at = raw.indexOf("{");
+  try {
+    return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 function named(e: unknown): OpenProblem {
-  const bag =
-    e && typeof e === "object"
-      ? (e as Record<string, unknown>)
-      : (() => {
-          const raw = String(e);
-          const at = raw.indexOf("{");
-          try {
-            return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
-          } catch {
-            return null;
-          }
-        })();
+  const bag = problemBag(e);
   if (bag?.problem === "not-absolute") return { problem: "not-absolute" };
   if (bag?.problem === "unreadable")
     return { problem: "unreadable", why: String(bag.why ?? "") };
