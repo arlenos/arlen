@@ -94,22 +94,26 @@ pub async fn ai_explain() -> Result<String, String> {
     }
 }
 
-/// Call a String-returning member on the AI daemon, returning `fallback` on any
-/// connection or call failure (the manager reads are advisory - a down daemon
-/// shows an empty surface rather than erroring the page).
-async fn ai_call_string(member: &str, fallback: &str) -> String {
-    let Ok(connection) = zbus::Connection::session().await else {
-        return fallback.to_string();
-    };
-    let Ok(proxy) =
-        zbus::Proxy::new(&connection, AI_DAEMON_NAME, AI_OBJECT_PATH, AI_DAEMON_NAME).await
-    else {
-        return fallback.to_string();
-    };
+/// Call a String-returning member on the AI daemon, reporting a failure as one.
+///
+/// This used to substitute an empty value and call the reads advisory: "a down
+/// daemon shows an empty surface rather than erroring the page". Both members it
+/// serves - `ai_defaults_get` and `ai_models_list` - are dialled on
+/// `org.arlen.AI1`, which serves neither (it serves `ask` and `explain_system`).
+/// So the substitution was not a graceful degradation for a daemon that happened
+/// to be down, it was the only path either call ever took, and the page has been
+/// showing an empty catalogue and no default as though it had looked.
+async fn ai_call_string(member: &str) -> Result<String, String> {
+    let connection = zbus::Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    let proxy = zbus::Proxy::new(&connection, AI_DAEMON_NAME, AI_OBJECT_PATH, AI_DAEMON_NAME)
+        .await
+        .map_err(|e| format!("AI daemon unavailable: {e}"))?;
     proxy
         .call::<_, _, String>(member, &())
         .await
-        .unwrap_or_else(|_| fallback.to_string())
+        .map_err(|e| format!("{member}: {e}"))
 }
 
 /// The catalogued providers for the Settings AI-providers manager
@@ -249,20 +253,27 @@ pub async fn ai_uncensored_set_enabled(enabled: bool) -> Result<(), String> {
 
 /// The configured default provider/model + ranked fallback (`ai_defaults_get`),
 /// as `{ provider, model, ranking }`, for the manager's Default-Models page.
-/// Empty object if the daemon is unreachable.
+///
+/// An error rather than `{}`. The page keeps its fallback line either way, so
+/// what changes is which sentence is true underneath it: it now reaches that
+/// line through the catch it already has, instead of reading "could not ask" as
+/// "no default is set".
 #[tauri::command]
-pub async fn ai_defaults_get() -> String {
-    ai_call_string("ai_defaults_get", "{}").await
+pub async fn ai_defaults_get() -> Result<String, String> {
+    ai_call_string("ai_defaults_get").await
 }
 
 /// The model catalog for the Settings Default-Models page (`ai_models_list`): a
 /// JSON array of `{ provider, model, contextWindow, kind, available }`, the same
 /// catalog the harness picker reads. The page pairs it with `ai_defaults_get`/
-/// `ai_defaults_set` to choose the default; empty array if the daemon is
-/// unreachable.
+/// `ai_defaults_set` to choose the default.
+///
+/// An error rather than `[]`. No Settings surface reads this yet, so the change
+/// costs nothing today and stops the next caller inheriting an empty catalogue
+/// that means "we did not look".
 #[tauri::command]
-pub async fn ai_models_list() -> String {
-    ai_call_string("ai_models_list", "[]").await
+pub async fn ai_models_list() -> Result<String, String> {
+    ai_call_string("ai_models_list").await
 }
 
 /// Enable or disable a catalogued provider (`ai_provider_set_enabled`). Returns
