@@ -99,7 +99,7 @@ check(
 // tree, and each was invisible to this gate until the pattern was widened - they
 // all happened to be read, so nothing was broken and nothing said the gate was
 // not watching them either.
-for (const name of ["openFailure", "searchRefusals", "accessDenied", "printBlocked", "hostOffline"]) {
+for (const name of ["openFailure", "searchRefusals", "accessDenied", "printBlocked", "hostOffline", "capsuleNotice"]) {
   check(
     `a store named ${name} is watched, not just one named error`,
     {
