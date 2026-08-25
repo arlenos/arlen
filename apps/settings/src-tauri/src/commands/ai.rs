@@ -173,27 +173,31 @@ async fn agent_call_string(member: &str) -> Result<String, String> {
 /// the agent's `list_skills`. Identity and routing hints only, never a behaviour
 /// body or user data.
 ///
-/// AN ERROR, NOT AN EMPTY ARRAY, AND THAT IS THE WHOLE CHANGE. This substituted
-/// `"[]"` on any failure and said so in its own doc - "the panel then shows no
-/// behaviours rather than erroring" - which reads as a considered choice until
-/// you notice what it was hiding: **`org.arlen.AIAgent1` serves no `list_skills`
-/// member at all.** It serves `status`, `working_set`, `completed_actions`,
-/// `undo_read` and `compensate`. So this call has always failed, and the panel
-/// has always stated, as a measured fact, that the agent has no behaviours
-/// loaded. Its own `behavioursUnavailable` flag could never become true, because
-/// nothing ever reached the page's catch.
+/// Returns the loader's own answer: `{ behaviours, errors }`, the shape
+/// `LoadOutcome` has always had and the shape the page declares.
 ///
-/// Failing lets that flag work: the page already sets it in a `catch` it was
-/// never given a reason to run. What the panel says now is "could not read
-/// them", which is true, instead of "there are none", which was not.
+/// THE HISTORY IS WORTH KEEPING, because the surface lied for a long time in a
+/// quiet way. This substituted `"[]"` on any failure and called that a choice -
+/// "the panel then shows no behaviours rather than erroring" - while
+/// `org.arlen.AIAgent1` served no `list_skills` member at all. So the call always
+/// failed, and the panel always stated, as a measured fact, that the agent had no
+/// behaviours loaded. Its `behavioursUnavailable` flag could never become true,
+/// because nothing ever reached the page's catch.
 ///
-/// The member still does not exist. Implementing it is the real fix and it needs
-/// a shape decided first - the doc here described a JSON array while the page
-/// declares `{ behaviours, errors }` - so that part is reported to the planner,
-/// not guessed at. Meanwhile the surface stops making the claim.
+/// The member exists now, and the shape question that looked like a design call
+/// answered itself: `ai/ai-skills/src/loader.rs` returns
+/// `LoadOutcome { loaded, errors }`, which is the page's interface field for
+/// field. It was specified against the loader; the doc that described a JSON
+/// array was the thing that was wrong.
+///
+/// So this parses rather than handing the page a string. The page reads
+/// `invoke<BehaviourReport>` with no parse of its own, and a JSON string typed as
+/// an object is a page reading fields off a string - every one undefined. A
+/// failure is still an error, never an empty list.
 #[tauri::command]
-pub async fn ai_behaviours() -> Result<String, String> {
-    agent_call_string("list_skills").await
+pub async fn ai_behaviours() -> Result<serde_json::Value, String> {
+    let json = agent_call_string("list_skills").await?;
+    serde_json::from_str(&json).map_err(|e| format!("behaviour report: {e}"))
 }
 
 /// Enable or disable an AI behaviour by name, editing the `[agent].enabled` list

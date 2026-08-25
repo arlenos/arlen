@@ -65,7 +65,14 @@ struct BehaviourStatusShape {
     /// `None` when enabled. A token, not a sentence: the panel words it, so a
     /// German reader does not meet an English reason beside translated rows.
     disabled_reason: Option<&'static str>,
-    read_scope: &'static str,
+    /// Named `reads` and not `read_scope`, unlike its neighbour in
+    /// [`BehaviourShape`]. The manifest field is `reads` and the panel declares
+    /// `reads`; the working set's spelling came from a different reader. I wrote
+    /// `read_scope` here first by copying the shape above, which would have sent
+    /// the panel a field it does not declare and left that column empty on every
+    /// row - the exact failure this whole strand is about, introduced by me while
+    /// fixing it.
+    reads: &'static str,
 }
 
 /// The behaviours panel's whole answer: what loaded, and what could not.
@@ -112,7 +119,7 @@ fn list_skills_json(outcome: &LoadOutcome) -> String {
                     provenance: provenance_str(lb.provenance),
                     enabled: lb.status.is_enabled(),
                     disabled_reason: disabled_reason_str(&lb.status),
-                    read_scope: read_scope_str(m.reads),
+                    reads: read_scope_str(m.reads),
                 }
             })
             .collect(),
@@ -849,6 +856,49 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&list_skills_json(&outcome)).unwrap();
         assert_eq!(v["behaviours"].as_array().unwrap().len(), 0);
         assert_eq!(v["errors"].as_array().unwrap().len(), 0);
+    }
+
+    /// The key set, pinned against the panel that declares it.
+    ///
+    /// `apps/settings/src/routes/ai/+page.svelte` declares `BehaviourStatus` with
+    /// exactly these seven names. Nothing in the tree can see a Rust struct and a
+    /// TypeScript interface agree - they meet as JSON over a bus - so the names
+    /// are the contract and this is the half of it that can be tested. A rename
+    /// here does not break a build; it empties a column.
+    #[test]
+    fn the_wire_keys_are_the_ones_the_panel_declares() {
+        let outcome = LoadOutcome { loaded: vec![], errors: vec![] };
+        let v: serde_json::Value = serde_json::from_str(&list_skills_json(&outcome)).unwrap();
+        let top: Vec<&String> = v.as_object().unwrap().keys().collect();
+        assert_eq!(top, vec!["behaviours", "errors"]);
+
+        // The row shape needs a row, and building a real `LoadedBehaviour` here
+        // would drag the whole manifest parser in, so the keys are asserted
+        // against the serializer directly.
+        let row = BehaviourStatusShape {
+            name: "n".into(),
+            description: "d".into(),
+            kind: "workflow",
+            provenance: "built-in",
+            enabled: false,
+            disabled_reason: Some("duplicate-name"),
+            reads: "minimal",
+        };
+        let rv = serde_json::to_value(&row).unwrap();
+        let mut keys: Vec<&String> = rv.as_object().unwrap().keys().collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            vec![
+                "description",
+                "disabledReason",
+                "enabled",
+                "kind",
+                "name",
+                "provenance",
+                "reads",
+            ]
+        );
     }
 
     /// The disabled reason is a token the panel words, never a sentence. A
