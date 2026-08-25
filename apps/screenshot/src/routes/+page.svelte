@@ -43,6 +43,7 @@
     closeWindow,
     type Output,
     type Window as CaptureWindow,
+    type CaptureRefusal,
   } from "$lib/bridge";
 
   // The capture handoff: a fresh capture floats as a thumbnail (ignore -> auto-save,
@@ -127,7 +128,7 @@
     // how a person ends up sending a picture of a machine that does not exist.
     const captured = await capturePrimary();
     if (captured.kind === "unavailable") {
-      captureFailure = captured.reason;
+      captureFailure = captured.why;
       return;
     }
     isSample = captured.kind === "hostless";
@@ -336,7 +337,19 @@
   /// Why there is no capture, when a host said it could not take one. Set only on
   /// the real-host path: it is a statement about this machine, and the browser
   /// has nothing to say about that.
-  let captureFailure = $state<string | null>(null);
+  /// Why the capture did not happen, as a word. It held the compositor's own
+  /// words - `String(e)`, or an English sentence written in the bridge - and the
+  /// surface below drew them, so every language got the same English line under a
+  /// translated heading.
+  let captureFailure = $state<CaptureRefusal | "no-host" | null>(null);
+
+  /// The sentence for each refusal. `no-host` is this page's own: it is what the
+  /// browser preview and the render harness are, not something a machine reported.
+  const WHY: Record<CaptureRefusal | "no-host", string> = {
+    "no-screencopy": "s.why.noScreencopy",
+    refused: "s.why.refused",
+    "no-host": "s.noHost",
+  };
 
   /// The screens and windows this machine can be asked to photograph.
   ///
@@ -364,7 +377,7 @@
       // A source that will not capture is reported where the picture would be,
       // not swallowed: a picker that silently keeps the old image is one that
       // says you photographed something you did not.
-      captureFailure = shot.kind === "unavailable" ? shot.reason : $t("s.noHost");
+      captureFailure = shot.kind === "unavailable" ? shot.why : "no-host";
       return;
     }
     source = value;
@@ -638,7 +651,7 @@
        that threw are different problems with different answers. -->
   <div class="no-capture" role="alert">
     <p class="no-capture-what">{$t("s.captureUnavailable")}</p>
-    <p class="no-capture-why">{captureFailure}</p>
+    <p class="no-capture-why">{$t(WHY[captureFailure])}</p>
   </div>
 {:else if phase === "thumbnail" && base}
   <FloatingThumbnail
