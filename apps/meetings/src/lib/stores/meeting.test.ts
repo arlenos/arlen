@@ -46,6 +46,7 @@ const {
   loadMeetings,
   meetings,
   meetingsFailure,
+  meetingsFailureKey,
   meetingsUnavailable,
 } = await import("./meeting");
 
@@ -148,5 +149,24 @@ describe("loadMeetings", () => {
     await loadMeetings();
     expect(get(meetingsUnavailable)).toBe(false);
     expect(get(meetingsFailure)).toBe(null);
+  });
+});
+
+describe("meetingsFailureKey", () => {
+  /// Every state the store can hold reaches its own sentence. A state falling
+  /// through to the vague one looks exactly like the code working, which is why
+  /// this enumerates rather than spot-checking.
+  it("names every failure state", () => {
+    expect(meetingsFailureKey(null)).toBe("mt.unavailable");
+    expect(meetingsFailureKey("unavailable")).toBe("mt.unavailable.absent");
+    expect(meetingsFailureKey("denied")).toBe("mt.unavailable.refused");
+    expect(meetingsFailureKey("no-answer")).toBe("mt.unavailable.noAnswer");
+  });
+
+  /// The floor: whatever the backend starts saying, the page shows a key it has a
+  /// sentence for, never the word itself. This branch used to interpolate the raw
+  /// invoke error into a translated sentence.
+  it("falls back to a sentence rather than showing an unknown state", () => {
+    expect(meetingsFailureKey("Error: invoke failed (os error 2)")).toBe("mt.unavailable");
   });
 });
