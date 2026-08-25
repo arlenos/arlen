@@ -11,10 +11,10 @@
 </script>
 
 {#if $opBusy}
-  <div class="op-veil" role="status" aria-label={$opBusy}>
+  <div class="op-veil" role="status" aria-label={$t($opBusy.key, $opBusy.values)}>
     <div class="op-card">
       <span class="op-spinner" aria-hidden="true"></span>
-      <span class="op-label">{$opBusy}</span>
+      <span class="op-label">{$t($opBusy.key, $opBusy.values)}</span>
     </div>
   </div>
 {/if}
