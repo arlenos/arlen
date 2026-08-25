@@ -159,6 +159,17 @@ function run(root) {
 }
 
 {
+  // A TERNARY is not a field. `e instanceof Error ? e.message : String(e)` has
+  // the same shape as `{ message: String(e) }` to a regex, and binding `message`
+  // from it would taint a name nobody assigned - the shell's theme store alone
+  // has six.
+  const root = tree(`export function f(e: unknown) {\n  const message = e instanceof Error ? e.message : String(e);\n  console.warn(message);\n  return get(t)("th.failed", { detail: shortOf(message) });\n}\n`);
+  const rc = run(root);
+  rc === 0 ? ok("a ternary is not read as a tainted field") : bad("a ternary is not read as a tainted field", `expected 0, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   // A gate that reads nothing must not look like a gate that found nothing wrong.
   const root = tree(null);
   const rc = run(root);

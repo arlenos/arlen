@@ -163,7 +163,17 @@ def main() -> int:
     sources = {p: p.read_text(encoding="utf-8", errors="replace") for p in files}
 
     def tainted_names(text: str) -> set[str]:
-        return {m.group("n") for rx in TAINTS for m in rx.finditer(text)}
+        out: set[str] = set()
+        for rx in TAINTS:
+            for m in rx.finditer(text):
+                # Not a ternary. The field pattern also matches
+                # `e instanceof Error ? e.message : String(e)`, binding `message`
+                # - a property READ, not a field anybody assigns. Eleven of the
+                # tree's thirty-nine matches are that shape.
+                if "?" in text[text.rfind("\n", 0, m.start()) + 1 : m.start()]:
+                    continue
+                out.add(m.group("n"))
+        return out
 
     #: Module stem to the names that file gives a stringified exception to. Keyed
     #: by stem because an import path is written `$lib/stores/meeting` or

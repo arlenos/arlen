@@ -204,7 +204,15 @@ def main() -> int:
         # Fields are collected here, not inside the loop: a file whose only taint
         # is a field has an empty `tainted` map, and skipping on that alone is how
         # the first cut of this rule found nothing at all.
-        fields = {m.group("n") for m in FIELD_TAINT.finditer(text)}
+        fields = {
+            m.group("n")
+            for m in FIELD_TAINT.finditer(text)
+            # Not a ternary. `e instanceof Error ? e.message : String(e)` matches
+            # the same shape and binds `message` - a property READ, not a field
+            # anybody assigns. Eleven of the tree's thirty-nine matches are that,
+            # including six in the shell's theme store.
+            if "?" not in text[text.rfind("\n", 0, m.start()) + 1 : m.start()]
+        }
         if not tainted and not fields:
             continue
         # Markup only. The same `{...}` in the script block is an object literal.
