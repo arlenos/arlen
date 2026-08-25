@@ -8,6 +8,18 @@
 //! shows is what the daemon actually enforces. Read-only and advisory: a
 //! missing or malformed config reports the fail-closed defaults
 //! (disabled, Minimal, Suggest), matching the daemon's own posture.
+//!
+//! THE COHERENCE CLAIM ABOVE HAS AN EXPIRY, and this surface states it as a
+//! principle: "capability is always visible". `access_level`, `action_mode`,
+//! `provider` and `executor_live` are four of the six AI master switches the
+//! config-broker owns from a separate uid, and the engine reads them from the
+//! BROKER, keeping `ai.toml` only as its fallback (`engine_config.rs`). While
+//! the broker is not deployed the two agree. Once it is, this reads a file the
+//! broker never writes back to - it only seeds FROM it, at first run - so the
+//! header would show the capability that was in force before the last change.
+//! Visible and stale is a worse failure than not shown, because it is believed.
+//! The reader half of the cutover is unassigned; the note on `config_get` in the
+//! Settings backend has what the symmetric fix costs.
 
 use serde::Serialize;
 

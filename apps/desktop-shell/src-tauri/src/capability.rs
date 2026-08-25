@@ -10,6 +10,21 @@
 //! fail-closed defaults (disabled, Minimal, Suggest), matching the daemon's own
 //! posture. This is the shell-local mirror of the harness `ai_capability`
 //! (separate apps, deliberately no cross-app import).
+//!
+//! THE COHERENCE CLAIM ABOVE HAS AN EXPIRY. `access_level`, `action_mode` and
+//! `executor_live` are three of the six AI master switches the config-broker
+//! owns from a separate uid, and the engine reads them from the BROKER, keeping
+//! `ai.toml` only as the fallback for when the broker is unreachable
+//! (`engine_config.rs`). While the broker is not deployed the two agree and this
+//! file is the truth. The moment it is, the surface reads a file the broker
+//! never writes back to - it only seeds FROM it, at first run - and what is
+//! shown is the value that was in force before the last change.
+//!
+//! That matters more here than in most places: this line exists so a prompt
+//! never leaves the box without the reader seeing the tier it will be answered
+//! under. A stale tier breaks precisely the promise it was written for. The
+//! reader half of the broker cutover is unassigned; see the note on
+//! `config_get` in the Settings backend for what the symmetric fix costs.
 
 use serde::Serialize;
 
