@@ -327,6 +327,12 @@ const messages: Catalogs = {
     "f.op.trashing": ".input {$n :number}\n.match $n\none {{Moving {$n} item to the trash}}\n* {{Moving {$n} items to the trash}}",
     "f.op.deleting": ".input {$n :number}\n.match $n\none {{Deleting {$n} item}}\n* {{Deleting {$n} items}}",
     "f.op.duplicating": ".input {$n :number}\n.match $n\none {{Duplicating {$n} item}}\n* {{Duplicating {$n} items}}",
+    // The four the store used to build in English, two of them with a plural
+    // split at one - which is an assumption about English, not about counting.
+    "f.op.bulkRenaming": ".input {$n :number}\n.match $n\none {{Renaming {$n} item}}\n* {{Renaming {$n} items}}",
+    "f.op.compressing": ".input {$n :number}\n.match $n\none {{Compressing {$n} item}}\n* {{Compressing {$n} items}}",
+    "f.op.extracting": "Unpacking the archive",
+    "f.op.undoing": "Undoing the last change",
     "f.op.renaming": "Renaming",
     "f.op.newFolder": "Creating the folder",
     "f.dup.keepNewest": "Keep newest",
@@ -652,6 +658,10 @@ const messages: Catalogs = {
     "f.op.trashing": ".input {$n :number}\n.match $n\none {{{$n} Objekt wandert in den Papierkorb}}\n* {{{$n} Objekte wandern in den Papierkorb}}",
     "f.op.deleting": ".input {$n :number}\n.match $n\none {{{$n} Objekt wird gelöscht}}\n* {{{$n} Objekte werden gelöscht}}",
     "f.op.duplicating": ".input {$n :number}\n.match $n\none {{{$n} Objekt wird dupliziert}}\n* {{{$n} Objekte werden dupliziert}}",
+    "f.op.bulkRenaming": ".input {$n :number}\n.match $n\none {{{$n} Objekt wird umbenannt}}\n* {{{$n} Objekte werden umbenannt}}",
+    "f.op.compressing": ".input {$n :number}\n.match $n\none {{{$n} Objekt wird komprimiert}}\n* {{{$n} Objekte werden komprimiert}}",
+    "f.op.extracting": "Das Archiv wird entpackt",
+    "f.op.undoing": "Die letzte Änderung wird rückgängig gemacht",
     "f.op.renaming": "Wird umbenannt",
     "f.op.newFolder": "Ordner wird erstellt",
     "f.dup.keepNewest": "Neueste behalten",

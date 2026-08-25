@@ -8,7 +8,6 @@ import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { activeController } from "$lib/stores/tabs";
 import { type RenameRule } from "$lib/bulk-rename";
-import { t } from "$lib/i18n/messages";
 
 export type OpKind =
   | "copy"
@@ -23,14 +22,22 @@ export type OpKind =
 export const clipboard = writable<{ kind: "copy" | "move"; paths: string[] } | null>(null);
 
 /// The label of the operation in flight (the progress surface), or null.
-export const opBusy = writable<string | null>(null);
+/// A line the surface shows, as the catalogue key and its values rather than a
+/// resolved sentence.
+///
+/// The TYPE is the point. Both of these stores held a `string`, and a string is
+/// what `String(e)` and `` `Renaming ${n} items` `` both are - so seven writers
+/// of one and four of the other put the host's words, or English written in this
+/// file, straight onto a surface. Keeping the pair unresolved refuses that at
+/// every writer, and lets a line already on screen follow a locale change.
+export type OpMessage = { key: string; values?: Record<string, unknown> };
+
+export const opBusy = writable<OpMessage | null>(null);
 
 /// The message KEY for the last failed operation, cleared by the next successful
 /// one. A key rather than a sentence: the overlay renders `{$opError}` and used
 /// to render whatever Rust formatted, so a German window carried an English
 /// clause or a bare errno in a red bar.
-export type OpMessage = { key: string; values?: Record<string, unknown> };
-
 export const opError = writable<OpMessage | null>(null);
 
 /// Read the host's answer, which arrives as an object on one path and as a
@@ -86,23 +93,22 @@ export const conflict = writable<{
 /// assumptions at once: that the sentence can be cut after the verb, and that a
 /// plural splits at one. Each message now carries its own plural selector, so the
 /// language decides both.
-function busyLabel(kind: OpKind, count: number): string {
-  const tr = get(t);
+function busyLabel(kind: OpKind, count: number): OpMessage {
   switch (kind) {
     case "copy":
-      return tr("f.op.copying", { n: count });
+      return { key: "f.op.copying", values: { n: count } };
     case "move":
-      return tr("f.op.moving", { n: count });
+      return { key: "f.op.moving", values: { n: count } };
     case "trash":
-      return tr("f.op.trashing", { n: count });
+      return { key: "f.op.trashing", values: { n: count } };
     case "delete":
-      return tr("f.op.deleting", { n: count });
+      return { key: "f.op.deleting", values: { n: count } };
     case "duplicate":
-      return tr("f.op.duplicating", { n: count });
+      return { key: "f.op.duplicating", values: { n: count } };
     case "rename":
-      return tr("f.op.renaming");
+      return { key: "f.op.renaming" };
     case "new_folder":
-      return tr("f.op.newFolder");
+      return { key: "f.op.newFolder" };
   }
 }
 
@@ -169,7 +175,7 @@ export async function bulkRename(
   names: string[],
   rule: RenameRule,
 ): Promise<boolean> {
-  opBusy.set(`Renaming ${names.length} items`);
+  opBusy.set({ key: "f.op.bulkRenaming", values: { n: names.length } });
   try {
     await invoke("files_bulk_rename", { dir, names, rule });
     opError.set(null);
@@ -187,7 +193,7 @@ export async function bulkRename(
 /// Extract an archive into `dest`, surfacing progress and errors like every
 /// other mutation, then refreshing so the extracted contents show.
 export async function extractArchive(archive: string, dest: string): Promise<boolean> {
-  opBusy.set("Extracting");
+  opBusy.set({ key: "f.op.extracting" });
   try {
     await invoke("files_extract", { archive, dest });
     opError.set(null);
@@ -204,7 +210,7 @@ export async function extractArchive(archive: string, dest: string): Promise<boo
 
 /// Compress `sources` into a new archive at `dest`, then refresh.
 export async function compressPaths(sources: string[], dest: string): Promise<boolean> {
-  opBusy.set(`Compressing ${sources.length} items`);
+  opBusy.set({ key: "f.op.compressing", values: { n: sources.length } });
   try {
     await invoke("files_compress", { sources, dest });
     opError.set(null);
@@ -233,7 +239,7 @@ export async function paste(dest: string): Promise<void> {
 /// result means the undo stack was empty (a no-op, not an error); a thrown
 /// error is surfaced on the op-error line. Bound to Ctrl+Z.
 export async function undoLast(): Promise<void> {
-  opBusy.set("Undoing");
+  opBusy.set({ key: "f.op.undoing" });
   try {
     await invoke<boolean>("files_undo");
     opError.set(null);
