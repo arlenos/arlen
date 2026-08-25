@@ -293,7 +293,15 @@
     exec: string;
     terminal: boolean;
   }
-  let openWithApps = $state<OpenWithApp[] | null>(null);
+  /// The apps that can open the selection: `null` while asking, `"unreadable"`
+  /// when the ask failed, a list otherwise.
+  ///
+  /// The third state is the point. A failed read used to become `[]`, and the
+  /// menu says "No apps found" for an empty list - a statement about the machine,
+  /// made after failing to look at it. That is the same shape as the Searches
+  /// place answering a failed read with "No saved searches yet.", which is where
+  /// this whole class was first named.
+  let openWithApps = $state<OpenWithApp[] | "unreadable" | null>(null);
 
   async function loadOpenWith() {
     if (selected.length !== 1) return;
@@ -301,8 +309,9 @@
     const p = joinPath(currentPath(), selected[0].name);
     try {
       openWithApps = await invoke<OpenWithApp[]>("files_apps_for", { path: p });
-    } catch {
-      openWithApps = [];
+    } catch (e) {
+      console.warn("files: could not read which apps open that", e);
+      openWithApps = "unreadable";
     }
   }
 
@@ -689,6 +698,11 @@
                 <ContextMenu.SubContent class="w-52">
                   {#if openWithApps === null}
                     <ContextMenu.Item disabled>{$t("f.openWith.loading")}</ContextMenu.Item>
+                  {:else if openWithApps === "unreadable"}
+                    <!-- Announced, because a disabled item is skipped by menu
+                         navigation: without this the submenu reads as empty to
+                         anybody arriving by keyboard. -->
+                    <ContextMenu.Item disabled role="alert">{$t("f.openWith.unreadable")}</ContextMenu.Item>
                   {:else if openWithApps.length === 0}
                     <ContextMenu.Item disabled>{$t("f.openWith.none")}</ContextMenu.Item>
                   {:else}
