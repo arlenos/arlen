@@ -82,6 +82,13 @@ const messages: Catalogs = {
     "f.op.partial": "That stopped partway. Some of it was copied and the rest was not.",
     "f.op.refused": "The filesystem would not do that. Check whether you may write there, and whether there is room.",
     "f.op.failed": "That did not go through. Nothing was changed.",
+    // The four surfaces that used to draw the host's own words. Each names its
+    // action, because "that did not go through" over a bulk rename and over a
+    // compress are different things to be told.
+    "f.op.renameFailed": "Those files could not be renamed, so their names are unchanged.",
+    "f.op.extractFailed": "That archive could not be unpacked, so nothing was extracted.",
+    "f.op.compressFailed": "Those files could not be compressed, so no archive was made.",
+    "f.op.undoFailed": "That could not be undone, so the last change still stands.",
     "f.save": "Save",
 
     // Empty folder + about
@@ -436,6 +443,10 @@ const messages: Catalogs = {
     "f.op.partial": "Das ist auf halbem Weg stehen geblieben. Ein Teil wurde kopiert, der Rest nicht.",
     "f.op.refused": "Das Dateisystem hat sich geweigert. Prüf, ob du dort schreiben darfst und ob noch Platz ist.",
     "f.op.failed": "Das ist nicht durchgegangen. Es wurde nichts geändert.",
+    "f.op.renameFailed": "Diese Dateien ließen sich nicht umbenennen, ihre Namen sind also unverändert.",
+    "f.op.extractFailed": "Dieses Archiv ließ sich nicht entpacken, es wurde also nichts entpackt.",
+    "f.op.compressFailed": "Diese Dateien ließen sich nicht komprimieren, es wurde also kein Archiv erstellt.",
+    "f.op.undoFailed": "Das ließ sich nicht rückgängig machen, die letzte Änderung gilt also weiter.",
     "f.save": "Speichern",
 
     "f.empty.folder": "Dieser Ordner ist leer",
