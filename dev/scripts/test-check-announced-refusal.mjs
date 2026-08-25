@@ -175,6 +175,45 @@ check(
 // A checker that reads nothing must say so. Silence and a clean tree look the
 // same from the exit code otherwise, which is the failure this whole file is
 // about, one level up.
+// A pane that shows a failure as ONE OF SEVERAL states writes `{:else if}`, and
+// this check read only `{#if}` - so mail's refusal was never examined at all.
+// Not reported wrongly: not read.
+check(
+  "a refusal in an else-if branch is read, not skipped",
+  {
+    "apps/demo/src/lib/Pane.svelte":
+      "<script>\n  let failure = $state(null);\n  function go() { failure = { problem: 'x' }; }\n</script>\n" +
+      "{#if composing}\n  <p>composing</p>\n{:else if failure}\n  <p class=\"bad\">{$t('d.failed')}</p>\n{/if}\n",
+  },
+  (code, out) => code === 1 && out.includes("failure"),
+);
+
+check(
+  "the same else-if branch passes once it announces",
+  {
+    "apps/demo/src/lib/Pane.svelte":
+      "<script>\n  let failure = $state(null);\n  function go() { failure = { problem: 'x' }; }\n</script>\n" +
+      "{#if composing}\n  <p>composing</p>\n{:else if failure}\n  <p class=\"bad\" role=\"alert\">{$t('d.failed')}</p>\n{/if}\n",
+  },
+  (code) => code === 0,
+);
+
+// THE BOUNDARY the nesting fix draws: an inner `{#if flag.field}` matches the
+// same flag name, and its branch is only the sentence - the role lives on the
+// paragraph around it. Judged on its own, every tagged-refusal page in the tree
+// read as silent while being correct.
+check(
+  "a nested branch on the same flag is not judged apart from its wrapper",
+  {
+    "apps/demo/src/lib/Pane.svelte":
+      "<script>\n  let failure = $state(null);\n  function go() { failure = { problem: 'x' }; }\n</script>\n" +
+      "{#if failure}\n  <p role=\"alert\">\n" +
+      "    {#if failure.problem === 'x'}{$t('d.x')}\n    {:else}{$t('d.other')}{/if}\n" +
+      "  </p>\n{/if}\n",
+  },
+  (code) => code === 0,
+);
+
 check(
   "an empty tree refuses rather than passing",
   { "README.md": "no apps here\n" },

@@ -56,8 +56,16 @@ ROOT = (
 #: A local component flag whose name says it holds a failure. `$state` only: a
 #: plain `let` is not what a handler flips in this codebase, and a store-backed
 #: one is the load-time shape this check deliberately leaves alone.
+#: NOT `unavailable`: that word names a LOAD failing, and this check is explicitly
+#: about a refusal caused by a press. `apps/settings/.../ai` holds
+#: `behavioursUnavailable` in a local `$state` set by `loadBehaviours`, which is
+#: `check-unrendered-error`'s subject wearing this one's clothes - a local flag,
+#: but not one a handler writes. Including the word would report it, and the fix
+#: it asked for (an assertive alert) would interrupt a reader over prose that was
+#: on the page before they touched anything.
 FAILURE_STATE = re.compile(
-    r"let\s+(\w*(?:[eE]rror|[fF]ailed|[rR]efused|[dD]enied)\w*)\s*=\s*\$state"
+    r"let\s+(\w*(?:[eE]rror|[fF]ail|[rR]efus|[dD]enied|[bB]locked"
+    r"|[pP]roblem|[iI]nvalid|[uU]nwritable)\w*)\s*=\s*\$state"
 )
 
 #: The same flag assigned again, which is what a handler does. The declaration
@@ -69,17 +77,24 @@ def assigned_later(source: str, flag: str) -> bool:
     return False
 
 
-#: An opening `{#if <flag>}` on the markup side.
-def if_blocks(markup: str, flag: str) -> list[str]:
-    """The TRUTHY branch of every `{#if ...<flag>...}` in `markup`.
+#: An opening `{#if <flag>}` or a `{:else if <flag>}` on the markup side. Both,
+#: because a pane that shows a failure as one of several states writes the second
+#: - and matching only the first made mail's refusal invisible to this check for
+#: as long as it has existed. It was not reported as silent; it was not read.
+BRANCH = re.compile(r"\{#if\s+([^}]*)\}|\{:else\s+if\s+([^}]*)\}")
 
-    Nesting-aware, and it stops at the block's own `{:else}`: only the branch
+
+def if_blocks(markup: str, flag: str) -> list[str]:
+    """The TRUTHY branch of every `{#if ...<flag>...}` or `{:else if ...}`.
+
+    Nesting-aware, and it stops at the branch's own `{:else}`: only the branch
     that runs when the failure is real has anything to announce. Reading past it
     is how bluetooth's "Connecting..." fallback made its banner look silent.
     """
     blocks = []
-    for m in re.finditer(r"\{#if\s+([^}]*)\}", markup):
-        if not re.search(rf"\b{re.escape(flag)}\b", m.group(1)):
+    for m in BRANCH.finditer(markup):
+        condition = m.group(1) if m.group(1) is not None else m.group(2)
+        if not re.search(rf"\b{re.escape(flag)}\b", condition):
             continue
         depth = 1
         i = m.end()
@@ -96,8 +111,17 @@ def if_blocks(markup: str, flag: str) -> list[str]:
                 continue
             depth += 1 if token.startswith("{#if") else -1
             i += nxt.end()
-        blocks.append(markup[m.end() : cut if cut is not None else i])
-    return blocks
+        blocks.append((m.start(), m.end(), cut if cut is not None else i))
+
+    # A block INSIDE another matched block is not its own claim. `{#if failure}`
+    # wrapping `{#if failure.problem === "launch"}` matches twice, because
+    # `\bfailure\b` is in both - and the inner branch is only the sentence, while
+    # the `role="alert"` is on the paragraph around it. Reported as silent, both
+    # the calendar and mail pages looked unannounced while being correct. The
+    # OUTER block is the one that owns the announcement, so a nested match is
+    # dropped rather than judged on its own.
+    outer = [b for b in blocks if not any(o[1] <= b[0] and b[2] <= o[2] for o in blocks if o is not b)]
+    return [markup[start:end] for _, start, end in outer]
 
 
 ANNOUNCED = re.compile(r'role="alert"|aria-live=')
