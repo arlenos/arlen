@@ -103,18 +103,24 @@ fn greeter_authenticate(
     screen_reader: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let passwd = std::fs::read_to_string("/etc/passwd")
-        .map_err(|_| "login is not reachable (account list unavailable)".to_string())?;
+        // A TOKEN. This reaches the login panel, which renders whatever the
+        // rejection carries - so an English sentence here is an English sentence
+        // on the first screen of the system, in every locale.
+        .map_err(|_| "no-account-list".to_string())?;
     if !core::parse_login_accounts(&passwd, core::UID_MIN, core::UID_MAX)
         .iter()
         .any(|p| p.id == profile_id)
     {
-        return Err("unknown profile".to_string());
+        return Err("unknown-profile".to_string());
     }
     let cmd = core::session_command(&core::wayland_session_dirs(), &session_id)
         .ok_or_else(|| format!("unknown session: {session_id}"))?;
     let sock = std::env::var(GREETD_SOCK_ENV)
-        .map_err(|_| "login is not reachable (greetd socket unavailable)".to_string())?;
-    let stream = UnixStream::connect(&sock).map_err(|e| format!("cannot reach greetd: {e}"))?;
+        .map_err(|_| "no-greetd".to_string())?;
+    let stream = UnixStream::connect(&sock).map_err(|e| {
+        log::warn!("greeter: greetd socket refused: {e}");
+        "no-greetd".to_string()
+    })?;
     core::run_login(stream, &profile_id, &secret, cmd, core::session_env(&session_id, screen_reader))?;
     Ok(serde_json::json!({ "ok": true }))
 }
@@ -123,7 +129,7 @@ fn greeter_authenticate(
 /// factor abstraction when the hardware-factor backends land.
 #[tauri::command]
 fn greeter_factor_begin(_profile_id: String, _factor: String) -> Result<serde_json::Value, String> {
-    Err("greeter backend not connected".to_string())
+    Err("not-connected".to_string())
 }
 
 /// A power action from the login screen: `systemctl <verb>` for the three mapped

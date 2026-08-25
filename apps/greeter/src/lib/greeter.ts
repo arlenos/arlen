@@ -96,11 +96,11 @@ export async function authenticate(
       screenReader,
     });
   } catch (e) {
-    // NO message. What PAM says is worth showing; what the invoke says when it
-    // fails is machinery, and this screen renders whatever lands in `error`. With
-    // none, the panel falls back to its own translated sentence.
-    console.warn("greeter: the authentication call did not complete", e);
-    return { ok: false };
+    // The rejection carries a TOKEN (`no-greetd`, `unknown-profile`, ...), which
+    // the panel turns into a sentence. It used to carry the command's own English
+    // prose - "login is not reachable (account list unavailable)" - straight onto
+    // the first screen of the system, in every locale.
+    return { ok: false, error: String(e) };
   }
 }
 
@@ -110,8 +110,7 @@ export async function beginFactor(profileId: string, factor: Factor): Promise<Au
   try {
     return await invoke<AuthResult>("greeter_factor_begin", { profileId, factor });
   } catch (e) {
-    console.warn("greeter: the hardware factor call did not complete", e);
-    return { ok: false };
+    return { ok: false, error: String(e) };
   }
 }
 

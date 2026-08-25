@@ -28,6 +28,12 @@ const messages: Catalogs = {
     "g.switchUser": "Switch user",
     "g.authFailed": "That did not work. Try again.",
     "g.noProfile": "No account is selected, so there is nothing to sign in to.",
+    // WHY a sign-in did not happen, one per token the host returns. These were
+    // English sentences written in Rust and drawn on the login screen.
+    "g.why.noAccountList": "The list of accounts on this machine could not be read, so nobody can be signed in.",
+    "g.why.unknownProfile": "This machine has no account by that name.",
+    "g.why.noGreetd": "The login service is not reachable, so the session cannot be started.",
+    "g.why.notConnected": "This screen is not connected to the login service yet.",
     "g.factor.touchKey": "Touch your security key",
     "g.factor.useKey": "Use a security key",
     "g.factor.usePassword": "Use password instead",
@@ -63,6 +69,10 @@ const messages: Catalogs = {
     "g.switchUser": "Benutzer wechseln",
     "g.authFailed": "Das hat nicht geklappt. Versuch es noch einmal.",
     "g.noProfile": "Es ist kein Konto ausgewählt, es gibt also nichts, wo man sich anmelden könnte.",
+    "g.why.noAccountList": "Die Liste der Konten auf diesem Rechner ließ sich nicht lesen, es kann sich also niemand anmelden.",
+    "g.why.unknownProfile": "Auf diesem Rechner gibt es kein Konto mit diesem Namen.",
+    "g.why.noGreetd": "Der Anmeldedienst ist nicht erreichbar, die Sitzung lässt sich also nicht starten.",
+    "g.why.notConnected": "Dieser Bildschirm ist noch nicht mit dem Anmeldedienst verbunden.",
     "g.factor.touchKey": "Berühre deinen Sicherheitsschlüssel",
     "g.factor.useKey": "Sicherheitsschlüssel verwenden",
     "g.factor.usePassword": "Stattdessen Passwort verwenden",

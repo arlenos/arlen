@@ -41,13 +41,27 @@
     return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
   }
 
+  /// The refusal tokens `greeter_authenticate` and `greeter_factor_begin` answer
+  /// with, to the sentence that says each one.
+  ///
+  /// The command used to reject with its own English prose - "login is not
+  /// reachable (account list unavailable)" - and this panel drew it. On the login
+  /// screen, where a first-run reader has no other surface to judge the system by.
+  const WHY: Record<string, string> = {
+    "no-account-list": "g.why.noAccountList",
+    "unknown-profile": "g.why.unknownProfile",
+    "no-greetd": "g.why.noGreetd",
+    "not-connected": "g.why.notConnected",
+  };
+
   async function fail(message: string | undefined) {
-    // PAM decides the wording when it has one; this is the fallback for when it
-    // does not, and it was English in every locale. The lint could not see it:
-    // a literal assigned to a local `error` is not one of the positions it
-    // checks, and this is the login screen, where a first-run reader has no
-    // other surface to judge the system by.
-    error = message ?? $t("g.authFailed");
+    // A token becomes its sentence. Anything else is a message this panel does
+    // not know: the console gets it, the screen gets the general sentence. Not
+    // shown as it came, because "shown as it came" is what put the command's
+    // English on this screen in the first place.
+    const key = message ? WHY[message] : undefined;
+    if (message && !key) console.warn("greeter: unrecognised refusal", message);
+    error = key ? $t(key) : $t("g.authFailed");
     secret = "";
     errored = false;
     await tick();

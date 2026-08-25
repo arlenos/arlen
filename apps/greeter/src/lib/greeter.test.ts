@@ -55,18 +55,23 @@ describe("authentication", () => {
     expect(await authenticate("tim", "secret", "session")).toEqual({ ok: true });
   });
 
-  it("turns a thrown failure into a refusal the screen can show", async () => {
-    invoke.mockImplementation(() => Promise.reject(new Error("PAM said no")));
+  /// The rejection carries a TOKEN now, not prose: the host answers `no-greetd`,
+  /// `unknown-profile` and their kin, and `AuthPanel` turns each into a sentence
+  /// in the reader's language. This test carries the token through unchanged,
+  /// because the panel is what decides the wording and it cannot do that if this
+  /// layer rewrites or drops what it was told.
+  it("carries a refusal token through for the panel to word", async () => {
+    invoke.mockImplementation(() => Promise.reject("no-greetd"));
     const r = await authenticate("tim", "wrong", "session");
     expect(r.ok).toBe(false);
-    expect(r.error).toContain("PAM said no");
+    expect(r.error).toBe("no-greetd");
   });
 
   it("does the same for a hardware factor", async () => {
-    invoke.mockImplementation(() => Promise.reject(new Error("no key present")));
+    invoke.mockImplementation(() => Promise.reject("unknown-profile"));
     const r = await beginFactor("tim", "fido2");
     expect(r.ok).toBe(false);
-    expect(r.error).toContain("no key present");
+    expect(r.error).toBe("unknown-profile");
   });
 
   it("passes the screen-reader state as null when nobody touched the toggle", async () => {
