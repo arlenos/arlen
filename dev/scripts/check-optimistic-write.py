@@ -47,8 +47,14 @@ What it does NOT cover:
     below it. The printer page was four of those and this check could not see
     them - they were found by reading, after the gate pointed at the file for a
     different reason
-  * a catch that logs and nothing else, which is silent to the user even though it
-    is not empty in the source
+  * (closed 25 August) a catch that logs and nothing else. `only_reports_to_a_log`
+    was written for the promise form and the try/catch half kept a bare
+    `body.strip()` emptiness test, so the SAME defect was caught when written
+    `.catch(e => console.warn(e))` and missed when written `catch (e) {
+    console.warn(e) }`. One predicate, one file, two paths, and only one of them
+    used it. It found the Bluetooth pairing store on its first run: the dialog is
+    cleared before the call, so pressing Accept closes it whether or not the
+    answer reaches BlueZ, and the only trace of a failure was a console line
   * `apps/harness` and `apps/store`, arlen-ui's live work
 
 Shown to fail before being trusted: written against the 31 that were there, it
@@ -373,8 +379,12 @@ def main() -> int:
             )
         for start, body_start, end in catch_spans(text):
             checked += 1
-            body = COMMENT.sub("", "\n".join(l.split("//")[0] for l in text[body_start:end].splitlines()))
-            if body.strip():
+            # `only_reports_to_a_log` rather than a bare emptiness test: a handler
+            # holding nothing but `console.warn` corrects the record where nobody
+            # is looking, which is what the surface having already claimed the
+            # change makes it. The same predicate the promise path uses, so the
+            # two spellings of one defect are answered the same way.
+            if not only_reports_to_a_log(text[body_start:end]):
                 continue
             head = text[:start]
             try_at = head.rfind("try")
@@ -389,8 +399,8 @@ def main() -> int:
             line = head.count("\n") + 1
             findings.append(
                 f"{rel}:{line}: a store was updated optimistically, the call failed, "
-                f"and the catch does nothing - so the surface states that something "
-                f"happened which did not. Keep the optimism under "
+                f"and the catch does nothing a person can see - so the surface states "
+                f"that something happened which did not. Keep the optimism under "
                 f"`import.meta.env.DEV` and say so where the claim is made - and "
                 f"read REPAIRS in this file's header before reverting."
             )
