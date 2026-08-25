@@ -25,9 +25,50 @@ export const clipboard = writable<{ kind: "copy" | "move"; paths: string[] } | n
 /// The label of the operation in flight (the progress surface), or null.
 export const opBusy = writable<string | null>(null);
 
-/// The last failed operation, as one plain sentence. Cleared by the
-/// next successful operation.
+/// The message KEY for the last failed operation, cleared by the next successful
+/// one. A key rather than a sentence: the overlay renders `{$opError}` and used
+/// to render whatever Rust formatted, so a German window carried an English
+/// clause or a bare errno in a red bar.
 export const opError = writable<string | null>(null);
+
+/// Read the host's answer, which arrives as an object on one path and as a
+/// string with the JSON inside it on another. Accepting only one sends every
+/// named cause down the vague branch, which looks exactly like the code working.
+export function problemBag(e: unknown): Record<string, unknown> | null {
+  if (e && typeof e === "object") return e as Record<string, unknown>;
+  const raw = String(e);
+  const at = raw.indexOf("{");
+  try {
+    return at >= 0 ? (JSON.parse(raw.slice(at)) as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/// The sentence for a refused operation.
+///
+/// `bad-request` is a malformed call rather than something the person did, so it
+/// gets the vague sentence and the detail goes to the console: naming a missing
+/// destination argument to somebody who pressed Rename explains nothing.
+export function opProblemKey(e: unknown): string {
+  const bag = problemBag(e);
+  switch (bag?.problem) {
+    case "already-exists":
+      return "f.op.exists";
+    case "invalid-name":
+      return "f.op.badName";
+    case "partial":
+      return "f.op.partial";
+    case "io":
+      return "f.op.refused";
+    case "bad-request":
+      console.warn("files: the operation was asked for wrongly", bag.why);
+      return "f.op.failed";
+    default:
+      if (bag?.problem) console.warn("files: unrecognised operation problem", bag.problem);
+      return "f.op.failed";
+  }
+}
 
 /// A pending name conflict: the dialog offers skip / keep both /
 /// replace and re-runs the operation with the chosen policy.
@@ -95,18 +136,21 @@ export async function runOp(
     await get(activeController)?.refresh();
     return true;
   } catch (e) {
-    const message = String(e);
-    const exists = message.match(/already exists(?::\s*(.+))?/);
-    if (exists && !policy) {
+    // The TAG, not the sentence. This used to read
+    // `String(e).match(/already exists/)`, so the Replace/Skip dialog - a choice,
+    // not a message - hung on the exact English wording of a Rust error. Rewording
+    // it, or translating it, would have silently turned the choice into a red bar.
+    const bag = problemBag(e);
+    if (bag?.problem === "already-exists" && !policy) {
       conflict.set({
-        name: exists[1] ?? src.map((s) => s.split("/").pop()).join(", "),
+        name: String(bag.name ?? "") || src.map((s) => s.split("/").pop()).join(", "),
         retry: (chosen) => {
           conflict.set(null);
           void runOp(kind, src, dst, chosen);
         },
       });
     } else {
-      opError.set(message);
+      opError.set(opProblemKey(e));
     }
     return false;
   } finally {
