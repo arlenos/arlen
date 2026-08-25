@@ -12,8 +12,6 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { t } from "$lib/i18n/messages";
-import { get } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 
 /// A job's lifecycle state (mirrors the JobView state enum).
@@ -148,6 +146,11 @@ export const jobs = writable<Job[]>([]);
 export const mocked = writable(false);
 
 /// The last action failure, for the zone to show. Empty when all is well.
+/// The message KEY of the last refusal, or "" for none.
+///
+/// A key rather than a resolved sentence, so the line follows a locale change
+/// while it is on screen: `get(t)(...)` freezes the wording at the moment of
+/// failure, and this line stays up until the next action replaces it.
 export const lastError = writable("");
 
 /// Load the current jobs. Live: `list_jobs` + the event feed; fixture under vite.
@@ -167,7 +170,7 @@ export async function pollJobs(): Promise<void> {
     // failure belongs.
     jobs.set([]);
     mocked.set(false);
-    lastError.set(get(t)("sh.jobs.unavailable"));
+    lastError.set("sh.jobs.unavailable");
   }
 }
 
@@ -205,7 +208,7 @@ async function driveJob(
       // The daemon's own words name a command and carry an errno. They go where
       // whoever debugs this will read them; the zone gets the sentence.
       console.warn(`shell: ${cmd} refused`, e);
-      lastError.set(get(t)(failure));
+      lastError.set(failure);
     }
   }
 }

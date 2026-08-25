@@ -10,10 +10,9 @@
 /// + per-hunk apply/undo) is a coder seam behind pi's executor-live; under vite the
 /// store serves a fixture proposal.
 
-import { get, writable } from "svelte/store";
+import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
-import { t } from "$lib/i18n/messages";
 import type { DiffLine } from "@arlen/ui-kit/components/diff";
 
 /// The gate class of a hunk: reversible-autonomous / applied-with-undo / held-for-
@@ -91,6 +90,8 @@ export const mocked = writable(false);
 export const unavailable = writable(false);
 
 /// The last action failure, for the review to show. Empty when all is well.
+/// The message KEY of the last refusal, or "" for none. A key rather than a
+/// resolved sentence, so the line follows a locale change while it is up.
 export const lastError = writable("");
 
 /// Ask the assistant to edit. Live: `ai_edit`; fixture under vite.
@@ -153,7 +154,7 @@ async function driveHunk(
       // pair verbatim - so the one line a person reads when an undo is refused
       // was in a place no catalogue reaches.
       console.warn(`text-editor: ${cmd} refused`, e);
-      lastError.set(get(t)(failure));
+      lastError.set(failure);
     }
   }
 }
