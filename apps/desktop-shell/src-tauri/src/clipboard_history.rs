@@ -349,16 +349,27 @@ impl ClipboardHistory {
     }
 
     /// Remove one entry by id. No-op if the id is unknown.
-    fn delete(&self, id: u64) {
-        if let Ok(mut entries) = self.entries.lock() {
-            entries.retain(|e| e.id != id);
-        }
+    ///
+    /// Returns whether the buffer was actually reached. A poisoned lock used to
+    /// be swallowed here, so a delete that removed nothing was indistinguishable
+    /// from one that worked - on a surface whose whole point is getting something
+    /// out of a history.
+    fn delete(&self, id: u64) -> bool {
+        let Ok(mut entries) = self.entries.lock() else {
+            return false;
+        };
+        entries.retain(|e| e.id != id);
+        true
     }
 
-    fn clear(&self) {
-        if let Ok(mut entries) = self.entries.lock() {
-            entries.clear();
-        }
+    /// Drop everything. Returns whether the buffer was reached, for the reason
+    /// above and more so: this is the button somebody presses on purpose.
+    fn clear(&self) -> bool {
+        let Ok(mut entries) = self.entries.lock() else {
+            return false;
+        };
+        entries.clear();
+        true
     }
 }
 
@@ -633,9 +644,12 @@ pub fn clipboard_delete_entry(
     id: u64,
     state: State<'_, ClipboardHistoryState>,
     app: AppHandle,
-) {
-    state.delete(id);
+) -> Result<(), String> {
+    if !state.delete(id) {
+        return Err("clipboard-unreadable".to_string());
+    }
     let _ = app.emit("arlen://clipboard-changed", ());
+    Ok(())
 }
 
 /// Drop the entire history. Irreversible; no confirmation here (the
@@ -644,9 +658,12 @@ pub fn clipboard_delete_entry(
 pub fn clipboard_clear_all(
     state: State<'_, ClipboardHistoryState>,
     app: AppHandle,
-) {
-    state.clear();
+) -> Result<(), String> {
+    if !state.clear() {
+        return Err("clipboard-unreadable".to_string());
+    }
     let _ = app.emit("arlen://clipboard-changed", ());
+    Ok(())
 }
 
 /// Report whether the watcher is active. The frontend hides the
@@ -914,6 +931,19 @@ mod tests {
         }
         h.clear();
         assert!(h.snapshot().is_empty());
+    }
+
+    #[test]
+    fn a_reachable_buffer_reports_that_it_was_reached() {
+        // The return value is what the command turns into a refusal, so it has to
+        // mean "the buffer was touched" rather than "an entry was found": deleting
+        // an id that is not there is a no-op the person cannot tell from a
+        // successful one, and both are honest.
+        let h = ClipboardHistory::new();
+        let e = h.push("hello".into(), "".into()).unwrap();
+        assert!(h.delete(9999), "an unknown id still reached the buffer");
+        assert!(h.delete(e.id));
+        assert!(h.clear());
     }
 
     #[test]
