@@ -40,6 +40,7 @@
     meetingsMocked,
     meetingsUnavailable,
     meetingsFailure,
+    meetingsFailureKey,
     loadMeetings,
     meeting,
     fmtDate,
@@ -173,13 +174,7 @@
                  from a store that is corrupt - three different things to do about
                  it, rendered as one shrug. -->
             <p class="mt-sample">
-              {$meetingsFailure
-                ? $meetingsFailure === "unavailable"
-                  ? $t("mt.unavailable.absent")
-                  : $meetingsFailure === "denied"
-                    ? $t("mt.unavailable.refused")
-                    : $t("mt.unavailable.why", { reason: $meetingsFailure })
-                : $t("mt.unavailable")}
+              {$t(meetingsFailureKey($meetingsFailure))}
             </p>
           {/if}
           <SidebarMenu>

@@ -70,6 +70,30 @@ export const meetingsUnavailable = writable(false);
 /// is worth more than this one precisely because it names the cause.
 export const meetingsFailure = writable<string | null>(null);
 
+/// The sentence to show for a failure state.
+///
+/// Here rather than in the pages because BOTH routes drew the same four-branch
+/// ternary, and a third copy is how one of them quietly stops handling a state
+/// somebody added. `null` means the read failed with nothing said about why.
+export function meetingsFailureKey(failure: string | null): string {
+  switch (failure) {
+    case null:
+      return "mt.unavailable";
+    case "unavailable":
+      return "mt.unavailable.absent";
+    case "denied":
+      return "mt.unavailable.refused";
+    case "no-answer":
+      return "mt.unavailable.noAnswer";
+    default:
+      // A state this does not know is a backend that changed. The console is
+      // where that belongs; the page says the vague true thing rather than
+      // showing a word nobody wrote a sentence for.
+      console.warn("meetings: unrecognised failure state", failure);
+      return "mt.unavailable";
+  }
+}
+
 /// What `meetings_list` answers with: rows, or which way it could not read them.
 ///
 /// Mirrors `ReadOutcome<T>` in the os-sdk, the shape every window that reads a
@@ -187,9 +211,14 @@ export async function loadMeetings(): Promise<void> {
     meetingsMocked.set(false);
     meetingsUnavailable.set(true);
     // The invoke ITSELF failed - the command is missing, the host went away -
-    // which is not one of the three states. Shown as it came, because then the
-    // string is the only thing anybody has.
-    meetingsFailure.set(String(e));
+    // which is not one of the three states. It used to be set to `String(e)` and
+    // the page interpolated it, on the argument that "the string is the only
+    // thing anybody has". It is the only thing anybody has to DEBUG with, and it
+    // went into a translated sentence to be read. To a person this state has one
+    // meaning - the service did not answer at all - so that is what is shown, and
+    // the string goes where debugging happens.
+    console.warn("meetings: the list call did not complete", e);
+    meetingsFailure.set("no-answer");
   }
 }
 

@@ -10,6 +10,7 @@
     meetingsMocked,
     meetingsUnavailable,
     meetingsFailure,
+    meetingsFailureKey,
   } from "$lib/stores/meeting";
 </script>
 
@@ -19,13 +20,7 @@
       <p class="sample">{$t("mt.sample.list")}</p>
     {:else if $meetingsUnavailable}
       <p class="sample">
-        {$meetingsFailure
-          ? $meetingsFailure === "unavailable"
-                  ? $t("mt.unavailable.absent")
-                  : $meetingsFailure === "denied"
-                    ? $t("mt.unavailable.refused")
-                    : $t("mt.unavailable.why", { reason: $meetingsFailure })
-          : $t("mt.unavailable")}
+        {$t(meetingsFailureKey($meetingsFailure))}
       </p>
     {/if}
     <!-- Same three states. When the read failed the sentence above already says
