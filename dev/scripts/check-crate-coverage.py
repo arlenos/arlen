@@ -39,7 +39,19 @@ ROOT = (
 # Crate roots CI deliberately does not build, and why. Anything else missing
 # from the matrix is a mistake, not a decision.
 EXCLUDED = {
-    "apps/*/src-tauri": "Tauri hosts need system webkit2gtk; the frontend job covers the app",
+    # NB the frontend job covers the app's TYPESCRIPT. The Rust in these hosts is
+    # built nowhere, and neither are its tests - about 500 `#[test]`s across the
+    # sixteen of them. Measured 25 August by running `cargo check --tests` over
+    # each: two did not compile at all, `apps/text-editor/src-tauri` (17 tests
+    # dead since its open path became a tagged enum and an assertion kept testing
+    # the old sentence) and `sdk/ui-kit/src-tauri` (34 errors, still). Nothing
+    # said so, because a test that does not compile and does not run looks the
+    # same from here as one that passes.
+    #
+    # `cargo check --tests` would catch it without linking a binary, but it still
+    # needs the webkit headers the runner does not carry, so closing this is a CI
+    # image decision rather than an edit here. Left accurate instead of tidy.
+    "apps/*/src-tauri": "Tauri hosts need system webkit2gtk; the frontend job covers only their TypeScript",
     # The same reason, for the two Tauri hosts that do not live under `apps/`.
     # Named rather than folded into a `*/src-tauri` glob: this file's patterns are
     # matched left-anchored by the integration test that reads them, and a glob
