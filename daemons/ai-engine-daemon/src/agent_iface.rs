@@ -16,7 +16,7 @@ use crate::engine_config;
 use crate::write_executor::RelationWriter;
 use arlen_ai_core::audit::behaviour_action_event;
 use arlen_ai_skills::behaviour::{BehaviourKind, ReadScope};
-use arlen_ai_skills::loader::LoadOutcome;
+use arlen_ai_skills::loader::{DisableReason, LoadOutcome, Provenance, Status};
 use audit_proto::sink::AuditSink;
 use os_sdk::graph::RelationRetractOutcome;
 use serde::Serialize;
@@ -44,6 +44,85 @@ struct WorkingSetShape {
     status: String,
     /// The enabled behaviours' shape.
     behaviours: Vec<BehaviourShape>,
+}
+
+/// One behaviour as the Settings behaviours panel renders it: what it is, where
+/// it came from, and whether it will run.
+///
+/// Richer than [`BehaviourShape`] on purpose. The working set answers "what may
+/// the assistant read right now", so it carries the ENABLED behaviours and their
+/// scopes; this answers "what is installed and what is its standing", so it
+/// carries the disabled ones too and says why each is disabled. A panel that
+/// listed only the enabled ones could not offer a switch to turn one on.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BehaviourStatusShape {
+    name: String,
+    description: String,
+    kind: &'static str,
+    provenance: &'static str,
+    enabled: bool,
+    /// `None` when enabled. A token, not a sentence: the panel words it, so a
+    /// German reader does not meet an English reason beside translated rows.
+    disabled_reason: Option<&'static str>,
+    read_scope: &'static str,
+}
+
+/// The behaviours panel's whole answer: what loaded, and what could not.
+///
+/// The errors travel WITH the list rather than replacing it, because they are
+/// different facts. A directory that failed to parse is excluded fail-closed and
+/// the others still loaded; a panel showing only the survivors would report a
+/// behaviour set the machine does not have, silently short.
+#[derive(serde::Serialize)]
+struct BehaviourReportShape {
+    behaviours: Vec<BehaviourStatusShape>,
+    errors: Vec<String>,
+}
+
+fn provenance_str(p: Provenance) -> &'static str {
+    match p {
+        Provenance::BuiltIn => "built-in",
+        Provenance::User => "user",
+        Provenance::ThirdParty => "third-party",
+    }
+}
+
+fn disabled_reason_str(s: &Status) -> Option<&'static str> {
+    match s {
+        Status::Enabled => None,
+        Status::Disabled(DisableReason::NotEnabledInSettings) => Some("not-enabled-in-settings"),
+        Status::Disabled(DisableReason::DuplicateName) => Some("duplicate-name"),
+    }
+}
+
+/// Render the installed behaviours and the load failures. Pure and testable, the
+/// way `working_set_json` beside it is.
+fn list_skills_json(outcome: &LoadOutcome) -> String {
+    let report = BehaviourReportShape {
+        behaviours: outcome
+            .loaded
+            .iter()
+            .map(|lb| {
+                let m = &lb.behaviour.manifest;
+                BehaviourStatusShape {
+                    name: m.name.clone(),
+                    description: m.description.clone(),
+                    kind: kind_str(m.kind),
+                    provenance: provenance_str(lb.provenance),
+                    enabled: lb.status.is_enabled(),
+                    disabled_reason: disabled_reason_str(&lb.status),
+                    read_scope: read_scope_str(m.reads),
+                }
+            })
+            .collect(),
+        errors: outcome.errors.iter().map(|e| e.to_string()).collect(),
+    };
+    serde_json::to_string(&report).unwrap_or_else(|_| {
+        // An encode failure must not read as "nothing is installed". The panel
+        // treats an error as unreadable and says so.
+        String::new()
+    })
 }
 
 fn kind_str(k: BehaviourKind) -> &'static str {
@@ -529,6 +608,40 @@ impl AgentAdminInterface {
     /// their declared KG read scopes, as a JSON object the harness renders as the
     /// anti-Recall transparency view ("what the AI may read"). Shape only, never
     /// read content. Read live from the configured behaviour sources on each call.
+    /// The installed behaviours and any that failed to load, for the Settings
+    /// behaviours panel (`list_skills`).
+    ///
+    /// The panel has dialled this member since it was written and no interface
+    /// served it, so the Settings command substituted an empty array and the page
+    /// reported, as a measured fact, that the agent had no behaviours. The data
+    /// was here the whole time - `working_set` two methods up loads the same
+    /// outcome and keeps only the enabled ones.
+    ///
+    /// Admitted to the user surfaces, like the other reads on this interface:
+    /// a behaviour name and description is not user content, but it is a map of
+    /// what the assistant does on this machine, and the bus is default-allow.
+    #[zbus(name = "list_skills")]
+    async fn list_skills(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        match resolve_dbus_caller(&header, connection).await {
+            Ok(c) if user_surface_admitted(&c) => {}
+            other => {
+                let who = match &other {
+                    Ok(c) => format!("caller {c:?} is not a user surface"),
+                    Err(e) => format!("caller unresolved: {e}"),
+                };
+                tracing::warn!("list_skills refused: {who}");
+                return Err(zbus::fdo::Error::AccessDenied(
+                    "not a user surface".to_string(),
+                ));
+            }
+        }
+        Ok(list_skills_json(&crate::orchestrator::load_behaviours()))
+    }
+
     #[zbus(name = "working_set")]
     async fn working_set(&self) -> String {
         working_set_json(
@@ -724,6 +837,38 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["status"], "idle");
         assert_eq!(v["behaviours"].as_array().unwrap().len(), 0);
+    }
+
+    /// An empty machine is an empty LIST, not an empty answer. The panel that
+    /// reads this spent its whole life so far being told there are no behaviours
+    /// by a command that never asked, so the two states have to be told apart:
+    /// nothing installed still carries both keys.
+    #[test]
+    fn nothing_installed_is_still_a_complete_report() {
+        let outcome = LoadOutcome { loaded: vec![], errors: vec![] };
+        let v: serde_json::Value = serde_json::from_str(&list_skills_json(&outcome)).unwrap();
+        assert_eq!(v["behaviours"].as_array().unwrap().len(), 0);
+        assert_eq!(v["errors"].as_array().unwrap().len(), 0);
+    }
+
+    /// The disabled reason is a token the panel words, never a sentence. A
+    /// German reader meeting `not-enabled-in-settings` in English beside
+    /// translated rows is the defect this whole vocabulary exists against.
+    #[test]
+    fn a_disabled_reason_is_a_token_and_an_enabled_one_is_absent() {
+        assert_eq!(disabled_reason_str(&Status::Enabled), None);
+        assert_eq!(
+            disabled_reason_str(&Status::Disabled(DisableReason::NotEnabledInSettings)),
+            Some("not-enabled-in-settings")
+        );
+        assert_eq!(
+            disabled_reason_str(&Status::Disabled(DisableReason::DuplicateName)),
+            Some("duplicate-name")
+        );
+        for p in [Provenance::BuiltIn, Provenance::User, Provenance::ThirdParty] {
+            let s = provenance_str(p);
+            assert!(!s.is_empty() && s.chars().all(|c| c.is_ascii_lowercase() || c == '-'));
+        }
     }
 
     #[test]
