@@ -11,6 +11,7 @@
     facets,
     results,
     searchMocked,
+    searchUnavailable,
     savedSearches,
     savedUnavailable,
     saveSearch,
@@ -81,6 +82,10 @@
   <div class="se-head">
     {#if $searchMocked && hasState}
       <span class="se-sample">{$t("k.sample")}</span>
+    {:else if $searchUnavailable && hasState}
+      <!-- Announced: this replaces results the person asked for, and there is
+           nothing else on screen to say the search did not run. -->
+      <span class="se-sample" role="alert">{$t("k.se.unavailable")}</span>
     {/if}
     <span class="se-spacer"></span>
     <!-- Guided refinement: three facet chips, each a small picker. -->
