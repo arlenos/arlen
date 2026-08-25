@@ -95,7 +95,10 @@ const messages: Catalogs = {
     "pdf.firstPage": "Erste Seite",
     "pdf.lastPage": "Letzte Seite",
     "pdf.showContents": "Inhalt anzeigen",
-    "pdf.hostAbsent": "Der Reader liest Dokumente über seinen eigenen Host, der hier nicht läuft.",
+    // "Leser", like the three keys above. This one kept "Reader" when the others
+    // were corrected - the same English word in the same app, in the sentence
+    // nobody reaches on a real machine and therefore nobody re-read.
+    "pdf.hostAbsent": "Der Leser liest Dokumente über seinen eigenen Host, der hier nicht läuft.",
     "pdf.pageFailed": "Diese Seite konnte nicht gezeichnet werden.",
     "pdf.pageNoRenderer": "Auf diesem Rechner ist nichts installiert, das eine Seite zeichnen kann.",
     "pdf.textInstead": "Der Text dieser Seite, ohne ihr Layout:",
