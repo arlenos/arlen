@@ -269,8 +269,23 @@ pub async fn undo_action(id: String) -> String {
 /// The agent's working-set shape (`working_set` on the agent): the shape-only
 /// introspection of what the agent currently has in scope (AIT-R1), for the
 /// transparency drawer's working-set section. Identity/shape only, never user
-/// data. `null` when the agent is unreachable, which the drawer reads as the
-/// "not available yet" state rather than as an empty working set.
+/// data.
+///
+/// TWO THINGS THIS DOES NOT DO, both of which the doc used to claim.
+///
+/// It said `null` on an unreachable agent is read by the drawer as the "not
+/// available yet" state. The drawer does `invoke<WorkingSet>` with no parse, so
+/// what it receives is the four-character STRING `"null"`, which is truthy, and
+/// that branch is never taken. The value here is right; nothing reads it.
+///
+/// And the shapes disagree underneath that. The engine serves
+/// `{status, behaviours[]}` (`daemons/ai-engine-daemon/src/agent_iface.rs`), the
+/// drawer declares `{available, held, entityCounts, activeBehaviour,
+/// declaredReads}`. Parsing the string here would only move the failure one step
+/// later, so it is deliberately NOT parsed until somebody decides which shape is
+/// the real one - a call between the drawer and the engine, reported to the
+/// planner rather than settled here. `check-invoke-shape` carries both as routed
+/// findings so neither can be quietly forgotten.
 #[tauri::command]
 pub async fn ai_working_set() -> String {
     try_call_string(AGENT_BUS, AGENT_PATH, "working_set")
