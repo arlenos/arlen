@@ -74,10 +74,6 @@ OURS = re.compile(r"^[a-z][a-z0-9_]*$")
 # list may SHRINK and may not grow: a new one is a fresh surface wired to
 # nothing, which is the whole point of the check.
 ACKNOWLEDGED: dict[str, str] = {
-    "list_skills": "the AI behaviours panel; its shape must be settled first (the "
-    "command described an array, the page declares {behaviours, errors}). The "
-    "Settings command now fails rather than substituting `[]`, so the panel says it "
-    "could not read them instead of reporting none.",
     "ai_models_list": "the model picker's catalogue. Reported with the rest of the "
     "AI management surface; the engine serves no model administration at all.",
     "ai_defaults_get": "as ai_models_list. Its sibling `ai_providers_list` left this "
@@ -171,14 +167,21 @@ def main() -> int:
         else:
             findings.append(text)
 
-    # Only against the real tree. The list below describes THIS repo, so in a
-    # fixture tree every entry reads as stale and the controls could never test
-    # anything else.
-    stale = sorted(set(ACKNOWLEDGED) - set(ours)) if root == ROOT else []
+    # An acknowledgement is stale two ways, and the first cut only caught one.
+    # Nobody dials the member any more - or somebody SERVED it, which is the
+    # happier ending and left the entry sitting there just as dead. `list_skills`
+    # went that way within the hour of being listed, and the check said nothing.
+    #
+    # Only against the real tree. The list describes THIS repo, so in a fixture
+    # tree every entry reads as stale and the controls could never test anything
+    # else.
+    unserved_now = {m for m in ours if m not in have}
+    stale = sorted(set(ACKNOWLEDGED) - unserved_now) if root == ROOT else []
     for member in stale:
+        why = "nothing dials it any more" if member not in ours else "it is served now"
         findings.append(
-            f"`{member}` is acknowledged as dialled-but-unserved and nothing dials it "
-            f"any more. Drop the entry."
+            f"`{member}` is acknowledged as dialled-but-unserved, and {why}. "
+            f"Drop the entry."
         )
 
     print(
