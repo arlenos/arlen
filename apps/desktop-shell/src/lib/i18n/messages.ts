@@ -145,6 +145,10 @@ const messages: Catalogs = {
     "sh.bt.connecting": "Connecting...",
     "sh.bt.connected": "Connected",
     "sh.bt.paired": "Paired",
+    // The pairing dialog closes the moment a button is pressed, which reads as
+    // "sent". When the command behind it fails, this is the only thing that says
+    // otherwise.
+    "sh.bt.pair.notSent": "That answer did not reach Bluetooth, so the device did not pair.",
     "sh.bt.disconnect": "Disconnect",
     "sh.bt.connect": "Connect",
     "sh.bt.noAutoConnect": "Don't Auto-Connect",
@@ -815,6 +819,7 @@ const messages: Catalogs = {
     "sh.bt.connecting": "Wird verbunden\u2026",
     "sh.bt.connected": "Verbunden",
     "sh.bt.paired": "Gekoppelt",
+    "sh.bt.pair.notSent": "Diese Antwort ist nicht bei Bluetooth angekommen, das Gerät wurde also nicht gekoppelt.",
     "sh.bt.disconnect": "Trennen",
     "sh.bt.connect": "Verbinden",
     "sh.bt.noAutoConnect": "Nicht automatisch verbinden",

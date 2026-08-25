@@ -12,10 +12,12 @@
 /// rejects it with `org.bluez.Error.Rejected`; this store does not
 /// queue or stack requests visually.
 
-import { writable, type Readable } from "svelte/store";
+import { get, writable, type Readable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { toast } from "svelte-sonner";
+import { t } from "$lib/i18n/messages";
 
 /// Discriminated union for every kind of pairing request the user
 /// might see. The `id` is the backend's request id and is what the
@@ -186,6 +188,17 @@ export function dispose(): void {
 /// store so the dialog disappears immediately, before the Tauri
 /// command round-trip completes — the 60s backend timeout still
 /// bounds any error case.
+///
+/// A FAILED response is said out loud. The clear above is what a person reads as
+/// "your answer was sent": the dialog they pressed Accept on is gone. If the
+/// command then fails, the answer never reached BlueZ, the device does not pair,
+/// and until now the only trace was a `console.warn` - the surface stating that
+/// something happened which did not, on a flow where the next thing the person
+/// does is wonder why their headphones are not connected.
+///
+/// A toast rather than putting the dialog back: the request may already have
+/// timed out backend-side, so re-showing it would offer an answer that can no
+/// longer be given. Saying it did not go through is true either way.
 export async function respond(
   id: number,
   response: PairResponse,
@@ -195,6 +208,7 @@ export async function respond(
     await invoke("bluetooth_pair_respond", { reqId: id, response });
   } catch (err) {
     console.warn("bluetooth_pair_respond failed:", err);
+    toast.error(get(t)("sh.bt.pair.notSent"));
   }
 }
 
