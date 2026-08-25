@@ -27,7 +27,7 @@ const { openPath, loadInitialFile, openDocument, openError, openTarget } =
 
 describe("openPath", () => {
   it("opens a file and clears any earlier failure", async () => {
-    openError.set({ problem: "other", reason: "something older went wrong" });
+    openError.set({ problem: "other" });
     invoke.mockImplementation(() =>
       Promise.resolve({ path: "/home/t/notes.md", text: "# Notes" }),
     );
@@ -56,12 +56,12 @@ describe("openPath", () => {
 
     // Both callers are user gestures, so this must resolve rather than throw.
     await expect(openPath("/root/secret")).resolves.toBeUndefined();
-    // An error the host did not name keeps its own words, which is the only
-    // detail there is for it.
-    expect(get(openError)).toEqual({
-      problem: "other",
-      reason: expect.stringContaining("permission denied"),
-    });
+    // An error the host did not name is recorded as unnamed, and nothing else.
+    // It used to carry the host's own words on the grounds that they are the only
+    // detail there is - true, and the page drew them bare under a translated
+    // heading, so "the only detail there is" was reaching every reader in
+    // English. The detail is in the log now.
+    expect(get(openError)).toEqual({ problem: "other" });
   });
 
   it("names the host's own cause rather than pasting its words", async () => {
@@ -111,12 +111,9 @@ describe("loadInitialFile", () => {
   it("reports a failure to ask for the launch file", async () => {
     invoke.mockImplementation(() => Promise.reject(new Error("host said no")));
     await loadInitialFile();
-    // Asking for the launch file has no named causes - whatever went wrong there
-    // is the host's own words and there is nothing else to say about it.
-    expect(get(openError)).toEqual({
-      problem: "other",
-      reason: expect.stringContaining("host said no"),
-    });
+    // Asking for the launch file has no named causes. That makes it `other`, and
+    // `other` says so without quoting the host at the reader.
+    expect(get(openError)).toEqual({ problem: "other" });
   });
 });
 

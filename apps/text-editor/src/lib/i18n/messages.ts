@@ -14,6 +14,9 @@ const messages: Catalogs = {
     "te.code.region": "Code, scrolls sideways",
     "te.openFile": "Open file",
     "te.open.failed": "This file could not be opened.",
+    // The detail line for a cause this editor cannot name. It used to be the
+    // host's own words, drawn as they came.
+    "te.open.otherReason": "The reason is one this editor cannot name. The detail is in the log.",
     "te.open.notAbsolute": "That is not a full path, so there is nothing to open.",
     "te.open.unreadable": "{$why}",
     "te.open.notText": "This is not text this editor can open. Opening it and saving it back would write something other than what is in it.",
@@ -93,6 +96,7 @@ const messages: Catalogs = {
 
     "te.openFile": "Datei öffnen",
     "te.open.failed": "Diese Datei konnte nicht geöffnet werden.",
+    "te.open.otherReason": "Den Grund kann dieser Editor nicht benennen. Die Einzelheiten stehen im Protokoll.",
     "te.open.notAbsolute": "Das ist kein vollständiger Pfad, es gibt also nichts zu öffnen.",
     "te.open.unreadable": "{$why}",
     "te.open.notText": "Das ist kein Text, den dieser Editor öffnen kann. Öffnen und zurückspeichern würde etwas anderes schreiben als das, was darin steht.",

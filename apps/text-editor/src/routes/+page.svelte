@@ -368,7 +368,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
             {#if $openError.problem === "not-absolute"}{$t("te.open.notAbsolute")}
             {:else if $openError.problem === "not-text"}{$t("te.open.notText")}
             {:else if $openError.problem === "unreadable"}{$t("te.open.unreadable", { why: $openError.why })}
-            {:else}{$openError.reason}{/if}
+            {:else}{$t("te.open.otherReason")}{/if}
           </p>
         </div>
       {:else if editable}
