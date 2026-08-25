@@ -245,6 +245,48 @@ pub async fn config_set(
 /// fields never land half-written. The ranked-fallback + per-purpose
 /// (query/agent/title) model schema is a deferred extension; this sets the
 /// single default the daemon resolves today. Both must be non-empty.
+/// The configured default provider + model, read from the two places
+/// [`ai_defaults_set`] writes them.
+///
+/// A JSON STRING, because the page parses it itself
+/// (`parse<{provider?, model?}>(await invoke<string>(...), {})`). Its neighbour
+/// `ai_behaviours` returns a parsed value for the opposite reason: that page
+/// does not parse. Which is right depends on the reader, not on a house style.
+///
+/// THIS USED TO DIAL A D-BUS MEMBER THAT DOES NOT EXIST. `ai_defaults_get` on
+/// `org.arlen.AI1` was never served by anything, so the call always failed and
+/// the page always kept its fallback line - it just reached that line by
+/// reading "could not ask" as "no default is set". The data was never on that
+/// bus: `provider` is an `AiMasterSwitches` field the config-broker owns, and
+/// the model is an ordinary `ai.toml` key, exactly as the setter below has
+/// always known.
+///
+/// The provider falls back to `ai.toml` when the broker is unreachable, matching
+/// the setter's pre-cutover path so a machine without the broker still reads
+/// back what it wrote. No `ranking` field: the old doc promised one and nothing
+/// in the tree holds it.
+#[tauri::command]
+pub async fn ai_defaults_get() -> Result<String, String> {
+    let doc = read_file(ConfigFile::Ai)?;
+    let from_file = |key: &str| {
+        get_path(&doc, key)
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default()
+    };
+    let client = arlen_config_broker::ConfigBrokerClient::default_socket();
+    let provider = match client.get_ai().await {
+        Ok(switches) if !switches.provider.is_empty() => switches.provider,
+        // Unreachable, or reachable and holding the empty "let the daemon's
+        // ranking decide" value: the file is the remaining answer either way.
+        _ => from_file("ai.provider"),
+    };
+    serde_json::to_string(&serde_json::json!({
+        "provider": provider,
+        "model": from_file("provider.model"),
+    }))
+    .map_err(|e| format!("defaults: {e}"))
+}
+
 #[tauri::command]
 pub async fn ai_defaults_set(provider: String, model: String) -> Result<(), String> {
     if provider.trim().is_empty() || model.trim().is_empty() {

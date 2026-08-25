@@ -262,17 +262,6 @@ pub async fn ai_uncensored_set_enabled(enabled: bool) -> Result<(), String> {
     .await
 }
 
-/// The configured default provider/model + ranked fallback (`ai_defaults_get`),
-/// as `{ provider, model, ranking }`, for the manager's Default-Models page.
-///
-/// An error rather than `{}`. The page keeps its fallback line either way, so
-/// what changes is which sentence is true underneath it: it now reaches that
-/// line through the catch it already has, instead of reading "could not ask" as
-/// "no default is set".
-#[tauri::command]
-pub async fn ai_defaults_get() -> Result<String, String> {
-    ai_call_string("ai_defaults_get").await
-}
 
 /// The model catalog for the Settings Default-Models page (`ai_models_list`): a
 /// JSON array of `{ provider, model, contextWindow, kind, available }`, the same
