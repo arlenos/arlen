@@ -670,7 +670,17 @@ const messages: Catalogs = {
     // reader's language. The cause travels verbatim - it is a developer's string
     // about a module that did not come up, and translating it would make it match
     // nothing anyone can search for.
+    // `{$why}` used to be filled with the daemon's own message - "module
+    // com.example.x not found" - so a German reader met an English clause inside
+    // a German sentence. The daemon has always sent a machine-readable code
+    // beside that message; the shell threw it away. One sentence per code now.
     "sh.module.didNotMount": "This module did not come up. {$why}",
+    "sh.module.why.notFound": "The system does not have it.",
+    "sh.module.why.permissionDenied": "It is not allowed to run here.",
+    "sh.module.why.moduleFailed": "It stopped on its own.",
+    "sh.module.why.timeout": "It took too long to answer.",
+    "sh.module.why.invalidRequest": "The shell asked for it in a way it did not accept.",
+    "sh.module.why.internal": "Something went wrong inside. The detail is in the log.",
   },
   de: {
     "sh.app.title": "Arlen",
@@ -1262,6 +1272,12 @@ const messages: Catalogs = {
     "sh.ws.overview": "\u00dcbersicht der Arbeitsfl\u00e4chen",
     "sh.module.failed": "Modul fehlgeschlagen; zum erneuten Versuch klicken",
     "sh.module.didNotMount": "Dieses Modul ist nicht hochgekommen. {$why}",
+    "sh.module.why.notFound": "Das System hat es nicht.",
+    "sh.module.why.permissionDenied": "Es darf hier nicht laufen.",
+    "sh.module.why.moduleFailed": "Es hat von sich aus aufgehört.",
+    "sh.module.why.timeout": "Es hat zu lange gebraucht, um zu antworten.",
+    "sh.module.why.invalidRequest": "Die Shell hat es so angefragt, wie es das nicht annimmt.",
+    "sh.module.why.internal": "Innen ist etwas schiefgegangen. Die Einzelheiten stehen im Protokoll.",
   },
 };
 
