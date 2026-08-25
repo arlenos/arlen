@@ -212,7 +212,7 @@ struct Zugriff {
 struct Info {
     conventional: arlen_file_browser_core::Properties,
     woher: Vec<ProvenanceEntry>,
-    verwandt: ReadOutcome<Relation>,
+    related: ReadOutcome<Relation>,
     zugriff: Zugriff,
 }
 
@@ -411,7 +411,7 @@ fn stitch_file_provenance(
 
 /// Read a file's LIVE project memberships with the time it joined each - the
 /// `FILE_PART_OF` edge's `created_at`, filtered to open (not closed) edges. This
-/// is the halo's own read (distinct from `read_verwandt`, which feeds the info
+/// is the halo's own read (distinct from `read_related`, which feeds the info
 /// panel with names only and does not filter to live edges), so the "Part of"
 /// step is dated by the membership, not the file's last access.
 async fn read_project_memberships(
@@ -533,7 +533,7 @@ fn escape_cypher_literal(s: &str) -> String {
 /// relationship lines. A row needs both the display name and the project id (the
 /// navigation key); a row missing either is skipped. Pure, so the shaping is
 /// unit-tested without a daemon.
-fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<Relation> {
+fn related_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>]) -> Vec<Relation> {
     rows.iter()
         .filter_map(|r| {
             let name = r.get("name").and_then(|v| v.as_str())?;
@@ -554,7 +554,7 @@ fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 /// Returns the outcome, not a list: a file that belongs to nothing and a machine
 /// with no graph daemon are different facts, and a bare `Vec` tells them apart for
 /// nobody.
-async fn read_verwandt(path: &str) -> ReadOutcome<Relation> {
+async fn read_related(path: &str) -> ReadOutcome<Relation> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     // The File node id in the graph is the file's absolute path. The id is
@@ -565,8 +565,8 @@ async fn read_verwandt(path: &str) -> ReadOutcome<Relation> {
         "MATCH (f:File {{id: '{}'}})-[:FILE_PART_OF]->(p:Project) RETURN p.id AS id, p.name AS name LIMIT 16",
         escape_cypher_literal(&abs(path))
     );
-    ReadOutcome::from_result("read_verwandt", client.query_rows(&cypher).await, |rows| {
-        verwandt_from_rows(&rows)
+    ReadOutcome::from_result("read_related", client.query_rows(&cypher).await, |rows| {
+        related_from_rows(&rows)
     })
 }
 
@@ -588,12 +588,12 @@ fn file_part_of_as_of(as_of_micros: Option<i64>) -> String {
     }
 }
 
-/// A file's project membership as of `as_of_micros` (the temporal `verwandt`
+/// A file's project membership as of `as_of_micros` (the temporal `related`
 /// read, for the FM time-travel toggle). `None` is the live membership now;
 /// `Some(t)` is what the file was part of at `t`. Carries the same three-state
-/// outcome as `read_verwandt`. Unlike the plain read it names the rel (`r`) so the
+/// outcome as `read_related`. Unlike the plain read it names the rel (`r`) so the
 /// bitemporal stamps can be filtered.
-async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> ReadOutcome<Relation> {
+async fn read_related_as_of(path: &str, as_of_micros: Option<i64>) -> ReadOutcome<Relation> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = format!(
@@ -602,8 +602,8 @@ async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> ReadOutco
         escape_cypher_literal(&abs(path)),
         file_part_of_as_of(as_of_micros)
     );
-    ReadOutcome::from_result("read_verwandt_as_of", client.query_rows(&cypher).await, |rows| {
-        verwandt_from_rows(&rows)
+    ReadOutcome::from_result("read_related_as_of", client.query_rows(&cypher).await, |rows| {
+        related_from_rows(&rows)
     })
 }
 
@@ -668,11 +668,11 @@ async fn files_info(path: String) -> Result<Info, String> {
         properties(&dir, rel(&path)).map_err(|e| e.to_string())?
     };
     let woher = read_woher(&path).await;
-    let verwandt = read_verwandt(&path).await;
+    let related = read_related(&path).await;
     Ok(Info {
         conventional,
         woher,
-        verwandt,
+        related,
         zugriff: Zugriff {
             readable_by: Vec::new(),
             manage_link: "settings://permissions".to_string(),
@@ -2254,13 +2254,13 @@ async fn files_list_location_as_of(
     out
 }
 
-/// A file's project membership AS OF a point in time (the temporal `verwandt`
+/// A file's project membership AS OF a point in time (the temporal `related`
 /// read backing the info panel's time-travel). `as_of_micros` `None` is the live
 /// membership now; `Some(t)` is what the file was part of at `t` epoch-micros.
 /// Best-effort: an out-of-scope object or an absent daemon yields no relations.
 #[tauri::command]
-async fn files_verwandt_as_of(path: String, as_of_micros: Option<i64>) -> ReadOutcome<Relation> {
-    read_verwandt_as_of(&path, as_of_micros).await
+async fn files_related_as_of(path: String, as_of_micros: Option<i64>) -> ReadOutcome<Relation> {
+    read_related_as_of(&path, as_of_micros).await
 }
 
 /// Tauri application entry point invoked from `main.rs`.
@@ -2374,7 +2374,7 @@ pub fn run() {
             files_list,
             files_list_location,
             files_list_location_as_of,
-            files_verwandt_as_of,
+            files_related_as_of,
             files_places,
             files_info,
             provenance_of,
@@ -2468,7 +2468,7 @@ mod tests {
         abs, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops,
         disambiguate_entries, projects_from_rows, provenance_to_woher, recent_from_rows,
         recent_to_entry,
-        stitch_file_provenance, touched_apps_from_rows, trash_to_entry, verwandt_from_rows,
+        stitch_file_provenance, touched_apps_from_rows, trash_to_entry, related_from_rows,
         EntryKind, Fidelity, FilesConfig, HaloOrigin, Horizon, ProjectMembership, RecentFile,
         SmartFolder,
     };
@@ -2695,11 +2695,11 @@ mod tests {
     }
 
     #[test]
-    fn verwandt_maps_project_rows_to_relations() {
+    fn related_maps_project_rows_to_relations() {
         let mut row = HashMap::new();
         row.insert("id".to_string(), serde_json::json!("/home/tim/Repositories/arlen"));
         row.insert("name".to_string(), serde_json::json!("Arlen"));
-        let rels = verwandt_from_rows(&[row]);
+        let rels = related_from_rows(&[row]);
         assert_eq!(rels.len(), 1);
         assert_eq!(rels[0].label, "Part of project");
         assert_eq!(rels[0].target, "Arlen");
@@ -2708,14 +2708,14 @@ mod tests {
     }
 
     #[test]
-    fn verwandt_skips_rows_missing_a_name_or_id() {
+    fn related_skips_rows_missing_a_name_or_id() {
         let empty: HashMap<String, serde_json::Value> = HashMap::new();
         let mut non_string = HashMap::new();
         non_string.insert("name".to_string(), serde_json::json!(42));
         // A row with a name but no id cannot navigate, so it is skipped too.
         let mut name_only = HashMap::new();
         name_only.insert("name".to_string(), serde_json::json!("Arlen"));
-        assert!(verwandt_from_rows(&[empty, non_string, name_only]).is_empty());
+        assert!(related_from_rows(&[empty, non_string, name_only]).is_empty());
     }
 
     #[test]
