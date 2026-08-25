@@ -198,7 +198,14 @@
         {/if}
       </div>
 
-      {#if $results.length === 0}
+      {#if $results.length === 0 && !$searchUnavailable}
+        <!-- Only when the search RAN. "Nothing matches, try fewer filters" is a
+             statement about the graph and an instruction to change the query, and
+             a failed read produces the same empty list - so without this the page
+             said both "the search did not run" and "nothing matches, try
+             something else", one under the other. Found by looking at the frame
+             after fixing the store; the two sentences are ten lines apart in the
+             source and neither reads wrong on its own. -->
         <p class="se-empty">{$t("k.se.none")}</p>
       {:else}
         <div class="se-results">
