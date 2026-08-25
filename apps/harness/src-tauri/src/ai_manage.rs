@@ -36,14 +36,21 @@ async fn try_call_string(bus: &str, path: &str, member: &str) -> Option<String> 
 
 /// Substitutes `fallback` when the call cannot be made. Prefer `try_call_string`
 /// and a `null`: a substituted value is indistinguishable from a measured one, so
-/// the surface states as fact something nothing read. The three remaining callers
-/// are the model catalogue, the provider catalogue and the default models, and
-/// each is held here by its READER, not by a judgement that a lie is fine there:
-/// all three parse into a list-typed store with an `[]` fallback that swallows a
-/// `null` as successfully-empty, and would then iterate it. Converting the
-/// command alone turns "the daemon is down" from a wrong-but-drawn empty
-/// catalogue into a broken render. Those readers are arlen-ui's files; the two
-/// halves have to land together.
+/// the surface states as fact something nothing read.
+///
+/// ONE caller remains, `ai_models_list`, and it is held by its READER rather than
+/// by a judgement that a lie is fine there. That reader is
+/// `apps/harness/src/lib/components/chat/ModelPickerBar.svelte`, which does
+/// `parse<ModelEntry[]>(json, [])` and then gates on `$models.length > 0` at :67.
+/// `JSON.parse(null)` is `null`, not the fallback, so a converted command turns
+/// "the daemon is down" from a wrong-but-drawn empty catalogue into a TypeError.
+/// The file is arlen-ui's; the two halves have to land together, and the reader
+/// half is one line - hold `null` for unread and branch on it, the way the gate
+/// feed above already does.
+///
+/// The other two former callers were converted on 25 August once it turned out
+/// they had no reader at all: the harness registers them, and only Settings' own
+/// separate copies are ever invoked.
 async fn call_string(bus: &str, path: &str, member: &str, fallback: &str) -> String {
     let Ok(connection) = Connection::session().await else {
         return fallback.to_string();
@@ -145,19 +152,29 @@ pub async fn ai_usage() -> String {
 }
 
 /// The catalogued providers for the manager surface (`ai_providers_list`): a JSON
-/// array of `{ id, name, kind, enabled, configured, status }`. Empty array if
-/// unreachable.
+/// array of `{ id, name, kind, enabled, configured, status }`. `null` when the
+/// daemon is unreachable, because an empty catalogue reads as "you have no
+/// providers configured" - a statement about the user's setup that nothing
+/// measured. No harness surface calls this yet; Settings has its own copy for
+/// its own page, so converting it here breaks nothing and stops the next caller
+/// inheriting the substitution.
 #[tauri::command]
 pub async fn ai_providers_list() -> String {
-    call_string(AI_BUS, AI_PATH, "ai_providers_list", "[]").await
+    try_call_string(AI_BUS, AI_PATH, "ai_providers_list")
+        .await
+        .unwrap_or_else(|| "null".to_string())
 }
 
 /// The configured default provider/model for the manager's Default-Models page
-/// (`ai_defaults_get`): `{ provider, model, ranking }`. Empty object if the
-/// daemon is unreachable.
+/// (`ai_defaults_get`): `{ provider, model, ranking }`. `null` when the daemon is
+/// unreachable, rather than an empty object that a page would render as "no
+/// default set". Same standing as the provider catalogue above: no harness
+/// surface reads it yet.
 #[tauri::command]
 pub async fn ai_defaults_get() -> String {
-    call_string(AI_BUS, AI_PATH, "ai_defaults_get", "{}").await
+    try_call_string(AI_BUS, AI_PATH, "ai_defaults_get")
+        .await
+        .unwrap_or_else(|| "null".to_string())
 }
 
 /// The agent's pending gate proposals (`pending_proposals`): a JSON array the
