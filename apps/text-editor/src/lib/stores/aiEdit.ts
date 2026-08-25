@@ -90,9 +90,18 @@ export const mocked = writable(false);
 export const unavailable = writable(false);
 
 /// The last action failure, for the review to show. Empty when all is well.
+/// The keys this store may hold. A UNION rather than `string`: a `string` is also
+/// what `String(e)` and an English sentence written here both are, and this store
+/// held the second of those until an hour ago.
+export type ReviewMessage =
+  | ""
+  | "te.review.notApplied"
+  | "te.review.notRejected"
+  | "te.review.notUndone";
+
 /// The message KEY of the last refusal, or "" for none. A key rather than a
 /// resolved sentence, so the line follows a locale change while it is up.
-export const lastError = writable("");
+export const lastError = writable<ReviewMessage>("");
 
 /// Ask the assistant to edit. Live: `ai_edit`; fixture under vite.
 export async function proposeEdit(prompt: string): Promise<void> {
@@ -136,7 +145,7 @@ async function driveHunk(
   index: number,
   next: HunkStatus,
   cmd: string,
-  failure: string,
+  failure: ReviewMessage,
 ): Promise<void> {
   let previous: HunkStatus | undefined;
   proposal.update((p) => {

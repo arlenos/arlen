@@ -146,12 +146,24 @@ export const jobs = writable<Job[]>([]);
 export const mocked = writable(false);
 
 /// The last action failure, for the zone to show. Empty when all is well.
+/// The keys this store may hold. A UNION rather than `string`, because a
+/// `string` is also what `String(e)` and an English sentence written here both
+/// are - and both were written into stores exactly like this one tonight. Naming
+/// them makes a wrong write a compile error rather than something a check has to
+/// find afterwards.
+export type JobMessage =
+  | ""
+  | "sh.jobs.unavailable"
+  | "sh.job.notCancelled"
+  | "sh.job.notPaused"
+  | "sh.job.notResumed";
+
 /// The message KEY of the last refusal, or "" for none.
 ///
 /// A key rather than a resolved sentence, so the line follows a locale change
 /// while it is on screen: `get(t)(...)` freezes the wording at the moment of
 /// failure, and this line stays up until the next action replaces it.
-export const lastError = writable("");
+export const lastError = writable<JobMessage>("");
 
 /// Load the current jobs. Live: `list_jobs` + the event feed; fixture under vite.
 export async function pollJobs(): Promise<void> {
@@ -193,7 +205,7 @@ async function driveJob(
   id: string,
   apply: (list: Job[]) => Job[],
   cmd: string,
-  failure: string,
+  failure: JobMessage,
 ): Promise<void> {
   let previous: Job[] = [];
   jobs.update((list) => {
