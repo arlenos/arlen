@@ -177,6 +177,15 @@ export async function pollJobs(): Promise<void> {
 /// report a cancelled copy that is still running - the same false confirmation of
 /// a destructive action the task manager had. Without the runtime there is no
 /// daemon to refuse, so the optimistic mock stands.
+/// `failure` is a message KEY, not a sentence.
+///
+/// It used to be an English string written here - "Could not cancel that job" -
+/// with `String(e)` appended, and the zone rendered the pair verbatim. So the
+/// only line a person sees when a cancel is refused was written in a TypeScript
+/// store where no catalogue can reach it, followed by whatever the daemon
+/// formatted. The born-translatable lint reads a prose literal assigned to an
+/// `*error`/`*message` NAME; passed as an argument called `failure`, this slipped
+/// past it.
 async function driveJob(
   id: string,
   apply: (list: Job[]) => Job[],
@@ -193,14 +202,17 @@ async function driveJob(
   } catch (e) {
     if (tauriAvailable) {
       jobs.set(previous);
-      lastError.set(`${failure}: ${String(e)}`);
+      // The daemon's own words name a command and carry an errno. They go where
+      // whoever debugs this will read them; the zone gets the sentence.
+      console.warn(`shell: ${cmd} refused`, e);
+      lastError.set(get(t)(failure));
     }
   }
 }
 
 /// Cancel a job (a clean cancel, per the Killable flag). Live: `cancel_job`.
 export async function cancelJob(id: string): Promise<void> {
-  await driveJob(id, (l) => l.filter((j) => j.id !== id), "cancel_job", "Could not cancel that job");
+  await driveJob(id, (l) => l.filter((j) => j.id !== id), "cancel_job", "sh.job.notCancelled");
 }
 
 /// Pause a suspendable job. Live: `pause_job`.
@@ -209,7 +221,7 @@ export async function pauseJob(id: string): Promise<void> {
     id,
     (l) => l.map((j) => (j.id === id ? { ...j, state: "paused" } : j)),
     "pause_job",
-    "Could not pause that job",
+    "sh.job.notPaused",
   );
 }
 
@@ -219,6 +231,6 @@ export async function resumeJob(id: string): Promise<void> {
     id,
     (l) => l.map((j) => (j.id === id ? { ...j, state: "running" } : j)),
     "resume_job",
-    "Could not resume that job",
+    "sh.job.notResumed",
   );
 }

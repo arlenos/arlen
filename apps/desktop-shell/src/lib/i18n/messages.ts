@@ -313,6 +313,11 @@ const messages: Catalogs = {
     "sh.job.resume": "Resume",
     "sh.job.retry": "Retry",
     "sh.job.cancel": "Cancel",
+    // Written here rather than in the store, where they were English literals
+    // with the daemon's error appended.
+    "sh.job.notCancelled": "That job could not be cancelled, so it is still running.",
+    "sh.job.notPaused": "That job could not be paused, so it is still running.",
+    "sh.job.notResumed": "That job could not be resumed, so it is still paused.",
     "sh.job.done": "Done",
     "sh.job.metric": "{$processed} of {$total} {$unit}",
     "sh.job.eta": "{$eta} left",
@@ -978,6 +983,9 @@ const messages: Catalogs = {
     "sh.job.resume": "Fortsetzen",
     "sh.job.retry": "Erneut versuchen",
     "sh.job.cancel": "Abbrechen",
+    "sh.job.notCancelled": "Dieser Auftrag ließ sich nicht abbrechen, er läuft also weiter.",
+    "sh.job.notPaused": "Dieser Auftrag ließ sich nicht anhalten, er läuft also weiter.",
+    "sh.job.notResumed": "Dieser Auftrag ließ sich nicht fortsetzen, er ist also weiterhin angehalten.",
     "sh.job.done": "Fertig",
     "sh.job.metric": "{$processed} von {$total} {$unit}",
     "sh.job.eta": "noch {$eta}",

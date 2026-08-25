@@ -71,6 +71,11 @@ const messages: Catalogs = {
     "te.review.sample": "Example proposal - the assistant has not actually edited this file.",
     "te.demoDoc": "Example document - nothing on this machine has this name.",
     "te.review.unavailable": "The assistant could not be reached, so there is nothing to review.",
+    // Written here rather than in the store, where they were English literals
+    // with the host's error appended. Each says what is still true afterwards.
+    "te.review.notApplied": "That change could not be applied, so the file is unchanged.",
+    "te.review.notRejected": "That change could not be rejected, so it is still waiting.",
+    "te.review.notUndone": "That change could not be undone, so it is still in the file.",
     "te.review.rejected": "Rejected",
     "te.review.held": "Needs your confirmation",
     "te.review.appliedAuto": "Applied on its own",
@@ -138,6 +143,9 @@ const messages: Catalogs = {
     "te.review.sample": "Beispielvorschlag - die Assistenz hat diese Datei nicht wirklich bearbeitet.",
     "te.demoDoc": "Beispieldokument - auf dieser Maschine gibt es nichts mit diesem Namen.",
     "te.review.unavailable": "Der Assistent war nicht erreichbar, es gibt also nichts zu pr\u00fcfen.",
+    "te.review.notApplied": "Diese \u00c4nderung lie\u00df sich nicht anwenden, die Datei ist also unver\u00e4ndert.",
+    "te.review.notRejected": "Diese \u00c4nderung lie\u00df sich nicht verwerfen, sie wartet also weiter.",
+    "te.review.notUndone": "Diese \u00c4nderung lie\u00df sich nicht r\u00fcckg\u00e4ngig machen, sie steht also weiter in der Datei.",
     "te.review.rejected": "Abgelehnt",
     "te.review.held": "Braucht deine Bestätigung",
     "te.review.appliedAuto": "Selbstständig angewendet",
