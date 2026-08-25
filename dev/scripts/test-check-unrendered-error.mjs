@@ -95,6 +95,38 @@ check(
 // Shape 2: the failure is a field on the store's state rather than a store of
 // its own. This is the shape that got past the first rule and reached a shipped
 // page, where a failed read printed `No bindings match ""`.
+// The words the vocabulary gained. Each of these is a real store name from the
+// tree, and each was invisible to this gate until the pattern was widened - they
+// all happened to be read, so nothing was broken and nothing said the gate was
+// not watching them either.
+for (const name of ["openFailure", "searchRefusals", "accessDenied", "printBlocked", "hostOffline"]) {
+  check(
+    `a store named ${name} is watched, not just one named error`,
+    {
+      "apps/demo/src/lib/stores/thing.ts":
+        'import { writable } from "svelte/store";\n' +
+        `export const ${name} = writable(null);\n`,
+      "apps/demo/src/lib/View.svelte": "<p>hello</p>\n",
+    },
+    (code, out) => code === 1 && out.includes(name),
+  );
+}
+
+// The boundary: a name that merely CONTAINS one of the words but is not a
+// failure. `errorCount` would be a metric, and reporting it would train people
+// to add acknowledgements for things that are fine. It is a store, so it is
+// caught - which is the honest limit of a name rule and is written down rather
+// than pretended away.
+check(
+  "a plain data store is not a finding",
+  {
+    "apps/demo/src/lib/stores/thing.ts":
+      'import { writable } from "svelte/store";\nexport const rows = writable([]);\n',
+    "apps/demo/src/lib/View.svelte": "<p>hello</p>\n",
+  },
+  (code) => code === 0,
+);
+
 const STATE_STORE =
   'import type { Readable } from "svelte/store";\n' +
   "interface BindingsState {\n" +

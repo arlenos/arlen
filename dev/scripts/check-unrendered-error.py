@@ -60,8 +60,17 @@ ROOT = (
 )
 
 #: An exported writable whose name says it holds a failure.
+#:
+#: The first three words were the ones the tree happened to use in August. Seven
+#: more stores have since been written as `openFailure`, `searchRefusals`,
+#: `launchFailure`, `meetingsFailure`, `historyOnlyFailures` - all of them
+#: recording a failure, none of them matching, and all of them read today by luck
+#: rather than by this. A gate that only knows the words its author last wrote is
+#: the recurring fault in this directory, so the vocabulary is widened before the
+#: next one is silent instead of after.
 FAILURE_STORE = re.compile(
-    r"export const (\w*(?:[eE]rror|[uU]navailable|[fF]ailed)\w*)\s*=\s*writable"
+    r"export const (\w*(?:[eE]rror|[uU]navailable|[fF]ail|[rR]efus|[dD]enied|[bB]locked"
+    r"|[oO]ffline|[bB]roken)\w*)\s*=\s*writable"
 )
 
 #: A state object declaration, so its body can be searched for an `error` field.
