@@ -164,15 +164,14 @@ pub async fn ai_usage() -> String {
 /// `list_provider_usage` two functions up. Nothing was wired to it yet, so
 /// nothing breaks.
 ///
-/// IT STILL WILL NOT ANSWER IN A RELEASE BUILD, and the honest version of that
-/// sentence is worth more than the one I first wrote here ("the only thing this
-/// changes is that it now works"). ai-proxy authenticates its callers against an
-/// executable allowlist holding three paths - the AI daemon, the AI agent and
-/// the engine daemon - and neither this app nor Settings is one of them, so the
-/// call is refused with AccessDenied. That is still the better failure: a
-/// refusal by a service that exists, rather than silence from a member that
-/// does not. Admitting the surfaces that read a provider catalogue is a
-/// trust-boundary decision for whoever owns that allowlist, not a repoint.
+/// ai-proxy authenticates PER METHOD, not per interface, and that is worth
+/// stating because I got it wrong in both directions before reading it. Its
+/// `forward_completion` and `test_provider` resolve the caller against an
+/// executable allowlist of three daemons; `list_providers` and
+/// `list_provider_usage` take no header and authenticate nobody, because they
+/// are read-only display data with no endpoint or credential in them. So this
+/// call answers, and `ai_provider_test` two functions down is the one a surface
+/// cannot reach.
 #[tauri::command]
 pub async fn ai_providers_list() -> String {
     try_call_string(PROXY_BUS, PROXY_PATH, "list_providers")
