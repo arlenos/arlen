@@ -41,6 +41,14 @@ export const historyLoaded = writable(false);
 /// hier" - statements about the person's own history, made after failing to read
 /// it. The file manager's search results already carry this three-way
 /// distinction; this is the same, one app over.
+///
+/// WHAT IT CAN ACTUALLY DETECT, since a flag that overstates its reach is the
+/// thing it exists to prevent: the invoke rejecting. That is no runtime at all,
+/// and - since the command was changed to return a `Result` alongside this - a
+/// session registry whose lock is poisoned. A project-scoped search still comes
+/// back as an ordinary empty list, deliberately: the palette says project scopes
+/// are unavailable on this system before the chip can be set, so the person has
+/// already been told and a second sentence about it would be noise.
 export const historyUnavailable = writable(false);
 
 let debounce: ReturnType<typeof setTimeout> | null = null;
