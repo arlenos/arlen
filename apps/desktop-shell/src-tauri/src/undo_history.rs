@@ -41,6 +41,7 @@
 //! audit join. With the audit daemon down, every row is timeless. The field is
 //! omitted in that case, so the panel renders no time instead of 1 January 1970.
 
+use audit_proto::AuditKind;
 use serde::{Deserialize, Serialize};
 
 /// The bus name the session undo service owns.
@@ -229,9 +230,143 @@ pub async fn undo_enact(op_id: String) -> Result<String, String> {
     }
 }
 
+/// One step of the chain, as the daemon serves it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Step {
+    actor: String,
+    kind: String,
+    subject: String,
+    timestamp_micros: i64,
+}
+
+/// The chain as the daemon serves it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Detail {
+    op_id: String,
+    steps: Vec<Step>,
+}
+
+/// One step of the record behind a row, as the panel renders it.
+///
+/// Named `UndoStepView` rather than `UndoStep` for the reason `UndoRowView`
+/// carries above: the undo service already defines an `UndoStep`, and a name that
+/// appears twice is dropped from `check-invoke-shape`'s comparison rather than
+/// compared against the wrong one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoStepView {
+    /// Who the ledger attests for this step, as the panel's chip.
+    producer: &'static str,
+    /// What the ledger recorded, as a TOKEN the panel words. Same rule as the
+    /// row's `kind`: the wording lives in the catalogue in both languages, so a
+    /// German disclosure does not read as a translated chip in front of an
+    /// English noun.
+    kind: &'static str,
+    /// The content-free structural subject, e.g. `agent.auto-tag-by-project`.
+    /// Data, not prose, so it passes through as it is.
+    subject: String,
+    /// Unix seconds. Present on every step: a detail step comes from the ledger,
+    /// which stamps its own clock, unlike the signed entry a row is built from.
+    at: i64,
+}
+
+/// The record behind one row, oldest step first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoDetailView {
+    /// The op the steps belong to, echoed from the daemon so a late answer cannot
+    /// be drawn under whichever row is open by the time it lands.
+    op_id: String,
+    /// The chain, oldest first: what authorised the action, then what came of it.
+    steps: Vec<UndoStepView>,
+}
+
+/// The ledger's kind as a token the panel words.
+///
+/// Exhaustive over [`AuditKind`] on purpose. The taxonomy's own doc says adding a
+/// variant should break every match on it, and this is now one of them: a new
+/// kind cannot reach a disclosure as an untranslated word, it stops the build
+/// here first. An unparseable string is `unknown` rather than passed through -
+/// the ledger and this binary can be different versions, and a raw wire word on
+/// screen is the thing the whole token discipline exists to prevent.
+fn step_kind_of(wire: &str) -> &'static str {
+    let Some(kind) = AuditKind::from_wire(wire) else {
+        return "unknown";
+    };
+    match kind {
+        AuditKind::Query => "query",
+        AuditKind::ToolCall => "tool-call",
+        AuditKind::Confirm => "confirm",
+        AuditKind::PolicyViolation => "policy-violation",
+        AuditKind::GraphAccess => "graph-access",
+        AuditKind::Permission => "permission",
+        AuditKind::NetworkCall => "network-call",
+        AuditKind::AppAction => "app-action",
+        AuditKind::CapabilityChange => "capability-change",
+    }
+}
+
+/// The recorded chain behind one row, for the disclosure the panel opens.
+///
+/// An unreachable service, an unreadable ledger and an unknown op id are all
+/// errors here, and none of them is an empty list. That is the daemon's rule and
+/// this side must not soften it: somebody opened the disclosure to see the
+/// record, so an empty chain has to mean the ledger holds nothing further. A read
+/// that failed drawn as "nothing further" would be the panel stating the one
+/// thing it does not know.
+#[tauri::command]
+pub async fn undo_detail(op_id: String) -> Result<UndoDetailView, String> {
+    let json = call("Detail", &(op_id,)).await?;
+    let detail: Detail =
+        serde_json::from_str(&json).map_err(|e| format!("undo detail: {e}"))?;
+    Ok(UndoDetailView {
+        op_id: detail.op_id,
+        steps: detail
+            .steps
+            .into_iter()
+            .map(|s| UndoStepView {
+                producer: producer_of(Some(&s.actor)),
+                kind: step_kind_of(&s.kind),
+                subject: s.subject,
+                at: s.timestamp_micros / 1_000_000,
+            })
+            .collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Walk the taxonomy rather than a hand-written copy of it. The list this
+    /// would otherwise carry is exactly what fell a variant behind in the audit
+    /// crate's own round-trip test, leaving the one kind that records a reach
+    /// unchecked; `ALL` exists so that cannot happen twice.
+    #[test]
+    fn every_audit_kind_has_a_token_and_none_is_the_unknown_one() {
+        for kind in AuditKind::ALL {
+            let token = step_kind_of(kind.as_str());
+            assert_ne!(
+                token, "unknown",
+                "{} has no token, so a disclosure would draw it as nothing",
+                kind.as_str()
+            );
+            assert!(
+                !token.contains('_'),
+                "{token} is the wire spelling, not the panel's kebab token"
+            );
+        }
+    }
+
+    /// A ledger from a newer build than this binary. The word must not reach the
+    /// screen: the panel has no catalogue entry for it, so it would render raw.
+    #[test]
+    fn a_kind_this_build_does_not_know_is_unknown_rather_than_passed_through() {
+        assert_eq!(step_kind_of("some_future_kind"), "unknown");
+        assert_eq!(step_kind_of(""), "unknown");
+    }
 
     fn row(kind: &str, enactable: bool, actor: Option<&str>) -> Row {
         Row {

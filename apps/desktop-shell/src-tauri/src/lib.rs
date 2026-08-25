@@ -450,6 +450,7 @@ pub fn run() {
             network::get_saved_password,
             undo_history::undo_read,
             undo_history::undo_enact,
+            undo_history::undo_detail,
             network::forget_network,
             network::connect_hidden_network,
             network::get_vpn_connections,
