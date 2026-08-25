@@ -541,14 +541,21 @@ fn terminal_history_search(
     query: String,
     filters: HistoryFilters,
     registry: State<Mutex<SessionRegistry>>,
-) -> Vec<Block> {
+) -> Result<Vec<Block>, String> {
     // A project-scoped search cannot be honoured over live sessions (a Block carries a cwd,
-    // not a project id); fail closed rather than return cross-project results.
+    // not a project id); fail closed rather than return cross-project results. Empty rather
+    // than an error because the palette already says project scopes are unavailable on this
+    // system before the chip can be set - the person has been told, and a second message
+    // about the same fact would be noise.
     if filters.project_id.is_some() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
+    // A poisoned registry used to return an empty list, which the palette showed as "no
+    // matching commands" - a statement about the person's own history after a search that
+    // could not read it. It is a rare state (something else panicked while holding the
+    // lock) and rare is exactly when a wrong sentence goes unnoticed.
     let Ok(reg) = registry.lock() else {
-        return Vec::new();
+        return Err("session-registry-unreadable".to_string());
     };
     let mut blocks: Vec<Block> = Vec::new();
     for live in reg.sessions.values() {
@@ -556,7 +563,7 @@ fn terminal_history_search(
     }
     let mut hits = arlen_terminal_core::search_blocks(&blocks, &query, &filters);
     hits.reverse(); // approximate newest-first over the collected order
-    hits
+    Ok(hits)
 }
 
 /// Map project rows (`{ id, name, path }`) into the contract [`Project`],
