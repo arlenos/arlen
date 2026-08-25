@@ -71,14 +71,16 @@
   }
 
   async function onsubmit(secret: string): Promise<AuthResult> {
-    if (!pickedProfile) return { ok: false, error: "No profile selected." };
+    // A KEY's sentence, not a literal. This is the login screen, and an English
+    // line here is the first thing a German reader would judge the system by.
+    if (!pickedProfile) return { ok: false, error: $t("g.noProfile") };
     // The toggle travels with the session only when somebody operated it here;
     // an untouched login screen says nothing and the session keeps whatever
     // that user's own config holds.
     return authenticate(pickedProfile.id, secret, sessionId, $screenReaderChoice);
   }
   async function onfactor(): Promise<AuthResult> {
-    if (!pickedProfile) return { ok: false, error: "No profile selected." };
+    if (!pickedProfile) return { ok: false, error: $t("g.noProfile") };
     return beginFactor(pickedProfile.id, "fido2");
   }
 </script>

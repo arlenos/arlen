@@ -96,7 +96,11 @@ export async function authenticate(
       screenReader,
     });
   } catch (e) {
-    return { ok: false, error: String(e) };
+    // NO message. What PAM says is worth showing; what the invoke says when it
+    // fails is machinery, and this screen renders whatever lands in `error`. With
+    // none, the panel falls back to its own translated sentence.
+    console.warn("greeter: the authentication call did not complete", e);
+    return { ok: false };
   }
 }
 
@@ -106,7 +110,8 @@ export async function beginFactor(profileId: string, factor: Factor): Promise<Au
   try {
     return await invoke<AuthResult>("greeter_factor_begin", { profileId, factor });
   } catch (e) {
-    return { ok: false, error: String(e) };
+    console.warn("greeter: the hardware factor call did not complete", e);
+    return { ok: false };
   }
 }
 
