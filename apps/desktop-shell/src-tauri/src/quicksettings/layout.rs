@@ -259,23 +259,17 @@ pub fn start_qs_layout_watcher(app: tauri::AppHandle) {
 mod tests {
     use super::*;
 
-    static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    /// Run `f` with a config dir of its own.
+    ///
+    /// The lock is the CRATE's, not this module's. It used to be a `Mutex` here,
+    /// which serialised these three tests against each other and against nothing
+    /// else - while `clipboard_history` held a second lock over the same
+    /// process-global `XDG_CONFIG_HOME` and `settings_provider` held none. The
+    /// symptom was this module failing under a parallel run and passing under
+    /// `--test-threads=1`.
     fn with_isolated_config<R>(f: impl FnOnce() -> R) -> R {
-        let _g = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        let prev = std::env::var_os("XDG_CONFIG_HOME");
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", tmp.path());
-        }
-        let out = f();
-        unsafe {
-            match prev {
-                Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
-                None => std::env::remove_var("XDG_CONFIG_HOME"),
-            }
-        }
-        out
+        crate::test_env::with_config_home(|_| f())
     }
 
     #[test]

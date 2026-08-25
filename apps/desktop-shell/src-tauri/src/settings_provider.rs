@@ -538,10 +538,12 @@ mod tests {
     /// hand-edit. The malformed file must come out byte-identical.
     #[test]
     fn a_malformed_config_is_left_alone_rather_than_replaced() {
-        let dir = std::env::temp_dir().join(format!("arlen-cfg-{}", std::process::id()));
+        // Through the crate's lock, and PUT BACK afterwards. This test used to
+        // set `XDG_CONFIG_HOME` to a pid-named dir and leave it set, so every
+        // later test on the same thread read that dir - and the two modules that
+        // do lock the variable were locking against each other, not against this.
+        crate::test_env::with_config_home(|dir| {
         std::fs::create_dir_all(dir.join("arlen")).unwrap();
-        // SAFETY: the test owns its own temp config dir.
-        unsafe { std::env::set_var("XDG_CONFIG_HOME", &dir) };
 
         let path = dir.join("arlen/shell.toml");
         let original = b"[focus]\nthis line = = is not toml\n";
@@ -554,7 +556,7 @@ mod tests {
             original,
             "the file a person can still fix by hand is untouched"
         );
-        std::fs::remove_dir_all(&dir).ok();
+        });
     }
 
     fn make_index() -> Vec<IndexedSetting> {
