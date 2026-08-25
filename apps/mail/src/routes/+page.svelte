@@ -63,10 +63,10 @@
   let preset = $state<{ to: string; subject: string; body: string }>({ to: "", subject: "", body: "" });
 
   type Failure =
-    | { problem: "launch"; reason: string }
+    | { problem: "launch" }
     | { problem: "unreadable"; why: string }
     | { problem: "not-a-message" }
-    | { problem: "other"; reason: string };
+    | { problem: "other" };
   let failure = $state<Failure | null>(null);
 
   // The shell menu's dispatch. Reply/forward no-op with nothing open, the
@@ -97,7 +97,13 @@
       try {
         launched = await invoke<string | null>("launch_file");
       } catch (e) {
-        failure = { problem: "launch", reason: String(e) };
+        // No reason on the surface. `launch_file` returns `Option<String>` and
+        // cannot reject on a real machine, so what reaches here is the runtime
+        // itself being absent - and the words it produces are the machinery's
+        // ("stub-host: no backend behind this window (launch_file)"), which is
+        // what the reader printed one app over until 01:4x this morning.
+        console.warn("mail: the window could not learn what to open", e);
+        failure = { problem: "launch" };
         return;
       }
       if (!launched) return;
@@ -127,7 +133,13 @@
         if (named?.problem === "unreadable")
           failure = { problem: "unreadable", why: String(named.why ?? "") };
         else if (named?.problem === "not-a-message") failure = { problem: "not-a-message" };
-        else failure = { problem: "other", reason: String(e) };
+        else {
+          // Same rule as the two named cases above: the host's own words name a
+          // command and carry an errno, and they go where whoever debugs this
+          // will read them.
+          console.warn("mail: that message could not be read", e);
+          failure = { problem: "other" };
+        }
       }
     })();
   });
@@ -412,10 +424,10 @@
         {:else if failure}
           <div class="center">
             <p class="note bad" role="alert">
-              {#if failure.problem === "launch"}{$t("ml.failed.launch", { reason: failure.reason })}
+              {#if failure.problem === "launch"}{$t("ml.failed.launch")}
               {:else if failure.problem === "unreadable"}{$t("ml.failed.unreadable", { why: failure.why })}
               {:else if failure.problem === "not-a-message"}{$t("ml.failed.notAMessage")}
-              {:else}{$t("ml.failed.other", { reason: failure.reason })}{/if}
+              {:else}{$t("ml.failed.other")}{/if}
             </p>
           </div>
         {:else if fileOpen && $openedFile}
