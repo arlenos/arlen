@@ -114,6 +114,33 @@ function run(root) {
 }
 
 {
+  // ACROSS A FILE, along an import: the store sets it, the page shows it.
+  const root = tree(null);
+  const dir = `${root}/apps/thing/src`;
+  mkdirSync(`${dir}/lib/stores`, { recursive: true });
+  mkdirSync(`${dir}/routes`, { recursive: true });
+  writeFileSync(`${dir}/lib/stores/thing.ts`, `export const failure = writable<string | null>(null);\nexport function load(e: unknown) { failure.set(String(e)); }\n`);
+  writeFileSync(`${dir}/routes/+page.svelte`, `<script>\n  import { failure } from "$lib/stores/thing";\n</script>\n<p>{$t("th.failed", { reason: $failure })}</p>\n`);
+  const rc = run(root);
+  rc === 1 ? ok("a taint imported from another file is caught") : bad("a taint imported from another file is caught", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // THE BOUNDARY that made the name-only version report nonsense: two files with
+  // a same-named local and NO import between them are two different variables.
+  const root = tree(null);
+  const dir = `${root}/apps/thing/src`;
+  mkdirSync(`${dir}/lib`, { recursive: true });
+  mkdirSync(`${dir}/routes`, { recursive: true });
+  writeFileSync(`${dir}/lib/other.ts`, `export function f(e: unknown) { const reason = String(e); console.warn(reason); }\n`);
+  writeFileSync(`${dir}/routes/+page.svelte`, `<script>\n  const reason = tokenOf(err);\n</script>\n<p>{$t("th.failed", { reason })}</p>\n`);
+  const rc = run(root);
+  rc === 0 ? ok("a same-named local in an unrelated file is not a taint") : bad("a same-named local in an unrelated file is not a taint", `expected 0, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   // A gate that reads nothing must not look like a gate that found nothing wrong.
   const root = tree(null);
   const rc = run(root);

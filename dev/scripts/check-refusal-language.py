@@ -49,11 +49,19 @@ about, nothing crosses a file boundary, and the two facts either both appear or
 they do not. A name reassigned to a token before use stops matching, because it is
 then no longer assigned `String(e)` - which is what the fix looks like.
 
+ACROSS A FILE. A store setting `String(e)` and a page interpolating it is the same
+defect again, and it was left out of the first widening as out of reach. It is
+not, as long as the link is an IMPORT rather than a guess: the consuming file must
+name the symbol in an `import { ... } from "..."` whose module is the file that
+taints it. Matching on the name alone was tried first and reported three sites
+where a local `error` in a catch happened to share a name with an unrelated one in
+another file - which is what "confident nonsense" looks like, and why the import is
+required rather than assumed.
+
 WHAT IT STILL CANNOT SEE. A raw error handed straight into a component prop, or
 assigned into state and rendered with no catalog call at all -
-`check-unrendered-error` is the gate for that side. And a taint that crosses files
-(a store setting `String(e)`, a page interpolating it) is out of reach by design;
-that one is caught by reading, not by this.
+`check-unrendered-error` is the gate for that side. A taint reaching a page
+through two hops, or through a default import, is also outside it.
 
 Run: dev/scripts/check-refusal-language.py [root]
 """
@@ -62,7 +70,7 @@ from __future__ import annotations
 
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePath
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
@@ -82,6 +90,10 @@ CALL = re.compile(
 CALL_ARGS = re.compile(
     r"""\$?t\)?\(\s*["'](?P<key>[a-zA-Z][\w.]*)["']\s*,\s*\{(?P<args>[^}]*)\}""",
 )
+
+#: A named import, so a cross-file taint is followed along a link the code states
+#: rather than one inferred from a shared name. `import { a, b as c } from "./x"`.
+IMPORT = re.compile(r"""import\s*\{(?P<names>[^}]*)\}\s*from\s*["'](?P<mod>[^"']+)["']""", re.S)
 
 #: A name given a stringified exception: `const msg = String(e)`, a plain
 #: `saveError = String(e)`, a store's `.set(String(e))`, and the template-literal
@@ -108,6 +120,15 @@ ACKNOWLEDGED = {
     "apps/settings/src/routes/appearance/quicksettings/+page.svelte:385": (
         "guarded by `readsAsInternal`: same trade on the reset path"
     ),
+    # NOT argued for - recorded. `apps/store` is arlen-ui's live work and the
+    # coder does not edit it, so the finding is held here where its owner can see
+    # it rather than left as a standing red that teaches everybody to pass
+    # `--no-verify`. `updateFailure` is set from `String(e)` in
+    # `apps/store/src/lib/stores/updates.ts` and finishes `st.upd.failed`; the
+    # fix is the usual one, a token from the backend and the sentence here.
+    "apps/store/src/routes/updates/+page.svelte:54": (
+        "arlen-ui's app; reported to its owner rather than edited from this lane"
+    ),
     "apps/viewers/src/routes/+page.svelte:535": (
         "guarded by `readsAsInternal`: an internal-looking error falls to "
         "`v.couldNotOpenUnknown`. The third copy of that predicate, which is the "
@@ -130,14 +151,41 @@ def main() -> int:
         )
         return 2
 
+    # Read once. Every file is needed twice - for its own lines, and as a possible
+    # source of a name another file imports - and re-reading 954 files for the
+    # second pass costs more than holding them.
+    sources = {p: p.read_text(encoding="utf-8", errors="replace") for p in files}
+
+    def tainted_names(text: str) -> set[str]:
+        return {m.group("n") for rx in TAINTS for m in rx.finditer(text)}
+
+    #: Module stem to the names that file gives a stringified exception to. Keyed
+    #: by stem because an import path is written `$lib/stores/meeting` or
+    #: `./meeting` and resolving either to a real path is more machinery than the
+    #: question needs; a same-named module elsewhere would at worst make this
+    #: report a site somebody still has to look at.
+    taints_by_stem: dict[str, set[str]] = {}
+    for p, text in sources.items():
+        names = tainted_names(text)
+        if names:
+            taints_by_stem.setdefault(p.stem, set()).update(names)
+
     problems: list[str] = []
     seen_acknowledged: set[str] = set()
     for path in sorted(files):
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = sources[path]
         # Names this file gives a stringified exception to. Collected over the
         # whole file before the line walk, because the assignment is usually in a
         # catch and the interpolation is in the markup far below it.
-        tainted = {m.group("n") for rx in TAINTS for m in rx.finditer(text)}
+        tainted = {n: "this file" for n in tainted_names(text)}
+        # Names this file imports whose source module taints them. `b as c` binds
+        # `c`, so the local name is what the argument object would carry.
+        for m in IMPORT.finditer(text):
+            stem = PurePath(m.group("mod")).name
+            for raw in m.group("names").split(","):
+                local = raw.strip().split(" as ")[-1].strip()
+                if local and local in taints_by_stem.get(stem, ()):
+                    tainted.setdefault(local, f"`{m.group('mod')}`")
         for n, line in enumerate(text.splitlines(), 1):
             where = f"{path.relative_to(ROOT)}:{n}"
             match = CALL.search(line)
@@ -167,8 +215,8 @@ def main() -> int:
                     break
                 problems.append(
                     f"{where}: `{laundered.group('key')}` is completed with `{name}`, "
-                    f"which this file sets to a stringified error - the same half-translated "
-                    f"sentence, reached through a variable"
+                    f"which {tainted[name]} sets to a stringified error - the same "
+                    f"half-translated sentence, reached through a variable"
                 )
                 break
 
