@@ -33,6 +33,16 @@ export const historyResults = writable<Block[]>([]);
 /// nothing instead of claiming "no matches".
 export const historyLoaded = writable(false);
 
+/// True when the last search did not run.
+///
+/// Distinct from an empty result, and the palette needs both: a failed search
+/// used to set `historyResults` to `[]` and `historyLoaded` to true, so the
+/// palette said "Keine passenden Befehle" or "Befehle, die du ausführst, landen
+/// hier" - statements about the person's own history, made after failing to read
+/// it. The file manager's search results already carry this three-way
+/// distinction; this is the same, one app over.
+export const historyUnavailable = writable(false);
+
 let debounce: ReturnType<typeof setTimeout> | null = null;
 
 export function openHistoryPalette(): void {
@@ -53,8 +63,11 @@ export async function runHistorySearch(): Promise<void> {
   };
   try {
     historyResults.set(await terminalHistorySearch(get(historyQuery), filters));
-  } catch {
+    historyUnavailable.set(false);
+  } catch (e) {
+    console.warn("terminal: the history search did not run", e);
     historyResults.set([]);
+    historyUnavailable.set(true);
   }
   historyLoaded.set(true);
 }
