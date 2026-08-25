@@ -75,7 +75,12 @@
   onMount(() => {
     // The op-error line has no data of its own: it renders whatever the last
     // failed action put there, so the harness puts one there.
-    opError.set("Kingston USB is still in use, so it was not ejected");
+    //
+    // A KEY, not a sentence. This held an English literal until the store started
+    // carrying keys, at which point the harness would have rendered the sentence
+    // as a lookup and drawn the sentence itself back - a render harness quietly
+    // showing something the app can no longer produce.
+    opError.set("f.op.refused");
   });
 
   onMount(async () => {
