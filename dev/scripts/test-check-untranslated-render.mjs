@@ -119,6 +119,35 @@ console.log("check-untranslated-render:");
 }
 
 {
+  // A tainted FIELD read as a field, which is how a tagged refusal reaches markup.
+  const root = tree({
+    "apps/thing/src/routes/+page.svelte":
+      "<script>\n  let failure = null;\n  function go(e) { failure = { kind: 'unavailable', reason: String(e) }; }\n</script>\n" +
+      "{#if failure}<span>{failure.reason}</span>{/if}\n",
+  });
+  const r = run(root);
+  r.code === 1 && r.out.includes("failure.reason")
+    ? ok("a tainted field drawn as a field is caught")
+    : bad("a tainted field drawn as a field is caught", `got ${r.code}: ${r.out}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // THE BOUNDARY the field rule turns on, and it is a real file: `FmInfoPanel`
+  // has a local holding a TRANSLATED sentence three lines from a store carrying a
+  // tainted field of the same name. Field names are the most ordinary words in
+  // the language, so a bare `{reason}` must not be assumed to be the field.
+  const root = tree({
+    "apps/thing/src/routes/+page.svelte":
+      "<script>\n  const store = { reason: String(err) };\n</script>\n" +
+      "{#if x}{@const reason = sentenceFor(read)}<span>{reason}</span>{/if}\n",
+  });
+  const r = run(root);
+  r.code === 0 ? ok("a local of the same name as a tainted field passes") : bad("a local of the same name as a tainted field passes", r.out);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   const root = tree(null);
   const r = run(root);
   r.code === 2 && r.out.includes("NOTHING WAS READ")
