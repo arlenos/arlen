@@ -530,9 +530,14 @@
     <div class="winctl">
       <WindowButtons showMaximize={false} />
     </div>
-    {readsAsInternal(loadError)
-      ? $t("v.couldNotOpenUnknown")
-      : $t("v.couldNotOpen", { reason: loadError })}
+    <!-- Announced: this replaces the whole view after the person opened a file,
+         so somebody who cannot see it has no other signal that the open did not
+         take - the window simply stops showing anything. -->
+    <p role="alert">
+      {readsAsInternal(loadError)
+        ? $t("v.couldNotOpenUnknown")
+        : $t("v.couldNotOpen", { reason: loadError })}
+    </p>
   </main>
 {:else if noFile}
   <!-- Before the demo branches on purpose: in the real shell an empty window is
