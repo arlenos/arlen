@@ -105,6 +105,29 @@ fn write_file(file: ConfigFile, value: &toml::Value) -> Result<(), String> {
 
 /// Read the whole file (when `key` is None) or a single dot-notation key.
 #[tauri::command]
+/// READS THE FILE, INCLUDING FOR THE SIX KEYS WRITES DO NOT GO TO.
+///
+/// `config_set` routes an AI master switch to the config-broker when it is
+/// reachable, and this reads `ai.toml`. While the broker is unreachable the two
+/// agree, because the setter falls back to the file - that is what its comment
+/// means by "kept coherent with the readers' fallback". They stop agreeing the
+/// moment the broker IS running, which is the moment the security property
+/// arrives: the write lands in the broker's store and the read still answers from
+/// a file the broker never writes back to (it only seeds FROM it, at first run).
+///
+/// So this is latent rather than broken, and it activates at the cutover. The
+/// visible form would be the AI page: it reads `ai.access_level`,
+/// `ai.action_mode`, `ai.autonomous_apps` and `agent.executor_live` through the
+/// whole-file store and writes all four through `setValue`, so after a reload
+/// each control could show the value that was in force before the last change.
+/// Those are the four switches where a wrong reading matters most.
+///
+/// Not fixed here, deliberately. The symmetric fix makes this broker-aware,
+/// which means making it async - every caller of a sync command changes - and
+/// the whole-file read (`key: None`) has to merge the broker's values into the
+/// document rather than just override one lookup. `ai_defaults_get` below is the
+/// small precedent for the shape. Who moves the reader side, and whether the file
+/// stays a readable mirror after the cutover, is the cutover's design call.
 pub fn config_get(
     file: ConfigFile,
     key: Option<String>,
