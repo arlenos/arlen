@@ -317,6 +317,22 @@ pub async fn ai_working_set() -> String {
 /// daemon that is unreachable or holds no grant contributes nothing, so a
 /// partial view is honest rather than an error. Returns a JSON array (the
 /// frontend invokes it as `GrantView[]`); empty when neither principal answers.
+///
+/// THE TWO-PRINCIPAL PREMISE IS EXPIRING, and it matters before this member is
+/// ever served. `daemons/ai-engine-daemon` now owns BOTH names on ONE connection
+/// - it is the drop-in for the retired ai-daemon and ai-agent alike, and the
+/// identity resolver maps its binary to the single app id `ai-agent` on the
+/// principle that an app id is a role, not a binary name. The knowledge daemon
+/// scopes `access_grants` by the attested peer, so once the transition finishes
+/// both names answer with the SAME grant set and this loop renders every grant
+/// twice.
+///
+/// It is still two principals DURING the transition: the engine's request for
+/// `org.arlen.AIAgent1` is graceful and fails while the old agent still owns the
+/// name. So collapsing this to one read now would be wrong on a machine that has
+/// not finished the cutover, and leaving it is wrong on one that has. Whoever
+/// serves the member should decide which world this app is written for, rather
+/// than discovering the doubling on screen.
 #[tauri::command]
 pub async fn ai_access_grants() -> serde_json::Value {
     // Null - NOT an empty array - if EITHER principal cannot be read. The reader
