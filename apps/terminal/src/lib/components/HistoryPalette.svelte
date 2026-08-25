@@ -25,6 +25,7 @@
     historyProjectId,
     historyResults,
     historyLoaded,
+    historyUnavailable,
     closeHistoryPalette,
     runHistorySearch,
     queueHistorySearch,
@@ -149,10 +150,15 @@
         </div>
         <CommandList class="hp-list">
           {#if $historyLoaded && $historyResults.length === 0}
-            <div class="hp-empty">
-              {historyFiltered
-                ? $t("term.hist.empty.filtered")
-                : $t("term.hist.empty.default")}
+            <div class="hp-empty" role={$historyUnavailable ? "alert" : undefined}>
+              <!-- Three states, not two. A search that did not RUN produces the
+                   same empty list as one that ran and matched nothing, and both
+                   sentences below are claims about the person's own history. -->
+              {$historyUnavailable
+                ? $t("term.hist.unavailable")
+                : historyFiltered
+                  ? $t("term.hist.empty.filtered")
+                  : $t("term.hist.empty.default")}
             </div>
           {/if}
           {#each $historyResults as b (b.id)}
