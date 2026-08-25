@@ -110,7 +110,7 @@
   // project membership is bitemporal, so this is the meaningful slice.
   let asOfChoice = $state("now");
   let asOfMicros = $state<number | null>(null);
-  const asOfVerwandt = writable<Info["related"] | null>(null);
+  const asOfRelated = writable<Info["related"] | null>(null);
 
   // Reset transient view state when the inspected file changes.
   let advancedOpen = $state(false);
@@ -132,15 +132,15 @@
     const p = path;
     const t = asOfMicros;
     if (t === null) {
-      asOfVerwandt.set(null);
+      asOfRelated.set(null);
       return;
     }
     invoke<Info["related"]>("files_related_as_of", { path: p, asOfMicros: t })
-      .then((r) => asOfVerwandt.set(r))
+      .then((r) => asOfRelated.set(r))
       // A failed INVOKE is the app not reaching its own backend, which is a
       // different thing again from the backend reaching no graph - say that
       // rather than borrowing one of the backend's three answers.
-      .catch((e) => asOfVerwandt.set({ state: "unavailable", reason: String(e) }));
+      .catch((e) => asOfRelated.set({ state: "unavailable", reason: String(e) }));
   });
 
   const asOfLabel = $derived(
@@ -308,7 +308,7 @@
     </section>
 
     {#if $info.related}
-      {@const read = asOfMicros === null ? $info.related : ($asOfVerwandt ?? $info.related)}
+      {@const read = asOfMicros === null ? $info.related : ($asOfRelated ?? $info.related)}
       {@const rels = rows(read)}
       {@const reason = reasonOf(read)}
       <section class="sec">
