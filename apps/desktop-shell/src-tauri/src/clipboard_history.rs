@@ -957,33 +957,25 @@ mod tests {
     /// Both XDG_CONFIG_HOME-dependent tests share a mutex because
     /// they mutate the global process env; parallel test runs would
     /// otherwise see each other's values and flake unpredictably.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn enabled_defaults_to_false_without_config() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        // Point XDG at an empty dir. `dirs::config_dir()` will prefer
-        // XDG_CONFIG_HOME over HOME-derived paths, so the
-        // arlen/shell.toml lookup returns nothing.
-        std::env::set_var("XDG_CONFIG_HOME", tmp.path());
-        assert!(!read_enabled_from_shell_toml());
-        std::env::remove_var("XDG_CONFIG_HOME");
+        // Point XDG at an empty dir. `dirs::config_dir()` prefers
+        // XDG_CONFIG_HOME over HOME-derived paths, so the arlen/shell.toml
+        // lookup returns nothing. The crate's lock, not a second one over the
+        // same process-global variable.
+        crate::test_env::with_config_home(|_| {
+            assert!(!read_enabled_from_shell_toml());
+        });
     }
 
     #[test]
     fn enabled_reads_shell_toml_section() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        let cfg = tmp.path().join("arlen");
-        std::fs::create_dir_all(&cfg).unwrap();
-        std::fs::write(
-            cfg.join("shell.toml"),
-            "[clipboard]\nenabled = true\n",
-        )
-        .unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", tmp.path());
-        assert!(read_enabled_from_shell_toml());
-        std::env::remove_var("XDG_CONFIG_HOME");
+        crate::test_env::with_config_home(|home| {
+            let cfg = home.join("arlen");
+            std::fs::create_dir_all(&cfg).unwrap();
+            std::fs::write(cfg.join("shell.toml"), "[clipboard]\nenabled = true\n").unwrap();
+            assert!(read_enabled_from_shell_toml());
+        });
     }
 }

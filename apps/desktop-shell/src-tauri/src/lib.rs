@@ -1,4 +1,6 @@
 mod accessibility;
+#[cfg(test)]
+mod test_env;
 mod app_history;
 mod consent_window;
 mod app_index;
