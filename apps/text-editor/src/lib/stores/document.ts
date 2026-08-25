@@ -38,7 +38,7 @@ export type OpenProblem =
   | { problem: "not-absolute" }
   | { problem: "unreadable"; why: string }
   | { problem: "not-text" }
-  | { problem: "other"; reason: string };
+  | { problem: "other" };
 
 export const openError = writable<OpenProblem | null>(null);
 
@@ -96,7 +96,13 @@ function named(e: unknown): OpenProblem {
   if (bag?.problem === "unreadable")
     return { problem: "unreadable", why: String(bag.why ?? "") };
   if (bag?.problem === "not-text") return { problem: "not-text" };
-  return { problem: "other", reason: String(e) };
+  // No reason carried. The page drew this field bare - `{$openError.reason}` -
+  // so whatever the host formatted was the whole detail line under "Diese Datei
+  // konnte nicht geöffnet werden", in every language. The three named problems
+  // above have their own sentences; this one gets the general one and the host's
+  // words go to the log.
+  console.warn("text-editor: that file could not be opened", e);
+  return { problem: "other" };
 }
 
 /// The basename of the file the editor was launched on, whether or not it opened.
