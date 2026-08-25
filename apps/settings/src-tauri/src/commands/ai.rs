@@ -118,31 +118,38 @@ async fn ai_call_string(member: &str) -> Result<String, String> {
 
 /// The catalogued providers for the Settings AI-providers manager
 /// (`ai_providers_list`): a JSON array of `{ id, name, kind, enabled,
-/// configured, status }`. Empty array if the daemon is unreachable.
+/// configured, status }`. An error when the proxy cannot be reached, never an
+/// empty array - see [`proxy_call_string`].
 #[tauri::command]
-pub async fn ai_providers_list() -> String {
+pub async fn ai_providers_list() -> Result<String, String> {
     // The provider catalog lives on the AI PROXY (`org.arlen.AIProxy1`), whose
     // `list_providers` member returns the sovereignty-annotated ProviderView list;
     // the AI daemon does not serve it.
-    proxy_call_string("list_providers", "[]").await
+    proxy_call_string("list_providers").await
 }
 
 /// Call a String-returning member on the AI PROXY (`org.arlen.AIProxy1`), which
 /// owns the provider catalog. Distinct from [`ai_call_string`] (the AI daemon
-/// `org.arlen.AI1`); returns `fallback` on any connection or call failure.
-async fn proxy_call_string(member: &str, fallback: &str) -> String {
-    let Ok(connection) = zbus::Connection::session().await else {
-        return fallback.to_string();
-    };
-    let Ok(proxy) =
-        zbus::Proxy::new(&connection, AI_PROXY_NAME, AI_PROXY_OBJECT_PATH, AI_PROXY_NAME).await
-    else {
-        return fallback.to_string();
-    };
+/// `org.arlen.AI1`).
+///
+/// This one differs from its two neighbours in a way worth stating: ai-proxy
+/// really does serve `list_providers`, so unlike the members on `org.arlen.AI1`
+/// this call succeeds whenever the proxy is running. That makes the failure a
+/// real runtime state rather than a permanent one, and it is exactly why the
+/// substitution had to go: an empty provider list is a sentence about the
+/// person's setup ("you have none configured"), and a proxy that is down has not
+/// earned the right to say it.
+async fn proxy_call_string(member: &str) -> Result<String, String> {
+    let connection = zbus::Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    let proxy = zbus::Proxy::new(&connection, AI_PROXY_NAME, AI_PROXY_OBJECT_PATH, AI_PROXY_NAME)
+        .await
+        .map_err(|e| format!("AI proxy unavailable: {e}"))?;
     proxy
         .call::<_, _, String>(member, &())
         .await
-        .unwrap_or_else(|_| fallback.to_string())
+        .map_err(|e| format!("{member}: {e}"))
 }
 
 /// Call a String-returning member on the AI AGENT daemon (`org.arlen.AIAgent1`),
