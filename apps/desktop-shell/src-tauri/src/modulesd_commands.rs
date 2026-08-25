@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use modulesd_proto::{HostCall, HostReply, ModuleSummary, Request, Response};
+use modulesd_proto::{ErrorCode, HostCall, HostReply, ModuleSummary, Request, Response};
 use serde::Serialize;
 
 use arlen_desktop_shell_core::modulesd_client::ModulesdClient;
@@ -96,7 +96,89 @@ async fn call(
     client: &Arc<ModulesdClient>,
     req: Request,
 ) -> Result<Response, String> {
-    client.call(req).await.map_err(|e| e.to_string())
+    client.call(req).await.map_err(|e| {
+        // The transport, not the daemon's verdict: a socket that is not there or
+        // a reply that will not parse. `internal` is the honest token for it, and
+        // the system's own words go to the log.
+        log::warn!("modulesd call failed: {e}");
+        refusal(ErrorCode::Internal)
+    })
+}
+
+/// The token a refusal travels to the window as.
+///
+/// `Response::Error` has carried a machine-readable `code` beside its `message`
+/// all along, and every shim below threw the code away and returned the message.
+/// One of them reaches a translated sentence - the module host's "did not mount"
+/// tooltip filled its `{$why}` with it - so a German reader met "module
+/// com.example.x not found" inside a German clause. The code was already there;
+/// nothing was reading it.
+///
+/// Kebab-case, matching the refusal tokens the other app surfaces use
+/// (`not-permitted`, `file-changed-on-disk`), NOT the `snake_case` the proto
+/// serialises: this word is for a window, and one shape across the windows is
+/// worth more here than agreement with a wire nobody reading it will see. The
+/// code that goes back to a MODULE keeps the wire form, below.
+fn refusal(code: ErrorCode) -> String {
+    match code {
+        ErrorCode::NotFound => "not-found",
+        ErrorCode::PermissionDenied => "permission-denied",
+        ErrorCode::ModuleFailed => "module-failed",
+        ErrorCode::Timeout => "timeout",
+        ErrorCode::InvalidRequest => "invalid-request",
+        ErrorCode::Internal => "internal",
+    }
+    .to_string()
+}
+
+/// A reply that is neither the expected one nor a named error.
+///
+/// Its debug form names internal types, so it goes to the log and the window is
+/// told the one true thing: something went wrong inside.
+fn unexpected(what: &str, other: &Response) -> String {
+    log::warn!("{what}: unexpected reply {other:?}");
+    refusal(ErrorCode::Internal)
+}
+
+#[cfg(test)]
+mod refusal_tests {
+    use super::*;
+
+    #[test]
+    fn every_code_has_a_word_and_none_of_them_is_a_sentence() {
+        // The window looks each of these up in its catalogue. A token that read
+        // as a sentence would be shown as one, which is the whole defect this
+        // replaced.
+        for code in [
+            ErrorCode::NotFound,
+            ErrorCode::PermissionDenied,
+            ErrorCode::ModuleFailed,
+            ErrorCode::Timeout,
+            ErrorCode::InvalidRequest,
+            ErrorCode::Internal,
+        ] {
+            let t = refusal(code);
+            assert!(!t.contains(' '), "token {t} reads as a sentence");
+            assert!(
+                t.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
+                "token {t} is not kebab-case"
+            );
+        }
+    }
+
+    #[test]
+    fn the_code_a_module_receives_is_the_wire_spelling() {
+        // `format!("{:?}").to_lowercase()` gave `notfound`; the proto says
+        // `not_found`. A module matching the documented code never matched.
+        assert_eq!(
+            serde_json::to_value(ErrorCode::NotFound).unwrap().as_str(),
+            Some("not_found")
+        );
+        assert_eq!(
+            serde_json::to_value(ErrorCode::PermissionDenied).unwrap().as_str(),
+            Some("permission_denied")
+        );
+    }
 }
 
 /// List every module the daemon knows about. The Phase-7-style
@@ -116,8 +198,11 @@ pub async fn modulesd_list_modules(
         Response::ModuleList { modules, .. } => {
             Ok(modules.into_iter().map(UiModule::from).collect())
         }
-        Response::Error { message, .. } => Err(message),
-        other => Err(format!("unexpected reply: {other:?}")),
+        Response::Error { code, message, .. } => {
+            log::warn!("modulesd refused: {code:?}: {message}");
+            Err(refusal(code))
+        }
+        ref other => Err(unexpected("modulesd", other)),
     }
 }
 
@@ -139,8 +224,11 @@ pub async fn mint_iframe(
     .await?;
     match resp {
         Response::IframeIssued { url, nonce, .. } => Ok(UiIframe { url, nonce }),
-        Response::Error { message, .. } => Err(message),
-        other => Err(format!("unexpected reply: {other:?}")),
+        Response::Error { code, message, .. } => {
+            log::warn!("modulesd refused: {code:?}: {message}");
+            Err(refusal(code))
+        }
+        ref other => Err(unexpected("modulesd", other)),
     }
 }
 
@@ -165,10 +253,18 @@ pub async fn module_host_call(
     match resp {
         Response::HostReply { reply, .. } => Ok(reply.into()),
         Response::Error { message, code, .. } => Ok(UiHostReply::Error {
-            code: format!("{code:?}").to_lowercase(),
+            // The WIRE spelling, for a module author reading the proto. It used
+            // to be `format!("{code:?}").to_lowercase()`, which turns `NotFound`
+            // into `notfound` while the proto's own `rename_all = "snake_case"`
+            // makes it `not_found` - so a module matching the documented code
+            // never matched. Serialised through serde so the two cannot drift.
+            code: serde_json::to_value(code)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_else(|| "internal".to_string()),
             message,
         }),
-        other => Err(format!("unexpected reply: {other:?}")),
+        ref other => Err(unexpected("module host call", other)),
     }
 }
 
@@ -192,8 +288,11 @@ pub async fn modulesd_set_enabled(
     .await?;
     match resp {
         Response::Acked { .. } => Ok(()),
-        Response::Error { message, .. } => Err(message),
-        other => Err(format!("unexpected reply: {other:?}")),
+        Response::Error { code, message, .. } => {
+            log::warn!("modulesd refused: {code:?}: {message}");
+            Err(refusal(code))
+        }
+        ref other => Err(unexpected("modulesd", other)),
     }
 }
 
@@ -213,8 +312,11 @@ pub async fn retry_module(
     .await?;
     match resp {
         Response::Acked { .. } => Ok(()),
-        Response::Error { message, .. } => Err(message),
-        other => Err(format!("unexpected reply: {other:?}")),
+        Response::Error { code, message, .. } => {
+            log::warn!("modulesd refused: {code:?}: {message}");
+            Err(refusal(code))
+        }
+        ref other => Err(unexpected("modulesd", other)),
     }
 }
 

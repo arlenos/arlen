@@ -55,7 +55,37 @@
   let iframe: HTMLIFrameElement | undefined = $state(undefined);
   let iframeUrl = $state<string | null>(null);
   let nonce = $state<string | null>(null);
+  /// The tokens `mint_iframe` answers with, to the key that says each one.
+  ///
+  /// Derived from `ErrorCode` in the modulesd proto, kebab-cased the way the
+  /// shell's other refusal tokens are.
+  const MOUNT_WHY: Record<string, string> = {
+    "not-found": "sh.module.why.notFound",
+    "permission-denied": "sh.module.why.permissionDenied",
+    "module-failed": "sh.module.why.moduleFailed",
+    timeout: "sh.module.why.timeout",
+    "invalid-request": "sh.module.why.invalidRequest",
+    internal: "sh.module.why.internal",
+  };
+
+  /// The message key for why the mint refused, not the refusal itself.
+  ///
+  /// `mint_iframe` answers with a token now (`not-found`, `timeout`, ...); this
+  /// used to hold `String(err)` and the tooltip interpolated it, which put the
+  /// daemon's English inside a translated sentence.
   let mountError = $state<string | null>(null);
+
+  /// A refusal token to the sentence that says it.
+  ///
+  /// An unrecognised token means the host changed: the console is where that
+  /// belongs, and the page says the vague true thing rather than the word.
+  function mountFailureKey(err: unknown): string {
+    const token = String(err);
+    const key = MOUNT_WHY[token];
+    if (key) return key;
+    console.warn("shell: unrecognised module mint refusal", token);
+    return "sh.module.why.internal";
+  }
 
   /// Send a typed message to the iframe.
   function sendToIframe(msg: HostToModule) {
@@ -210,7 +240,7 @@
       nonce = issued.nonce;
       iframeUrl = issued.url;
     } catch (err) {
-      mountError = String(err);
+      mountError = mountFailureKey(err);
     }
     window.addEventListener("message", handleMessage);
   });
@@ -234,7 +264,7 @@
 </script>
 
 {#if mountError}
-  <div class="mod-failed" title={$t("sh.module.didNotMount", { why: mountError })}>
+  <div class="mod-failed" title={$t("sh.module.didNotMount", { why: $t(mountError) })}>
     <span class="mod-failed-glyph">!</span>
   </div>
 {:else if module.failed}
