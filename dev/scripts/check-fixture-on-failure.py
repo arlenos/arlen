@@ -35,6 +35,21 @@ read turned out to be exactly this shape and invisible: a plain function whose
 catch returned a five-hop lineage under the user's real filename, with no store
 write anywhere for the check to find.
 
+THE SAME LESSON HAS A RUST SIBLING, deliberately not covered here. A Tauri
+command can answer a failed daemon call with a value rather than an error:
+
+    async fn call_string(bus, path, member, fallback) -> String { ... }
+
+which is this defect one process earlier - the page never sees a failure to
+handle, because the backend already decided what a failure looks like. Four such
+helpers existed at once on 25 August, in two apps, each with its own local
+justification in its own doc, and three were converted that evening (the fourth
+waits on a reader in another lane). It is not checked here because nothing in
+this file's machinery would help: every helper below reads TypeScript catch
+blocks and store writes, so a Rust scanner would share the lesson and none of
+the code. If a fifth appears, that is the moment for its own check rather than a
+graft onto this one.
+
 What it does NOT cover, and the omission is deliberate rather than an oversight:
 
   * `store.set([])` in a catch. Sometimes that is the same defect wearing
