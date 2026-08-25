@@ -135,6 +135,25 @@ export async function go() { return await invoke<State>("demo_state"); }
   check("a Value read as an interface is unchecked, not wrong", r.code === 0);
 }
 {
+  // A doc comment BETWEEN the attribute and the signature. Legal Rust, and the
+  // scanner read it as no command at all - so a real, registered, compiling
+  // command reported as "invoked but nothing defines it". I wrote exactly that
+  // shape into `config_get` while documenting it, and the gate cried about a
+  // function that was working the whole time.
+  const r = run({
+    "apps/demo/src-tauri/src/lib.rs": `
+#[tauri::command]
+/// Notes that landed on the wrong side of the attribute.
+fn demo_read() -> String { String::new() }
+`,
+    "apps/demo/src/lib/call.ts": `
+import { invoke } from "@tauri-apps/api/core";
+export async function go() { return await invoke("demo_read"); }
+`,
+  });
+  check("a doc comment under the attribute still declares the command", r.code === 0);
+}
+{
   const r = run({ "README.md": "nothing here\n" });
   check("an empty tree refuses rather than passing", r.code === 2);
 }
