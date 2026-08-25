@@ -95,26 +95,27 @@ IMPORT = re.compile(r"""import\s*\{(?P<names>[^}]*)\}\s*from\s*["'](?P<mod>[^"']
 #: rather than a hole: a file-keyed exception hides every new instance added to an
 #: already-listed file.
 KNOWN: dict[str, tuple[int, str]] = {
-    # Re-counted on 25 August when attribute values stopped counting. Five entries
-    # went to zero and one halved: they were `title={$store.error}` tooltips
-    # beside a translated sentence, which is a detail in the right place rather
-    # than a surface saying the wrong thing. The queue was overstated by more than
-    # half, which is its own small lesson about carrying numbers nobody re-derives.
+    # Re-counted twice on 25 August, and each pass cut it. First when attribute
+    # values stopped counting: five entries went to zero and one halved, all
+    # `title={$store.error}` tooltips beside a translated sentence. Then when the
+    # shorthand `{error}` was recognised as the attribute it is: the agent page's
+    # single instance was a component prop, and its note here said `explainError
+    # drawn bare` while the file passes that value as `error={explainError}` and
+    # draws nothing. Eleven carried instances became three. Every one that was
+    # kept has been read at the line named below; a number nobody re-derives
+    # reserves room for a new instance to arrive unreported.
     "apps/settings/src/routes/keyboard/shortcuts/+page.svelte": (
         1,
-        "arlen-ui's app; `lastError` drawn bare",
+        "arlen-ui's app; `{lastError}` is the body of the alert at :308",
     ),
     "apps/settings/src/lib/components/displays/RevertConfirmModal.svelte": (
         1,
-        "arlen-ui's app; `error` drawn bare",
-    ),
-    "apps/harness/src/routes/agent/+page.svelte": (
-        1,
-        "arlen-ui's live work; `explainError` drawn bare",
+        "arlen-ui's app; `{error}` is the body of the alert at :152",
     ),
     "apps/harness/src/lib/components/mint/MintFlow.svelte": (
         1,
-        "arlen-ui's live work; `mintError` drawn bare",
+        "arlen-ui's live work; `{$mintError}` at :94, and the store prepends "
+        "an English sentence to it",
     ),
 }
 
@@ -133,20 +134,22 @@ def interpolations(markup: str):
     skipped. Nothing here parses JavaScript; it counts braces, which is enough to
     tell an outermost `{` from one inside an argument list.
     """
-    i, n = 0, len(markup)
+    i, n, in_tag = 0, len(markup), False
     while i < n:
-        if markup[i] != "{":
-            i += 1
-            continue
-        if i + 1 < n and markup[i + 1] in "#:/":
-            i += 1
-            continue
-        # An ATTRIBUTE value, not drawn text. `title={$topbar.error}` puts the
-        # host's words in a tooltip beside a translated sentence, which is where
-        # a detail belongs - four settings pages use exactly that pairing and it
-        # is better than the console for something a person might report. The
-        # rule is about what a surface SAYS, so an attribute is out of scope.
-        if i > 0 and markup[i - 1] == "=":
+        ch = markup[i]
+        if ch != "{":
+            # Inside `<...>` is an attribute position, outside it is drawn text.
+            # The tag state is tracked while walking rather than read off the
+            # character before the brace, because Svelte writes an attribute two
+            # ways: `error={explainError}` and the shorthand `{error}`. Only the
+            # first has an `=` in front of it, so a preceding-character test
+            # calls the shorthand drawn text and reports a component prop as a
+            # claim on the screen. Interpolations are jumped over whole below,
+            # so an arrow function's `>` never closes a tag that is not open.
+            if ch == "<":
+                in_tag = True
+            elif ch == ">":
+                in_tag = False
             i += 1
             continue
         depth, j = 1, i + 1
@@ -158,7 +161,11 @@ def interpolations(markup: str):
             j += 1
         if depth:
             break
-        yield i, markup[i + 1 : j - 1].strip()
+        # Block tags (`{#if}`, `{:else}`, `{/if}`) are not expressions. They are
+        # matched and skipped like any other brace so the walk never steps
+        # inside one, where a `{#if a < b}` would open a tag that has no close.
+        if not (markup[i + 1] in "#:/" or in_tag):
+            yield i, markup[i + 1 : j - 1].strip()
         i = j
 
 
