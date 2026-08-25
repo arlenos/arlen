@@ -83,18 +83,29 @@ fn system_tick(system: tauri::State<'_, SystemMonitor>) -> SystemTick {
     system.sample()
 }
 
+/// A refusal on its way to the window: the word out, the machine's words to the log.
+///
+/// Every action command goes through here, so there is one place that decides
+/// what a person is shown. The detail names an errno or a cgroup path and is for
+/// whoever debugs this; the token is a word the window has a sentence for in the
+/// reader's own language.
+fn refused(action: &str, id: u32, r: actions::Refusal) -> String {
+    log::warn!("{action} on pid {id} refused ({}): {}", r.token(), r.detail());
+    r.token().to_string()
+}
+
 /// Gracefully stop a process (SIGTERM). The kernel refuses a process the user does
 /// not own, so the error is surfaced to the row.
 #[tauri::command]
 fn stop_process(id: u32) -> Result<(), String> {
-    actions::stop(id)
+    actions::stop(id).map_err(|r| refused("stop", id, r))
 }
 
 /// Freeze (`paused=true`) or thaw (`paused=false`) a process - the non-destructive
 /// pause (SIGSTOP/SIGCONT).
 #[tauri::command]
 fn freeze_process(id: u32, paused: bool) -> Result<(), String> {
-    actions::freeze(id, paused)
+    actions::freeze(id, paused).map_err(|r| refused(if paused { "pause" } else { "resume" }, id, r))
 }
 
 /// Soft-leash (`limited=true`) or release a process's CPU via its cgroup `cpu.max`.
@@ -102,20 +113,22 @@ fn freeze_process(id: u32, paused: bool) -> Result<(), String> {
 /// surfaced, so the UI never falsely shows a limit.
 #[tauri::command]
 fn limit_process(id: u32, limited: bool) -> Result<(), String> {
-    actions::limit(id, limited)
+    actions::limit(id, limited).map_err(|r| refused(if limited { "limit" } else { "unlimit" }, id, r))
 }
 
 /// Set a process's scheduling priority - the Advanced affordance
 /// (system-monitor-plan.md (c)).
 ///
-/// Refusals reach the UI verbatim, which matters here more than elsewhere:
-/// raising a nice value needs no privilege but LOWERING one needs `CAP_SYS_NICE`,
-/// so "make this faster" is refused for an ordinary user while "make this
-/// slower" works. A control that quietly did nothing in one direction would be
-/// worse than no control.
+/// Refusals reach the UI, which matters here more than elsewhere: raising a nice
+/// value needs no privilege but LOWERING one needs `CAP_SYS_NICE`, so "make this
+/// faster" is refused for an ordinary user while "make this slower" works. A
+/// control that quietly did nothing in one direction would be worse than no
+/// control. It travels as a token, not verbatim - the verbatim form of this one
+/// is `Operation not permitted (os error 1)`, which is the least useful way to
+/// say the one thing the person needs to hear.
 #[tauri::command]
 fn renice_process(id: u32, nice: i32) -> Result<(), String> {
-    actions::set_nice(id, nice)
+    actions::set_nice(id, nice).map_err(|r| refused("renice", id, r))
 }
 
 /// The priority a process is at now, so the menu can tick the real one. `None`

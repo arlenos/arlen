@@ -97,7 +97,44 @@ export const unavailable = writable(false);
 /// the sentence now, from these.
 ///
 /// Set only when a real backend refused - see `stop`/`setFlagChecked`.
-export const lastError = writable<{ key: string; values: Record<string, unknown> } | null>(null);
+export const lastError = writable<
+  { key: string; values: Record<string, unknown>; reason: string } | null
+>(null);
+
+/// The refusal tokens `stop_process` / `freeze_process` / `limit_process` /
+/// `renice_process` answer with, to the key that says each one in the reader's
+/// language.
+///
+/// The other half of the sentence, and it was the half still in English. The
+/// action clause moved into the catalogue and `reason` kept carrying whatever
+/// Rust said, which for the common case was `strerror`: press End process on a
+/// system service in a German build and the page read "Dieser Prozess ließ sich
+/// nicht beenden: Operation not permitted (os error 1)". That is the most likely
+/// refusal on this surface, not an edge, and priority is worse - lowering a nice
+/// value ALWAYS needs `CAP_SYS_NICE`, so an ordinary user asking for Highest
+/// meets EPERM every time.
+const WHY: Record<string, string> = {
+  "unsafe-pid": "sm.why.unsafePid",
+  "not-permitted": "sm.why.notPermitted",
+  gone: "sm.why.gone",
+  "bad-priority": "sm.why.badPriority",
+  "no-cgroup": "sm.why.noCgroup",
+  "no-delegation": "sm.why.noDelegation",
+  other: "sm.why.other",
+};
+
+/// The message key for a refusal.
+///
+/// An unrecognised value logs and falls back to the vague sentence rather than
+/// being shown: a token this does not know is a backend that changed, and the
+/// developer wants to read that in the console, not the user on the page.
+function whyKey(e: unknown): string {
+  const token = String(e);
+  const key = WHY[token];
+  if (key) return key;
+  console.warn("system-monitor: unrecognised refusal token", token);
+  return "sm.why.other";
+}
 
 /// Load the process list. Live: `list_app_rows`; fixture under vite.
 ///
@@ -228,7 +265,7 @@ export async function stop(id: number): Promise<void> {
   } catch (e) {
     if (tauriAvailable) {
       processes.set(previous);
-      lastError.set({ key: "sm.err.stop", values: { reason: String(e) } });
+      lastError.set({ key: "sm.err.stop", values: {}, reason: whyKey(e) });
     }
     // Without the runtime there is no backend to refuse: keep the optimistic
     // mock so the surface stays reviewable under vite.
@@ -256,18 +293,22 @@ export function pidsOf(p: Process): number[] {
 export async function stopRow(p: Process): Promise<void> {
   const ids = pidsOf(p);
   if (ids.length === 1) return stop(ids[0]);
-  const failures: string[] = [];
+  const failures: unknown[] = [];
   for (const id of ids) {
     try {
       await invoke("stop_process", { id });
     } catch (e) {
-      failures.push(String(e));
+      failures.push(e);
     }
   }
   if (failures.length && tauriAvailable) {
     lastError.set({
       key: "sm.err.stopSome",
-      values: { done: ids.length - failures.length, total: ids.length, reason: failures[0] },
+      values: { done: ids.length - failures.length, total: ids.length },
+      // The FIRST refusal, because a group usually meets one reason: the
+      // privileged members refuse and the rest go. Listing seven identical
+      // clauses would say less than one.
+      reason: whyKey(failures[0]),
     });
   }
   // Reload either way: the truth about which members survived is the backend's,
@@ -298,7 +339,7 @@ async function setFlagChecked(
   } catch (e) {
     if (tauriAvailable) {
       setFlag(id, revert);
-      lastError.set({ key: failure, values: { reason: String(e) } });
+      lastError.set({ key: failure, values: {}, reason: whyKey(e) });
     }
   }
 }
@@ -325,19 +366,20 @@ async function rowLever(
 ): Promise<void> {
   const ids = pidsOf(row);
   setFlag(row.id, patch);
-  const failures: string[] = [];
+  const failures: unknown[] = [];
   for (const id of ids) {
     try {
       await invoke(cmd, argsFor(id));
     } catch (e) {
-      failures.push(String(e));
+      failures.push(e);
     }
   }
   if (failures.length && tauriAvailable) {
     setFlag(row.id, revert);
     lastError.set({
       key: `${failure}.some`,
-      values: { done: ids.length - failures.length, total: ids.length, reason: failures[0] },
+      values: { done: ids.length - failures.length, total: ids.length },
+      reason: whyKey(failures[0]),
     });
   }
 }
@@ -436,7 +478,7 @@ export async function renice(id: number, nice: number): Promise<boolean> {
     await invoke("renice_process", { id, nice });
     return true;
   } catch (e) {
-    lastError.set({ key: "sm.err.priority", values: { reason: String(e) } });
+    lastError.set({ key: "sm.err.priority", values: {}, reason: whyKey(e) });
     return false;
   }
 }
