@@ -49,7 +49,7 @@
     {#if $lastError}
       <!-- A refused action already restored the hunk's status; this says why, so
            a failed undo never passes as a reverted edit. -->
-      <p class="sample error" role="alert">{$lastError}</p>
+      <p class="sample error" role="alert">{$t($lastError)}</p>
     {/if}
 
     <p class="prompt">{$t("te.review.youAsked", { prompt: p.prompt })}</p>

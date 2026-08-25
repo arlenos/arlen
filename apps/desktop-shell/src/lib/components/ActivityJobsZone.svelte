@@ -55,7 +55,7 @@
     {#if $lastError}
       <!-- A refused action already restored the feed; this says why, so a failed
            cancel never passes as a cancelled job. -->
-      <p class="jobs-sample err" role="alert">{$lastError}</p>
+      <p class="jobs-sample err" role="alert">{$t($lastError)}</p>
     {/if}
 
     {#each ordered as j (j.id)}
