@@ -97,7 +97,7 @@ def rust_commands(root: Path) -> dict[str, dict[str, tuple[set[str], set[str]]]]
         app = path.relative_to(root).parts[1]
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(
-            r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\(([^)]*)\)",
+            r"#\[tauri::command[^\]]*\]\s*(?://[^\n]*\n\s*)*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\(([^)]*)\)",
             text,
             re.S,
         ):
@@ -581,7 +581,7 @@ def rust_return_types(root: Path) -> dict[str, dict[str, str]]:
         app = path.relative_to(root).parts[1]
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(
-            r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\([^)]*\)"
+            r"#\[tauri::command[^\]]*\]\s*(?://[^\n]*\n\s*)*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\([^)]*\)"
             r"\s*->\s*([^{;]+)",
             text,
             re.S,

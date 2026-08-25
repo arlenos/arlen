@@ -104,7 +104,6 @@ fn write_file(file: ConfigFile, value: &toml::Value) -> Result<(), String> {
 
 
 /// Read the whole file (when `key` is None) or a single dot-notation key.
-#[tauri::command]
 /// READS THE FILE, INCLUDING FOR THE SIX KEYS WRITES DO NOT GO TO.
 ///
 /// `config_set` routes an AI master switch to the config-broker when it is
@@ -128,6 +127,7 @@ fn write_file(file: ConfigFile, value: &toml::Value) -> Result<(), String> {
 /// document rather than just override one lookup. `ai_defaults_get` below is the
 /// small precedent for the shape. Who moves the reader side, and whether the file
 /// stays a readable mirror after the cutover, is the cutover's design call.
+#[tauri::command]
 pub fn config_get(
     file: ConfigFile,
     key: Option<String>,
