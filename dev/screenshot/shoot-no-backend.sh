@@ -83,7 +83,10 @@ case "$2" in
     echo "so the hook is inert and the shot would show the default state under a URL that" >&2
     echo "asks for another one. Use a dev server instead:" >&2
     echo "    (cd apps/$1 && npx vite dev --port 5199) &" >&2
-    echo "    python3 dev/screenshot/render-wide.py --url 'http://localhost:5199/$2' --out shot.png --width 1280" >&2
+    echo "    dev/screenshot/headless.sh --url 'http://localhost:5199/$2' --out shot.png --width 1280" >&2
+    echo "(headless.sh, NOT render-wide.py directly: it is what supplies the Xvfb," >&2
+    echo " cuts the session off so the window cannot open on your screen, and starts" >&2
+    echo " the window manager fullscreen needs.)" >&2
     exit 2
     ;;
 esac
@@ -199,6 +202,11 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
       "") ;;
       *) stub="--stub-host" ;;
     esac
+    # SHOOT_HOST_SCRIPT names a runtime that answers SOME commands and refuses
+    # others - the state a surface reaches when the list is real and one action
+    # is refused, which neither of the other two can show. It replaces the stub
+    # rather than joining it, since two runtimes cannot both be installed.
+    if [ -n "${7:-}" ]; then stub="--host-script $7"; fi
     for out in $shots; do
       flags="$stub"
       case "$out" in *-hostfails.png) flags="--stub-host" ;; esac
@@ -216,6 +224,7 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
     if [ -n "$ob" ]; then kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null; fi
     exit $rc
   ' _ "$ROOT" "$URL" "$OUT" "$W" "${SHOOT_OPEN:-}" "${SHOOT_FAILING_HOST:-}" \
+  "${SHOOT_HOST_SCRIPT:-}" \
   2>&1 | grep -v "Gdk-WARNING" || true
 
 # Did we photograph the app, or the preview server's corpse? A page whose text is

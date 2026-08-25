@@ -59,7 +59,17 @@ big block before shrinking it, in ms. It
 must be shorter than the harness's settle, or the capture lands on the block and
 the shrink never gets photographed - the same trap `ghost-repro` documents.
 """
+import os
 import sys
+
+# Same rule as `render-wide.py`, for the same reason and before `import gi`:
+# `xvfb-run` leaves an inherited WAYLAND_DISPLAY valid, GTK 4 prefers it, and the
+# window opens on the developer's real session while they are working.
+os.environ.pop("WAYLAND_DISPLAY", None)
+os.environ["GDK_BACKEND"] = "x11"
+if not os.environ.get("DISPLAY"):
+    sys.stderr.write("refusing: no DISPLAY. Run under xvfb-run.\n")
+    raise SystemExit(3)
 
 import gi
 

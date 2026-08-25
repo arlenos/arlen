@@ -50,8 +50,33 @@ asked for.
 """
 import argparse
 import json
+import os
 import pathlib
 import sys
+
+# CUT THE HOST SESSION OFF BEFORE GTK IS IMPORTED. Not optional and not a caller's
+# job, because getting it wrong puts a fullscreen window on the developer's real
+# screen while they are working - which is what happened on 25 August, when this
+# was run directly under `xvfb-run` instead of through `shoot.sh`.
+#
+# `xvfb-run` sets DISPLAY and nothing else. An inherited WAYLAND_DISPLAY stays
+# valid, GTK 4 prefers the Wayland backend when it sees one, and the window opens
+# on the session rather than the Xvfb - so the shot is of the wrong display and
+# the developer is interrupted. `shoot.sh` has unset these since 15 August and
+# says exactly why; the mistake was that this file relied on being called through
+# it. It does not any more: a direct invocation is now as safe as a wrapped one.
+#
+# It must happen before `import gi`, since the backend is chosen at import time.
+os.environ.pop("WAYLAND_DISPLAY", None)
+os.environ["GDK_BACKEND"] = "x11"
+if not os.environ.get("DISPLAY"):
+    # No X server to draw on and no Wayland left to fall back to. Refusing is the
+    # only safe answer: the fallback would be the session this just disconnected.
+    sys.stderr.write(
+        "refusing: no DISPLAY. Run under `xvfb-run -a --server-args=\"-screen 0"
+        " 1600x1200x24\"` so the window has an off-screen server to draw on.\n"
+    )
+    raise SystemExit(3)
 
 import gi
 
@@ -113,13 +138,37 @@ class Render:
       window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: function () {} };
     """
 
+    def host_source(self):
+        """The runtime script to inject, or None for a page with no runtime.
+
+        Two knobs, because there turned out to be a THIRD state neither of them
+        could reach. `--stub-host` refuses everything, so a surface whose list
+        comes from the backend has no list and therefore no row to press; no
+        runtime at all takes the fixture path, where the store's own
+        `if (tauriAvailable)` guard means an action can never be refused. The
+        message shown when one action out of many is refused was unreachable in
+        both, which is how it went unlooked-at while being the ordinary case on
+        that surface - End process on something you do not own.
+
+        `--host-script` is the general answer: a file that installs whatever
+        runtime the shot needs, answering some commands and refusing others. It
+        replaces the stub rather than layering on it, so what a run injected is
+        one file somebody can read.
+        """
+        if self.args.host_script:
+            return pathlib.Path(self.args.host_script).read_text(encoding="utf-8")
+        if self.args.stub_host:
+            return self.STUB_HOST
+        return None
+
     def on_activate(self, app):
         self.win = Gtk.ApplicationWindow(application=app)
-        if self.args.stub_host:
+        host = self.host_source()
+        if host is not None:
             ucm = WebKit.UserContentManager()
             ucm.add_script(
                 WebKit.UserScript.new(
-                    self.STUB_HOST,
+                    host,
                     WebKit.UserContentInjectedFrames.TOP_FRAME,
                     WebKit.UserScriptInjectionTime.START,
                     None,
@@ -508,6 +557,11 @@ def main():
                     help="install a Tauri runtime whose every command FAILS, so "
                          "the page takes its backend-is-broken path rather than "
                          "its no-runtime path")
+    ap.add_argument("--host-script", default=None,
+                    help="path to a JS file installing the Tauri runtime this shot"
+                         " needs - one that ANSWERS some commands and refuses"
+                         " others, which is the state --stub-host cannot express."
+                         " Replaces --stub-host when both are given")
     ap.add_argument("--probe", default=None,
                     help="evaluate one JS expression against the rendered page and"
                          " print its value; writes no image")
