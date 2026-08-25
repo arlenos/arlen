@@ -936,6 +936,70 @@ fn split_parent(path: &str) -> Result<(String, String), String> {
     Ok((parent, name))
 }
 
+/// Why a file operation did not happen, as a word rather than a sentence.
+///
+/// Two things were wrong with returning `e.to_string()`. The obvious one: the
+/// overlay renders `{$opError}` verbatim, so a German reader met "destination
+/// already exists: notes.md", or an errno, in a red bar. The worse one: the
+/// store drove BEHAVIOUR off that prose - `message.match(/already exists/)` is
+/// what raises the Replace/Skip dialog, so rewording the English sentence would
+/// have silently replaced a choice with an error message, and translating it
+/// would have done the same.
+///
+/// `name` survives on the collision because the dialog names the file; `why`
+/// survives on the two the filesystem alone can explain, and goes to the log.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+pub enum OpProblem {
+    /// The destination name is taken and no policy resolved it. The one the
+    /// store branches on.
+    AlreadyExists {
+        /// The colliding name, for the dialog's question.
+        name: String,
+    },
+    /// A typed name that would not name a single child - empty, a separator,
+    /// `.` or `..`.
+    InvalidName {
+        /// The name as typed, so the person can see what was refused.
+        name: String,
+    },
+    /// A recursive copy or move stopped partway and left a partial tree.
+    Partial {
+        /// What the filesystem said, for the log.
+        why: String,
+    },
+    /// The filesystem refused: no permission, no space, a type clash.
+    Io {
+        /// What the filesystem said, for the log.
+        why: String,
+    },
+    /// The call itself was malformed - a missing destination, an unknown kind.
+    /// A bug in the caller rather than something the person did.
+    BadRequest {
+        /// Which part, for the log.
+        why: String,
+    },
+}
+
+impl From<ops::OpError> for OpProblem {
+    fn from(e: ops::OpError) -> Self {
+        match e {
+            ops::OpError::AlreadyExists { name } => Self::AlreadyExists { name },
+            ops::OpError::InvalidName { name } => Self::InvalidName { name },
+            ops::OpError::Partial { ref written, .. } => Self::Partial {
+                why: format!("partial output at {written:?}: {e}"),
+            },
+            ops::OpError::Io(io) => Self::Io { why: io.to_string() },
+        }
+    }
+}
+
+/// A malformed call, as the problem the window can word.
+fn bad_request(why: &str) -> OpProblem {
+    OpProblem::BadRequest { why: why.to_string() }
+}
+
+
 /// One filesystem mutation (contract: kind, sources, destination).
 /// `policy` is the conflict policy for copy/move ("fail" when absent);
 /// it is a proposed contract extension, flagged, not silently invented.
@@ -946,8 +1010,8 @@ fn files_op(
     dst: Option<String>,
     policy: Option<String>,
     undo: tauri::State<'_, Mutex<UndoStack>>,
-) -> Result<(), String> {
-    let dir = root()?;
+) -> Result<(), OpProblem> {
+    let dir = root().map_err(|why| OpProblem::Io { why })?;
     let pol = conflict_policy(policy.as_deref());
     // The undoable ops this call produced; recorded as one batch on full success
     // (a permanent delete records nothing - it has no inverse). A `Skipped`
@@ -955,19 +1019,19 @@ fn files_op(
     let mut undoable: Vec<UndoableOp> = Vec::new();
     match kind.as_str() {
         "new_folder" => {
-            let parent = dst.ok_or("new_folder needs the destination folder")?;
-            let name = src.first().ok_or("new_folder needs a name")?;
+            let parent = dst.ok_or_else(|| bad_request("new_folder needs the destination folder"))?;
+            let name = src.first().ok_or_else(|| bad_request("new_folder needs a name"))?;
             if let ops::OpOutcome::Created { target } =
-                ops::new_folder(&dir, rel(&parent), name).map_err(|e| e.to_string())?
+                ops::new_folder(&dir, rel(&parent), name).map_err(OpProblem::from)?
             {
                 undoable.push(UndoableOp::Created { path: target });
             }
         }
         "rename" => {
-            let from = src.first().ok_or("rename needs a source")?;
-            let to = dst.ok_or("rename needs the new name")?;
-            let (parent, from_name) = split_parent(from)?;
-            ops::rename(&dir, rel(&parent), &from_name, &to).map_err(|e| e.to_string())?;
+            let from = src.first().ok_or_else(|| bad_request("rename needs a source"))?;
+            let to = dst.ok_or_else(|| bad_request("rename needs the new name"))?;
+            let (parent, from_name) = split_parent(from).map_err(|why| bad_request(&why))?;
+            ops::rename(&dir, rel(&parent), &from_name, &to).map_err(OpProblem::from)?;
             undoable.push(UndoableOp::Renamed {
                 parent: PathBuf::from(rel(&parent)),
                 from_name,
@@ -975,10 +1039,10 @@ fn files_op(
             });
         }
         "trash" => {
-            let trash = trash_dir()?;
+            let trash = trash_dir().map_err(|why| OpProblem::Io { why })?;
             for s in &src {
                 let trashed = ops::trash_entry(&dir, rel(s), &trash, Path::new(s))
-                    .map_err(|e| e.to_string())?;
+                    .map_err(OpProblem::from)?;
                 undoable.push(UndoableOp::Trashed {
                     trashed_name: trashed.trashed_name,
                     original: PathBuf::from(rel(s)),
@@ -986,22 +1050,22 @@ fn files_op(
             }
         }
         "copy" | "move" => {
-            let dest_dir = dst.ok_or("copy and move need the destination folder")?;
+            let dest_dir = dst.ok_or_else(|| bad_request("copy and move need the destination folder"))?;
             for s in &src {
-                let (_, name) = split_parent(s)?;
+                let (_, name) = split_parent(s).map_err(|why| bad_request(&why))?;
                 let target = format!("{}/{}", dest_dir.trim_end_matches('/'), name);
                 let outcome = if kind == "copy" {
                     ops::copy_entry(&dir, rel(s), &dir, rel(&target), pol)
                 } else {
                     ops::move_entry(&dir, rel(s), &dir, rel(&target), pol)
                 }
-                .map_err(|e| e.to_string())?;
+                .map_err(OpProblem::from)?;
                 match outcome {
                     ops::OpOutcome::Created { target } if kind == "copy" => {
                         undoable.push(UndoableOp::Created { path: target });
                     }
                     ops::OpOutcome::Renamed { target } if kind == "move" => {
-                        let (orig_parent, _) = split_parent(s)?;
+                        let (orig_parent, _) = split_parent(s).map_err(|why| bad_request(&why))?;
                         undoable.push(UndoableOp::Moved {
                             current: target,
                             original_parent: PathBuf::from(rel(&orig_parent)),
@@ -1015,7 +1079,7 @@ fn files_op(
             for s in &src {
                 if let ops::OpOutcome::Created { target } =
                     ops::copy_entry(&dir, rel(s), &dir, rel(s), ops::ConflictPolicy::Rename)
-                        .map_err(|e| e.to_string())?
+                        .map_err(OpProblem::from)?
                 {
                     undoable.push(UndoableOp::Created { path: target });
                 }
@@ -1023,11 +1087,11 @@ fn files_op(
         }
         "delete" => {
             for s in &src {
-                ops::delete_permanent(&dir, rel(s)).map_err(|e| e.to_string())?;
+                ops::delete_permanent(&dir, rel(s)).map_err(OpProblem::from)?;
             }
             // A permanent delete has no inverse; nothing is recorded.
         }
-        other => return Err(format!("unknown operation: {other}")),
+        other => return Err(bad_request(&format!("unknown operation: {other}"))),
     }
     // Journal each op's durable inverse to the signed undo-log (CAH-3) BEFORE the
     // in-memory record moves the batch, so an FM delete/create is undoable across

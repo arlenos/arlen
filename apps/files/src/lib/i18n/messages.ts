@@ -74,6 +74,14 @@ const messages: Catalogs = {
     "f.asof.3m": "3 months ago",
     // Shared
     "f.dismiss": "Dismiss",
+    // WHY an operation did not happen. The red bar used to carry whatever the
+    // Rust formatted - "destination already exists: notes.md", or an errno - and
+    // the conflict dialog was raised by matching that English prose.
+    "f.op.exists": "Something with that name is already there, so nothing was changed.",
+    "f.op.badName": "That name cannot be used, so nothing was changed.",
+    "f.op.partial": "That stopped partway. Some of it was copied and the rest was not.",
+    "f.op.refused": "The filesystem would not do that. Check whether you may write there, and whether there is room.",
+    "f.op.failed": "That did not go through. Nothing was changed.",
     "f.save": "Save",
 
     // Empty folder + about
@@ -423,6 +431,11 @@ const messages: Catalogs = {
     "f.asof.1m": "vor 1 Monat",
     "f.asof.3m": "vor 3 Monaten",
     "f.dismiss": "Schließen",
+    "f.op.exists": "Da ist schon etwas mit diesem Namen, deshalb wurde nichts geändert.",
+    "f.op.badName": "Dieser Name lässt sich nicht verwenden, deshalb wurde nichts geändert.",
+    "f.op.partial": "Das ist auf halbem Weg stehen geblieben. Ein Teil wurde kopiert, der Rest nicht.",
+    "f.op.refused": "Das Dateisystem hat sich geweigert. Prüf, ob du dort schreiben darfst und ob noch Platz ist.",
+    "f.op.failed": "Das ist nicht durchgegangen. Es wurde nichts geändert.",
     "f.save": "Speichern",
 
     "f.empty.folder": "Dieser Ordner ist leer",
