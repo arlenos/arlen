@@ -62,6 +62,18 @@ EXC = r"(?:e|err|error|ex)"
 
 #: A name given a stringified exception: a declaration, a plain assignment, or a
 #: store's `.set`, each in its template-literal form as well.
+#: A FIELD of an object literal given a stringified exception:
+#: `{ kind: "unavailable", reason: String(e) }`.
+#:
+#: Kept SEPARATE from the name taints below, and matched only as a property
+#: access (`something.reason`), never as a bare `{reason}`. Field names are the
+#: most ordinary words in the language - `reason`, `why`, `message` - and
+#: `FmInfoPanel` has a local `{@const reason = reasonOf(read)}` holding a
+#: translated sentence, three lines from a store that carries a tainted field of
+#: the same name. Matching bare names reported that panel, which is correct
+#: code. The access is what distinguishes the field from a local that shadows it.
+FIELD_TAINT = re.compile(rf"""(?P<n>[A-Za-z_$][\w$]*)\s*:\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)""")
+
 TAINTS = (
     re.compile(rf"""(?:const|let|var)\s+(?P<n>[A-Za-z_$][\w$]*)\s*=\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)"""),
     re.compile(rf"""(?P<n>[A-Za-z_$][\w$]*)\s*=\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)\s*;"""),
@@ -181,7 +193,11 @@ def main() -> int:
                 local = raw.strip().split(" as ")[-1].strip()
                 if local and local in taints_by_stem.get(stem, ()):
                     tainted.setdefault(local, f"`{m.group('mod')}`")
-        if not tainted:
+        # Fields are collected here, not inside the loop: a file whose only taint
+        # is a field has an empty `tainted` map, and skipping on that alone is how
+        # the first cut of this rule found nothing at all.
+        fields = {m.group("n") for m in FIELD_TAINT.finditer(text)}
+        if not tainted and not fields:
             continue
         # Markup only. The same `{...}` in the script block is an object literal.
         head, _, markup = text.partition("</script>")
@@ -191,7 +207,11 @@ def main() -> int:
         for start, expr in interpolations(body):
             name = expr.lstrip("$")
             if name not in tainted:
-                continue
+                # A tainted FIELD only counts when it is read as one.
+                head, _, field = name.rpartition(".")
+                if not head or field not in fields:
+                    continue
+                tainted[name] = "this file"
             seen_per_file[rel] = seen_per_file.get(rel, 0) + 1
             if rel in KNOWN and seen_per_file[rel] <= KNOWN[rel][0]:
                 continue
