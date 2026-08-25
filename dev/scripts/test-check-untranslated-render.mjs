@@ -162,6 +162,35 @@ console.log("check-untranslated-render:");
 }
 
 {
+  // Svelte writes an attribute two ways, and the shorthand has no `=` in front
+  // of it. `<Panel {error} />` hands the value to a component that may well
+  // translate it; the page itself draws nothing. Reading the character before
+  // the brace calls this a claim on the screen, which is how the agent page
+  // came to be carried for an instance it never had.
+  const root = tree({
+    "apps/thing/src/routes/+page.svelte":
+      "<script>\n  let error = null;\n  function go(e) { error = String(e); }\n</script>\n" +
+      "<Panel {error} {loading} onretry={() => go()} />\n",
+  });
+  const r = run(root);
+  r.code === 0 ? ok("a shorthand prop is an attribute, not drawn text") : bad("a shorthand prop is an attribute, not drawn text", r.out);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // ...and the same spelling in element text still fails, so the exclusion is
+  // about the position and not about the shape of the braces.
+  const root = tree({
+    "apps/thing/src/routes/+page.svelte":
+      "<script>\n  let error = null;\n  function go(e) { error = String(e); }\n</script>\n" +
+      "<p role=\"alert\">{error}</p>\n",
+  });
+  const r = run(root);
+  r.code === 1 ? ok("the same name drawn as element text still fails") : bad("the same name drawn as element text still fails", r.out);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   const root = tree(null);
   const r = run(root);
   r.code === 2 && r.out.includes("NOTHING WAS READ")
