@@ -356,11 +356,28 @@ pub async fn action_state() -> String {
         .unwrap_or_else(|| "null".to_string())
 }
 
-/// Set the baseline autonomy mode (`ai_set_action_mode` on the agent): `"suggest"`
-/// or `"supervised"`, live with no restart. Returns the agent's `ok` / `error: ...`
-/// status; a transport failure maps to an `error:` string so the dial surfaces it.
-/// `executor_live` stays the orthogonal Tim-gated master (the dial shows the inert
-/// state while it is off).
+/// A MASTER SWITCH, AND THIS IS NOT THE WAY TO ONE. The three commands below
+/// (`ai_set_action_mode`, `ai_set_autonomous_app`, `ai_set_active`) each dial a
+/// member on the agent bus that no interface serves, so none of them has ever
+/// done anything, and their docs described the answer they would have parsed.
+///
+/// They are also not members to add. `action_mode`, `autonomous_apps` and
+/// `provider` are three fields of `AiMasterSwitches`, owned by the config-broker
+/// from a separate uid precisely so a same-uid process cannot flip them - its
+/// module doc names repointing the provider and granting autonomy as the things
+/// it exists to stop. And its `ADMITTED_WRITERS` is one entry long:
+/// `dev.arlen.settings`. This app may read the switches and may not write them,
+/// by design rather than by omission.
+///
+/// So the honest route for all three is the one this app already uses for the
+/// `[ai] enabled` switch: `openAiSettings()` in `transparency.ts`, which opens
+/// Settings at its AI section. Settings routes the write through the broker in
+/// `commands/config.rs`, which is the only place that write is allowed to
+/// happen. Whether these dials belong in this app at all is the question to
+/// settle before anything is rebuilt behind them.
+
+/// Set the baseline autonomy mode: `"suggest"` or `"supervised"`. Dead, and see
+/// the note above for where this write actually belongs.
 #[tauri::command]
 pub async fn ai_set_action_mode(mode: String) -> String {
     let Ok(connection) = Connection::session().await else {
@@ -375,10 +392,9 @@ pub async fn ai_set_action_mode(mode: String) -> String {
         .unwrap_or_else(|e| format!("error: {e}"))
 }
 
-/// Grant or revoke an app's autonomy (`ai_set_autonomous_app` on the agent):
-/// add/remove `app_id` from `[ai] autonomous_apps`, the dial's per-app "More"
-/// control, live with no restart. Returns the agent's `ok` / `error: ...` status;
-/// a transport failure maps to an `error:` string so the dial surfaces it.
+/// Grant or revoke an app's autonomy: add/remove `app_id` from
+/// `AiMasterSwitches.autonomous_apps`. Dead, and broker-owned; see the note on
+/// `ai_set_action_mode`.
 #[tauri::command]
 pub async fn ai_set_autonomous_app(app_id: String, enabled: bool) -> String {
     let Ok(connection) = Connection::session().await else {
@@ -393,10 +409,16 @@ pub async fn ai_set_autonomous_app(app_id: String, enabled: bool) -> String {
         .unwrap_or_else(|e| format!("error: {e}"))
 }
 
-/// Live-swap the active provider+model (`ai_set_active`). Returns the new
-/// `{ provider, model }` on success, or `Err(message)` on a refused swap
-/// (unknown/unallowlisted provider, proxy unreachable) so the picker can report
-/// it rather than silently keep the old selection.
+/// Live-swap the active provider+model. Dead, and broker-owned; see the note on
+/// `ai_set_action_mode`.
+///
+/// This one has a second half worth recording. `provider` is an
+/// `AiMasterSwitches` field, but the MODEL is not - it is an ordinary `ai.toml`
+/// key. So even from Settings, which is the one admitted writer, a swap is two
+/// writes down two different paths: the provider through the broker, the model
+/// to the file. Whoever rebuilds this should know that before starting, because
+/// a half-applied swap is a machine pointed at a provider that does not serve
+/// the model beside it.
 #[tauri::command]
 pub async fn ai_set_active(provider: String, model: String) -> Result<String, String> {
     let connection = Connection::session()
