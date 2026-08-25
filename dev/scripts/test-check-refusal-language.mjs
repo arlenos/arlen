@@ -141,6 +141,24 @@ function run(root) {
 }
 
 {
+  // THE TAGGED-REFUSAL SHAPE: the taint is a FIELD of an object literal, never
+  // bound to a name. Mail and calendar both carried it past this check for a day.
+  const root = tree(`export function f(e: unknown) {\n  let failure = null;\n  try { go(); } catch (e) { failure = { problem: "launch", reason: String(e) }; }\n  return get(t)("th.failed", { reason: failure.reason });\n}\n`);
+  const rc = run(root);
+  rc === 1 ? ok("a stringified error reached through an object field is caught") : bad("a stringified error reached through an object field is caught", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // The boundary: the same field name carrying real data. `reason` is a common
+  // name and the rule must not fire on every object that has one.
+  const root = tree(`export function f(kind: string) {\n  const failure = { problem: "launch", reason: kind };\n  return get(t)("th.failed", { reason: failure.reason });\n}\n`);
+  const rc = run(root);
+  rc === 0 ? ok("the same field carrying real data passes") : bad("the same field carrying real data passes", `expected 0, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   // A gate that reads nothing must not look like a gate that found nothing wrong.
   const root = tree(null);
   const rc = run(root);

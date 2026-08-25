@@ -101,6 +101,12 @@ IMPORT = re.compile(r"""import\s*\{(?P<names>[^}]*)\}\s*from\s*["'](?P<mod>[^"']
 #: cannot fire on `String(someNumber)`.
 EXC = r"(?:e|err|error|ex)"
 TAINTS = (
+    # A FIELD of an object literal, which is how a tagged refusal is built:
+    # `failure = { problem: "launch", reason: String(e) }`, then
+    # `$t(key, { reason: failure.reason })`. Two apps carried that shape past this
+    # check for a day - mail and calendar, both found by rendering rather than by
+    # the rule - because the taint was never bound to a NAME.
+    re.compile(rf"""(?P<n>[A-Za-z_$][\w$]*)\s*:\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)"""),
     re.compile(rf"""(?:const|let|var)\s+(?P<n>[A-Za-z_$][\w$]*)\s*=\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)"""),
     re.compile(rf"""(?P<n>[A-Za-z_$][\w$]*)\s*=\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)\s*;"""),
     re.compile(rf"""(?P<n>[A-Za-z_$][\w$]*)\.set\(\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)"""),
@@ -208,7 +214,7 @@ def main() -> int:
             for name in sorted(tainted):
                 # Word-bounded and preceded by a separator, so `reason` does not
                 # match inside `reasonKey`, and a `$`-prefixed store read counts.
-                if not re.search(rf"[:\s({{,]\$?{re.escape(name)}\b", args):
+                if not re.search(rf"[:\s({{,.]\$?[\w.]*{re.escape(name)}\b", args):
                     continue
                 if where in ACKNOWLEDGED:
                     seen_acknowledged.add(where)
