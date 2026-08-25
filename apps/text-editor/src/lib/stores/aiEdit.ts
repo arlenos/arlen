@@ -10,9 +10,10 @@
 /// + per-hunk apply/undo) is a coder seam behind pi's executor-live; under vite the
 /// store serves a fixture proposal.
 
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
+import { t } from "$lib/i18n/messages";
 import type { DiffLine } from "@arlen/ui-kit/components/diff";
 
 /// The gate class of a hunk: reversible-autonomous / applied-with-undo / held-for-
@@ -147,22 +148,27 @@ async function driveHunk(
   } catch (e) {
     if (tauriAvailable) {
       if (previous) setStatus(index, previous);
-      lastError.set(`${failure}: ${String(e)}`);
+      // `failure` is a KEY. It used to be an English sentence written in this
+      // store with the host's error appended, and the review pane rendered the
+      // pair verbatim - so the one line a person reads when an undo is refused
+      // was in a place no catalogue reaches.
+      console.warn(`text-editor: ${cmd} refused`, e);
+      lastError.set(get(t)(failure));
     }
   }
 }
 
 /// Confirm a held (confirm-class) hunk. Live: `ai_edit_accept`.
 export async function acceptHunk(index: number): Promise<void> {
-  await driveHunk(index, "applied", "ai_edit_accept", "Could not apply that change");
+  await driveHunk(index, "applied", "ai_edit_accept", "te.review.notApplied");
 }
 /// Reject a held hunk. Live: `ai_edit_reject`.
 export async function rejectHunk(index: number): Promise<void> {
-  await driveHunk(index, "rejected", "ai_edit_reject", "Could not reject that change");
+  await driveHunk(index, "rejected", "ai_edit_reject", "te.review.notRejected");
 }
 /// Undo an applied hunk (the compensation). Live: `ai_edit_undo`.
 export async function undoHunk(index: number): Promise<void> {
-  await driveHunk(index, "undone", "ai_edit_undo", "Could not undo that change - it is still in the file");
+  await driveHunk(index, "undone", "ai_edit_undo", "te.review.notUndone");
 }
 /// Dismiss the whole review.
 export function dismiss(): void {
