@@ -34,7 +34,15 @@ export interface Notification {
 }
 
 export interface DndState {
-  mode: string; // "off" | "on" | "scheduled"
+  /// `"off" | "on" | "scheduled"`, or `"unknown"` before the daemon has said.
+  ///
+  /// The fourth value exists because the store defaulted to `"off"` and the tile
+  /// renders that as "Available" - notifications get through - which is a
+  /// statement about the notification daemon made without asking it. If the sync
+  /// never arrives the tile says it forever, and the same panel's Network and
+  /// Sound tiles say "state unknown" for exactly this situation. One panel
+  /// answering the same question two ways is the thing worth fixing here.
+  mode: string;
 }
 
 interface SyncPayload {
@@ -49,7 +57,7 @@ interface SyncPayload {
 export const notifications = writable<Notification[]>([]);
 
 /** Current DND state. */
-export const dndState = writable<DndState>({ mode: "off" });
+export const dndState = writable<DndState>({ mode: "unknown" });
 
 /** Number of unread notifications. */
 export const unreadCount = derived(notifications, ($n) =>

@@ -14,26 +14,33 @@
   /// notifications are still being delivered to the user — only the
   /// suppress filter is inactive.
   const subtitle = $derived(
-    $dndState.mode === "off"
-      ? $t("sh.tile.available")
-      : $dndState.mode === "scheduled"
-        ? $t("sh.tile.scheduled")
-        : $t("sh.tile.silenced"),
+    $dndState.mode === "unknown"
+      ? $t("sh.tile.stateUnknown")
+      : $dndState.mode === "off"
+        ? $t("sh.tile.available")
+        : $dndState.mode === "scheduled"
+          ? $t("sh.tile.scheduled")
+          : $t("sh.tile.silenced"),
   );
 
+  /// An unknown state is treated as OFF for the press, deliberately: the tile
+  /// still has to do something, and asking to silence notifications is the
+  /// harmless direction to guess when the daemon has not said which way it is.
   function handleClick() {
-    setDnd($dndState.mode === "off" ? "on" : "off");
+    setDnd($dndState.mode === "on" || $dndState.mode === "scheduled" ? "off" : "on");
   }
 </script>
 
 <BaseTile
   label={$t("sh.tile.dnd")}
   statusText={subtitle}
-  active={$dndState.mode !== "off"}
+  active={$dndState.mode === "on" || $dndState.mode === "scheduled"}
   onclick={handleClick}
 >
   {#snippet icon()}
-    {#if $dndState.mode !== "off"}
+    <!-- Known-on, not not-off: an unknown state draws the ordinary bell rather
+         than the crossed-out one, which would claim notifications are silenced. -->
+    {#if $dndState.mode === "on" || $dndState.mode === "scheduled"}
       <BellOff size={16} strokeWidth={1.75} />
     {:else}
       <Bell size={16} strokeWidth={1.75} />
