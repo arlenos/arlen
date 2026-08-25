@@ -62,6 +62,21 @@ EXCUSED: dict[str, str] = {}
 # does not fail on them, so the debt stays visible and attributed. Keyed by
 # command name; remove the entry when the owner fixes it and the gate holds it shut.
 KNOWN_RETURN_MISMATCHES: dict[str, str] = {
+    "ai_behaviours": (
+        "the command returns the agent's JSON as a String and the page reads it as a "
+        "BehaviourReport with no parse, so the report is a string and every field is "
+        "undefined. The call is in arlen-ui's Settings AI route; the parse belongs at "
+        "it, or the command gets the struct."
+    ),
+    "ai_working_set": (
+        "same missing parse, and a second disagreement underneath it: the engine's "
+        "`working_set` serves {status, behaviours[]} and the drawer's `WorkingSet` "
+        "declares {available, held, entityCounts, activeBehaviour, declaredReads}. The "
+        "two describe different things, so parsing the string would only move the "
+        "failure. Which shape is right is a design call between the transparency "
+        "drawer and the engine, not a fix on either side alone - reported for the "
+        "planner rather than decided here."
+    ),
     "ai_models_search_hf": (
         "the model picker's `Model` is the merged card shape the page builds from "
         "several sources; the Hugging Face hit is only one of them. Reworking it is "
@@ -848,7 +863,30 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
     checked = 0
     for app, path, line, tsname, cmd in annotated_calls(root):
         rust_name = returns.get(app, {}).get(cmd)
-        if not rust_name or OPAQUE_RETURN.match(rust_name):
+        if not rust_name:
+            continue
+        if OPAQUE_RETURN.match(rust_name):
+            # A SCALAR answered as an object. `serde_json::Value` crosses the
+            # bridge as whatever it holds, so `invoke<ClockState>` on a command
+            # returning `Value` receives an object and the annotation is merely
+            # unchecked. A `String` does not: it crosses as a JSON string, so a
+            # command returning `"[]"` under an `invoke<Report>` hands the page a
+            # string it will read fields off, and every one of them is undefined.
+            # Nothing else catches it - the shapes never meet, which is why this
+            # rule lives on the branch that used to drop them both.
+            if rust_name not in ("serde_json::Value", "Value") and interfaces.get(
+                app, {}
+            ).get(tsname):
+                text = (
+                    f"{path}:{line}: `{cmd}` returns `{rust_name}` and the call reads "
+                    f"it as `{tsname}`, a declared interface. A scalar arrives as a "
+                    f"scalar, so every field the page reads is undefined. Parse it "
+                    f"at the call, or give the command the struct it is being read as."
+                )
+                if cmd in KNOWN_RETURN_MISMATCHES:
+                    known.append(f"{text}\n      routed: {KNOWN_RETURN_MISMATCHES[cmd]}")
+                else:
+                    problems.append(text)
             continue
         # The app's own struct first: a command lives in its app's binary, so a
         # name defined there is the one this call means.

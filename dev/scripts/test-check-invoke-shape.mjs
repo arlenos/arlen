@@ -98,6 +98,43 @@ export async function go() { return await invoke("demo_login", { profileId: "p" 
   check("a missing required argument is caught", r.code === 1 && r.out.includes("secret"));
 }
 {
+  // A scalar read as an object. The command answers with a JSON STRING and the
+  // call annotates an interface, so the page holds a string and reads fields
+  // off it, all undefined. The two shapes never meet, so nothing else sees it.
+  const r = run({
+    "apps/demo/src-tauri/src/lib.rs": `
+#[tauri::command]
+async fn demo_report() -> String { "[]".into() }
+`,
+    "apps/demo/src/lib/call.ts": `
+import { invoke } from "@tauri-apps/api/core";
+export interface Report { total: number }
+export async function go() { return await invoke<Report>("demo_report"); }
+`,
+  });
+  check(
+    "a String read as a declared interface is caught",
+    r.code === 1 && r.out.includes("demo_report"),
+  );
+}
+{
+  // ...and `serde_json::Value` is NOT, because it crosses the bridge as
+  // whatever it holds. The annotation is unchecked, which is a different and
+  // much smaller thing than wrong.
+  const r = run({
+    "apps/demo/src-tauri/src/lib.rs": `
+#[tauri::command]
+async fn demo_state() -> Result<serde_json::Value, String> { Ok(serde_json::json!({})) }
+`,
+    "apps/demo/src/lib/call.ts": `
+import { invoke } from "@tauri-apps/api/core";
+export interface State { total: number }
+export async function go() { return await invoke<State>("demo_state"); }
+`,
+  });
+  check("a Value read as an interface is unchecked, not wrong", r.code === 0);
+}
+{
   const r = run({ "README.md": "nothing here\n" });
   check("an empty tree refuses rather than passing", r.code === 2);
 }
