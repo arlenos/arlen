@@ -148,6 +148,20 @@ console.log("check-untranslated-render:");
 }
 
 {
+  // An ATTRIBUTE is not drawn text. Four settings pages put the host's words in a
+  // `title` beside a translated sentence - a detail in the right place - and
+  // treating that as a surface claim would report a good convention.
+  const root = tree({
+    "apps/thing/src/routes/+page.svelte":
+      "<script>\n  let failure = null;\n  function go(e) { failure = String(e); }\n</script>\n" +
+      "{#if failure}<div title={failure}>{$t('th.failed')}</div>{/if}\n",
+  });
+  const r = run(root);
+  r.code === 0 ? ok("a raw error in a title attribute is a detail, not a claim") : bad("a raw error in a title attribute is a detail, not a claim", r.out);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   const root = tree(null);
   const r = run(root);
   r.code === 2 && r.out.includes("NOTHING WAS READ")
