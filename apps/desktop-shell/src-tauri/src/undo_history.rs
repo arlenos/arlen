@@ -340,6 +340,29 @@ pub async fn undo_detail(op_id: String) -> Result<UndoDetailView, String> {
 mod tests {
     use super::*;
 
+    /// The other half of the wire pin.
+    ///
+    /// The literal is the same one `daemons/undo-service/src/undo_history.rs`
+    /// asserts it produces, in the test named there. The two structs share no
+    /// code - they meet on a D-Bus wire - so nothing in the tree can see them
+    /// agree: `check-shared-signature` catches a broken Rust signature between
+    /// crates that path-depend, and these do not. A field rename that reached
+    /// the wire would break no build; it would just render an empty disclosure,
+    /// which is the one sentence this path is written never to say by accident.
+    #[test]
+    fn the_served_disclosure_parses_into_the_panel_shape() {
+        let wire = r#"{"opId":"op-1","steps":[{"actor":"ai-agent","kind":"graph_access","subject":"agent.auto-tag-by-project","timestampMicros":1700000000000000}]}"#;
+        let detail: Detail = serde_json::from_str(wire).expect("the served shape parses");
+        assert_eq!(detail.op_id, "op-1");
+        assert_eq!(detail.steps.len(), 1);
+        let step = &detail.steps[0];
+        assert_eq!(producer_of(Some(&step.actor)), "agent");
+        assert_eq!(step_kind_of(&step.kind), "graph-access");
+        assert_eq!(step.subject, "agent.auto-tag-by-project");
+        // Micros to seconds, the same conversion the row does.
+        assert_eq!(step.timestamp_micros / 1_000_000, 1_700_000_000);
+    }
+
     /// Walk the taxonomy rather than a hand-written copy of it. The list this
     /// would otherwise carry is exactly what fell a variant behind in the audit
     /// crate's own round-trip test, leaving the one kind that records a reach
