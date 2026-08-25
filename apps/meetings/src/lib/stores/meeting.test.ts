@@ -163,10 +163,15 @@ describe("meetingsFailureKey", () => {
     expect(meetingsFailureKey("no-answer")).toBe("mt.unavailable.noAnswer");
   });
 
-  /// The floor: whatever the backend starts saying, the page shows a key it has a
-  /// sentence for, never the word itself. This branch used to interpolate the raw
-  /// invoke error into a translated sentence.
+  /// The floor, and the cast is the point rather than a workaround. The union
+  /// type refuses an unknown state at every writer in this app, so the only way
+  /// one arrives is a DAEMON that starts sending a fourth `state` - which no type
+  /// here can prevent. The runtime default still has to hold for that, and this
+  /// proves it does.
   it("falls back to a sentence rather than showing an unknown state", () => {
-    expect(meetingsFailureKey("Error: invoke failed (os error 2)")).toBe("mt.unavailable");
+    const fromAFutureDaemon = "Error: invoke failed (os error 2)" as unknown as Parameters<
+      typeof meetingsFailureKey
+    >[0];
+    expect(meetingsFailureKey(fromAFutureDaemon)).toBe("mt.unavailable");
   });
 });

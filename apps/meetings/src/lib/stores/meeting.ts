@@ -68,14 +68,23 @@ export const meetingsUnavailable = writable(false);
 /// things to do about it, rendered as one sentence. The clock says "the clock
 /// service is not running, so your alarms are not being kept" and that sentence
 /// is worth more than this one precisely because it names the cause.
-export const meetingsFailure = writable<string | null>(null);
+/// The closed set of states this store may hold.
+///
+/// A UNION rather than `string`, so a raw `String(e)` cannot be written here at
+/// all. It was `string | null` and the invoke-failed branch put the host's own
+/// words in it; naming the states makes that a compile error instead of something
+/// a check has to notice afterwards. `unavailable` and `denied` are the daemon's
+/// own words, `no-answer` is this file's for a call that did not complete.
+export type MeetingsFailure = "unavailable" | "denied" | "no-answer";
+
+export const meetingsFailure = writable<MeetingsFailure | null>(null);
 
 /// The sentence to show for a failure state.
 ///
 /// Here rather than in the pages because BOTH routes drew the same four-branch
 /// ternary, and a third copy is how one of them quietly stops handling a state
 /// somebody added. `null` means the read failed with nothing said about why.
-export function meetingsFailureKey(failure: string | null): string {
+export function meetingsFailureKey(failure: MeetingsFailure | null): string {
   switch (failure) {
     case null:
       return "mt.unavailable";
