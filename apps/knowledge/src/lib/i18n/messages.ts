@@ -23,6 +23,10 @@ const messages: Catalogs = {
     "k.menu.deleteAll": "Delete everything recorded…",
     "k.title": "Knowledge",
     "k.sample": "Example data - not your real graph yet.",
+    // Distinct from the sample line above: one says the graph is not there yet,
+    // the other says this search did not run. A failed read used to show the
+    // first, with invented rows under it.
+    "k.se.unavailable": "That search did not run, so nothing is shown. Nothing was searched.",
     "k.browse.unavailable": "Cannot read your graph right now, so nothing is listed here.",
     // The kit's FileBrowser defaults to English and to the word "folder".
     // Neither is right here: these places are the graph answering, and the
@@ -150,6 +154,7 @@ const messages: Catalogs = {
     "k.menu.deleteAll": "Alles Aufgezeichnete löschen…",
     "k.title": "Wissen",
     "k.sample": "Beispieldaten - noch nicht dein echter Graph.",
+    "k.se.unavailable": "Diese Suche ist nicht gelaufen, deshalb wird nichts gezeigt. Es wurde nichts durchsucht.",
     "k.browse.unavailable": "Dein Graph kann gerade nicht gelesen werden, daher steht hier nichts.",
     "k.fb.errorTitle": "Kann nicht angezeigt werden",
     "k.fb.hintUnknown": "Beim Lesen deines Graphen ist etwas schiefgegangen.",

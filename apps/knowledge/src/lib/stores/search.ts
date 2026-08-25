@@ -44,6 +44,19 @@ export const facets = writable<SearchFacets>({ type: null, project: null, within
 /// True while results come from the FIXTURE index, not the graph.
 export const searchMocked = writable(false);
 
+/// True when a REAL host could not answer the search.
+///
+/// Distinct from `searchMocked`, and the distinction is the point. The catch used
+/// to serve the fixture on every failure, host or not, under "Example data - not
+/// your real graph yet" - so on a real machine a failed read offered three
+/// invented rows, each of them clickable, while telling the person their graph
+/// was not built. The command exists (`knowledge_search`, registered in
+/// `search.rs`), so "yet" was false as well.
+///
+/// The library store one file over already reasons this out: no fixture on a real
+/// host, and say which of the two things happened. This is that, applied here.
+export const searchUnavailable = writable(false);
+
 const now = Math.floor(Date.now() / 1000);
 const daysAgo = (d: number, h = 12): number => {
   const dd = new Date(now * 1000);
@@ -102,11 +115,22 @@ export const results = derived(
     invoke<SearchResult[]>("knowledge_search", { query: $q, facets: $f })
       .then((live) => {
         searchMocked.set(false);
+        searchUnavailable.set(false);
         set(live);
       })
-      .catch(() => {
-        searchMocked.set(true);
-        set(INDEX.filter((r) => matches(r, $q, $f)).sort((a, b) => (b.at ?? 0) - (a.at ?? 0)));
+      .catch((e) => {
+        if (!tauriAvailable) {
+          searchMocked.set(true);
+          searchUnavailable.set(false);
+          set(INDEX.filter((r) => matches(r, $q, $f)).sort((a, b) => (b.at ?? 0) - (a.at ?? 0)));
+          return;
+        }
+        // A real host that could not answer gets NO rows. Inventing them here
+        // would put results a person can click over a search that never ran.
+        console.warn("knowledge: the search did not answer", e);
+        searchMocked.set(false);
+        searchUnavailable.set(true);
+        set([]);
       });
   },
   [] as SearchResult[]
