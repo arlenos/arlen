@@ -170,6 +170,52 @@ check(
   (code) => code === 0,
 );
 
+// The substring hole, from the tree: `mouse` is short enough that Settings'
+// `onmousedown` / `onmouseenter` / `mouseZoom` answer the reader question for it.
+// The store here has no reader at all, and every occurrence of its name in the
+// markup is inside a longer word, so a plain `name in markup` passes it.
+check(
+  "a name that only appears inside longer words is not a reader",
+  {
+    "apps/demo/src/lib/stores/mouse.ts":
+      'import { writable } from "svelte/store";\n' +
+      "export const mouse = writable([]);\n" +
+      "export const mouseUnavailable = writable(false);\n" +
+      "export async function load() {\n" +
+      "  try {\n" +
+      '    mouse.set(await invoke("mouse"));\n' +
+      "  } catch {\n" +
+      "    mouseUnavailable.set(true);\n" +
+      "  }\n" +
+      "}\n",
+    "apps/demo/src/lib/View.svelte":
+      '<div onmousedown={go} onmouseenter={go} class="mouseZoom">{enable_mouseUnavailable_x}</div>\n',
+  },
+  (code, out) => code === 1 && out.includes("mouseUnavailable"),
+);
+
+// ...and the ordinary reading of it still passes, so the anchoring did not just
+// make every name unfindable.
+check(
+  "the same name read as a store is a reader",
+  {
+    "apps/demo/src/lib/stores/mouse2.ts":
+      'import { writable } from "svelte/store";\n' +
+      "export const mouse = writable([]);\n" +
+      "export const mouseUnavailable = writable(false);\n" +
+      "export async function load() {\n" +
+      "  try {\n" +
+      '    mouse.set(await invoke("mouse"));\n' +
+      "  } catch {\n" +
+      "    mouseUnavailable.set(true);\n" +
+      "  }\n" +
+      "}\n",
+    "apps/demo/src/lib/View.svelte":
+      '<div onmousedown={go}>{#if $mouseUnavailable}<p>Cannot read it.</p>{/if}</div>\n',
+  },
+  (code) => code === 0,
+);
+
 for (const f of failures) {
   console.error(`\n--- ${f.name}\nexit=${f.code}\n${f.out}`);
 }
