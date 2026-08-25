@@ -101,10 +101,10 @@
   // The named cause, not a sentence: only the window is in the reader's
   // language. `other` stays for a failure the command cannot name.
   type Failure =
-    | { problem: "launch"; reason: string }
+    | { problem: "launch" }
     | { problem: "no-home" }
     | { problem: "unreadable"; why: string }
-    | { problem: "other"; reason: string };
+    | { problem: "other" };
   let failure = $state<Failure | null>(null);
 
   /// The file the app was opened on, when it was opened on one. Read once: it
@@ -158,7 +158,10 @@
       if (named?.problem === "no-home") failure = { problem: "no-home" };
       else if (named?.problem === "unreadable")
         failure = { problem: "unreadable", why: String(named.why ?? "") };
-      else failure = { problem: "other", reason: String(e) };
+      else {
+        console.warn("calendar: your calendar files could not be read", e);
+        failure = { problem: "other" };
+      }
     }
   }
 
@@ -188,7 +191,11 @@
       try {
         launched = await invoke<string | null>("launch_file");
       } catch (e) {
-        failure = { problem: "launch", reason: String(e) };
+        // No reason on the surface, for the reason the mail window has the
+        // same fix: `launch_file` cannot reject on a real machine, so what
+        // reaches here is the runtime's own words about itself.
+        console.warn("calendar: the window could not learn what to open", e);
+        failure = { problem: "launch" };
         return;
       }
       await read();
@@ -344,10 +351,10 @@
     <div class="content">
       {#if failure}
         <p class="note bad" role="alert">
-          {#if failure.problem === "launch"}{$t("cal.failed.launch", { reason: failure.reason })}
+          {#if failure.problem === "launch"}{$t("cal.failed.launch")}
           {:else if failure.problem === "no-home"}{$t("cal.failed.noHome")}
           {:else if failure.problem === "unreadable"}{$t("cal.failed.unreadable", { why: failure.why })}
-          {:else}{$t("cal.failed.other", { reason: failure.reason })}{/if}
+          {:else}{$t("cal.failed.other")}{/if}
         </p>
       {:else if $agenda}
         {#if launched}
