@@ -161,8 +161,18 @@ pub async fn ai_usage() -> String {
 /// nothing else - so the call had never once succeeded. The catalogue lives on
 /// `org.arlen.AIProxy1` as `list_providers`, which is where Settings has been
 /// reading it from all along, and where this command already goes for
-/// `list_provider_usage` two functions up. Nothing was wired to it yet, so the
-/// only thing this changes is that it now works.
+/// `list_provider_usage` two functions up. Nothing was wired to it yet, so
+/// nothing breaks.
+///
+/// IT STILL WILL NOT ANSWER IN A RELEASE BUILD, and the honest version of that
+/// sentence is worth more than the one I first wrote here ("the only thing this
+/// changes is that it now works"). ai-proxy authenticates its callers against an
+/// executable allowlist holding three paths - the AI daemon, the AI agent and
+/// the engine daemon - and neither this app nor Settings is one of them, so the
+/// call is refused with AccessDenied. That is still the better failure: a
+/// refusal by a service that exists, rather than silence from a member that
+/// does not. Admitting the surfaces that read a provider catalogue is a
+/// trust-boundary decision for whoever owns that allowlist, not a repoint.
 #[tauri::command]
 pub async fn ai_providers_list() -> String {
     try_call_string(PROXY_BUS, PROXY_PATH, "list_providers")
