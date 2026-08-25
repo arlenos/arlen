@@ -87,7 +87,11 @@
   {#if loading}
     <ContextMenu.Item disabled>{$t("sh.sni.loading")}</ContextMenu.Item>
   {:else if failed}
-    <ContextMenu.Item disabled>{$t("sh.sni.failed")}</ContextMenu.Item>
+    <!-- The only one of these three that reports something GOING WRONG, so it is
+         the only one announced. It replaces "Loading..." after the person opened
+         the menu and is waiting on it; disabled, it is skipped by menu
+         navigation, so without this the menu simply reads as empty. -->
+    <ContextMenu.Item disabled role="alert">{$t("sh.sni.failed")}</ContextMenu.Item>
   {:else if items.length === 0}
     <ContextMenu.Item disabled>{$t("sh.sni.noActions")}</ContextMenu.Item>
   {:else}
