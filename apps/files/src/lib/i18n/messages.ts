@@ -167,6 +167,9 @@ const messages: Catalogs = {
     "f.gm.about": "About Files",
     "f.openWith.loading": "Loading…",
     "f.openWith.none": "No apps found",
+    // Distinct from "none": one is an answer about the machine, the other is not
+    // having got one. A failed read used to say the first.
+    "f.openWith.unreadable": "Could not find out which apps open this",
     "f.newFolder.default": "New folder",
     "f.link.to": "Link to {$name}",
 
@@ -522,6 +525,7 @@ const messages: Catalogs = {
     "f.gm.about": "Über Dateien",
     "f.openWith.loading": "Wird geladen…",
     "f.openWith.none": "Keine Apps gefunden",
+    "f.openWith.unreadable": "Ließ sich nicht herausfinden, welche Apps das öffnen",
     "f.newFolder.default": "Neuer Ordner",
     "f.link.to": "Verknüpfung zu {$name}",
 
