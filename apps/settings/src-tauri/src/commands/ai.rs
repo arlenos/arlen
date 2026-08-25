@@ -145,29 +145,44 @@ async fn proxy_call_string(member: &str, fallback: &str) -> String {
 /// returning `fallback` on any connection or call failure. Distinct from
 /// [`ai_call_string`] (the AI daemon `org.arlen.AI1`): the agent owns the
 /// behaviour/skill surface, so a down agent shows an empty list, not an error.
-async fn agent_call_string(member: &str, fallback: &str) -> String {
-    let Ok(connection) = zbus::Connection::session().await else {
-        return fallback.to_string();
-    };
-    let Ok(proxy) = zbus::Proxy::new(&connection, AGENT_NAME, AGENT_OBJECT_PATH, AGENT_NAME).await
-    else {
-        return fallback.to_string();
-    };
+async fn agent_call_string(member: &str) -> Result<String, String> {
+    let connection = zbus::Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    let proxy = zbus::Proxy::new(&connection, AGENT_NAME, AGENT_OBJECT_PATH, AGENT_NAME)
+        .await
+        .map_err(|e| format!("AI agent unavailable: {e}"))?;
     proxy
         .call::<_, _, String>(member, &())
         .await
-        .unwrap_or_else(|_| fallback.to_string())
+        .map_err(|e| format!("{member}: {e}"))
 }
 
-/// The AI agent's loaded behaviours for the Settings AI-behaviours panel: a JSON
-/// array of `{ name, description, whenToUse, kind, enabled }` from the agent's
-/// `list_skills`, read live from the configured sources so it is the same set the
-/// daemon would act on. Identity and routing hints only, never a behaviour body
-/// or user data. Empty array if the agent is unreachable (the panel then shows
-/// no behaviours rather than erroring).
+/// The AI agent's loaded behaviours for the Settings AI-behaviours panel, from
+/// the agent's `list_skills`. Identity and routing hints only, never a behaviour
+/// body or user data.
+///
+/// AN ERROR, NOT AN EMPTY ARRAY, AND THAT IS THE WHOLE CHANGE. This substituted
+/// `"[]"` on any failure and said so in its own doc - "the panel then shows no
+/// behaviours rather than erroring" - which reads as a considered choice until
+/// you notice what it was hiding: **`org.arlen.AIAgent1` serves no `list_skills`
+/// member at all.** It serves `status`, `working_set`, `completed_actions`,
+/// `undo_read` and `compensate`. So this call has always failed, and the panel
+/// has always stated, as a measured fact, that the agent has no behaviours
+/// loaded. Its own `behavioursUnavailable` flag could never become true, because
+/// nothing ever reached the page's catch.
+///
+/// Failing lets that flag work: the page already sets it in a `catch` it was
+/// never given a reason to run. What the panel says now is "could not read
+/// them", which is true, instead of "there are none", which was not.
+///
+/// The member still does not exist. Implementing it is the real fix and it needs
+/// a shape decided first - the doc here described a JSON array while the page
+/// declares `{ behaviours, errors }` - so that part is reported to the planner,
+/// not guessed at. Meanwhile the surface stops making the claim.
 #[tauri::command]
-pub async fn ai_behaviours() -> String {
-    agent_call_string("list_skills", "[]").await
+pub async fn ai_behaviours() -> Result<String, String> {
+    agent_call_string("list_skills").await
 }
 
 /// Enable or disable an AI behaviour by name, editing the `[agent].enabled` list

@@ -65,8 +65,12 @@ KNOWN_RETURN_MISMATCHES: dict[str, str] = {
     "ai_behaviours": (
         "the command returns the agent's JSON as a String and the page reads it as a "
         "BehaviourReport with no parse, so the report is a string and every field is "
-        "undefined. The call is in arlen-ui's Settings AI route; the parse belongs at "
-        "it, or the command gets the struct."
+        "undefined. Underneath that, `org.arlen.AIAgent1` serves no `list_skills` "
+        "member at all, so the call has never succeeded; the command now returns an "
+        "error instead of substituting `[]`, which at least makes the page's own "
+        "unavailable branch reachable. Implementing the member needs a shape decided "
+        "(the command described an array, the page declares {behaviours, errors}). "
+        "The call site is arlen-ui's Settings AI route."
     ),
     "ai_working_set": (
         "same missing parse, and a second disagreement underneath it: the engine's "
