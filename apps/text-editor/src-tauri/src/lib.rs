@@ -40,8 +40,37 @@ pub struct OpenedFile {
 /// The marker a save returns when the file changed underneath the editor.
 ///
 /// A token rather than a sentence: the wording belongs to the page, where it is
-/// translated.
+/// translated. Kept as its own const because the page branches on it - that case
+/// is a QUESTION with an answer the person can give, not a failure to report.
 pub const CHANGED_ON_DISK: &str = "file-changed-on-disk";
+
+/// Why a save did not happen, as a word rather than a sentence.
+///
+/// The same shape as [`OpenProblem`] below, arrived at later. Open was converted
+/// and save was left returning `format!("{path}: {e}")` - so a refused write put
+/// "/home/tim/notes.md: Permission denied (os error 13)" inside a translated
+/// sentence, which is the one thing the sibling enum exists to prevent. A defect
+/// one branch from its own fix.
+///
+/// `why` survives on [`SaveProblem::Unwritable`] alone, where the filesystem's
+/// own words are the only detail there is, and the page decides whether to show
+/// it. The rest are conditions this code knows by name.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+pub enum SaveProblem {
+    /// The path is relative, so there is nothing to resolve it against.
+    NotAbsolute,
+    /// The file changed underneath the editor and saving would destroy that.
+    /// Carries [`CHANGED_ON_DISK`] as its tag, so the page's existing branch on
+    /// that word keeps working.
+    #[serde(rename = "file-changed-on-disk")]
+    ChangedOnDisk,
+    /// The path has no parent directory to write a temporary file into.
+    NoParent,
+    /// The write or the rename was refused: no permission, no space, a read-only
+    /// filesystem. The one case where the system's words add something.
+    Unwritable { why: String },
+}
 
 /// A cheap description of a file's current contents.
 ///
@@ -96,7 +125,7 @@ fn absolute(path: &str) -> Result<PathBuf, String> {
 /// an English sentence built here, under a title the catalogue had translated.
 /// `why` survives on the first because the filesystem's own words name the path
 /// and the reason.
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "kebab-case", tag = "problem")]
 enum OpenProblem {
     /// The path is relative, so there is nothing to resolve it against.
@@ -119,13 +148,15 @@ fn editor_open(path: String) -> Result<OpenedFile, OpenProblem> {
 
 /// Write the edited text back.
 ///
-/// Nothing calls this yet, and that is deliberate rather than forgotten: the
-/// canvas is a renderer, not an editing surface (`Canvas.svelte` says so in its
-/// own header - the incremental highlighting engine that would make it editable
-/// is separate work). A Save that reaches a backend from a surface where nothing
-/// can be typed would be the same shape as the fixtures fixed all week: an
-/// affordance that implies a capability the app does not have. This is the half
-/// that will be correct when the other half exists.
+/// Reached by Ctrl+S inside the buffer (`Buffer.svelte` binds `Mod-s` in the
+/// CodeMirror keymap), and by the File menu's `file.save`. There is no Save
+/// BUTTON, so the gesture is the only visible way in - worth knowing before
+/// looking for one.
+///
+/// This comment used to say nothing called it, which was true while the canvas
+/// was a renderer and stopped being true when the editable buffer landed. A
+/// stale "not wired yet" is worse than no note: it invites the next reader to
+/// treat a live path as scaffolding.
 ///
 /// Writes to a sibling temporary file and renames over the original, so an
 /// interrupted save leaves the previous contents intact rather than a truncated
@@ -139,25 +170,31 @@ fn editor_open(path: String) -> Result<OpenedFile, OpenProblem> {
 /// person choose, and `force` is that choice made deliberately. Passing an empty
 /// `seen` means the caller never read the file, which only a new document does.
 #[tauri::command]
-fn editor_save(path: String, text: String, seen: Option<String>, force: Option<bool>) -> Result<String, String> {
-    let p = absolute(&path)?;
+fn editor_save(
+    path: String,
+    text: String,
+    seen: Option<String>,
+    force: Option<bool>,
+) -> Result<String, SaveProblem> {
+    let p = absolute(&path).map_err(|_| SaveProblem::NotAbsolute)?;
     if !force.unwrap_or(false) {
         if let Some(seen) = seen.filter(|s| !s.is_empty()) {
             if stamp(&p) != seen {
-                return Err(CHANGED_ON_DISK.to_string());
+                return Err(SaveProblem::ChangedOnDisk);
             }
         }
     }
-    let dir = p.parent().ok_or_else(|| format!("{path}: has no parent directory"))?;
+    let dir = p.parent().ok_or(SaveProblem::NoParent)?;
     let tmp = dir.join(format!(
         ".{}.arlen-save",
         p.file_name().and_then(|n| n.to_str()).unwrap_or("untitled")
     ));
-    std::fs::write(&tmp, text.as_bytes()).map_err(|e| format!("{path}: {e}"))?;
+    std::fs::write(&tmp, text.as_bytes())
+        .map_err(|e| SaveProblem::Unwritable { why: e.to_string() })?;
     std::fs::rename(&tmp, &p).map_err(|e| {
         // Leave nothing behind on a failed rename: the temp file is ours.
         let _ = std::fs::remove_file(&tmp);
-        format!("{path}: {e}")
+        SaveProblem::Unwritable { why: e.to_string() }
     })?;
     // The stamp of what was just written, so the next save compares against this
     // save rather than against the state at open - otherwise the second save of
@@ -220,7 +257,7 @@ mod tests {
     // themselves are module-private for the same family of reason - on tauri
     // 2.11.5 a `pub` command re-exports its own generated macro and the crate
     // stops compiling - so the tests reach them as siblings.
-    use super::{absolute, editor_open, editor_save, CHANGED_ON_DISK};
+    use super::{absolute, editor_open, editor_save, OpenProblem, SaveProblem, CHANGED_ON_DISK};
 
     /// The lost update, which is the reason any of this exists: open a file,
     /// something else writes it, and a save that goes through silently destroys
@@ -244,7 +281,14 @@ mod tests {
 
         let refused = editor_save(path.clone(), "mine".into(), Some(opened.stamp.clone()), None)
             .expect_err("a save over someone else's change must be refused");
-        assert_eq!(refused, CHANGED_ON_DISK);
+        assert!(matches!(refused, SaveProblem::ChangedOnDisk));
+        // The tag the page branches on, proven to be the const rather than
+        // hand-typed twice: a rename on either side would else pass here and
+        // silently stop the editor offering to save anyway.
+        assert_eq!(
+            serde_json::to_value(&refused).unwrap()["problem"],
+            serde_json::Value::String(CHANGED_ON_DISK.to_string())
+        );
         assert_eq!(
             std::fs::read_to_string(&f).unwrap(),
             "somebody else's work",
@@ -303,7 +347,13 @@ mod tests {
         let f = dir.join("binary.bin");
         std::fs::write(&f, [0xff, 0xfe, 0x00]).unwrap();
         let e = editor_open(f.to_string_lossy().into_owned()).unwrap_err();
-        assert!(e.contains("not UTF-8"), "{e}");
+        // The TAG, not a substring of a sentence. This assertion still read
+        // `e.contains("not UTF-8")` after the sentence became `OpenProblem`, so
+        // the test file stopped compiling - and nothing said so, because a Tauri
+        // host's `cargo test` runs nowhere (`check-crate-coverage.py` excludes
+        // `apps/*/src-tauri` on the grounds that "the frontend job covers the
+        // app", which is true of the TypeScript and not of this).
+        assert!(matches!(e, OpenProblem::NotText), "{e:?}");
         std::fs::remove_dir_all(&dir).ok();
     }
 

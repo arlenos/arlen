@@ -10,7 +10,7 @@
 /// `openTarget` is set before the attempt on purpose, so the failure can name
 /// the file the person asked for rather than the one still loaded.
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { get } from "svelte/store";
 
 // The store checks this at call time, so the flag has to be true before the
@@ -117,5 +117,42 @@ describe("loadInitialFile", () => {
       problem: "other",
       reason: expect.stringContaining("host said no"),
     });
+  });
+});
+
+describe("saveProblemKey", () => {
+  /// Imported inside the block for the same reason as the stores above: the
+  /// module reads the Tauri flag at import time.
+  let saveProblemKey: (e: unknown) => string;
+  beforeAll(async () => {
+    saveProblemKey = (await import("./document")).saveProblemKey;
+  });
+
+  /// The host answers a refused save with a tagged problem. Each tag must reach
+  /// its own sentence, because the fallback is the vague one and a tag quietly
+  /// falling through to it looks exactly like the code working.
+  it("names every tag the host can return", () => {
+    expect(saveProblemKey({ problem: "not-absolute" })).toBe("te.save.notAbsolute");
+    expect(saveProblemKey({ problem: "no-parent" })).toBe("te.save.noParent");
+    expect(saveProblemKey({ problem: "unwritable", why: "Permission denied" })).toBe(
+      "te.save.unwritable",
+    );
+  });
+
+  /// A Tauri error arrives as an object on one path and as a string with the JSON
+  /// inside it on another. Guessing one sends every named cause down the vague
+  /// branch, which is the failure this shares with the open decoder beside it.
+  it("reads the tag out of a stringified error too", () => {
+    expect(saveProblemKey('invoke error: {"problem":"unwritable","why":"nope"}')).toBe(
+      "te.save.unwritable",
+    );
+  });
+
+  /// The floor: nothing untranslated escapes. Whatever comes back, the page shows
+  /// a key it has a sentence for, never the host's own words.
+  it("falls back to a sentence rather than showing what it got", () => {
+    for (const e of ["Permission denied (os error 13)", null, undefined, 42, {}]) {
+      expect(saveProblemKey(e)).toMatch(/^te\.save\./);
+    }
   });
 });
