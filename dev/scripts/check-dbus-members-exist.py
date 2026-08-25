@@ -82,18 +82,25 @@ ACKNOWLEDGED: dict[str, str] = {
     "AI management surface; the engine serves no model administration at all.",
     "ai_defaults_get": "as ai_models_list. Its sibling `ai_providers_list` left this "
     "list on 25 August: the catalogue it wanted was on the proxy the whole time.",
-    "ai_set_active": "the model picker's live swap. A write, so pressing it does "
-    "nothing today; the picker reports the refusal rather than hiding it.",
+    "ai_set_active": "the model picker's live swap. NOT a member to add: repointing "
+    "the provider is one of the AI master switches the config-broker owns from a "
+    "separate uid, whose whole purpose is that a same-uid process cannot flip it "
+    "silently. It maps to `AiMasterSwitches.provider` through the broker's `SetAi`.",
     "ai_provider_set_enabled": "as ai_set_active, from both Settings and the harness.",
     "ai_provider_test": "as ai_set_active, from both Settings and the harness.",
-    "ai_set_action_mode": "as ai_set_active.",
-    "ai_set_autonomous_app": "as ai_set_active.",
+    "ai_set_action_mode": "as ai_set_active: `AiMasterSwitches.action_mode`, and the "
+    "`ActionMode` enum already lives in the broker's own state.",
+    "ai_set_autonomous_app": "as ai_set_active: `AiMasterSwitches.autonomous_apps`. "
+    "The broker's doc names granting itself autonomy as the thing it exists to stop.",
     "pending_proposals": "the gate feed. The harness reads it through "
     "`try_call_string`, so an absent member is already reported as unread rather "
     "than as an empty queue.",
     "action_state": "as pending_proposals.",
     "access_grants": "the transparency drawer's grants feed; same handling.",
-    "approve": "the gate's decision path, paired with pending_proposals.",
+    "approve": "the gate's decision path. NOT a member to add: a RequireConfirmation "
+    "is resolved daemon-side through the consent-broker's trusted path, because a raw "
+    "engine-to-shell prompt would be spoofable (consent.rs). An approve button on the "
+    "session bus is the shape that design closed.",
     "deny": "as approve.",
 }
 
