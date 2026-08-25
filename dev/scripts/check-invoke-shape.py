@@ -851,7 +851,7 @@ def annotated_calls(root: Path):
             )
 
 
-def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
+def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str], int]:
     """Report interface fields the command's return struct does not produce."""
     returns = rust_return_types(root)
     structs, ambiguous, structs_by_app, structs_by_crate = rust_struct_fields(root)
@@ -861,11 +861,19 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
     known: list[str] = []
     uncompared: list[str] = []
     checked = 0
+    # Counted, not just skipped. The difference between the calls this walks and
+    # the shapes it compares was 73 and the summary said nothing about it, which
+    # is the same thing the build-directory note above calls worse than covering
+    # less everywhere: a reader has no way to tell a thorough pass from a narrow
+    # one. A scalar genuinely has no fields to compare, so it is not a finding -
+    # but how many there are belongs in the count.
+    opaque = 0
     for app, path, line, tsname, cmd in annotated_calls(root):
         rust_name = returns.get(app, {}).get(cmd)
         if not rust_name:
             continue
         if OPAQUE_RETURN.match(rust_name):
+            opaque += 1
             # A SCALAR answered as an object. `serde_json::Value` crosses the
             # bridge as whatever it holds, so `invoke<ClockState>` on a command
             # returning `Value` receives an object and the annotation is merely
@@ -922,7 +930,7 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
             known.append(f"{text}\n      routed: {KNOWN_RETURN_MISMATCHES[cmd]}")
         else:
             problems.append(text)
-    return checked, problems, known, uncompared
+    return checked, problems, known, uncompared, opaque
 
 
 def main() -> int:
@@ -989,7 +997,7 @@ def main() -> int:
                 f"not pass; the command fails to deserialize its arguments"
             )
 
-    ret_checked, ret_problems, ret_known, ret_uncompared = check_returns(root)
+    ret_checked, ret_problems, ret_known, ret_uncompared, ret_opaque = check_returns(root)
     problems.extend(ret_problems)
 
     known = {c for cmds in commands.values() for c in cmds}
@@ -1009,7 +1017,8 @@ def main() -> int:
 
     print(
         f"{checked} invoke call(s) checked against {total} command(s); "
-        f"{ret_checked} annotated return type(s) compared; "
+        f"{ret_checked} annotated return type(s) compared, "
+        f"{ret_opaque} returning a scalar with no fields to compare; "
         f"{len(DEAD_INVOKES)} command(s) invoked with no implementation, each declared"
     )
     if problems:
