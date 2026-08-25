@@ -95,33 +95,22 @@ IMPORT = re.compile(r"""import\s*\{(?P<names>[^}]*)\}\s*from\s*["'](?P<mod>[^"']
 #: rather than a hole: a file-keyed exception hides every new instance added to an
 #: already-listed file.
 KNOWN: dict[str, tuple[int, str]] = {
-    "apps/settings/src/routes/keyboard/+page.svelte": (
-        2,
-        "arlen-ui's app; `loadError` and `lastError` both drawn bare",
-    ),
+    # Re-counted on 25 August when attribute values stopped counting. Five entries
+    # went to zero and one halved: they were `title={$store.error}` tooltips
+    # beside a translated sentence, which is a detail in the right place rather
+    # than a surface saying the wrong thing. The queue was overstated by more than
+    # half, which is its own small lesson about carrying numbers nobody re-derives.
     "apps/settings/src/routes/keyboard/shortcuts/+page.svelte": (
         1,
         "arlen-ui's app; `lastError` drawn bare",
-    ),
-    "apps/settings/src/routes/ai/+page.svelte": (
-        2,
-        "arlen-ui's app; `statusError` and `explainError` drawn bare",
-    ),
-    "apps/settings/src/routes/display/+page.svelte": (
-        1,
-        "arlen-ui's app; `applyError` drawn bare",
-    ),
-    "apps/settings/src/routes/knowledge/+page.svelte": (
-        1,
-        "arlen-ui's app; `error` drawn bare",
     ),
     "apps/settings/src/lib/components/displays/RevertConfirmModal.svelte": (
         1,
         "arlen-ui's app; `error` drawn bare",
     ),
     "apps/harness/src/routes/agent/+page.svelte": (
-        2,
-        "arlen-ui's live work; `error` and `explainError` drawn bare",
+        1,
+        "arlen-ui's live work; `explainError` drawn bare",
     ),
     "apps/harness/src/lib/components/mint/MintFlow.svelte": (
         1,
@@ -150,6 +139,14 @@ def interpolations(markup: str):
             i += 1
             continue
         if i + 1 < n and markup[i + 1] in "#:/":
+            i += 1
+            continue
+        # An ATTRIBUTE value, not drawn text. `title={$topbar.error}` puts the
+        # host's words in a tooltip beside a translated sentence, which is where
+        # a detail belongs - four settings pages use exactly that pairing and it
+        # is better than the console for something a person might report. The
+        # rule is about what a surface SAYS, so an attribute is out of scope.
+        if i > 0 and markup[i - 1] == "=":
             i += 1
             continue
         depth, j = 1, i + 1
