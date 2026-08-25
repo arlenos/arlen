@@ -390,6 +390,37 @@ mod tests {
         socket
     }
 
+    /// The wire shape of a disclosure, pinned byte for byte.
+    ///
+    /// This type is serialised to JSON, handed over D-Bus and deserialised by a
+    /// struct in `apps/desktop-shell/src-tauri/src/undo_history.rs` that shares
+    /// no code with it. The two agree only by both being spelled by hand, and
+    /// nothing in the tree can see that agreement: `check-shared-signature`
+    /// catches a broken Rust signature across crates that path-depend on each
+    /// other, and these two do not - they meet on a wire.
+    ///
+    /// So the literal below IS the contract. Renaming a field here fails this
+    /// test; the matching test on the reader side holds the same literal and
+    /// names this one. A rename that reached the wire unnoticed would not break
+    /// a build, it would render an empty disclosure - which is the one thing the
+    /// detail path is written to never say by accident.
+    #[test]
+    fn the_disclosure_wire_shape_is_the_one_the_reader_parses() {
+        let detail = UndoDetail {
+            op_id: "op-1".into(),
+            steps: vec![UndoStep {
+                actor: "ai-agent".into(),
+                kind: "graph_access".into(),
+                subject: "agent.auto-tag-by-project".into(),
+                timestamp_micros: 1_700_000_000_000_000,
+            }],
+        };
+        assert_eq!(
+            serde_json::to_string(&detail).expect("encode"),
+            r#"{"opId":"op-1","steps":[{"actor":"ai-agent","kind":"graph_access","subject":"agent.auto-tag-by-project","timestampMicros":1700000000000000}]}"#
+        );
+    }
+
     /// The receipt the disclosure tests act on: one file move.
     fn moved_file() -> InverseReceipt {
         InverseReceipt::RestorePath {
