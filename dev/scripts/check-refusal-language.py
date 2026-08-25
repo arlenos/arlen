@@ -129,7 +129,7 @@ ACKNOWLEDGED = {
     "apps/store/src/routes/updates/+page.svelte:54": (
         "arlen-ui's app; reported to its owner rather than edited from this lane"
     ),
-    "apps/viewers/src/routes/+page.svelte:535": (
+    "apps/viewers/src/routes/+page.svelte:539": (
         "guarded by `readsAsInternal`: an internal-looking error falls to "
         "`v.couldNotOpenUnknown`. The third copy of that predicate, which is the "
         "argument for its home being the kit"
