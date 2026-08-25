@@ -51,11 +51,11 @@
     // A read that produced nothing, and says so as an outcome rather than an
     // empty list. Each fixture below overrides it with a different state, so one
     // screenshot shows all three: rows, refused, absent.
-    verwandt: { state: "rows", rows: [] as typeof liveRel },
+    related: { state: "rows", rows: [] as typeof liveRel },
     zugriff: { readable_by: [] as string[], manage_link: "settings:ai" },
   });
 
-  const fileInfo = { ...base({}), verwandt: { state: "rows", rows: liveRel } };
+  const fileInfo = { ...base({}), related: { state: "rows", rows: liveRel } };
   const imageInfo = base({ kind: "file", size: 2_517_000 });
   // The two states an empty list used to swallow. A folder whose graph read was
   // refused must not read as "belongs to nothing", and a symlink on a machine with
@@ -63,12 +63,12 @@
   const folderInfo = {
     ...base({ kind: "directory", size: 0, mode: 0o755 }),
     woher: [],
-    verwandt: { state: "denied", reason: "read scope" },
+    related: { state: "denied", reason: "read scope" },
   };
   const symlinkInfo = {
     ...base({ kind: "symlink", mode: 0o777 }),
     woher: [],
-    verwandt: { state: "unavailable", reason: "graph unreachable" },
+    related: { state: "unavailable", reason: "graph unreachable" },
   };
 
   let ready = $state(false);
@@ -113,7 +113,7 @@
             // than the truth and nothing about its LENGTH shows that.
             incomplete: true,
           };
-        if (cmd === "files_verwandt_as_of")
+        if (cmd === "files_related_as_of")
           return a.path === FILE
             ? { state: "rows", rows: pastRel }
             : { state: "rows", rows: [] };

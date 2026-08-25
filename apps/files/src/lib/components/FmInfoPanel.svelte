@@ -52,7 +52,7 @@
     // empty result are different facts, and a section that hides on "length 0"
     // tells a person the file belongs to no project when the truth may be that
     // nothing answered. Same shape and same words as the remote-places sidebar.
-    verwandt: ReadOutcome<{ label: string; target: string; target_id: string }>;
+    related: ReadOutcome<{ label: string; target: string; target_id: string }>;
     zugriff: { readable_by: string[]; manage_link: string };
   }
 
@@ -105,12 +105,12 @@
     kind === "directory" ? "Folder" : kind === "symlink" ? "Link" : "File";
 
   // ---- As-of time-travel for the Related lineage --------------------------
-  // Re-read project membership at a past time via `files_verwandt_as_of`. Off by
+  // Re-read project membership at a past time via `files_related_as_of`. Off by
   // default ("Now"); the presets are relative to the current moment. Only
   // project membership is bitemporal, so this is the meaningful slice.
   let asOfChoice = $state("now");
   let asOfMicros = $state<number | null>(null);
-  const asOfVerwandt = writable<Info["verwandt"] | null>(null);
+  const asOfVerwandt = writable<Info["related"] | null>(null);
 
   // Reset transient view state when the inspected file changes.
   let advancedOpen = $state(false);
@@ -135,7 +135,7 @@
       asOfVerwandt.set(null);
       return;
     }
-    invoke<Info["verwandt"]>("files_verwandt_as_of", { path: p, asOfMicros: t })
+    invoke<Info["related"]>("files_related_as_of", { path: p, asOfMicros: t })
       .then((r) => asOfVerwandt.set(r))
       // A failed INVOKE is the app not reaching its own backend, which is a
       // different thing again from the backend reaching no graph - say that
@@ -307,8 +307,8 @@
       <ProvenanceHalo fileRef={path} />
     </section>
 
-    {#if $info.verwandt}
-      {@const read = asOfMicros === null ? $info.verwandt : ($asOfVerwandt ?? $info.verwandt)}
+    {#if $info.related}
+      {@const read = asOfMicros === null ? $info.related : ($asOfVerwandt ?? $info.related)}
       {@const rels = rows(read)}
       {@const reason = reasonOf(read)}
       <section class="sec">
