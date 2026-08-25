@@ -75,6 +75,45 @@ function run(root) {
 }
 
 {
+  // THE LAUNDERED FORM, which the gate missed for its first hours and which two
+  // real defects took: the stringified error is put in a variable, and the
+  // variable finishes the sentence.
+  const root = tree(`export function f(e: unknown) {\n  let msg: string | null = null;\n  try { go(); } catch (e) { msg = String(e); }\n  return get(t)("th.failed", { reason: msg });\n}\n`);
+  const rc = run(root);
+  rc === 1 ? ok("a raw error laundered through a variable is caught") : bad("a raw error laundered through a variable is caught", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // A store's `.set(String(e))` and a `$store` read in the argument are the same
+  // defect across a `$`, which the name test has to allow for.
+  const root = tree(`export const failure = writable<string | null>(null);\nexport function f(e: unknown) {\n  failure.set(String(e));\n  return get(t)("th.failed", { reason: $failure });\n}\n`);
+  const rc = run(root);
+  rc === 1 ? ok("a store set from a stringified error is caught through its $ read") : bad("a store set from a stringified error is caught through its $ read", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // THE BOUNDARY, one character from the defect: the same variable REASSIGNED to
+  // a token before use is the fix, and must pass. Without this the gate would
+  // punish the shape it is asking for.
+  const root = tree(`export function f(e: unknown) {\n  let msg: string | null = null;\n  try { go(); } catch (e) { msg = tokenOf(e); }\n  return get(t)("th.failed", { reason: msg });\n}\n`);
+  const rc = run(root);
+  rc === 0 ? ok("the same variable holding a token instead passes") : bad("the same variable holding a token instead passes", `expected 0, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // A name that merely CONTAINS a tainted name is a different name. `reason` is
+  // tainted here and `reasonKey` is not, which is exactly the pair the text
+  // editor ended up with.
+  const root = tree(`export function f(e: unknown) {\n  const reason = String(e);\n  console.warn(reason);\n  const reasonKey = keyOf(e);\n  return get(t)("th.failed", { why: reasonKey });\n}\n`);
+  const rc = run(root);
+  rc === 0 ? ok("a longer name that merely contains a tainted one is not it") : bad("a longer name that merely contains a tainted one is not it", `expected 0, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
   // A gate that reads nothing must not look like a gate that found nothing wrong.
   const root = tree(null);
   const rc = run(root);
