@@ -31,7 +31,10 @@
   /// reached no daemon. Flipping it suppressed nothing. The quick action beside
   /// it has always sent the real message; this sends the same one, and the dead
   /// command has since been deleted.
-  const dndOn = $derived($dndState.mode !== "off");
+  /// Known-on, not not-off. `dndState` starts `"unknown"` until the daemon says,
+  /// and `!== "off"` would read that as SUPPRESSING - showing the toggle engaged
+  /// over a state nobody has read. The tile beside it makes the same distinction.
+  const dndOn = $derived($dndState.mode === "on" || $dndState.mode === "scheduled");
   let outputs = $state<AudioDevice[]>([]);
   let inputs = $state<AudioDevice[]>([]);
   let apps = $state<AppVol[]>([]);

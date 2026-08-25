@@ -631,6 +631,10 @@ const messages: Catalogs = {
     // instead of borrowing another tile's word.
     "sh.tile.radiosOn": "Radios on",
     "sh.tile.available": "Available",
+    // The subtitle for a tile whose subsystem has not said which way it is. The
+    // panel's Network and Sound tiles have carried one; the others asserted a
+    // state from a store default instead.
+    "sh.tile.stateUnknown": "State unknown",
     "sh.tile.startProject": "Start a project",
     "sh.tile.focusMode": "Focus Mode",
     "sh.tile.tapToPick": "Tap to pick",
@@ -1243,6 +1247,7 @@ const messages: Catalogs = {
     "sh.tile.radiosOff": "Funk aus",
     "sh.tile.radiosOn": "Funk an",
     "sh.tile.available": "Erreichbar",
+    "sh.tile.stateUnknown": "Zustand unbekannt",
     "sh.tile.startProject": "Projekt beginnen",
     "sh.tile.focusMode": "Fokusmodus",
     "sh.tile.tapToPick": "Tippen zum Wählen",

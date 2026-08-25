@@ -29,12 +29,12 @@
     total: number;
   }
 
-  let stats = $state<Stats>({
-    available: false,
-    buckets: [],
-    today: 0,
-    total: 0,
-  });
+  /// `null` until the daemon has answered, which is NOT the same as answering
+  /// that it is not recording. The initial value was `available: false`, and so
+  /// was the catch, so a failed read and a daemon that is genuinely idle both
+  /// rendered "Zeichnet noch nicht auf" - a statement about whether the machine
+  /// is watching, made without managing to ask it.
+  let stats = $state<Stats | null>(null);
 
   /// KG entries land via the event-bus pipeline so freshness is
   /// bounded by the writer's batch cadence (500ms / 1000 events).
@@ -50,8 +50,9 @@
   async function refresh() {
     try {
       stats = await invoke<Stats>("knowledge_daily_counts");
-    } catch {
-      stats = { available: false, buckets: [], today: 0, total: 0 };
+    } catch (e) {
+      console.warn("shell: the knowledge daemon did not answer", e);
+      stats = null;
     }
   }
 
@@ -70,7 +71,7 @@
   /// 8-day window. An all-zero series would draw a flat baseline
   /// that visually reads as an oversized divider strip.
   const hasData = $derived(
-    stats.available && stats.buckets.some((b) => b.count > 0),
+    stats !== null && stats.available && stats.buckets.some((b) => b.count > 0),
   );
 
   /// Empty-state message for the body region when there's no chart
@@ -78,14 +79,21 @@
   /// nothing recorded yet" so the user knows whether to debug or
   /// just wait.
   const emptyMessage = $derived(
-    !stats.available ? $t("sh.tile.kgNotRecording") : $t("sh.tile.kgNoEvents"),
+    stats === null
+      ? $t("sh.tile.stateUnknown")
+      : !stats.available
+        ? $t("sh.tile.kgNotRecording")
+        : $t("sh.tile.kgNoEvents"),
   );
 
   const linePath = $derived.by(() => {
-    if (!hasData) return "";
-    const max = Math.max(1, ...stats.buckets.map((b) => b.count));
-    const stepX = SVG_W / Math.max(1, stats.buckets.length - 1);
-    return stats.buckets
+    // `hasData` already establishes both, but the compiler cannot see through a
+    // derived - and a local binding says which value the path is drawn from.
+    const s = stats;
+    if (!hasData || s === null) return "";
+    const max = Math.max(1, ...s.buckets.map((b) => b.count));
+    const stepX = SVG_W / Math.max(1, s.buckets.length - 1);
+    return s.buckets
       .map((b, i) => {
         const x = i * stepX;
         const y = SVG_H - (b.count / max) * (SVG_H - 4) - 2;
