@@ -218,6 +218,48 @@ check(
   (code, out) => code === 1 && out.includes("stores/x.ts"),
 );
 
+// The half the file's own gap list said was uncovered, and which the promise path
+// had covered all along. Written as a try/catch this used to pass; the Bluetooth
+// pairing dialog was one.
+check(
+  "a try/catch handler that only logs is caught, like its promise spelling",
+  {
+    "apps/demo/src/lib/stores/thing.ts":
+      'import { writable } from "svelte/store";\n' +
+      "export const current = writable(null);\n" +
+      "export async function respond(id) {\n" +
+      "  current.set(null);\n" +
+      "  try {\n" +
+      '    await invoke("respond", { id });\n' +
+      "  } catch (err) {\n" +
+      '    console.warn("respond failed:", err);\n' +
+      "  }\n" +
+      "}\n",
+  },
+  (code, out) => code === 1 && out.includes("thing.ts"),
+);
+
+// The boundary, one statement apart: a handler that logs AND puts the state back
+// is the fix, and must pass. Without this the gate would report the repair.
+check(
+  "the same handler passes once it also reverts",
+  {
+    "apps/demo/src/lib/stores/thing.ts":
+      'import { writable } from "svelte/store";\n' +
+      "export const current = writable(null);\n" +
+      "export async function respond(id, previous) {\n" +
+      "  current.set(null);\n" +
+      "  try {\n" +
+      '    await invoke("respond", { id });\n' +
+      "  } catch (err) {\n" +
+      '    console.warn("respond failed:", err);\n' +
+      "    current.set(previous);\n" +
+      "  }\n" +
+      "}\n",
+  },
+  (code) => code === 0,
+);
+
 check(
   "a comment quoting the defect is not the defect",
   {
