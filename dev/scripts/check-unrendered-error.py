@@ -82,6 +82,25 @@ TYPED_STORE = re.compile(r"export const (\w+)\s*:\s*\w+<\s*(\w+)")
 #: An `error` field in a state body. Not `errorCount`, not a nested `onError`.
 ERROR_FIELD = re.compile(r"^\s*error\s*\??\s*:", re.M)
 
+
+def is_read_in(name: str, markup: str) -> bool:
+    """Does `name` appear in the markup AS A NAME, rather than inside a longer one?
+
+    A plain `name in markup` passes on any word that happens to contain it, and
+    one store here is short enough for that to matter: `mouse`. Settings' markup
+    is full of `onmousedown`, `onmouseenter`, `mouseZoom` and
+    `enable_mouse_zoom_shortcuts`, so the substring test answers yes whether or
+    not anything reads the store. It answers yes today for the right reason - the
+    page does draw `$mouse` - which is exactly why it was worth checking: a test
+    that passes for the wrong reason passes just as loudly once the right reason
+    goes away.
+
+    A store reaches markup as `$name`, or bare inside a script block, so the `$`
+    is optional and only an identifier character on either side disqualifies a
+    hit.
+    """
+    return re.search(rf"(?<![A-Za-z0-9_])\$?{re.escape(name)}(?![A-Za-z0-9_])", markup) is not None
+
 #: Keys are `app:store`. A deliberate silence belongs here WITH its reason, so
 #: the next reader can disagree with the decision rather than rediscover the
 #: finding.
@@ -147,7 +166,7 @@ def main() -> int:
         for name, where in sorted(stores.items()):
             checked += 1
             key = f"{app.name}:{name}"
-            if name in markup or key in ACKNOWLEDGED:
+            if is_read_in(name, markup) or key in ACKNOWLEDGED:
                 continue
             rel = where.relative_to(ROOT)
             findings.append(
@@ -171,7 +190,7 @@ def main() -> int:
                     continue
                 checked += 1
                 key = f"{app.name}:{name}"
-                if f"{name}.error" in markup or key in ACKNOWLEDGED:
+                if is_read_in(f"{name}.error", markup) or key in ACKNOWLEDGED:
                     continue
                 rel = p.relative_to(ROOT)
                 findings.append(
