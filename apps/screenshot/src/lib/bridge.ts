@@ -21,13 +21,22 @@ export const isTauri = (): boolean =>
 /// without screencopy has a screen it could not get, and drawing a fake one is
 /// a picture of a machine that does not exist - which the person then annotates,
 /// saves and sends, believing it came off their display.
+/// Why a capture did not happen.
+///
+/// `no-screencopy` is a property of the compositor and stays true until it gains
+/// the interface; `refused` is one call failing and may not repeat. A person can
+/// act on the first and only retry the second.
+export type CaptureRefusal = "no-screencopy" | "refused";
+
 export type Capture =
   /// The real screen, as a PNG data URL.
   | { kind: "image"; dataUrl: string }
-  /// A host answered and cannot capture. Carries why, because "not supported by
-  /// this compositor" and "the capture call failed" are different things to do
-  /// something about.
-  | { kind: "unavailable"; reason: string }
+  /// A host answered and cannot capture. Carries WHY as a word, because "not
+  /// supported by this compositor" and "the capture call failed" are different
+  /// things to do something about - and because the page draws this, so a
+  /// sentence here is a sentence in English on every screen. The compositor's own
+  /// words go to the log instead.
+  | { kind: "unavailable"; why: CaptureRefusal }
   /// No Tauri host at all: plain vite or the render harness.
   | { kind: "hostless" };
 
@@ -57,7 +66,8 @@ export async function captureWindow(index: number): Promise<Capture> {
   try {
     return { kind: "image", dataUrl: await invoke<string>("capture_window", { index, includeCursor: false }) };
   } catch (e) {
-    return { kind: "unavailable", reason: String(e) };
+    console.warn("screenshot: capture_window refused", e);
+    return { kind: "unavailable", why: "refused" };
   }
 }
 
@@ -67,7 +77,8 @@ export async function captureOutput(index: number): Promise<Capture> {
   try {
     return { kind: "image", dataUrl: await invoke<string>("capture_output", { index, includeCursor: false }) };
   } catch (e) {
-    return { kind: "unavailable", reason: String(e) };
+    console.warn("screenshot: capture_output refused", e);
+    return { kind: "unavailable", why: "refused" };
   }
 }
 
@@ -76,11 +87,12 @@ export async function capturePrimary(): Promise<Capture> {
   if (!isTauri()) return { kind: "hostless" };
   try {
     if (!(await invoke<boolean>("capture_available"))) {
-      return { kind: "unavailable", reason: "no screen capture on this compositor" };
+      return { kind: "unavailable", why: "no-screencopy" };
     }
     return { kind: "image", dataUrl: await invoke<string>("capture_output", { index: 0, includeCursor: false }) };
   } catch (e) {
-    return { kind: "unavailable", reason: String(e) };
+    console.warn("screenshot: capture_output refused", e);
+    return { kind: "unavailable", why: "refused" };
   }
 }
 
