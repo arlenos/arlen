@@ -33,12 +33,27 @@ waiving the shape. The residual is real and belongs to whoever owns that page: t
 predicate reads ENGLISH text, so a readable English clause still reaches a German
 reader as English.
 
-WHAT IT CANNOT SEE. A raw string that reaches the argument through a variable
-(`const msg = String(e)` and then `{ reason: msg }`). Widening to that means
-tracking assignments, and a check that guesses at dataflow reports confident
-nonsense; this catches the shape as it is actually written. It also says nothing
-about a raw error assigned straight into state and rendered without a catalog at
-all - `check-unrendered-error` is the gate for that side.
+LAUNDERED THROUGH A VARIABLE. This originally caught only the inline form and said
+so, on the grounds that tracking assignments guesses at dataflow. That caution was
+right about the method and wrong about the cost: within hours the same defect
+turned up twice more in exactly the laundered shape - the task manager filling
+`sm.err.stop` from a `reason` set to `String(e)` seven lines earlier, and the
+shell's module host filling `sh.module.didNotMount` from `mountError`. A gate that
+matches only the shape its author last happened to write is the recurring lesson
+of this directory.
+
+So it is widened, but NARROWLY, without pretending to do dataflow: a name assigned
+a stringified exception ANYWHERE in the file, appearing as a value in a translate
+call's argument object ANYWHERE in the same file. No control flow is reasoned
+about, nothing crosses a file boundary, and the two facts either both appear or
+they do not. A name reassigned to a token before use stops matching, because it is
+then no longer assigned `String(e)` - which is what the fix looks like.
+
+WHAT IT STILL CANNOT SEE. A raw error handed straight into a component prop, or
+assigned into state and rendered with no catalog call at all -
+`check-unrendered-error` is the gate for that side. And a taint that crosses files
+(a store setting `String(e)`, a page interpolating it) is out of reach by design;
+that one is caught by reading, not by this.
 
 Run: dev/scripts/check-refusal-language.py [root]
 """
@@ -61,6 +76,24 @@ CALL = re.compile(
     r"""\$?t\)?\(\s*["'](?P<key>[a-zA-Z][\w.]*)["']\s*,\s*\{[^}]*String\(\s*(?:e|err|error|ex)\s*\)""",
 )
 
+#: The same call, but capturing the argument object so a laundered name can be
+#: looked for inside it. Kept separate from CALL so the inline finding keeps its
+#: own wording, which names the defect more precisely.
+CALL_ARGS = re.compile(
+    r"""\$?t\)?\(\s*["'](?P<key>[a-zA-Z][\w.]*)["']\s*,\s*\{(?P<args>[^}]*)\}""",
+)
+
+#: A name given a stringified exception: `const msg = String(e)`, a plain
+#: `saveError = String(e)`, a store's `.set(String(e))`, and the template-literal
+#: forms of each. The exception name is pinned to the four the tree uses, so this
+#: cannot fire on `String(someNumber)`.
+EXC = r"(?:e|err|error|ex)"
+TAINTS = (
+    re.compile(rf"""(?:const|let|var)\s+(?P<n>[A-Za-z_$][\w$]*)\s*=\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)"""),
+    re.compile(rf"""(?P<n>[A-Za-z_$][\w$]*)\s*=\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)\s*;"""),
+    re.compile(rf"""(?P<n>[A-Za-z_$][\w$]*)\.set\(\s*(?:`[^`]*\$\{{)?String\(\s*{EXC}\s*\)"""),
+)
+
 
 #: Calls argued for rather than fixed, as `path:line` with the reason. A stale
 #: entry is worse than none, so an entry whose FILE is present and whose line no
@@ -74,6 +107,11 @@ ACKNOWLEDGED = {
     ),
     "apps/settings/src/routes/appearance/quicksettings/+page.svelte:385": (
         "guarded by `readsAsInternal`: same trade on the reset path"
+    ),
+    "apps/viewers/src/routes/+page.svelte:535": (
+        "guarded by `readsAsInternal`: an internal-looking error falls to "
+        "`v.couldNotOpenUnknown`. The third copy of that predicate, which is the "
+        "argument for its home being the kit"
     ),
 }
 
@@ -95,10 +133,15 @@ def main() -> int:
     problems: list[str] = []
     seen_acknowledged: set[str] = set()
     for path in sorted(files):
-        for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        # Names this file gives a stringified exception to. Collected over the
+        # whole file before the line walk, because the assignment is usually in a
+        # catch and the interpolation is in the markup far below it.
+        tainted = {m.group("n") for rx in TAINTS for m in rx.finditer(text)}
+        for n, line in enumerate(text.splitlines(), 1):
+            where = f"{path.relative_to(ROOT)}:{n}"
             match = CALL.search(line)
             if match:
-                where = f"{path.relative_to(ROOT)}:{n}"
                 if where in ACKNOWLEDGED:
                     seen_acknowledged.add(where)
                     continue
@@ -107,6 +150,27 @@ def main() -> int:
                     f"stringified error, so half the sentence is in the reader's language and "
                     f"half is whatever the backend formatted"
                 )
+                continue
+            if not tainted:
+                continue
+            laundered = CALL_ARGS.search(line)
+            if not laundered:
+                continue
+            args = laundered.group("args")
+            for name in sorted(tainted):
+                # Word-bounded and preceded by a separator, so `reason` does not
+                # match inside `reasonKey`, and a `$`-prefixed store read counts.
+                if not re.search(rf"[:\s({{,]\$?{re.escape(name)}\b", args):
+                    continue
+                if where in ACKNOWLEDGED:
+                    seen_acknowledged.add(where)
+                    break
+                problems.append(
+                    f"{where}: `{laundered.group('key')}` is completed with `{name}`, "
+                    f"which this file sets to a stringified error - the same half-translated "
+                    f"sentence, reached through a variable"
+                )
+                break
 
     if problems:
         print("translated sentences finished by a raw error:\n")
