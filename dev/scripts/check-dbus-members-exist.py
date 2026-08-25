@@ -80,8 +80,8 @@ ACKNOWLEDGED: dict[str, str] = {
     "could not read them instead of reporting none.",
     "ai_models_list": "the model picker's catalogue. Reported with the rest of the "
     "AI management surface; the engine serves no model administration at all.",
-    "ai_providers_list": "as ai_models_list.",
-    "ai_defaults_get": "as ai_models_list.",
+    "ai_defaults_get": "as ai_models_list. Its sibling `ai_providers_list` left this "
+    "list on 25 August: the catalogue it wanted was on the proxy the whole time.",
     "ai_set_active": "the model picker's live swap. A write, so pressing it does "
     "nothing today; the picker reports the refusal rather than hiding it.",
     "ai_provider_set_enabled": "as ai_set_active, from both Settings and the harness.",

@@ -151,16 +151,21 @@ pub async fn ai_usage() -> String {
     }
 }
 
-/// The catalogued providers for the manager surface (`ai_providers_list`): a JSON
-/// array of `{ id, name, kind, enabled, configured, status }`. `null` when the
-/// daemon is unreachable, because an empty catalogue reads as "you have no
-/// providers configured" - a statement about the user's setup that nothing
-/// measured. No harness surface calls this yet; Settings has its own copy for
-/// its own page, so converting it here breaks nothing and stops the next caller
-/// inheriting the substitution.
+/// The catalogued providers for the manager surface: the sovereignty-annotated
+/// provider list, `null` when it cannot be read (an empty catalogue reads as
+/// "you have no providers configured", which is a statement about the user's
+/// setup that nothing measured).
+///
+/// DIALS THE PROXY, not the AI daemon. This asked `org.arlen.AI1` for a member
+/// called `ai_providers_list`, and that bus serves `ask` and `explain_system` and
+/// nothing else - so the call had never once succeeded. The catalogue lives on
+/// `org.arlen.AIProxy1` as `list_providers`, which is where Settings has been
+/// reading it from all along, and where this command already goes for
+/// `list_provider_usage` two functions up. Nothing was wired to it yet, so the
+/// only thing this changes is that it now works.
 #[tauri::command]
 pub async fn ai_providers_list() -> String {
-    try_call_string(AI_BUS, AI_PATH, "ai_providers_list")
+    try_call_string(PROXY_BUS, PROXY_PATH, "list_providers")
         .await
         .unwrap_or_else(|| "null".to_string())
 }
