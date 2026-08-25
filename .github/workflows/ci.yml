@@ -420,6 +420,8 @@ jobs:
           node dev/scripts/test-check-profile-keys.mjs
           python3 dev/scripts/check-refusal-language.py
           node dev/scripts/test-check-refusal-language.mjs
+          python3 dev/scripts/check-untranslated-render.py
+          node dev/scripts/test-check-untranslated-render.mjs
           python3 dev/scripts/check-dependency-direction.py
           node dev/scripts/test-check-dependency-direction.mjs
           python3 dev/scripts/check-tests-run.py
