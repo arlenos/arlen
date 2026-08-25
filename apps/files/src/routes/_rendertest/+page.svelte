@@ -80,7 +80,7 @@
     // carrying keys, at which point the harness would have rendered the sentence
     // as a lookup and drawn the sentence itself back - a render harness quietly
     // showing something the app can no longer produce.
-    opError.set("f.op.refused");
+    opError.set({ key: "f.op.refused" });
   });
 
   onMount(async () => {

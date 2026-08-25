@@ -29,7 +29,9 @@ export const opBusy = writable<string | null>(null);
 /// one. A key rather than a sentence: the overlay renders `{$opError}` and used
 /// to render whatever Rust formatted, so a German window carried an English
 /// clause or a bare errno in a red bar.
-export const opError = writable<string | null>(null);
+export type OpMessage = { key: string; values?: Record<string, unknown> };
+
+export const opError = writable<OpMessage | null>(null);
 
 /// Read the host's answer, which arrives as an object on one path and as a
 /// string with the JSON inside it on another. Accepting only one sends every
@@ -150,7 +152,7 @@ export async function runOp(
         },
       });
     } else {
-      opError.set(opProblemKey(e));
+      opError.set({ key: opProblemKey(e) });
     }
     return false;
   } finally {
@@ -174,7 +176,8 @@ export async function bulkRename(
     await get(activeController)?.refresh();
     return true;
   } catch (e) {
-    opError.set(String(e));
+    console.warn("files: bulk rename refused", e);
+    opError.set({ key: "f.op.renameFailed" });
     return false;
   } finally {
     opBusy.set(null);
@@ -191,7 +194,8 @@ export async function extractArchive(archive: string, dest: string): Promise<boo
     await get(activeController)?.refresh();
     return true;
   } catch (e) {
-    opError.set(String(e));
+    console.warn("files: extract refused", e);
+    opError.set({ key: "f.op.extractFailed" });
     return false;
   } finally {
     opBusy.set(null);
@@ -207,7 +211,8 @@ export async function compressPaths(sources: string[], dest: string): Promise<bo
     await get(activeController)?.refresh();
     return true;
   } catch (e) {
-    opError.set(String(e));
+    console.warn("files: compress refused", e);
+    opError.set({ key: "f.op.compressFailed" });
     return false;
   } finally {
     opBusy.set(null);
@@ -234,7 +239,8 @@ export async function undoLast(): Promise<void> {
     opError.set(null);
     await get(activeController)?.refresh();
   } catch (e) {
-    opError.set(String(e));
+    console.warn("files: undo refused", e);
+    opError.set({ key: "f.op.undoFailed" });
   } finally {
     opBusy.set(null);
   }

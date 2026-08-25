@@ -76,7 +76,7 @@ export async function addBookmark(path: string): Promise<void> {
     await invoke("files_bookmark_add", { path });
     opError.set(null);
   } catch {
-    opError.set(get(t)("f.places.pinFailed"));
+    opError.set({ key: "f.places.pinFailed" });
     return;
   }
   await loadPlaces();
@@ -89,7 +89,7 @@ export async function removeBookmark(path: string): Promise<void> {
     await invoke("files_bookmark_remove", { path });
     opError.set(null);
   } catch {
-    opError.set(get(t)("f.places.unpinFailed"));
+    opError.set({ key: "f.places.unpinFailed" });
     return;
   }
   await loadPlaces();
@@ -111,7 +111,7 @@ export async function removePlace(place: Place): Promise<void> {
       await invoke("files_eject", { device });
       opError.set(null);
     } catch {
-      opError.set(get(t)("f.places.ejectRefused", { place: place.label }));
+      opError.set({ key: "f.places.ejectRefused", values: { place: place.label } });
     }
     await loadPlaces();
   } else {
@@ -141,7 +141,7 @@ export async function navigatePlace(
     try {
       await invoke("files_mount", { device: place.path });
     } catch {
-      opError.set(get(t)("f.places.mountRefused", { place: place.label }));
+      opError.set({ key: "f.places.mountRefused", values: { place: place.label } });
       return;
     }
     await loadPlaces();
@@ -152,7 +152,7 @@ export async function navigatePlace(
         return;
       }
     }
-    opError.set(get(t)("f.places.mountedNowhere", { place: place.label }));
+    opError.set({ key: "f.places.mountedNowhere", values: { place: place.label } });
     return;
   }
   navigate(place.path);

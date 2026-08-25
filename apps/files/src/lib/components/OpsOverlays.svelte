@@ -41,7 +41,7 @@
 
 {#if $opError}
   <div class="op-errorline" role="alert">
-    <span>{$t($opError)}</span>
+    <span>{$t($opError.key, $opError.values)}</span>
     <button class="op-dismiss" onclick={() => opError.set(null)}>{$t("f.dismiss")}</button>
   </div>
 {/if}
