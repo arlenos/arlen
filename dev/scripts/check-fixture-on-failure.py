@@ -43,6 +43,13 @@ What it does NOT cover, and the omission is deliberate rather than an oversight:
     empty list genuinely is the honest answer for that store. Telling those
     apart needs the store read, not a regex, so they are listed at the end as
     work rather than failed here. There were 9 of them when this was written.
+    Down to 3 on 25 August, and all three were read rather than left as a number:
+    `nowPlaying.set(null)` is argued in place (an absent media player is not a
+    claim); files' `savedSearches.set([])` makes the sidebar group VANISH rather
+    than say "none saved", so nothing false is stated; calendar's
+    `calendars.set([])` is the same, and its comment claimed a different fallback
+    than the one it sits on, which is fixed. The queue is empty of defects, so
+    what remains here is the rule and not a backlog.
   * A fixture reached through a helper, or assigned to a local that is set
     later.
   * Invented content written INLINE in the catch - `store.set([{ id: 1, label:

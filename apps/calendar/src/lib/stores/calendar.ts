@@ -252,8 +252,15 @@ export function colorOf(cals: CalendarInfo[], event: AgendaEvent): string {
 }
 
 /// Load the calendar list. Live: the intended `calendar_calendars`; fixture:
-/// the three example calendars; a live host without the command answers with
-/// the one unnamed calendar so nothing pretends.
+/// the three example calendars under vite.
+///
+/// A LIVE host that cannot answer leaves the list empty, and `CalendarList`
+/// renders nothing at all rather than "no calendars" - so the failure is silent
+/// but makes no false statement about what the person has. The comment here used
+/// to say the empty case "answers with the one unnamed calendar so nothing
+/// pretends", which describes `colorOf`'s fallback for an event whose calendar is
+/// gone, not this. Two different fallbacks, one sentence, and the sentence was
+/// attached to the wrong one.
 export async function loadCalendars(): Promise<void> {
   try {
     calendars.set(await invoke<CalendarInfo[]>("calendar_calendars"));
