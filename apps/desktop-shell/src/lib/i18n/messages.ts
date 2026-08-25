@@ -316,6 +316,11 @@ const messages: Catalogs = {
     // Written here rather than in the store, where they were English literals
     // with the daemon's error appended.
     "sh.job.notCancelled": "That job could not be cancelled, so it is still running.",
+    // The clipboard's two destructive actions. Both used to fail into a console
+    // line, which on a privacy surface means the entry stays visible and nobody
+    // is told why.
+    "sh.clip.notDeleted": "That entry could not be removed, so it is still in your clipboard history.",
+    "sh.clip.notCleared": "Your clipboard history could not be cleared, so it is still there.",
     "sh.job.notPaused": "That job could not be paused, so it is still running.",
     "sh.job.notResumed": "That job could not be resumed, so it is still paused.",
     "sh.job.done": "Done",
@@ -988,6 +993,8 @@ const messages: Catalogs = {
     "sh.job.retry": "Erneut versuchen",
     "sh.job.cancel": "Abbrechen",
     "sh.job.notCancelled": "Dieser Auftrag ließ sich nicht abbrechen, er läuft also weiter.",
+    "sh.clip.notDeleted": "Dieser Eintrag ließ sich nicht entfernen, er steht also weiter in deinem Zwischenablage-Verlauf.",
+    "sh.clip.notCleared": "Dein Zwischenablage-Verlauf ließ sich nicht leeren, er ist also noch da.",
     "sh.job.notPaused": "Dieser Auftrag ließ sich nicht anhalten, er läuft also weiter.",
     "sh.job.notResumed": "Dieser Auftrag ließ sich nicht fortsetzen, er ist also weiterhin angehalten.",
     "sh.job.done": "Fertig",

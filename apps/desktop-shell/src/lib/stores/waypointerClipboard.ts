@@ -17,6 +17,9 @@
 
 import { writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
+import { toast } from "svelte-sonner";
+import { t } from "$lib/i18n/messages";
 
 export interface ClipboardResult {
     id: string;
@@ -113,7 +116,12 @@ export async function deleteClipboardEntry(result: ClipboardResult): Promise<voi
         // Optimistic: drop it from the current result set immediately.
         _results.update((arr) => arr.filter((r) => r.id !== result.id));
     } catch (e) {
+        // Said out loud, not only logged. The entry stays on screen either way,
+        // so the press looks like it did nothing - which is true, and is exactly
+        // the state a person needs a reason for on a surface whose point is
+        // getting something out of a history.
         console.warn("[waypointer] clipboard delete failed:", e);
+        toast.error(get(t)("sh.clip.notDeleted"));
     }
 }
 
@@ -124,5 +132,6 @@ export async function clearAllClipboard(): Promise<void> {
         _results.set([]);
     } catch (e) {
         console.warn("[waypointer] clipboard clear-all failed:", e);
+        toast.error(get(t)("sh.clip.notCleared"));
     }
 }
