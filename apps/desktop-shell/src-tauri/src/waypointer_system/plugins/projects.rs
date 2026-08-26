@@ -107,6 +107,12 @@ fn list_active_projects() -> Vec<Project> {
 /// Relevance boost by recency: projects touched in the last day score near
 /// 1.0, falling off over roughly a month.
 fn project_relevance(p: &Project) -> f32 {
+    // NOT REACHED TODAY. Nothing calls this plugin's `search`: the Waypointer's
+    // project section is fed by the older `list_projects` command, and no store
+    // asks `waypointer_search_plugin` for `core.projects`. The clock below was
+    // still wrong and is fixed, but as a latent one rather than something a user
+    // is seeing.
+    //
     // MICROSECONDS, because that is what `p.last_accessed` carries: the shell
     // passes the graph column through untouched and the daemon stores micros.
     // A millisecond clock here made `now - t` about -1.8e15, which `.max(0)`
