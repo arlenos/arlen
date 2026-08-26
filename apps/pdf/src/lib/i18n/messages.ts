@@ -55,6 +55,8 @@ const messages: Catalogs = {
     "pdf.showContents": "Show contents",
     "pdf.hostAbsent": "The reader reads documents through its own host, which is not running here.",
     "pdf.pageFailed": "This page could not be drawn.",
+    "pdf.pageLockLost":
+      "The document is in an unknown state, so this page could not be drawn. Open the file again.",
     "pdf.pageNoRenderer": "This machine has nothing installed that can draw a page.",
     "pdf.textInstead": "The text of this page, without its layout:",
   },
@@ -108,6 +110,8 @@ const messages: Catalogs = {
     // nobody reaches on a real machine and therefore nobody re-read.
     "pdf.hostAbsent": "Der Leser liest Dokumente über seinen eigenen Host, der hier nicht läuft.",
     "pdf.pageFailed": "Diese Seite konnte nicht gezeichnet werden.",
+    "pdf.pageLockLost":
+      "Das Dokument ist in einem unbekannten Zustand, deshalb konnte diese Seite nicht gezeichnet werden. Öffne die Datei erneut.",
     "pdf.pageNoRenderer": "Auf diesem Rechner ist nichts installiert, das eine Seite zeichnen kann.",
     "pdf.textInstead": "Der Text dieser Seite, ohne ihr Layout:",
   },

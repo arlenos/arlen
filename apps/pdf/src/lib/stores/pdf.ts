@@ -161,11 +161,18 @@ export async function fetchPage(page: number, scale: number): Promise<PageState>
   } catch (e) {
     const words = await invoke<string>("pdf_page_text", { page }).catch(() => "");
     // The backend answers with a token, not a sentence: `no-renderer` when this
-    // machine has nothing to draw with, `refused` when it had and would not. An
+    // machine has nothing to draw with, `lock-lost` when a command panicked
+    // holding the document, `refused` when it could have drawn and would not. An
     // unrecognised value is passed through as `refused` rather than shown, so a
     // future token cannot arrive on screen as a bare word.
+    //
+    // `lock-lost` is kept because it is the one of the three a person can act
+    // on: reopening the file fixes it, and "this page could not be drawn" - which
+    // is what it used to collapse to - reads as a broken page in a working
+    // document rather than a document that needs opening again.
     const token = String(e);
-    const failure = token === "no-renderer" ? token : "refused";
+    const failure =
+      token === "no-renderer" || token === "lock-lost" ? token : "refused";
     return { image: null, lines: [], failure, words, scale };
   }
 }
