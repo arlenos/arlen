@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use arlen_confiner::NetworkPolicy;
-use arlen_permissions::{FilesystemPermissions, NetworkPermissions};
+use arlen_permissions::{expand_user, FilesystemPermissions, NetworkPermissions};
 
 // `UserDirs`, `is_host_escape` and `read_only_grant_ok` moved to
 // `arlen_permissions` beside `FilesystemPermissions`, and the flag-to-directory
@@ -67,11 +67,18 @@ pub fn confinement_inputs(
     // Read-only subtrees: the same whole-tree refusal, and a named subtree under
     // one of those roots is allowed - that is what makes `/sys/class/power_supply`
     // sayable without making `/sys` bindable.
+    // EXPANDED FIRST, like `custom`, then gated. A profile is written once for
+    // whoever installs it, so every shipped one spells the home tree
+    // `/home/$USER`; cloned verbatim that is a path no machine has, and the
+    // launcher drops a bind whose source does not exist. The reader's entire
+    // filesystem grant resolved to nothing and it could not open the document it
+    // was handed. The gate runs on the expanded path so its depth rule measures
+    // the directory that will actually be bound.
     let read_only_dirs: Vec<PathBuf> = fs
         .read_only
         .iter()
+        .map(|p| expand_user(p, home))
         .filter(|p| read_only_grant_ok(p, home))
-        .cloned()
         .collect();
     ConfinementInputs {
         app_dirs,
@@ -322,6 +329,48 @@ mod read_only_grant {
             !c.app_dirs.contains(&PathBuf::from("/sys/class/power_supply")),
             "a read-only grant must not become a writable bind"
         );
+    }
+
+    #[test]
+    fn a_read_only_grant_gets_the_same_user_expansion_custom_does() {
+        // Every shipped profile spells a per-user path `/home/$USER` or
+        // `/run/media/$USER`, because a profile is written once for whoever
+        // installs it. `custom` maps through `expand_user`; `read_only` was
+        // cloned verbatim, so the grant resolved to a path no machine has and
+        // the launcher dropped the bind for a source that does not exist.
+        let fs = FilesystemPermissions {
+            read_only: vec![PathBuf::from("/run/media/$USER")],
+            ..Default::default()
+        };
+        let c = confinement_inputs(
+            &fs,
+            &NetworkPermissions::default(),
+            "com.example.app",
+            Path::new("/home/u"),
+            &dirs(),
+        );
+        assert_eq!(c.read_only_dirs, vec![PathBuf::from("/run/media/u")]);
+    }
+
+    #[test]
+    fn the_home_tree_is_refused_read_only_like_any_other_whole_tree() {
+        // Not a gap in the expansion above: `is_host_escape` refuses any path
+        // home starts with, so `/home/$USER` is dropped after expanding too. It
+        // is the deliberate whole-tree rule, and it means an app cannot ask to
+        // READ the home tree without writing it - the reader's profile asks for
+        // exactly that and gets nothing.
+        let fs = FilesystemPermissions {
+            read_only: vec![PathBuf::from("/home/$USER")],
+            ..Default::default()
+        };
+        let c = confinement_inputs(
+            &fs,
+            &NetworkPermissions::default(),
+            "com.example.app",
+            Path::new("/home/u"),
+            &dirs(),
+        );
+        assert!(c.read_only_dirs.is_empty(), "got {:?}", c.read_only_dirs);
     }
 
     #[test]
