@@ -103,19 +103,43 @@ fn run_unlink(inv: &RmInvocation) -> i32 {
 /// Trash the operands into the home trash and journal each restorable inverse to the
 /// undo-signer (best-effort: an absent or failing signer never fails a committed,
 /// reversible trash).
+///
+/// SAID ONCE, AND SAID IN BOTH CASES. A failing signer used to warn per file and
+/// an ABSENT one said nothing at all - the socket-exists test skipped the loop
+/// and the run finished quietly. So the commoner of the two situations, a user
+/// service that is simply not enabled, was the silent one: files went to the
+/// trash and never appeared in the undo history, and nothing on the terminal
+/// said so.
+///
+/// Both now produce one line at the end of the run rather than one per file,
+/// which is also less noise than the old failing path made on a multi-file
+/// delete. What it does NOT claim is that anything is lost: the freedesktop
+/// trash carries its own restore info, so the file is recoverable from the file
+/// manager either way. The undo HISTORY is what missed it, and that is what the
+/// line says.
 async fn run_trash(inv: &RmInvocation) -> i32 {
     let report = trash::execute_trash(inv);
     for (path, why) in &report.errors {
         eprintln!("trash-rm: cannot trash '{path}': {why}");
     }
     let socket = socket_path();
+    let mut unrecorded = 0usize;
     if socket.exists() {
         for (_path, inverse) in &report.trashed {
             if let Err(e) = journal_inverse(&socket, inverse.clone()).await {
                 // The trash committed; a journal miss only loses the undo record.
                 eprintln!("trash-rm: warning: could not record undo: {e}");
+                unrecorded += 1;
             }
         }
+    } else {
+        unrecorded = report.trashed.len();
+    }
+    if unrecorded > 0 {
+        eprintln!(
+            "trash-rm: {}",
+            unrecorded_note(unrecorded, report.trashed.len())
+        );
     }
     if inv.verbose {
         for (path, _) in &report.trashed {
@@ -123,6 +147,26 @@ async fn run_trash(inv: &RmInvocation) -> i32 {
         }
     }
     report.exit_code()
+}
+
+/// The one line about what the undo history did not get.
+///
+/// Names the count against the total rather than saying "some", because "1 of 1"
+/// and "1 of 30" are different situations and the reader is the one who knows
+/// which matters. Pure, so the wording is testable without a signer.
+fn unrecorded_note(unrecorded: usize, trashed: usize) -> String {
+    if unrecorded == trashed {
+        format!(
+            "the undo history did not record {} \
+             (still in the trash, restorable from the file manager)",
+            if trashed == 1 { "this delete".to_string() } else { format!("these {trashed} deletes") }
+        )
+    } else {
+        format!(
+            "the undo history did not record {unrecorded} of {trashed} deletes \
+             (still in the trash, restorable from the file manager)"
+        )
+    }
 }
 
 /// Submit a captured inverse to the undo-signer as a fresh `SubmitCreated` entry.
@@ -192,5 +236,39 @@ fn render_parse_error(e: &RmError) -> String {
             "it is dangerous to operate recursively on '/' (use --no-preserve-root to override)"
                 .to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unrecorded_note;
+
+    /// One delete and one miss is the ordinary case: no signer running, one file
+    /// gone to the trash. It must not read as a loss - the freedesktop trash
+    /// holds its own restore info, so the file is there either way, and the
+    /// sentence has to say which thing missed it.
+    #[test]
+    fn a_single_unrecorded_delete_names_the_trash_as_the_answer() {
+        let s = unrecorded_note(1, 1);
+        assert!(s.contains("this delete"), "{s}");
+        assert!(s.contains("restorable from the file manager"), "{s}");
+        assert!(!s.contains("of 1"), "a whole-run miss should not count against itself: {s}");
+    }
+
+    /// All of many. Plural, and still one line for the run rather than one per
+    /// file - which is the whole reason this moved out of the loop.
+    #[test]
+    fn every_delete_unrecorded_reads_as_the_whole_run() {
+        let s = unrecorded_note(30, 30);
+        assert!(s.contains("these 30 deletes"), "{s}");
+    }
+
+    /// A partial miss is a different situation from a whole one, and "some"
+    /// would flatten them. The reader is the one who knows whether 1 of 30
+    /// matters.
+    #[test]
+    fn a_partial_miss_gives_both_numbers() {
+        let s = unrecorded_note(1, 30);
+        assert!(s.contains("1 of 30"), "{s}");
     }
 }
