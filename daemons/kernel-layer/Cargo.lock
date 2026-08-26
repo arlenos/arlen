@@ -393,6 +393,7 @@ dependencies = [
  "aya-log",
  "env_logger",
  "kernel-layer-common",
+ "libc",
  "log",
  "prost",
  "prost-build",

@@ -21,6 +21,7 @@ env_logger.workspace = true
 tokio = { workspace = true, features = ["full"] }
 prost = "0.13"
 uuid = { version = "1", features = ["v7"] }
+libc = "0.2"
 kernel-layer-common = { path = "../kernel-layer-common", features = ["user"] }
 
 [dev-dependencies]
