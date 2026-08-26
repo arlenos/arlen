@@ -65,6 +65,13 @@ struct Row {
     inverse_kind: String,
     object: String,
     enactable: bool,
+    /// The SIGNER's own seal, microseconds since the Unix epoch. The undo service
+    /// added it because a row used to take its only clock from the audit join, so
+    /// an audit daemon that was down left every row timeless - the panel could say
+    /// what happened and not when. `0` is a record sealed before the field
+    /// existed, which is why the mapping below treats zero as absent rather than
+    /// as 1970.
+    sealed_at_micros: i64,
     #[serde(default)]
     description: Option<Description>,
 }
@@ -193,7 +200,19 @@ fn entry_from_row(row: Row) -> UndoRowView {
         producer: producer_of(row.description.as_ref().map(|d| d.actor.as_str())),
         kind,
         object: row.object,
-        at: row.description.as_ref().map(|d| d.timestamp_micros / 1_000_000),
+        // The audit join first, since that is when the action was recorded, and
+        // the signer's seal when the join found nothing. Either beats the row
+        // arriving timeless, which is what reading only the join gave whenever
+        // the audit daemon was down.
+        at: row
+            .description
+            .as_ref()
+            .map(|d| d.timestamp_micros / 1_000_000)
+            .or(if row.sealed_at_micros > 0 {
+                Some(row.sealed_at_micros / 1_000_000)
+            } else {
+                None
+            }),
         reversibility: if row.inverse_kind == "restore-snapshot" {
             "reversible_with_cost"
         } else {
@@ -421,6 +440,7 @@ mod tests {
             inverse_kind: kind.into(),
             object: "report.pdf".into(),
             enactable,
+            sealed_at_micros: 0,
             description: actor.map(|a| Description {
                 actor: a.into(),
                 timestamp_micros: 1_700_000_000_000_000,
@@ -564,7 +584,8 @@ mod tests {
                 "subject": "agent.auto-tag-by-project",
                 "timestampMicros": 1_700_000_000_000_000i64
             },
-            "enactable": true
+            "enactable": true,
+            "sealedAtMicros": 1_700_000_500_000_000i64
         });
         let parsed: Row = serde_json::from_value(served).unwrap();
         assert_eq!(parsed.op_id, "op-7");
@@ -573,5 +594,28 @@ mod tests {
         assert_eq!(e.kind, "restore-path");
         assert_eq!(e.producer, "agent");
         assert_eq!(e.at, Some(1_700_000_000));
+    }
+
+    #[test]
+    fn a_row_the_audit_join_missed_still_carries_the_signers_time() {
+        // The undo service stamps `sealed_at_micros` itself precisely so an audit
+        // daemon that is down does not leave the panel able to say what happened
+        // and not when. Reading only the join gave back a timeless row.
+        let mut r = row("delete-created", true, None);
+        r.sealed_at_micros = 1_700_000_500_000_000;
+        assert_eq!(entry_from_row(r).at, Some(1_700_000_500));
+    }
+
+    #[test]
+    fn a_seal_from_before_the_field_existed_is_absent_rather_than_1970() {
+        let r = row("delete-created", true, None);
+        assert_eq!(r.sealed_at_micros, 0, "the helper stands for an old record");
+        assert_eq!(entry_from_row(r).at, None);
+    }
+
+    #[test]
+    fn the_audit_time_still_wins_when_the_join_resolved() {
+        let r = row("delete-created", true, Some("dev.arlen.files"));
+        assert_eq!(entry_from_row(r).at, Some(1_700_000_000));
     }
 }
