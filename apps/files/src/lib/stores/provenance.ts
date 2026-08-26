@@ -29,7 +29,7 @@ export interface ProvenanceStep {
   /// A closed set rather than a phrase, because the sentence around it differs
   /// per language: English puts the verb first ("Last opened by X"), German puts
   /// it last. A free-form verb could only ever be glued to a fixed frame.
-  relation?: "partOf" | "lastOpenedBy" | "downloadedFrom";
+  relation?: "partOf" | "lastOpenedBy" | "alsoOpenedBy" | "downloadedFrom";
   actor: string;
   origin: Provenance;
   /// WHEN, as epoch milliseconds rather than as a phrase.
@@ -204,9 +204,13 @@ export function stepLine(t: Translate, s: ProvenanceStep, loc: string): string {
     case "user":
       return t("f.prov.user", { when });
     case "graph":
-      return s.relation === "lastOpenedBy"
-        ? t("f.prov.lastOpenedBy", { actor, when })
-        : t("f.prov.partOf", { actor, when });
+      // Named rather than defaulted: the fall-through used to word every graph
+      // step as "Part of", so a step the backend sent as a last-open read as a
+      // membership. Anything unrecognised still lands on partOf, which is the
+      // conservative wording, but the two the backend sends are now explicit.
+      if (s.relation === "lastOpenedBy") return t("f.prov.lastOpenedBy", { actor, when });
+      if (s.relation === "alsoOpenedBy") return t("f.prov.alsoOpenedBy", { actor, when });
+      return t("f.prov.partOf", { actor, when });
     case "external":
       if (s.attested) return t("f.prov.attested", { actor, when });
       return s.relation === "downloadedFrom"
