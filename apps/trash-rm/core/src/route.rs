@@ -20,8 +20,13 @@ pub enum DeleteMode {
 }
 
 /// Decide the delete mode. `interactive_session` is whether the delete runs in an
-/// interactive terminal (the binary passes `stdout().is_terminal()` or equivalent);
-/// a non-interactive run is treated as scripted and hard-unlinks.
+/// interactive terminal; a non-interactive run is treated as scripted and
+/// hard-unlinks.
+///
+/// The binary reads it from STDIN. This doc named stdout for an hour after the
+/// binary stopped using it, which is the drift worth noting in a doc that exists
+/// to tell a reader where the bool comes from: `rm old.log > out.txt` is a person
+/// whose output happens to go elsewhere, and stdout calls that a script.
 pub fn route_delete(inv: &RmInvocation, interactive_session: bool) -> DeleteMode {
     if inv.purge || !interactive_session {
         DeleteMode::Unlink
