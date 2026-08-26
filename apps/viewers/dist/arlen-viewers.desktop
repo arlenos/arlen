@@ -32,12 +32,25 @@ StartupNotify=true
 # format it cannot show is worse than one that is not the default at all,
 # because the user has already been told it is the right application.
 #
+# AND NO `image/x-raw`, for the same reason one layer down. A RAW file DOES
+# resolve - `detect_by_extension` maps .cr2/.nef/.arw/... to
+# `Decoder::Fallback` - so by the "what detect resolves" rule above it belonged
+# on this line, and it was on it. But `worker_bin(Fallback)` is `None` and its
+# own comment says the worker "is a later slice", so opening one answers "no
+# image decoder for this format". Resolving is not showing, and the rule this
+# file argues for is the second one: a viewer that is the default for a format
+# it cannot show is worse than one that is not the default at all. The detection
+# stays - a RAW opened THROUGH the app gets a clear refusal rather than nothing -
+# and the type rejoins this line when the Fallback worker lands, not before.
+# (Every other exotic here routes to the ImageRs worker; RAW was the only one
+# pointing at a decoder that does not exist yet.)
+#
 # THERE IS NO VIDEO TYPE HERE, and that is deliberate: `MediaKind` has only
 # `Image` and `Audio`, so a real `.mp4` resolves to nothing and the window says
 # "unsupported file format" (measured, 15 Aug). The `VideoViewer` component and
 # the `?demo=video` route exist, but no real file can ever reach them. When the
 # video face is built, its types join this line - not before.
-MimeType=image/png;image/jpeg;image/gif;image/webp;image/tiff;image/bmp;image/avif;image/heic;image/jxl;image/qoi;image/x-icon;image/x-tga;image/x-portable-anymap;image/x-dds;image/x-farbfeld;image/vnd.radiance;image/x-raw;audio/flac;audio/mpeg;audio/wav;audio/ogg;audio/aiff;audio/mp4;audio/aac;
+MimeType=image/png;image/jpeg;image/gif;image/webp;image/tiff;image/bmp;image/avif;image/heic;image/jxl;image/qoi;image/x-icon;image/x-tga;image/x-portable-anymap;image/x-dds;image/x-farbfeld;image/vnd.radiance;audio/flac;audio/mpeg;audio/wav;audio/ogg;audio/aiff;audio/mp4;audio/aac;
 
 # The identity the permission system keys on, stated rather than left to the
 # desktop-id, exactly as the files app does: the resolver reads the directory
