@@ -10,7 +10,7 @@ use std::{
     collections::HashMap,
     io::Write,
     os::unix::net::UnixStream,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
 
@@ -403,6 +403,47 @@ pub(crate) fn is_blocked(path: &str) -> bool {
     BLOCKED_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
 }
 
+/// Read CLOCK_MONOTONIC, the clock `bpf_ktime_get_ns` stamps events with.
+///
+/// Not CLOCK_BOOTTIME: that is `bpf_ktime_get_boot_ns`, and it counts suspend.
+fn now_monotonic_ns() -> u64 {
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: clock_gettime writes only the timespec we hand it.
+    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } != 0 {
+        return 0;
+    }
+    (ts.tv_sec as u64) * 1_000_000_000 + (ts.tv_nsec as u64)
+}
+
+fn now_epoch_micros() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
+}
+
+/// Put a kernel stamp on the same clock as every other producer.
+///
+/// The kernel stamps with `bpf_ktime_get_ns()`, NANOSECONDS SINCE BOOT. The
+/// envelope's `timestamp` is EPOCH MICROSECONDS, which is what installd and
+/// every SDK emitter mint and what the knowledge daemon compares against. A
+/// boot-relative number in that field is not merely wrong by a factor: it is
+/// smaller than any epoch value, so once a single app event advances the
+/// promotion high-water mark, `WHERE timestamp > hwm` excludes every kernel
+/// event from then on and the whole eBPF feed goes dark without an error.
+///
+/// Anchoring against the wall clock rather than restamping "now" keeps the
+/// event's real age, since the ring buffer can hold one for a while before
+/// this daemon drains it.
+pub(crate) fn epoch_micros_from_boot_ns(
+    boot_ns: u64,
+    now_boot_ns: u64,
+    now_epoch_micros: i64,
+) -> i64 {
+    let age_micros = now_boot_ns.saturating_sub(boot_ns) / 1_000;
+    now_epoch_micros.saturating_sub(age_micros as i64)
+}
+
 pub(crate) fn encode_envelope(
     event_type: &str,
     pid: u32,
@@ -414,7 +455,11 @@ pub(crate) fn encode_envelope(
     let proto_event = proto::Event {
         id: Uuid::now_v7().to_string(),
         r#type: event_type.to_string(),
-        timestamp: timestamp_ns as i64,
+        timestamp: epoch_micros_from_boot_ns(
+            timestamp_ns,
+            now_monotonic_ns(),
+            now_epoch_micros(),
+        ),
         source: "ebpf".to_string(),
         pid,
         origin: session_id.to_string(),
@@ -486,4 +531,50 @@ fn send_with_reconnect(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A plausible wall clock and a machine that has been up eight days.
+    const NOW_EPOCH_US: i64 = 1_787_000_000_000_000;
+    const NOW_BOOT_NS: u64 = 8 * 24 * 60 * 60 * 1_000_000_000;
+
+    #[test]
+    fn an_event_keeps_the_age_it_had_when_the_kernel_stamped_it() {
+        let five_seconds_ago = NOW_BOOT_NS - 5_000_000_000;
+        let stamped = epoch_micros_from_boot_ns(five_seconds_ago, NOW_BOOT_NS, NOW_EPOCH_US);
+        assert_eq!(stamped, NOW_EPOCH_US - 5_000_000);
+    }
+
+    #[test]
+    fn a_stamp_from_this_instant_lands_on_the_wall_clock() {
+        assert_eq!(
+            epoch_micros_from_boot_ns(NOW_BOOT_NS, NOW_BOOT_NS, NOW_EPOCH_US),
+            NOW_EPOCH_US
+        );
+    }
+
+    #[test]
+    fn a_stamp_from_ahead_of_us_does_not_travel_into_the_future() {
+        // Reads on different CPUs can come back slightly out of order.
+        let ahead = NOW_BOOT_NS + 2_000_000;
+        assert_eq!(
+            epoch_micros_from_boot_ns(ahead, NOW_BOOT_NS, NOW_EPOCH_US),
+            NOW_EPOCH_US
+        );
+    }
+
+    #[test]
+    fn the_boot_relative_number_never_reaches_the_envelope() {
+        // The defect this replaced: `timestamp: timestamp_ns as i64`. A
+        // boot-relative value is far below any epoch stamp, so the knowledge
+        // daemon's `WHERE timestamp > hwm` drops it the moment one app event
+        // moves the mark.
+        let raw = NOW_BOOT_NS - 1_000_000_000;
+        let stamped = epoch_micros_from_boot_ns(raw, NOW_BOOT_NS, NOW_EPOCH_US);
+        assert_ne!(stamped, raw as i64);
+        assert!(stamped > NOW_EPOCH_US - 60_000_000);
+    }
 }
