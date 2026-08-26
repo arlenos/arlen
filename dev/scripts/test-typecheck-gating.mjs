@@ -47,10 +47,16 @@ check(
 
 // 2. The gating branch has to exist at all: a step that only ever runs the
 //    advisory branch would satisfy the rule above and still gate nothing.
+//    The check runs through `tee` so the crash line can be read afterwards,
+//    so its own exit code has to come back out of the pipe and be asserted.
+//    Matching a BARE `npm run check` line missed that and went red against
+//    the very workflow it was written for.
 check(
-  "a branch runs `npm run check` with nothing catching its failure",
-  /\n\s*npm run check\s*\n/.test(yml),
-  "no bare `npm run check` line, so nothing can fail",
+  "the check's own exit code survives the pipe and is asserted",
+  /npm run check[^\n]*\|\s*tee/.test(yml) &&
+    /CHECK_STATUS=\$\{PIPESTATUS\[0\]\}/.test(yml) &&
+    /\[ "\$CHECK_STATUS" -eq 0 \]\s*\n/.test(yml),
+  "nothing carries the check's failure out of the pipe",
 );
 
 // 3. Run the workflow's OWN matching logic, with a stubbed failing check.
