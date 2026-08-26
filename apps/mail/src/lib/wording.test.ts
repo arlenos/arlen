@@ -6,7 +6,7 @@
 // inside the component, where the only way to exercise them was to render it.
 
 import { describe, expect, it } from "vitest";
-import { formatSent, invitationWords, threadKey } from "./wording";
+import { formatBytes, formatSent, invitationWords, threadKey } from "./wording";
 
 // Returns the id it was asked for, so a test can assert WHICH sentence was
 // chosen without depending on any wording.
@@ -65,5 +65,35 @@ describe("threadKey", () => {
   it("names the empty subject rather than keying everything together", () => {
     expect(threadKey(null)).toBe("(no subject)");
     expect(threadKey("Re:")).toBe("(no subject)");
+  });
+});
+
+/// Sizes, in both languages, because the English half was right and the German
+/// half was not - and only a German render showed it.
+describe("formatBytes", () => {
+  it("scales the same way in both languages and localises only the number", () => {
+    expect(formatBytes(84213, "en")).toBe("84.2 kB");
+    expect(formatBytes(84213, "de")).toBe("84,2 kB");
+    expect(formatBytes(5242880, "en")).toBe("5.2 MB");
+    expect(formatBytes(5242880, "de")).toBe("5,2 MB");
+  });
+
+  /// The two shapes the old version produced. `Intl`'s `notation: "compact"` on
+  /// `unit: "byte"` compacts in English and does not in German, so an attachment
+  /// read `84.213 B` on a German machine - where the period is a THOUSANDS
+  /// separator, and reads to anyone else as eighty-four point two bytes - and a
+  /// five-megabyte one read `5,2 Mio. B`.
+  it("never writes a German size as a bare byte count or in millions", () => {
+    expect(formatBytes(84213, "de")).not.toContain(" B");
+    expect(formatBytes(5242880, "de")).not.toContain("Mio");
+  });
+
+  /// Bytes are whole things, so the smallest step carries no decimal, and the
+  /// loop takes a value up a step before it could ever print `1000 B`.
+  it("writes small sizes whole and never reaches a thousand of a unit", () => {
+    expect(formatBytes(0, "en")).toBe("0 B");
+    expect(formatBytes(900, "en")).toBe("900 B");
+    expect(formatBytes(999, "de")).toBe("999 B");
+    expect(formatBytes(1000, "en")).toBe("1 kB");
   });
 });

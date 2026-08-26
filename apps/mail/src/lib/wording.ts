@@ -31,17 +31,38 @@ export function invitationWords(method: string | null, t: Translate): string {
   return t("ml.invitation.other", { method });
 }
 
-/// A size written the way the reader writes one: `16 kB` in English, a comma
-/// decimal in German, the unit from the reader's locale. Moved here from the
-/// page when the reading surface grew components - a rule, not markup glue.
+/// A size written the way the reader writes one: `84.2 kB` in English,
+/// `84,2 kB` in German. Moved here from the page when the reading surface grew
+/// components - a rule, not markup glue.
+///
+/// THE UNIT IS OURS, THE NUMBER IS THE LOCALE'S, and it took a German render to
+/// see why. This asked `Intl` for `style: "unit", unit: "byte"` with
+/// `notation: "compact"`, which does not mean the same thing in every language:
+/// English compacts bytes to `84.2KB`, German does not compact them at all
+/// below a million and then says `5,2 Mio. B` - "5.2 million bytes", which no
+/// file manager in either language writes. Worse at the size in the frame:
+/// 84213 came out `84.213 B`, where the period is a German THOUSANDS separator
+/// and reads to anyone else as eighty-four point two bytes.
+///
+/// So the scale step is ours - the same 1000-based ladder the English output
+/// already used, so nothing changes for that reader but the space before the
+/// unit the doc always claimed - and only the number goes through `Intl`, which
+/// is the part that genuinely differs by language (`84.2` against `84,2`). The
+/// unit names are the SI symbols and are written the same in both.
+const SIZE_UNITS = ["B", "kB", "MB", "GB", "TB"] as const;
+
 export function formatBytes(n: number, loc: string): string {
-  return new Intl.NumberFormat(loc, {
-    style: "unit",
-    unit: "byte",
-    unitDisplay: "narrow",
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(n);
+  let value = Math.max(0, n);
+  let step = 0;
+  while (value >= 1000 && step < SIZE_UNITS.length - 1) {
+    value /= 1000;
+    step += 1;
+  }
+  // Bytes are whole things; a scaled size wants one place. `1000 B` never
+  // appears because the loop takes it up a step first.
+  const digits = step === 0 ? 0 : 1;
+  const number = new Intl.NumberFormat(loc, { maximumFractionDigits: digits }).format(value);
+  return `${number} ${SIZE_UNITS[step]}`;
 }
 
 /// The display half of a mailbox line: `Mara Winter <mara@example.org>` reads
