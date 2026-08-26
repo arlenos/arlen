@@ -65,14 +65,22 @@ pub struct Counters {
     pub cpu_temp_c: Option<CpuTemp>,
     /// Per-core clock in MHz, empty where the machine exposes no `cpufreq`.
     pub core_freqs: Vec<Option<f64>>,
-    /// Sectors read across the physical block devices.
-    pub disk_read_sectors: u64,
-    /// Sectors written across the physical block devices.
-    pub disk_write_sectors: u64,
-    /// Bytes received across the real interfaces.
-    pub net_rx_bytes: u64,
-    /// Bytes sent across the real interfaces.
-    pub net_tx_bytes: u64,
+    /// Sectors read across the physical block devices, or `None` where
+    /// `/proc/diskstats` could not be read.
+    ///
+    /// Carried as-read rather than as a zero, for the reason `mem_pressure`
+    /// gives above: the absence has to survive to the surface. A machine with no
+    /// diskstats - which `read` names as a case it keeps running for - was
+    /// showing `0.0 MB/s` once the first tick was behind it, and a rate of zero
+    /// is a real and reassuring reading.
+    pub disk_read_sectors: Option<u64>,
+    /// Sectors written across the physical block devices, same absence.
+    pub disk_write_sectors: Option<u64>,
+    /// Bytes received across the real interfaces, or `None` where `/proc/net/dev`
+    /// could not be read.
+    pub net_rx_bytes: Option<u64>,
+    /// Bytes sent across the real interfaces, same absence.
+    pub net_tx_bytes: Option<u64>,
 }
 
 /// One tick of the Performance tab: levels and rates, as numbers. Formatting and
@@ -91,14 +99,21 @@ pub struct SystemTick {
     pub mem_used_gb: f64,
     /// Installed memory, in gibibytes.
     pub mem_total_gb: f64,
-    /// Disk read rate in mebibytes per second.
-    pub disk_read_mbs: f64,
-    /// Disk write rate in mebibytes per second.
-    pub disk_write_mbs: f64,
-    /// Network receive rate in mebibytes per second.
-    pub net_rx_mbs: f64,
-    /// Network send rate in mebibytes per second.
-    pub net_tx_mbs: f64,
+    /// Disk read rate in mebibytes per second, or `None` where `/proc/diskstats`
+    /// could not be read.
+    ///
+    /// `rates_ready` below covers the first tick, when there is nothing to delta
+    /// against. This covers the other absence: a machine that has no diskstats at
+    /// all, which the counter reader explicitly keeps running for. Zero was a
+    /// reading, and an idle disk is a perfectly ordinary thing to see.
+    pub disk_read_mbs: Option<f64>,
+    /// Disk write rate in mebibytes per second, same absence.
+    pub disk_write_mbs: Option<f64>,
+    /// Network receive rate in mebibytes per second, or `None` where
+    /// `/proc/net/dev` could not be read.
+    pub net_rx_mbs: Option<f64>,
+    /// Network send rate in mebibytes per second, same absence.
+    pub net_tx_mbs: Option<f64>,
     /// False on the first tick after start, when the rates have nothing to delta
     /// against and are reported as zero. The surface uses this to avoid drawing a
     /// zero it would otherwise present as a measurement.
@@ -165,15 +180,31 @@ impl SysProbe {
             .and_then(|s| parse_loadavg(&s, cpus));
         let meminfo = std::fs::read_to_string(self.proc_root.join("meminfo")).unwrap_or_default();
         let (mem_total_kb, mem_available_kb) = parse_meminfo(&meminfo);
-        let diskstats =
-            std::fs::read_to_string(self.proc_root.join("diskstats")).unwrap_or_default();
-        let (disk_read_sectors, disk_write_sectors) =
-            parse_diskstats(&diskstats, &|name| self.is_whole_disk(name));
+        // Fallible all the way through, like `mem_pressure` below and unlike the
+        // rest: this is the file `read`'s own note names as legitimately absent,
+        // and an unreadable one used to become a pair of zeros and then a rate of
+        // 0.0 MB/s.
+        let diskstats = std::fs::read_to_string(self.proc_root.join("diskstats")).ok();
+        let (disk_read_sectors, disk_write_sectors) = match &diskstats {
+            Some(text) => {
+                let (r, w) = parse_diskstats(text, &|name| self.is_whole_disk(name));
+                (Some(r), Some(w))
+            }
+            None => (None, None),
+        };
+        let diskstats = diskstats.unwrap_or_default();
         // The same text and the same whole-disk rule as the totals, so the
         // breakdown can never disagree with the figure above it.
         let devices = parse_diskstats_devices(&diskstats, &|name| self.is_whole_disk(name));
-        let netdev = std::fs::read_to_string(self.proc_root.join("net/dev")).unwrap_or_default();
-        let (net_rx_bytes, net_tx_bytes) = parse_netdev(&netdev, &|n| self.is_real_link(n));
+        let netdev = std::fs::read_to_string(self.proc_root.join("net/dev")).ok();
+        let (net_rx_bytes, net_tx_bytes) = match &netdev {
+            Some(text) => {
+                let (rx, tx) = parse_netdev(text, &|n| self.is_real_link(n));
+                (Some(rx), Some(tx))
+            }
+            None => (None, None),
+        };
+        let netdev = netdev.unwrap_or_default();
         let links = parse_netdev_links(&netdev, &|n| self.is_real_link(n));
         let cpu_temp_c = read_cpu_temp(&self.sys_root);
         let core_freqs = read_core_freqs(&self.sys_root, cores.len());
@@ -825,10 +856,10 @@ impl SystemMonitor {
                 links: Vec::new(),
                 cpu_temp_c: now_counters.cpu_temp_c.clone(),
                 core_freqs: now_counters.core_freqs.clone(),
-                disk_read_mbs: 0.0,
-                disk_write_mbs: 0.0,
-                net_rx_mbs: 0.0,
-                net_tx_mbs: 0.0,
+                disk_read_mbs: None,
+                disk_write_mbs: None,
+                net_rx_mbs: None,
+                net_tx_mbs: None,
                 rates_ready: false,
             };
         };
@@ -842,11 +873,16 @@ impl SystemMonitor {
         let d_busy = now_counters.cpu_busy.saturating_sub(prev.cpu_busy);
         let cpu_pct = if d_total > 0 { d_busy as f64 / d_total as f64 * 100.0 } else { 0.0 };
 
-        let rate = |now_v: u64, prev_v: u64, unit: f64| -> f64 {
+        // `None` in, `None` out: a source that could not be read has no rate, and
+        // a zero here would be indistinguishable from an idle disk. Both samples
+        // have to be present - a file that appeared or vanished between ticks has
+        // nothing to subtract.
+        let rate = |now_v: Option<u64>, prev_v: Option<u64>, unit: f64| -> Option<f64> {
+            let (now_v, prev_v) = (now_v?, prev_v?);
             if secs <= 0.0 {
-                return 0.0;
+                return Some(0.0);
             }
-            now_v.saturating_sub(prev_v) as f64 * unit / secs
+            Some(now_v.saturating_sub(prev_v) as f64 * unit / secs)
         };
         const SECTOR: f64 = 512.0 / (1024.0 * 1024.0);
         const BYTE: f64 = 1.0 / (1024.0 * 1024.0);
@@ -969,7 +1005,7 @@ mod tests {
         let c = probe.read();
         assert_eq!(c.links.len(), 1);
         assert_eq!(c.links[0].name, "eth0");
-        assert_eq!(c.net_rx_bytes, 100, "and the total agrees with the breakdown");
+        assert_eq!(c.net_rx_bytes, Some(100), "and the total agrees with the breakdown");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -994,7 +1030,7 @@ mod tests {
         let t = m.sample();
         assert!(!t.rates_ready);
         assert_eq!(t.cpu_pct, 0.0);
-        assert_eq!(t.disk_read_mbs, 0.0);
+        assert_eq!(t.disk_read_mbs, None, "no previous sample is no rate, not a zero");
         // Memory is a level, so it is real immediately: 16000 MiB total, 8000
         // available, half used.
         assert!((t.mem_pct - 50.0).abs() < 0.01, "{}", t.mem_pct);
@@ -1032,11 +1068,11 @@ mod tests {
         // busy 150 -> 300 (+150), total 1000 -> 2000 (+1000): 15%.
         assert!((t.cpu_pct - 15.0).abs() < 0.01, "{}", t.cpu_pct);
         // +2048 sectors read in a second = 1 MiB/s; +2048 written likewise.
-        assert!((t.disk_read_mbs - 1.0).abs() < 0.01, "{}", t.disk_read_mbs);
-        assert!((t.disk_write_mbs - 1.0).abs() < 0.01, "{}", t.disk_write_mbs);
+        assert!((t.disk_read_mbs.unwrap() - 1.0).abs() < 0.01, "{:?}", t.disk_read_mbs);
+        assert!((t.disk_write_mbs.unwrap() - 1.0).abs() < 0.01, "{:?}", t.disk_write_mbs);
         // +1 MiB received, nothing sent.
-        assert!((t.net_rx_mbs - 1.0).abs() < 0.01, "{}", t.net_rx_mbs);
-        assert_eq!(t.net_tx_mbs, 0.0);
+        assert!((t.net_rx_mbs.unwrap() - 1.0).abs() < 0.01, "{:?}", t.net_rx_mbs);
+        assert_eq!(t.net_tx_mbs, Some(0.0));
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -1050,7 +1086,7 @@ mod tests {
         std::fs::write(dir.join("proc/net/dev"), "  eth0: 1 1 0 0 0 0 0 0 1 1 0 0 0 0 0 0\n")
             .unwrap();
         let t = m.sample_at(t0 + Duration::from_secs(1));
-        assert_eq!(t.net_rx_mbs, 0.0, "a device reset must not read as a burst");
+        assert_eq!(t.net_rx_mbs, Some(0.0), "a device reset must not read as a burst");
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -1330,7 +1366,7 @@ mod tests {
         let c = probe.read();
         assert_eq!(c.devices.len(), 1, "the mapper is the same traffic, not more of it");
         assert_eq!(c.devices[0].name, "nvme0n1");
-        assert_eq!(c.disk_read_sectors, 2048, "and the total is not doubled");
+        assert_eq!(c.disk_read_sectors, Some(2048), "and the total is not doubled");
     }
 
     // ---- temperature and clock ---------------------------------------------
@@ -1440,5 +1476,40 @@ mod tests {
         assert_eq!(got.label, "Tctl");
         assert_eq!(got.celsius, 100.125);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_machine_with_no_diskstats_reports_no_disk_rate_rather_than_zero() {
+        // `Counters::read` names this case in its own doc as one it keeps running
+        // for. It used to keep running by filling the counter with zero, so the
+        // tab drew 0.0 MB/s once the first tick was behind it - a reading, and an
+        // idle disk is an ordinary thing to see.
+        let dir = tmp("nodiskstats");
+        let probe = fixture(&dir, &["sda"]);
+        std::fs::remove_file(dir.join("proc/diskstats")).unwrap();
+        let m = SystemMonitor::with_probe(probe);
+        let t0 = Instant::now();
+        m.sample_at(t0);
+        let t = m.sample_at(t0 + Duration::from_secs(1));
+        assert!(t.rates_ready, "the tick still runs; only the disk is unmeasured");
+        assert_eq!(t.disk_read_mbs, None);
+        assert_eq!(t.disk_write_mbs, None);
+        assert!(t.net_rx_mbs.is_some(), "the network is still measured");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_machine_with_no_net_dev_reports_no_network_rate_rather_than_zero() {
+        let dir = tmp("nonetdev");
+        let probe = fixture(&dir, &["sda"]);
+        std::fs::remove_file(dir.join("proc/net/dev")).unwrap();
+        let m = SystemMonitor::with_probe(probe);
+        let t0 = Instant::now();
+        m.sample_at(t0);
+        let t = m.sample_at(t0 + Duration::from_secs(1));
+        assert_eq!(t.net_rx_mbs, None);
+        assert_eq!(t.net_tx_mbs, None);
+        assert!(t.disk_read_mbs.is_some(), "the disk is still measured");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
