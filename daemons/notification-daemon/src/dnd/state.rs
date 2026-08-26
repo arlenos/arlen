@@ -81,13 +81,13 @@ impl DndState {
             .iter()
             .any(|a| a == &notification.app_name)
         {
-            return self.check_fullscreen(dnd_config);
+            return self.check_fullscreen(notification, dnd_config);
         }
 
         // 5. Per-app bypass DND.
         if let Some(ovr) = app_override {
             if ovr.bypass_dnd == Some(true) {
-                return self.check_fullscreen(dnd_config);
+                return self.check_fullscreen(notification, dnd_config);
             }
         }
 
@@ -114,16 +114,29 @@ impl DndState {
             return SuppressResult::Suppress;
         }
 
-        // 8. Fullscreen suppression. Critical bypasses the queue so a
-        // genuine alarm can interrupt an immersive app.
-        if notification.priority == Priority::Critical {
-            return SuppressResult::Allow;
-        }
-        self.check_fullscreen(dnd_config)
+        // 8. Fullscreen suppression. Critical bypasses the queue so a genuine
+        // alarm can interrupt an immersive app - decided inside
+        // `check_fullscreen` now, so steps 4 and 5 get the same answer.
+        self.check_fullscreen(notification, dnd_config)
     }
 
     /// Check fullscreen suppression (queues instead of hard suppress).
-    fn check_fullscreen(&self, dnd_config: &DndConfig) -> SuppressResult {
+    ///
+    /// TAKES THE NOTIFICATION, because the Critical exemption belongs here and
+    /// used to live only at step 8. Steps 4 and 5 - the always-allow list and a
+    /// per-app `bypass_dnd` - return this directly, so a CRITICAL alert from an
+    /// app the user had explicitly trusted was QUEUED behind a fullscreen window
+    /// while the same alert from any other app was allowed through. Being on the
+    /// allow list made an alarm less likely to arrive, which is the opposite of
+    /// what the list is for.
+    fn check_fullscreen(
+        &self,
+        notification: &Notification,
+        dnd_config: &DndConfig,
+    ) -> SuppressResult {
+        if notification.priority == Priority::Critical {
+            return SuppressResult::Allow;
+        }
         if dnd_config.suppress_fullscreen && self.fullscreen_active {
             SuppressResult::Queue
         } else {
@@ -527,6 +540,54 @@ mod tests {
         config.suppress_fullscreen = false;
         let n = make_notification("app", Priority::Normal);
         assert_eq!(state.should_suppress(&n, &config, None), SuppressResult::Allow);
+    }
+
+    #[test]
+    /// The same alert, from an app the user put on the always-allow list.
+    ///
+    /// This was QUEUED while the ordinary-app case above was allowed: steps 4
+    /// and 5 returned `check_fullscreen` directly and the Critical exemption
+    /// only existed at step 8. So explicitly trusting an app made its alarms
+    /// less likely to reach you than an untrusted one's - the list's whole
+    /// purpose, inverted, on the one priority that means somebody needs to know
+    /// now.
+    #[test]
+    fn test_fullscreen_critical_passes_for_an_always_allowed_app() {
+        let mut state = DndState::default();
+        state.fullscreen_active = true;
+        let mut config = default_dnd();
+        config.always_allow = vec!["phone".into()];
+        let n = make_notification("phone", Priority::Critical);
+        assert_eq!(state.should_suppress(&n, &config, None), SuppressResult::Allow);
+    }
+
+    /// And through a per-app `bypass_dnd`, which is the other door into the same
+    /// branch.
+    #[test]
+    fn test_fullscreen_critical_passes_through_bypass_dnd() {
+        let mut state = DndState::default();
+        state.fullscreen_active = true;
+        let config = default_dnd();
+        let n = make_notification("phone", Priority::Critical);
+        let ovr = AppOverride { bypass_dnd: Some(true), ..Default::default() };
+        assert_eq!(
+            state.should_suppress(&n, &config, Some(&ovr)),
+            SuppressResult::Allow
+        );
+    }
+
+    /// The other half, so the exemption is not just "allow everything": a
+    /// NON-critical notification from an always-allowed app is still queued
+    /// behind a fullscreen window. The list bypasses Do-Not-Disturb and focus,
+    /// not the fullscreen courtesy.
+    #[test]
+    fn test_fullscreen_still_queues_a_normal_always_allowed_notification() {
+        let mut state = DndState::default();
+        state.fullscreen_active = true;
+        let mut config = default_dnd();
+        config.always_allow = vec!["phone".into()];
+        let n = make_notification("phone", Priority::Normal);
+        assert_eq!(state.should_suppress(&n, &config, None), SuppressResult::Queue);
     }
 
     #[test]
