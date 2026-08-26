@@ -430,6 +430,8 @@ jobs:
           node dev/scripts/test-check-app-locale-used.mjs
           python3 dev/scripts/check-graph-clock.py
           node dev/scripts/test-check-graph-clock.mjs
+          python3 dev/scripts/check-token-unions.py
+          node dev/scripts/test-check-token-unions.mjs
           python3 dev/scripts/check-dependency-direction.py
           node dev/scripts/test-check-dependency-direction.mjs
           python3 dev/scripts/check-tests-run.py
