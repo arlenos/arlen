@@ -54,12 +54,26 @@ pub async fn consent_resolve(id: u64, outcome: ConsentOutcome) -> Result<bool, S
 /// have failed at four different places and every one of them looked identical
 /// from outside. `apps/files` and `apps/harness` already carry this command; the
 /// shell, which needs it most, did not.
+///
+/// NAMES THE SURFACE, because this shell runs several webviews - the bar, the
+/// launcher, the consent dialog - and they share one `+layout.svelte`. Its
+/// sibling `log_frontend` in `lib.rs` learned that on 21 August and says so at
+/// length: an unlabelled line "cannot be attributed to a surface", and the
+/// ambiguity was load-bearing for a wrong conclusion. The lesson landed on the
+/// `println!` one and not on this one - which is the one that reaches the
+/// journal, where a boot is actually read back afterwards. The window is
+/// injected by Tauri, so no caller changes.
+///
+/// The same command in `apps/files` and `apps/harness` stays unlabelled and
+/// should: each of those is one window, so the label would name the only thing
+/// it could ever name. This is not an inconsistency to sweep into line.
 #[tauri::command]
-pub fn frontend_log(level: String, msg: String) {
+pub fn frontend_log(window: tauri::Window, level: String, msg: String) {
+    let who = window.label();
     match level.as_str() {
-        "warn" => log::warn!("[frontend] {msg}"),
-        "error" => log::error!("[frontend] {msg}"),
-        _ => log::info!("[frontend] {msg}"),
+        "warn" => log::warn!("[frontend] [{who}] {msg}"),
+        "error" => log::error!("[frontend] [{who}] {msg}"),
+        _ => log::info!("[frontend] [{who}] {msg}"),
     }
 }
 
