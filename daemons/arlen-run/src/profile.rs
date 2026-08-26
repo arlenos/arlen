@@ -62,7 +62,17 @@ pub fn confinement_inputs(
     // that reads the grant. WRITABLE only: `read_only` subtrees are collected
     // separately below, and folding them in here is what the read-only test
     // below catches.
-    app_dirs.extend(fs.writable_dirs(home, dirs));
+    // A RELATIVE `custom` PATH IS DROPPED, not resolved. `read_only_grant_ok`
+    // already refuses one and says why - it would resolve against the LAUNCHER's
+    // cwd, which has nothing to do with the app - and `custom` had no such rule,
+    // so a path the grammar could not expand went to bwrap verbatim. The calendar
+    // wrote `$HOME/.local/share/arlen/calendars`, and `$HOME` is not a token
+    // `expand_user` knows, so the grant stayed relative and meant nothing.
+    app_dirs.extend(
+        fs.writable_dirs(home, dirs)
+            .into_iter()
+            .filter(|p| p.is_absolute()),
+    );
 
     // Read-only subtrees: the same whole-tree refusal, and a named subtree under
     // one of those roots is allowed - that is what makes `/sys/class/power_supply`
@@ -328,6 +338,32 @@ mod read_only_grant {
         assert!(
             !c.app_dirs.contains(&PathBuf::from("/sys/class/power_supply")),
             "a read-only grant must not become a writable bind"
+        );
+    }
+
+    #[test]
+    fn a_custom_grant_the_grammar_cannot_expand_is_dropped_not_bound() {
+        // `$HOME` is not a token `expand_user` knows - only `$USER` is - so this
+        // stays relative, and a relative bind source resolves against whatever
+        // the launcher's cwd happens to be. Refused, the way the read-only gate
+        // already refuses one.
+        let fs = FilesystemPermissions {
+            custom: vec![PathBuf::from("$HOME/.local/share/arlen/calendars")],
+            ..Default::default()
+        };
+        let c = confinement_inputs(
+            &fs,
+            &NetworkPermissions::default(),
+            "com.example.app",
+            Path::new("/home/u"),
+            &dirs(),
+        );
+        assert!(
+            !c.app_dirs
+                .iter()
+                .any(|p| p.to_string_lossy().contains("$HOME")),
+            "got {:?}",
+            c.app_dirs
         );
     }
 
