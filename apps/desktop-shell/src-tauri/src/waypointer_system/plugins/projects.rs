@@ -107,12 +107,17 @@ fn list_active_projects() -> Vec<Project> {
 /// Relevance boost by recency: projects touched in the last day score near
 /// 1.0, falling off over roughly a month.
 fn project_relevance(p: &Project) -> f32 {
-    const DAY_MS: i64 = 86_400_000;
+    // MICROSECONDS, because that is what `p.last_accessed` carries: the shell
+    // passes the graph column through untouched and the daemon stores micros.
+    // A millisecond clock here made `now - t` about -1.8e15, which `.max(0)`
+    // turned into an age of zero, so every project scored the full recency
+    // boost and the thirty-day falloff below never happened.
+    const DAY_US: i64 = 86_400_000_000;
     const HORIZON_DAYS: f32 = 30.0;
-    let now = chrono::Utc::now().timestamp_millis();
+    let now = chrono::Utc::now().timestamp_micros();
     match p.last_accessed {
         Some(t) => {
-            let age_days = ((now - t).max(0) / DAY_MS) as f32;
+            let age_days = ((now - t).max(0) / DAY_US) as f32;
             (1.0 - (age_days / HORIZON_DAYS)).clamp(0.5, 1.0)
         }
         None => 0.5,
@@ -144,14 +149,14 @@ mod tests {
 
     #[test]
     fn relevance_recent_is_high() {
-        let now = chrono::Utc::now().timestamp_millis();
+        let now = chrono::Utc::now().timestamp_micros();
         let p = mk_project("1", "fresh", Some(now));
         assert!(project_relevance(&p) > 0.95);
     }
 
     #[test]
     fn relevance_old_is_low() {
-        let month_ago = chrono::Utc::now().timestamp_millis() - 30 * 86_400_000;
+        let month_ago = chrono::Utc::now().timestamp_micros() - 30 * 86_400_000_000;
         let p = mk_project("2", "old", Some(month_ago));
         assert!((project_relevance(&p) - 0.5).abs() < 0.05);
     }
@@ -168,5 +173,22 @@ mod tests {
         assert_eq!(p.id(), "core.projects");
         assert_eq!(p.prefix(), Some("p:"));
         assert_eq!(p.priority(), 5);
+    }
+
+    #[test]
+    fn a_year_old_project_does_not_score_as_freshly_touched() {
+        // The unit test the two above cannot be: they mint their fixture from
+        // the same clock the function reads, so they hold in whichever unit it
+        // picks. This one spells out a stored value of the shape the graph
+        // keeps, and a millisecond clock scores it 1.0 like everything else.
+        const ONE_DAY_IN_MICROS: i64 = 86_400_000_000;
+        let now = chrono::Utc::now().timestamp_micros();
+        let old = mk_project("3", "last year", Some(now - 365 * ONE_DAY_IN_MICROS));
+        let fresh = mk_project("4", "today", Some(now));
+        assert!(
+            project_relevance(&old) < project_relevance(&fresh),
+            "a year-old project outranked or tied today's"
+        );
+        assert_eq!(project_relevance(&old), 0.5, "and it sits at the floor");
     }
 }
