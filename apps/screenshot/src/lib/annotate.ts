@@ -51,9 +51,16 @@ export function rectOf(a: Point, b: Point): { x: number; y: number; w: number; h
   };
 }
 
-/// Draw one shape onto the context. `base` (the untouched image bitmap) is needed
-/// only by the blur tool, which pixelates the region beneath it.
-export function drawShape(ctx: CanvasRenderingContext2D, s: Shape, base?: CanvasImageSource): void {
+/// Draw one shape onto the context. `base` is the untouched image bitmap.
+///
+/// REQUIRED, though only the blur tool reads it. It was optional, and the blur
+/// arm below is `if (base)` - so a caller that omitted it got a blur that drew
+/// nothing and said nothing. On a redaction tool that is the one failure that
+/// matters: somebody covers a password, the export has no cover, and the surface
+/// looked the same either way. The only caller (`redraw`) already guards on
+/// `base` before it starts, so requiring it costs nothing and takes the silent
+/// no-op out of the space of things that can happen.
+export function drawShape(ctx: CanvasRenderingContext2D, s: Shape, base: CanvasImageSource): void {
   ctx.save();
   ctx.strokeStyle = s.color;
   ctx.fillStyle = s.color;
@@ -103,7 +110,7 @@ export function drawShape(ctx: CanvasRenderingContext2D, s: Shape, base?: Canvas
       drawNumber(ctx, s);
       break;
     case "blur":
-      if (base) drawBlur(ctx, s, base);
+      drawBlur(ctx, s, base);
       break;
   }
   ctx.restore();
