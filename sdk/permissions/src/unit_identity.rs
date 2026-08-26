@@ -157,8 +157,15 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-auditd.service", "auditd"),
     // The Windows-app runtime. It installs at `/usr/lib/arlen/libexec/`, so the
     // path rules alone would resolve it to the basename `arlen-bottled`; the id
-    // the rest of the system knows it by is `bottled`, which is what the profile
-    // and any future admission list are filed under.
+    // the rest of the system knows it by is `bottled`, which is what a profile
+    // and any admission list would be filed under.
+    //
+    // NEITHER EXISTS YET, and this line used to say "the profile" as though one
+    // did. Its own `forget_caller_admitted` names `bottled` only to REFUSE it -
+    // the daemon may not throw away somebody's installed program either - and no
+    // `bottled.toml` ships. Whether the daemon that launches untrusted Windows
+    // binaries should carry a profile of its own is a question worth asking; the
+    // id being right is what makes asking it possible.
     ("arlen-bottled.service", "bottled"),
     ("arlen-capsuled.service", "capsuled"),
     // Moved from the SYSTEM table on 15 Aug with the units themselves: the graph
