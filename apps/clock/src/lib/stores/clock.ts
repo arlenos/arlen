@@ -220,9 +220,17 @@ async function send(cmd: string, args?: Record<string, unknown>): Promise<void> 
     await loadClock();
   } catch {
     if (!tauriAvailable) return; // no host, so no daemon to ask
-    // None of the clock commands has a host yet, so this is every real session:
-    // an alarm shown as set that will not ring, a timer counting down in the UI
-    // and nowhere else. Put the state back and say so.
+    // Put the state back and say so, because the alternative is an alarm shown
+    // as set that will not ring and a timer counting down in the UI and nowhere
+    // else.
+    //
+    // This used to add "none of the clock commands has a host yet, so this is
+    // every real session". That has stopped being true: `arlen-clockd` serves
+    // `state`, `set_alarm` and `toggle_alarm` on `org.arlen.Clock1`, ships a
+    // unit and a D-Bus activation file, and is staged by `08m-clock`. So a
+    // failure here is now the exception rather than the rule - which changes
+    // nothing about the code and everything about how the next reader weighs
+    // this branch.
     clock.set(beforePatch);
     clockActionFailed.set(true);
   }
