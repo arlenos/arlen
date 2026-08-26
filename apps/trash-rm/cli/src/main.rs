@@ -78,7 +78,21 @@ async fn main() {
         std::process::exit(0);
     }
 
-    let interactive_session = std::io::stdout().is_terminal();
+    // STDIN, not stdout, and the difference is a real one. `rm old.log > out.txt`
+    // is a person at a keyboard, and testing stdout calls it a script and hard-
+    // unlinks the file - the safety net gone at exactly the moment somebody was
+    // typing. Redirecting output is ordinary; redirecting INPUT is what a
+    // pipeline does. It is also the stream `rm -i` itself keys on for its
+    // prompt, so the two questions this program asks about who is driving now
+    // have one answer.
+    //
+    // NEITHER stream separates "a human typed rm" from "a script called rm" when
+    // the script runs in a foreground terminal - it inherits both. That gap is
+    // closed by the rule in this file's header rather than here: the shell
+    // reaches this through a function or command and NEVER a PATH alias named
+    // `rm`, so a script's `rm` finds the real one and is not affected at all.
+    // This test is the second line, not the mechanism.
+    let interactive_session = std::io::stdin().is_terminal();
     let code = match route_delete(&inv, interactive_session) {
         DeleteMode::Unlink => run_unlink(&inv),
         DeleteMode::Trash => run_trash(&inv).await,
