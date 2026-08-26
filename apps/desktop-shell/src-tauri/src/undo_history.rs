@@ -150,10 +150,29 @@ fn kind_of(inverse_kind: &str) -> (&'static str, bool) {
 /// assumption. The file manager, terminal and settings are listed because the
 /// panel's design has chips for them and they will journal inverses; until they
 /// do, those arms are unreachable and honest, not speculative.
+///
+/// THE RELEASE IDS WERE MISSING, which mattered precisely because the arms are
+/// unreachable: nothing exercises them, so nothing said so. Every app is staged
+/// at `/usr/lib/arlen/apps/dev.arlen.<name>/` (all twelve mkosi phases agree) and
+/// `path_to_app_id` rule 3 returns that directory name, so the file manager
+/// attests as `dev.arlen.files` and the terminal as `dev.arlen.terminal`. The map
+/// held `dev.arlen-files` (the cargo-run id, right for a debug build) and
+/// `arlen-files` (which no rule produces: rule 2 strips `/usr/bin/arlen-` to
+/// `files`). So on a real image both would have fallen through to `_ => "agent"`,
+/// and a person's own file move would have been chipped as the assistant's work -
+/// on the panel whose whole job is saying who did what.
+///
+/// All three spellings are kept per producer: the packaged id, the cargo-run id,
+/// and the `/usr/bin` symlink's basename-derived id, since a caller resolved
+/// through the symlink rather than the real path yields the third.
+///
+/// `settings` is the odd one and correctly so: `identity.rs` rule 1 pins its
+/// canonical path to the bare id `settings` rather than the directory
+/// convention, because the capability-revoke allowlist keys on it.
 fn producer_of(actor: Option<&str>) -> &'static str {
     match actor {
-        Some("arlen-files") | Some("dev.arlen-files") => "files",
-        Some("arlen-terminal") | Some("dev.arlen-terminal") => "terminal",
+        Some("dev.arlen.files") | Some("dev.arlen-files") | Some("files") => "files",
+        Some("dev.arlen.terminal") | Some("dev.arlen-terminal") | Some("terminal") => "terminal",
         Some("settings") | Some("dev.arlen-settings") => "settings",
         // `ai-agent`, its dev id, and the unjoined case: the signer admits no
         // other producer, so this is attestation rather than a default.
@@ -485,13 +504,37 @@ mod tests {
 
     /// Producers are read from the attested actor, and an unjoined row is the
     /// assistant's because the signer admits nobody else.
+    ///
+    /// THE PACKAGED IDS FIRST, since they are the ones a person meets and the
+    /// ones that were missing: this test asserted `arlen-files`, an id no rule
+    /// in `identity.rs` produces, and passed for as long as the map agreed with
+    /// it. Both sides were spelled by the same hand and neither was checked
+    /// against the resolver.
     #[test]
     fn the_producer_comes_from_the_attested_actor() {
-        assert_eq!(producer_of(Some("arlen-files")), "files");
-        assert_eq!(producer_of(Some("arlen-terminal")), "terminal");
+        // What `path_to_app_id` rule 3 returns for the staged app directory.
+        assert_eq!(producer_of(Some("dev.arlen.files")), "files");
+        assert_eq!(producer_of(Some("dev.arlen.terminal")), "terminal");
+        // The cargo-run ids, for a debug session.
+        assert_eq!(producer_of(Some("dev.arlen-files")), "files");
+        assert_eq!(producer_of(Some("dev.arlen-terminal")), "terminal");
+        // Settings is pinned to the bare id by rule 1, not the directory
+        // convention, because the revoke allowlist keys on it.
         assert_eq!(producer_of(Some("settings")), "settings");
         assert_eq!(producer_of(Some("ai-agent")), "agent");
         assert_eq!(producer_of(None), "agent");
+    }
+
+    /// An id nobody attests must not be quietly chipped as the assistant.
+    ///
+    /// This is the shape the bug had: an unrecognised actor falls to `agent`,
+    /// which is correct for the unjoined case and wrong for a producer whose
+    /// spelling drifted. The fallback cannot tell them apart, so the map has to
+    /// be right - and the way to keep it right is to assert the ids the resolver
+    /// actually mints, which the case above now does.
+    #[test]
+    fn an_unknown_actor_is_the_assistant_by_attestation() {
+        assert_eq!(producer_of(Some("dev.arlen.calendar")), "agent");
     }
 
     /// The panel's own interaction state, not the ledger's. Both sides spell it
