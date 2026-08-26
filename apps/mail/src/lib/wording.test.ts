@@ -72,8 +72,8 @@ describe("threadKey", () => {
 /// half was not - and only a German render showed it.
 describe("formatBytes", () => {
   it("scales the same way in both languages and localises only the number", () => {
-    expect(formatBytes(84213, "en")).toBe("84.2 kB");
-    expect(formatBytes(84213, "de")).toBe("84,2 kB");
+    expect(formatBytes(84213, "en")).toBe("84.2 KB");
+    expect(formatBytes(84213, "de")).toBe("84,2 KB");
     expect(formatBytes(5242880, "en")).toBe("5.2 MB");
     expect(formatBytes(5242880, "de")).toBe("5,2 MB");
   });
@@ -94,6 +94,6 @@ describe("formatBytes", () => {
     expect(formatBytes(0, "en")).toBe("0 B");
     expect(formatBytes(900, "en")).toBe("900 B");
     expect(formatBytes(999, "de")).toBe("999 B");
-    expect(formatBytes(1000, "en")).toBe("1 kB");
+    expect(formatBytes(1000, "en")).toBe("1 KB");
   });
 });
