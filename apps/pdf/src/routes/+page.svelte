@@ -27,6 +27,7 @@
   import {
     doc,
     failure,
+    searchFailure,
     launchFailure,
     launchedPath,
     openLaunched,
@@ -85,8 +86,15 @@
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       void search(q)
-        .then((r) => (results = r))
-        .catch((e) => failure.set(String(e)));
+        .then((r) => {
+          results = r;
+          searchFailure.set(null);
+        })
+        // NOT `failure`, which is the document's: setting it here replaced the
+        // open PDF with "could not open this file" because a search failed. And
+        // the value is the backend's TOKEN, so the sidebar can write a sentence
+        // in the reader's language instead of showing Rust's.
+        .catch((e) => searchFailure.set(String(e)));
     }, 200);
   });
 
@@ -276,7 +284,7 @@
 {:else}
   <SidebarProvider class="h-screen min-h-0 overflow-hidden">
     {#if $doc}
-      <PdfSidebar doc={$doc} bind:query {results} {current} onjump={goTo} />
+      <PdfSidebar doc={$doc} bind:query {results} failed={$searchFailure} {current} onjump={goTo} />
     {/if}
 
     <SidebarInset class="h-svh min-h-0">

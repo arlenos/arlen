@@ -19,6 +19,10 @@ const messages: Catalogs = {
     "pdf.pageOf": "Page {$number} of {$total}",
     "pdf.search.label": "Search in document",
     "pdf.search.none": "No page contains that.",
+    "pdf.search.noDocument": "There is no document open to search.",
+    "pdf.search.lockLost":
+      "The document is in an unknown state, so it could not be searched. Open the file again.",
+    "pdf.search.failed": "That search did not run. The document is still open.",
     "pdf.search.unsearchable":
       "{$count} pages could not be read, so anything on them is missing from these results.",
     "pdf.nothingOpen": "No document is open. Open a PDF from Files, or pass one on the command line.",
@@ -64,6 +68,10 @@ const messages: Catalogs = {
     "pdf.pageOf": "Seite {$number} von {$total}",
     "pdf.search.label": "Im Dokument suchen",
     "pdf.search.none": "Keine Seite enthält das.",
+    "pdf.search.noDocument": "Es ist kein Dokument offen, in dem gesucht werden könnte.",
+    "pdf.search.lockLost":
+      "Das Dokument ist in einem unbekannten Zustand und konnte nicht durchsucht werden. Öffne die Datei erneut.",
+    "pdf.search.failed": "Diese Suche wurde nicht ausgeführt. Das Dokument ist weiterhin offen.",
     "pdf.search.unsearchable":
       "{$count} Seiten konnten nicht gelesen werden, deshalb fehlt alles darauf in diesen Ergebnissen.",
     "pdf.nothingOpen":

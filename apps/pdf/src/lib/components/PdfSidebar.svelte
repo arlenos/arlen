@@ -23,15 +23,30 @@
     doc,
     query = $bindable(""),
     results,
+    failed,
     current,
     onjump,
   }: {
     doc: DocumentInfo;
     query: string;
     results: SearchOutcome | null;
+    /// The backend's token when the last search did not run, else null. Beside
+    /// the box that was typed in rather than over the document: the document is
+    /// fine, and taking it off the screen because a search failed is the defect
+    /// this replaced.
+    failed: string | null;
     current: number;
     onjump: (page: number) => void;
   } = $props();
+
+  /// The reasons a search can refuse, each with its own sentence. A token this
+  /// map does not carry falls to the plain one, so a token added later cannot
+  /// arrive on screen as a bare word - the same rule the page applies to open
+  /// failures.
+  const SEARCH_FAILURE: Record<string, string> = {
+    "no-document": "pdf.search.noDocument",
+    "lock-lost": "pdf.search.lockLost",
+  };
 
   /// The search word emphasised inside its snippet, as three parts.
   function splitSnippet(snippet: string): { before: string; match: string; after: string } {
@@ -67,7 +82,13 @@
       </SidebarGroup>
     {/if}
 
-    {#if results}
+    {#if failed}
+      <SidebarGroup class="pt-0">
+        <p class="side-note" role="alert">
+          {$t(SEARCH_FAILURE[failed] ?? "pdf.search.failed")}
+        </p>
+      </SidebarGroup>
+    {:else if results}
       <SidebarGroup class="pt-0">
         {#if results.hits.length === 0}
           <p class="side-note">{$t("pdf.search.none")}</p>

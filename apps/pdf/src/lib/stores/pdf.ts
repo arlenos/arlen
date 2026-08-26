@@ -37,6 +37,15 @@ export const launchedPath = writable<string | null>(null);
 /// Separate from `failure`, which is about a document: this one is about not
 /// learning which document there was.
 export const launchFailure = writable<string | null>(null);
+/// Why the last search did not run, as the backend's token.
+///
+/// A THIRD failure store, and the reason is that the first two are about the
+/// document and this one is not. A failed search used to be written into
+/// `failure`, which the page renders by REPLACING the document with an
+/// open-failure sentence - so a search going wrong took the reader's PDF off the
+/// screen and told them it could not be opened, which it had been, minutes ago,
+/// and still was.
+export const searchFailure = writable<string | null>(null);
 /// True while the document is the FIXTURE - the surface says so.
 export const pdfMocked = writable(false);
 

@@ -291,8 +291,14 @@ fn decode_frame(frame: &[u8]) -> Result<PageImage, String> {
 }
 
 /// What to say when a command arrives with nothing open.
+///
+/// A TOKEN, not a sentence, like every other failure this binary reports. It was
+/// `"no document is open"` and its sibling was a whole English instruction, and
+/// the window put both through a map keyed on tokens - so neither matched, both
+/// fell to the generic could-not-open line, and a German reader got that line
+/// with the real reason discarded on the way.
 fn no_document() -> String {
-    "no document is open".to_string()
+    "no-document".to_string()
 }
 
 /// A poisoned lock means a command panicked while holding the document.
@@ -300,7 +306,7 @@ fn no_document() -> String {
 /// Reported rather than unwrapped: taking the window down because one search
 /// went wrong loses whatever else the person had open.
 fn lock_lost() -> String {
-    "the open document is in an unknown state; reopen the file".to_string()
+    "lock-lost".to_string()
 }
 
 /// Run the reader.
