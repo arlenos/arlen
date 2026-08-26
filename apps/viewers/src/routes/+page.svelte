@@ -1,6 +1,7 @@
 <script lang="ts">
   import { printProblem, restoreProblem, trashProblem } from "$lib/trashProblem";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { formatSize } from "@arlen/ui-kit/components/browser";
   import { initAppMenu, menuAction } from "$lib/menu";
   /// The viewer routes one window to one file by media type. When launched on a
   /// real file (`viewer <path>`, the `.desktop` `%f`, or a double-click) it loads
@@ -136,18 +137,20 @@
   let detailsOpen = $state(false);
   let facts = $state<Fact[]>([]);
 
-  /// Bytes as a person reads them. Binary units, because that is what a file
-  /// manager and `ls -lh` show and the viewer should not disagree with them.
-  function readableSize(bytes: number): string {
-    const units = ["B", "KiB", "MiB", "GiB"];
-    let n = bytes;
-    let u = 0;
-    while (n >= 1024 && u < units.length - 1) {
-      n /= 1024;
-      u += 1;
-    }
-    return `${u === 0 ? n : n.toFixed(1)} ${units[u]}`;
-  }
+  /// Bytes as a person reads them - `formatSize` from the kit, which is what the
+  /// FILES app shows for the same file.
+  ///
+  /// This was a local binary ladder, and its own comment gave the goal it was
+  /// missing: "that is what a file manager shows and the viewer should not
+  /// disagree with them". It was written against `ls -lh` rather than against the
+  /// file manager in this system, which uses the kit's 1000-based ladder, so the
+  /// two disagreed about the same file - 84213 bytes read `82.2 KiB` here and
+  /// `84 KB` there. A person checking a size in two windows got two answers.
+  ///
+  /// It also called `toFixed(1)`, which writes a period decimal in every
+  /// language, so a German reader saw `1.5 MiB` where the rest of their machine
+  /// says `1,5`. The kit hands the number to `Intl` with the app's locale, so
+  /// that comes free with the agreement.
 
   function readableDuration(seconds: number): string {
     const s = Math.round(seconds);
@@ -258,10 +261,17 @@
         path,
       });
       return [
-        { label: $t("v.factSize"), value: readableSize(f.size_bytes) },
+        { label: $t("v.factSize"), value: formatSize(f.size_bytes, $locale) },
         {
+          // The app's locale, not the environment's. A bare `toLocaleString()`
+          // asks the browser, which on a machine set to English shows an English
+          // date under a German surface - the one fact on this panel that is not
+          // a number, written in a language the rest of the window is not.
           label: $t("v.factModified"),
-          value: f.modified_ms === null ? null : new Date(f.modified_ms).toLocaleString(),
+          value:
+            f.modified_ms === null
+              ? null
+              : new Date(f.modified_ms).toLocaleString($locale),
         },
       ];
     } catch {
