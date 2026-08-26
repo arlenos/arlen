@@ -10,17 +10,28 @@
 # is writing it under pressure.
 #
 # READ-ONLY, and narrow. Verified against `apps/harness/src-tauri` rather than
-# guessed: `capsule.rs` is the only thing that touches the graph, and it asks two
-# questions - which projects exist and how many files each holds, and how many
-# files one named project holds. So:
+# guessed. TWO files reach the daemon, not one - this said `capsule.rs` alone
+# until 26 August, and a profile whose stated derivation is incomplete is the one
+# a later reader trusts while widening it for the wrong reason.
+#
+# `capsule.rs` asks two questions, which projects exist with how many files each,
+# and how many files one named project holds:
 #
 #   Project.id / name / description  the scope picker's rows (capsule.rs:119)
 #   Project.expired_at               the same query filters archived projects out
 #   File.id                          the FILE_PART_OF traversal it counts over
 #
+# `prep.rs` calls the daemon's two aggregation ops, `prep` (0x09) and
+# `working_set`. Both walk File and Project and return ranked ids, and for a
+# caller the daemon does not consider system-anchored they are filtered to the
+# labels below - which is why the grant is written by LABEL and the field list is
+# what makes each label readable at all, not a column filter. Adding a label here
+# widens what those two surfaces can return; removing one empties them silently.
+#
 # It writes nothing, so there are no `relations` and no write scope. Nothing else
-# in the crate reaches the daemon: the pi sidecar talks over its own socket and the
-# file pills go through the launch service.
+# in the crate reaches the daemon: `ai_manage.rs` talks to the AI daemon, the
+# proxy and the agent over D-Bus, the pi sidecar has its own socket, and the file
+# pills go through the launch service.
 [info]
 app_id = "dev.arlen.harness"
 tier = "first-party"
