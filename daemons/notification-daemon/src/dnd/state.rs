@@ -4,7 +4,7 @@
 //! queued based on DND mode, schedule, per-app overrides, and
 //! fullscreen state.
 
-use chrono::{DateTime, Datelike, Local, NaiveTime, Utc, Weekday};
+use chrono::{DateTime, Datelike, Local, Timelike, NaiveTime, Utc, Weekday};
 
 use crate::config::{AppOverride, DndConfig, DndMode, ScheduleMode};
 use crate::dbus::server::{Notification, Priority};
@@ -211,40 +211,16 @@ pub fn is_alarm_category(category: &str) -> bool {
 /// filtering. Empty `days` list means every day.
 pub fn is_in_schedule(schedule: &crate::config::DndSchedule) -> bool {
     let now = Local::now();
-    let current_time = now.time();
-
-    // Parse start and end times.
-    let Some(start) = parse_time(&schedule.start) else {
-        return false;
+    let weekday = match now.weekday() {
+        Weekday::Mon => 0,
+        Weekday::Tue => 1,
+        Weekday::Wed => 2,
+        Weekday::Thu => 3,
+        Weekday::Fri => 4,
+        Weekday::Sat => 5,
+        Weekday::Sun => 6,
     };
-    let Some(end) = parse_time(&schedule.end) else {
-        return false;
-    };
-
-    // Check weekday filter.
-    if !schedule.days.is_empty() {
-        let weekday = match now.weekday() {
-            Weekday::Mon => 0,
-            Weekday::Tue => 1,
-            Weekday::Wed => 2,
-            Weekday::Thu => 3,
-            Weekday::Fri => 4,
-            Weekday::Sat => 5,
-            Weekday::Sun => 6,
-        };
-        if !schedule.days.contains(&weekday) {
-            return false;
-        }
-    }
-
-    // Check time range.
-    if start <= end {
-        // Same-day range (e.g. 09:00 - 17:00).
-        current_time >= start && current_time < end
-    } else {
-        // Overnight range (e.g. 22:00 - 07:00).
-        current_time >= start || current_time < end
-    }
+    is_in_schedule_at(schedule, now.hour(), now.minute(), weekday)
 }
 
 /// Check a schedule against a specific time (for testing).
@@ -261,16 +237,24 @@ pub fn is_in_schedule_at(
         return false;
     };
 
-    if !schedule.days.is_empty() && !schedule.days.contains(&weekday) {
+    let current = NaiveTime::from_hms_opt(hour, minute, 0).unwrap();
+    let overnight = start > end;
+    let inside = if overnight {
+        current >= start || current < end
+    } else {
+        current >= start && current < end
+    };
+    if !inside {
         return false;
     }
 
-    let current = NaiveTime::from_hms_opt(hour, minute, 0).unwrap();
-    if start <= end {
-        current >= start && current < end
-    } else {
-        current >= start || current < end
-    }
+    // WHICH DAY THE RANGE BELONGS TO, which is not always today. "Weeknights,
+    // 22:00 to 07:00" means the night that STARTS on a weekday, so Saturday
+    // 02:00 is Friday's night and Monday 02:00 is Sunday's. Testing today's
+    // weekday got both backwards: it ended the quiet at midnight on the night
+    // the user picked, and started it at midnight on a night they did not.
+    let owner = if overnight && current < end { (weekday + 6) % 7 } else { weekday };
+    schedule.days.is_empty() || schedule.days.contains(&owner)
 }
 
 fn parse_time(s: &str) -> Option<NaiveTime> {
@@ -646,6 +630,34 @@ mod tests {
         assert!(is_in_schedule_at(&schedule, 23, 0, 4));  // Friday
         assert!(!is_in_schedule_at(&schedule, 23, 0, 5)); // Saturday
         assert!(!is_in_schedule_at(&schedule, 23, 0, 6)); // Sunday
+    }
+
+    #[test]
+    fn test_overnight_schedule_belongs_to_the_day_it_started() {
+        let schedule = DndSchedule {
+            start: "22:00".into(),
+            end: "07:00".into(),
+            days: vec![0, 1, 2, 3, 4], // Mon-Fri
+            mode: ScheduleMode::Priority,
+        };
+        // Saturday 02:00 is still Friday night, which the user picked.
+        assert!(is_in_schedule_at(&schedule, 2, 0, 5));
+        // Monday 02:00 is Sunday night, which they did not.
+        assert!(!is_in_schedule_at(&schedule, 2, 0, 0));
+        // Saturday evening is outside it either way.
+        assert!(!is_in_schedule_at(&schedule, 23, 0, 5));
+    }
+
+    #[test]
+    fn test_same_day_schedule_still_reads_today() {
+        let schedule = DndSchedule {
+            start: "09:00".into(),
+            end: "17:00".into(),
+            days: vec![0, 1, 2, 3, 4], // Mon-Fri
+            mode: ScheduleMode::Priority,
+        };
+        assert!(is_in_schedule_at(&schedule, 12, 0, 0)); // Monday
+        assert!(!is_in_schedule_at(&schedule, 12, 0, 5)); // Saturday
     }
 
     #[test]
