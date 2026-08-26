@@ -31,8 +31,8 @@ export function invitationWords(method: string | null, t: Translate): string {
   return t("ml.invitation.other", { method });
 }
 
-/// A size written the way the reader writes one: `84.2 kB` in English,
-/// `84,2 kB` in German. Moved here from the page when the reading surface grew
+/// A size written the way the reader writes one: `84.2 KB` in English,
+/// `84,2 KB` in German. Moved here from the page when the reading surface grew
 /// components - a rule, not markup glue.
 ///
 /// THE UNIT IS OURS, THE NUMBER IS THE LOCALE'S, and it took a German render to
@@ -48,8 +48,18 @@ export function invitationWords(method: string | null, t: Translate): string {
 /// already used, so nothing changes for that reader but the space before the
 /// unit the doc always claimed - and only the number goes through `Intl`, which
 /// is the part that genuinely differs by language (`84.2` against `84,2`). The
-/// unit names are the SI symbols and are written the same in both.
-const SIZE_UNITS = ["B", "kB", "MB", "GB", "TB"] as const;
+/// unit names are written the same in both.
+///
+/// `KB`, NOT the SI-correct `kB`, because the rest of this system says `KB`:
+/// `@arlen/ui-kit`'s `formatSize` (the files browser, the duplicate finder, the
+/// info panel) and the shell's process list both do. A capital K is kelvin and a
+/// pedant is right about that, but a person who sees `84,2 kB` in a message and
+/// `84,2 KB` for the same file in the browser learns nothing except that the two
+/// were written by different hands. The kit is the house standard; this follows
+/// it. The 1000-vs-1024 split is left alone deliberately: the kit and this are
+/// 1000-based for FILE sizes, the shell is 1024-based for process MEMORY, which
+/// is what every task manager does.
+const SIZE_UNITS = ["B", "KB", "MB", "GB", "TB"] as const;
 
 export function formatBytes(n: number, loc: string): string {
   let value = Math.max(0, n);
