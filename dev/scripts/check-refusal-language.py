@@ -135,7 +135,13 @@ ACKNOWLEDGED = {
     "apps/store/src/routes/updates/+page.svelte:54": (
         "arlen-ui's app; reported to its owner rather than edited from this lane"
     ),
-    "apps/viewers/src/routes/+page.svelte:539": (
+    # 539 until 26 Aug, when two imports and a comment went in above it. The
+    # line-keyed acknowledgement is brittle to any edit above the line ON
+    # PURPOSE - see the note above the dict - and it earned that here: it made
+    # me re-read the line and confirm the `readsAsInternal` guard was still the
+    # thing being excused, rather than carrying the excuse to whatever had
+    # moved into position 539.
+    "apps/viewers/src/routes/+page.svelte:549": (
         "guarded by `readsAsInternal`: an internal-looking error falls to "
         "`v.couldNotOpenUnknown`. The third copy of that predicate, which is the "
         "argument for its home being the kit"
