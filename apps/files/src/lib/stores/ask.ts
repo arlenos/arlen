@@ -5,8 +5,11 @@
 /// that names what was read. Pull, never push: nothing is saved or moved until
 /// the user acts. When the assistant is off, the Ask mode is unavailable.
 ///
-/// The scoped-ask command does not exist yet (coder seam, `files_ask`); until it
-/// lands the surface drives the review against mocked drafts.
+/// `files_ask` is implemented and this store calls it. The comment here said the
+/// command "does not exist yet (coder seam)" and that the surface "drives the
+/// review against mocked drafts" - both halves false, and no mock is left in this
+/// file to have driven anything. A note about a MISSING neighbour has a shelf
+/// life the code does not, and this one outlived its subject.
 
 import { derived, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";

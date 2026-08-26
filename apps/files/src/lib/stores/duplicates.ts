@@ -4,8 +4,9 @@
 /// copy per group is always kept (the guard refuses to mark the last one), the
 /// action is trash (not delete), and a sensible default keeps the newest.
 ///
-/// The scan command does not exist yet (coder seam, `files_find_duplicates`);
-/// until it lands the surface drives the review against mocked groups.
+/// `files_find_duplicates` is implemented and this store calls it. As with
+/// `ask.ts` one door down, the note here claimed the command was a pending seam
+/// and the surface ran on mocked groups; neither is true and no mock remains.
 
 import { get, writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
