@@ -49,6 +49,21 @@ pub fn derive_title(human_notes: &str) -> String {
 /// The provider config for the app's summary forward: name/model from the env (a
 /// launcher or ai.toml sets them), with safe defaults, a fixed audit token and the
 /// model's default context window.
+/// The AI config as text, for the classifier section. Empty where it cannot be
+/// read, which `Screener::from_config` treats as "no classifier configured" -
+/// the same as today.
+///
+/// The path rule is `ai-skills`' documented one (`ARLEN_AI_CONFIG`, else
+/// `~/.config/arlen/ai.toml`), spelled out here rather than taking a dependency
+/// on that crate for a single path.
+fn ai_config_text() -> String {
+    let path = std::env::var("ARLEN_AI_CONFIG").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_default();
+        format!("{home}/.config/arlen/ai.toml")
+    });
+    std::fs::read_to_string(path).unwrap_or_default()
+}
+
 fn provider_config() -> ProxiedConfig {
     let env = |k: &str, d: &str| {
         std::env::var(k)
@@ -121,7 +136,20 @@ pub async fn summarize_and_file(
         .map_err(|e| format!("provider unavailable: {e}"))?;
 
     let human = (!human_notes.trim().is_empty()).then_some(human_notes.as_str());
-    let note = run_summary(transcript, human, ctx, &Screener::off(), &provider)
+    // The screener the summariser is built to consult, not a permanent `off()`.
+    // `ai-meeting-notes` screens the transcript before the model sees it and says
+    // why - "the transcript is untrusted" - and this call site was handing it a
+    // screener that could never block anything, so the defence was built and
+    // switched off at the one place it runs.
+    //
+    // `from_config` keeps today's behaviour where no classifier is configured
+    // (Absent maps to off), honours one where it is, and fails CLOSED where the
+    // config names a classifier this build cannot load. That last case refuses to
+    // summarise, which is the trade the ai-daemon took for the same reason: an
+    // unscreened transcript reaching a model is the thing the setting was turned
+    // on to prevent.
+    let screener = Screener::from_config(&ai_config_text());
+    let note = run_summary(transcript, human, ctx, &screener, &provider)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -180,5 +208,26 @@ mod tests {
         // Bounded to 80 chars.
         let long = "x".repeat(200);
         assert_eq!(derive_title(&long).chars().count(), 80);
+    }
+}
+
+#[cfg(test)]
+mod screener_config_tests {
+    use super::ai_config_text;
+
+    /// The path rule, since it is spelled out here rather than imported. A test
+    /// that only checked "empty when absent" would pass with the rule deleted.
+    #[test]
+    fn the_override_env_var_is_the_file_that_is_read() {
+        let dir = std::env::temp_dir().join(format!("arlen-mtg-cfg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("ai.toml");
+        std::fs::write(&file, "[classifier]\nmodel_path = \"/x\"\n").unwrap();
+        std::env::set_var("ARLEN_AI_CONFIG", &file);
+        assert!(ai_config_text().contains("[classifier]"));
+        std::env::set_var("ARLEN_AI_CONFIG", dir.join("absent.toml"));
+        assert_eq!(ai_config_text(), "", "an unreadable config is no classifier, not a panic");
+        std::env::remove_var("ARLEN_AI_CONFIG");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
