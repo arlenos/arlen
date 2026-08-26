@@ -858,7 +858,7 @@ mod tests {
         std::fs::create_dir_all(&writable).expect("writable dir");
         let conf = build_confinement(
             Path::new("/usr"),
-            &[writable.clone()],
+            std::slice::from_ref(&writable),
             &[],
             &[base.path().to_path_buf()],
             BTreeMap::new(),
