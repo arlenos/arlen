@@ -31,6 +31,14 @@ pub const IMAGE_MIMES: &[&str] = &[
     "image/x-dds",
     "image/x-farbfeld",
     "image/vnd.radiance",
+    // Detected by EXTENSION rather than magic, which is why it was missed here
+    // while the desktop entry claimed it: the entry is written from what
+    // `detect` resolves, this list from the magic table beside it. Both are
+    // decodable by the same ImageRs worker, so the omission only meant the
+    // runtime handler registration - which is built from THIS list
+    // (`host/src/mimeapps.rs`) - never registered for a format the app opens
+    // fine and advertises in its entry.
+    "image/x-tga",
 ];
 
 /// The audio MIME types the viewer handles (the simple player). Registered
