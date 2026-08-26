@@ -211,6 +211,13 @@ fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
+/// The clock the graph's `last_accessed` is on. Everything that COMPARES
+/// against a stored value reads this; `now_ms` stays for the cache TTL, which
+/// only ever meets itself.
+fn now_us() -> i64 {
+    chrono::Utc::now().timestamp_micros()
+}
+
 /// Fetch the top-N recently-accessed files with their project label.
 ///
 /// Returns empty on any failure (daemon down, socket missing, timeout,
@@ -319,7 +326,7 @@ fn parse_rows(raw: &str) -> Vec<FileRow> {
 /// the filtering so one pass produces the ranked output.
 fn score_and_rank(rows: &[FileRow], mode: &QueryMode<'_>, cap: usize) -> Vec<SearchResult> {
     let filter = mode.filter().to_lowercase();
-    let now = now_ms();
+    let now = now_us();
 
     let mut scored: Vec<(f32, &FileRow)> = Vec::new();
     for row in rows {
@@ -411,12 +418,16 @@ fn recency_bonus(last_accessed: i64, now: i64) -> f32 {
     if last_accessed <= 0 {
         return 0.0;
     }
-    const WEEK_MS: i64 = 7 * 86_400_000;
+    // MICROSECONDS: `last_accessed` is the graph column, passed through
+    // untouched. A millisecond `now` made the subtraction deeply negative,
+    // `.max(0)` flattened it to an age of zero, and every file collected the
+    // full bump, so the falloff below never ran.
+    const WEEK_US: i64 = 7 * 86_400_000_000;
     let age = (now - last_accessed).max(0);
-    if age >= WEEK_MS {
+    if age >= WEEK_US {
         return 0.0;
     }
-    (1.0 - age as f32 / WEEK_MS as f32) * 0.1
+    (1.0 - age as f32 / WEEK_US as f32) * 0.1
 }
 
 fn build_result(row: &FileRow, relevance: f32, now: i64) -> SearchResult {
@@ -451,12 +462,14 @@ fn build_description(row: &FileRow, now: i64) -> String {
 }
 
 /// Human-readable relative time: "5 min ago", "2 days ago", …
-fn relative_time(timestamp_ms: i64, now_ms: i64) -> String {
-    if timestamp_ms <= 0 {
+fn relative_time(timestamp_us: i64, now_us: i64) -> String {
+    if timestamp_us <= 0 {
         return "unknown".into();
     }
-    let diff = (now_ms - timestamp_ms).max(0);
-    let seconds = diff / 1000;
+    // Same clock correction as `recency_bonus`. In milliseconds this returned
+    // "just now" for every file in the list, whatever its real age.
+    let diff = (now_us - timestamp_us).max(0);
+    let seconds = diff / 1_000_000;
     if seconds < 60 {
         return "just now".into();
     }
@@ -504,11 +517,11 @@ fn icon_for_path(path: &str) -> &'static str {
 mod tests {
     use super::*;
 
-    fn mk_row(path: &str, app_id: &str, age_ms: i64, project: Option<&str>) -> FileRow {
+    fn mk_row(path: &str, app_id: &str, age_us: i64, project: Option<&str>) -> FileRow {
         FileRow {
             path: path.into(),
             app_id: app_id.into(),
-            last_accessed: now_ms() - age_ms,
+            last_accessed: now_us() - age_us,
             project_name: project.map(String::from),
         }
     }
@@ -583,29 +596,29 @@ mod tests {
 
     #[test]
     fn recency_bonus_fresh_is_max() {
-        let now = now_ms();
+        let now = now_us();
         let bonus = recency_bonus(now, now);
         assert!((bonus - 0.1).abs() < 0.001);
     }
 
     #[test]
     fn recency_bonus_ancient_is_zero() {
-        let now = now_ms();
-        let ancient = now - 30 * 86_400_000; // 30 days
+        let now = now_us();
+        let ancient = now - 30 * 86_400_000_000; // 30 days
         assert_eq!(recency_bonus(ancient, now), 0.0);
     }
 
     #[test]
     fn recency_bonus_invalid_timestamp_is_zero() {
-        assert_eq!(recency_bonus(0, now_ms()), 0.0);
-        assert_eq!(recency_bonus(-1, now_ms()), 0.0);
+        assert_eq!(recency_bonus(0, now_us()), 0.0);
+        assert_eq!(recency_bonus(-1, now_us()), 0.0);
     }
 
     #[test]
     fn score_and_rank_sorts_by_score_then_recency() {
         let rows = vec![
             // Same filter match but older.
-            mk_row("/a/waypointer.ts", "app.a", 7 * 86_400_000, None),
+            mk_row("/a/waypointer.ts", "app.a", 7 * 86_400_000_000, None),
             // Fresher: recency bonus should lift it above the older one.
             mk_row("/b/waypointer.ts", "app.b", 1_000, None),
         ];
@@ -678,13 +691,13 @@ mod tests {
 
     #[test]
     fn relative_time_buckets() {
-        let now = now_ms();
+        let now = now_us();
         assert_eq!(relative_time(now, now), "just now");
-        assert_eq!(relative_time(now - 30 * 1000, now), "just now");
-        assert_eq!(relative_time(now - 5 * 60 * 1000, now), "5 min ago");
-        assert_eq!(relative_time(now - 3 * 3600 * 1000, now), "3 h ago");
-        assert_eq!(relative_time(now - 2 * 86_400_000, now), "2 days ago");
-        assert_eq!(relative_time(now - 60 * 86_400_000, now), "2 mo ago");
+        assert_eq!(relative_time(now - 30 * 1_000_000, now), "just now");
+        assert_eq!(relative_time(now - 5 * 60 * 1_000_000, now), "5 min ago");
+        assert_eq!(relative_time(now - 3 * 3600 * 1_000_000, now), "3 h ago");
+        assert_eq!(relative_time(now - 2 * 86_400_000_000, now), "2 days ago");
+        assert_eq!(relative_time(now - 60 * 86_400_000_000, now), "2 mo ago");
     }
 
     #[test]
@@ -791,5 +804,22 @@ mod tests {
         assert_eq!(p.prefix(), None);
         assert_eq!(p.max_results(), 20);
         assert_eq!(p.priority(), 8);
+    }
+
+    #[test]
+    fn a_stored_microsecond_stamp_reads_as_its_real_age() {
+        // Every other test here mints its fixture from the same helper the code
+        // reads, so it holds in whichever unit that helper returns. This one
+        // spells the day out: under a millisecond clock the subtraction goes
+        // negative, `.max(0)` flattens it, and the list says "just now" about
+        // everything while handing out the full recency bump.
+        const ONE_DAY_IN_MICROS: i64 = 86_400_000_000;
+        let now = chrono::Utc::now().timestamp_micros();
+        let three_days = now - 3 * ONE_DAY_IN_MICROS;
+        assert_eq!(relative_time(three_days, now), "3 days ago");
+        assert!(
+            recency_bonus(three_days, now) < recency_bonus(now, now),
+            "a three-day-old file collected the same bump as one touched now"
+        );
     }
 }
