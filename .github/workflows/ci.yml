@@ -886,11 +886,46 @@ jobs:
             # comes out when the reason expires.
             TYPECHECK_ADVISORY=""
             APP="${{ matrix.app }}"
+            # Captured, because the EXIT CODE is not the whole answer. When the
+            # TypeScript service throws inside svelte-check, the language server
+            # catches it per file, drops that file's diagnostics and carries on -
+            # so the run exits 0 and prints "found 0 errors" for a tree it did not
+            # finish checking. Measured on 26 August: SEVEN of sixteen apps do
+            # this, and the number they report is the same as a clean app's.
+            #
+            # Six of the seven import `@arlen/ui-kit/components/ui/icon-action`
+            # and none of the nine clean ones do; the stack lands in
+            # `getContextualSignature` comparing that component's
+            # `Tooltip.Trigger` child snippet. Ruled out: stale generated types
+            # (re-bisected with `svelte-kit sync` between moves) and the
+            # unannotated snippet parameter (annotating changes nothing, and
+            # `desktop-shell` has nine of them and is clean). The fix is inside
+            # `sdk/ui-kit`.
+            #
+            # Listed apps stay LOUD rather than silent - the crash is printed
+            # either way. The list may shrink and may not grow: a new entry is an
+            # app that started lying about being checked.
+            TYPECHECK_CRASHES="apps/settings apps/files apps/harness apps/calendar apps/mail apps/pdf apps/system-monitor"
+            set +e
+            npm run check 2>&1 | tee /tmp/svelte-check-$$.log
+            CHECK_STATUS=${PIPESTATUS[0]}
+            set -e
             if printf ' %s ' "$TYPECHECK_ADVISORY" | grep -qF " $APP "; then
-              npm run check || echo "advisory (listed): $APP"
+              [ "$CHECK_STATUS" -eq 0 ] || echo "advisory (listed): $APP"
             else
-              npm run check
+              [ "$CHECK_STATUS" -eq 0 ]
             fi
+            if grep -q "Cannot read properties of undefined (reading 'flags')" /tmp/svelte-check-$$.log; then
+              if printf ' %s ' "$TYPECHECK_CRASHES" | grep -qF " $APP "; then
+                echo "KNOWN: $APP drops at least one file's diagnostics (see the note above)"
+              else
+                echo "$APP crashed the type checker, so it did not check every file -"
+                echo "and it reported success anyway. Either fix it, or add it to"
+                echo "TYPECHECK_CRASHES with the reason." >&2
+                exit 1
+              fi
+            fi
+            rm -f /tmp/svelte-check-$$.log
             # The unit tests are gating where a package declares them, so logic
             # regressions fail the build (svelte-check stays gating above).
             # `--passWithNoTests` is a VITEST flag: a package running `node --test`
