@@ -417,21 +417,32 @@
       }
     }, "image/png");
   }
-  function saveCanvas(c: HTMLCanvasElement) {
+  /// Write the canvas out, and ANSWER whether it landed.
+  ///
+  /// It used to return nothing and settle `actionFailed` from inside its own
+  /// `.catch`, which reads fine on the annotate surface - the failure line is
+  /// right there. The dismiss path could not use it: it fired this, switched to
+  /// a phase that says "Saved to Pictures/Screenshots." and closed the window
+  /// 2.5 seconds later, so a failed save was announced as a successful one and
+  /// then the capture was gone. A caller that is about to make a claim has to be
+  /// able to wait for the answer.
+  async function saveCanvas(c: HTMLCanvasElement): Promise<boolean> {
     if (isTauri()) {
       // Live: write the annotated PNG to the screenshots dir via the coder's command.
-      saveScreenshot(canvasPngBase64(c))
-        .then((path) => {
-          frontendLog(`saved ${path}`);
-          actionFailed = null;
-        })
-        .catch((e) => {
-          frontendLog(`save failed: ${e}`);
-          actionFailed = "save";
-        });
-      return;
+      try {
+        const path = await saveScreenshot(canvasPngBase64(c));
+        frontendLog(`saved ${path}`);
+        actionFailed = null;
+        return true;
+      } catch (e) {
+        frontendLog(`save failed: ${e}`);
+        actionFailed = "save";
+        return false;
+      }
     }
-    // Under vite, download the composed PNG so the flow is verifiable.
+    // Under vite, download the composed PNG so the flow is verifiable. Reported
+    // as a success: there is no backend to refuse, and the dismiss path needs an
+    // answer rather than a hang.
     c.toBlob((blob) => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
@@ -441,6 +452,7 @@
       a.click();
       URL.revokeObjectURL(url);
     }, "image/png");
+    return true;
   }
   async function copy() {
     commitText();
@@ -448,7 +460,7 @@
   }
   async function save() {
     commitText();
-    saveCanvas(canvas);
+    await saveCanvas(canvas);
   }
   // Ignoring the thumbnail auto-saves (the fast path); the dismiss button does too.
   /// How long the "saved to" line stays before the window goes away.
@@ -459,8 +471,24 @@
   /// titlebar, no close button, no key that closed it.
   const GOODBYE_MS = 2500;
 
-  function autoSaveAndDismiss() {
-    if (base) saveCanvas(base);
+  /// Dismissing the thumbnail keeps the capture: it saves, says so, and goes.
+  ///
+  /// The saying-so now waits for the saving. Each of the three steps used to be
+  /// unconditional, so a refused write still reached a window that read "Saved to
+  /// Pictures/Screenshots." and then closed on its own - the capture lost and the
+  /// person told the opposite. On a failure the window now stays open on the
+  /// annotate surface, where the save-failed line lives and where Copy and Save
+  /// are still reachable: a capture that could not be written is exactly when
+  /// somebody needs the window that is holding it.
+  ///
+  /// `base` absent is the same answer. Nothing was captured, so there is nothing
+  /// to claim was kept.
+  async function autoSaveAndDismiss() {
+    if (!base || !(await saveCanvas(base))) {
+      actionFailed = "save";
+      phase = "annotate";
+      return;
+    }
     phase = "dismissed";
     setTimeout(() => void closeWindow(), GOODBYE_MS);
   }
