@@ -56,6 +56,15 @@ fn capture_window(index: usize, include_cursor: bool) -> Result<String, String> 
 }
 
 /// Capture a rectangular region of an output and return it as a PNG data URL.
+///
+/// NO CALLER TODAY, and that is a flow decision rather than a gap. The app
+/// captures a whole output or window and the crop tool then works on the bitmap
+/// it already holds - so a region never has to be asked for twice, and the
+/// picture a person crops is the one they saw. This exists for the other flow,
+/// where a rectangle is dragged BEFORE anything is captured; that surface has
+/// not been built and the note is here so its absence reads as a decision rather
+/// than an oversight, the way every other unreached command in this tree
+/// explains itself.
 #[tauri::command]
 fn capture_region(
     output_index: usize,
