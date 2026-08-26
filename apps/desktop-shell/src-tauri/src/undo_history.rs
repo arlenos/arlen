@@ -166,14 +166,19 @@ fn kind_of(inverse_kind: &str) -> (&'static str, bool) {
 /// and the `/usr/bin` symlink's basename-derived id, since a caller resolved
 /// through the symlink rather than the real path yields the third.
 ///
-/// `settings` is the odd one and correctly so: `identity.rs` rule 1 pins its
-/// canonical path to the bare id `settings` rather than the directory
-/// convention, because the capability-revoke allowlist keys on it.
+/// SETTINGS HAD THE SAME HOLE and I wrote a comment here saying it did not.
+/// Fixing the other two, I recorded that settings was "the odd one and correctly
+/// so", pinned by rule 1 to the bare id. It is not: that rule reads
+/// `/usr/lib/arlen/apps/dev.arlen.settings/bin/arlen-settings` and returns
+/// `dev.arlen.settings`, and its own comment records having said `settings` for
+/// weeks after the id gained its vendor prefix - "the kind of drift that gets the
+/// WRONG STRING written into a caller allowlist one crate over". This map was
+/// that allowlist. I read the drift's description and repeated the drift.
 fn producer_of(actor: Option<&str>) -> &'static str {
     match actor {
         Some("dev.arlen.files") | Some("dev.arlen-files") | Some("files") => "files",
         Some("dev.arlen.terminal") | Some("dev.arlen-terminal") | Some("terminal") => "terminal",
-        Some("settings") | Some("dev.arlen-settings") => "settings",
+        Some("dev.arlen.settings") | Some("dev.arlen-settings") | Some("settings") => "settings",
         // `ai-agent`, its dev id, and the unjoined case: the signer admits no
         // other producer, so this is attestation rather than a default.
         _ => "agent",
@@ -518,9 +523,8 @@ mod tests {
         // The cargo-run ids, for a debug session.
         assert_eq!(producer_of(Some("dev.arlen-files")), "files");
         assert_eq!(producer_of(Some("dev.arlen-terminal")), "terminal");
-        // Settings is pinned to the bare id by rule 1, not the directory
-        // convention, because the revoke allowlist keys on it.
-        assert_eq!(producer_of(Some("settings")), "settings");
+        assert_eq!(producer_of(Some("dev.arlen.settings")), "settings");
+        assert_eq!(producer_of(Some("dev.arlen-settings")), "settings");
         assert_eq!(producer_of(Some("ai-agent")), "agent");
         assert_eq!(producer_of(None), "agent");
     }
