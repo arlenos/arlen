@@ -71,7 +71,9 @@
   {#if stateNow?.failure}
     <div class="fallback" data-selectable>
       <p class="quiet">
-        {stateNow.failure === "no-renderer" ? $t("pdf.pageNoRenderer") : $t("pdf.pageFailed")}
+        {#if stateNow.failure === "no-renderer"}{$t("pdf.pageNoRenderer")}
+        {:else if stateNow.failure === "lock-lost"}{$t("pdf.pageLockLost")}
+        {:else}{$t("pdf.pageFailed")}{/if}
       </p>
       <!-- The words, when the picture cannot be had. Said to be the text and
            not the page, because it has none of the layout: a table comes back
