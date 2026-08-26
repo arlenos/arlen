@@ -27,9 +27,15 @@
       // Memory is a level, so it is real from the first tick.
       case "memory":
         return `${n(s.memPct)}%`;
+      // Three states, and the tab already had words for all three: a dash while
+      // the second tick lands, `notMeasured` where the counter file does not
+      // exist at all, and the figure otherwise. The middle one used to read
+      // `0.0 MB/s`, which is a real and unremarkable rate.
       case "disk":
+        if (s.diskReadMbs === null || s.diskWriteMbs === null) return $t("tm.col.notMeasured");
         return s.ratesReady ? `${n(s.diskReadMbs + s.diskWriteMbs, 1)} MB/s` : "\u2014";
       case "network":
+        if (s.netRxMbs === null || s.netTxMbs === null) return $t("tm.col.notMeasured");
         return s.ratesReady ? `${n(s.netRxMbs + s.netTxMbs, 1)} MB/s` : "\u2014";
       // Not the dash the others use, and the difference is the whole point: for
       // CPU, disk and network a dash means "the second tick has not landed yet"
@@ -100,6 +106,7 @@
         return `${base} - ${pressure}`;
       }
       case "disk": {
+        if (s.diskReadMbs === null || s.diskWriteMbs === null) return $t("tm.col.notMeasured");
         if (!s.ratesReady) return $t("tm.perf.waiting");
         const total = $t("tm.perf.disk.detail", {
           read: n(s.diskReadMbs, 1),
@@ -120,6 +127,7 @@
         return `${total} - ${per}`;
       }
       case "network": {
+        if (s.netRxMbs === null || s.netTxMbs === null) return $t("tm.col.notMeasured");
         if (!s.ratesReady) return $t("tm.perf.waiting");
         const total = $t("tm.perf.net.detail", { down: n(s.netRxMbs, 1), up: n(s.netTxMbs, 1) });
         // Same rule as the disks: only worth breaking out above one interface,

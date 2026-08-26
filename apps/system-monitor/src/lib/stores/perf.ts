@@ -48,10 +48,14 @@ export type SystemTick = {
   memPct: number;
   memUsedGb: number;
   memTotalGb: number;
-  diskReadMbs: number;
-  diskWriteMbs: number;
-  netRxMbs: number;
-  netTxMbs: number;
+  /// Null where `/proc/diskstats` could not be read at all, which is separate
+  /// from `ratesReady`: that covers the first tick, this covers a machine that
+  /// has no diskstats. A zero would be a reading, and an idle disk is ordinary.
+  diskReadMbs: number | null;
+  diskWriteMbs: number | null;
+  /// Null where `/proc/net/dev` could not be read, same distinction.
+  netRxMbs: number | null;
+  netTxMbs: number | null;
   /// False on the first tick, when the rates have nothing to delta against.
   ratesReady: boolean;
   /// Memory pressure from `/proc/pressure/memory`, or null where the kernel
@@ -133,8 +137,16 @@ async function sample(): Promise<void> {
       cpu: t.ratesReady ? push(s, "cpu", t.cpuPct) : s.cpu,
       memory: push(s, "memory", t.memPct),
       // A rate the host could not compute yet is not a zero worth drawing.
-      disk: t.ratesReady ? push(s, "disk", t.diskReadMbs + t.diskWriteMbs) : s.disk,
-      network: t.ratesReady ? push(s, "network", t.netRxMbs + t.netTxMbs) : s.network,
+      // An unmeasured source contributes no point rather than a zero one: a flat
+      // line at the bottom of the sparkline reads as a quiet disk.
+      disk:
+        t.ratesReady && t.diskReadMbs !== null && t.diskWriteMbs !== null
+          ? push(s, "disk", t.diskReadMbs + t.diskWriteMbs)
+          : s.disk,
+      network:
+        t.ratesReady && t.netRxMbs !== null && t.netTxMbs !== null
+          ? push(s, "network", t.netRxMbs + t.netTxMbs)
+          : s.network,
     }));
   } catch (e) {
     perfError.set(String(e));
