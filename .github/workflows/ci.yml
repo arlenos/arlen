@@ -424,6 +424,8 @@ jobs:
           node dev/scripts/test-check-untranslated-render.mjs
           python3 dev/scripts/check-dbus-members-exist.py
           node dev/scripts/test-check-dbus-members-exist.mjs
+          python3 dev/scripts/check-mime-claims-decodable.py
+          node dev/scripts/test-check-mime-claims-decodable.mjs
           python3 dev/scripts/check-dependency-direction.py
           node dev/scripts/test-check-dependency-direction.mjs
           python3 dev/scripts/check-tests-run.py
