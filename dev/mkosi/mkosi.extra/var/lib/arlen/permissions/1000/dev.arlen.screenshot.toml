@@ -33,12 +33,25 @@ tier = "first-party"
 
 # Writes the flattened PNG to the freedesktop screenshots directory:
 # `$XDG_SCREENSHOTS_DIR`, else `$XDG_PICTURES_DIR/Screenshots`, else
-# `~/Pictures/Screenshots` (`sdk/screen-capture::screenshots_dir`). All three are
-# under home in any ordinary setup, so home is the whole of the filesystem reach -
-# no media mounts, because this app does not open files from anywhere, it writes one
-# to a known place.
+# `~/Pictures/Screenshots` (`sdk/screen-capture::screenshots_dir`). It is the app's
+# ONLY write and it opens no file at all: the nine commands are capture, encode,
+# save, copy to clipboard, and a log line.
+#
+# `pictures`, not `home`. The earlier grant reasoned that all three resolutions sit
+# under home and stopped there, which is true and a step too coarse: two of the
+# three are under Pictures, and `pictures` follows `~/.config/user-dirs.dirs`, so it
+# is the user's real Pictures directory rather than a hardcoded path. `home` handed
+# an app that writes one PNG read-WRITE over every document, key and config the user
+# owns, to solve the problem of naming one folder.
+#
+# The stated limit: a hand-set `$XDG_SCREENSHOTS_DIR` pointing OUTSIDE Pictures no
+# longer saves. That is the same trade the reader's profile makes about `/mnt` - a
+# grant that can be named exactly beats one that covers the case by covering
+# everything - and the failure is a refusal at save time, not a silent loss. If the
+# override turns out to be used, it becomes a `custom` entry naming that one
+# directory, not a return to home.
 [filesystem]
-home = true
+pictures = true
 
 # Reads nothing from the knowledge graph, so there is no [graph] section rather than
 # an empty one - the two say different things.
