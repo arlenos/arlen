@@ -249,6 +249,20 @@ pub fn build_confinement(
             .filter(|p| p.exists())
             .map(|p| Bind::ReadOnly(p.display().to_string(), p.display().to_string())),
     );
+    // A WRITABLE GRANT INSIDE A READ-ONLY ONE, RE-STATED SO IT SURVIVES.
+    //
+    // bwrap walks argv in order and the read-only subtrees above are appended
+    // after the writable dirs, so "read all of home, write only Downloads" - the
+    // shape a narrow profile wants - came out with Downloads read-only and the
+    // app failing at its one write. The grammar could express it and the
+    // launcher took it away. Re-emitting the overlapping writable dirs last is
+    // the same move `complete()` already makes for a bind under a mask.
+    plumbing.extend(
+        app_dirs
+            .iter()
+            .filter(|d| d.exists() && read_only.iter().any(|r| d.starts_with(r)))
+            .map(|d| Bind::ReadWrite(d.display().to_string(), d.display().to_string())),
+    );
     Ok(skeleton.complete(plumbing, Vec::new()))
 }
 
@@ -833,6 +847,46 @@ mod tests {
     }
 
     #[test]
+    fn a_writable_dir_inside_a_read_only_grant_is_still_bound_writable() {
+        // The combination no shipped profile uses yet, and the one a narrower
+        // grant wants: read the whole of home, write one folder in it. bwrap
+        // walks argv in order, so whichever bind is emitted last decides, and
+        // `complete()` appends the read-only plumbing after the writable dirs.
+        // If that order stands, asking for it would silently take the write away.
+        let base = tempfile::tempdir().expect("temp base");
+        let writable = base.path().join("Downloads");
+        std::fs::create_dir_all(&writable).expect("writable dir");
+        let conf = build_confinement(
+            Path::new("/usr"),
+            &[writable.clone()],
+            &[],
+            &[base.path().to_path_buf()],
+            BTreeMap::new(),
+            NetworkPolicy::None,
+            Vec::new(),
+        )
+        .unwrap();
+        let argv = bwrap_argv(&conf, &["/usr/bin/true".into()]);
+        // The LAST mention of each decides: bwrap walks argv in order, so a
+        // later bind covers an earlier one.
+        let w = argv
+            .iter()
+            .rposition(|a| a == &writable.display().to_string())
+            .expect("the writable dir is bound");
+        let ro = argv
+            .iter()
+            .rposition(|a| a == &base.path().display().to_string())
+            .expect("the read-only subtree is bound");
+        assert!(
+            w > ro,
+            "the read-only bind of {} lands after the writable bind of {}, so the \
+             writable grant is covered over and the app cannot write where its \
+             profile says it may",
+            base.path().display(),
+            writable.display()
+        );
+    }
+
     fn bwrap_argv_appends_the_program_after_a_separator() {
         let conf = build_confinement(
             Path::new("/usr"),
