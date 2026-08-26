@@ -18,12 +18,19 @@ use crate::projects::graph_query_async;
 const BUCKET_COUNT: usize = 8;
 
 /// One UTC day in milliseconds.
-const DAY_MS: i64 = 86_400_000;
+/// The graph stores `Event.timestamp` in EPOCH MICROSECONDS, the unit the
+/// envelope carries and promotion writes verbatim. This used to be `DAY_US`
+/// with a millisecond clock beside it, which is self-consistent and wrong
+/// against the data: the cutoff fell a thousandfold below every stored value
+/// so the WHERE matched the entire graph, and every row then divided out to a
+/// day a thousandfold past today and was dropped by the range guard. The tile
+/// drew eight empty days, as a fact, after reading every event ever recorded.
+const DAY_US: i64 = 86_400_000_000;
 
 /// Daily bucket of event counts.
 #[derive(Debug, Clone, Serialize)]
 pub struct KnowledgeBucket {
-    /// UTC day index (timestamp / DAY_MS), absolute. Useful for the
+    /// UTC day index (timestamp / DAY_US), absolute. Useful for the
     /// frontend to label tooltip / x-axis if it wants.
     pub day: i64,
     /// Event count in this bucket.
@@ -48,7 +55,7 @@ pub struct KnowledgeStats {
 }
 
 fn empty_response() -> KnowledgeStats {
-    let now_day = (now_ms() / DAY_MS) as i64;
+    let now_day = (now_us() / DAY_US) as i64;
     let buckets = (0..BUCKET_COUNT)
         .map(|i| KnowledgeBucket {
             day: now_day - (BUCKET_COUNT as i64 - 1 - i as i64),
@@ -63,11 +70,11 @@ fn empty_response() -> KnowledgeStats {
     }
 }
 
-fn now_ms() -> i64 {
+fn now_us() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
+        .map(|d| d.as_micros() as i64)
         .unwrap_or(0)
 }
 
@@ -77,8 +84,8 @@ fn now_ms() -> i64 {
 /// real-time so a 5-minute cache is fine.
 #[tauri::command]
 pub async fn knowledge_daily_counts() -> KnowledgeStats {
-    let now = now_ms();
-    let cutoff = now - (BUCKET_COUNT as i64) * DAY_MS;
+    let now = now_us();
+    let cutoff = now - (BUCKET_COUNT as i64) * DAY_US;
 
     // Fetch raw event timestamps for the last N days. Bucketing
     // client-side keeps the daemon-side query simple and avoids
@@ -105,7 +112,7 @@ fn bucket_response(raw: &str, now: i64) -> KnowledgeStats {
         return empty_response();
     }
 
-    let now_day = now / DAY_MS;
+    let now_day = now / DAY_US;
     let oldest_day = now_day - (BUCKET_COUNT as i64 - 1);
 
     let mut counts = vec![0u32; BUCKET_COUNT];
@@ -121,7 +128,7 @@ fn bucket_response(raw: &str, now: i64) -> KnowledgeStats {
             Some(v) => v,
             None => continue,
         };
-        let day = ts / DAY_MS;
+        let day = ts / DAY_US;
         if day < oldest_day || day > now_day {
             continue;
         }
@@ -161,12 +168,12 @@ mod tests {
     /// bucket and the day-99 row in the second-to-last.
     #[test]
     fn buckets_recent_events_into_correct_slots() {
-        let now = 100 * DAY_MS + 1_234;
+        let now = 100 * DAY_US + 1_234;
         let raw = format!(
             "ts\n{}\n{}\n{}\n",
-            100 * DAY_MS + 100,
-            100 * DAY_MS + 5_000,
-            99 * DAY_MS + 1_000,
+            100 * DAY_US + 100,
+            100 * DAY_US + 5_000,
+            99 * DAY_US + 1_000,
         );
         let r = bucket_response(&raw, now);
         assert!(r.available);
@@ -181,11 +188,11 @@ mod tests {
     /// event to inflate today's count.
     #[test]
     fn drops_rows_outside_the_window() {
-        let now = 100 * DAY_MS;
+        let now = 100 * DAY_US;
         let raw = format!(
             "ts\n{}\n{}\n",
-            (100 - BUCKET_COUNT as i64 - 5) * DAY_MS, // far in the past
-            100 * DAY_MS + 1,                          // today
+            (100 - BUCKET_COUNT as i64 - 5) * DAY_US, // far in the past
+            100 * DAY_US + 1,                          // today
         );
         let r = bucket_response(&raw, now);
         assert_eq!(r.total, 1);
@@ -194,7 +201,7 @@ mod tests {
 
     #[test]
     fn empty_input_returns_zero_buckets() {
-        let r = bucket_response("", 100 * DAY_MS);
+        let r = bucket_response("", 100 * DAY_US);
         assert!(!r.available);
         assert_eq!(r.total, 0);
         assert!(r.buckets.iter().all(|b| b.count == 0));
@@ -202,17 +209,17 @@ mod tests {
 
     #[test]
     fn error_marker_returns_offline_state() {
-        let r = bucket_response("ERROR: socket closed", 100 * DAY_MS);
+        let r = bucket_response("ERROR: socket closed", 100 * DAY_US);
         assert!(!r.available);
         assert_eq!(r.buckets.len(), BUCKET_COUNT);
     }
 
     #[test]
     fn malformed_rows_are_skipped() {
-        let now = 100 * DAY_MS;
+        let now = 100 * DAY_US;
         let raw = format!(
             "ts\nnot_a_number\n{}\n|missing\n",
-            100 * DAY_MS + 50,
+            100 * DAY_US + 50,
         );
         let r = bucket_response(&raw, now);
         assert_eq!(r.total, 1);
@@ -225,5 +232,29 @@ mod tests {
         assert_eq!(r.buckets.len(), BUCKET_COUNT);
         assert_eq!(r.today, 0);
         assert_eq!(r.total, 0);
+    }
+
+    #[test]
+    fn a_real_epoch_microsecond_stamp_lands_in_todays_bucket() {
+        // The case every other test here misses: they build fixtures out of the
+        // day constant, so they hold whichever unit it happens to be. This one
+        // spells the day out, so it fails if the constant stops being micros.
+        const ONE_DAY_IN_MICROS: i64 = 86_400_000_000;
+        let now = 1_787_000_000_000_000_i64; // a real epoch-micros stamp, 2026
+        let raw = format!(
+            "e.timestamp\n{}\n{}",
+            now - 1_000_000,
+            now - 2 * ONE_DAY_IN_MICROS
+        );
+        let r = bucket_response(&raw, now);
+        assert_eq!(r.today, 1, "an event a second old belongs to today");
+        assert_eq!(r.total, 2, "and one from two days ago is still in range");
+        // A day index for 2026 is about 20_682. A millisecond constant here
+        // would put it in the twenty millions.
+        let today = r.buckets.last().expect("eight buckets").day;
+        assert!(
+            (20_000..21_000).contains(&today),
+            "day index {today} is not a plausible 2026 day"
+        );
     }
 }
