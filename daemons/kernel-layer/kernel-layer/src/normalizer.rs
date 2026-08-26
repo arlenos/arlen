@@ -577,4 +577,24 @@ mod tests {
         assert_ne!(stamped, raw as i64);
         assert!(stamped > NOW_EPOCH_US - 60_000_000);
     }
+
+    #[test]
+    fn the_envelope_carries_an_epoch_stamp_whatever_the_kernel_gave_it() {
+        // At the producer, not just at the helper. `epoch_micros_from_boot_ns` is
+        // unit-tested above with both clocks handed in; this asserts that
+        // `encode_envelope` actually consults it, since the defect it replaced
+        // was one line in this function passing the kernel's number straight
+        // through.
+        use prost::Message as _;
+        let bytes = encode_envelope("file.opened", 42, 1000, 1_500_000_000, "s", Vec::new())
+            .expect("the envelope encodes");
+        let event = proto::Event::decode(&bytes[4..]).expect("decodes as an Event");
+        // 2020-01-01 in epoch micros. A boot-relative stamp is orders of
+        // magnitude below this on any machine that has not been up for decades.
+        assert!(
+            event.timestamp > 1_577_836_800_000_000,
+            "timestamp {} is not an epoch stamp",
+            event.timestamp
+        );
+    }
 }
