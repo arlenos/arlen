@@ -362,7 +362,12 @@ fn stitch_file_provenance(
     let mut steps = Vec::new();
     for p in projects {
         steps.push(ProvenanceStep {
-            relation: Some("Part of".to_string()),
+            // The TOKEN the window words, not the sentence. `stepLine` compares
+            // `relation` against `lastOpenedBy` and falls to the part-of wording
+            // for anything else, so prose here made every graph step read
+            // "Part of ..." - right actor, wrong relation, fluently wrong in both
+            // languages.
+            relation: Some("partOf".to_string()),
             actor: p.name.clone(),
             origin: HaloOrigin::Graph,
             // The membership edge's own `created_at`: when the file joined the
@@ -375,7 +380,7 @@ fn stitch_file_provenance(
     if let Some(view) = view {
         for actor in &view.actors {
             steps.push(ProvenanceStep {
-                relation: Some("Last opened by".to_string()),
+                relation: Some("lastOpenedBy".to_string()),
                 actor: actor.clone(),
                 origin: HaloOrigin::Graph,
                 when_ms: last_accessed_micros / 1_000,
@@ -386,7 +391,7 @@ fn stitch_file_provenance(
         }
         if view.accessed_by_others {
             steps.push(ProvenanceStep {
-                relation: Some("Also opened by".to_string()),
+                relation: Some("alsoOpenedBy".to_string()),
                 // Never named: the daemon summarises a foreign co-tenant.
                 actor: "another app".to_string(),
                 origin: HaloOrigin::Graph,
@@ -2775,7 +2780,7 @@ mod tests {
         }];
         let chain =
             stitch_file_provenance("budget.xlsx", &projects, Some(&view), now - 7200 * 1_000_000, now, true);
-        let part_of = chain.steps.iter().find(|s| s.relation.as_deref() == Some("Part of")).unwrap();
+        let part_of = chain.steps.iter().find(|s| s.relation.as_deref() == Some("partOf")).unwrap();
         // The INSTANT, not a phrase: the words are the window's now, and what this
         // has to hold is that the step is dated by the membership rather than by
         // the access.
@@ -2791,9 +2796,9 @@ mod tests {
         assert!(chain.steps.iter().all(|s| s.attested.is_none()), "no graph step may claim attestation");
         // The project step is resolved; the access step is pid (attribution is
         // pid->app, not a signed identity); the co-tenant is proxy and unnamed.
-        let opened = chain.steps.iter().find(|s| s.relation.as_deref() == Some("Last opened by")).unwrap();
+        let opened = chain.steps.iter().find(|s| s.relation.as_deref() == Some("lastOpenedBy")).unwrap();
         assert_eq!(opened.fidelity, Fidelity::Pid);
-        let others = chain.steps.iter().find(|s| s.relation.as_deref() == Some("Also opened by")).unwrap();
+        let others = chain.steps.iter().find(|s| s.relation.as_deref() == Some("alsoOpenedBy")).unwrap();
         assert_eq!(others.fidelity, Fidelity::Proxy);
         assert_eq!(others.actor, "another app", "a foreign co-tenant is summarised, never named");
     }
