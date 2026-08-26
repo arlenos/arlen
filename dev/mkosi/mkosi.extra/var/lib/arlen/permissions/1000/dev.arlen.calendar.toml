@@ -47,8 +47,13 @@ tier = "first-party"
 
 [filesystem]
 home = true
+# `/home/$USER`, not `$HOME`: `$USER` is the only token the grammar expands
+# (`arlen_permissions::expand_user`), so the `$HOME` spelling stayed a relative
+# path and the launcher now drops it rather than handing bwrap something that
+# would resolve against its own cwd. Harmless while `home = true` covers the same
+# directory, and load-bearing the moment that is narrowed.
 custom = [
-    "$HOME/.local/share/arlen/calendars",
+    "/home/$USER/.local/share/arlen/calendars",
 ]
 
 # Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,

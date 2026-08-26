@@ -21,7 +21,7 @@
 
 use std::path::{Path, PathBuf};
 
-use arlen_permissions::{expand_user, load_profile_from, read_only_grant_ok};
+use arlen_permissions::{expand_user, is_host_escape, load_profile_from, read_only_grant_ok};
 
 /// `(app_id, entry)` pairs known to be dropped, with the reason. MAY SHRINK, MAY
 /// NOT GROW: a new line here is a profile that started claiming reach its app
@@ -67,6 +67,24 @@ fn every_read_only_grant_a_shipped_profile_writes_is_one_the_launcher_accepts() 
             // different finding and this test should not double-report it.
             Err(_) => continue,
         };
+        for entry in &profile.filesystem.custom {
+            checked += 1;
+            let expanded = expand_user(entry, home);
+            if !expanded.is_absolute() {
+                dropped.push(format!(
+                    "{app_id}: custom `{}` is not absolute after expansion, so the \
+                     launcher drops it - `$USER` is the only token the grammar knows",
+                    entry.display()
+                ));
+            } else if is_host_escape(&expanded, home) {
+                dropped.push(format!(
+                    "{app_id}: custom `{}` resolves to `{}`, which the launcher \
+                     refuses as a host escape",
+                    entry.display(),
+                    expanded.display()
+                ));
+            }
+        }
         for entry in &profile.filesystem.read_only {
             checked += 1;
             let expanded = expand_user(entry, home);
