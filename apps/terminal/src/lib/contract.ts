@@ -247,9 +247,17 @@ export async function terminalConfigGet(): Promise<TerminalConfig> {
   return invoke<TerminalConfig>("terminal_config_get");
 }
 
-/// Persist the base font size (the Settings UI; the daemon clamps it to a
-/// readable range). Zoom shortcuts apply a transient delta over this base and do
-/// not call this.
+/// Persist the base font size. The daemon clamps it to a readable range.
+///
+/// NOTHING CALLS THIS. The doc named "the Settings UI" as the caller, and
+/// Settings' terminal section carries the 16-ANSI palette and no font size - so
+/// the sentence described an intention rather than a wiring, in a file whose job
+/// is to say what the wiring is.
+///
+/// The gap it leaves is small and real: zoom shortcuts apply a TRANSIENT delta
+/// over this base by design, so a person can zoom the terminal and cannot keep
+/// it. The backend half exists and is clamped; the control is the surface
+/// owner's to add, next to the palette that is already there.
 export async function terminalConfigSet(fontSize: number): Promise<void> {
   await invoke("terminal_config_set", { fontSize });
 }
