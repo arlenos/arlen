@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
   import { readsAsInternal } from "$lib/errors";
   import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
   import { mark } from "@arlen/ui-kit/i18n";
@@ -112,7 +112,11 @@
     const when = new Date(expiresAt);
     if (Number.isNaN(when.getTime())) return null;
     if (when.getTime() < Date.now()) return null;
-    return when.toLocaleString(undefined, {
+    // The app's locale, not `undefined`. Passing `undefined` asks the BROWSER
+    // for its default, which on a machine set to English writes "Wed 09:12"
+    // under a German page - and this line is the one place on it that says
+    // WHEN, which is the part a person reads to decide whether to wait.
+    return when.toLocaleString($locale, {
       hour: "2-digit",
       minute: "2-digit",
       weekday: "short",
