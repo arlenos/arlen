@@ -52,6 +52,19 @@ mod tests {
         assert_eq!(route_delete(&inv(&["-rf", "build"]), false), DeleteMode::Unlink);
     }
 
+    /// The redirect case, which is why the caller tests STDIN rather than stdout.
+    ///
+    /// `rm old.log > out.txt` is a person at a keyboard whose OUTPUT happens to
+    /// be going somewhere else. Read off stdout that looks exactly like a script
+    /// and the file is hard-unlinked - the safety net gone at the moment somebody
+    /// was typing. This function cannot see the difference (it is handed a bool),
+    /// so the test pins the CONSEQUENCE: whatever the caller decides, an
+    /// interactive answer must still reach the trash.
+    #[test]
+    fn an_interactive_session_reaches_the_trash_however_output_is_routed() {
+        assert_eq!(route_delete(&inv(&["old.log"]), true), DeleteMode::Trash);
+    }
+
     #[test]
     fn purge_always_hard_unlinks() {
         assert_eq!(route_delete(&inv(&["--purge", "secret"]), true), DeleteMode::Unlink);
