@@ -75,7 +75,13 @@ const FIXTURE = {
   provenance: [
     { relation: "Started by", actor: "you", origin: "user" as Provenance, when_ms: SAMPLE_NOW - 21 * DAY, fidelity: "resolved" as Fidelity },
     { relation: "A section drafted by", actor: "the assistant", origin: "agent" as Provenance, when_ms: SAMPLE_NOW - DAY, fidelity: "resolved" as Fidelity },
-    { relation: "Last opened by", actor: "a process", origin: "graph" as Provenance, when_ms: SAMPLE_NOW - 12 * 60_000, fidelity: "pid" as Fidelity },
+    // The message id the BACKEND sends for this row, not a phrase of its own.
+    // `steps_from_rows` emits exactly one relation, `te.pv.verb.openedIn`, so a
+    // sample that said "Last opened by" showed wording the feature never uses -
+    // and, being a phrase rather than a key, showed it in English whatever the
+    // reader's language. The two rows above have no backend counterpart at all;
+    // see the report for that.
+    { relation: "te.pv.verb.openedIn", actor: "a process", origin: "graph" as Provenance, when_ms: SAMPLE_NOW - 12 * 60_000, fidelity: "pid" as Fidelity },
   ],
   related: [
     { file: "roadmap.md", ref: "roadmap", snippet: "…the editor lands after the compositor work, see the notes in this file for the lens design…" },
