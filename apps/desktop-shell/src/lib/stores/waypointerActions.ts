@@ -5,6 +5,10 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface AppEntry {
+    /// The id the launcher and the permission system key on. Passed back on
+    /// launch so the shell can tell whether this app is one it should raise
+    /// rather than start again (`app-instance-model.md`).
+    app_id: string;
     name: string;
     exec: string;
     icon_name: string;
