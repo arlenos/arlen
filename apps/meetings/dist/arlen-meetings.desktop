@@ -10,7 +10,7 @@ Icon=arlen-meetings
 Terminal=false
 Categories=Office;
 Keywords=meeting;notes;transcript;recording;
-Keywords[de]=besprechung;notizen;transkript;
+Keywords[de]=besprechung;notizen;transkript;meeting;
 StartupNotify=true
 # The identity the permission system keys on. The resolver maps a canonical
 # /usr/bin/arlen-{name} binary to {name}, so the profile, the audit actor and

@@ -12,7 +12,7 @@ Terminal=false
 # picture, and two main categories put the app in the menu twice.
 Categories=Graphics;
 Keywords=screenshot;capture;screen;grab;snip;annotate;
-Keywords[de]=bildschirmfoto;aufnahme;bildschirm;ausschnitt;
+Keywords[de]=bildschirmfoto;aufnahme;bildschirm;ausschnitt;screenshot;
 StartupNotify=true
 
 # No MimeType: this app makes files, it does not open them. Registering it as a
