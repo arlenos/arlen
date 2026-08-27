@@ -412,11 +412,15 @@ fn main() -> ExitCode {
     // A FilteredHosts profile runs in a route-absent netns behind the forwarding
     // proxy the enforcer binds. Capture the flag before `inputs.network` moves
     // into the confinement, and hold the guard for the whole launch - its Drop
-    // stops the proxy. None/Unrestricted never reach the enforcer.
-    let filtered = matches!(
-        &inputs.network,
-        arlen_confiner::NetworkPolicy::FilteredHosts(_)
-    );
+    // stops the proxy.
+    //
+    // THE SAME QUESTION AS THE ENFORCER'S, so it is asked in the same place. This
+    // was its own `matches!` a moment ago, which meant the netns decision and the
+    // proxy decision could answer differently - a policy variant added to one and
+    // not the other would run the app with a proxy and a route, or in a namespace
+    // with nothing to reach. Both now come from `enforced_hosts`, whose match is
+    // exhaustive.
+    let filtered = egress::enforced_hosts(&inputs.network).is_some();
     let egress_guard = if let Some(hosts) = egress::enforced_hosts(&inputs.network) {
         match egress::ProxyEgressEnforcer.install(hosts) {
             Ok(guard) => Some(guard),
