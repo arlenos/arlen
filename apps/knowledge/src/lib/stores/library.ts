@@ -108,6 +108,13 @@ export async function loadLibrary(): Promise<void> {
       // fail, it was never possible - and "cannot read your library right now"
       // promises a retry that will never work. Tauri rejects an unregistered
       // command by name, which is what tells the two apart.
+      //
+      // The exact wording, since this branch rests on it: Tauri 2.11 rejects with
+      // `Command {name} not found` (`tauri/src/webview/mod.rs:1905`), and its
+      // capability layer with `... not allowed. Command not found`. Both match.
+      // Checked against the vendored crate on 26 August rather than assumed - if
+      // a later Tauri rewords it, this silently returns to promising a retry that
+      // cannot work, which is the sentence the branch exists to avoid.
       const missing = /not found|unknown command/i.test(String(e));
       libraryNotBuilt.set(missing);
       libraryUnavailable.set(!missing);
