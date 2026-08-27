@@ -28,3 +28,4 @@ StartupNotify=true
 # admits for an install request. Those two have to say the same thing or the
 # store may browse and never install.
 X-Arlen-AppId=dev.arlen.store
+X-Arlen-SingleInstance=true

@@ -27,3 +27,4 @@ MimeType=text/calendar;
 # launcher and every daemon that admits by app id cannot disagree about who this
 # app is.
 X-Arlen-AppId=dev.arlen.calendar
+X-Arlen-SingleInstance=true

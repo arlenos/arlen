@@ -26,3 +26,4 @@ StartupNotify=true
 # compiled-in user surfaces in `identity.rs` and the name its shipped permission
 # profile is filed under.
 X-Arlen-AppId=dev.arlen.harness
+X-Arlen-SingleInstance=true

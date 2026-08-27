@@ -26,3 +26,4 @@ MimeType=message/rfc822;
 # launcher and every daemon that admits by app id cannot disagree about who this
 # app is.
 X-Arlen-AppId=dev.arlen.mail
+X-Arlen-SingleInstance=true

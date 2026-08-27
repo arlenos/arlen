@@ -19,3 +19,4 @@ StartupNotify=true
 # keeps the launcher's idea of who this app is identical to the daemons',
 # rather than two names for one app that only diverge under confinement.
 X-Arlen-AppId=dev.arlen.system-monitor
+X-Arlen-SingleInstance=true

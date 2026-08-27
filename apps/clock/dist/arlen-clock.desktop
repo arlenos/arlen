@@ -22,3 +22,4 @@ StartupNotify=true
 # a different principal with its own profile: the app may be closed at any time
 # and the daemon may not, so they are not one identity wearing two hats.
 X-Arlen-AppId=dev.arlen.clock
+X-Arlen-SingleInstance=true
