@@ -194,7 +194,9 @@ fn write_theme_broadcast(css: &CssVariables) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let tmp = path.with_extension("json.tmp");
+    // Per INSTANCE, not per app (`app-instance-model.md`): two windows sharing a
+    // temp name cross over rather than tear.
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     if let Err(e) = std::fs::write(&tmp, &json) {
         log::warn!("theme broadcast: write {} failed: {e}", tmp.display());
         return;
