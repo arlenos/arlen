@@ -204,14 +204,19 @@ jobs:
           python3 dev/vm/test_frame_checks.py
           python3 dev/vm/test_timed_plan.py
       - name: structural checks
-        # The seven build-free checks, run directly rather than through `just`,
-        # which the runner does not have. Each is deterministic file reading with
-        # no network and no build, and each guards something that had already
-        # drifted once: the matrix against the tree, an ignore rule against what
-        # is tracked, a unit ordering against a unit that exists, the eight copies
-        # of event.proto against each other, and this workflow against the
-        # justfile on how a listed crate is actually built, and a shared file's
-        # reader against its writer. Seconds, together.
+        # The build-free checks and their controls, run directly rather than
+        # through `just`, which the runner does not have. Each is deterministic
+        # file reading with no network and no build, and each guards something
+        # that had already drifted once: the matrix against the tree, an ignore
+        # rule against what is tracked, a unit ordering against a unit that
+        # exists, the eight copies of event.proto against each other, this
+        # workflow against the justfile on how a listed crate is actually built,
+        # and a shared file's reader against its writer.
+        #
+        # It said "the seven" until 27 August and there are 225 invocations in
+        # this step - a count in a comment is a claim that ages every time
+        # somebody adds a line below it, so this one names the kind rather than
+        # the number.
         run: |
           python3 dev/scripts/check-crate-coverage.py
           python3 dev/scripts/check-proto-drift.py
