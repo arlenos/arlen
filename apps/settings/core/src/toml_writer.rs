@@ -115,12 +115,20 @@ fn write_atomic(path: &Path, doc: &DocumentMut) -> Result<(), String> {
         .map_err(|e| format!("rename {} -> {}: {e}", tmp.display(), path.display()))
 }
 
+/// The sibling temp path this writer renames from, named per INSTANCE.
+///
+/// The pid is in the name because nothing stops a second Settings window, and
+/// two of them sharing one temp path do not tear the file - they cross over, and
+/// one renames the other's bytes into place (`app-instance-model.md`). The
+/// `WRITE_LOCK` in this module serialises writers inside ONE process, which is a
+/// different question and does not reach across two.
 fn with_tmp_extension(path: &Path) -> PathBuf {
+    let pid = std::process::id();
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
-        .map(|e| format!("{e}.tmp"))
-        .unwrap_or_else(|| "tmp".to_string());
+        .map(|e| format!("{e}.{pid}.tmp"))
+        .unwrap_or_else(|| format!("{pid}.tmp"));
     path.with_extension(ext)
 }
 

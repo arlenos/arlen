@@ -55,7 +55,9 @@ fn write_shell_table(table: &toml::Table) -> Result<(), String> {
     }
     let serialized = toml::to_string_pretty(table)
         .map_err(|e| format!("serialize shell.toml: {e}"))?;
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app (`app-instance-model.md`): two windows sharing a
+    // temp name cross over rather than tear.
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     fs::write(&tmp, serialized).map_err(|e| format!("write tmp: {e}"))?;
     fs::rename(&tmp, &path).map_err(|e| format!("rename: {e}"))?;
     Ok(())
