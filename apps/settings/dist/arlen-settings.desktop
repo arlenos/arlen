@@ -1,0 +1,28 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Settings
+Name[de]=Einstellungen
+Comment=Change how this machine looks, behaves and what it may do
+Comment[de]=Ändern, wie dieser Rechner aussieht, sich verhält und was er darf
+Exec=arlen-settings
+Icon=arlen-settings
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=settings;preferences;configure;system;display;sound;network;privacy;
+Keywords[de]=einstellungen;systemeinstellungen;konfigurieren;anzeige;ton;netzwerk;datenschutz;
+StartupNotify=true
+
+# NO argument placeholder, deliberately. The binary takes `--panel <name>` with an
+# optional `--section` and `--app` (`commands::search::parse_cli_args`), which is
+# how another surface deep-links into a page. Those are flags rather than a file
+# or a URI, so `%f` and `%u` would both be wrong here: the launcher fills them
+# with a path, and a path is not a panel name.
+
+# The identity the permission system keys on, and the one the rest of the tree
+# already names. `installd`'s INSTALL_CALLERS, the config broker's admitted
+# writers and the knowledge daemon's revoke caller all say `dev.arlen.settings`,
+# and `path_to_app_id` maps this app's canonical binary to exactly that. Stating
+# it here rather than letting the desktop-id imply `arlen-settings` keeps those
+# four in agreement.
+X-Arlen-AppId=dev.arlen.settings

@@ -54,11 +54,6 @@ NOT_ON_IMAGE: dict[str, str] = {
         "The app is real; shipping it is a decision about whether this image stays a "
         "single-user appliance, not an oversight"
     ),
-    "settings": (
-        "arlen-ui's live work; the coder does not stage it. It is the largest app with no "
-        "image step (49 Rust files, 71 components), so if it is meant to be reachable on "
-        "the machine this is the biggest single gap in the set"
-    ),
     "harness": "arlen-ui's live work, and the surface they are redesigning",
     "store": "arlen-ui's live work",
     "trash-rm": (
