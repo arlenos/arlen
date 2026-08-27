@@ -1,0 +1,28 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Assistant
+Name[de]=Assistent
+Comment=Ask the assistant, and see what it did and may do
+Comment[de]=Den Assistenten fragen und sehen, was er getan hat und darf
+Exec=arlen-harness
+Icon=arlen-harness
+Terminal=false
+Categories=Utility;
+Keywords=assistant;ai;agent;chat;ask;undo;transparency;
+Keywords[de]=assistent;ki;agent;chat;fragen;rückgängig;transparenz;
+StartupNotify=true
+
+# NO argument placeholder. The terminal's share-a-block entry launches
+# `arlen-harness --inject <path>` with a 0600 payload it wrote itself
+# (`apps/terminal/src-tauri/src/lib.rs`), which is a flag and a private path
+# rather than a document the launcher should fill in. `%f` here would hand the
+# app whatever file a drop or a file-manager Open-With passed, which is not the
+# same thing and not something this window reads.
+
+# The identity the permission system keys on. Rule 3 resolves an app installed at
+# `/usr/lib/arlen/apps/<id>/bin/<binary>` to `<id>`, so the staging path and this
+# line say the same thing, and `dev.arlen.harness` is already one of the three
+# compiled-in user surfaces in `identity.rs` and the name its shipped permission
+# profile is filed under.
+X-Arlen-AppId=dev.arlen.harness

@@ -54,7 +54,6 @@ NOT_ON_IMAGE: dict[str, str] = {
         "The app is real; shipping it is a decision about whether this image stays a "
         "single-user appliance, not an oversight"
     ),
-    "harness": "arlen-ui's live work, and the surface they are redesigning",
     "store": "arlen-ui's live work",
     "trash-rm": (
         "a command-line tool (`arlen-trash-rm`), not a desktop app, so it has no launcher "

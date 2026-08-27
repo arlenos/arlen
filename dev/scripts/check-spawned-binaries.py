@@ -56,12 +56,6 @@ SYMLINK = re.compile(r'ln -sf\s+"?([A-Za-z0-9_./-]+)"?\s+"\$DESTDIR(/usr/[A-Za-z
 # binary -> why it is not installed, and what that is waiting on. A bare name
 # would let the exception outlive the reason it was granted for.
 KNOWN = {
-    "arlen-harness": (
-        "the terminal's share-a-block menu entry writes a 0600 payload and launches "
-        "`arlen-harness --inject <path>` (terminal.md 4.11); the harness has no build "
-        "step either, so the entry reports `launch harness: No such file or directory` "
-        "and the payload is written for nobody. Same build decision as Settings"
-    ),
 }
 
 

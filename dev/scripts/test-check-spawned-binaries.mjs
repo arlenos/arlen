@@ -32,12 +32,12 @@ const failures = [];
 // test goes red immediately, rather than the gate quietly losing the ability to
 // be pointed at a fixture.
 const CARRIED = {
-  // One line per KNOWN entry, and `arlen-settings` left with its entry on 27
-  // August when the app gained a build step: a stub for a name the gate no
-  // longer carries makes every fixture here report a real missing binary, which
-  // is the coupling working rather than failing.
-  "apps/carried/src/lib.rs":
-    'std::process::Command::new("arlen-harness").spawn();\n',
+  // One stub line per KNOWN entry in the gate. The list is EMPTY as of 27 August
+  // - `arlen-settings` and `arlen-harness` both gained build steps that day - so
+  // this is empty too. A stub for a name the gate no longer carries makes every
+  // fixture here report a real missing binary, which is the coupling working
+  // rather than failing; a missing stub for a name it does carry is the same in
+  // reverse. Add one line here with the entry, not after it.
 };
 
 function check(name, files, expect, { known } = {}) {
