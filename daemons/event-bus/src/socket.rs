@@ -1480,6 +1480,17 @@ pub async fn forward_from_upstream(
     }
 }
 
+/// The forwarder's own consumer registration, in the three-line form this file
+/// reads a few hundred lines up.
+///
+/// Named rather than inlined so the shape can be tested. This is the bus
+/// registering with ANOTHER bus, so it is both ends of the same protocol in one
+/// crate - and the last time a consumer sent two lines instead of three it
+/// blocked forever and its whole feed went quiet without an error.
+fn forwarder_registration(uid: u32) -> String {
+    format!("event-bus-forwarder-{uid}\n*\n*\n")
+}
+
 /// One connection's worth of forwarding, so the retry loop above stays readable.
 async fn forward_once(upstream_consumer_path: &str, registry: &Arc<ConsumerRegistry>) -> Result<()> {
     let mut stream = UnixStream::connect(upstream_consumer_path).await?;
@@ -1488,7 +1499,7 @@ async fn forward_once(upstream_consumer_path: &str, registry: &Arc<ConsumerRegis
     // uid filter. `*` for both because this bus forwards whatever its own
     // consumers may later want, and the upstream decides what that may include.
     let uid = unsafe { libc::getuid() };
-    let registration = format!("event-bus-forwarder-{uid}\n*\n*\n");
+    let registration = forwarder_registration(uid);
     stream.write_all(registration.as_bytes()).await?;
     stream.flush().await?;
     info!(upstream = upstream_consumer_path, uid, "forwarding from the upstream bus");
@@ -1509,5 +1520,21 @@ async fn forward_once(upstream_consumer_path: &str, registry: &Arc<ConsumerRegis
         // arrangement exists to preserve.
         let event = Event::decode(&body[..])?;
         registry.dispatch(&event).await;
+    }
+}
+
+#[cfg(test)]
+mod forwarder_registration_tests {
+    use super::forwarder_registration;
+
+    #[test]
+    fn the_forwarder_sends_the_three_lines_this_bus_reads() {
+        let r = forwarder_registration(1000);
+        assert_eq!(
+            r.lines().collect::<Vec<_>>(),
+            ["event-bus-forwarder-1000", "*", "*"],
+            "handle_consumer reads three lines and blocks on the third"
+        );
+        assert!(r.ends_with('\n'));
     }
 }
