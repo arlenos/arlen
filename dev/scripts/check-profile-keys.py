@@ -42,7 +42,16 @@ ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).reso
 SCHEMA = ROOT / "sdk/permissions/src/lib.rs"
 
 #: Every profile that ships on the image, under the uid directory it applies to.
-PROFILE_DIRS = (ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions",)
+#: Both corpora. The image profiles were the only ones checked until 27 August,
+#: which left the 2330 AUTHORED ones - the larger body, and the one edited in
+#: bulk - unguarded against exactly the defect this exists for: a key the schema
+#: does not have parses as an empty section rather than as an error, so a grant
+#: somebody wrote is silently not there. Measured before extending: the catalogue
+#: is clean, so this adds coverage rather than a red board.
+PROFILE_DIRS = (
+    ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions",
+    ROOT / "sdk/permissions/profiles",
+)
 
 STRUCT = re.compile(r"pub struct (\w+)\s*\{(.*?)\n\}", re.S)
 FIELD = re.compile(r'(?:#\[serde\(rename\s*=\s*"([^"]+)"\)\]\s*)?pub (\w+)\s*:\s*([^,\n]+)', re.S)
@@ -103,6 +112,21 @@ def main() -> int:
             except tomllib.TOMLDecodeError as e:
                 problems.append(f"{path.relative_to(ROOT)}: not readable as TOML ({e})")
                 continue
+            # The file is found by NAME and the id inside is what the daemon
+            # compares a peer against, so the two disagreeing means the grants
+            # reach a principal that did not ask for them - or nobody. That
+            # happened once on the image side (`compositor.toml`, renamed after
+            # weeks of loading nothing) and `check-profile-principals` guards the
+            # naming there; this is the same property one level in, over the 2330
+            # authored profiles, where a bulk rename is the way it would recur.
+            declared = data.get("info", {})
+            declared = declared.get("app_id") if isinstance(declared, dict) else None
+            if declared is not None and declared != path.stem:
+                problems.append(
+                    f"{path.relative_to(ROOT)}: the file is named `{path.stem}` and "
+                    f"declares `app_id = \"{declared}\"`. The lookup uses the name and "
+                    f"the comparison uses the id, so one of the two reaches nobody"
+                )
             for section, body in data.items():
                 if section not in sections:
                     if section in unresolved:
