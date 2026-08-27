@@ -23,11 +23,18 @@ const failures = [];
 
 const NOTE = "# NETWORK-SCOPE-PENDING: the scoped form is not enforceable yet.\n";
 
-function tree(files) {
+function tree(files, imageFiles = {}) {
   const dir = mkdtempSync(join(tmpdir(), "arlen-netscope-"));
   mkdirSync(join(dir, "sdk/permissions/profiles"), { recursive: true });
   for (const [name, body] of Object.entries(files)) {
     writeFileSync(join(dir, "sdk/permissions/profiles", `${name}.toml`), body);
+  }
+  // The image's own set, checked since 27 August: it is the one that actually
+  // runs, and a wide grant added there used to carry no marker and go unrecorded.
+  const imageDir = join(dir, "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000");
+  mkdirSync(imageDir, { recursive: true });
+  for (const [name, body] of Object.entries(imageFiles)) {
+    writeFileSync(join(imageDir, `${name}.toml`), body);
   }
   return dir;
 }
@@ -96,5 +103,17 @@ check(
 rmSync(d, { recursive: true, force: true });
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
+{
+  // The same unexplained grant, one directory over.
+  const dir = tree({ "ok-app": profile("ok-app") }, { "dev.arlen.thing": profile("dev.arlen.thing", { net: "all" }) });
+  const r = run(dir);
+  check(
+    "a wide grant in an image profile is caught too",
+    r.code === 1 && /dev\.arlen\.thing/.test(r.out),
+    `exit ${r.code}: ${r.out}`,
+  );
+  rmSync(dir, { recursive: true, force: true });
+}
+
 if (failures.length) process.exit(1);
 console.log("an unexplained wide grant is caught, a stale note too, and an empty read refuses");

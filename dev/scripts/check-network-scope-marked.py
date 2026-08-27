@@ -31,6 +31,12 @@ from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 PROFILES = ROOT / "sdk/permissions/profiles"
+#: The image's own profiles, checked since 27 August. This gate read only the
+#: authored corpus, which is where the 714 wide grants are - but the image set is
+#: the one that actually runs, and a wide grant added there would have carried no
+#: marker and gone unrecorded. None grants `allow_all` today (measured before
+#: adding it), so this is coverage rather than a new finding.
+IMAGE_PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions"
 
 MARKER = "NETWORK-SCOPE-PENDING"
 
@@ -45,7 +51,10 @@ def main() -> int:
     wide = 0
     read = 0
 
-    for path in sorted(PROFILES.glob("*.toml")):
+    paths = sorted(PROFILES.glob("*.toml"))
+    if IMAGE_PROFILES.is_dir():
+        paths += sorted(IMAGE_PROFILES.rglob("*.toml"))
+    for path in paths:
         text = path.read_text(encoding="utf-8")
         try:
             doc = tomllib.loads(text)
