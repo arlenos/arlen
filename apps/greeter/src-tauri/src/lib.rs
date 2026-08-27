@@ -18,8 +18,14 @@ use std::path::Path;
 /// AccountsService avatar. Fails closed if the account list cannot be read.
 #[tauri::command]
 fn greeter_profiles() -> Result<Vec<Profile>, String> {
-    let passwd = std::fs::read_to_string("/etc/passwd")
-        .map_err(|e| format!("cannot read the account list: {e}"))?;
+    let passwd = std::fs::read_to_string("/etc/passwd").map_err(|e| {
+        // LOGGED, because the caller throws the message away: `listProfiles`
+        // catches and answers `null`, and the screen then says login is not
+        // reachable without anyone being able to find out why. The greetd-socket
+        // refusal below already does this; its siblings did not.
+        log::warn!("greeter: cannot read the account list: {e}");
+        format!("cannot read the account list: {e}")
+    })?;
     let mut profiles = core::parse_login_accounts(&passwd, core::UID_MIN, core::UID_MAX);
     let icons = Path::new(core::ACCOUNTS_ICONS_DIR);
     for p in &mut profiles {
@@ -142,14 +148,25 @@ fn greeter_factor_begin(_profile_id: String, _factor: String) -> Result<serde_js
 /// actions, anything else refused.
 #[tauri::command]
 fn greeter_power(action: String) -> Result<(), String> {
-    let verb = core::power_verb(&action).ok_or_else(|| format!("unknown power action: {action}"))?;
+    // Every branch logs. `power()` catches and answers `false`, and the screen
+    // then draws the reference refusal - "That did not happen. The machine is
+    // still on." - which is the right sentence and carries no cause. Without a
+    // line here the cause exists nowhere: the string is built and dropped.
+    let verb = core::power_verb(&action).ok_or_else(|| {
+        log::warn!("greeter: unknown power action {action}");
+        format!("unknown power action: {action}")
+    })?;
     let status = std::process::Command::new("systemctl")
         .arg(verb)
         .status()
-        .map_err(|e| format!("failed to run systemctl {verb}: {e}"))?;
+        .map_err(|e| {
+            log::warn!("greeter: could not run systemctl {verb}: {e}");
+            format!("failed to run systemctl {verb}: {e}")
+        })?;
     if status.success() {
         Ok(())
     } else {
+        log::warn!("greeter: systemctl {verb} exited with {status}");
         Err(format!("systemctl {verb} exited with {status}"))
     }
 }
