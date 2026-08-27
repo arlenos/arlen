@@ -18,7 +18,19 @@ use tokio::net::UnixStream;
 
 use crate::{Event, Request, Response};
 
-/// The largest frame accepted, matching the daemon's own bound.
+/// The largest REPLY frame this client will read.
+///
+/// It does not match the daemon's bound, and the line here used to say it did.
+/// The daemon's `MAX_FRAME_BYTES` is 1 MiB and guards the REQUEST it reads
+/// (`modulesd/src/socket/server.rs:241`); this one is eight times larger and
+/// guards the other direction. So the two numbers bound different things and a
+/// request over 1 MiB is refused by the daemon with nothing here to have warned
+/// about it.
+///
+/// Left as it is rather than aligned: raising the daemon's bound weakens a DoS
+/// limit on the socket every module reaches, and lowering this one could refuse a
+/// reply the daemon legitimately sends. Which way they should meet is a decision;
+/// the numbers being written down honestly is what makes it possible to take.
 const MAX_FRAME: usize = 8 * 1024 * 1024;
 
 /// A failure talking to the module runtime.
