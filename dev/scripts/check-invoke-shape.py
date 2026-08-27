@@ -195,7 +195,7 @@ def passthrough_wrappers(text: str) -> list[str]:
             i += 1
         body = text[brace : i + 1]
         forwards = re.compile(
-            rf"invoke\s*(?:<[^>]*>)?\s*\(\s*{re.escape(params[0])}\s*,\s*{re.escape(params[1])}\s*\)"
+            rf"invoke\s*(?:<[^()\"]*>)?\s*\(\s*{re.escape(params[0])}\s*,\s*{re.escape(params[1])}\s*\)"
         )
         if forwards.search(body):
             out.append(m.group(1))
@@ -245,7 +245,7 @@ def fixed_payload_wrappers(text: str) -> dict[str, set[str]]:
         # Ends BEFORE the comma: `payload_keys` consumes the separator itself, so
         # handing it a position past the comma leaves it looking at `{` where it
         # expects `,` or `)` and it reads nothing.
-        call = re.search(rf"invoke\s*(?:<[^>]*>)?\s*\(\s*{re.escape(param)}\b", body)
+        call = re.search(rf"invoke\s*(?:<[^()\"]*>)?\s*\(\s*{re.escape(param)}\b", body)
         if not call:
             continue
         keys = payload_keys(body, call.end())
