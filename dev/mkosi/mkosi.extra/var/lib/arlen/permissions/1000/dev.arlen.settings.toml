@@ -1,0 +1,81 @@
+# The Settings app's profile, under the uid it applies to, like every other app
+# here.
+#
+# Each grant below was read out of `apps/settings/src-tauri` rather than assumed.
+#
+# THE ONE THING THIS PROFILE CANNOT EXPRESS, said first because it is the whole
+# point of the app. Settings writes the SHARED Arlen config - `shell.toml`,
+# `appearance.toml`, `compositor.toml`, `notifications.toml` - through
+# `toml_writer`, directly on the files. `arlen-run` masks `~/.config/arlen` for
+# EVERY app unconditionally (`confinement_inputs`, `masked_dirs`), re-exposing
+# only `~/.config/arlen/apps/{app_id}`, and the mask exists precisely so a broad
+# grant cannot hand a confined app the AI master switches' siblings or another
+# app's config. No grant in this file lifts it.
+#
+# So under `confined = true` this app can still be launched and can still read,
+# and its writes to the shared config are refused. Today the launcher's
+# `confined` flag is off by default, so nothing is broken; the moment it is
+# flipped, Settings is the app the mask was written against and also the one
+# that has to get through it. The three ways out are a named exemption for this
+# id, a re-expose of `~/.config/arlen` for it alone, or routing every write
+# through the config broker and the permission helper the way the AI switches
+# already are. That is a security-boundary decision, not a line in this file.
+[info]
+app_id = "dev.arlen.settings"
+tier = "first-party"
+
+[filesystem]
+# The Arlen data dirs Settings writes: an installed theme, the chosen wallpaper,
+# the Waypointer's own state and the module list. All under `.local/share`, none
+# of them masked, and named one by one rather than granting the parent - a grant
+# of `.local/share/arlen` would also hand over the agent's undo log and the
+# capsule store, which live beside them.
+custom = [
+    "/home/$USER/.local/share/arlen/themes",
+    "/home/$USER/.local/share/arlen/wallpapers",
+    "/home/$USER/.local/share/arlen/waypointer",
+    "/home/$USER/.local/share/arlen/modules",
+]
+
+# READ-ONLY, for the installed-application list the Apps and Default-Apps pages
+# show: the freedesktop entry directories, including the Flatpak export path.
+# Read-only rather than `custom`, because listing what is installed is not a
+# reason to be able to change it - a writable `/usr/share/applications` would let
+# this app rewrite another app's launcher.
+#
+# `/usr/share` and `/usr` are refused as whole trees by `read_only_grant_ok`;
+# these are named subtrees under them, which is exactly what that field exists
+# for.
+read_only = [
+    "/usr/share/applications",
+    "/home/$USER/.local/share/applications",
+    "/home/$USER/.local/share/flatpak/exports/share/applications",
+]
+
+# NO [graph] SECTION, and that is not an omission. Settings reaches the knowledge
+# daemon for two ops only - `access_grants` (0x05) and `revoke` (0x06) - and
+# neither is gated on a read scope: the browse is scoped by the daemon-attested
+# app id, and the revoke is admitted by an exact-principal check
+# (`is_settings_principal`) that names this id. A read grant here would widen what
+# this app may query without either of those needing it.
+
+# NO [network] SECTION. Nothing in this backend dials out; the AI provider list it
+# displays comes from ai-proxy over D-Bus, which is the proxy's egress and not
+# this app's.
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# NOTHING IS PUBLISHED: there is no emitter in this app.
+#
+# The subscribe list is `sdk/tauri-plugin-shell`'s, not this app's: it subscribes
+# these three from inside every Tauri process, and declaring any subscribe list
+# drops the system-tier exemption - so leaving them out switches the topbar menu,
+# the toolbar and the shortcuts off silently.
+[event_bus]
+publish = []
+subscribe = [
+    "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]
