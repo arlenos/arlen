@@ -48,8 +48,16 @@ fn save_to(path: &Path, sessions: &Value) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    // Same-directory temp so the rename is atomic on one filesystem.
-    let tmp = path.with_extension("json.tmp");
+    // Same-directory temp so the rename is atomic on one filesystem, and named
+    // per PROCESS because nothing stops a second harness running: the tree has
+    // no single-instance guard, and the terminal's send-a-block gesture launches
+    // `arlen-harness` whether or not one is already up. With a shared temp name
+    // two instances writing at once cross over - B overwrites the temp A just
+    // wrote, A renames B's bytes into place - and the loser's history is gone
+    // rather than merely stale. A whole-file lost update is still possible and
+    // is a wider question than a file name; this closes the one where the
+    // survivor is neither writer's intent.
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     std::fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
     Ok(())
@@ -79,6 +87,33 @@ pub async fn harness_sessions_save(sessions: Value) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_temp_file_is_named_per_process_so_two_instances_cannot_cross() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sessions.json");
+        save_to(&path, &json!([{"id": "a"}])).unwrap();
+
+        // The write left nothing behind, and what it would have used is a name
+        // no other process would pick. Nothing stops a second harness running,
+        // and a shared temp name is how one instance ends up renaming the
+        // other's bytes over the history.
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp file left behind: {leftovers:?}");
+        assert!(
+            path.with_extension(format!("json.{}.tmp", std::process::id()))
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .contains(&std::process::id().to_string()),
+            "the temp name must carry the pid"
+        );
+    }
 
     #[test]
     fn missing_file_loads_empty_array() {
