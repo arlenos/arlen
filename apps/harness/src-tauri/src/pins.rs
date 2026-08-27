@@ -60,7 +60,10 @@ fn save_to(path: &Path, pins: &Value) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let tmp = path.with_extension("json.tmp");
+    // Per PROCESS, for the reason `sessions.rs` spells out: nothing in the tree
+    // stops a second harness, and two writers sharing one temp name do not tear
+    // the file, they cross over and one renames the other's bytes into place.
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     std::fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
     Ok(())
