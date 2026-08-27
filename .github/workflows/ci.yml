@@ -900,14 +900,19 @@ jobs:
             # finish checking. Measured on 26 August: SEVEN of sixteen apps do
             # this, and the number they report is the same as a clean app's.
             #
-            # Six of the seven import `@arlen/ui-kit/components/ui/icon-action`
-            # and none of the nine clean ones do; the stack lands in
-            # `getContextualSignature` comparing that component's
-            # `Tooltip.Trigger` child snippet. Ruled out: stale generated types
-            # (re-bisected with `svelte-kit sync` between moves) and the
-            # unannotated snippet parameter (annotating changes nothing, and
-            # `desktop-shell` has nine of them and is clean). The fix is inside
-            # `sdk/ui-kit`.
+            # BISECTED 27 August, and it is a version rather than a component.
+            # Every crashing app typechecks the kit's tooltip (directly or through
+            # `icon-action`) and no clean one does - except `desktop-shell`, which
+            # uses it in four files and is also the only app still on svelte
+            # 5.56.4. Copying that `svelte` into `apps/text-editor` and running its
+            # own `npm run check` finishes the tree with no crash; putting 5.56.8
+            # back brings the stack straight home. Ruled out by the same method:
+            # bits-ui (2.16.3 swapped in, still crashes), `icon-action`'s template
+            # (stripped to a plain button inside the trigger, still crashes), and
+            # stale generated types. So svelte 5.56.8 emits types for that
+            # component that TypeScript 5.6.3 cannot compare, and the ways out are
+            # to pin svelte, to raise TypeScript past 5.6.3, or to change the
+            # tooltip - a toolchain decision rather than a code one.
             #
             # Listed apps stay LOUD rather than silent - the crash is printed
             # either way. The list may shrink and may not grow: a new entry is an
