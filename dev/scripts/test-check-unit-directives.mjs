@@ -100,9 +100,18 @@ check(
 check(
   "a value systemd cannot parse is caught",
   UNIT("PrivateTmp=maybe"),
-  // Named rather than merely non-zero: a bare exit check passes when the gate
-  // dies over something else entirely and reports a directive it never read.
-  (code, out) => code === 1 && out.includes("PrivateTmp"),
+  // Named rather than merely non-zero - but named with what the GATE writes, not
+  // with what systemd writes. Asserting `PrivateTmp` here passed on this laptop
+  // and failed on CI on 27 August: for an unparsable VALUE the message is
+  // systemd's own, and the runner's build says `Failed to parse boolean value,
+  // ignoring: maybe` without naming the directive at all. A mistyped KEY is
+  // different - `Unknown key name 'ProtectSytem'` carries the name on both - which
+  // is why the case above can assert it and this one cannot.
+  //
+  // The unit file name is the gate's own contribution to the line
+  // (`f"{unit.name}: {line}"`), so it is specific to this fixture and stable
+  // across systemd versions, which is what an assertion needs to be.
+  (code, out) => code === 1 && out.includes("arlen-probe.service"),
 );
 
 // The image ships two unit trees and this check read one of them for its first
