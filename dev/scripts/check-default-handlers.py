@@ -45,6 +45,28 @@ def claimed(root: Path) -> dict[str, str]:
     return out
 
 
+def installed_entry_names(root: Path) -> set[str]:
+    """Every `.desktop` basename a build phase installs under `applications/`.
+
+    A default names a DESKTOP ID, and the id is the file name as installed. The
+    list here is derived from `apps/*/dist/*.desktop`, so an entry the image
+    happens to install under a different name would leave every default for it
+    pointing at a file the image does not have - and the launcher answers
+    NoHandler for a type this file says is covered. Checked rather than assumed,
+    because the two names agreeing today is a convention, not a rule.
+    """
+    out: set[str] = set()
+    for phase in sorted((root / "dev/mkosi/mkosi.build.d").glob("*")):
+        if not phase.is_file():
+            continue
+        for line in phase.read_text(errors="replace").splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            for m in re.findall(r"applications/([A-Za-z0-9._-]+\.desktop)", line):
+                out.add(m)
+    return out
+
+
 def defaults(path: Path) -> dict[str, str]:
     """The `[Default Applications]` group, as type to first desktop id."""
     out: dict[str, str] = {}
@@ -93,6 +115,14 @@ def main() -> int:
             findings.append(
                 f"`{mime}` defaults to {entry}, and no shipped entry claims that type"
             )
+    installed = installed_entry_names(ROOT)
+    if installed:
+        for entry in sorted(set(have.values())):
+            if entry not in installed:
+                findings.append(
+                    f"`{entry}` is named as a default and no build phase installs a "
+                    f"file by that name, so the id points at nothing on the image"
+                )
 
     if findings:
         print(f"{len(want)} claimed type(s), {len(findings)} finding(s):\n", file=sys.stderr)

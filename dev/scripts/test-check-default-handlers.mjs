@@ -82,6 +82,17 @@ run(
 
 run("a matched pair passes", ENTRY, GOOD, (code) => code === 0);
 
+// A default names a desktop ID, and an id is the file name as installed. This
+// fixture has no build phase at all, so the install check stays quiet rather
+// than reporting every default as uninstalled - a check that cannot see the
+// build steps must not invent a verdict about them.
+run(
+  "a tree with no build phases does not invent an install verdict",
+  ENTRY,
+  GOOD,
+  (code) => code === 0,
+);
+
 run(
   "a tree with no list refuses rather than passing",
   ENTRY,
