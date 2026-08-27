@@ -13,6 +13,18 @@
 //! (a password, or a user-verification-confirmed FIDO2 token) releases the key,
 //! and it is force-required after reboot, after a bounded time window, and after
 //! too many failed attempts. A convenience factor can never cross that line.
+//!
+//! **NO PRODUCTION CALLER RUNS THE TIER DECISION YET.** `authenticate` and
+//! `evaluate` are invoked only by this crate's own tests; the greeter links this
+//! crate for `greetd_client` alone and logs in through greetd directly, and there
+//! is no lock-screen surface in the tree. So the boundary above is enforced in
+//! code that nothing calls, which is a different thing from enforced.
+//!
+//! Worth stating because the sentence above - "enforced HERE, in code, not in any
+//! UI" - reads as a description of a running system, and a reader has no other way
+//! to tell. Mechanism before trigger, like `knowledge::lifecycle`: the missing
+//! piece is a surface that holds a `SessionState` across attempts and hands it
+//! back, not a line in here.
 
 pub mod audit;
 pub mod auth;
