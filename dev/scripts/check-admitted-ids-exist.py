@@ -61,13 +61,21 @@ ROOT = (
 #: this list is a statement that the caller is COMING, not that the entry is
 #: fine: each one is a surface that cannot reach its daemon today.
 NOT_PACKAGED_YET = {
-    "dev.arlen.store": "the store app has no image build phase; INSTALL_CALLERS was written for it",
-    "dev.arlen.settings": "Settings has no image build phase, so its Remove button cannot reach installd",
-    "dev.arlen.harness": "the harness is bootstrap-only and not staged",
     "org.arlen.calendar": "shared-entity writer for an app that does not exist yet",
     "org.arlen.contacts": "shared-entity writer for an app that does not exist yet",
     "org.arlen.places": "shared-entity writer for an app that does not exist yet",
     "system": "the daemons' own reserved principal, not a binary on disk",
+    "desktop-shell": (
+        "the OTHER half of a pair the audit daemon admits on purpose. The image stages the "
+        "shell under `/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/` with a convenience "
+        "symlink at `/usr/bin/arlen-desktop-shell`, and `dev.arlen.desktop-shell` IS produced "
+        "and IS admitted beside this one. Peer auth resolves `/proc/<pid>/exe`, which names "
+        "the real file, so the dotted spelling is the one that arrives; the audit daemon "
+        "measured that on 21 Aug and added it. This bare form is what rule (2) would give for "
+        "the LINK, kept as belt and braces. An id no peer can present cannot be forged into, "
+        "so it costs nothing - but it is dead, and if the shell ever stops being staged as an "
+        "app this entry is what would be left holding the admission"
+    ),
     "ai-daemon": "no image build phase stages the ai-daemon binary and it carries no unit",
     "ai-engine": (
         "not an admission at all: `ENGINE_APP_ID` is the identity actions are ATTRIBUTED to "
@@ -208,13 +216,30 @@ def producible(root: pathlib.Path) -> dict[str, str]:
     for phase in phases:
         if not phase.is_file():
             continue
-        for line in phase.read_text(errors="replace").splitlines():
+        # Join backslash continuations FIRST. `install` and `ln` in these phases
+        # wrap their destination onto the next line, and a per-line scan reads that
+        # destination as a line of its own - which is how `ln -sf ... \` +
+        # `"$DESTDIR/usr/bin/arlen-store"` slipped past the link rule below and put
+        # `store` back among the producible ids.
+        text = phase.read_text(errors="replace").replace("\\\n", " ")
+        for line in text.splitlines():
             if line.lstrip().startswith("#"):
                 continue
+            # A SYMLINK MINTS NO ID. `path_to_app_id` resolves a peer through
+            # `/proc/<pid>/exe`, which the kernel reports as the REAL file, so a
+            # convenience link at `/usr/bin/arlen-<name>` pointing into an app
+            # directory is never what the resolver sees - the app directory's own
+            # name is (rule 3). Counting the link made `store` look producible the
+            # moment `04q-store` shipped `arlen-store`, while a running store still
+            # resolves to `dev.arlen.store` and an allowlist naming `store` still
+            # refuses it. Only a real install under `/usr/bin` counts for rule 2.
+            is_link = line.lstrip().startswith("ln ")
             for path in STAGED.findall(line):
                 if path in strict:
                     out.setdefault(strict[path], path)
                 elif path.startswith("/usr/bin/arlen-"):
+                    if is_link:
+                        continue
                     out.setdefault(path[len("/usr/bin/arlen-"):], path)
                 elif path.startswith("/usr/lib/arlen/apps/"):
                     app = path[len("/usr/lib/arlen/apps/"):].split("/", 1)[0]
