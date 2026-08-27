@@ -39,7 +39,7 @@ pub async fn run(pool: SqlitePool, graph: GraphHandle) -> Result<()> {
             error!("retention: purge_raw_events failed: {e}");
         }
 
-        if let Err(e) = compact_semantic_nodes(&graph).await {
+        if let Err(e) = compact_semantic_nodes(&pool, &graph).await {
             error!("retention: compact_semantic_nodes failed: {e}");
         }
 
@@ -169,7 +169,7 @@ async fn purge_raw_events(pool: &SqlitePool) -> Result<()> {
 
 /// Tier 2: Compact Ladybug File nodes older than 12 months into Summary
 /// nodes grouped by app. Pinned nodes are skipped.
-async fn compact_semantic_nodes(graph: &GraphHandle) -> Result<()> {
+async fn compact_semantic_nodes(pool: &SqlitePool, graph: &GraphHandle) -> Result<()> {
     let cutoff = now_micros() - SEMANTIC_NODE_TTL.as_micros() as i64;
 
     // Find distinct apps that have old, non-pinned File nodes.
@@ -196,7 +196,7 @@ async fn compact_semantic_nodes(graph: &GraphHandle) -> Result<()> {
     }
 
     for app_id in &app_ids {
-        if let Err(e) = compact_app_files(graph, app_id, cutoff).await {
+        if let Err(e) = compact_app_files(pool, graph, app_id, cutoff).await {
             warn!(app_id, "retention: compaction failed for app: {e}");
             // Continue with other apps.
         }
@@ -210,7 +210,12 @@ async fn compact_semantic_nodes(graph: &GraphHandle) -> Result<()> {
 /// Safety: the Summary node is created before deleting the originals.
 /// If deletion fails, the next pass will find the Summary already exists
 /// and skip re-creation; the originals will be retried.
-async fn compact_app_files(graph: &GraphHandle, app_id: &str, cutoff: i64) -> Result<()> {
+async fn compact_app_files(
+    pool: &SqlitePool,
+    graph: &GraphHandle,
+    app_id: &str,
+    cutoff: i64,
+) -> Result<()> {
     let app_esc = escape_cypher(app_id);
 
     // Aggregate old non-pinned File nodes for this app.
@@ -264,7 +269,26 @@ async fn compact_app_files(graph: &GraphHandle, app_id: &str, cutoff: i64) -> Re
         count, period_start, period_end, "retention: created summary node"
     );
 
-    // Step 3: Delete the original File nodes (and their edges).
+    // Step 3: read the ids about to go, so the keyword index can be told. The
+    // graph is the only place that knows them: the delete below is set-based and
+    // reports a count, not a list.
+    let doomed: Vec<String> = graph
+        .query_rows(format!(
+            "MATCH (f:File)-[:ACCESSED_BY]->(a:App {{id: '{app_esc}'}})
+             WHERE f.last_accessed < {cutoff}
+             AND NOT EXISTS {{
+                 MATCH (p:PinnedMarker) WHERE p.node_id = f.id AND p.node_type = 'File'
+             }}
+             RETURN f.id AS id"
+        ))
+        .await?
+        .rows
+        .iter()
+        .filter_map(|r| r.first().map(|c| c.as_str().to_string()))
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // Step 4: Delete the original File nodes (and their edges).
     graph
         .write(format!(
             "MATCH (f:File)-[:ACCESSED_BY]->(a:App {{id: '{app_esc}'}})
@@ -277,6 +301,36 @@ async fn compact_app_files(graph: &GraphHandle, app_id: &str, cutoff: i64) -> Re
         .await?;
 
     info!(app_id, count, "retention: deleted compacted file nodes");
+
+    // Step 5: drop those files from the keyword index, which compaction had never
+    // done. `retrieve` searches the index first and confirms against the graph
+    // after, so a tombstoned entry never became a wrong answer - it took a place
+    // in the ranking and was then dropped, so a query could come back short while
+    // live matches sat below the cut. The index also only grew.
+    //
+    // Confirmed absent rather than assumed: between the read above and the delete
+    // a file can be touched again, which lifts it out of the WHERE and leaves it
+    // in the graph. Dropping its row then would make a live file unsearchable
+    // until something re-indexed it. `confirm_present` answers with the ones that
+    // are still there, so what is removed here is exactly what is gone.
+    if !doomed.is_empty() {
+        match crate::retrieval::confirm_present(graph, &doomed).await {
+            Ok(still_here) => {
+                let mut removed = 0usize;
+                for id in doomed.iter().filter(|id| !still_here.contains(id)) {
+                    if let Err(e) = crate::fts::delete_fact_text(pool, id).await {
+                        warn!(app_id, "retention: index entry not removed for {id}: {e}");
+                    } else {
+                        removed += 1;
+                    }
+                }
+                if removed > 0 {
+                    info!(app_id, removed, "retention: dropped compacted files from the keyword index");
+                }
+            }
+            Err(e) => warn!(app_id, "retention: index not pruned, the graph did not answer: {e}"),
+        }
+    }
     Ok(())
 }
 
@@ -412,10 +466,41 @@ mod tests {
             .await
             .unwrap();
 
+        // The file is in the keyword index too, the way promotion puts it there,
+        // so the compaction can be asked whether it cleans up after itself.
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("open in-memory sqlite");
+        crate::fts::create_fact_text_index(&pool).await.unwrap();
+        crate::fts::upsert_fact_text(&pool, "/old/notes.md", "notes.md old notes")
+            .await
+            .unwrap();
+        crate::fts::upsert_fact_text(&pool, "/live/keep.md", "keep.md live keep")
+            .await
+            .unwrap();
+
         // cutoff well after the file's last_accessed, so it is "old".
-        compact_app_files(&graph, "com.example.editor", 10_000)
+        compact_app_files(&pool, &graph, "com.example.editor", 10_000)
             .await
             .expect("compaction writes the Summary without error");
+
+        // The compacted file leaves the index with the node; a file that was never
+        // compacted stays, so this is not a wholesale clear.
+        assert!(
+            crate::fts::search_fact_text(&pool, "notes", 10)
+                .await
+                .unwrap()
+                .is_empty(),
+            "a compacted file must not keep its index entry, or a search spends its \
+             ranking on a node that is gone"
+        );
+        assert_eq!(
+            crate::fts::search_fact_text(&pool, "keep", 10).await.unwrap(),
+            vec!["/live/keep.md".to_string()],
+            "a file the compaction did not touch keeps its entry"
+        );
 
         let summ = graph
             .query_rows(
