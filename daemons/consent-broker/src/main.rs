@@ -91,6 +91,11 @@ fn knowledge_socket() -> String {
 }
 
 /// Maximum wire frame, matching the intake-transport core's bound.
+///
+/// Two copies of one number, and the claim that they match had nothing holding
+/// it. `frame_bound_matches_the_transport_core` below is that hold: a change to
+/// either side now fails rather than leaving this comment wrong and one end of
+/// the socket refusing what the other sends.
 const MAX_FRAME: usize = 64 * 1024;
 
 /// How long a peer has to send its request frame after connecting + being
@@ -758,5 +763,17 @@ mod tests {
             .expect("the read succeeds")
             .expect("a frame is present");
         assert_eq!(frame, payload);
+    }
+}
+
+#[cfg(test)]
+mod frame_bound_tests {
+    #[test]
+    fn frame_bound_matches_the_transport_core() {
+        assert_eq!(
+            super::MAX_FRAME,
+            arlen_consent_broker::socket::MAX_FRAME,
+            "the two ends of this socket must accept the same size"
+        );
     }
 }
