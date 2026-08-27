@@ -44,13 +44,14 @@ pub async fn upsert_fact_text(pool: &SqlitePool, node_id: &str, text: &str) -> R
     Ok(())
 }
 
-/// Remove a node's indexed text (when it is summarised away or compacted, §7.2):
-/// kept consistent with the graph by deleting in the same transaction so an
-/// orphaned index entry cannot survive a deleted node.
+/// Remove a node's indexed text (when it is summarised away or compacted, §7.2),
+/// so an index entry cannot outlive the node it names.
 ///
-/// Used by the compaction/retention path (not yet wired); kept as the index's
-/// delete-side API beside `upsert`.
-#[allow(dead_code)]
+/// Called by the retention compaction path, which deletes the File nodes it has
+/// summarised and then drops the ones the graph confirms are gone. Until 27
+/// August it had no caller at all: compaction removed the nodes and left their
+/// rows, so the index only ever grew and a search spent part of its ranking on
+/// files that were not there.
 pub async fn delete_fact_text(pool: &SqlitePool, node_id: &str) -> Result<()> {
     sqlx::query("DELETE FROM fact_text WHERE node_id = ?1")
         .bind(node_id)
