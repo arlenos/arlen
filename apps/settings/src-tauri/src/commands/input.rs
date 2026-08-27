@@ -53,7 +53,9 @@ fn read_doc() -> Result<toml::Value, String> {
 fn write_doc(doc: &toml::Value) -> Result<(), String> {
     let path = compositor_toml_path();
     let content = toml::to_string_pretty(doc).map_err(|e| format!("serialize: {e}"))?;
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app (`app-instance-model.md`): two windows sharing a
+    // temp name cross over rather than tear.
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     std::fs::write(&tmp, content).map_err(|e| format!("write tmp: {e}"))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("rename: {e}"))?;
     Ok(())

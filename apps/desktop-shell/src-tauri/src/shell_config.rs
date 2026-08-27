@@ -351,7 +351,9 @@ fn write_atomic_at(path: &Path, cfg: &ShellConfig) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     }
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app (`app-instance-model.md`): two windows sharing a
+    // temp name cross over rather than tear.
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     let content = toml::to_string_pretty(cfg).map_err(|e| format!("serialize: {e}"))?;
     fs::write(&tmp, content).map_err(|e| format!("write tmp: {e}"))?;
     fs::rename(&tmp, path).map_err(|e| format!("rename: {e}"))
