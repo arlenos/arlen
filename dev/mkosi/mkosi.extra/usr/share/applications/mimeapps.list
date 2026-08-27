@@ -1,0 +1,52 @@
+# The associations the image ships, so a document has something to open it.
+#
+# WHY THIS FILE EXISTS. The launch service resolves a handler ONLY through
+# `[Default Applications]` in a mimeapps.list - deliberately, because the
+# association list answers "what could open this", and a launch that silently
+# picks from it is a launch nobody chose (`launch/mimeapps.rs`). Five first-party
+# entries declare `MimeType=`, nothing turned those declarations into defaults,
+# and the image shipped no list at all, so opening a PDF, an image, a text file,
+# an invitation or a message answered NoHandler on a fresh install.
+#
+# The entries are the source: every line below is a type one shipped `.desktop`
+# declares, mapped to that entry, and no type is claimed by two apps, so nothing
+# here is a judgement about which app wins. `check-default-handlers.py` keeps the
+# two in step; regenerate rather than hand-edit.
+#
+# Lowest precedence by design: this lives under a data directory, and anything
+# the person chooses lands in `$XDG_CONFIG_HOME/mimeapps.list`, which the
+# resolver reads first.
+
+[Default Applications]
+application/json=arlen-text-editor.desktop
+application/pdf=arlen-pdf.desktop
+audio/aac=arlen-viewers.desktop
+audio/aiff=arlen-viewers.desktop
+audio/flac=arlen-viewers.desktop
+audio/mp4=arlen-viewers.desktop
+audio/mpeg=arlen-viewers.desktop
+audio/ogg=arlen-viewers.desktop
+audio/wav=arlen-viewers.desktop
+image/avif=arlen-viewers.desktop
+image/bmp=arlen-viewers.desktop
+image/gif=arlen-viewers.desktop
+image/heic=arlen-viewers.desktop
+image/jpeg=arlen-viewers.desktop
+image/jxl=arlen-viewers.desktop
+image/png=arlen-viewers.desktop
+image/qoi=arlen-viewers.desktop
+image/tiff=arlen-viewers.desktop
+image/vnd.radiance=arlen-viewers.desktop
+image/webp=arlen-viewers.desktop
+image/x-dds=arlen-viewers.desktop
+image/x-farbfeld=arlen-viewers.desktop
+image/x-icon=arlen-viewers.desktop
+image/x-portable-anymap=arlen-viewers.desktop
+image/x-tga=arlen-viewers.desktop
+message/rfc822=arlen-mail.desktop
+text/calendar=arlen-calendar.desktop
+text/csv=arlen-text-editor.desktop
+text/markdown=arlen-text-editor.desktop
+text/plain=arlen-text-editor.desktop
+text/x-markdown=arlen-text-editor.desktop
+text/xml=arlen-text-editor.desktop
