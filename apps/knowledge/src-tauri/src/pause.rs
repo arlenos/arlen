@@ -51,7 +51,10 @@ pub async fn knowledge_timeline_pause(paused: bool) -> Result<(), String> {
     // Temp file plus rename, like every other config write in the tree: a crash
     // mid-write must not leave a half-parsed graph.toml, which the daemon would
     // read as "no sections at all" and quietly resume recording.
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app: nothing stops a second window, and two of them
+    // sharing one temp name do not tear the file - they cross over, and one
+    // renames the other's bytes into place (`app-instance-model.md`).
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     {
         let mut f = std::fs::File::create(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
         f.write_all(updated.as_bytes())

@@ -71,7 +71,10 @@ pub fn save(id: &str, meeting: &StoredMeeting) -> Result<(), String> {
     let dir = meetings_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("create meetings dir: {e}"))?;
     let json = serde_json::to_vec_pretty(meeting).map_err(|e| format!("serialize note: {e}"))?;
-    let tmp = dir.join(format!(".{id}.json.tmp"));
+    // Per INSTANCE, not per app: nothing stops a second window, and two of them
+    // sharing one temp name do not tear the file - they cross over, and one
+    // renames the other's bytes into place (`app-instance-model.md`).
+    let tmp = dir.join(format!(".{id}.json.{}.tmp", std::process::id()));
     std::fs::write(&tmp, &json).map_err(|e| format!("write note: {e}"))?;
     std::fs::rename(&tmp, note_path(id)).map_err(|e| format!("commit note: {e}"))?;
     Ok(())

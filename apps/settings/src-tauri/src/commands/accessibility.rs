@@ -83,7 +83,10 @@ pub fn accessibility_filter_set(dto: ScreenFilterDto) -> Result<(), String> {
     let serialised = ron::ser::to_string_pretty(&state, Default::default())
         .map_err(|e| format!("serialise: {e}"))?;
 
-    let tmp = path.with_extension("ron.tmp");
+    // Per INSTANCE, not per app: nothing stops a second Settings window, and two
+    // sharing one temp name cross over rather than tear - one renames the other's
+    // bytes into place (`app-instance-model.md`).
+    let tmp = path.with_extension(format!("ron.{}.tmp", std::process::id()));
     std::fs::write(&tmp, serialised.as_bytes())
         .map_err(|e| format!("write tmp {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, &path)

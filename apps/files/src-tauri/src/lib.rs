@@ -1731,7 +1731,10 @@ fn write_files_config(config: &FilesConfig) -> Result<(), String> {
     // Atomic: write a sibling temp file then rename over the target, so a crash
     // mid-write never truncates the config (which now holds the bookmark list AND
     // the saved Smart Folders - a torn write would lose both).
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app: nothing stops a second window, and two of them
+    // sharing one temp name do not tear the file - they cross over, and one
+    // renames the other's bytes into place (`app-instance-model.md`).
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }

@@ -121,7 +121,10 @@ pub fn store_in(dir: &Path, state: GreeterA11y) -> Result<(), String> {
     let text = toml::to_string_pretty(&state).map_err(|e| e.to_string())?;
     // Sibling temp + rename: a login screen that dies mid-write must leave the
     // previous answer intact rather than a half-file that fails to parse.
-    let tmp = dir.join(format!(".{STATE_FILE}.tmp"));
+    // Per INSTANCE, not per app: nothing stops a second window, and two of them
+    // sharing one temp name do not tear the file - they cross over, and one
+    // renames the other's bytes into place (`app-instance-model.md`).
+    let tmp = dir.join(format!(".{STATE_FILE}.{}.tmp", std::process::id()));
     std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
 }

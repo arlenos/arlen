@@ -117,7 +117,10 @@ fn write_sidecar(sidecar: &SidecarFile) -> Result<(), String> {
     }
     let serialized = toml::to_string_pretty(sidecar)
         .map_err(|e| format!("serialize sidecar: {e}"))?;
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app: nothing stops a second Settings window, and two
+    // sharing one temp name cross over rather than tear - one renames the other's
+    // bytes into place (`app-instance-model.md`).
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     fs::write(&tmp, serialized).map_err(|e| format!("write tmp: {e}"))?;
     fs::rename(&tmp, &path).map_err(|e| format!("rename: {e}"))?;
     Ok(())

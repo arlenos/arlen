@@ -336,7 +336,10 @@ fn read_calendar(id: &str) -> Result<(PathBuf, String), CalendarRead> {
 /// temporary is this function's litter and is cleared if the rename fails, rather
 /// than left beside somebody's calendar looking like a second one.
 fn write_calendar(path: &std::path::Path, text: &str) -> Result<(), String> {
-    let tmp = path.with_extension("ics.tmp");
+    // Per INSTANCE, not per app: nothing stops a second window, and two of them
+    // sharing one temp name do not tear the file - they cross over, and one
+    // renames the other's bytes into place (`app-instance-model.md`).
+    let tmp = path.with_extension(format!("ics.{}.tmp", std::process::id()));
     std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);

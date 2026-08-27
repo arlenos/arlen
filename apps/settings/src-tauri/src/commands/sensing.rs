@@ -135,7 +135,10 @@ pub async fn settings_sensing_set_screen_capture(allowed: bool) -> Result<(), St
 
     // A sibling temp file, so the rename is within one filesystem and therefore
     // atomic. `.tmp` next to the target rather than in /tmp for the same reason.
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app: nothing stops a second Settings window, and two
+    // sharing one temp name cross over rather than tear - one renames the other's
+    // bytes into place (`app-instance-model.md`).
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     {
         let mut file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
         file.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
