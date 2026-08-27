@@ -88,6 +88,12 @@ const ADMITTED: &[&str] = &[
     // `caller=dev.arlen.desktop-shell` on the daemon and `launch not recorded` on
     // the shell, so every launch on the image happened with no line in the ledger.
     "dev.arlen.desktop-shell",
+    // The Windows-app runtime: `forget_for` is audit-before-act and fail-closed,
+    // so an unadmitted bottled answers "audit unavailable, so nothing was
+    // forgotten" to every forget request. It had no arm in the path resolver
+    // either, so it did not resolve to this id or any other; both halves landed
+    // together on 27 August.
+    "bottled",
     // The Context-Capsule daemon (`capsuled`): its capsule-serve audit is
     // fail-closed, so without admission every capsule read returns "audit
     // unavailable".
@@ -366,6 +372,7 @@ mod tests {
             ("/usr/bin/arlen-graph-daemon", "knowledge"),
             ("/usr/lib/arlen/libexec/arlen-consent-broker", "consent-broker"),
             ("/usr/lib/arlen/libexec/xdg-desktop-portal-arlen", "xdg-desktop-portal"),
+            ("/usr/lib/arlen/libexec/arlen-bottled", "bottled"),
             ("/usr/lib/arlen/libexec/arlen-capsuled", "capsuled"),
             ("/usr/lib/arlen/libexec/arlen-connectionsd", "connections"),
             ("/usr/lib/arlen/libexec/arlen-config-broker", "config-broker"),
