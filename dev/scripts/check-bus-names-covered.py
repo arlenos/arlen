@@ -135,6 +135,18 @@ CARRIED = {
         "another entry stops having one the moment that entry is edited, and the "
         "rule these are kept under is that each names its own."
     ),
+    "org.arlen.InstallDaemon1": (
+        "SURFACED 27 Aug by putting the Settings app on the image: Settings dials "
+        "the install daemon for its Apps page, and `arlen-installd` is installed "
+        "by no build step - `08q-apt-enroll` builds that workspace but stages only "
+        "the permission helper. So the whole install/remove flow is absent from a "
+        "booted image, which nothing said while the caller was also absent. "
+        "Staging it is the obvious next step and is NOT this entry: installd is a "
+        "root-privileged component with its own D-Bus policy, and its `dbus.rs` is "
+        "under uncommitted edit by another session as this is written, so adding a "
+        "build step for it would ship somebody's half-finished change. This entry "
+        "records the gap for a day, not a decision to live with it."
+    ),
 }
 
 
