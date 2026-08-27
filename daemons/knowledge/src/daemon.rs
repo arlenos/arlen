@@ -3340,6 +3340,13 @@ async fn handle_client(
         // system-internal review data (about first-party-managed shared entities),
         // so only a system-anchored (non-ThirdParty) caller sees them; a ThirdParty
         // caller gets an empty list, never a denial oracle. Query-rate-limited.
+        //
+        // NOTHING CALLS IT YET. There is no os-sdk method for `0x0F` and no
+        // surface anywhere that shows a merge suggestion, so this op is served
+        // and unreached - mechanism before trigger, like the 0x08 typed read
+        // beside it. Said out loud because the rest of this dispatch reads as a
+        // list of things in use, and a reader counting live ops would count this
+        // one.
         if buf.first() == Some(&0x0F) {
             let violation = {
                 let mut rs = rate.lock().await;
