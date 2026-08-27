@@ -95,6 +95,11 @@ function run(s, extraEnv = {}) {
     encoding: "utf8",
     env: {
       ...process.env,
+      // The retry COUNT is what these cases are about; the pause between
+      // attempts is not, and paying it three times per failing case cost this
+      // control most of its runtime. The script defaults to five when unset, so
+      // CI and a real run are unaffected.
+      APT_RETRY_SLEEP: "0",
       PATH: `${s.bin}:${process.env.PATH}`,
       APT_CACHE_DIR: s.cache,
       APT_ARCHIVE_DIR: s.archives,

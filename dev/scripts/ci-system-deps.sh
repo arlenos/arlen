@@ -237,7 +237,13 @@ while [ "$ok" != 1 ] && [ "$attempt" -lt 3 ] && [ "$(remaining)" -gt 60 ]; do
         ok=1; break
     fi
     echo "apt attempt $attempt stalled or failed, $(remaining)s of budget left; retrying" >&2
-    sleep 5
+    # A moment before trying again, because the failure this retries is usually a
+    # mirror that is briefly unhappy rather than one that is refusing. The pause
+    # is overridable ONLY so the control can exercise the retry COUNT - which is
+    # what the loop is about - without spending the wall clock waiting: three
+    # failures took fifteen seconds per case there, and the control has several.
+    # Unset means five, so CI and a real run are unchanged.
+    sleep "${APT_RETRY_SLEEP:-5}"
 done
 # Which bound stopped us, because the two mean different things to whoever reads
 # the red: three fast refusals is a mirror saying no, and a budget running out is
