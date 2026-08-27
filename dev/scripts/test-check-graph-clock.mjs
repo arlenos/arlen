@@ -55,7 +55,10 @@ run(
 run(
   "a millisecond week is caught too",
   { "apps/shell/src/files.rs": `${READS_GRAPH}\nconst WEEK: i64 = 7 * 86_400_000;\n` },
-  (code) => code === 1,
+  // Named, not just non-zero: an exit-code-only expectation passes when the
+  // check dies for a reason that has nothing to do with the week - which is how
+  // the sound-theme control sat green on a fixture it never built.
+  (code, out) => code === 1 && out.includes("WEEK"),
 );
 
 run(
@@ -83,7 +86,7 @@ run(
   {
     "apps/shell/src/plugin.rs": `${READS_GRAPH}\nconst DAY: i64 = 24 * 60 * 60 * 1000;\n`,
   },
-  (code) => code === 1,
+  (code, out) => code === 1 && out.includes("DAY"),
 );
 
 run(
