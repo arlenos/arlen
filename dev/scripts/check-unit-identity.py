@@ -35,6 +35,37 @@ ROOT = Path(__file__).resolve().parents[2]
 UNITS = ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/system"
 USER_UNITS = ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/user"
 RESOLVER = ROOT / "sdk/permissions/src/unit_identity.rs"
+PATH_RESOLVER = ROOT / "sdk/permissions/src/identity.rs"
+
+# Units whose ExecStart binary `path_to_app_id` cannot name, with the reason.
+# MAY SHRINK, MAY NOT GROW.
+#
+# Separate from NOT_A_PEER (which excuses a unit from the TABLE) and from
+# UNNAMEABLE (which excuses it from having an id at all): this list is about the
+# BINARY route. A daemon can be named by the unit table, because the supervisor
+# stamps its cgroup, and still resolve to `UnknownBinary` when it connects to
+# someone else's socket and is identified by `/proc/pid/exe` instead.
+UNRESOLVED_BINARY = {
+    "arlen-bottled.service": (
+        "the Windows-app runtime installs at /usr/lib/arlen/libexec/arlen-bottled "
+        "and rule 1 has no arm for it; the unit table names it `bottled` for the "
+        "supervisor route. It is a server, so nothing resolves it by path today"
+    ),
+    "arlen-event-bus.service": (
+        "the binary is `/usr/bin/event-bus` with no `arlen-` prefix, so rule 2 "
+        "misses it. It IS a client - the per-user bus forwards to the system bus - "
+        "and resolves there as UnknownBinary, which the bus reads as an undeclared "
+        "scope and therefore the machine-wide view. It works because the identity "
+        "failed to resolve, not because anything granted it. Closing it is a "
+        "naming decision: rename to `arlen-event-bus` for rule 2, or add an arm"
+    ),
+    "arlen-event-bus-system.service": (
+        "the same binary as arlen-event-bus.service, under the system manager"
+    ),
+    "arlen-store-backend.service": (
+        "same shape as its UNNAMEABLE entry: no identity rule matches the binary"
+    ),
+}
 
 # Per-user units whose binary resolves to NO app id, so the table cannot state one
 # without inventing it. Named rather than omitted: a component we cannot name is
@@ -204,6 +235,68 @@ def check_user_units(src: str) -> list[str]:
     return problems
 
 
+def resolver_named_paths() -> set[str]:
+    """Absolute binary paths `path_to_app_id` names by strict equality (rule 1)."""
+    src = PATH_RESOLVER.read_text(encoding="utf-8")
+    return set(
+        re.findall(r'"(/usr/(?:lib/arlen/libexec|bin)/[A-Za-z0-9._-]+)"', src)
+    )
+
+
+def rule_two_names(exe: str) -> bool:
+    """Whether rule 2 (`/usr/bin/arlen-{name}` -> `{name}`) covers this path."""
+    rest = exe.removeprefix("/usr/bin/arlen-")
+    if rest == exe or not rest:
+        return False
+    return all(c.islower() or c.isdigit() or c in "._-" for c in rest)
+
+
+def check_binaries_resolvable() -> list[str]:
+    """Every shipped unit's binary is one `path_to_app_id` can name.
+
+    The check `derived_from_binary` makes is about the CONVENTION - that a
+    table id matches the `arlen-<name>` shape - and it says so. This is the
+    other question, which nothing asked: does the resolver name that binary at
+    ALL. A daemon whose path matches no rule resolves to `UnknownBinary` when a
+    socket peer identifies it, gets no profile, and is refused or - worse, on the
+    event bus - falls through to an undeclared scope and the machine-wide view.
+    """
+    if not PATH_RESOLVER.is_file():
+        # A fixture tree that is exercising the table checks and ships no
+        # resolver. Saying nothing beats inventing a finding about a file the
+        # case under test does not have.
+        return []
+    named = resolver_named_paths()
+    if not named:
+        return ["identity.rs names no strict-equality binary path at all"]
+    problems = []
+    for base in (UNITS, USER_UNITS):
+        if not base.is_dir():
+            continue
+        for unit_file in sorted(base.glob("*.service")):
+            unit = unit_file.name
+            exe = exec_start_binary(unit_file)
+            if not exe.startswith("/"):
+                continue
+            if exe in named or rule_two_names(exe):
+                if unit in UNRESOLVED_BINARY:
+                    problems.append(
+                        f"{unit} is listed as unresolvable but `{exe}` is named "
+                        f"now; the gap was closed and the entry left behind"
+                    )
+                continue
+            if unit in UNRESOLVED_BINARY or unit in NOT_A_PEER:
+                continue
+            problems.append(
+                f"{unit} runs `{exe}`, which `path_to_app_id` names nothing for. "
+                f"A peer identified by /proc/pid/exe resolves it as UnknownBinary: "
+                f"no profile, and on a socket that treats an undeclared scope as "
+                f"unrestricted it reads as a grant. Add a rule, rename the binary "
+                f"under `/usr/bin/arlen-`, or record it in UNRESOLVED_BINARY."
+            )
+    return problems
+
+
 def main() -> int:
     if not UNITS.is_dir():
         print(f"{Path(__file__).name}: no system unit dir at {UNITS}", file=sys.stderr)
@@ -258,6 +351,7 @@ def main() -> int:
 
     src = RESOLVER.read_text(encoding="utf-8")
     problems.extend(check_user_units(src))
+    problems.extend(check_binaries_resolvable())
 
     if problems:
         for p in problems:
@@ -268,7 +362,9 @@ def main() -> int:
         f"{len(entries)} system unit(s) named by the cgroup resolver, "
         f"{len(NOT_A_PEER)} excused with a reason; "
         f"{len(user_table_entries(src))} per-user unit(s) named by the launcher "
-        f"table and agreeing with the binary route, {len(UNNAMEABLE)} with no id yet"
+        f"table and agreeing with the binary route, {len(UNNAMEABLE)} with no id "
+        f"yet; every shipped binary is one the path resolver names, "
+        f"{len(UNRESOLVED_BINARY)} recorded as not"
     )
     return 0
 
