@@ -17,7 +17,7 @@
   });
 
   function draw(s: number[]): void {
-    if (!canvas || s.length < 2) return;
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
@@ -28,6 +28,12 @@
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+    // CLEARED FIRST, then the too-short check. The guard used to come before any
+    // of this and returned without touching the canvas, so a series that shrank
+    // below two points left the previous drawing on screen - a chart of data the
+    // store no longer has, under whatever the headline now says. A source that
+    // stops being measured is exactly that case.
+    if (s.length < 2) return;
 
     const fg = getComputedStyle(canvas).getPropertyValue("--color-fg-primary").trim() || "#fafafa";
     const n = s.length;
