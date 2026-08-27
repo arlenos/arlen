@@ -339,14 +339,6 @@
     font-size: 12px;
     color: var(--color-fg-secondary, #a3a3a3);
   }
-  .rate-select {
-    background: var(--color-bg-input, #1f1f1f);
-    color: var(--color-fg-primary, #fafafa);
-    border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: 6px;
-    padding: 3px 6px;
-    font: inherit;
-  }
   .toolbar {
     display: flex;
     align-items: center;
