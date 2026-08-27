@@ -41,6 +41,14 @@ pub struct AppEntry {
     pub description: String,
     /// Semicolon-separated categories (Categories= key).
     pub categories: Vec<String>,
+    /// Whether a second launch should raise the window this app already has
+    /// (`X-Arlen-SingleInstance=true`), rather than start another process.
+    ///
+    /// Opt-in per app and absent means multi, because multi is the safer default
+    /// for anything document-shaped: two text editors side by side is the point
+    /// of a text editor, while two Settings windows are two views of state that
+    /// diverge the moment either one writes (`app-instance-model.md`).
+    pub single_instance: bool,
     /// The words the entry lists as ways to ask for this app (Keywords= key),
     /// localized like the name is.
     ///
@@ -268,6 +276,10 @@ fn parse_desktop_file(path: &Path, locale: &str) -> Option<AppEntry> {
         })
         .unwrap_or_default();
 
+    // Only the exact string `true`: a key somebody set to `yes` or `1` meant to
+    // opt in, but guessing which spellings count is how an app ends up single on
+    // one reading and multi on another.
+    let single_instance = fields.get("X-Arlen-SingleInstance").map(String::as_str) == Some("true");
     let app_id = derive_app_id(fields.get("X-Arlen-AppId").map(String::as_str), path);
     let exec = strip_exec_placeholders(&exec);
     let window_ids = derive_window_ids(fields.get("StartupWMClass").map(String::as_str), path);
@@ -285,6 +297,7 @@ fn parse_desktop_file(path: &Path, locale: &str) -> Option<AppEntry> {
         description,
         categories,
         keywords,
+        single_instance,
         name_lower,
         description_lower,
     })
@@ -366,6 +379,38 @@ pub fn resolve_window_app_id(entries: &[AppEntry], window_app_id: &str) -> Optio
         .find(|e| e.window_ids.iter().any(|id| *id == needle))
         .or_else(|| entries.iter().find(|e| e.exec_window_id == needle))
         .map(|e| e.app_id.clone())
+}
+
+/// The window a second launch of `app_id` should raise, if the app declared
+/// itself single-instance and one of its windows is open.
+///
+/// Decided here rather than in the launcher's spawn path because the answer is a
+/// question about the INDEX and the open windows, both of which are data - the
+/// spawn path then either raises or launches, and this can be tested without
+/// either (`app-instance-model.md`, decision 2).
+///
+/// Matching goes through `resolve_window_app_id`, so a window is attributed the
+/// same way the taskbar attributes it: a declared `StartupWMClass` or the entry's
+/// basename first, an Exec-name guess after. Inventing a second rule here is how
+/// a window ends up belonging to one app in the taskbar and another at launch.
+///
+/// `None` when the app is multi-instance, when nothing it owns is open, or when
+/// no entry claims that id - each of which means: start the process.
+pub fn window_to_raise(
+    entries: &[AppEntry],
+    windows: &[(String, String)],
+    app_id: &str,
+) -> Option<String> {
+    let entry = entries.iter().find(|e| e.app_id == app_id)?;
+    if !entry.single_instance {
+        return None;
+    }
+    windows
+        .iter()
+        .find(|(_, window_app_id)| {
+            resolve_window_app_id(entries, window_app_id).as_deref() == Some(app_id)
+        })
+        .map(|(id, _)| id.clone())
 }
 
 /// Strips freedesktop Exec placeholders (%u, %U, %f, %F, %i, %c, %k, etc.).
@@ -702,6 +747,49 @@ mod tests {
     }
 
     #[test]
+    fn a_single_instance_app_with_a_window_open_is_raised_not_launched() {
+        let mut settings = entry(
+            "dev.arlen.settings",
+            Some("arlen-settings"),
+            "/a/arlen-settings.desktop",
+            "arlen-settings",
+        );
+        settings.single_instance = true;
+        let editor = entry(
+            "dev.arlen.text-editor",
+            Some("arlen-text-editor"),
+            "/a/arlen-text-editor.desktop",
+            "arlen-text-editor",
+        );
+        let entries = vec![settings, editor];
+        let windows = vec![
+            ("win-1".to_string(), "arlen-text-editor".to_string()),
+            ("win-2".to_string(), "arlen-settings".to_string()),
+        ];
+
+        assert_eq!(
+            window_to_raise(&entries, &windows, "dev.arlen.settings").as_deref(),
+            Some("win-2"),
+            "the window the app already has"
+        );
+        assert_eq!(
+            window_to_raise(&entries, &windows, "dev.arlen.text-editor"),
+            None,
+            "a multi-instance app starts another process, which is the point of it"
+        );
+        assert_eq!(
+            window_to_raise(&entries, &[], "dev.arlen.settings"),
+            None,
+            "nothing open means launch"
+        );
+        assert_eq!(
+            window_to_raise(&entries, &windows, "org.example.other"),
+            None,
+            "an id no entry claims is not this launcher's business"
+        );
+    }
+
+    #[test]
     fn a_declared_keyword_finds_an_app_its_name_and_description_do_not() {
         // The case the key exists for: nobody types the product name they do not
         // know yet, they type what the thing is.
@@ -804,6 +892,7 @@ mod tests {
             description: String::new(),
             categories: Vec::new(),
             keywords: Vec::new(),
+            single_instance: false,
             name_lower: String::new(),
             description_lower: String::new(),
         }

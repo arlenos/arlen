@@ -26,3 +26,4 @@ StartupNotify=true
 # it here rather than letting the desktop-id imply `arlen-settings` keeps those
 # four in agreement.
 X-Arlen-AppId=dev.arlen.settings
+X-Arlen-SingleInstance=true
