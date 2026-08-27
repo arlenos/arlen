@@ -12,7 +12,7 @@ Terminal=false
 # second main category, and this is an editor rather than an IDE.
 Categories=Utility;TextEditor;
 Keywords=text;edit;editor;code;write;notes;
-Keywords[de]=text;editor;bearbeiten;schreiben;notizen;
+Keywords[de]=text;editor;bearbeiten;schreiben;notizen;code;
 StartupNotify=true
 
 # `text/plain` and the two markup types it is actually asked for. Source files

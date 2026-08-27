@@ -10,7 +10,7 @@ Icon=arlen-knowledge
 Terminal=false
 Categories=Utility;
 Keywords=timeline;history;knowledge;graph;activity;projects;
-Keywords[de]=zeitleiste;verlauf;wissen;graph;aktivitaet;projekte;
+Keywords[de]=zeitleiste;verlauf;wissen;graph;aktivitaet;projekte;knowledge;
 StartupNotify=true
 # The identity the permission system keys on, stated so the launcher's idea of
 # who this app is matches the daemons'. The resolver's rule (3) reads the

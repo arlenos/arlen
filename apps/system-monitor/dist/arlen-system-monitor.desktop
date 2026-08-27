@@ -10,7 +10,7 @@ Icon=arlen-system-monitor
 Terminal=false
 Categories=System;Monitor;
 Keywords=process;cpu;memory;load;task;
-Keywords[de]=prozess;speicher;last;
+Keywords[de]=prozess;speicher;last;cpu;task;
 StartupNotify=true
 # The identity the permission system keys on. The resolver maps a canonical
 # /usr/bin/arlen-{name} binary to {name}, so the profile, the audit actor and
