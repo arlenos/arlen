@@ -21,9 +21,8 @@ const AGENT_PATH: &str = "/org/arlen/AIAgent1";
 const PROXY_BUS: &str = "org.arlen.AIProxy1";
 const PROXY_PATH: &str = "/org/arlen/AIProxy1";
 
-/// Call a String-returning member on `(bus, path, bus)`, returning `fallback`
-/// on any connection or call failure (the read commands are advisory).
-/// Like [`call_string`] but SIGNALS failure instead of substituting a value.
+/// Call a String-returning member on `(bus, path, bus)`, returning `None` on any
+/// connection or call failure rather than substituting a value.
 ///
 /// Needed wherever an empty result would be read as a fact about the system
 /// rather than as "could not read" - a grant list being the clear case, since an
@@ -34,42 +33,23 @@ async fn try_call_string(bus: &str, path: &str, member: &str) -> Option<String> 
     proxy.call(member, &()).await.ok()
 }
 
-/// Substitutes `fallback` when the call cannot be made. Prefer `try_call_string`
-/// and a `null`: a substituted value is indistinguishable from a measured one, so
-/// the surface states as fact something nothing read.
-///
-/// ONE caller remains, `ai_models_list`, and it is held by its READER rather than
-/// by a judgement that a lie is fine there. That reader is
-/// `apps/harness/src/lib/components/chat/ModelPickerBar.svelte`, which does
-/// `parse<ModelEntry[]>(json, [])` and then gates on `$models.length > 0` at :67.
-/// `JSON.parse(null)` is `null`, not the fallback, so a converted command turns
-/// "the daemon is down" from a wrong-but-drawn empty catalogue into a TypeError.
-/// The file is arlen-ui's; the two halves have to land together, and the reader
-/// half is one line - hold `null` for unread and branch on it, the way the gate
-/// feed above already does.
-///
-/// The other two former callers were converted on 25 August once it turned out
-/// they had no reader at all: the harness registers them, and only Settings' own
-/// separate copies are ever invoked.
-async fn call_string(bus: &str, path: &str, member: &str, fallback: &str) -> String {
-    let Ok(connection) = Connection::session().await else {
-        return fallback.to_string();
-    };
-    let Ok(proxy) = Proxy::new(&connection, bus, path, bus).await else {
-        return fallback.to_string();
-    };
-    proxy
-        .call(member, &())
-        .await
-        .unwrap_or_else(|_| fallback.to_string())
-}
-
 /// The model catalog for the in-chat picker (`ai_models_list`): a JSON array of
-/// `{ provider, model, contextWindow, kind, available }`. Empty array if the
-/// daemon is unreachable.
+/// `{ provider, model, contextWindow, kind, available }`, or `null` when the
+/// daemon could not be reached.
+///
+/// This was the last command in the file substituting a value for a failure: it
+/// answered `"[]"` when the call did not happen, and the picker hides itself on
+/// an empty catalogue, so a daemon that was down and a daemon with no models
+/// configured produced the same missing bar. The `call_string` helper that
+/// performed the substitution had no other callers and is gone with it.
+///
+/// The user is still told, and by the neighbour rather than here: `CapabilityBar`
+/// reads the same daemon and prints `h.capability.unreachable` with a retry when
+/// its own read comes back null, one sentence below where this bar would be. A
+/// second copy of it here would say the same thing twice about one outage.
 #[tauri::command]
-pub async fn ai_models_list() -> String {
-    call_string(AI_BUS, AI_PATH, "ai_models_list", "[]").await
+pub async fn ai_models_list() -> Option<String> {
+    try_call_string(AI_BUS, AI_PATH, "ai_models_list").await
 }
 
 /// The current live selection (`ai_active`): `{ provider, model }`.
