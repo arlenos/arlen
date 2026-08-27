@@ -50,6 +50,11 @@ ROOT = (
 )
 
 ARLEN_IFACE = re.compile(r'"(org\.arlen\.[A-Za-z0-9_]+)"')
+#: The turbofish is `[^>]*`, which cannot span a NESTED generic
+#: (`.call::<_, _, Vec<String>>(...)`) - such a call would be invisible here
+#: rather than merely untyped, the way it was in `check-invoke-shape` until 27
+#: August. Every turbofish in the tree is flat today, checked on that date, so
+#: this is a note for whoever writes the first nested one rather than a fix.
 CALL = re.compile(r'\.call(?:::<[^>]*>)?\(\s*"([A-Za-z][A-Za-z0-9_]*)"')
 # BOTH spellings. zbus's attribute is usually imported, so `#[interface(...)]` and
 # `#[zbus::interface(...)]` are the same thing and the tree uses both - eleven

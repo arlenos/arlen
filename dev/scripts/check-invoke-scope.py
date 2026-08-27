@@ -53,7 +53,11 @@ SKIP_PARTS = {"target", "node_modules", ".git", "build", ".svelte-kit", "mkosi.b
 
 
 COMMAND = re.compile(r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)")
-INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*"([a-z_][a-z0-9_]*)"')
+#: `[^()"]*` rather than `[^>]*` for the generic: a return type can nest
+#: (`invoke<ReadOutcome<{ id: string }>>(...)`), and stopping at the first `>`
+#: made the whole CALL invisible rather than just its type. Ten live calls were
+#: in that shape, found on 27 August.
+INVOKE = re.compile(r'invoke(?:<[^()"]*>)?\(\s*"([a-z_][a-z0-9_]*)"')
 # A call made through a local helper - `send(cmd, args)` wrapping `invoke(cmd,
 # args)` - carries no literal for the pattern above to find, so it is invisible
 # here exactly as it was in `check-invoke-shape`, where the clock's fifteen
@@ -73,7 +77,7 @@ WRAPPER = re.compile(
     r"(?:async\s+)?function\s+(\w+)\s*\(\s*(\w+)[^)]*\)[^{]*\{[^}]*?\binvoke\s*\(\s*\2\b",
     re.S,
 )
-WRAPPED = re.compile(r'\binvoke\s*(?:<[^>]*>)?\s*\(\s*[A-Za-z_$]')
+WRAPPED = re.compile(r'\binvoke\s*(?:<[^()"]*>)?\s*\(\s*[A-Za-z_$]')
 
 
 def tree_files(suffixes: tuple[str, ...]):

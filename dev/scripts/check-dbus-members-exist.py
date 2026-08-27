@@ -65,6 +65,10 @@ METHOD = re.compile(r"(?:async\s+)?fn\s+(\w+)\s*\(\s*&")
 # `call(...)`: code-indexer's tests define a local helper by that exact name and
 # eight of its fixtures - `foo`, `bar`, `nope` - read as dialled members.
 CALL = re.compile(
+    # Flat turbofish only: a nested one (`::<_, _, Vec<String>>`) would make
+    # the call invisible here, not just untyped. None exists in the tree today
+    # (checked 27 Aug); the same shape bit `check-invoke-shape` on the
+    # TypeScript side.
     r'(?:\.call(?:_method)?|\b\w*call_string)(?:::<[^>]*>)?\(\s*'
     r'(?:[A-Za-z_][A-Za-z0-9_]*\s*,\s*)*"([^"]+)"'
 )
