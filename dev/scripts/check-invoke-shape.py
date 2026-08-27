@@ -308,8 +308,17 @@ def invoke_calls(root: Path):
                 *IMPORTED_INVOKERS,
             ]
             for name in names:
+                # The generic is `[^()"]*` rather than `[^>]*` because a return
+                # type can nest: `invoke<ReadOutcome<{ id: string }>>(...)` has
+                # inner `>`s, and stopping at the first one made the whole call
+                # invisible - not just its return type, the call. Nine of them
+                # were, found on 27 August by asking which commands nothing
+                # invokes and then checking the answers. Parentheses and quotes
+                # still terminate, so a call is never swallowed by a runaway
+                # match.
                 for m in re.finditer(
-                    rf'\b{re.escape(name)}\s*(?:<[^>]*>)?\s*\(\s*"([a-z_0-9]+)"', text
+                    rf'\b{re.escape(name)}\s*(?:<[^()"]*>)?\s*\(\s*"([a-z_0-9]+)"',
+                    text,
                 ):
                     cmd = m.group(1)
                     line = text[: m.start()].count("\n") + 1

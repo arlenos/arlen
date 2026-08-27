@@ -154,6 +154,32 @@ export async function go() { return await invoke("demo_read"); }
   check("a doc comment under the attribute still declares the command", r.code === 0);
 }
 {
+  // A nested return generic made the whole CALL invisible, not just its return
+  // type: the old pattern stopped the generic at the first `>`, so
+  // `invoke<ReadOutcome<{ id: string }>>("x", { ... })` matched nothing and its
+  // arguments were never compared. Nine live calls were in that shape.
+  const r = run({
+    "apps/demo/src-tauri/src/lib.rs": `
+#[tauri::command]
+fn demo_rows(kind: String) -> String { kind }
+`,
+    "apps/demo/src/lib/call.ts": `
+import { invoke } from "@tauri-apps/api/core";
+export async function go() {
+  return await invoke<ReadOutcome<{ id: string; label: string }>>(
+    "demo_rows",
+    { wrong: 1 },
+  );
+}
+`,
+  });
+  check(
+    "a call behind a nested generic is still checked",
+    r.code === 1 && /demo_rows/.test(r.out),
+    r.out,
+  );
+}
+{
   const r = run({ "README.md": "nothing here\n" });
   check("an empty tree refuses rather than passing", r.code === 2);
 }
