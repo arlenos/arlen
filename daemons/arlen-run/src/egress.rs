@@ -147,6 +147,23 @@ pub trait EgressEnforcer {
     fn install(&self, hosts: &[String]) -> Result<EgressGuard, EgressError>;
 }
 
+/// The hosts a policy hands the enforcer, or `None` where no filter is installed.
+///
+/// An EXHAUSTIVE match, deliberately. `main` decides this with an `if let` over
+/// `FilteredHosts`, so a fourth `NetworkPolicy` variant would fall silently into
+/// the else branch and launch with no egress filter - the fail-open direction. A
+/// new variant has to come through here and answer the question.
+pub fn enforced_hosts(policy: &arlen_confiner::NetworkPolicy) -> Option<&[String]> {
+    match policy {
+        arlen_confiner::NetworkPolicy::FilteredHosts(hosts) => Some(hosts),
+        // Network off entirely: bwrap unshares the namespace, nothing to filter.
+        arlen_confiner::NetworkPolicy::None => None,
+        // The app asked for unrestricted egress and the profile granted it; the
+        // filter is deliberately absent rather than empty.
+        arlen_confiner::NetworkPolicy::Unrestricted => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +193,32 @@ mod tests {
             Err(EgressError::Allowlist(_)) => {}
             other => panic!("expected a fail-closed Allowlist error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn only_a_filtered_policy_reaches_the_enforcer() {
+        use arlen_confiner::NetworkPolicy;
+        assert_eq!(enforced_hosts(&NetworkPolicy::None), None);
+        assert_eq!(enforced_hosts(&NetworkPolicy::Unrestricted), None);
+        let hosts = vec!["example.org:443".to_string()];
+        assert_eq!(
+            enforced_hosts(&NetworkPolicy::FilteredHosts(hosts.clone())),
+            Some(hosts.as_slice())
+        );
+    }
+
+    #[test]
+    fn an_empty_filtered_list_still_reaches_the_enforcer() {
+        use arlen_confiner::NetworkPolicy;
+        // Not the same as `Unrestricted`. The enforcer answers a noop guard for an
+        // empty list (there is no proxy to bind), but `main` also uses the
+        // filtered branch to pick `spawn_filtered_and_wait`, which puts the app in
+        // the route-absent netns. So an allowlist naming nothing comes out as NO
+        // egress, and collapsing it to `None` here would hand the app a normal
+        // network instead. Checked against both sites rather than assumed.
+        assert_eq!(
+            enforced_hosts(&NetworkPolicy::FilteredHosts(Vec::new())),
+            Some(&[][..])
+        );
     }
 }
