@@ -80,6 +80,10 @@ check("an id-shaped literal is not prose", r.status === 0, r.stdout);
 // The surface's own file must stay writable with literal fixtures.
 r = run({
   "sdk/os-sdk/src/menu.rs": `let g = MenuGroup::new("File", vec![]);`,
+  // An ordinary file beside it: the exemption is what this case is about, and
+  // the empty-read guard below would otherwise refuse a fixture whose only Rust
+  // is the excluded one, so the case would stop failing for its own reason.
+  "apps/x/src-tauri/src/lib.rs": `let i = MenuItem::item("view.sort.name", "view.sort.name");`,
 });
 check("the surface's own tests are exempt", r.status === 0, r.stdout);
 
@@ -87,6 +91,16 @@ check("the surface's own tests are exempt", r.status === 0, r.stdout);
 r = run({ "apps/x/src-tauri/src/lib.rs": `fn main() {}` });
 check("a tree with no menu passes", r.status === 0, r.stdout);
 check("and says it saw none", r.stdout.includes("0 file(s)"), r.stdout);
+
+// A tree with no Rust in it is a walk that reached nothing, and this used to
+// answer "0 file(s) name a menu label" and exit 0 - which is what a renamed
+// directory would have earned as well.
+r = run({});
+check(
+  "a tree with no Rust source refuses rather than passing",
+  r.status === 2 && `${r.stdout}${r.stderr}`.includes("NOTHING WAS READ"),
+  `exit ${r.status}: ${r.stdout}${r.stderr}`,
+);
 
 if (failed) {
   console.log(`\n    ${failed} case(s) failed`);

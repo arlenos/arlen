@@ -59,17 +59,24 @@ KNOWN = {
 }
 
 
-def spawned(root: Path) -> dict[str, list[str]]:
-    """`arlen-*` program name -> the files that spawn it by bare name."""
+def spawned(root: Path) -> tuple[dict[str, list[str]], int]:
+    """`arlen-*` program name -> the files that spawn it, and how many were read.
+
+    The count is returned rather than derived, because zero spawn sites and zero
+    FILES are different facts: the first is a tree that spawns nothing, the second
+    is a walk that reached nothing.
+    """
     out: dict[str, list[str]] = {}
+    scanned = 0
     for path in sorted(root.rglob("*.rs")):
         sp = str(path)
         if "/target/" in sp or "mkosi.builddir" in sp:
             continue
+        scanned += 1
         text = path.read_text(encoding="utf-8", errors="replace")
         for name in set(SPAWN.findall(text)):
             out.setdefault(name, []).append(str(path.relative_to(root)))
-    return out
+    return out, scanned
 
 
 def installed(root: Path) -> set[str]:
@@ -96,7 +103,18 @@ def installed(root: Path) -> set[str]:
 
 def main() -> int:
     have = installed(ROOT)
-    sites = spawned(ROOT)
+    sites, scanned = spawned(ROOT)
+    # Measured 27 August against an empty directory: this printed "OK: 0
+    # first-party program(s) spawned by name" and exited 0, which is the
+    # all-clear a renamed directory would earn.
+    if scanned == 0:
+        print(
+            "NOTHING WAS READ: no Rust source under this tree, so no spawn site "
+            "was examined. The layout moved or this check is pointed at the wrong "
+            "root.",
+            file=sys.stderr,
+        )
+        return 2
     problems: list[str] = []
     carried: list[str] = []
 

@@ -68,7 +68,9 @@ def rust_files(root: Path):
 def main() -> int:
     findings = []
     checked = 0
+    scanned = 0
     for path, rel in rust_files(ROOT):
+        scanned += 1
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -94,6 +96,18 @@ def main() -> int:
             "change - see apps/files/src/lib/menu.ts."
         )
         return 1
+    # A tree this found no Rust in is not a tree with no menu labels: it is a
+    # tree the walk did not reach. Measured 27 August by running this against an
+    # empty directory, where it printed "0 file(s)" and exited 0 - the shape a
+    # renamed directory would produce, and the one a reader takes for a pass.
+    if scanned == 0:
+        print(
+            "NOTHING WAS READ: no Rust source under this tree, so no menu label "
+            "was examined. The layout moved or this check is pointed at the wrong "
+            "root.",
+            file=sys.stderr,
+        )
+        return 2
     print(
         f"check-menu-labels-translated: {checked} file(s) name a menu label in Rust, "
         "none of them prose."

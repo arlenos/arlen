@@ -137,6 +137,25 @@ passes(root)
   : ok("shipped code beside a test module is still checked");
 rmSync(root, { recursive: true, force: true });
 
+// A tree with no Rust in it is a walk that reached nothing, and this used to
+// print "check-sandbox-env: ok" over it - the one sentence a check about
+// spawning secrets must never say about a tree it did not read.
+root = tree({ "README.md": "no rust here\n" });
+{
+  let code = 0;
+  let out = "";
+  try {
+    out = execFileSync("python3", [check, root], { encoding: "utf8" });
+  } catch (e) {
+    code = e.status ?? 1;
+    out = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+  }
+  code === 2 && out.includes("NOTHING WAS READ")
+    ? ok("a tree with no Rust source refuses rather than passing")
+    : bad("a tree with no Rust source refuses rather than passing", `exit ${code}: ${out}`);
+}
+rmSync(root, { recursive: true, force: true });
+
 if (failures) {
   console.log(`\n${failures} control(s) failed`);
   process.exit(1);
