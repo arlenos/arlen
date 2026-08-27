@@ -199,14 +199,15 @@ impl Clock {
         // Asked again here because the power daemon may have been down when this
         // one started, and a wake is the moment the answer is about to matter.
         let capable = wake_capable().await;
-        let resumed = {
+        let (resumed, late) = {
             let mut state = self.state.lock().await;
             state.wake_capable = capable;
             let resumed = startup::resume(&mut state, &chrono::Local, LATE_WINDOW_MS, now_ms());
-            if !resumed.ring_late.is_empty() {
-                warn!(
+            let late = ring::late(&state.alarms, &resumed.ring_late);
+            if !late.is_empty() {
+                info!(
                     alarms = ?resumed.ring_late,
-                    "alarms came due while the machine slept, and cannot ring yet"
+                    "alarms came due while the machine slept, and are ringing late"
                 );
             }
             // Written unconditionally: a machine wakes a handful of times a day,
@@ -215,8 +216,17 @@ impl Clock {
             if let Err(e) = store::save(&self.dir, &state) {
                 warn!("clock state not written after a wake: {e}");
             }
-            resumed
+            (resumed, late)
         };
+        // Sent with the lock released, for the reason the due-tick path gives: a
+        // notification daemon slow to answer must not hold up the next read.
+        if !late.is_empty() {
+            if let Ok(conn) = zbus::Connection::session().await {
+                for announcement in late {
+                    ring::send(&conn, announcement).await;
+                }
+            }
+        }
         self.changed.notify_one();
         // The wake that was armed fired to get us here, so the next one has to be
         // asked for or the machine sleeps through everything after it.
@@ -776,13 +786,20 @@ async fn main() {
     );
 
     let resumed = startup::resume(&mut state, &chrono::Local, LATE_WINDOW_MS, now_ms());
-    if !resumed.ring_late.is_empty() {
-        // Not rung: the notification daemon is not wired yet. Recorded so the
-        // gap is visible in the log rather than being a silent nothing.
-        warn!(
+    let late = ring::late(&state.alarms, &resumed.ring_late);
+    if !late.is_empty() {
+        info!(
             alarms = ?resumed.ring_late,
-            "alarms were missed while the daemon was not running, and cannot ring yet"
+            "alarms were missed while the daemon was not running, and are ringing late"
         );
+        // Its own connection, like the due-tick path: the one this function ends
+        // by building is for OWNING the clock's bus name, and an alarm that is
+        // already late should not wait on that.
+        if let Ok(conn) = zbus::Connection::session().await {
+            for announcement in late {
+                ring::send(&conn, announcement).await;
+            }
+        }
     }
     if let Err(e) = store::save(&dir, &state) {
         warn!("clock state not written after resume: {e}");
