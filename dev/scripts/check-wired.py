@@ -74,22 +74,24 @@ CANNOT_BE_WIRED = {
 # Scripts that are libraries or setup helpers rather than checks.
 NOT_A_CHECK = re.compile(r"^(dev-|install-|uninstall-|reset-|start-|sync-|run-ci-gates)")
 
-# An invocation, not a mention: a run list entry, or a line that executes it.
-def invoked_by(name: str) -> list[str]:
-    """Files that RUN `name`, as opposed to talking about it."""
-    hits = []
-    for path in RUN_LISTS:
-        if path.is_file() and name in path.read_text(encoding="utf-8", errors="replace"):
-            hits.append(str(path.relative_to(ROOT)))
+#: The tracked scripts and their lines, read once. This function is called for
+#: every check in `dev/scripts`, and it used to shell out to `git ls-files` and
+#: re-read every file it named ON EACH CALL - a hundred-odd times over the same
+#: few hundred files, which was almost all of this gate's seventeen seconds.
+_CORPUS: list[tuple[str, list[str]]] | None = None
 
+
+def corpus() -> list[tuple[str, list[str]]]:
+    """Every tracked script that could invoke a check, as (path, lines)."""
+    global _CORPUS
+    if _CORPUS is not None:
+        return _CORPUS
     listed = subprocess.run(
         ["git", "ls-files", "*.sh", "*.py", "*.mjs", "*.yml", "justfile"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     ).stdout.split()
-    call = re.compile(rf"(?:^|[|&;(]|\b(?:bash|sh|python3?|node|exec)\s+)\S*{re.escape(name)}\b")
+    out: list[tuple[str, list[str]]] = []
     for rel in listed:
-        if Path(rel).name == name:
-            continue
         # A gate's own positive control contains example invocations as FIXTURE
         # TEXT - `test-check-wired.mjs` writes a justfile that calls a probe, to
         # watch this gate react. Counting those as runs would let a check be
@@ -101,7 +103,24 @@ def invoked_by(name: str) -> list[str]:
         p = ROOT / rel
         if not p.is_file():
             continue
-        for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        out.append((rel, p.read_text(encoding="utf-8", errors="replace").splitlines()))
+    _CORPUS = out
+    return out
+
+
+# An invocation, not a mention: a run list entry, or a line that executes it.
+def invoked_by(name: str) -> list[str]:
+    """Files that RUN `name`, as opposed to talking about it."""
+    hits = []
+    for path in RUN_LISTS:
+        if path.is_file() and name in path.read_text(encoding="utf-8", errors="replace"):
+            hits.append(str(path.relative_to(ROOT)))
+
+    call = re.compile(rf"(?:^|[|&;(]|\b(?:bash|sh|python3?|node|exec)\s+)\S*{re.escape(name)}\b")
+    for rel, lines in corpus():
+        if Path(rel).name == name:
+            continue
+        for line in lines:
             stripped = line.strip()
             if stripped.startswith("#") or stripped.startswith("//"):
                 continue
