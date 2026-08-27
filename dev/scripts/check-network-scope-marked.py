@@ -5,11 +5,12 @@
 """Check that a profile granting the whole network says why it is not scoped.
 
 The permission grammar has three network settings and only two behave. A host
-list (`allowed_domains`) becomes `NetworkPolicy::FilteredHosts`, which
-`arlen-run` REFUSES with exit 67 unless an egress enforcer is installed - and
-that enforcer is the metal-gated piece. Nothing raises a `NetworkAccess` consent
-for a host an app did not declare either. So the choice today is no network at
-all or all of it, and 707 profiles took all of it.
+list (`allowed_domains`) becomes `NetworkPolicy::FilteredHosts`, and `arlen-run`
+now installs the egress proxy for one rather than refusing the launch - that half
+landed. What did not is the ask: nothing raises a `NetworkAccess` consent for a
+host an app did not declare, so a scoped app that dials anywhere else meets a bare
+403 with no way to request it. So the choice today is still no network at all or
+all of it, and 714 profiles took all of it.
 
 That is the right call while the middle is unenforceable: narrowing would leave
 those apps with no network and no way to ask, which is the silent-break class.
@@ -79,8 +80,9 @@ def main() -> int:
             print(f"  - {m}", file=sys.stderr)
         print(
             f"\nAdd the {MARKER} note above the [network] table. Narrowing instead is "
-            "not the fix today: `arlen-run` refuses a host list without an egress "
-            "enforcer, so the app would get no network and no way to ask.",
+            "not the fix today: the egress proxy will enforce the list, but nothing "
+            "raises a consent for a host outside it, so the app meets a 403 it "
+            "cannot ask its way past.",
             file=sys.stderr,
         )
     if stale:
