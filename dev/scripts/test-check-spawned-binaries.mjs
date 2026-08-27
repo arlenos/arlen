@@ -32,8 +32,11 @@ const failures = [];
 // test goes red immediately, rather than the gate quietly losing the ability to
 // be pointed at a fixture.
 const CARRIED = {
+  // One line per KNOWN entry, and `arlen-settings` left with its entry on 27
+  // August when the app gained a build step: a stub for a name the gate no
+  // longer carries makes every fixture here report a real missing binary, which
+  // is the coupling working rather than failing.
   "apps/carried/src/lib.rs":
-    'std::process::Command::new("arlen-settings").spawn();\n' +
     'std::process::Command::new("arlen-harness").spawn();\n',
 };
 
