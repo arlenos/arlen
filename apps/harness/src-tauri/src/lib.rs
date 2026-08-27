@@ -100,6 +100,7 @@ pub fn run() {
             prep::prep_for,
             prep::working_set_briefing,
             launch::launch_session,
+            launch::launch_inject,
             url::open_url
         ])
         // Start the menu back-channel. Registration is driven by the frontend
