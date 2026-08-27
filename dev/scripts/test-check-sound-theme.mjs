@@ -50,6 +50,12 @@ function cue(path, amplitude) {
   return r.status === 0;
 }
 
+/// Without ffmpeg the gate measures nothing and says so. Asserting THAT is the
+/// point: `!haveFfmpeg || ...` reads as "covered" while asserting nothing, and a
+/// case guarded that way passed here for a day while failing on CI, where ffmpeg
+/// is absent and the fixture it never built was the thing under test.
+const skipped = (code, out) => code === 0 && out.includes("SKIPPED");
+
 function run(name, build, expect) {
   const dir = mkdtempSync(join(tmpdir(), "arlen-sound-"));
   build(dir);
@@ -82,7 +88,8 @@ run(
       "impl SoundEvent {\n    fn sound_name(self) -> &'static str {\n        match self {\n        }\n    }\n}\n"
     );
   },
-  (code, out) => !haveFfmpeg || (code === 2 && out.includes("NOTHING WAS READ")),
+  (code, out) =>
+    haveFfmpeg ? code === 2 && out.includes("NOTHING WAS READ") : skipped(code, out),
 );
 
 run(
@@ -93,12 +100,15 @@ run(
     writeFileSync(join(dir, SOUND_RS), soundRs(["message-new"]));
   },
   (code, out) =>
-    !haveFfmpeg || (code === 1 && out.includes("falls through to the synth")),
+    haveFfmpeg
+      ? code === 1 && out.includes("falls through to the synth")
+      : skipped(code, out),
 );
 
 run(
   "a file no event resolves is caught",
   (dir) => {
+    mkdirSync(join(dir, THEME), { recursive: true });
     mkdirSync(join(dir, dirname(SOUND_RS)), { recursive: true });
     writeFileSync(join(dir, SOUND_RS), soundRs(["message-new"]));
     if (haveFfmpeg) {
@@ -106,12 +116,14 @@ run(
       cue(join(dir, THEME, "orphan.oga"), 1.0);
     }
   },
-  (code, out) => !haveFfmpeg || (code === 1 && out.includes("never plays")),
+  (code, out) =>
+    haveFfmpeg ? code === 1 && out.includes("never plays") : skipped(code, out),
 );
 
 run(
   "cues more than the allowed spread apart are caught",
   (dir) => {
+    mkdirSync(join(dir, THEME), { recursive: true });
     mkdirSync(join(dir, dirname(SOUND_RS)), { recursive: true });
     writeFileSync(join(dir, SOUND_RS), soundRs(["loud", "quiet"]));
     if (haveFfmpeg) {
@@ -120,12 +132,13 @@ run(
     }
   },
   (code, out) =>
-    !haveFfmpeg || (code === 1 && out.includes("dB apart")),
+    haveFfmpeg ? code === 1 && out.includes("dB apart") : skipped(code, out),
 );
 
 run(
   "a matched, level set passes",
   (dir) => {
+    mkdirSync(join(dir, THEME), { recursive: true });
     mkdirSync(join(dir, dirname(SOUND_RS)), { recursive: true });
     writeFileSync(join(dir, SOUND_RS), soundRs(["a", "b"]));
     if (haveFfmpeg) {
@@ -133,7 +146,7 @@ run(
       cue(join(dir, THEME, "b.oga"), 0.3);
     }
   },
-  (code) => code === 0,
+  (code, out) => (haveFfmpeg ? code === 0 : skipped(code, out)),
 );
 
 if (!haveFfmpeg) {
