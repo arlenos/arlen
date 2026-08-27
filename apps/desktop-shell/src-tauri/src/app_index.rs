@@ -41,6 +41,15 @@ pub struct AppEntry {
     pub description: String,
     /// Semicolon-separated categories (Categories= key).
     pub categories: Vec<String>,
+    /// The words the entry lists as ways to ask for this app (Keywords= key),
+    /// localized like the name is.
+    ///
+    /// These exist for exactly the query a name cannot answer - "browser" for
+    /// Firefox, "spreadsheet" for Calc - and every first-party entry in the tree
+    /// carries a `Keywords=` line. Until 27 August the parser did not read the
+    /// key, so those lines described the apps to nothing and a person typing the
+    /// obvious word found nothing.
+    pub keywords: Vec<String>,
     /// The identifiers this app DECLARES its windows by, lowercased:
     /// `StartupWMClass=` and the `.desktop` basename.
     ///
@@ -248,6 +257,16 @@ fn parse_desktop_file(path: &Path, locale: &str) -> Option<AppEntry> {
                 .collect()
         })
         .unwrap_or_default();
+    // Localized, because the point of a keyword is the word this reader would
+    // type: `Keywords[de]` is what a German desktop should be searched by.
+    let keywords: Vec<String> = localized(&fields, "Keywords", locale)
+        .map(|s| {
+            s.split(';')
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
 
     let app_id = derive_app_id(fields.get("X-Arlen-AppId").map(String::as_str), path);
     let exec = strip_exec_placeholders(&exec);
@@ -265,6 +284,7 @@ fn parse_desktop_file(path: &Path, locale: &str) -> Option<AppEntry> {
         icon_data: None,
         description,
         categories,
+        keywords,
         name_lower,
         description_lower,
     })
@@ -381,6 +401,47 @@ pub fn resolve_app_id(index: tauri::State<AppIndex>, window_app_id: String) -> S
 
 /// Searches the app index by query string. Returns max 20 results.
 ///
+/// How well `app` answers `query`, lower being better, or `None` for no match.
+///
+/// Pure, and separate from the command so the order can be tested: the tiers are
+/// a claim about what a person meant, and a claim like that is worth pinning.
+///
+/// `query` must already be trimmed and lowercased - the caller does it once for
+/// the whole index rather than once per app.
+fn rank(app: &AppEntry, query: &str) -> Option<usize> {
+    let name_lower = app.name.to_lowercase();
+    // Exact name prefix gets highest score.
+    if name_lower.starts_with(query) {
+        return Some(0);
+    }
+    // Name contains query.
+    if name_lower.contains(query) {
+        return Some(1);
+    }
+    // Word boundary match in name.
+    if name_lower.split_whitespace().any(|w| w.starts_with(query)) {
+        return Some(2);
+    }
+    // A declared keyword, above the description: someone wrote these down as the
+    // words to find this app by, where a description mentions things in passing.
+    if app.keywords.iter().any(|k| k.to_lowercase().contains(query)) {
+        return Some(3);
+    }
+    // Description contains query.
+    if app.description.to_lowercase().contains(query) {
+        return Some(4);
+    }
+    // Category match.
+    if app
+        .categories
+        .iter()
+        .any(|c| c.to_lowercase().contains(query))
+    {
+        return Some(5);
+    }
+    None
+}
+
 /// Case-insensitive substring matching on name and description.
 /// Empty query returns the first 20 apps alphabetically.
 #[tauri::command]
@@ -394,32 +455,7 @@ pub fn search_apps(index: tauri::State<AppIndex>, query: String) -> Vec<AppEntry
 
     let mut scored: Vec<(usize, &AppEntry)> = index
         .iter()
-        .filter_map(|app| {
-            let name_lower = app.name.to_lowercase();
-            let desc_lower = app.description.to_lowercase();
-
-            // Exact name prefix gets highest score.
-            if name_lower.starts_with(&query) {
-                return Some((0, app));
-            }
-            // Name contains query.
-            if name_lower.contains(&query) {
-                return Some((1, app));
-            }
-            // Word boundary match in name.
-            if name_lower.split_whitespace().any(|w| w.starts_with(&query)) {
-                return Some((2, app));
-            }
-            // Description contains query.
-            if desc_lower.contains(&query) {
-                return Some((3, app));
-            }
-            // Category match.
-            if app.categories.iter().any(|c| c.to_lowercase().contains(&query)) {
-                return Some((4, app));
-            }
-            None
-        })
+        .filter_map(|app| rank(app, &query).map(|r| (r, app)))
         .collect();
 
     scored.sort_by_key(|(score, _)| *score);
@@ -666,6 +702,36 @@ mod tests {
     }
 
     #[test]
+    fn a_declared_keyword_finds_an_app_its_name_and_description_do_not() {
+        // The case the key exists for: nobody types the product name they do not
+        // know yet, they type what the thing is.
+        let mut reader = entry("dev.arlen.pdf", None, "/a/arlen-pdf.desktop", "arlen-pdf");
+        reader.name = "Reader".into();
+        reader.description = "Open a document".into();
+        reader.keywords = vec!["PDF".into(), "ebook".into()];
+
+        assert_eq!(rank(&reader, "ebook"), Some(3), "a keyword is a match");
+        assert_eq!(rank(&reader, "read"), Some(0), "the name still wins outright");
+        assert_eq!(rank(&reader, "zzz"), None, "and nothing matches nothing");
+    }
+
+    #[test]
+    fn a_keyword_outranks_a_word_mentioned_in_a_description() {
+        let mut declared = entry("a", None, "/a/a.desktop", "a");
+        declared.name = "One".into();
+        declared.keywords = vec!["timer".into()];
+        let mut mentioned = entry("b", None, "/a/b.desktop", "b");
+        mentioned.name = "Two".into();
+        mentioned.description = "Has a timer in it somewhere".into();
+
+        assert!(
+            rank(&declared, "timer") < rank(&mentioned, "timer"),
+            "a word someone listed as the way to find an app beats one that \
+             happens to appear in its prose"
+        );
+    }
+
+    #[test]
     fn a_name_comes_out_in_the_readers_language() {
         let f = keys(&[("Name", "Files"), ("Name[de]", "Dateien")]);
         assert_eq!(localized(&f, "Name", "de").map(String::as_str), Some("Dateien"));
@@ -737,6 +803,7 @@ mod tests {
             icon_data: None,
             description: String::new(),
             categories: Vec::new(),
+            keywords: Vec::new(),
             name_lower: String::new(),
             description_lower: String::new(),
         }
