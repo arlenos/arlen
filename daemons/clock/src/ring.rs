@@ -21,6 +21,27 @@ const URGENCY_CRITICAL: u8 = 2;
 /// A notification to raise: summary, body, urgency.
 pub type Notification = (String, String, u8);
 
+/// What to say for the alarms `startup::resume` judged worth ringing late.
+///
+/// `missed.rs` decides WHICH ones - once, only if the alarm asked, only inside
+/// the twelve-hour window - and hands back ids. This turns those ids back into
+/// the alarms they name and says the same thing a punctual ring would say. It is
+/// deliberately not a different sentence: the person set an alarm and it is that
+/// alarm going off, a few hours after the moment their machine was closed
+/// through. An id with no alarm behind it is skipped rather than invented.
+///
+/// Until 27 August both resume paths logged these and rang nothing, on the
+/// stated grounds that "the notification daemon is not wired yet" - which had
+/// stopped being true: the due-tick path a few lines away rings through it. The
+/// case this exists for, a laptop shut overnight and opened in the morning, was
+/// the one case that stayed silent.
+pub fn late(alarms: &[Alarm], ids: &[String]) -> Vec<Notification> {
+    ids.iter()
+        .filter_map(|id| alarms.iter().find(|a| &a.id == id))
+        .map(for_alarm)
+        .collect()
+}
+
 /// What to say when an alarm's moment arrives.
 ///
 /// The label leads when there is one, because that is what the person wrote to
@@ -151,6 +172,21 @@ pub async fn send(conn: &zbus::Connection, (summary, body, urgency): Notificatio
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_late_ring_says_what_a_punctual_one_would_and_skips_an_id_with_no_alarm() {
+        let mut kept = alarm("Bread");
+        kept.id = "kept".into();
+        let mut other = alarm("");
+        other.id = "other".into();
+        other.time = "09:30".into();
+        let alarms = vec![kept, other];
+        let out = late(&alarms, &["kept".into(), "gone".into(), "other".into()]);
+        assert_eq!(out.len(), 2, "an id with no alarm behind it is skipped");
+        assert_eq!(out[0], for_alarm(&alarms[0]));
+        assert_eq!(out[1], for_alarm(&alarms[1]));
+    }
+
     use super::*;
 
     fn alarm(label: &str) -> Alarm {
