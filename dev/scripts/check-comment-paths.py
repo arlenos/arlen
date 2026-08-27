@@ -30,6 +30,7 @@ somebody ELSE's tree - a recipe in a user's project, a state file under a user's
 app dir - and this repo is the wrong place to look for those.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -91,8 +92,18 @@ def scanned_files(root: Path):
     stale path misleads the next reader identically whichever language it sits in,
     so the language it sits in is not a reason to skip it.
     """
-    for pattern in ("*.rs", "*.py", "*.mjs", "*.sh", "*.ts", "*.svelte", "*.chroot"):
-        yield from root.rglob(pattern)
+    # One pruned walk rather than seven `rglob` passes. Each of those descended
+    # into every `target/` and `node_modules/` in the tree and the caller threw
+    # the results away afterwards by matching on the path string; the walk is
+    # where the time went, not the matching. Same files, and `main` sorts them,
+    # so the order is unchanged too.
+    skip = {"target", "mkosi.builddir", "node_modules", ".git", ".svelte-kit"}
+    suffixes = (".rs", ".py", ".mjs", ".sh", ".ts", ".svelte", ".chroot")
+    for base, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in skip]
+        for name in files:
+            if name.endswith(suffixes):
+                yield Path(base) / name
 
 
 def comment_paths(text: str):
