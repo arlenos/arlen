@@ -169,11 +169,28 @@ fn spawn_read_listener(handle: tauri::AppHandle) {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        // Replace a stale socket, but only if it IS a socket: refusing to unlink
-        // anything else means a misconfigured path cannot delete a real file.
+        // Replace a stale socket, but only if it IS a socket - refusing to unlink
+        // anything else means a misconfigured path cannot delete a real file -
+        // and only if nothing is listening on it.
+        //
+        // The second half was missing until 27 August, and it matters because
+        // nothing in the tree stops a second terminal: no app registers a
+        // single-instance guard, so opening one from the launcher a second time
+        // is a second process. It would unlink the live socket and bind its own,
+        // leaving the first terminal holding a listener no path points at - still
+        // running, still serving sessions, and unreachable, with nothing said. A
+        // reader would silently see only the newest window's sessions.
+        //
+        // Yielding instead: a socket someone answers on is not stale, so this
+        // instance simply does not serve. Its sessions are not readable, which is
+        // the same limitation the other way round, but the established path keeps
+        // working and no reader loses a connection it already had.
         if let Ok(meta) = std::fs::symlink_metadata(&path) {
             use std::os::unix::fs::FileTypeExt;
             if meta.file_type().is_socket() {
+                if std::os::unix::net::UnixStream::connect(&path).is_ok() {
+                    return;
+                }
                 let _ = std::fs::remove_file(&path);
             }
         }
