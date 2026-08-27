@@ -51,6 +51,7 @@
     "no-account-list": "g.why.noAccountList",
     "unknown-profile": "g.why.unknownProfile",
     "no-greetd": "g.why.noGreetd",
+    "unknown-session": "g.why.unknownSession",
     "not-connected": "g.why.notConnected",
   };
 
