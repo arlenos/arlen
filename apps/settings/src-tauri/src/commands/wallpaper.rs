@@ -200,7 +200,10 @@ pub async fn set_wallpaper(id: String, scale: String) -> Result<(), String> {
     std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
     // Temp-and-rename: a half-written manifest is one the daemon would refuse at
     // next start, which would read as "my wallpaper reset itself".
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app: nothing stops a second Settings window, and two
+    // sharing one temp name cross over rather than tear - one renames the other's
+    // bytes into place (`app-instance-model.md`).
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     std::fs::write(&tmp, manifest_toml(&asset, daemon_scale))
         .map_err(|e| format!("write {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("rename into {}: {e}", path.display()))

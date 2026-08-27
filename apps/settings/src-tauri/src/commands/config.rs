@@ -91,7 +91,10 @@ fn read_file(file: ConfigFile) -> Result<toml::Value, String> {
 fn write_file(file: ConfigFile, value: &toml::Value) -> Result<(), String> {
     let path = file.path();
     let content = toml::to_string_pretty(value).map_err(|e| format!("serialize: {e}"))?;
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app: nothing stops a second Settings window, and two
+    // sharing one temp name cross over rather than tear - one renames the other's
+    // bytes into place (`app-instance-model.md`).
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     std::fs::write(&tmp, content).map_err(|e| format!("write tmp: {e}"))?;
     // Owner-only (0600): user config carries security-bearing keys (ai.toml's
     // executor_live / access_level most of all), so it must never be world-
