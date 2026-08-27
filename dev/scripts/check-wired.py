@@ -108,26 +108,73 @@ def corpus() -> list[tuple[str, list[str]]]:
     return out
 
 
+def script_names() -> list[str]:
+    """Every script in `dev/scripts` this check asks about, by file name.
+
+    The same filter `main` applies, in one place, because the alternation built
+    from it has to hold exactly the names that will be looked up in it.
+    """
+    return [
+        s.name
+        for s in sorted(SCRIPTS.iterdir())
+        if s.is_file()
+        and not NOT_A_CHECK.match(s.name)
+        and s.name.startswith(("check-", "test-", "probe-", "smoke-"))
+    ]
+
+
+#: Which files run which script, computed in ONE pass over the corpus.
+#:
+#: The per-name version compiled a regex for each script in `dev/scripts` and
+#: scanned every line of every tracked script with it - a hundred-odd passes over
+#: the same corpus, and the largest remaining cost in this check. One alternation
+#: over all the names answers the same question in a single pass; the alternatives
+#: are sorted longest-first so a name that CONTAINS another (`check-invoke-shape`
+#: over `check-invoke`) is attributed to the longer one, which is what a
+#: per-name regex with `\b` did.
+_RUNNERS: dict[str, set[str]] | None = None
+
+
+def runners() -> dict[str, set[str]]:
+    """Script name -> the files that RUN it, as opposed to talking about it."""
+    global _RUNNERS
+    if _RUNNERS is not None:
+        return _RUNNERS
+    names = sorted(script_names(), key=len, reverse=True)
+    out: dict[str, set[str]] = {n: set() for n in names}
+    if names:
+        alternation = "|".join(re.escape(n) for n in names)
+        call = re.compile(
+            rf"(?:^|[|&;(]|\b(?:bash|sh|python3?|node|exec)\s+)\S*({alternation})\b"
+        )
+        for rel, lines in corpus():
+            base = Path(rel).name
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("#") or stripped.startswith("//"):
+                    continue
+                for m in call.finditer(line):
+                    hit = m.group(1)
+                    # A script does not run itself.
+                    if hit != base:
+                        out[hit].add(rel)
+    # The run lists name a script outright rather than executing it.
+    for path in RUN_LISTS:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        rel = str(path.relative_to(ROOT))
+        for n in out:
+            if n in text:
+                out[n].add(rel)
+    _RUNNERS = out
+    return out
+
+
 # An invocation, not a mention: a run list entry, or a line that executes it.
 def invoked_by(name: str) -> list[str]:
     """Files that RUN `name`, as opposed to talking about it."""
-    hits = []
-    for path in RUN_LISTS:
-        if path.is_file() and name in path.read_text(encoding="utf-8", errors="replace"):
-            hits.append(str(path.relative_to(ROOT)))
-
-    call = re.compile(rf"(?:^|[|&;(]|\b(?:bash|sh|python3?|node|exec)\s+)\S*{re.escape(name)}\b")
-    for rel, lines in corpus():
-        if Path(rel).name == name:
-            continue
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith("//"):
-                continue
-            if call.search(line):
-                hits.append(rel)
-                break
-    return sorted(set(hits))
+    return sorted(runners().get(name, set()))
 
 
 def main() -> int:
