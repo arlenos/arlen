@@ -113,8 +113,14 @@ fn greeter_authenticate(
     {
         return Err("unknown-profile".to_string());
     }
+    // A TOKEN, like its three neighbours and for the reason the one above gives.
+    // This was `format!("unknown session: {session_id}")`, three lines under a
+    // comment explaining why prose must not leave here. The panel's fallback
+    // caught it - an unrecognised message draws the general sentence rather than
+    // itself - so nothing English reached the screen, but the reader got
+    // "authentication failed" for a session type that is simply not installed.
     let cmd = core::session_command(&core::wayland_session_dirs(), &session_id)
-        .ok_or_else(|| format!("unknown session: {session_id}"))?;
+        .ok_or_else(|| "unknown-session".to_string())?;
     let sock = std::env::var(GREETD_SOCK_ENV)
         .map_err(|_| "no-greetd".to_string())?;
     let stream = UnixStream::connect(&sock).map_err(|e| {
