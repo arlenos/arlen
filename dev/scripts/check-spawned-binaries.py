@@ -56,12 +56,6 @@ SYMLINK = re.compile(r'ln -sf\s+"?([A-Za-z0-9_./-]+)"?\s+"\$DESTDIR(/usr/[A-Za-z
 # binary -> why it is not installed, and what that is waiting on. A bare name
 # would let the exception outlive the reason it was granted for.
 KNOWN = {
-    "arlen-settings": (
-        "the Settings app has no build step at all, though four call sites spawn it "
-        "and the config-broker admits dev.arlen.settings as its only config writer. "
-        "Absent, not blocked (its backend compiles clean). Whether it ships is a "
-        "build decision, so it is with the planner rather than fixed here"
-    ),
     "arlen-harness": (
         "the terminal's share-a-block menu entry writes a 0600 payload and launches "
         "`arlen-harness --inject <path>` (terminal.md 4.11); the harness has no build "
