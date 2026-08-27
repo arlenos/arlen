@@ -381,6 +381,28 @@ pub fn resolve_window_app_id(entries: &[AppEntry], window_app_id: &str) -> Optio
         .map(|e| e.app_id.clone())
 }
 
+/// The open window a second launch of `app_id` should raise, read off the shell's
+/// own state.
+///
+/// Separate from [`window_to_raise`] so the decision stays testable without a
+/// running shell: this is only the part that fetches the two lists, and every
+/// way of failing to fetch them answers `None`, which the caller reads as
+/// "launch". A shell that cannot see its own windows must not refuse to start an
+/// app.
+fn raise_target(app: &tauri::AppHandle, app_id: &str) -> Option<String> {
+    use tauri::Manager;
+    let index = app.try_state::<AppIndex>()?;
+    let windows = app.try_state::<crate::wayland_client::WindowList>()?;
+    let entries = index.lock().ok()?;
+    let open: Vec<(String, String)> = windows
+        .lock()
+        .ok()?
+        .iter()
+        .map(|w| (w.id.clone(), w.app_id.clone()))
+        .collect();
+    window_to_raise(&entries, &open, app_id)
+}
+
 /// The window a second launch of `app_id` should raise, if the app declared
 /// itself single-instance and one of its windows is open.
 ///
@@ -585,6 +607,27 @@ fn launch_argv(exec: &str) -> Result<Vec<String>, ExecError> {
 pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
     if exec.is_empty() {
         return;
+    }
+    // A single-instance app that is already open is RAISED, not started again
+    // (`app-instance-model.md`, decision 2). Deliberately before the argv work:
+    // whether to start a process at all is a different question from how, and a
+    // malformed Exec should not stop the window that is already there from
+    // coming up.
+    //
+    // Failing to look is failing to raise, not failing to launch: if the index
+    // or the window list cannot be read, this falls through and starts the
+    // process, which is what happened before this existed.
+    if let Some(id) = app_id.as_deref() {
+        if let Some(window) = raise_target(&app, id) {
+            use tauri::Manager;
+            if let Some(sender) =
+                app.try_state::<std::sync::Arc<crate::wayland_client::ToplevelSender>>()
+            {
+                sender.activate(&window);
+                log::info!("app_index: {id} is already open, raised window {window}");
+                return;
+            }
+        }
     }
     let confined = crate::shell_config::get_shell_config()
         .map(|c| c.launcher.confined)
