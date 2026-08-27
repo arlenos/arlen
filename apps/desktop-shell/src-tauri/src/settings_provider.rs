@@ -349,7 +349,9 @@ fn write_toml_key(
         let _ = std::fs::create_dir_all(parent);
     }
     // Atomic write: tmp + rename.
-    let tmp = path.with_extension("toml.tmp");
+    // Per INSTANCE, not per app (`app-instance-model.md`): two windows sharing a
+    // temp name cross over rather than tear.
+    let tmp = path.with_extension(format!("toml.{}.tmp", std::process::id()));
     std::fs::write(&tmp, &out).map_err(|e| format!("write tmp: {e}"))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("rename: {e}"))?;
     Ok(())
