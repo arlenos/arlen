@@ -46,11 +46,6 @@ PATH_RESOLVER = ROOT / "sdk/permissions/src/identity.rs"
 # stamps its cgroup, and still resolve to `UnknownBinary` when it connects to
 # someone else's socket and is identified by `/proc/pid/exe` instead.
 UNRESOLVED_BINARY = {
-    "arlen-bottled.service": (
-        "the Windows-app runtime installs at /usr/lib/arlen/libexec/arlen-bottled "
-        "and rule 1 has no arm for it; the unit table names it `bottled` for the "
-        "supervisor route. It is a server, so nothing resolves it by path today"
-    ),
     "arlen-event-bus.service": (
         "the binary is `/usr/bin/event-bus` with no `arlen-` prefix, so rule 2 "
         "misses it. It IS a client - the per-user bus forwards to the system bus - "

@@ -555,6 +555,16 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-notifyd" => {
             return Ok("notifyd".to_string());
         }
+        // The Windows-app runtime, pinned so its forget-a-bottle audit submits
+        // under the stable id `bottled`. This one was not a precaution: the
+        // daemon's `forget_for` is audit-before-act and fail-closed, so with no
+        // arm here it resolved to UnknownBinary, the audit daemon refused the
+        // ingest, and forgetting a bottle answered "audit unavailable, so nothing
+        // was forgotten" on every image ever built. `bottled` is the name the
+        // per-user unit table and the socket-server gate already use for it.
+        "/usr/lib/arlen/libexec/arlen-bottled" => {
+            return Ok("bottled".to_string());
+        }
         // The install daemon, pinned canonically so its install/uninstall audit
         // (GAP-2) submits under the stable id `installd`, the id the audit
         // daemon's ADMITTED allowlist keys on. Same rationale as the accounts and
