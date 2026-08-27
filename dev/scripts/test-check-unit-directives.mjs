@@ -100,7 +100,9 @@ check(
 check(
   "a value systemd cannot parse is caught",
   UNIT("PrivateTmp=maybe"),
-  (code) => code === 1,
+  // Named rather than merely non-zero: a bare exit check passes when the gate
+  // dies over something else entirely and reports a directive it never read.
+  (code, out) => code === 1 && out.includes("PrivateTmp"),
 );
 
 // The image ships two unit trees and this check read one of them for its first

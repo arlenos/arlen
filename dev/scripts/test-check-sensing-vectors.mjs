@@ -77,7 +77,9 @@ check(
 check(
   "a case one repo has and the other does not is caught",
   { ours: { ...TABLE, "on__explicit.toml": 'sensing = "on"\n' }, theirs: TABLE },
-  (code) => code === 1,
+  // The missing case by name: an exit-code-only expectation would also pass if
+  // the gate fell over before it compared anything.
+  (code, out) => code === 1 && out.includes("on__explicit"),
 );
 
 // Deliberate: the README is prose and lives in one repo, so it is excluded. If it

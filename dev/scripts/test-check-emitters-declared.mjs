@@ -94,8 +94,11 @@ console.log("emitters declared:");
     [`${PROFILES}/power-daemon.toml`]: PROFILE,
   });
   check(
+    // The id it wanted, by name: a bare exit check would also pass if the gate
+    // failed before it got as far as comparing profile names.
     "a profile named after the directory rather than the id is not accepted",
-    r.code === 1,
+    r.code === 1 && /no profile is named/.test(r.out),
+    r.out,
   );
 }
 {
