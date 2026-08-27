@@ -38,6 +38,7 @@ does not quietly fall out of the check.
 """
 
 import pathlib
+import os
 import re
 import sys
 
@@ -64,18 +65,44 @@ CONSUMES = ("ARLEN_CONSUMER_SOCKET", "EventConsumer", "consumer_socket")
 UNPINNED: dict[str, str] = {}
 
 
-def source_for(binary: str) -> pathlib.Path | None:
-    """The crate that builds `binary`, by its Cargo name."""
-    needle = f'name = "{binary}"'
-    for manifest in ROOT.rglob("Cargo.toml"):
-        if {"target", "mkosi.builddir", "node_modules"} & set(manifest.parts):
+#: Cargo name -> the directory of the manifest that declares it, built once.
+_MANIFESTS: dict[str, pathlib.Path] | None = None
+
+#: Directories a source walk must not descend into. Pruned rather than filtered
+#: after the fact: `rglob` walks a `target/` in full and only then discards what
+#: it found there, which is where this check spent most of its 29 seconds.
+SKIP_DIRS = {"target", "mkosi.builddir", "node_modules", ".git", ".svelte-kit", "build"}
+
+
+def manifests() -> dict[str, pathlib.Path]:
+    """Every crate in the tree by the name it publishes, read once.
+
+    This used to be a full-tree walk PER BINARY - one `rglob("Cargo.toml")` for
+    each unit's ExecStart, each of them descending into every build directory in
+    the repo. Twenty-odd walks of a tree whose build output dwarfs its source.
+    """
+    global _MANIFESTS
+    if _MANIFESTS is not None:
+        return _MANIFESTS
+    found: dict[str, pathlib.Path] = {}
+    for base, dirs, files in os.walk(ROOT):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        if "Cargo.toml" not in files:
             continue
+        path = pathlib.Path(base) / "Cargo.toml"
         try:
-            if needle in manifest.read_text(encoding="utf-8", errors="replace"):
-                return manifest.parent
+            text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-    return None
+        for m in re.finditer(r'^name\s*=\s*"([^"]+)"', text, re.M):
+            found.setdefault(m.group(1), path.parent)
+    _MANIFESTS = found
+    return found
+
+
+def source_for(binary: str) -> pathlib.Path | None:
+    """The crate that builds `binary`, by its Cargo name."""
+    return manifests().get(binary)
 
 
 def bus_use(crate: pathlib.Path) -> set[str]:
@@ -84,12 +111,18 @@ def bus_use(crate: pathlib.Path) -> set[str]:
     src = crate / "src"
     if not src.is_dir():
         return needed
-    for path in src.rglob("*.rs"):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if any(m in text for m in PRODUCES):
-            needed.add("ARLEN_PRODUCER_SOCKET")
-        if any(m in text for m in CONSUMES):
-            needed.add("ARLEN_CONSUMER_SOCKET")
+    for base, dirs, files in os.walk(src):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for name in files:
+            if not name.endswith(".rs"):
+                continue
+            text = (pathlib.Path(base) / name).read_text(
+                encoding="utf-8", errors="replace"
+            )
+            if any(m in text for m in PRODUCES):
+                needed.add("ARLEN_PRODUCER_SOCKET")
+            if any(m in text for m in CONSUMES):
+                needed.add("ARLEN_CONSUMER_SOCKET")
     return needed
 
 
