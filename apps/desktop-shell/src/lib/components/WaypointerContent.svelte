@@ -803,7 +803,9 @@
         a.name.toLowerCase().includes("rechner")
       );
       if (calc) {
-        launchAppCmd(calc.exec);
+        // Also with its id: this is an entry from the index like any other, and
+        // a launch without the id can never be raised instead.
+        launchAppCmd(calc.exec, calc.app_id);
       }
       close();
     } else {
@@ -817,7 +819,10 @@
     // event listeners, and the record call is fire-and-forget so it
     // doesn't block the actual launch below.
     recordAppLaunch(app.exec);
-    launchAppCmd(app.exec);
+    // With the id, not just the exec: it is what tells the shell this is an app
+    // it already has a window for, and a launch without it always starts a
+    // second process (`app-instance-model.md`).
+    launchAppCmd(app.exec, app.app_id);
     close();
   }
 
