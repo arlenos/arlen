@@ -1,0 +1,57 @@
+#!/bin/sh
+# Phase 4q of the Debian-native build (CHROOT): the app store (arlen-store, a
+# Tauri 2 app), the same two-step as its neighbours - the SvelteKit frontend,
+# then the Tauri Rust backend.
+#
+# WHY IT WAS ABSENT, and it is the odd one of the set: the store's DATA was
+# already on the image and only the window was missing. `08k-store-backend`
+# ships the daemon that serves `org.arlen.Store1`, `09b-appstream` the catalogue,
+# `09c-odrs` the reviews and `09d-flathub` the remote - four steps' worth of
+# groceries and nothing to eat them with. This app is a thin proxy over that
+# socket, so with it absent every one of those four shipped for nobody.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-store"  # own dir; separate workspace
+export CXXFLAGS="-include cstdint"
+export LIBGL_ALWAYS_SOFTWARE=1
+export npm_config_cache="$cache/npm"
+mkdir -p "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen/apps/store"
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+
+echo ">> tauri build --no-bundle (production) arlen-store"
+./node_modules/.bin/tauri build --no-bundle
+
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-store' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! arlen-store not found after build" >&2; exit 1; }
+
+# The directory name IS the app id: rule 3 of `path_to_app_id` reads it off the
+# path, and `installd`'s INSTALL_CALLERS admits `dev.arlen.store` for an install
+# request. Staged under any other name the store browses fine and every install
+# is refused, which looks like a policy decision rather than a packaging one.
+install -Dm755 "$out" \
+        "$DESTDIR/usr/lib/arlen/apps/dev.arlen.store/bin/arlen-store"
+mkdir -p "$DESTDIR/usr/bin"
+ln -sf "../lib/arlen/apps/dev.arlen.store/bin/arlen-store" \
+        "$DESTDIR/usr/bin/arlen-store"
+install -Dm644 "$SRCDIR/arlen/apps/store/dist/arlen-store.desktop" \
+        "$DESTDIR/usr/share/applications/arlen-store.desktop"
+install -Dm644 "$SRCDIR/arlen/apps/store/src-tauri/icons/128x128.png" \
+        "$DESTDIR/usr/share/icons/hicolor/128x128/apps/arlen-store.png"
+echo ">> staged arlen-store into the image"

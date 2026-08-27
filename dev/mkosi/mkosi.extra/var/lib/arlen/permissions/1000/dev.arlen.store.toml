@@ -1,0 +1,44 @@
+# The app store's profile, under the uid it applies to, like every other app here.
+#
+# THE SMALLEST PROFILE IN THE SET, because the window is a proxy. Every command in
+# `apps/store/src-tauri` forwards one request to `org.arlen.Store1` and flattens
+# the reply; the catalogue, the reviews, the remote and the icons are the
+# store-backend's to read, and it is a separate principal with its own reach. So
+# this app needs no filesystem grant beyond the per-app state dirs the launcher
+# gives every app by name, and it asks for none.
+[info]
+app_id = "dev.arlen.store"
+tier = "first-party"
+
+# NO [filesystem] SECTION. Read out of the backend rather than assumed: the only
+# paths in this crate are the ones inside the requests it forwards. Its one
+# outward act is opening a support or homepage link, and that goes through
+# `tauri_plugin_arlen_portal::api::open_external` - the OpenURI portal, which is
+# mediated where the portal is, not by a grant here.
+
+# NO [graph] SECTION. The store asks the knowledge daemon nothing.
+
+# NO [network] SECTION, and this is the one worth stating rather than leaving
+# silent. A store is the app a reader would expect to reach the internet, and
+# this one does not: the fetching - AppStream, ODRS reviews, the Flathub remote -
+# belongs to `arlen-store-backend`, which the image installs separately. A grant
+# here would hand egress to the window instead of the fetcher, which is the wrong
+# side of that split and would survive long after somebody forgot why it was
+# added.
+
+# Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default).
+#
+# NOTHING IS PUBLISHED: there is no emitter in this app.
+#
+# The subscribe list is `sdk/tauri-plugin-shell`'s, not this app's: it subscribes
+# these three from inside every Tauri process, and declaring any subscribe list
+# drops the system-tier exemption - so leaving them out switches the topbar menu,
+# the toolbar and the shortcuts off silently.
+[event_bus]
+publish = []
+subscribe = [
+    "app.menu.*",
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]

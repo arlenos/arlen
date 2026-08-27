@@ -1,0 +1,30 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Apps
+Name[de]=Apps
+Comment=Find, install and remove applications
+Comment[de]=Anwendungen finden, installieren und entfernen
+Exec=arlen-store
+Icon=arlen-store
+Terminal=false
+# `Settings` is the single MAIN category, with `PackageManager` as the
+# additional one under it. `System;PackageManager;` was the first spelling and
+# `desktop-file-validate` hinted that PackageManager wants Settings alongside;
+# adding both then failed the other way, as two main categories, which puts the
+# app in the menu twice. One main plus its additional is the shape the spec
+# allows, and it is what the Settings app's own entry does.
+Categories=Settings;PackageManager;
+Keywords=apps;store;install;software;packages;flatpak;
+Keywords[de]=apps;store;installieren;software;pakete;flatpak;
+StartupNotify=true
+
+# No argument placeholder: the window takes none. An app page is reached by
+# searching inside it, not by handing the launcher a file or a URI.
+
+# The identity the permission system keys on. Rule 3 reads the app id off the
+# install directory, so `/usr/lib/arlen/apps/dev.arlen.store/bin/arlen-store`
+# resolves to `dev.arlen.store` - which is the id `installd`'s INSTALL_CALLERS
+# admits for an install request. Those two have to say the same thing or the
+# store may browse and never install.
+X-Arlen-AppId=dev.arlen.store
