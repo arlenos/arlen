@@ -40,6 +40,7 @@ Both sides are compared in snake_case, since `#[serde(rename_all = "camelCase")]
 is the house convention and both spellings mean the same field.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -267,6 +268,28 @@ def fixed_payload_wrappers(text: str) -> dict[str, set[str]]:
 #
 # The value is the argument index holding the command name. One entry today; the
 # shape is here so the next helper is one line rather than a rediscovery.
+#: Directories a frontend walk must not descend into. Pruned rather than
+#: filtered after the fact: `rglob("*")` walks every `node_modules` and
+#: `.svelte-kit` in full and the caller then discards what it found, which is
+#: where this check spent most of its fourteen seconds.
+FRONTEND_SKIP = {"node_modules", ".svelte-kit", "target", "build", "mkosi.builddir", ".git"}
+
+
+def frontend_files(base: Path):
+    """Every `.ts` and `.svelte` under `base`, without walking the build output."""
+    if not base.is_dir():
+        return
+    # Sorted at every level, so the report's order does not depend on the order
+    # the filesystem hands back directory entries. `rglob` did not promise that
+    # either, but it happened to be stable here, and a findings list that
+    # reshuffles between runs is one nobody can diff.
+    for cur, dirs, files in os.walk(base):
+        dirs[:] = sorted(d for d in dirs if d not in FRONTEND_SKIP)
+        for name in sorted(files):
+            if name.endswith((".ts", ".svelte")):
+                yield Path(cur) / name
+
+
 IMPORTED_INVOKERS: dict[str, int] = {
     "shellAction": 0,
 }
@@ -275,11 +298,7 @@ IMPORTED_INVOKERS: dict[str, int] = {
 def invoke_calls(root: Path):
     """Yield (app, file, line, command, argument keys or None) for every call."""
     for base in (root / "apps",):
-        for path in base.rglob("*"):
-            if path.suffix not in (".ts", ".svelte") or not path.is_file():
-                continue
-            if "node_modules" in path.parts or ".svelte-kit" in path.parts:
-                continue
+        for path in frontend_files(base):
             text = path.read_text(encoding="utf-8", errors="replace")
             fixed = fixed_payload_wrappers(text)
             names = [
@@ -336,11 +355,7 @@ def wrapped_calls(root: Path, known: set[str]) -> list[str]:
     comparison.
     """
     found: list[str] = []
-    for path in (root / "apps").rglob("*"):
-        if path.suffix not in (".ts", ".svelte") or not path.is_file():
-            continue
-        if "node_modules" in path.parts or ".svelte-kit" in path.parts:
-            continue
+    for path in frontend_files(root / "apps"):
         text = path.read_text(encoding="utf-8", errors="replace")
         # A helper whose own call to invoke passes a variable, not a literal.
         # Found by walking BACK from each such invoke to the nearest enclosing
@@ -622,12 +637,23 @@ def crate_dir(path: Path) -> Path | None:
     return None
 
 
+def walk_files(base: Path, names_or_suffixes: tuple[str, ...]):
+    """Files under `base` matching a name or suffix, without walking build output.
+
+    `BUILD_DIRS` used to be applied AFTER `rglob` had already walked into every
+    `target/`; pruning at the directory is the same filter done before the cost.
+    """
+    for cur, dirs, files in os.walk(base):
+        dirs[:] = sorted(d for d in dirs if d not in BUILD_DIRS and d not in FRONTEND_SKIP)
+        for name in sorted(files):
+            if name in names_or_suffixes or name.endswith(names_or_suffixes):
+                yield Path(cur) / name
+
+
 def crate_dirs_by_name(root: Path) -> dict[str, Path]:
     """Package name (in its Rust `use` spelling) to the crate's directory."""
     out: dict[str, Path] = {}
-    for manifest in root.rglob("Cargo.toml"):
-        if BUILD_DIRS & set(manifest.parts):
-            continue
+    for manifest in walk_files(root, ("Cargo.toml",)):
         text = manifest.read_text(encoding="utf-8", errors="replace")
         m = re.search(r'^\s*name\s*=\s*"([^"]+)"', text, re.M)
         if m:
@@ -704,9 +730,7 @@ def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str], dict[
     # Every definition, kept with the crate that holds it, so an ambiguous name
     # can still be resolved when the returning app says which crate it means.
     by_crate: dict[str, dict[Path, set[str]]] = {}
-    for path in root.rglob("*.rs"):
-        if BUILD_DIRS & set(path.parts):
-            continue
+    for path in walk_files(root, (".rs",)):
         parts = path.relative_to(root).parts
         app = parts[1] if len(parts) > 1 and parts[0] == "apps" else None
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -801,11 +825,7 @@ def ts_interfaces(root: Path) -> dict[str, dict[str, set[str]]]:
     """Map app to interface name to its declared field names, ambiguity dropped."""
     out: dict[str, dict[str, set[str]]] = {}
     twice: dict[str, set[str]] = {}
-    for path in (root / "apps").rglob("*"):
-        if path.suffix not in (".ts", ".svelte") or not path.is_file():
-            continue
-        if "node_modules" in path.parts or ".svelte-kit" in path.parts:
-            continue
+    for path in frontend_files(root / "apps"):
         app = path.relative_to(root).parts[1]
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(r"interface\s+(\w+)\s*\{", text):
@@ -823,11 +843,7 @@ def ts_interfaces(root: Path) -> dict[str, dict[str, set[str]]]:
 
 def annotated_calls(root: Path):
     """Yield (app, file, line, type name, command) for `invoke<T>("cmd")` calls."""
-    for path in (root / "apps").rglob("*"):
-        if path.suffix not in (".ts", ".svelte") or not path.is_file():
-            continue
-        if "node_modules" in path.parts or ".svelte-kit" in path.parts:
-            continue
+    for path in frontend_files(root / "apps"):
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(
             r'invoke\s*<\s*(\w+)(?:\[\])?\s*>\s*\(\s*"([a-z_0-9]+)"', text

@@ -32,6 +32,7 @@ changed that day - not whether it runs.
 
 from collections.abc import Callable
 import pathlib
+import os
 import re
 import sys
 
@@ -73,6 +74,21 @@ WRAPPER = re.compile(
     re.S,
 )
 WRAPPED = re.compile(r'\binvoke\s*(?:<[^>]*>)?\s*\(\s*[A-Za-z_$]')
+
+
+def tree_files(suffixes: tuple[str, ...]):
+    """Files under the repo with one of `suffixes`, without walking build output.
+
+    `SKIP_PARTS` used to be applied AFTER `rglob("*")` had already walked into
+    every `target/` and `node_modules/`; pruning at the directory is the same
+    filter done before the cost, and sorting makes the order independent of what
+    the filesystem hands back.
+    """
+    for cur, dirs, files in os.walk(ROOT):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_PARTS)
+        for name in sorted(files):
+            if name.endswith(suffixes):
+                yield pathlib.Path(cur) / name
 
 
 def wrapped_calls(body: str) -> set[str]:
@@ -138,9 +154,7 @@ def scan(
     find, and a caller that can only be a regex would have left that one out.
     """
     out: dict[str, set[str]] = {}
-    for path in ROOT.rglob("*"):
-        if path.suffix not in suffixes or SKIP_PARTS & set(path.parts):
-            continue
+    for path in tree_files(tuple(suffixes)):
         app = app_of(path)
         if app is None:
             continue
@@ -248,13 +262,8 @@ def main() -> int:
     # cannot trace to a literal at all: built at runtime, or passed down through
     # something other than the one-hop helper shape.
     unresolved = []
-    for f in ROOT.rglob("*"):
-        if (
-            f.suffix not in (".ts", ".svelte", ".js")
-            or SKIP_PARTS & set(f.parts)
-            or app_of(f) is None
-            or not f.is_file()
-        ):
+    for f in tree_files((".ts", ".svelte", ".js")):
+        if app_of(f) is None:
             continue
         body = f.read_text(encoding="utf-8", errors="replace")
         if WRAPPED.search(body) and not wrapped_calls(body):
