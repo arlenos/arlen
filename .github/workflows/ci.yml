@@ -394,6 +394,8 @@ jobs:
           node dev/scripts/test-check-dev-ports.mjs
           python3 dev/scripts/check-plugin-grants.py
           node dev/scripts/test-check-plugin-grants.mjs
+          python3 dev/scripts/check-plugin-command-grants.py
+          node dev/scripts/test-check-plugin-command-grants.mjs
           python3 dev/scripts/check-daemon-stop.py
           node dev/scripts/test-check-daemon-stop.mjs
           python3 dev/scripts/check-consent-input-ordering.py

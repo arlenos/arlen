@@ -18,6 +18,7 @@
     "core:window:allow-close",
     "arlen-shell:allow-theme-get",
     "arlen-shell:allow-locale-get",
-    "arlen-shell:allow-print-file"
+    "arlen-shell:allow-print-file",
+    "arlen-shell:allow-menu-register"
   ]
 }
