@@ -58,6 +58,19 @@ fn resolve_consumer_socket() -> String {
 /// registration readable.
 const SUBSCRIPTIONS: &str = "focus.,window.fullscreen_";
 
+/// The registration the bus reads: consumer id, subscription patterns, uid
+/// filter, one per line.
+///
+/// A named function rather than a `format!` at the call site so the shape can be
+/// tested. The bus reads exactly three lines and BLOCKS on the third
+/// (`event-bus/src/socket.rs:694-696`), so a copy that sends two never finishes
+/// registering and receives nothing - which is what happened to the knowledge
+/// writer when the uid line was added in Phase 3.1 and one consumer was missed.
+/// That went unnoticed until an integration test drove the assembled pipeline.
+fn registration_line(uid: u32) -> String {
+    format!("{CONSUMER_ID}\n{SUBSCRIPTIONS}\n{uid}\n")
+}
+
 const MAX_MESSAGE_BYTES: u32 = 1024 * 1024;
 
 /// Starts the Event Bus consumer on the current tokio runtime.
@@ -89,7 +102,7 @@ async fn run_once(
 
     // 3-line registration (Phase 3.1: added UID line).
     let uid = unsafe { libc::getuid() };
-    let registration = format!("{CONSUMER_ID}\n{SUBSCRIPTIONS}\n{uid}\n");
+    let registration = registration_line(uid);
     stream
         .write_all(registration.as_bytes())
         .await
@@ -163,5 +176,21 @@ async fn dispatch(event: proto::Event, manager: &Arc<NotificationManager>) {
             // catch compositor-side misconfig quickly.
             tracing::debug!("event bus: ignoring unknown type '{other}'");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_registration_is_the_three_lines_the_bus_reads() {
+        let r = registration_line(1000);
+        assert_eq!(
+            r.lines().collect::<Vec<_>>(),
+            ["notification-daemon", "focus.,window.fullscreen_", "1000"],
+            "the bus blocks on a missing third line and the consumer then gets nothing"
+        );
+        assert!(r.ends_with('\n'), "the last line needs its terminator too");
     }
 }
