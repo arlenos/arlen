@@ -50,9 +50,10 @@ pub struct NetworkPermissions {
 }
 `;
 
-function tree({ profile, schema = SCHEMA } = {}) {
+function tree({ profile, schema = SCHEMA, catalogue = null, named = null } = {}) {
   const root = mkdtempSync(join(tmpdir(), "profilekeys-"));
   mkdirSync(join(root, "sdk/permissions/src"), { recursive: true });
+  mkdirSync(join(root, "sdk/permissions/profiles"), { recursive: true });
   mkdirSync(join(root, "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"), { recursive: true });
   if (schema !== null) writeFileSync(join(root, "sdk/permissions/src/lib.rs"), schema);
   if (profile !== null) {
@@ -60,6 +61,11 @@ function tree({ profile, schema = SCHEMA } = {}) {
       join(root, "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000/dev.arlen.thing.toml"),
       profile,
     );
+  }
+  // The authored corpus, checked since 27 August: it is the larger body and the
+  // one edited in bulk, and it was outside this gate entirely.
+  if (catalogue !== null) {
+    writeFileSync(join(root, `sdk/permissions/profiles/${named ?? "some-app"}.toml`), catalogue);
   }
   return root;
 }
@@ -129,6 +135,32 @@ read_only = [
   const root = tree({ profile: null });
   const rc = run(root);
   rc === 2 ? ok("finding no profiles at all is not a pass") : bad("finding no profiles at all is not a pass", `expected 2, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // The same defect one directory over: a key the schema does not have parses as
+  // an empty section, so a grant somebody wrote is silently not there.
+  const root = tree({ profile: GOOD, catalogue: '[info]\napp_id = "some-app"\ntier = "third-party"\n\n[filesystem]\nread = ["/home"]\n' });
+  const rc = run(root);
+  rc === 1
+    ? ok("an unknown key in the authored corpus is caught")
+    : bad("an unknown key in the authored corpus is caught", `expected 1, got ${rc}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+{
+  // The file is found by NAME and the id inside is what a peer is compared
+  // against, so a disagreement means one of the two reaches nobody.
+  const root = tree({
+    profile: GOOD,
+    named: "some-app",
+    catalogue: '[info]\napp_id = "other-app"\ntier = "third-party"\n',
+  });
+  const rc = run(root);
+  rc === 1
+    ? ok("a file whose name and app_id disagree is caught")
+    : bad("a file whose name and app_id disagree is caught", `expected 1, got ${rc}`);
   rmSync(root, { recursive: true, force: true });
 }
 
