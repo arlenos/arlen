@@ -154,6 +154,14 @@ check(
   { known: "arlen-ghost" },
 );
 
+// A tree with no Rust in it is a walk that reached nothing, and this used to
+// answer "OK: 0 first-party program(s) spawned by name" over it.
+check(
+  "a tree with no Rust source refuses rather than passing",
+  { "README.md": "no rust here\n" },
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);

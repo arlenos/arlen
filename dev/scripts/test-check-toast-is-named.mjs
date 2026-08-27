@@ -70,8 +70,22 @@ check("placeholders are not prose", r.status === 0, r.stdout);
 r = run({
   "dev/mkosi/mkosi.builddir/x/cargo-home/git/checkouts/arlen-1/2/src/a.rs":
     `fn f() { emit_toast(&app, kind, "Night Light is now on".into()); }`,
+  // An ordinary file beside it, so this case tests that the cached copy is
+  // ignored rather than that a tree of nothing but caches reads as empty - the
+  // guard below now refuses that, and a case must fail for its own reason.
+  "apps/x/src/a.rs": `fn f() { emit_toast(&app, kind, message); }`,
 });
 check("a cached checkout of an old tree is skipped", r.status === 0, r.stdout);
+
+// A tree with no Rust in it is a walk that reached nothing, and this used to
+// answer "0 toast call(s)" and exit 0 - the all-clear a renamed directory would
+// have earned.
+r = run({});
+check(
+  "a tree with no Rust source refuses rather than passing",
+  r.status === 2 && `${r.stdout}${r.stderr}`.includes("NOTHING WAS READ"),
+  `exit ${r.status}: ${r.stdout}${r.stderr}`,
+);
 
 if (failed) { console.log(`\n    ${failed} case(s) failed`); process.exit(1); }
 console.log("check-toast-is-named: control cases pass.");

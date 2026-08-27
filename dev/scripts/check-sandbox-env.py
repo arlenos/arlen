@@ -76,10 +76,15 @@ def test_module_spans(text: str) -> list:
 
 def main() -> int:
     problems = []
+    scanned = 0
     for base, dirs, files in os.walk(ROOT):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-        # A test that runs a worker binary is not the shipped path.
+        # A test that runs a worker binary is not the shipped path. Counted
+        # before the skip: a tree whose only Rust is under `tests/` HAS Rust, and
+        # the guard below is about a walk that reached none at all rather than
+        # about one that found nothing to judge.
         if os.path.basename(base) == "tests":
+            scanned += sum(1 for n in files if n.endswith(".rs"))
             continue
         for name in files:
             if not name.endswith(".rs"):
@@ -90,6 +95,7 @@ def main() -> int:
                     text = fh.read()
             except OSError:
                 continue
+            scanned += 1
             if "Command::new" not in text:
                 continue
             spans = test_module_spans(text)
@@ -115,7 +121,18 @@ def main() -> int:
         print("A worker parses input somebody else chose and is allowed to write")
         print("stdout. Inheriting our environment lets it return a secret as text.")
         return 1
-    print("check-sandbox-env: ok")
+    # "ok" over a tree with no Rust in it is the sentence this check must never
+    # print. Measured 27 August against an empty directory, where it said exactly
+    # that and exited 0.
+    if scanned == 0:
+        print(
+            "NOTHING WAS READ: no Rust source under this tree, so no sandbox "
+            "spawn was examined. The layout moved or this check is pointed at the "
+            "wrong root.",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"check-sandbox-env: ok ({scanned} Rust file(s) read)")
     return 0
 
 

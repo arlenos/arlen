@@ -76,9 +76,11 @@ def prose_in(body: str):
 def main() -> int:
     findings = []
     checked = 0
+    scanned = 0
     for path in sorted(ROOT.rglob("*.rs")):
         if any(part in SKIP_DIRS for part in path.parts):
             continue
+        scanned += 1
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -101,6 +103,17 @@ def main() -> int:
             "and add the sentence to `messages.ts` in every locale."
         )
         return 1
+    # No Rust at all is a walk that reached nothing, not a tree without toasts.
+    # Measured 27 August against an empty directory: it printed "0 toast call(s)"
+    # and exited 0, which is what a renamed directory would also produce.
+    if scanned == 0:
+        print(
+            "NOTHING WAS READ: no Rust source under this tree, so no toast call "
+            "was examined. The layout moved or this check is pointed at the wrong "
+            "root.",
+            file=sys.stderr,
+        )
+        return 2
     print(f"check-toast-is-named: {checked} toast call(s), none of them written here.")
     return 0
 
