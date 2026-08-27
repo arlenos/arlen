@@ -24,8 +24,14 @@
 
   async function loadCatalogue() {
     try {
-      const list = parse<ModelEntry[]>(await invoke<string>("ai_models_list"), []);
-      models.set(list);
+      // `null` means the daemon was not reached, which is not the same as a
+      // daemon that answered with no models. Neither draws a picker - there is
+      // nothing to pick either way - but only the second is a measurement, and
+      // the command no longer answers `"[]"` for the first. The outage itself is
+      // spoken for by `CapabilityBar`, which reads the same daemon and prints
+      // `h.capability.unreachable` with a retry one line below this bar.
+      const json = await invoke<string | null>("ai_models_list");
+      models.set(json === null ? [] : parse<ModelEntry[]>(json, []));
     } catch {
       models.set([]);
     }
