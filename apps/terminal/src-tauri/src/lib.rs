@@ -787,8 +787,10 @@ fn terminal_inject_block(command: String, output: String) -> Result<(), String> 
         .arg(&path)
         .spawn()
         .map_err(|e| {
-            // The harness is not staged on the image, so this is the ordinary
-            // answer there and the errno would send somebody looking for a file.
+            // The harness ships on the image as of 27 August, so this is now the
+            // answer for a machine that does not have it rather than for ours.
+            // Kept because it is still the right sentence, and because the errno
+            // would send somebody looking for a file that is not the point.
             if e.kind() == std::io::ErrorKind::NotFound {
                 "the assistant is not installed on this machine, so this cannot be sent to it"
                     .to_string()

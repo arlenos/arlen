@@ -479,10 +479,12 @@ pub fn open_ai_settings() -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| {
-            // Settings is not staged on the image yet, so "no such file" is the
-            // ordinary answer here rather than a fault. Said as what cannot
-            // happen: "launch settings: No such file or directory (os error 2)"
-            // reads as the launch failing for some reason worth retrying.
+            // Settings ships on the image as of 27 August, so "no such file" is
+            // now the unusual answer rather than the ordinary one - it means a
+            // machine without it, not the machine we build. The sentence stays:
+            // it is still what a person needs to read, and "launch settings: No
+            // such file or directory (os error 2)" would read as a launch worth
+            // retrying.
             if e.kind() == std::io::ErrorKind::NotFound {
                 "Settings is not installed on this machine, so it cannot be opened from here"
                     .to_string()
