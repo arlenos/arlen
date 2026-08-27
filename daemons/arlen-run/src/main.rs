@@ -14,10 +14,15 @@
 //! The launcher spawns the app under bwrap with the namespace + mount
 //! confinement (the pruned mount view, `no_new_privs`, `--clearenv`), applies
 //! Landlock over the writable set, places the launch in a per-command cgroup
-//! (reaping), and installs the egress seam. The app seccomp filter and the real
-//! egress enforcer are the remaining confinement layers. A profile that asks for
-//! a filtered host set refuses to launch until the real egress filter exists,
-//! rather than running with unfiltered network.
+//! (reaping), and installs the egress filter. A profile that names hosts runs in
+//! a route-absent netns whose only reachable peer is the forwarding proxy the
+//! enforcer binds, so the allowlist is the app's whole egress.
+//!
+//! These three lines used to say the filtered launch "refuses to launch until the
+//! real egress filter exists". It exists: `ProxyEgressEnforcer` is wired below and
+//! `spawn_filtered_and_wait` is the netns half. Corrected rather than left, since
+//! a reader deciding whether to trust the filter would have read the old sentence
+//! and concluded there was none.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -393,13 +398,16 @@ fn main() -> ExitCode {
         }
     }
 
-    // A profile that declared specific hosts has its egress installed through
-    // the enforcer seam. The stand-in refuses a non-empty host set until the
-    // real netns proxy is wired (fail-closed: never run a host-restricted app
-    // with unfiltered network); the real `EgressEnforcer` slots in here. The
-    // guard is held for the whole launch and tears the restriction down on drop.
-    // `None` (no network) and `Unrestricted` (no filter by design) never reach
-    // the enforcer.
+    // A profile that declared specific hosts has its egress installed through the
+    // enforcer seam: `ProxyEgressEnforcer` binds the forwarding proxy and the
+    // guard is held for the whole launch, tearing the restriction down on drop.
+    // `enforced_hosts` is what decides, over an exhaustive match, so a future
+    // policy variant cannot fall silently into the unfiltered branch.
+    //
+    // An EMPTY host list still takes this path and still gets a netns: the
+    // enforcer answers a noop guard (no proxy to bind), and `spawn_filtered_and_wait`
+    // below puts the app in the route-absent namespace anyway, so "an allowlist
+    // naming nothing" comes out as no egress rather than as unfiltered egress.
     use egress::EgressEnforcer;
     // A FilteredHosts profile runs in a route-absent netns behind the forwarding
     // proxy the enforcer binds. Capture the flag before `inputs.network` moves
@@ -409,8 +417,7 @@ fn main() -> ExitCode {
         &inputs.network,
         arlen_confiner::NetworkPolicy::FilteredHosts(_)
     );
-    let egress_guard = if let arlen_confiner::NetworkPolicy::FilteredHosts(hosts) = &inputs.network
-    {
+    let egress_guard = if let Some(hosts) = egress::enforced_hosts(&inputs.network) {
         match egress::ProxyEgressEnforcer.install(hosts) {
             Ok(guard) => Some(guard),
             Err(e) => {
