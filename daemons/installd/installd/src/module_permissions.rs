@@ -11,11 +11,18 @@
 //!
 //! The translation is deliberate. The manifest is the *request*
 //! (what the module asks for); the permission profile is the
-//! *grant* (what the user actually allowed). For the first ship the
-//! installer grants whatever the manifest declares, because the
-//! `.lunpkg` consent UI is not yet wired up. When that lands the
-//! installer can edit the profile before writing it (e.g. strip a
-//! `network.allow` entry the user disabled in the consent screen).
+//! *grant* (what the user actually allowed). Today the installer
+//! grants whatever the manifest declares, because the `.lunpkg`
+//! consent UI is not yet wired up. When that lands the installer can
+//! edit the profile before writing it (e.g. strip a `network.allow`
+//! entry the user disabled in the consent screen).
+//!
+//! Careful with the sentence above about matching what the user
+//! agreed to: on an UPGRADE nobody agreed to anything. `consent.rs`
+//! gates a package whose APP permissions widened, and this write runs
+//! after that gate on a path it already approved, so a module inside
+//! the package can arrive with more than it had and be written here
+//! unremarked. The note in `consent.rs` says what closing that needs.
 
 use std::fs;
 use std::path::PathBuf;

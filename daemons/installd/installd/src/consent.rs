@@ -10,6 +10,24 @@
 //! to the recipe `Capabilities` that `diff_capabilities` compares, the diff on
 //! the upgrade path, and the consent-required signal. The UI that renders the
 //! prompt is the unified consent dialog (deferred).
+//!
+//! WHAT THE GATE DOES NOT SEE, and it is a whole principal rather than a corner:
+//! it compares `manifest.permissions`, which is the APP's request. A `.lunpkg`
+//! may also carry MODULES, each with its own `ModuleCapabilities` (network,
+//! storage, clipboard, notifications, graph read/write) and its own permission
+//! profile, which `module_permissions::write_profile` writes on every install
+//! INCLUDING the upgrade path - `run_upgrade` ends in `run_install_package`. So
+//! an update whose app permissions are unchanged passes silently while a bundled
+//! module's capabilities widen, and modulesd then loads the module under the
+//! wider grant. Nothing diffed it and nobody was asked.
+//!
+//! Closing it needs three decisions this file should not make alone: the baseline
+//! for a module is its profile on disk rather than the app lock, the comparison
+//! is between two `PermissionProfile`s rather than two `Capabilities`, and a
+//! widening module in an otherwise-silent update has to either refuse the whole
+//! package or single itself out. `preview_upgrade` already extracts and verifies
+//! the package, so the manifests are in hand at the right moment; it is the
+//! answer that is missing, not the access.
 
 use std::collections::BTreeMap;
 
