@@ -58,19 +58,25 @@ pub struct ShellConfig {
 /// refuses an app it cannot scope - a deliberate, human-gated tightening, so the
 /// default is off and the flip is an explicit opt-in.
 ///
-/// **The flip needs one thing the image does not ship yet.** `plan.rs` names the
-/// launcher as the bare `arlen-run`, resolved on PATH, and the image installs no
-/// such binary: it is in neither `/usr/bin` nor `/usr/lib/arlen/libexec`, and no
-/// build script under `dev/mkosi/mkosi.build.d/` produces it (checked 11 Aug
-/// against the built image). So flipping this today makes every launch fail to
-/// spawn rather than launch confined. Ship the launcher first; the flip is then
-/// what it says it is.
+/// **The two things the flip used to be waiting on both landed.** This said until
+/// 27 August that the image shipped no `arlen-run` at all - true when it was
+/// written, on 11 August, and `08r-arlen-run.sh.chroot` landed that same day. The
+/// launcher installs at `/usr/lib/arlen/libexec/arlen-run` with a `/usr/bin`
+/// symlink, which is what `plan.rs` resolves on PATH. And the launcher refuses an
+/// app it cannot scope, so every app needs a profile: `check-app-profiles` reports
+/// 16 installed, 16 with one, nothing pending.
 ///
-/// The same gap keeps the stamped-identity tier dormant, which is the less
-/// obvious half: `arlen-run` is what stamps an app's identity before it runs, so
-/// with no launcher in the picture every peer resolves through `/proc/{pid}/exe`,
-/// and a daemon that hardens itself loses the ability to identify its callers.
-/// That is why this flag has readers outside the launcher.
+/// So what is left is not a missing artifact. It is the decision and a real boot:
+/// nobody has yet watched fifteen apps start through the confined path on the
+/// image, and a launcher that refuses is indistinguishable from an app that is
+/// broken until someone looks. The default stays off for that reason rather than
+/// for the old one.
+///
+/// The other half of the same flag, and the less obvious one: `arlen-run` is what
+/// stamps an app's identity before it runs. While launches go direct, every peer
+/// resolves through `/proc/{pid}/exe` instead, and a daemon that hardens itself
+/// loses the ability to identify its callers. That is why this flag has readers
+/// outside the launcher.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LauncherConfig {
     /// Route launches through `arlen-run` (confined). Default `false`.
