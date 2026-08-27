@@ -22,6 +22,7 @@ const CHECK = join(ROOT, "dev/scripts/check-unit-identity.py");
 const UNITS = "dev/mkosi/mkosi.extra/usr/lib/systemd/system";
 const USER_UNITS = "dev/mkosi/mkosi.extra/usr/lib/systemd/user";
 const RESOLVER = "sdk/permissions/src/unit_identity.rs";
+const PATH_RESOLVER = "sdk/permissions/src/identity.rs";
 
 let failures = 0;
 function check(name, ok) {
@@ -40,6 +41,10 @@ function withTree(mutate) {
   cpSync(join(ROOT, UNITS), join(dir, UNITS), { recursive: true });
   cpSync(join(ROOT, USER_UNITS), join(dir, USER_UNITS), { recursive: true });
   cpSync(join(ROOT, RESOLVER), join(dir, RESOLVER));
+  // The PATH resolver too, since the check now also asks whether each unit's
+  // binary is one `path_to_app_id` can name. Without it that half skips, and the
+  // case planting an unnameable binary would pass on the OTHER check's message.
+  cpSync(join(ROOT, PATH_RESOLVER), join(dir, PATH_RESOLVER));
   cpSync(CHECK, join(dir, "dev/scripts/check-unit-identity.py"));
   // The verify build phase, because the check now reads it: a table entry for a
   // unit that only exists on verify images is excused only if that phase really
@@ -201,6 +206,24 @@ const SYSTEM_ANCHOR = '("arlen-config-broker.service", "config-broker"),';
   });
   check("naming a unit listed as unnameable is refused", r.code === 1);
   check("and the message says the entry was left behind", r.out.includes("left behind"));
+}
+
+{
+  // A unit whose binary matches no identity rule. The table can still name it -
+  // the supervisor stamps the cgroup - so the checks above are happy; this is the
+  // OTHER route, the one a socket peer is identified by.
+  const r = withTree((dir) => {
+    const unit = join(dir, USER_UNITS, "arlen-clockd.service");
+    writeFileSync(
+      unit,
+      readFileSync(unit, "utf8").replace(
+        /^ExecStart=.*$/m,
+        "ExecStart=/usr/lib/arlen/libexec/nothing-names-this"
+      )
+    );
+  });
+  check("a unit whose binary no identity rule names is refused", r.code === 1);
+  check("and the message says it resolves as UnknownBinary", r.out.includes("UnknownBinary"));
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery drift is caught");
