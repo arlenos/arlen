@@ -14,32 +14,16 @@
 // which records the path; `cleanup` refuses anything it did not mint.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CHECK = join(HERE, "check-greetd-config.py");
 const REPO = join(HERE, "..", "..");
 
-/// Every directory this process created, and the only ones it may remove.
-const minted = new Set();
-
-function mint(prefix) {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  minted.add(dir);
-  return dir;
-}
-
-function cleanup(dir) {
-  if (!minted.has(dir)) {
-    console.log(`  REFUSED to remove ${dir}: not a directory this test created`);
-    process.exit(1);
-  }
-  minted.delete(dir);
-  rmSync(dir, { recursive: true, force: true });
-}
 
 function write(root, rel, contents) {
   const path = join(root, rel);
