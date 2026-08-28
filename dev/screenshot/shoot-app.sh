@@ -60,9 +60,37 @@ export SHOOT_APP_ARGS="${SHOOT_APP_ARGS:-}"
 # The binary is an argument here, so building it is the caller's job - but its age
 # is not their memory. On 6 August the compositor harness screenshotted a binary
 # six weeks old and reported a pass, so any harness that runs a prebuilt artifact
-# says how old it is. Visible beats silent; the reader can judge.
+# says how old it is.
+#
+# THE DATE ALONE IS NOT ENOUGH, measured again on 28 August: the Windows-panel
+# drive ran a settings binary from four days earlier and reported a banner missing
+# that had been fixed since, and the date was printed and read and still cost a
+# cycle. A date asks the reader to remember when they last built; "older than its
+# source" is the sentence they actually need.
+#
+# The crate is found by NAME rather than from a table: whichever `Cargo.toml`
+# declares this binary owns the sources compared against it, so a new app needs no
+# entry here. Not fatal - running an old binary on purpose is a real thing to do -
+# but it says so where it cannot be missed.
+#
+# It compares MTIMES, so a `git checkout`, a branch switch or a stash pop makes it
+# fire without anybody editing anything. That direction is the cheap one: a false
+# warning costs a rebuild, a missing one costs the cycle described above.
 if [ -e "$SHOOT_APP" ]; then
   echo "app binary: $SHOOT_APP (built $(date -r "$SHOOT_APP" '+%Y-%m-%d %H:%M'))" >&2
+  _repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  _bin="$(basename "$SHOOT_APP")"
+  _crate="$(grep -rl "^name = \"$_bin\"" "$_repo"/apps/*/src-tauri/Cargo.toml 2>/dev/null | head -1)"
+  if [ -n "$_crate" ]; then
+    _newer="$(find "$(dirname "$_crate")/src" "$(dirname "$(dirname "$_crate")")/src" \
+                -name '*.rs' -o -name '*.svelte' -o -name '*.ts' 2>/dev/null \
+              | while read -r f; do [ "$f" -nt "$SHOOT_APP" ] && echo "$f" && break; done)"
+    if [ -n "$_newer" ]; then
+      echo "!! that binary is OLDER than its source ($_newer changed since it was" >&2
+      echo "   built). Whatever this run reports is about the old code - rebuild" >&2
+      echo "   before believing a failure." >&2
+    fi
+  fi
 fi
 
 export SHOOT_PORT=4444
