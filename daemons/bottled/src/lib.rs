@@ -36,6 +36,7 @@ pub mod create;
 pub mod dosdevices;
 pub mod forget;
 pub mod health;
+pub mod install;
 pub mod launch;
 pub mod plumbing;
 pub mod protocol;
