@@ -39,6 +39,48 @@ pub struct NewBottle {
     pub plumbing: Plumbing,
 }
 
+/// The `bwrap` argument list that boots a fresh prefix.
+///
+/// A prefix has to be booted before it is a prefix at all - Wine writes the
+/// registry and the drive table on first run - and that boot is the one thing
+/// that happens before there is a bottle to describe it. So it borrows the
+/// launcher's assembly with a bottle that exists only for this call: the prefix as
+/// its own home, NO grants and NO network. A boot has nothing of the person's to
+/// read and nothing to fetch, and the first thing a new prefix should learn is
+/// that it cannot reach either.
+///
+/// `wineboot -u` rather than plain `wine`: it is the documented way to ask Wine to
+/// create or update a prefix and exit, instead of starting a program that happens
+/// to have the side effect.
+pub fn boot_argv(
+    prefix_root: &Path,
+    usr: &Path,
+    runtime_dir: &Path,
+    exists: impl Fn(&Path) -> bool,
+) -> Result<Vec<String>, crate::launch::LaunchError> {
+    let scaffold = Bottle {
+        // Never written to disk: `create_bottle` saves the real description after
+        // the boot, and this one exists only to carry the prefix through the
+        // launcher's assembly.
+        id: "boot".to_string(),
+        prefix_root: prefix_root.to_path_buf(),
+        grants: Vec::new(),
+        egress: Egress::None,
+        plumbing: Plumbing::default(),
+        program: Vec::new(),
+    };
+    crate::launch::launch_argv(
+        &scaffold,
+        usr,
+        runtime_dir,
+        // No display: `launch_env` already disables the Mono and Gecko modals,
+        // which are the only thing a boot would want to draw.
+        None,
+        &["wineboot".to_string(), "-u".to_string()],
+        exists,
+    )
+}
+
 /// Why a bottle could not be made.
 #[derive(Debug)]
 pub enum CreateError {
@@ -137,6 +179,62 @@ pub fn create_bottle(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Every path exists, so the assembly is not shaped by this host.
+    fn all(_: &Path) -> bool {
+        true
+    }
+
+    #[test]
+    fn a_boot_reaches_nothing_of_the_persons_and_runs_wineboot() {
+        let argv = boot_argv(
+            Path::new("/var/lib/arlen/bottles/game/pfx"),
+            Path::new("/usr"),
+            Path::new("/run/user/1000"),
+            all,
+        )
+        .expect("a host with wine assembles a boot");
+
+        let sep = argv.iter().position(|a| a == "--").expect("a separator");
+        assert_eq!(
+            &argv[sep + 1..],
+            &[
+                crate::launch::WINE.to_string(),
+                "wineboot".to_string(),
+                "-u".to_string()
+            ],
+            "the boot asks Wine to make the prefix and exit, rather than starting a program"
+        );
+
+        // No grant means no host directory is bound in: the whole point of booting
+        // before anything is granted.
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home".into());
+        assert!(
+            !argv.iter().any(|a| a == &home),
+            "a fresh prefix is booted with nothing of the person's reachable"
+        );
+        // And the network stays off: an unshared net is what Egress::None means.
+        assert!(
+            argv.iter().any(|a| a == "--unshare-net"),
+            "a boot has nothing to fetch"
+        );
+    }
+
+    #[test]
+    fn a_machine_without_wine_cannot_boot_a_prefix() {
+        let err = boot_argv(
+            Path::new("/var/lib/arlen/bottles/game/pfx"),
+            Path::new("/usr"),
+            Path::new("/run/user/1000"),
+            |_| false,
+        );
+        assert!(
+            matches!(err, Err(crate::launch::LaunchError::NoRuntime(_))),
+            "answered rather than assembled: without Wine there is nothing to boot with"
+        );
+    }
+
     use super::*;
     use crate::Access;
 
