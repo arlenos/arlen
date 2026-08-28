@@ -38,6 +38,13 @@ pub enum Request {
     /// whatever the person installed and saved in there, and a button that
     /// destroys that with no way back is not a button worth shipping.
     Forget { id: String },
+    /// Where this bottle's C: drive is on the host, so a file manager can open it.
+    ///
+    /// A PATH, not an open: the daemon does not launch a file manager. It knows
+    /// where the prefix is and nothing about the session's opener, and a daemon
+    /// that starts a window on the caller's behalf is a wider thing than one that
+    /// answers a question.
+    Prefix { id: String },
     /// Start the Windows program this bottle exists to run.
     ///
     /// The caller names the bottle, not the program: what runs is what the bottle
@@ -124,6 +131,12 @@ pub enum Response {
     /// description was removed and nothing else existed. Said rather than implied,
     /// so a window can tell somebody where their files are.
     Forgotten { trashed_to: Option<String> },
+    /// The host path of the bottle's C: drive.
+    ///
+    /// `drive_c` rather than the prefix root: that is the folder the person's
+    /// program installed itself into, and the root beside it holds the registry
+    /// and the drive table, which are ours rather than theirs.
+    Prefix { path: String },
     /// The ask could not be answered. A token, not prose: the window writes the
     /// sentence, in the reader's language.
     Refused { problem: Problem },
@@ -339,6 +352,33 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
         // forget needs a trash and a caller allowed to ask, and reading a runtime
         // version means running the thing. All three are the server's.
         Request::Launch { .. } | Request::Forget { .. } | Request::Runtimes => return None,
+        Request::Prefix { id } => match load_bottle(bottles_dir, id) {
+            Ok(bottle) => {
+                let drive_c = bottle.prefix_root.join("drive_c");
+                if drive_c.is_dir() {
+                    Response::Prefix {
+                        path: drive_c.to_string_lossy().into_owned(),
+                    }
+                } else {
+                    // A bottle that has never booted has no C: drive, and handing
+                    // back a path that is not there would open a file manager on
+                    // nothing. `PrefixMissing` is the same refusal a launch makes
+                    // for the same absence, so the window has one sentence for it.
+                    Response::Refused {
+                        problem: Problem::PrefixMissing,
+                    }
+                }
+            }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
         Request::Health { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => match check_bottle(&bottle) {
                 Ok(health) => Response::Health {
@@ -432,6 +472,56 @@ mod tests {
                     id: "not-here".into()
                 }
             ),
+            Some(Response::Refused {
+                problem: Problem::NoSuchBottle
+            })
+        );
+    }
+
+    #[test]
+    fn a_prefix_ask_answers_the_c_drive_and_refuses_one_that_was_never_booted() {
+        use crate::registry::save_bottle;
+
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("game/pfx");
+        let bottle = Bottle {
+            id: "game".into(),
+            prefix_root: prefix.clone(),
+            grants: vec![],
+            egress: Egress::None,
+            plumbing: Default::default(),
+            program: vec![],
+        };
+        save_bottle(dir.path(), &bottle).unwrap();
+
+        // Made but never booted: there is no C: drive to open, and the answer says
+        // so rather than handing back a path to nothing.
+        assert_eq!(
+            handle_request(dir.path(), &Request::Prefix { id: "game".into() }),
+            Some(Response::Refused {
+                problem: Problem::PrefixMissing
+            }),
+            "a prefix with no drive_c is not a folder anybody can be shown"
+        );
+
+        std::fs::create_dir_all(prefix.join("drive_c")).unwrap();
+        assert_eq!(
+            handle_request(dir.path(), &Request::Prefix { id: "game".into() }),
+            Some(Response::Prefix {
+                path: prefix.join("drive_c").to_string_lossy().into_owned()
+            })
+        );
+
+        // The same three answers the other reading asks give, so a window has one
+        // vocabulary for "that is not a name" and "that is not here".
+        assert_eq!(
+            handle_request(dir.path(), &Request::Prefix { id: "../etc".into() }),
+            Some(Response::Refused {
+                problem: Problem::BadId
+            })
+        );
+        assert_eq!(
+            handle_request(dir.path(), &Request::Prefix { id: "absent".into() }),
             Some(Response::Refused {
                 problem: Problem::NoSuchBottle
             })
