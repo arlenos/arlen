@@ -34,6 +34,16 @@ trap cleanup EXIT
 
 [ -x "$app" ] || { echo "!! build it first: cargo build --manifest-path apps/settings/src-tauri/Cargo.toml" >&2; exit 1; }
 [ -d "$root/apps/settings/build" ] || { echo "!! build the frontend first: (cd apps/settings && npm run build)" >&2; exit 1; }
+# PRESENT IS NOT CURRENT. The binary check one line up says when it is older than
+# its source, after a stale one cost a cycle on 28 August; the built frontend is
+# the same trap on the other half, and this drive reads the SVELTE - every
+# assertion below is about what the page renders. A rebuild is cheap; believing an
+# old page is not.
+if [ -n "$(find "$root/apps/settings/src" -newer "$root/apps/settings/build" -name '*.svelte' -o \
+                -newer "$root/apps/settings/build" -name '*.ts' 2>/dev/null | head -1)" ]; then
+  echo "!! the built frontend is OLDER than apps/settings/src - rebuild before" >&2
+  echo "   believing a failure: (cd apps/settings && npm run build)" >&2
+fi
 
 (cd "$root/apps/settings" && npx vite preview --port 1421 --outDir build >/dev/null 2>&1) &
 preview_pid=$!
