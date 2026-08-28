@@ -45,6 +45,16 @@ pub enum Request {
     /// that starts a window on the caller's behalf is a wider thing than one that
     /// answers a question.
     Prefix { id: String },
+    /// Run an installer inside an existing bottle.
+    ///
+    /// The path is a HOST path, and the daemon copies the file into the prefix
+    /// before running it rather than granting the folder it came from - see
+    /// `crate::install` for why that trade is the wrong one to make for a one-off.
+    ///
+    /// Answers when the installer STARTS, not when it finishes: an installer is a
+    /// program somebody clicks through, and a caller that waited would hang for as
+    /// long as they take to read a licence.
+    Install { id: String, installer: String },
     /// Make a bottle: a booted, severed, empty prefix under this id.
     ///
     /// EMPTY IS THE POINT. Nothing is installed by this, and the bottle it leaves
@@ -208,6 +218,10 @@ pub enum Problem {
     /// booted and still reached out of itself, or the disk said no - one token,
     /// because none of the three is something the person can act on differently.
     CouldNotCreate,
+    /// The installer named is not a file this machine has, or is not a file at
+    /// all. Said rather than attempted: a copy of a directory fails deep inside an
+    /// operation the person did not ask about.
+    NoInstaller,
     /// The caller may not do this. Forgetting a bottle throws away what somebody
     /// installed, so it is not something any process that can reach the socket
     /// gets to ask for.
@@ -351,6 +365,96 @@ pub fn forget(
     }
 }
 
+/// Bring an installer into a bottle and start it.
+///
+/// Reuses the launch assembly with the copied-in file as the program, so an
+/// installer runs under exactly the confinement the bottle's own software will:
+/// there is no wider "install mode", and a bottle that may not reach the network
+/// may not reach it while installing either.
+///
+/// Answers `Launched` with the installer's pid. What it installed is a separate
+/// question - the prefix has to be looked at afterwards - and a separate ask.
+#[allow(clippy::too_many_arguments)]
+pub fn install(
+    bottles_dir: &Path,
+    id: &str,
+    installer: &str,
+    usr: &Path,
+    runtime_dir: &Path,
+    display: Option<&str>,
+    exists: impl Fn(&Path) -> bool,
+    spawn: impl FnOnce(&[String]) -> std::io::Result<u32>,
+) -> Response {
+    let bottle = match load_bottle(bottles_dir, id) {
+        Ok(b) => b,
+        Err(RegistryError::BadId(_)) => {
+            return Response::Refused {
+                problem: Problem::BadId,
+            }
+        }
+        Err(RegistryError::NoSuchBottle(_)) => {
+            return Response::Refused {
+                problem: Problem::NoSuchBottle,
+            }
+        }
+        Err(_) => {
+            return Response::Refused {
+                problem: Problem::Unreadable,
+            }
+        }
+    };
+    if !exists(&bottle.prefix_root) {
+        return Response::Refused {
+            problem: Problem::PrefixMissing,
+        };
+    }
+    let landed = match crate::install::bring_installer_in(
+        &bottle.prefix_root,
+        std::path::Path::new(installer),
+    ) {
+        Ok(p) => p,
+        // The copy and the name are one answer to the caller: both mean the file
+        // they named is not one that can be brought in.
+        Err(crate::install::InstallError::NotAFile(_))
+        | Err(crate::install::InstallError::BadName(_)) => {
+            return Response::Refused {
+                problem: Problem::NoInstaller,
+            }
+        }
+        Err(crate::install::InstallError::Io(_)) => {
+            return Response::Refused {
+                problem: Problem::CouldNotStart,
+            }
+        }
+    };
+
+    let program = vec![landed.to_string_lossy().into_owned()];
+    let argv = match launch_argv(&bottle, usr, runtime_dir, display, &program, exists) {
+        Ok(v) => v,
+        Err(LaunchError::NoRuntime(_)) => {
+            return Response::Refused {
+                problem: Problem::NoWine,
+            }
+        }
+        Err(LaunchError::UnmetDrives(_)) => {
+            return Response::Refused {
+                problem: Problem::DrivesUnmet,
+            }
+        }
+        Err(_) => {
+            return Response::Refused {
+                problem: Problem::CouldNotStart,
+            }
+        }
+    };
+    match spawn(&argv) {
+        Ok(pid) => Response::Launched { pid },
+        Err(_) => Response::Refused {
+            problem: Problem::CouldNotStart,
+        },
+    }
+}
+
 /// Make a bottle, booting its prefix through the runner the caller supplies.
 ///
 /// The runner is injected for the same reason `launch`'s spawn is: the sequence
@@ -441,8 +545,10 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
         | Request::Forget { .. }
         | Request::Runtimes
         // A create needs the host too: booting a prefix means running Wine on
-        // this machine, which is exactly what `handle_request` is pure of.
-        | Request::Create { .. } => return None,
+        // this machine, which is exactly what `handle_request` is pure of. So does
+        // an install, which runs one.
+        | Request::Create { .. }
+        | Request::Install { .. } => return None,
         Request::ClearCaches { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => {
                 let cleared = crate::caches::clear_caches(&bottle.prefix_root);
@@ -721,6 +827,102 @@ mod tests {
                 unreadable: vec![]
             }),
             "a create that failed leaves nothing to list and nothing to report broken"
+        );
+    }
+
+    #[test]
+    fn an_install_copies_the_file_in_and_runs_it_from_inside_the_bottle() {
+        use crate::registry::save_bottle;
+
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("game/pfx");
+        std::fs::create_dir_all(&prefix).unwrap();
+        save_bottle(
+            dir.path(),
+            &Bottle {
+                id: "game".into(),
+                prefix_root: prefix.clone(),
+                grants: vec![],
+                egress: Egress::None,
+                plumbing: Default::default(),
+                program: vec![],
+            },
+        )
+        .unwrap();
+
+        let downloads = dir.path().join("downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        let installer = downloads.join("setup.exe");
+        std::fs::write(&installer, b"MZ").unwrap();
+
+        let seen = std::cell::RefCell::new(Vec::new());
+        let answer = install(
+            dir.path(),
+            "game",
+            installer.to_str().unwrap(),
+            Path::new("/usr"),
+            Path::new("/run/user/1000"),
+            None,
+            |_| true,
+            |argv| {
+                *seen.borrow_mut() = argv.to_vec();
+                Ok(4242)
+            },
+        );
+        assert_eq!(answer, Response::Launched { pid: 4242 });
+
+        let argv = seen.into_inner();
+        let program = argv.last().expect("something is run");
+        assert_eq!(
+            program,
+            &prefix
+                .join(crate::install::INSTALLER_DIR)
+                .join("setup.exe")
+                .to_string_lossy()
+                .into_owned(),
+            "what runs is the copy inside the prefix, not the file in Downloads"
+        );
+        assert!(
+            !argv.iter().any(|a| a == downloads.to_str().unwrap()),
+            "the folder the installer came from is never bound in - that grant would \
+             outlive the install and carry everything else in the folder with it"
+        );
+    }
+
+    #[test]
+    fn an_install_from_something_that_is_not_a_file_is_refused_before_anything_runs() {
+        use crate::registry::save_bottle;
+
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("game/pfx");
+        std::fs::create_dir_all(&prefix).unwrap();
+        save_bottle(
+            dir.path(),
+            &Bottle {
+                id: "game".into(),
+                prefix_root: prefix,
+                grants: vec![],
+                egress: Egress::None,
+                plumbing: Default::default(),
+                program: vec![],
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            install(
+                dir.path(),
+                "game",
+                "/nonexistent/setup.exe",
+                Path::new("/usr"),
+                Path::new("/run/user/1000"),
+                None,
+                |_| true,
+                |_| panic!("nothing runs when there is nothing to install"),
+            ),
+            Response::Refused {
+                problem: Problem::NoInstaller
+            }
         );
     }
 

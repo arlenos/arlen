@@ -23,7 +23,9 @@ use tokio::net::{UnixListener, UnixStream};
 
 use arlen_permissions::peer_pidfd::PeerPidfd;
 
-use crate::protocol::{create, forget, handle_request, launch, Problem, Request, Response};
+use crate::protocol::{
+    create, forget, handle_request, install, launch, Problem, Request, Response,
+};
 use audit_proto::{AuditKind, AuditSink, IngestRequest, StructuralRecord};
 
 /// The largest accepted frame body. A bottle list is a handful of short strings
@@ -165,6 +167,16 @@ pub async fn serve_connection(
                     &runtime_dir,
                     |p| p.exists(),
                     run_to_completion,
+                ),
+                Request::Install { id, installer } => install(
+                    bottles_dir,
+                    id,
+                    installer,
+                    std::path::Path::new("/usr"),
+                    &runtime_dir,
+                    display.as_deref(),
+                    |p| p.exists(),
+                    spawn_detached,
                 ),
                 Request::Launch { id } => launch(
                     bottles_dir,
