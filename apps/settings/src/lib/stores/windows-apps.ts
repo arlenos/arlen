@@ -105,10 +105,13 @@ interface BottleListing {
   unreadable: string[];
 }
 
-/// Global cross-bottle defaults + installed runtimes.
+/// What this machine can run Windows programs with.
+///
+/// It carried a `version` and a `bottleMode` until 28 August, both written by a
+/// `set_windows_defaults` no host defines and both drawn from a literal rather than
+/// from the machine. They come back with somewhere to write: a bottle mode once the
+/// install path reads one, a version once more than one runtime can be installed.
 export interface WinDefaults {
-  version: string;
-  bottleMode: "per-app" | "shared";
   runtimes: { name: string; installed: boolean }[];
 }
 
@@ -236,12 +239,9 @@ export const winActionFailed = writable(false);
 /// disk. Nothing ever corrected it, because the command that would read them has
 /// no backend.
 ///
-/// `version` and `bottleMode` are preferences rather than observations, so a
-/// default for them is a real default; a runtime list is an observation, and
-/// there is no honest default for one of those.
+/// A runtime list is an OBSERVATION, and there is no honest default for one of
+/// those - so this opens empty and `runtimesKnown` says whether anybody has looked.
 export const defaults = writable<WinDefaults>({
-  version: "Wine 9.0",
-  bottleMode: "per-app",
   runtimes: !tauriAvailable
     ? [
         { name: "Wine 9.0", installed: true },
@@ -488,18 +488,6 @@ export async function loadRuntimes(): Promise<void> {
 /// Whether the runtime list above was actually read.
 export const runtimesKnown = writable(false);
 
-export async function patchDefaults(patch: Partial<WinDefaults>): Promise<void> {
-  const before = get(defaults);
-  defaults.update((d) => ({ ...d, ...patch }));
-  winActionFailed.set(false);
-  try {
-    await invoke("set_windows_defaults", { patch });
-  } catch {
-    if (!tauriAvailable) return;
-    defaults.set(before);
-    winActionFailed.set(true);
-  }
-}
 
 /// One program an installer left inside a bottle.
 export interface BottleProgram {
