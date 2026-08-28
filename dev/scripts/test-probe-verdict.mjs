@@ -10,11 +10,11 @@
 // cost a build to make, but the assertion reads a journal, and a journal is text.
 // Planting the defect in the text exercises the same code the boot does.
 
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const VERDICT = join(ROOT, "dev/vm/probe_verdict.py");
@@ -26,11 +26,11 @@ function check(name, ok) {
 }
 
 function verdict(journal) {
-  const dir = mkdtempSync(join(tmpdir(), "probe-verdict-"));
+  const dir = mint("probe-verdict-");
   const f = join(dir, "journal.log");
   writeFileSync(f, journal);
   const r = spawnSync("python3", [VERDICT, f], { encoding: "utf8" });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
 }
 

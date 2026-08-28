@@ -11,10 +11,10 @@
 //
 // Run: node dev/scripts/test-check-profile-principals.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = "dev/scripts/check-profile-principals.py";
@@ -27,7 +27,7 @@ const failures = [];
 
 /// A tree the gate can read: both scripts, a resolver, a build phase, profiles.
 function tree({ profiles = [], phase = "", withResolver = true } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-principals-"));
+  const dir = mint("arlen-principals-");
   for (const rel of [GATE, SIBLING, UNITGATE]) {
     mkdirSync(join(dir, dirname(rel)), { recursive: true });
     cpSync(join(ROOT, rel), join(dir, rel));
@@ -52,7 +52,7 @@ function run(name, opts, expect) {
   const ok = expect(r.status ?? 1, out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, code: r.status, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const DAEMON = 'install -Dm755 "$CARGO_TARGET_DIR/release/x" "$DESTDIR/usr/bin/arlen-widget"\n';

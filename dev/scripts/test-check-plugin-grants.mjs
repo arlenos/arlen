@@ -9,10 +9,10 @@
 // apps were fixed, which is exactly when a check needs proving on the state it was written for.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-plugin-grants.py");
@@ -45,7 +45,7 @@ export const presence = {
 `;
 
 function tree({ source, permissions }) {
-  const root = mkdtempSync(join(tmpdir(), "plugin-grants-"));
+  const root = mint("plugin-grants-");
   mkdirSync(join(root, "sdk/tauri-plugin-shell"), { recursive: true });
   writeFileSync(join(root, "sdk/tauri-plugin-shell/index.ts"), API);
   mkdirSync(join(root, "apps/demo/src/lib"), { recursive: true });
@@ -79,7 +79,7 @@ export function push(state) {
   rc === 1
     ? ok("the real 16 August shape is caught")
     : bad("the real 16 August shape is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -91,7 +91,7 @@ export function push(state) {
   rc === 0
     ? ok("granting the command it calls passes")
     : bad("granting the command it calls passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -105,7 +105,7 @@ export function push(state) {
   rc === 0
     ? ok("an uncalled command is not demanded")
     : bad("an uncalled command is not demanded", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -121,17 +121,17 @@ export function mark() {
   rc === 0
     ? ok("only the imported object's calls are required")
     : bad("only the imported object's calls are required", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
-  const root = mkdtempSync(join(tmpdir(), "plugin-grants-noapi-"));
+  const root = mint("plugin-grants-noapi-");
   mkdirSync(join(root, "apps"), { recursive: true });
   const rc = run(root);
   rc === 1
     ? ok("a missing plugin API is not a pass")
     : bad("a missing plugin API is not a pass", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {

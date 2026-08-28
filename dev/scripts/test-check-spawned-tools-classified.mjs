@@ -8,10 +8,10 @@
 // how twenty-three of them got into the tree unnoticed in the first place.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-spawned-tools-classified.py");
@@ -20,7 +20,7 @@ const ok = (n) => console.log(`  ok   ${n}`);
 const bad = (n, d) => { console.log(`  FAIL ${n}`); console.log(`       ${d}`); failures += 1; };
 
 function tree(src) {
-  const root = mkdtempSync(join(tmpdir(), "spawned-"));
+  const root = mint("spawned-");
   mkdirSync(join(root, "apps/thing/src"), { recursive: true });
   writeFileSync(join(root, "apps/thing/src/lib.rs"), src);
   // The classification is READ from here now rather than kept in the check, so a
@@ -49,21 +49,21 @@ const run = (root) => {
   const root = tree('fn f() { Command::new("brand-new-tool").spawn(); }\n');
   const rc = run(root);
   rc === 1 ? ok("an unclassified tool is caught") : bad("an unclassified tool is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
   const root = tree('fn f() { Command::new("nmcli").spawn(); }\n');
   const rc = run(root);
   rc === 0 ? ok("a tool classified as absent passes") : bad("a tool classified as absent passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
   const root = tree('fn f() { Command::new("systemctl").spawn(); }\n');
   const rc = run(root);
   rc === 0 ? ok("a tool classified as shipped passes") : bad("a tool classified as shipped passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -80,15 +80,15 @@ const run = (root) => {
   rc === 0
     ? ok("a small tree is not accused of having killed every other tool")
     : bad("a small tree is not accused of having killed every other tool", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
   // Reading nothing must not read as a pass.
-  const root = mkdtempSync(join(tmpdir(), "spawned-empty-"));
+  const root = mint("spawned-empty-");
   const rc = run(root);
   rc === 2 ? ok("finding no spawn sites at all is not a pass") : bad("finding no spawn sites at all is not a pass", `expected 2, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {

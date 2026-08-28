@@ -8,10 +8,10 @@
 // otherwise reads like a considered grant - rather than as a contrived string.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-profile-keys.py");
@@ -51,7 +51,7 @@ pub struct NetworkPermissions {
 `;
 
 function tree({ profile, schema = SCHEMA, catalogue = null, named = null } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "profilekeys-"));
+  const root = mint("profilekeys-");
   mkdirSync(join(root, "sdk/permissions/src"), { recursive: true });
   mkdirSync(join(root, "sdk/permissions/profiles"), { recursive: true });
   mkdirSync(join(root, "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"), { recursive: true });
@@ -93,7 +93,7 @@ read_only = [
   const root = tree({ profile: GOOD });
   const rc = run(root);
   rc === 0 ? ok("a profile whose keys all exist passes") : bad("a profile whose keys all exist passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -101,14 +101,14 @@ read_only = [
   const root = tree({ profile: GOOD.replace("read_only = [", "read = [") });
   const rc = run(root);
   rc === 1 ? ok("a key the schema does not have is caught") : bad("a key the schema does not have is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
   const root = tree({ profile: GOOD + "\n[filesytem]\nhome = true\n" });
   const rc = run(root);
   rc === 1 ? ok("a misspelled SECTION is caught too") : bad("a misspelled SECTION is caught too", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -120,7 +120,7 @@ read_only = [
   });
   const rc = run(root);
   rc === 1 ? ok("an unknown section is still caught when it holds a sub-table") : bad("an unknown section is still caught when it holds a sub-table", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -128,14 +128,14 @@ read_only = [
   const root = tree({ profile: GOOD, schema: null });
   const rc = run(root);
   rc === 2 ? ok("a missing schema is an error, not a pass") : bad("a missing schema is an error, not a pass", `expected 2, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
   const root = tree({ profile: null });
   const rc = run(root);
   rc === 2 ? ok("finding no profiles at all is not a pass") : bad("finding no profiles at all is not a pass", `expected 2, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -146,7 +146,7 @@ read_only = [
   rc === 1
     ? ok("an unknown key in the authored corpus is caught")
     : bad("an unknown key in the authored corpus is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -161,7 +161,7 @@ read_only = [
   rc === 1
     ? ok("a file whose name and app_id disagree is caught")
     : bad("a file whose name and app_id disagree is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {

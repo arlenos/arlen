@@ -7,11 +7,11 @@
 // has reason to trust - and this one is the half that keeps a per-variant policy
 // from quietly becoming a permanent widening.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../..");
@@ -26,7 +26,7 @@ function check(name, ok) {
 // A tree with the two things the gate reads: the identity constants and the
 // mkosi build phases.
 function tree({ surfaces = ['"dev.arlen.harness"'], phases = {}, extraTree = null }) {
-  const dir = mkdtempSync(join(tmpdir(), "probe-admission-"));
+  const dir = mint("probe-admission-");
   const perms = join(dir, "sdk/permissions/src");
   mkdirSync(perms, { recursive: true });
   writeFileSync(
@@ -65,7 +65,7 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("a probe compiled into the shipped surfaces is caught", r.code === 1);
   check("and the message names it", r.out.includes("dogfood"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // (2) mkosi.extra ships in every image, so the file cannot live there. This is
@@ -78,7 +78,7 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("the extras file committed under mkosi.extra is caught", r.code === 1);
   check("and the message says it ships in every image", r.out.includes("EVERY image"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // (3) A release phase staging it puts the admission on the shipped image.
@@ -87,7 +87,7 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("a release phase staging the extras file is caught", r.code === 1);
   check("and the message names the phase", r.out.includes("05-ai.sh.chroot"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A verify phase staging it is the intended arrangement and must stay quiet, or
@@ -95,7 +95,7 @@ check("the repository as it stands passes", run(ROOT).code === 0);
 {
   const d = tree({ phases: { "09-verify-probes.sh.chroot": STAGES } });
   check("the verify phase staging it is not a finding", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The second verify-only file: the drop-in that answers completions in process.
@@ -107,25 +107,25 @@ const ECHO = 'cat > "$DESTDIR/usr/lib/systemd/user/arlen-ai-proxy.service.d/10-e
   const r = run(d);
   check("a release phase staging the echo drop-in is caught", r.code === 1);
   check("and the message names the phase", r.out.includes("05-ai.sh.chroot"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 {
   const d = tree({ phases: { "09-verify-probes.sh.chroot": STAGES + ECHO } });
   check("both verify-only files staged by the verify phase pass", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A tree whose constants cannot be found has not been checked, and saying so
 // beats a cheerful pass - the failure this project has hit twice.
 {
-  const dir = mkdtempSync(join(tmpdir(), "probe-admission-empty-"));
+  const dir = mint("probe-admission-empty-");
   mkdirSync(join(dir, "sdk/permissions/src"), { recursive: true });
   writeFileSync(join(dir, "sdk/permissions/src/identity.rs"), "// no constants here\n");
   mkdirSync(join(dir, "dev/mkosi/mkosi.build.d"), { recursive: true });
   const r = run(dir);
   check("a tree with no user-surface constants is an error, not a pass", r.code === 2);
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");

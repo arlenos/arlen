@@ -15,17 +15,17 @@
 //
 // Run: node dev/scripts/test-check-profile-claims.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-profile-claims.py");
 const failures = [];
 
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-claims-"));
+  const dir = mint("arlen-claims-");
   mkdirSync(join(dir, "sdk/permissions/profiles"), { recursive: true });
   for (const [name, body] of Object.entries(files)) {
     writeFileSync(join(dir, "sdk/permissions/profiles", `${name}.toml`), body);
@@ -58,7 +58,7 @@ check(
   r.code === 1 && /Downloads/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // A claim the grants back up.
 d = tree({
@@ -68,7 +68,7 @@ d = tree({
 });
 r = run(d);
 check("a claim its grants honour passes", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // False positive 1: a later paragraph QUOTES the discarded reasoning.
 d = tree({
@@ -85,7 +85,7 @@ check(
   r.code === 0,
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // False positive 2: the corpus saying what an app does NOT get.
 d = tree({
@@ -96,7 +96,7 @@ d = tree({
 });
 r = run(d);
 check("a negated directory is not a claim", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // False positive 3 and 4: the verb and the common noun, which the corpus writes
 // lowercase while the directory is capitalised.
@@ -114,17 +114,17 @@ check(
   r.code === 0,
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // Reading nothing is not passing.
-d = mkdtempSync(join(tmpdir(), "arlen-claims-empty-"));
+d = mint("arlen-claims-empty-");
 r = run(d);
 check(
   "a tree with no profiles refuses rather than passing",
   r.code === 2 && /NOTHING WAS READ/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // A failing run must not END on the sentence a passing one prints. It did: the
 // summary went to stdout before the findings went to stderr, so `tail` on a red
@@ -142,7 +142,7 @@ check(
   !/no description claims a directory/.test(r.out),
   r.out,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);
@@ -152,7 +152,7 @@ if (failures.length) process.exit(1);
 // profile the image ships - the ones with the longest descriptions and the most
 // editing - was outside it.
 {
-  const root = mkdtempSync(join(tmpdir(), "claims-image-"));
+  const root = mint("claims-image-");
   const dir = join(root, "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000");
   mkdirSync(dir, { recursive: true });
   mkdirSync(join(root, "sdk/permissions/profiles"), { recursive: true });
@@ -166,7 +166,7 @@ if (failures.length) process.exit(1);
     r.code === 1 && r.out.includes("gets Documents"),
     `code ${r.code}: ${r.out}`,
   );
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 console.log("the stale claim is caught, and all four measured false positives stay false");

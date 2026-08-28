@@ -11,10 +11,10 @@
 // and the declaration disappearing altogether.
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, writeFileSync, mkdtempSync, cpSync, rmSync, mkdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, cpSync, rmSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-runtime-dir-closed.py");
@@ -33,7 +33,7 @@ function check(name, ok) {
 
 /** Run the gate against a COPY of the unit tree with `mutate` applied to the unit. */
 function run(mutate, opts = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "runtime-dir-"));
+  const dir = mint("runtime-dir-");
   const units = join(dir, UNIT_REL);
   mkdirSync(units, { recursive: true });
   cpSync(join(ROOT, UNIT_REL), units, { recursive: true });
@@ -51,7 +51,7 @@ function run(mutate, opts = {}) {
     }
   }
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 

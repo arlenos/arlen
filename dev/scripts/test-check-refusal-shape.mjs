@@ -18,10 +18,10 @@
 //
 // Run: node dev/scripts/test-check-refusal-shape.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-refusal-shape.py");
@@ -29,7 +29,7 @@ const GATE = join(ROOT, "dev/scripts/check-refusal-shape.py");
 const failures = [];
 
 function check(name, method, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-refusal-"));
+  const dir = mint("arlen-refusal-");
   const src = join(dir, "daemons/probe/src");
   mkdirSync(src, { recursive: true });
   writeFileSync(
@@ -41,7 +41,7 @@ function check(name, method, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log("check-refusal-shape:");
@@ -89,7 +89,7 @@ check(
 // The second rule, in the other medium: a launcher that refuses an argv by
 // exiting and printing nothing. `launcher` writes the file the rule reads.
 function launcher(name, body, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-refusal-"));
+  const dir = mint("arlen-refusal-");
   const src = join(dir, "daemons/arlen-run/src");
   mkdirSync(src, { recursive: true });
   writeFileSync(join(src, "main.rs"), body);
@@ -98,7 +98,7 @@ function launcher(name, body, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 launcher(
