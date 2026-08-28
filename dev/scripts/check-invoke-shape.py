@@ -577,7 +577,6 @@ DEAD_INVOKES: dict[str, str] = {
     ),
     # the store's update actions against installd - arlen-ui's surface, coder owes the commands
     "store_update": "the store's update actions against installd",
-    "store_uninstall": "the store's update actions against installd",
     "store_update_all_routine": "the store's update actions against installd",
     # apps/text-editor is the same shape as apps/knowledge: a frontend with no
     # src-tauri, so these three have nowhere to live yet - needs the same decision
