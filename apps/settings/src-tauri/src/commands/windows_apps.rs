@@ -201,3 +201,31 @@ pub async fn windows_runtimes() -> Result<Option<String>, String> {
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// Open a bottle's C: drive in the file manager.
+///
+/// THE PATH COMES FROM THE DAEMON, never from the caller. This command hands over
+/// a bottle id and opens whatever the daemon answers with, so a window cannot use
+/// it to open an arbitrary folder: the id is validated against the bottle
+/// registry, and a bottle that was never booted has no C: drive and is refused by
+/// name rather than opened on nothing.
+///
+/// Opening goes through the shared portal helper, the same route `open_url` takes,
+/// so a folder from Settings lands in whatever file manager the session has.
+#[tauri::command]
+pub async fn browse_bottle_files(id: String) -> Result<(), String> {
+    let path = tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::Prefix { id }) {
+            Ok(Response::Prefix { path }) => Ok(path),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    tauri_plugin_arlen_portal::api::open_external(&format!("file://{path}"))
+        .await
+        .map_err(|e| e.to_string())
+}

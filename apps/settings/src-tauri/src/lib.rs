@@ -95,6 +95,7 @@ pub fn run() {
             commands::windows_apps::launch_windows_app,
             commands::windows_apps::delete_bottle,
             commands::windows_apps::windows_runtimes,
+            commands::windows_apps::browse_bottle_files,
             commands::capsules::list_capsules,
             commands::capsules::revoke_capsule,
             commands::ai::ai_behaviours,

@@ -559,7 +559,6 @@ DEAD_INVOKES: dict[str, str] = {
     "windows_file_run": "the Windows-app (bottles) surface; no backend in the tree",
     "windows_file_install": "the Windows-app (bottles) surface; no backend in the tree",
     "set_bottle_config": "the Windows-app (bottles) surface; no backend in the tree",
-    "browse_bottle_files": "the Windows-app (bottles) surface; no backend in the tree",
     "clear_bottle_caches": "the Windows-app (bottles) surface; no backend in the tree",
     "install_windows_app": "the Windows-app (bottles) surface; no backend in the tree",
     "set_windows_defaults": "the Windows-app (bottles) surface; no backend in the tree",
