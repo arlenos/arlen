@@ -62,12 +62,17 @@
   // with a program does not need the list, and walking a prefix to build one
   // nobody will read costs the same as one somebody will.
   let programs = $state<BottleProgram[]>([]);
+  let programsCut = $state(false);
   $effect(() => {
     if (!bottle || bottle.hasProgram) {
       programs = [];
+      programsCut = false;
       return;
     }
-    void bottlePrograms(bottle.id).then((p) => (programs = p));
+    void bottlePrograms(bottle.id).then((r) => {
+      programs = r.programs;
+      programsCut = r.truncated;
+    });
   });
 
   const versionOptions = wineVersions.map((v) => ({ value: v, label: v }));
@@ -172,6 +177,9 @@
                  the screenshot of the first cut ended at "usually an unins...",
                  which is the half of the sentence that says nothing. -->
             <p class="not-managed">{$t("s.wa.whichProgramDesc")}</p>
+            {#if programsCut}
+              <p class="not-managed">{$t("s.wa.whichProgramMore")}</p>
+            {/if}
             {#each programs as p (p.path)}
               <Row id={`win-program-${p.name}`} label={p.name}>
                 {#snippet control()}

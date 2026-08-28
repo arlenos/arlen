@@ -495,26 +495,37 @@ export interface BottleProgram {
   name: string;
 }
 
+/// What a bottle holds, and whether that is all of it.
+export interface BottleProgramList {
+  programs: BottleProgram[];
+  /// True when the daemon cut the list to fit its wire frame. A panel that showed
+  /// these as the whole set would be stating something it was told is incomplete.
+  truncated: boolean;
+}
+
 /// What an installer left in a bottle, for the person to pick the app from.
 ///
 /// A list rather than a guess: an installer writes the app, usually an
 /// uninstaller, sometimes a crash reporter, and a bottle that launches the wrong
 /// one is worse than a bottle that asked.
-export async function bottlePrograms(id: string): Promise<BottleProgram[]> {
+export async function bottlePrograms(id: string): Promise<BottleProgramList> {
   try {
-    return await invoke<BottleProgram[]>("bottle_programs", { id });
+    return await invoke<BottleProgramList>("bottle_programs", { id });
   } catch {
     // Under vite there is no daemon to walk a prefix, and a list nobody can see
     // is a row nobody can design. Live, an unreachable daemon answers nothing,
     // which the panel renders as "no program found yet" - the honest reading,
     // since it did not find one.
     if (!tauriAvailable) {
-      return [
-        { path: "/pfx/drive_c/Program Files/Ledger/ledger.exe", name: "ledger.exe" },
-        { path: "/pfx/drive_c/Program Files/Ledger/report-tool.exe", name: "report-tool.exe" },
-      ];
+      return {
+        programs: [
+          { path: "/pfx/drive_c/Program Files/Ledger/ledger.exe", name: "ledger.exe" },
+          { path: "/pfx/drive_c/Program Files/Ledger/report-tool.exe", name: "report-tool.exe" },
+        ],
+        truncated: false,
+      };
     }
-    return [];
+    return { programs: [], truncated: false };
   }
 }
 

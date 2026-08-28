@@ -353,18 +353,34 @@ pub async fn install_windows_app() -> Result<Option<String>, String> {
     Ok(Some(id))
 }
 
+/// What a bottle holds, for somebody to pick the app from.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BottlePrograms {
+    pub programs: Vec<ProgramRow>,
+    /// Whether the daemon had to cut the list to fit its wire frame. Carried so
+    /// the panel can say "not all of them" instead of implying these are all.
+    pub truncated: bool,
+}
+
 /// The programs found inside a bottle, for somebody to pick the app from.
 #[tauri::command]
-pub async fn bottle_programs(id: String) -> Result<Vec<ProgramRow>, String> {
+pub async fn bottle_programs(id: String) -> Result<BottlePrograms, String> {
     tokio::task::spawn_blocking(move || {
         match ask(&socket_path(), &Request::Programs { id }) {
-            Ok(Response::Programs { programs }) => Ok(programs
-                .into_iter()
-                .map(|p| ProgramRow {
-                    path: p.path,
-                    name: p.name,
-                })
-                .collect()),
+            Ok(Response::Programs {
+                programs,
+                truncated,
+            }) => Ok(BottlePrograms {
+                programs: programs
+                    .into_iter()
+                    .map(|p| ProgramRow {
+                        path: p.path,
+                        name: p.name,
+                    })
+                    .collect(),
+                truncated,
+            }),
             Ok(Response::Refused { problem }) => Err(problem_token(problem)),
             Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
             Err(e) => Err(e.to_string()),
