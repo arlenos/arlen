@@ -6,13 +6,34 @@
 [terminal]
 vt = 1
 
-# greetd requires a [default_session] (the greeter it returns to). This is a
-# single-user autologin appliance with no greeter UI, so the default session is
-# the same arlen-session as the arlen user: every session is the desktop.
+# [default_session] is what greetd returns to when a session EXITS, so this is the
+# logout destination. It used to be a second copy of [initial_session] - the same
+# `arlen-session` as the same user - which meant logging out re-ran the desktop and
+# handed the machine back unlocked to whoever was standing there.
+#
+# It runs the greeter instead, as `_greetd` (the system user Debian's greetd package
+# creates, and the one `arlen-greeter.tmpfiles.conf` names for the state directory -
+# these two must agree or the directory exists and the wrong process owns it).
+#
+# `cage` because a Tauri window needs a Wayland display and the greeter runs before
+# any session has one. cage is the wlroots kiosk compositor built for this: one
+# fullscreen client, no shell, no workspaces. `-s` scales the output to the window.
+# The alternative was our own compositor, which brings a whole desktop shell's worth
+# of surface to a screen that shows one panel.
+#
+# NB the auth stack that decides whether a typed password opens this machine is
+# `/etc/pam.d/greetd`, not this file.
 [default_session]
-command = "/usr/bin/arlen-session"
-user = "arlen"
+command = "/usr/bin/cage -s -- /usr/bin/arlen-greeter"
+user = "_greetd"
 
+# `service` names the PAM stack, and it is named here rather than left to default
+# BECAUSE the greeter now exists. greetd's default for both this and a typed-password
+# login is the one service `greetd`, and this image's copy of it permitted everything -
+# correct for an appliance that could not ask for a password, an open door the moment
+# one could. The permissive stack lives in `greetd-autologin` now and only the boot
+# uses it; `/etc/pam.d/greetd` authenticates for real.
 [initial_session]
 command = "/usr/bin/arlen-session"
 user = "arlen"
+service = "greetd-autologin"

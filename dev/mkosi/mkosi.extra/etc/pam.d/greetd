@@ -1,12 +1,31 @@
 #%PAM-1.0
-# Autologin appliance: greetd's [initial_session] runs without authentication, so
-# the auth/account stacks just permit. The session stack is what matters - it must
-# register a logind session (pam_systemd) so XDG_RUNTIME_DIR / XDG_SEAT / XDG_VTNR
-# exist for the compositor + libseat. Self-contained (no @include common-*) so it
-# works in the minimal image regardless of pam-auth-update state.
-auth       required pam_permit.so
-account    required pam_permit.so
-password   required pam_permit.so
+# The stack a TYPED PASSWORD goes through: greetd's `general.service`, used for the
+# session the greeter asks it to start. This is the one that decides whether the
+# person standing at the login screen gets in.
+#
+# It is `pam_unix` and not `pam_permit`, which is a change of behaviour rather than
+# of wording. Until the greeter shipped, this file was the autologin stack as well,
+# and it permitted everything - so had the greeter been wired up against it, every
+# password would have opened the machine and the screen would have looked exactly
+# the same either way. The autologin path now has its own `greetd-autologin` file
+# with the permissive stack, so nothing about the boot depends on this one.
+#
+# CONSEQUENCE, and it is the honest one: this image's `arlen` user has no password
+# (`useradd` leaves the shadow field `!`), so `pam_unix` refuses every login here.
+# Boot still auto-logs in; logging out lands on a greeter nobody can pass. That is
+# a locked machine rather than an open one, and setting a password is a decision
+# for whoever installs it - the installer and the onboarding flow are where it
+# belongs, not a default baked into an image.
+#
+# The account stack stays `pam_unix` too: an expired or disabled account is exactly
+# what it is for, and greetd runs `acct_mgmt` on this path.
+#
+# systemd-homed will add `pam_systemd_home.so` above `pam_unix` when profiles land
+# (that is the module that releases the LUKS key from the password). Self-contained
+# on purpose, like its neighbours.
+auth       required pam_unix.so
+account    required pam_unix.so
+password   required pam_unix.so
 session    optional pam_keyinit.so force revoke
 session    required pam_loginuid.so
 session    required pam_permit.so

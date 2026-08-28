@@ -1,0 +1,26 @@
+#%PAM-1.0
+# The AUTOLOGIN stack, named by `[initial_session] service =` in greetd's config.
+#
+# greetd starts the initial session UNAUTHENTICATED - `worker.rs` runs
+# `pam.authenticate()` only when its `authenticate` flag is set, and the initial
+# session goes through `start_unauthenticated_session` - so the auth stack below is
+# never consulted for it. It permits anyway, because a stack that is never reached
+# should not be the thing that decides whether the machine boots.
+#
+# It used to be called `greetd`, which is ALSO the service a real password login
+# uses. That was harmless while nothing could type a password and became a lie the
+# moment the greeter shipped: one permissive file would have opened the machine to
+# any password at all. Splitting it is what lets `/etc/pam.d/greetd` be strict
+# without touching the boot path.
+#
+# The session stack is what matters here - it must register a logind session
+# (pam_systemd) so XDG_RUNTIME_DIR / XDG_SEAT / XDG_VTNR exist for the compositor
+# + libseat. Self-contained (no @include common-*) so it works in the minimal image
+# regardless of pam-auth-update state.
+auth       required pam_permit.so
+account    required pam_permit.so
+password   required pam_permit.so
+session    optional pam_keyinit.so force revoke
+session    required pam_loginuid.so
+session    required pam_permit.so
+session    optional pam_systemd.so

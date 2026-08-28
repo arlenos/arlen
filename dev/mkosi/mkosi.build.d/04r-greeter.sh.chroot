@@ -1,0 +1,60 @@
+#!/bin/sh
+# Phase 4r (CHROOT): the greeter (arlen-greeter, a Tauri 2 app), which is what
+# greetd's `[default_session]` runs.
+#
+# WHY IT IS HERE NOW. Until this step the image had no greeter at all, and its
+# greetd config said so in its own comment - both sessions ran `arlen-session` as
+# `arlen`. `[default_session]` is the session greetd returns to when the desktop
+# EXITS, so logging out re-ran the desktop and handed the machine back unlocked to
+# whoever was standing there. On a system building a lock screen two directories
+# over, that is the surface lying about what it did.
+#
+# NOT under /usr/lib/arlen/apps and NO desktop entry, unlike every neighbouring
+# step. The greeter is not an app: nobody launches it, it runs before any session
+# exists, and it reaches nothing but the greetd socket. `/usr/bin/arlen-greeter`
+# also gives it an identity by rule (2) of `path_to_app_id` (`arlen-<name>` ->
+# `<name>`), the same way `arlen-session` and its supervisor get theirs, whereas
+# an app-directory install would claim a `dev.arlen.greeter` confinement profile
+# under uid 1000 that no confined launch will ever read.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-greeter"  # own dir; separate workspace
+export CXXFLAGS="-include cstdint"
+export LIBGL_ALWAYS_SOFTWARE=1
+export npm_config_cache="$cache/npm"
+mkdir -p "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen/apps/greeter"
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+
+echo ">> tauri build --no-bundle (production) arlen-greeter"
+./node_modules/.bin/tauri build --no-bundle
+
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-greeter' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! arlen-greeter not found after build" >&2; exit 1; }
+
+install -Dm755 "$out" "$DESTDIR/usr/bin/arlen-greeter"
+
+# The state directory for the one bit the login screen remembers (a returning
+# blind person's screen-reader choice). The greeter has no systemd unit to carry
+# a StateDirectory=, so tmpfiles is the only mechanism left; the file's own header
+# explains the rest, including why it names `_greetd` and why that has to match
+# the `user =` under [default_session].
+install -Dm644 "$SRCDIR/arlen/apps/greeter/dist/arlen-greeter.tmpfiles.conf" \
+        "$DESTDIR/usr/lib/tmpfiles.d/arlen-greeter.conf"
+echo ">> staged arlen-greeter into the image"
