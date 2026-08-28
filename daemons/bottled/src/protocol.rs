@@ -45,6 +45,18 @@ pub enum Request {
     /// that starts a window on the caller's behalf is a wider thing than one that
     /// answers a question.
     Prefix { id: String },
+    /// The programs an installer left inside a bottle, for somebody to pick from.
+    ///
+    /// A LIST, because a Windows installer does not say what it installed and
+    /// picking one automatically is a guess. `crate::programs` has the reasoning.
+    Programs { id: String },
+    /// Record which of a bottle's programs its launch should start.
+    ///
+    /// The path must be inside the bottle's own prefix, which is checked rather
+    /// than trusted: this is what `Launch` runs, so a caller that could name any
+    /// host path would have turned a launch into "run what I name, under Wine,
+    /// with this bottle's grants".
+    SetProgram { id: String, program: String },
     /// Run an installer inside an existing bottle.
     ///
     /// The path is a HOST path, and the daemon copies the file into the prefix
@@ -97,6 +109,16 @@ pub struct BottleView {
     /// mapping the launcher runs, so a surface and the bottle cannot disagree
     /// about which letter is which.
     pub drives: Vec<DriveView>,
+}
+
+/// One program found inside a bottle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgramView {
+    /// The host path, which is what a launch would run and what `SetProgram`
+    /// takes back.
+    pub path: String,
+    /// The file name, which is what a person recognises in a list.
+    pub name: String,
 }
 
 /// One granted drive: the letter a Windows program sees, and the host folder it
@@ -165,6 +187,13 @@ pub enum Response {
     /// program installed itself into, and the root beside it holds the registry
     /// and the drive table, which are ours rather than theirs.
     Prefix { path: String },
+    /// The programs found inside a bottle, sorted by path.
+    ///
+    /// An empty list is a real answer: an installer that was cancelled leaves
+    /// nothing behind, and saying so beats offering an invented entry.
+    Programs { programs: Vec<ProgramView> },
+    /// The program was recorded, and this is what a launch will now start.
+    ProgramSet { program: String },
     /// The bottle was made, and this is its id.
     ///
     /// The id is echoed rather than assumed: a caller that let the daemon settle
@@ -218,6 +247,9 @@ pub enum Problem {
     /// booted and still reached out of itself, or the disk said no - one token,
     /// because none of the three is something the person can act on differently.
     CouldNotCreate,
+    /// The program named is not a file inside this bottle's prefix. Refused for
+    /// the reason `SetProgram` gives: what a bottle runs must be what is in it.
+    NotInThisBottle,
     /// The installer named is not a file this machine has, or is not a file at
     /// all. Said rather than attempted: a copy of a directory fails deep inside an
     /// operation the person did not ask about.
@@ -549,6 +581,60 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
         // an install, which runs one.
         | Request::Create { .. }
         | Request::Install { .. } => return None,
+        Request::Programs { id } => match load_bottle(bottles_dir, id) {
+            Ok(bottle) => Response::Programs {
+                programs: crate::programs::candidates(&bottle.prefix_root)
+                    .into_iter()
+                    .map(|c| ProgramView {
+                        path: c.path.to_string_lossy().into_owned(),
+                        name: c.name,
+                    })
+                    .collect(),
+            },
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
+        Request::SetProgram { id, program } => match load_bottle(bottles_dir, id) {
+            Ok(mut bottle) => {
+                if !crate::programs::is_inside_prefix(
+                    &bottle.prefix_root,
+                    std::path::Path::new(program),
+                ) {
+                    Response::Refused {
+                        problem: Problem::NotInThisBottle,
+                    }
+                } else {
+                    // One element: the argv a launch runs is the program and
+                    // nothing else. Arguments are a compat-recipe field, and this
+                    // is not the place to invent one.
+                    bottle.program = vec![program.clone()];
+                    match crate::registry::save_bottle(bottles_dir, &bottle) {
+                        Ok(_) => Response::ProgramSet {
+                            program: program.clone(),
+                        },
+                        Err(_) => Response::Refused {
+                            problem: Problem::Unreadable,
+                        },
+                    }
+                }
+            }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
         Request::ClearCaches { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => {
                 let cleared = crate::caches::clear_caches(&bottle.prefix_root);
@@ -923,6 +1009,76 @@ mod tests {
             Response::Refused {
                 problem: Problem::NoInstaller
             }
+        );
+    }
+
+    #[test]
+    fn picking_a_program_makes_a_bottle_launchable_and_only_from_inside_it() {
+        use crate::registry::{load_bottle, save_bottle};
+
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("game/pfx");
+        let app = prefix.join("drive_c/Program Files/Game/game.exe");
+        std::fs::create_dir_all(app.parent().unwrap()).unwrap();
+        std::fs::write(&app, b"MZ").unwrap();
+        save_bottle(
+            dir.path(),
+            &Bottle {
+                id: "game".into(),
+                prefix_root: prefix.clone(),
+                grants: vec![],
+                egress: Egress::None,
+                plumbing: Default::default(),
+                program: vec![],
+            },
+        )
+        .unwrap();
+
+        // What the installer left, as the panel would list it.
+        let Some(Response::Programs { programs }) =
+            handle_request(dir.path(), &Request::Programs { id: "game".into() })
+        else {
+            panic!("a programs ask is answered with programs");
+        };
+        assert_eq!(programs.len(), 1);
+        assert_eq!(programs[0].name, "game.exe");
+
+        // A path outside the bottle is refused, and the bottle is left alone.
+        let elsewhere = dir.path().join("outside.exe");
+        std::fs::write(&elsewhere, b"MZ").unwrap();
+        assert_eq!(
+            handle_request(
+                dir.path(),
+                &Request::SetProgram {
+                    id: "game".into(),
+                    program: elsewhere.to_string_lossy().into_owned(),
+                }
+            ),
+            Some(Response::Refused {
+                problem: Problem::NotInThisBottle
+            })
+        );
+        assert!(
+            load_bottle(dir.path(), "game").unwrap().program.is_empty(),
+            "a refused pick records nothing"
+        );
+
+        // The real one is recorded, and the bottle stops being nothing-to-run.
+        assert_eq!(
+            handle_request(
+                dir.path(),
+                &Request::SetProgram {
+                    id: "game".into(),
+                    program: programs[0].path.clone(),
+                }
+            ),
+            Some(Response::ProgramSet {
+                program: programs[0].path.clone()
+            })
+        );
+        assert_eq!(
+            load_bottle(dir.path(), "game").unwrap().program,
+            vec![programs[0].path.clone()]
         );
     }
 
