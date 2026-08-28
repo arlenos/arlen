@@ -179,8 +179,6 @@ pub fn create_bottle(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     /// Every path exists, so the assembly is not shaped by this host.
     fn all(_: &Path) -> bool {
         true
