@@ -229,3 +229,32 @@ pub async fn browse_bottle_files(id: String) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())
 }
+
+/// What a cache sweep removed.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClearedCaches {
+    pub bytes: u64,
+    pub files: usize,
+}
+
+/// Clear a bottle's regenerable caches.
+///
+/// The number that comes back is what was ACTUALLY removed, zero included: a
+/// bottle with nothing to clear should say so rather than let a surface imply it
+/// reclaimed something. What counts as regenerable, and why the daemon's sweep
+/// never follows a link out of the prefix, is in `caches.rs` - the short version
+/// is that a Wine prefix is full of links into the person's home.
+#[tauri::command]
+pub async fn clear_bottle_caches(id: String) -> Result<ClearedCaches, String> {
+    tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::ClearCaches { id }) {
+            Ok(Response::Cleared { bytes, files }) => Ok(ClearedCaches { bytes, files }),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

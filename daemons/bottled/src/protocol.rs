@@ -45,6 +45,13 @@ pub enum Request {
     /// that starts a window on the caller's behalf is a wider thing than one that
     /// answers a question.
     Prefix { id: String },
+    /// Remove the regenerable caches inside a bottle's prefix.
+    ///
+    /// Not gated the way [`Request::Forget`] is, and the difference is what is at
+    /// stake: forgetting throws away what somebody installed, while everything a
+    /// sweep removes is rebuilt the next time the program runs. `crate::caches`
+    /// documents what counts as regenerable and why the walk never follows a link.
+    ClearCaches { id: String },
     /// Start the Windows program this bottle exists to run.
     ///
     /// The caller names the bottle, not the program: what runs is what the bottle
@@ -137,6 +144,12 @@ pub enum Response {
     /// program installed itself into, and the root beside it holds the registry
     /// and the drive table, which are ours rather than theirs.
     Prefix { path: String },
+    /// The sweep is done, and this is what it actually removed.
+    ///
+    /// MEASURED, not promised: a bottle with no caches answers zero, which is a
+    /// true sentence a surface may show instead of implying it reclaimed
+    /// something.
+    Cleared { bytes: u64, files: usize },
     /// The ask could not be answered. A token, not prose: the window writes the
     /// sentence, in the reader's language.
     Refused { problem: Problem },
@@ -352,6 +365,24 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
         // forget needs a trash and a caller allowed to ask, and reading a runtime
         // version means running the thing. All three are the server's.
         Request::Launch { .. } | Request::Forget { .. } | Request::Runtimes => return None,
+        Request::ClearCaches { id } => match load_bottle(bottles_dir, id) {
+            Ok(bottle) => {
+                let cleared = crate::caches::clear_caches(&bottle.prefix_root);
+                Response::Cleared {
+                    bytes: cleared.bytes,
+                    files: cleared.files,
+                }
+            }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
         Request::Prefix { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => {
                 let drive_c = bottle.prefix_root.join("drive_c");
@@ -522,6 +553,51 @@ mod tests {
         );
         assert_eq!(
             handle_request(dir.path(), &Request::Prefix { id: "absent".into() }),
+            Some(Response::Refused {
+                problem: Problem::NoSuchBottle
+            })
+        );
+    }
+
+    #[test]
+    fn a_clear_ask_answers_what_it_removed() {
+        use crate::registry::save_bottle;
+
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("game/pfx");
+        std::fs::create_dir_all(prefix.join("drive_c/windows/temp")).unwrap();
+        std::fs::write(prefix.join("drive_c/windows/temp/setup.dat"), vec![0u8; 20]).unwrap();
+        save_bottle(
+            dir.path(),
+            &Bottle {
+                id: "game".into(),
+                prefix_root: prefix.clone(),
+                grants: vec![],
+                egress: Egress::None,
+                plumbing: Default::default(),
+                program: vec![],
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            handle_request(dir.path(), &Request::ClearCaches { id: "game".into() }),
+            Some(Response::Cleared {
+                bytes: 20,
+                files: 1
+            })
+        );
+        // Twice, because a surface that offers the button again should get a true
+        // zero rather than a repeat of the first number.
+        assert_eq!(
+            handle_request(dir.path(), &Request::ClearCaches { id: "game".into() }),
+            Some(Response::Cleared {
+                bytes: 0,
+                files: 0
+            })
+        );
+        assert_eq!(
+            handle_request(dir.path(), &Request::ClearCaches { id: "absent".into() }),
             Some(Response::Refused {
                 problem: Problem::NoSuchBottle
             })

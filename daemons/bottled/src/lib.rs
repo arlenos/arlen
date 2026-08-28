@@ -30,6 +30,7 @@
 //! and turning a grant list into drive letters ([`map_drives`]).
 
 pub mod bottle;
+pub mod caches;
 pub mod client;
 pub mod create;
 pub mod dosdevices;
