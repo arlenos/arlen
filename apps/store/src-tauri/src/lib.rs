@@ -159,6 +159,37 @@ async fn store_install(
     }
 }
 
+/// Which layer an app was installed from, as installd records it.
+///
+/// ASKED rather than taken from the caller: installd owns what is installed, and a
+/// caller supplying the layer could aim a Flatpak removal at a lunpkg app and get a
+/// refusal it could not explain. An id it does not know is refused here, so
+/// "you never installed that" does not arrive as a D-Bus error about a missing app.
+async fn installed_source(id: &str) -> Result<String, String> {
+    let installed = fetch_installed().await.map_err(|e| e.to_string())?;
+    installed
+        .iter()
+        .find(|(app_id, _, _, _)| app_id == id)
+        .map(|(_, _, _, source)| source.clone())
+        .ok_or_else(|| format!("{id} is not installed"))
+}
+
+/// The installd method that removes an app installed from `source`.
+///
+/// Both tokens are named and anything else is refused. The strings are installd's -
+/// `flatpak::list_installed_flatpaks` pushes "flatpak", `install::list_installed`
+/// pushes "lunpkg" - and nothing binds them to this file. A default arm would send
+/// an unrecognised source down the lunpkg path, where it would fail somewhere
+/// deeper, or worse succeed at removing the wrong thing. Pure, so the routing is
+/// tested without a bus.
+fn removal_method(source: &str) -> Option<&'static str> {
+    match source {
+        "flatpak" => Some("UninstallFlatpak"),
+        "lunpkg" => Some("Uninstall"),
+        _ => None,
+    }
+}
+
 /// Uninstall an installed app.
 ///
 /// WHICH METHOD depends on where the app came from, and the answer is read from
@@ -173,28 +204,10 @@ async fn store_install(
 /// part of the desktop, so this cannot be used to remove Settings or the shell.
 #[tauri::command]
 async fn store_uninstall(id: String) -> Result<String, String> {
-    let installed = fetch_installed().await.map_err(|e| e.to_string())?;
-    let source = installed
-        .iter()
-        .find(|(app_id, _, _, _)| app_id == &id)
-        .map(|(_, _, _, source)| source.clone())
-        .ok_or_else(|| format!("{id} is not installed"))?;
-
-    // Both tokens are named, and anything else is refused rather than routed. The
-    // strings are installd's - `flatpak::list_installed_flatpaks` pushes "flatpak"
-    // and `install::list_installed` pushes "lunpkg" - and nothing binds them to this
-    // file. An `else` would send an unrecognised source down the lunpkg path, where
-    // it would fail somewhere deeper, or worse succeed at removing the wrong thing.
-    let method = match source.as_str() {
-        "flatpak" => "UninstallFlatpak",
-        "lunpkg" => "Uninstall",
-        other => {
-            return Err(format!(
-                "{id} is recorded as installed from {other}, which this build has no \
-                 way to remove"
-            ))
-        }
-    };
+    let source = installed_source(&id).await?;
+    let method = removal_method(&source).ok_or_else(|| {
+        format!("{id} is recorded as installed from {source}, which this build has no way to remove")
+    })?;
     let conn = zbus::Connection::session()
         .await
         .map_err(|e| e.to_string())?;
@@ -220,13 +233,8 @@ async fn store_uninstall(id: String) -> Result<String, String> {
 /// can do by itself.
 #[tauri::command]
 async fn store_update(id: String) -> Result<String, String> {
-    let installed = fetch_installed().await.map_err(|e| e.to_string())?;
-    let source = installed
-        .iter()
-        .find(|(app_id, _, _, _)| app_id == &id)
-        .map(|(_, _, _, source)| source.clone())
-        .ok_or_else(|| format!("{id} is not installed"))?;
-    // Named rather than defaulted, for the reason `store_uninstall` gives: an
+    let source = installed_source(&id).await?;
+    // Named rather than defaulted, for the reason `removal_method` gives: an
     // unrecognised source is not a lunpkg.
     match source.as_str() {
         "flatpak" => {}
@@ -409,4 +417,29 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The routing between installd's two source tokens and its two removal
+    /// methods, and the refusal for anything else.
+    ///
+    /// Worth a test rather than a reading, because the tokens are agreed across a
+    /// process boundary with nothing binding them: installd emits them and this
+    /// file compares them, so a rename there is silent here. The refusal is what
+    /// turns that silence into a sentence.
+    #[test]
+    fn a_source_this_build_does_not_know_is_refused_rather_than_routed() {
+        assert_eq!(removal_method("flatpak"), Some("UninstallFlatpak"));
+        assert_eq!(removal_method("lunpkg"), Some("Uninstall"));
+
+        // The shapes a rename or a new layer would arrive as. Each has to answer
+        // None: routing an unknown source to the lunpkg method would aim a removal
+        // at the wrong subsystem.
+        for unknown in ["Flatpak", "flatpak ", "apt", "forage", "snap", ""] {
+            assert_eq!(removal_method(unknown), None, "{unknown} must not route");
+        }
+    }
 }
