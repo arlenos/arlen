@@ -198,6 +198,70 @@ async fn store_uninstall(id: String) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Apply the update pending for one app.
+///
+/// ONLY THE FLATPAK LAYER, and the refusal for the rest is the honest half. A
+/// lunpkg update is `installd.Update(path)`, which takes a LOCAL package file, and
+/// nothing on this machine fetches one - so a Debian or forage app has no update
+/// path to call yet and this says which layer it is rather than failing somewhere
+/// deeper with a message about a missing file.
+///
+/// installd's job refuses a version asking for more than the installed one and
+/// emits `ConsentRequired`, so accepting a widening is not something this button
+/// can do by itself.
+#[tauri::command]
+async fn store_update(id: String) -> Result<String, String> {
+    let installed = fetch_installed().await.map_err(|e| e.to_string())?;
+    let source = installed
+        .iter()
+        .find(|(app_id, _, _, _)| app_id == &id)
+        .map(|(_, _, _, source)| source.clone())
+        .ok_or_else(|| format!("{id} is not installed"))?;
+    if source != "flatpak" {
+        return Err(format!(
+            "{id} was installed as {source}, and updating that layer needs a package \
+             nothing on this machine fetches yet"
+        ));
+    }
+    let conn = zbus::Connection::session()
+        .await
+        .map_err(|e| e.to_string())?;
+    let proxy = zbus::Proxy::new(&conn, INSTALLD, INSTALLD_PATH, INSTALLD)
+        .await
+        .map_err(|e| e.to_string())?;
+    proxy
+        .call("UpdateFlatpak", &(id,))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Apply every routine update: the ones asking for nothing new.
+///
+/// The caller has already filtered to those, and this does not re-derive it -
+/// installd re-checks each one anyway and refuses a widening, so the worst a
+/// wrong list can do is turn a row into a refusal rather than apply something
+/// unexamined.
+///
+/// Answers the job ids that were enqueued. A failure part-way is returned with
+/// whatever was already started rather than swallowed: some updates having run is
+/// the true state, and reporting it as total failure would send somebody looking
+/// for changes that did happen.
+#[tauri::command]
+async fn store_update_all_routine(ids: Vec<String>) -> Result<Vec<String>, String> {
+    let mut jobs = Vec::new();
+    for id in ids {
+        match store_update(id.clone()).await {
+            Ok(job) => jobs.push(job),
+            Err(e) if jobs.is_empty() => return Err(e),
+            Err(e) => {
+                log::warn!("update {id} refused after {} started: {e}", jobs.len());
+                break;
+            }
+        }
+    }
+    Ok(jobs)
+}
+
 /// The installed apps whose own source now offers a different version.
 ///
 /// A local read of the cached catalog against the install lock, so opening a
@@ -314,6 +378,8 @@ pub fn run() {
             store_variants,
             store_install,
             store_uninstall,
+            store_update,
+            store_update_all_routine,
             store_observed_vs_declared,
             store_outdated,
             store_skip_update,

@@ -431,8 +431,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # wire rather than unowned work sitting on a list. Saying whose they are is
         # the difference between a queue and a census: without it they read as
         # three items nobody has picked up.
-        "store_update": "updating one app (arlen-ui's lane)",
-        "store_update_all_routine": "update all (arlen-ui's lane)",
     },
     "text-editor": {
         "ai_edit": (

@@ -237,6 +237,26 @@ impl InstallDaemon {
         Ok(job_id)
     }
 
+    /// Update an installed Flatpak app from the remote it came from.
+    ///
+    /// Returns a job_id. The job REFUSES a version that asks for more than the
+    /// installed one, emitting `ConsentRequired` and changing nothing - the same
+    /// gate `Update` runs for a lunpkg, and it stops in the same place for the
+    /// same reason: nothing can answer that signal yet.
+    async fn update_flatpak(
+        &self,
+        app_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        authorise_mutation("UpdateFlatpak", &header, connection)
+            .await
+            .map_err(zbus::fdo::Error::AccessDenied)?;
+        let job_id = self.queue.enqueue(JobKind::UpdateFlatpak { app_id });
+        tracing::info!("enqueued flatpak update job {job_id}");
+        Ok(job_id)
+    }
+
     /// Install a Flatpak app.
     ///
     /// `remote` defaults to "flathub" if empty. Returns a job_id.
