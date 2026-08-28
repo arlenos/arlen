@@ -117,6 +117,17 @@ const cases = [
     true,
   ],
   [
+    "a user vouched for by a package the image does not install is caught",
+    () =>
+      wellFormed({
+        // greetd gone from the package list, so nothing creates `_greetd` any more
+        // and the excuse in USERS_FROM_PACKAGES no longer stands up.
+        packages: "Packages=\n        cage\n\n[Other]\n",
+      }),
+    (code, out) => code === 1 && out.includes("_greetd"),
+    true,
+  ],
+  [
     "a package that is only a comment does not count as installed",
     () =>
       wellFormed({

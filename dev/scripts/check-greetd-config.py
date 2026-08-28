@@ -60,6 +60,10 @@ PROVIDED_BY_PACKAGE: dict[str, str] = {}
 # package creates `_greetd` (`GREETDUSERGROUP=_greetd`, home /var/lib/greetd), which
 # is also what `apps/greeter/dist/arlen-greeter.tmpfiles.conf` names.
 USERS_FROM_PACKAGES = {"_greetd": "the greetd package"}
+"""User to the sentence naming the package that creates it.
+
+The second word of the sentence is the package name, and it is checked against
+`mkosi.conf` rather than believed - see `main`."""
 
 
 def packages() -> set[str]:
@@ -127,7 +131,14 @@ def main() -> int:
 
     pkgs = packages()
     paths = installed_paths()
-    users = created_users() | set(USERS_FROM_PACKAGES)
+    # A user "from a package" only exists if that package is asked for. The entry
+    # names which one, so this can check the claim rather than take it: dropping
+    # `greetd` from mkosi.conf would otherwise leave `_greetd` vouched for by a
+    # sentence about a package the image no longer installs.
+    from_packages = {
+        user: pkg for user, pkg in USERS_FROM_PACKAGES.items() if pkg.split()[1] in pkgs
+    }
+    users = created_users() | set(from_packages)
     problems: list[str] = []
     checked = 0
 
