@@ -711,6 +711,8 @@ export const b: Catalogs = {
       "The installer left more than one program behind. Pick the one to start; the others are usually an uninstaller or a helper.",
     "s.wa.whichProgramNone":
       "No program was found in this app's files yet. If the installer is still running, finish it and come back.",
+    "s.wa.whichProgramMore":
+      "This app has more programs than fit in one list; these are the first of them.",
     "s.wa.useThis": "Use this one",
     "s.wa.compat": "Compatibility",
     "s.wa.notManaged":
@@ -1668,6 +1670,8 @@ export const b: Catalogs = {
       "Der Installer hat mehr als ein Programm hinterlassen. W\u00e4hle das, das gestartet werden soll; die anderen sind meist ein Deinstallations- oder Hilfsprogramm.",
     "s.wa.whichProgramNone":
       "In den Dateien dieser App wurde noch kein Programm gefunden. Falls der Installer noch l\u00e4uft, schlie\u00dfe ihn ab und komm zur\u00fcck.",
+    "s.wa.whichProgramMore":
+      "Diese App hat mehr Programme, als in eine Liste passen; das sind die ersten davon.",
     "s.wa.useThis": "Dieses nehmen",
     "s.wa.compat": "Kompatibilit\u00e4t",
     "s.wa.notManaged":

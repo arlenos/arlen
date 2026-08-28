@@ -199,7 +199,18 @@ pub enum Response {
     ///
     /// An empty list is a real answer: an installer that was cancelled leaves
     /// nothing behind, and saying so beats offering an invented entry.
-    Programs { programs: Vec<ProgramView> },
+    ///
+    /// `truncated` says the list was CUT to fit the wire, which the caller has to
+    /// be able to tell from "that is all of them". The frame cap is 64 KiB and a
+    /// path can be 4096 bytes, so a count alone cannot guarantee a fit - fifteen
+    /// deep paths already exceed it. An over-cap answer is not a truncated answer:
+    /// `write_frame` refuses it and the connection is dropped, so the caller sees
+    /// a transport error and renders "nothing found" for a bottle full of
+    /// programs. Measured while writing this, not in the field.
+    Programs {
+        programs: Vec<ProgramView>,
+        truncated: bool,
+    },
     /// The program was recorded, and this is what a launch will now start.
     ProgramSet { program: String },
     /// The bottle was made, and this is its id.
@@ -545,6 +556,35 @@ pub fn create(
     }
 }
 
+/// How many bytes of program list may travel, leaving the rest of the frame to the
+/// JSON around it. Well under the 64 KiB cap on purpose: the margin is not tuned,
+/// it is generous, because the cost of getting it wrong is a dropped connection
+/// that reads as an empty bottle.
+const PROGRAM_LIST_BUDGET: usize = 32 * 1024;
+
+/// Take as many programs as fit the budget, and say whether any were left.
+///
+/// Bounded by SIZE rather than by count, because the thing that has to fit is
+/// bytes: a path may be 4096 of them, so any count small enough to be safe would
+/// be too small to be useful for the ordinary case of short ones.
+fn fit_programs(all: Vec<ProgramView>) -> (Vec<ProgramView>, bool) {
+    let mut kept = Vec::new();
+    let mut used = 0;
+    let total = all.len();
+    for p in all {
+        // The two strings plus the JSON around them, near enough: the budget's
+        // margin covers the difference between this and the exact encoding.
+        let cost = p.path.len() + p.name.len() + 32;
+        if used + cost > PROGRAM_LIST_BUDGET {
+            break;
+        }
+        used += cost;
+        kept.push(p);
+    }
+    let truncated = kept.len() < total;
+    (kept, truncated)
+}
+
 /// Answer one request against a bottles directory, or say it is not this
 /// function's to answer.
 ///
@@ -591,15 +631,20 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
         | Request::Create { .. }
         | Request::Install { .. } => return None,
         Request::Programs { id } => match load_bottle(bottles_dir, id) {
-            Ok(bottle) => Response::Programs {
-                programs: crate::programs::candidates(&bottle.prefix_root)
+            Ok(bottle) => {
+                let all: Vec<ProgramView> = crate::programs::candidates(&bottle.prefix_root)
                     .into_iter()
                     .map(|c| ProgramView {
                         path: c.path.to_string_lossy().into_owned(),
                         name: c.name,
                     })
-                    .collect(),
-            },
+                    .collect();
+                let (programs, truncated) = fit_programs(all);
+                Response::Programs {
+                    programs,
+                    truncated,
+                }
+            }
             Err(RegistryError::BadId(_)) => Response::Refused {
                 problem: Problem::BadId,
             },
@@ -1045,13 +1090,16 @@ mod tests {
         .unwrap();
 
         // What the installer left, as the panel would list it.
-        let Some(Response::Programs { programs }) =
-            handle_request(dir.path(), &Request::Programs { id: "game".into() })
+        let Some(Response::Programs {
+            programs,
+            truncated,
+        }) = handle_request(dir.path(), &Request::Programs { id: "game".into() })
         else {
             panic!("a programs ask is answered with programs");
         };
         assert_eq!(programs.len(), 1);
         assert_eq!(programs[0].name, "game.exe");
+        assert!(!truncated, "one program is all of them");
 
         // A path outside the bottle is refused, and the bottle is left alone.
         let elsewhere = dir.path().join("outside.exe");
@@ -1090,6 +1138,43 @@ mod tests {
             load_bottle(dir.path(), "game").unwrap().program,
             vec![programs[0].path.clone()]
         );
+    }
+
+    #[test]
+    fn a_list_too_long_for_the_wire_is_cut_and_says_so() {
+        // Long paths, because that is what makes a count-based cap unsafe: the
+        // frame is 64 KiB and a single path may be 4096 bytes.
+        let deep = "d".repeat(300);
+        let all: Vec<ProgramView> = (0..400)
+            .map(|i| ProgramView {
+                path: format!("/pfx/drive_c/{deep}/app{i}.exe"),
+                name: format!("app{i}.exe"),
+            })
+            .collect();
+
+        let (kept, truncated) = fit_programs(all);
+        assert!(truncated, "400 long paths do not fit and the caller must be told");
+        assert!(!kept.is_empty(), "what does fit is still answered");
+
+        let framed = serde_json::to_vec(&Response::Programs {
+            programs: kept,
+            truncated,
+        })
+        .unwrap();
+        assert!(
+            framed.len() < crate::server::MAX_FRAME,
+            "the whole point: an over-cap answer is refused by write_frame and the \
+             connection is dropped, which the panel renders as an empty bottle"
+        );
+
+        // A list that fits is not reported as cut.
+        let short = vec![ProgramView {
+            path: "/pfx/drive_c/a.exe".into(),
+            name: "a.exe".into(),
+        }];
+        let (kept, truncated) = fit_programs(short);
+        assert_eq!(kept.len(), 1);
+        assert!(!truncated);
     }
 
     #[test]
