@@ -39,6 +39,7 @@ pub mod health;
 pub mod install;
 pub mod launch;
 pub mod plumbing;
+pub mod programs;
 pub mod protocol;
 pub mod registry;
 pub mod server;
