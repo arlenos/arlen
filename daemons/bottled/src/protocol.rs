@@ -109,6 +109,14 @@ pub struct BottleView {
     /// mapping the launcher runs, so a surface and the bottle cannot disagree
     /// about which letter is which.
     pub drives: Vec<DriveView>,
+    /// Whether a program has been picked for this bottle yet.
+    ///
+    /// Carried because the panel has something to ASK when it is false: an
+    /// installer has run and nobody has said which of what it left is the app, so
+    /// a launch would refuse as `nothing-to-run`. Without this the surface cannot
+    /// tell an empty new bottle from one that is ready, and the person meets the
+    /// refusal instead of the question.
+    pub has_program: bool,
 }
 
 /// One program found inside a bottle.
@@ -267,6 +275,7 @@ pub enum Problem {
 pub fn view(bottle: &Bottle) -> BottleView {
     BottleView {
         id: bottle.id.clone(),
+        has_program: !bottle.program.is_empty(),
         network: !matches!(bottle.egress, Egress::None),
         home_folder: std::env::var_os("HOME")
             .map(std::path::PathBuf::from)
@@ -876,6 +885,7 @@ mod tests {
                     network: false,
                     home_folder: false,
                     drives: vec![],
+                    has_program: false,
                 }],
                 unreadable: vec![]
             })

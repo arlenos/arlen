@@ -16,6 +16,7 @@ use arlen_wine_core::client::ask;
 use arlen_wine_core::protocol::{Request, Response};
 use arlen_wine_core::server::socket_path;
 use serde::Serialize;
+use tauri_plugin_arlen_portal::{FileFilter, FilterPattern, PickFileOptions, PickerResult};
 
 /// One bottle as a panel row, as much of it as the runtime actually knows.
 ///
@@ -33,6 +34,9 @@ pub struct BottleRow {
     /// The drives it was granted: the letter a Windows program sees and the host
     /// folder behind it.
     pub drives: Vec<DriveRow>,
+    /// Whether somebody has said which program this bottle starts. False after an
+    /// install until they pick, and the panel has a question to ask while it is.
+    pub has_program: bool,
 }
 
 /// One granted drive, as `windows-apps.ts` declares it. `DriveRow` for the same
@@ -74,6 +78,7 @@ pub async fn list_bottles() -> Result<Bottles, String> {
                     id: b.id,
                     network: b.network,
                     home_folder: b.home_folder,
+                    has_program: b.has_program,
                     drives: b
                         .drives
                         .into_iter()
@@ -250,6 +255,134 @@ pub async fn clear_bottle_caches(id: String) -> Result<ClearedCaches, String> {
     tokio::task::spawn_blocking(move || {
         match ask(&socket_path(), &Request::ClearCaches { id }) {
             Ok(Response::Cleared { bytes, files }) => Ok(ClearedCaches { bytes, files }),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// One program an installer left inside a bottle.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgramRow {
+    pub path: String,
+    pub name: String,
+}
+
+/// Install a Windows app: pick an installer, make a bottle for it, run it there.
+///
+/// Three daemon asks rather than one, because they fail differently and the person
+/// needs to know which happened: the bottle could not be made, or it was made and
+/// the installer would not start. The bottle survives the second, which is what
+/// lets them try again without losing the prefix.
+///
+/// Answers the new bottle's id, or `None` when the picker was cancelled - a
+/// cancel is not an error and must not raise one.
+///
+/// WHAT THIS DOES NOT DO is decide which program the installer installed. That is
+/// `bottle_programs` and `set_bottle_program`, because an installer leaves several
+/// (the app, an uninstaller, a crash reporter) and picking automatically is a
+/// guess a person pays for later.
+#[tauri::command]
+pub async fn install_windows_app() -> Result<Option<String>, String> {
+    let picked = tauri_plugin_arlen_portal::api::pick_file(PickFileOptions {
+        title: Some("Choose a Windows installer".into()),
+        filters: vec![FileFilter {
+            name: "Windows installers".into(),
+            patterns: vec![
+                FilterPattern::Glob {
+                    pattern: "*.exe".into(),
+                },
+                FilterPattern::Glob {
+                    pattern: "*.msi".into(),
+                },
+            ],
+        }],
+        ..Default::default()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let uri = match picked {
+        PickerResult::Picked { uris } => match uris.into_iter().next() {
+            Some(u) => u,
+            // Picked nothing is the same as cancelling, and neither is a failure.
+            None => return Ok(None),
+        },
+        PickerResult::Cancelled => return Ok(None),
+    };
+    // The portal answers with a URI; the daemon takes a path.
+    let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
+    let name = path.rsplit('/').next().unwrap_or(&path).to_string();
+    let id = arlen_wine_core::install::id_from_installer(&name)
+        .ok_or_else(|| "unnamed-installer".to_string())?;
+
+    let made = id.clone();
+    tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::Create { id: made.clone() }) {
+            Ok(Response::Created { .. }) => Ok(()),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let into = id.clone();
+    tokio::task::spawn_blocking(move || {
+        match ask(
+            &socket_path(),
+            &Request::Install {
+                id: into,
+                installer: path,
+            },
+        ) {
+            Ok(Response::Launched { .. }) => Ok(()),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(Some(id))
+}
+
+/// The programs found inside a bottle, for somebody to pick the app from.
+#[tauri::command]
+pub async fn bottle_programs(id: String) -> Result<Vec<ProgramRow>, String> {
+    tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::Programs { id }) {
+            Ok(Response::Programs { programs }) => Ok(programs
+                .into_iter()
+                .map(|p| ProgramRow {
+                    path: p.path,
+                    name: p.name,
+                })
+                .collect()),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Record which program a bottle's launch should start.
+///
+/// The daemon refuses a path that is not inside the bottle's own prefix, so this
+/// cannot be used to point a bottle at something else on the machine.
+#[tauri::command]
+pub async fn set_bottle_program(id: String, program: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::SetProgram { id, program }) {
+            Ok(Response::ProgramSet { .. }) => Ok(()),
             Ok(Response::Refused { problem }) => Err(problem_token(problem)),
             Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
             Err(e) => Err(e.to_string()),

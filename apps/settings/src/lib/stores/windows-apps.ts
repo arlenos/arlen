@@ -50,6 +50,12 @@ export interface Bottle {
   access: BottleAccess;
   /// The drives the bottle maps, from the daemon's dosdevices table.
   drives: BottleDrive[];
+  /// Whether somebody has said which program this bottle starts.
+  ///
+  /// False between an install finishing and the person picking the app out of
+  /// what the installer left. A launch refuses while it is false, so the panel
+  /// asks the question instead of letting them meet the refusal.
+  hasProgram: boolean;
 
   // EVERYTHING BELOW IS OPTIONAL, and the question mark is the honest part
   // rather than a convenience. A bottle knows its id, what it may reach and
@@ -94,6 +100,7 @@ interface BottleListing {
     network: boolean;
     homeFolder: boolean;
     drives: BottleDrive[];
+    hasProgram: boolean;
   }[];
   unreadable: string[];
 }
@@ -141,6 +148,7 @@ const FIXTURE: Bottle[] = [
     followsTheme: true,
     access: { network: false, homeFolder: false },
     drives: [{ letter: "C", path: null }],
+    hasProgram: true,
   },
   {
     id: "b2",
@@ -161,6 +169,7 @@ const FIXTURE: Bottle[] = [
     diskUsage: "1.2 GB",
     followsTheme: true,
     access: { network: true, homeFolder: false },
+    hasProgram: true,
     drives: [
       { letter: "C", path: null },
       { letter: "D", path: "/home/mara/Pictures" },
@@ -185,6 +194,7 @@ const FIXTURE: Bottle[] = [
     diskUsage: "320 MB",
     followsTheme: false,
     access: { network: true, homeFolder: true },
+    hasProgram: true,
     drives: [
       { letter: "C", path: null },
       { letter: "D", path: "/home/mara" },
@@ -257,6 +267,7 @@ export async function load(): Promise<void> {
         appId: b.id,
         access: { network: b.network, homeFolder: b.homeFolder },
         drives: b.drives,
+        hasProgram: b.hasProgram,
       })),
       unreadable: listing.unreadable,
       loading: false,
@@ -308,13 +319,21 @@ export async function patchBottle(id: string, patch: Partial<Bottle>): Promise<v
   }
 }
 
-/// Install a new Windows app. Live: a file-pick (a .exe or .msi installer) ->
-/// the install command sets up a bottle.
-export async function installExe(): Promise<void> {
+/// Install a new Windows app: pick an installer, get a bottle, run it there.
+///
+/// Answers the new bottle's id, or null when the picker was cancelled - which is
+/// not a failure and must not raise the error banner. The list is reloaded on the
+/// way out so the new bottle appears without the person going looking for it.
+export async function installExe(): Promise<string | null> {
+  winActionFailed.set(false);
   try {
-    await invoke("install_windows_app");
+    const id = await invoke<string | null>("install_windows_app");
+    if (id) await load();
+    return id;
   } catch {
     // No bottle daemon under vite: the escape hatch is inert in the mock.
+    if (tauriAvailable) winActionFailed.set(true);
+    return null;
   }
 }
 
@@ -478,6 +497,37 @@ export async function patchDefaults(patch: Partial<WinDefaults>): Promise<void> 
   } catch {
     if (!tauriAvailable) return;
     defaults.set(before);
+    winActionFailed.set(true);
+  }
+}
+
+/// One program an installer left inside a bottle.
+export interface BottleProgram {
+  path: string;
+  name: string;
+}
+
+/// What an installer left in a bottle, for the person to pick the app from.
+///
+/// A list rather than a guess: an installer writes the app, usually an
+/// uninstaller, sometimes a crash reporter, and a bottle that launches the wrong
+/// one is worse than a bottle that asked.
+export async function bottlePrograms(id: string): Promise<BottleProgram[]> {
+  try {
+    return await invoke<BottleProgram[]>("bottle_programs", { id });
+  } catch {
+    return [];
+  }
+}
+
+/// Record which program the bottle starts, then reload so the row stops asking.
+export async function setBottleProgram(id: string, program: string): Promise<void> {
+  winActionFailed.set(false);
+  try {
+    await invoke("set_bottle_program", { id, program });
+    await load();
+  } catch {
+    if (!tauriAvailable) return;
     winActionFailed.set(true);
   }
 }
