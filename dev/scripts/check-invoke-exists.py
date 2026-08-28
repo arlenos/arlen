@@ -353,7 +353,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # total reads as that many controls lying on screen, and seven of them are
         # not on screen at all.
         "set_bottle_config": "bottle settings (surface off the navigation)",
-        "set_windows_defaults": "the Windows-app defaults (surface off the navigation)",
         # The four printer entries that stood here are gone rather than fixed, and
         # the way they were wrong is worth keeping: the CUPS backend exists and
         # `printers_list`/`printers_default` reach it, so "this is just wiring" was
