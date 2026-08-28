@@ -18,6 +18,8 @@ pub enum FlatpakError {
     InstallFailed(String),
     #[error("flatpak uninstall failed: {0}")]
     UninstallFailed(String),
+    #[error("flatpak update failed: {0}")]
+    UpdateFailed(String),
     #[error("flatpak info failed: {0}")]
     InfoFailed(String),
     #[error("IO: {0}")]
@@ -250,6 +252,110 @@ pub fn parse_show_permissions(output: &str) -> FlatpakContext {
     ctx
 }
 
+/// The remote an installed Flatpak app came from, read off `flatpak info`.
+///
+/// Needed before an update can be checked: what the NEW version asks for lives on
+/// the remote, and `remote-info` will not answer without being told which one.
+/// `None` when the app is not installed or the field is absent, which the caller
+/// treats as "cannot check" rather than "nothing changed".
+pub fn parse_origin(output: &str) -> Option<String> {
+    for line in output.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("Origin:") {
+            let origin = rest.trim();
+            if !origin.is_empty() {
+                return Some(origin.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// What a new version asks for that the installed one does not.
+///
+/// Compared per dimension and reported with the dimension named, because
+/// `filesystems: host` and `devices: all` are different sentences to a person and
+/// a flat list of tokens makes them the same one. Sorted and deduped so two runs
+/// agree.
+///
+/// An access suffix is not a widening on its own (`home:ro` -> `home:rw` IS one,
+/// and that is caught because the tokens differ), so the comparison is on the
+/// whole token rather than the path in front of it. The cost is a rename or a
+/// reorder reading as new; the alternative is `home:ro` becoming `home` silently.
+pub fn widened(before: &FlatpakContext, after: &FlatpakContext) -> Vec<String> {
+    let mut out = Vec::new();
+    for (dimension, old, new) in [
+        ("filesystems", &before.filesystems, &after.filesystems),
+        ("shared", &before.shared, &after.shared),
+        ("sockets", &before.sockets, &after.sockets),
+        ("devices", &before.devices, &after.devices),
+    ] {
+        for token in new {
+            if !old.contains(token) {
+                out.push(format!("{dimension}: {token}"));
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Read what the REMOTE offers for an app, which is what an update would apply.
+///
+/// `flatpak remote-info --show-permissions`, the counterpart of
+/// [`get_flatpak_context`]'s `flatpak info`: one reads what is installed, this
+/// reads what is on offer, and an update gate needs both.
+pub fn get_remote_context(remote: &str, app_id: &str) -> Result<FlatpakContext, FlatpakError> {
+    let output = Command::new("flatpak")
+        .args([
+            "remote-info",
+            "--user",
+            "--show-permissions",
+            remote,
+            app_id,
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(FlatpakError::InfoFailed(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+    Ok(parse_show_permissions(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// The remote an installed app came from.
+pub fn get_origin(app_id: &str) -> Result<String, FlatpakError> {
+    let output = Command::new("flatpak")
+        .args(["info", "--user", app_id])
+        .output()?;
+    if !output.status.success() {
+        return Err(FlatpakError::InfoFailed(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+    parse_origin(&String::from_utf8_lossy(&output.stdout)).ok_or_else(|| {
+        FlatpakError::InfoFailed(format!("{app_id} reports no origin remote"))
+    })
+}
+
+/// Update an installed Flatpak app from its remote.
+pub fn update_flatpak(app_id: &str) -> Result<(), FlatpakError> {
+    check_flatpak_available()?;
+
+    let output = Command::new("flatpak")
+        .args(["update", "--user", "--noninteractive", app_id])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(FlatpakError::UpdateFailed(stderr));
+    }
+
+    tracing::info!("flatpak: updated {app_id}");
+    Ok(())
+}
+
 /// Map a Flatpak `filesystems=` token to an Arlen filesystem dimension, or `None`
 /// if it has no matching dimension (a raw host path, a subdir the profile does
 /// not model). `host`/`host-os` grant broad access; the conservative floor maps
@@ -336,6 +442,59 @@ fn check_flatpak_available() -> Result<(), FlatpakError> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn the_origin_remote_is_read_off_the_info_block() {
+        let out = "Ledger - keep books\n\n          ID: org.example.Ledger\n         Ref: app/org.example.Ledger/x86_64/stable\n      Origin: flathub\n";
+        assert_eq!(parse_origin(out).as_deref(), Some("flathub"));
+        // Not installed, or a build that prints no origin: the caller must not
+        // read that as "the same remote as last time".
+        assert_eq!(parse_origin("error: not installed"), None);
+    }
+
+    #[test]
+    fn a_new_version_asking_for_more_is_named_by_dimension() {
+        let before = FlatpakContext {
+            filesystems: vec!["xdg-download".into()],
+            shared: vec!["network".into()],
+            sockets: vec!["wayland".into()],
+            devices: vec![],
+        };
+        let after = FlatpakContext {
+            filesystems: vec!["xdg-download".into(), "home".into()],
+            shared: vec!["network".into()],
+            sockets: vec!["wayland".into(), "pulseaudio".into()],
+            devices: vec!["all".into()],
+        };
+        assert_eq!(
+            widened(&before, &after),
+            vec![
+                "devices: all".to_string(),
+                "filesystems: home".to_string(),
+                "sockets: pulseaudio".to_string(),
+            ],
+            "the dimension is named: `filesystems: host` and `devices: all` are \
+             different sentences to whoever reads them"
+        );
+        // Dropping a permission is not a widening, and neither is standing still.
+        assert!(widened(&after, &before).is_empty());
+        assert!(widened(&before, &before).is_empty());
+    }
+
+    #[test]
+    fn a_tightened_access_suffix_does_not_read_as_unchanged() {
+        let ro = FlatpakContext {
+            filesystems: vec!["home:ro".into()],
+            ..Default::default()
+        };
+        let rw = FlatpakContext {
+            filesystems: vec!["home".into()],
+            ..Default::default()
+        };
+        assert_eq!(widened(&ro, &rw), vec!["filesystems: home".to_string()]);
+    }
+
     use super::*;
 
     #[test]
