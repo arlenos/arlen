@@ -352,7 +352,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # they still count here, but nobody can press them. Without this note the
         # total reads as that many controls lying on screen, and seven of them are
         # not on screen at all.
-        "install_windows_app": "installing a Windows app (surface off the navigation)",
         "set_bottle_config": "bottle settings (surface off the navigation)",
         "set_windows_defaults": "the Windows-app defaults (surface off the navigation)",
         # The four printer entries that stood here are gone rather than fixed, and
