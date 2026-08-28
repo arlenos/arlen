@@ -23,7 +23,7 @@ use tokio::net::{UnixListener, UnixStream};
 
 use arlen_permissions::peer_pidfd::PeerPidfd;
 
-use crate::protocol::{forget, handle_request, launch, Problem, Request, Response};
+use crate::protocol::{create, forget, handle_request, launch, Problem, Request, Response};
 use audit_proto::{AuditKind, AuditSink, IngestRequest, StructuralRecord};
 
 /// The largest accepted frame body. A bottle list is a handful of short strings
@@ -158,6 +158,14 @@ pub async fn serve_connection(
                 Request::Forget { id } => {
                     forget_for(bottles_dir, id, app_id.as_deref(), &*audit).await
                 }
+                Request::Create { id } => create(
+                    bottles_dir,
+                    id,
+                    std::path::Path::new("/usr"),
+                    &runtime_dir,
+                    |p| p.exists(),
+                    run_to_completion,
+                ),
                 Request::Launch { id } => launch(
                     bottles_dir,
                     id,
@@ -314,6 +322,30 @@ fn spawn_detached(argv: &[String]) -> std::io::Result<u32> {
         let _ = child.wait().await;
     });
     Ok(pid)
+}
+
+/// Run a confined argv and wait for it to finish.
+///
+/// WAITS, unlike [`spawn_detached`], and the difference is what the two are for. A
+/// launch hands a program to the person and gets out of the way; a boot is a step
+/// inside making a bottle, and the steps after it - severing the links, writing
+/// the drive table - are only correct once Wine has finished writing the prefix.
+///
+/// Blocking the connection for the seconds a boot takes is deliberate: the caller
+/// asked for a bottle and there is nothing to answer until there is one. Other
+/// connections are unaffected, since each is its own task.
+fn run_to_completion(argv: &[String]) -> Result<(), String> {
+    let status = std::process::Command::new("bwrap")
+        .args(argv)
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        // The code rather than a sentence: this is one half of a token the window
+        // will render, and Wine's own output has already gone to the journal.
+        Err(format!("wineboot exited {status}"))
+    }
 }
 
 /// This process's uid, which every admitted peer must share.

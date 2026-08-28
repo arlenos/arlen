@@ -45,6 +45,17 @@ pub enum Request {
     /// that starts a window on the caller's behalf is a wider thing than one that
     /// answers a question.
     Prefix { id: String },
+    /// Make a bottle: a booted, severed, empty prefix under this id.
+    ///
+    /// EMPTY IS THE POINT. Nothing is installed by this, and the bottle it leaves
+    /// has no program to run - `Launch` refuses it as `nothing-to-run` until an
+    /// installer has been through. Making the container and putting something in
+    /// it are two asks because they fail differently and a caller needs to know
+    /// which happened.
+    ///
+    /// Not gated the way `Forget` is: this creates rather than destroys, and a
+    /// bottle with no grants and no network is the least a caller can ask for.
+    Create { id: String },
     /// Remove the regenerable caches inside a bottle's prefix.
     ///
     /// Not gated the way [`Request::Forget`] is, and the difference is what is at
@@ -144,6 +155,11 @@ pub enum Response {
     /// program installed itself into, and the root beside it holds the registry
     /// and the drive table, which are ours rather than theirs.
     Prefix { path: String },
+    /// The bottle was made, and this is its id.
+    ///
+    /// The id is echoed rather than assumed: a caller that let the daemon settle
+    /// the name would otherwise have to guess at it.
+    Created { id: String },
     /// The sweep is done, and this is what it actually removed.
     ///
     /// MEASURED, not promised: a bottle with no caches answers zero, which is a
@@ -184,6 +200,14 @@ pub enum Problem {
     DrivesUnmet,
     /// The confinement could not be started.
     CouldNotStart,
+    /// There is already a bottle by that name. Refused rather than merged: a
+    /// bottle is a prefix with software in it, and overwriting one because the
+    /// name matched would throw that away.
+    BottleExists,
+    /// The bottle could not be made. Wine would not boot the prefix, the prefix
+    /// booted and still reached out of itself, or the disk said no - one token,
+    /// because none of the three is something the person can act on differently.
+    CouldNotCreate,
     /// The caller may not do this. Forgetting a bottle throws away what somebody
     /// installed, so it is not something any process that can reach the socket
     /// gets to ask for.
@@ -327,6 +351,55 @@ pub fn forget(
     }
 }
 
+/// Make a bottle, booting its prefix through the runner the caller supplies.
+///
+/// The runner is injected for the same reason `launch`'s spawn is: the sequence
+/// can then be exercised on a machine with no Wine, and the caller decides whether
+/// the boot is confined. The server's is - it runs [`crate::create::boot_argv`]
+/// under bwrap.
+///
+/// A failed boot leaves nothing behind. `create_bottle` writes the description
+/// last, so a prefix that did not finish is a directory with no `bottle.toml`,
+/// which the registry deliberately neither lists nor reports.
+pub fn create(
+    bottles_dir: &Path,
+    id: &str,
+    usr: &Path,
+    runtime_dir: &Path,
+    exists: impl Fn(&Path) -> bool + Copy,
+    run: impl Fn(&[String]) -> Result<(), String>,
+) -> Response {
+    let new = crate::create::NewBottle {
+        id: id.to_string(),
+        // Nothing of the person's, and no network. A bottle is granted its reach
+        // deliberately and afterwards; one that arrives with reach it was never
+        // asked for is the shape this whole daemon exists to avoid.
+        grants: Vec::new(),
+        egress: crate::bottle::Egress::None,
+        plumbing: crate::plumbing::Plumbing::default(),
+    };
+    let boot = |prefix: &Path| -> Result<(), String> {
+        let argv = crate::create::boot_argv(prefix, usr, runtime_dir, exists)
+            .map_err(|e| e.to_string())?;
+        run(&argv)
+    };
+    match crate::create::create_bottle(bottles_dir, &new, boot) {
+        Ok(bottle) => Response::Created { id: bottle.id },
+        Err(crate::create::CreateError::AlreadyExists(_)) => Response::Refused {
+            problem: Problem::BottleExists,
+        },
+        Err(crate::create::CreateError::Registry(RegistryError::BadId(_))) => Response::Refused {
+            problem: Problem::BadId,
+        },
+        // Boot, StillEscapes, Drives, Io and the rest of the registry errors are
+        // one token: each is the machine failing rather than the person asking for
+        // something impossible, and a surface has one sentence for that.
+        Err(_) => Response::Refused {
+            problem: Problem::CouldNotCreate,
+        },
+    }
+}
+
 /// Answer one request against a bottles directory, or say it is not this
 /// function's to answer.
 ///
@@ -364,7 +437,12 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
         // Neither is answered here: a launch needs the host it will run on, a
         // forget needs a trash and a caller allowed to ask, and reading a runtime
         // version means running the thing. All three are the server's.
-        Request::Launch { .. } | Request::Forget { .. } | Request::Runtimes => return None,
+        Request::Launch { .. }
+        | Request::Forget { .. }
+        | Request::Runtimes
+        // A create needs the host too: booting a prefix means running Wine on
+        // this machine, which is exactly what `handle_request` is pure of.
+        | Request::Create { .. } => return None,
         Request::ClearCaches { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => {
                 let cleared = crate::caches::clear_caches(&bottle.prefix_root);
@@ -556,6 +634,93 @@ mod tests {
             Some(Response::Refused {
                 problem: Problem::NoSuchBottle
             })
+        );
+    }
+
+    #[test]
+    fn a_create_makes_an_empty_bottle_and_refuses_a_second_one_by_that_name() {
+        let dir = tempfile::tempdir().unwrap();
+        // The boot is the injected step: it makes the directories Wine would, so
+        // the severing and drive-table passes after it have something to read.
+        let booted = |prefix: &[String]| -> Result<(), String> {
+            let _ = prefix;
+            Ok(())
+        };
+        let make = |dir: &Path| {
+            create(
+                dir,
+                "game",
+                Path::new("/usr"),
+                Path::new("/run/user/1000"),
+                |_| true,
+                |argv: &[String]| {
+                    // The confiner emits an environment as `--setenv NAME VALUE`,
+                    // three elements, so the prefix is the one after the name. A
+                    // real wineboot creates that directory; this stands in for it.
+                    let prefix = argv
+                        .iter()
+                        .position(|a| a == "WINEPREFIX")
+                        .and_then(|i| argv.get(i + 1))
+                        .map(std::path::PathBuf::from)
+                        .expect("a boot names its prefix");
+                    std::fs::create_dir_all(prefix.join("dosdevices")).unwrap();
+                    booted(argv)
+                },
+            )
+        };
+
+        assert_eq!(
+            make(dir.path()),
+            Response::Created { id: "game".into() },
+            "a bottle is made and answers with the name it was given"
+        );
+        // Empty, which is the whole contract: nothing is installed and a launch
+        // says so rather than starting something.
+        assert_eq!(
+            handle_request(dir.path(), &Request::ListBottles),
+            Some(Response::Bottles {
+                bottles: vec![BottleView {
+                    id: "game".into(),
+                    network: false,
+                    home_folder: false,
+                    drives: vec![],
+                }],
+                unreadable: vec![]
+            })
+        );
+        assert_eq!(
+            make(dir.path()),
+            Response::Refused {
+                problem: Problem::BottleExists
+            },
+            "a second bottle by that name would overwrite what is installed in the first"
+        );
+    }
+
+    #[test]
+    fn a_create_on_a_machine_without_wine_says_so_rather_than_leaving_a_half_bottle() {
+        let dir = tempfile::tempdir().unwrap();
+        let answer = create(
+            dir.path(),
+            "game",
+            Path::new("/usr"),
+            Path::new("/run/user/1000"),
+            |_| false,
+            |_| Ok(()),
+        );
+        assert_eq!(
+            answer,
+            Response::Refused {
+                problem: Problem::CouldNotCreate
+            }
+        );
+        assert_eq!(
+            handle_request(dir.path(), &Request::ListBottles),
+            Some(Response::Bottles {
+                bottles: vec![],
+                unreadable: vec![]
+            }),
+            "a create that failed leaves nothing to list and nothing to report broken"
         );
     }
 
