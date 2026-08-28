@@ -4,18 +4,18 @@
 // The gate is green on the tree as it stands (nothing names a menu label in
 // Rust any more), which is exactly the state where a broken checker looks
 // identical to a working one. So every case here is a file written for it.
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, "check-menu-labels-translated.py");
 
 function run(files) {
-  const root = mkdtempSync(join(tmpdir(), "menu-label-"));
+  const root = mint("menu-label-");
   mkdirSync(join(root, "dev", "scripts"), { recursive: true });
   // The gate locates the tree from its own path, so it has to live in the fixture.
   const body = spawnSync("cat", [script], { encoding: "utf8" }).stdout;
@@ -28,7 +28,7 @@ function run(files) {
   const r = spawnSync("python3", [join(root, "dev", "scripts", "check.py")], {
     encoding: "utf8",
   });
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
   return r;
 }
 

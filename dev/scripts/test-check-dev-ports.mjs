@@ -8,10 +8,10 @@
 // catch is demonstrated failing here rather than described.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-dev-ports.py");
@@ -25,7 +25,7 @@ const bad = (n, d) => {
 
 /// Each app is [server, hmr, devUrl].
 function tree(apps) {
-  const root = mkdtempSync(join(tmpdir(), "dev-ports-"));
+  const root = mint("dev-ports-");
   for (const [name, [server, hmr, dev]] of Object.entries(apps)) {
     mkdirSync(join(root, "apps", name, "src-tauri"), { recursive: true });
     writeFileSync(
@@ -53,7 +53,7 @@ function run(root) {
 // check could not see at once, which is how the picker came to serve on the same
 // port as Settings with `strictPort` on both.
 {
-  const root = mkdtempSync(join(tmpdir(), "dev-ports-daemon-"));
+  const root = mint("dev-ports-daemon-");
   mkdirSync(join(root, "apps", "one", "src-tauri"), { recursive: true });
   writeFileSync(
     join(root, "apps", "one", "vite.config.js"),
@@ -76,7 +76,7 @@ function run(root) {
   const code = run(root);
   if (code === 1) ok("a daemon frontend on an app's port is caught, TypeScript config and all");
   else bad("a daemon frontend on an app's port is caught, TypeScript config and all", `exit ${code}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 
@@ -92,15 +92,15 @@ for (const [name, apps, expect] of cases) {
   const root = tree(apps);
   const rc = run(root);
   rc === expect ? ok(name) : bad(name, `expected ${expect}, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
-  const root = mkdtempSync(join(tmpdir(), "dev-ports-empty-"));
+  const root = mint("dev-ports-empty-");
   mkdirSync(join(root, "apps"), { recursive: true });
   const rc = run(root);
   rc === 1 ? ok("no ports at all is not a pass") : bad("no ports at all is not a pass", `got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {

@@ -9,10 +9,10 @@
 //
 // Run: node dev/scripts/test-check-bus-names-covered.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-bus-names-covered.py");
@@ -29,11 +29,11 @@ const failures = [];
  * which the gate already accepts as an argument.
  */
 function runMutated(mutate) {
-  const dir = mkdtempSync(join(tmpdir(), "bus-gate-"));
+  const dir = mint("bus-gate-");
   const path = join(dir, "check.py");
   writeFileSync(path, mutate(readFileSync(GATE, "utf8")));
   const r = spawnSync("python3", [path, ROOT], { encoding: "utf8", cwd: ROOT });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
@@ -44,7 +44,7 @@ function assertCase(name, ok) {
 }
 
 function check(name, files, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-busnames-"));
+  const dir = mint("arlen-busnames-");
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(dirname(p), { recursive: true });
@@ -55,7 +55,7 @@ function check(name, files, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const unit = "[Service]\nType=dbus\nBusName=org.arlen.Probe1\n";

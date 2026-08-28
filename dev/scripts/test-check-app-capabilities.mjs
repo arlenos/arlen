@@ -7,10 +7,10 @@
 // nobody knows the polarity of.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const checker = join(here, "check-app-capabilities.py");
@@ -48,7 +48,7 @@ function app(root, name, { capabilities } = {}) {
 console.log("check-app-capabilities:");
 
 // The shape this exists for: an app with a backend and no capabilities at all.
-const bare = mkdtempSync(join(tmpdir(), "caps-bare-"));
+const bare = mint("caps-bare-");
 app(bare, "winebottle");
 let r = run(bare);
 say(
@@ -59,7 +59,7 @@ say(
 
 // The same tree with the file present passes, so the gate is about the file and
 // not about the app.
-const fixed = mkdtempSync(join(tmpdir(), "caps-fixed-"));
+const fixed = mint("caps-fixed-");
 app(fixed, "winebottle", {
   capabilities: JSON.stringify({ identifier: "default", permissions: ["core:default"] }),
 });
@@ -68,7 +68,7 @@ say("and passes once the file is there", r.code === 0, `code ${r.code}: ${r.out}
 
 // A capabilities file that will not parse is worse than none, because the app
 // looks configured. It has to be named rather than skipped.
-const broken = mkdtempSync(join(tmpdir(), "caps-broken-"));
+const broken = mint("caps-broken-");
 app(broken, "winebottle", { capabilities: "{ not json" });
 r = run(broken);
 say(
@@ -79,7 +79,7 @@ say(
 
 // An empty tree must say it read nothing rather than pass, which is how a
 // checker silently stops covering anything after a directory move.
-const empty = mkdtempSync(join(tmpdir(), "caps-empty-"));
+const empty = mint("caps-empty-");
 mkdirSync(join(empty, "apps"), { recursive: true });
 r = run(empty);
 say(
@@ -88,5 +88,5 @@ say(
   `code ${r.code}: ${r.out}`,
 );
 
-for (const d of [bare, fixed, broken, empty]) rmSync(d, { recursive: true, force: true });
+for (const d of [bare, fixed, broken, empty]) cleanup(d);
 process.exit(failed);

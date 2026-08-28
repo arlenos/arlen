@@ -10,10 +10,10 @@
 // file, which would fail for the wrong reason and prove nothing.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-lockfiles-current.py");
@@ -41,7 +41,7 @@ function crate(root, name, { extraDep = false } = {}) {
 /// A git tree, because the check reads `git ls-files` rather than globbing -
 /// an uncommitted lockfile is not one the tree is making a promise about.
 function stage({ withDrift = false } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "lockfiles-"));
+  const root = mint("lockfiles-");
   crate(root, "other");
   const main = crate(root, "main");
   execFileSync("git", ["init", "-q"], { cwd: root });
@@ -76,7 +76,7 @@ function run(root) {
   r.code === 0
     ? ok("a lockfile that matches its manifest passes")
     : bad("a lockfile that matches its manifest passes", `expected 0, got ${r.code}: ${r.out}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -89,18 +89,18 @@ function run(root) {
         "a manifest whose lockfile never recorded its dependency is caught",
         `expected 1, got ${r.code}: ${r.out}`,
       );
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
   // Reading nothing must not read as a pass.
-  const root = mkdtempSync(join(tmpdir(), "lockfiles-empty-"));
+  const root = mint("lockfiles-empty-");
   execFileSync("git", ["init", "-q"], { cwd: root });
   const r = run(root);
   r.code === 2
     ? ok("finding no lockfile at all is not a pass")
     : bad("finding no lockfile at all is not a pass", `expected 2, got ${r.code}: ${r.out}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {

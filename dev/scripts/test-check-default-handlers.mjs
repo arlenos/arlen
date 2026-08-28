@@ -11,10 +11,10 @@
 //
 // Run: node dev/scripts/test-check-default-handlers.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = "dev/scripts/check-default-handlers.py";
@@ -23,7 +23,7 @@ const failures = [];
 
 /// A tree the gate can read: its own script, one entry, one list.
 function tree(entry, list) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-handlers-"));
+  const dir = mint("arlen-handlers-");
   mkdirSync(join(dir, dirname(GATE)), { recursive: true });
   cpSync(join(ROOT, GATE), join(dir, GATE));
   if (entry !== null) {
@@ -44,7 +44,7 @@ function run(name, entry, list, expect) {
   const ok = expect(r.status ?? 1, out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, code: r.status, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const ENTRY = "[Desktop Entry]\nName=Reader\nMimeType=application/pdf;\n";

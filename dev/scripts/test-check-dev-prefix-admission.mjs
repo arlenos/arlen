@@ -14,10 +14,10 @@
 //
 // Run: node dev/scripts/test-check-dev-prefix-admission.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-dev-prefix-admission.py");
@@ -25,7 +25,7 @@ const GATE = join(ROOT, "dev/scripts/check-dev-prefix-admission.py");
 const failures = [];
 
 function check(name, body, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-devprefix-"));
+  const dir = mint("arlen-devprefix-");
   const abs = join(dir, "daemons/thing/src/socket.rs");
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, body);
@@ -34,7 +34,7 @@ function check(name, body, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const ADMIT = 'fn admit(app_id: &str) -> bool { app_id.starts_with("dev.") }\n';
@@ -55,14 +55,14 @@ console.log("check-dev-prefix-admission:");
 // count this prints; no Rust at all is a scan that ran outside the tree, and it
 // used to print "0 file(s) mentioning a `dev.` id checked" and exit 0.
 {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-devprefix-"));
+  const dir = mint("arlen-devprefix-");
   writeFileSync(join(dir, "README.md"), "no code here\n");
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
   const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   const ok = r.status === 2 && out.includes("NOTHING WAS READ");
   console.log(`  ${ok ? "ok  " : "FAIL"} a tree with no Rust is refused rather than reported clean`);
   if (!ok) failures.push({ name: "empty tree", code: r.status ?? 1, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 check(

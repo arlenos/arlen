@@ -6,11 +6,11 @@
 // the blanket that swept zbus payloads into the journal, and the bare init that
 // left four apps mute - and watch it refuse each.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-log-filters.py");
@@ -22,7 +22,7 @@ function check(name, ok) {
 }
 
 function tree(apps) {
-  const dir = mkdtempSync(join(tmpdir(), "log-filters-"));
+  const dir = mint("log-filters-");
   for (const [app, body] of Object.entries(apps)) {
     const src = join(dir, "apps", app, "src-tauri", "src");
     mkdirSync(src, { recursive: true });
@@ -45,7 +45,7 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
 {
   const d = tree({ good: GOOD });
   check("a filter naming its own crate passes", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The privacy defect: a level for every crate, which is how zbus frames got in.
@@ -54,7 +54,7 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
   const r = run(d);
   check("a blanket level is refused", r.code === 1);
   check("and the message names the dependency sweep", r.out.includes("EVERY crate"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The other direction: the app cannot be heard at all.
@@ -63,7 +63,7 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
   const r = run(d);
   check("a bare env_logger::init() is refused", r.code === 1);
   check("and the message says the app is mute", r.out.includes("mute"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The gate's own advice is usually written above the call, quoting the bad form.
@@ -73,14 +73,14 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
     documented: "// A bare `env_logger::init()` defaults to `error`, so we do not use it.\n" + GOOD,
   });
   check("the bad form quoted in a comment is not a defect", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // An app that does no logging at all is not a subject.
 {
   const d = tree({ quiet: NO_LOGGING });
   check("an app with no logging is not a subject", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Daemons, which this check could not see until 18 August. The last component in
@@ -90,7 +90,7 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
 // daemon written that way tomorrow has to be caught here, not by someone reading
 // an empty journal in three months.
 {
-  const dir = mkdtempSync(join(tmpdir(), "log-filters-daemon-"));
+  const dir = mint("log-filters-daemon-");
   // Both layouts a daemon uses: src straight under it, and a crate one level down
   // (`kernel-layer/kernel-layer/src`), which is the shape the real offender had.
   const flat = join(dir, "daemons", "flatd", "src");
@@ -104,14 +104,14 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
   const r = run(dir);
   check("a daemon crate one level down is read, not skipped", r.code !== 0 && r.out.includes("nestd"));
   check("and a daemon with a sound filter is not flagged", !r.out.includes("flatd"));
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 // The `tracing` spelling of the same blanket, in a component under `daemons/`.
 // The rule knew only `env_logger` until 22 August, and 24 components carried this
 // one where nothing could see it. Named `planted` so no queue entry excuses it.
 {
-  const d = mkdtempSync(join(tmpdir(), "log-filters-tracing-"));
+  const d = mint("log-filters-tracing-");
   const app = join(d, "apps", "one", "src-tauri", "src");
   mkdirSync(app, { recursive: true });
   writeFileSync(join(app, "lib.rs"), GOOD);
@@ -123,14 +123,14 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
   );
   const r = run(d);
   check("a bare tracing EnvFilter level is caught", r.code === 1 && r.out.includes("planted"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A frontend under `daemons/` is its own component, not part of its parent. The
 // picker's Rust lives in `src-tauri/src` beside the portal daemon's `src`, and
 // merged into one entry its filter was excused by the queue entry for the daemon.
 {
-  const d = mkdtempSync(join(tmpdir(), "log-filters-frontend-"));
+  const d = mint("log-filters-frontend-");
   const app = join(d, "apps", "one", "src-tauri", "src");
   mkdirSync(app, { recursive: true });
   writeFileSync(join(app, "lib.rs"), GOOD);
@@ -145,14 +145,14 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
     "a daemon's frontend is read, and under its own name",
     r.code === 1 && r.out.includes("its-ui"),
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A named filter has to name crates that exist. The tree's manifests sit in two
 // places - an app keeps its under `src-tauri/`, a daemon at its root - and
 // reading only the root made this rule skip all nineteen frontends in silence.
 {
-  const d = mkdtempSync(join(tmpdir(), "log-filters-names-"));
+  const d = mint("log-filters-names-");
   const src = join(d, "apps", "one", "src-tauri", "src");
   mkdirSync(src, { recursive: true });
   writeFileSync(
@@ -168,13 +168,13 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
     "a filter naming a crate that does not exist is caught",
     r.code === 1 && r.out.includes("not_a_crate"),
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The trap the daemon queue is deferred on: two crates speak, the filter names
 // one, and the other half is mute with no symptom but a quiet journal.
 {
-  const d = mkdtempSync(join(tmpdir(), "log-filters-half-"));
+  const d = mint("log-filters-half-");
   const src = join(d, "daemons", "two", "src");
   mkdirSync(src, { recursive: true });
   writeFileSync(
@@ -195,14 +195,14 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
     "a filter that leaves a speaking crate unnamed is caught",
     r.code === 1 && r.out.includes("the library"),
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A package's extra binaries live in `src/bin/` and are their own crates. The
 // knowledge daemon's timeline helper kept a blanket level through the whole pass
 // that fixed twenty-four others, because nothing here looked in that directory.
 {
-  const d = mkdtempSync(join(tmpdir(), "log-filters-bin-"));
+  const d = mint("log-filters-bin-");
   const app = join(d, "apps", "one", "src-tauri", "src");
   mkdirSync(app, { recursive: true });
   writeFileSync(join(app, "lib.rs"), GOOD);
@@ -218,15 +218,15 @@ const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
     "an extra binary under src/bin is read, under its own name",
     r.code === 1 && r.out.includes("helper"),
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Pointed somewhere with no apps, "nothing wrong" would describe a scan that
 // read nothing.
 {
-  const d = mkdtempSync(join(tmpdir(), "log-filters-empty-"));
+  const d = mint("log-filters-empty-");
   check("a tree with no apps is an error, not a pass", run(d).code === 2);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");

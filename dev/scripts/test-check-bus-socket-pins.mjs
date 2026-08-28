@@ -7,11 +7,11 @@
 // producer, and treated a struct field named `event_bus` as bus usage. A gate that
 // over-reports gets ignored, so both directions are pinned down here.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const GATE = join(dirname(fileURLToPath(import.meta.url)), "check-bus-socket-pins.py");
 
@@ -23,7 +23,7 @@ function check(name, ok) {
 
 // A tree with one user unit and one crate that builds its binary.
 function tree({ unitEnv = [], source }) {
-  const dir = mkdtempSync(join(tmpdir(), "bus-pins-"));
+  const dir = mint("bus-pins-");
   const units = join(dir, "dev/mkosi/mkosi.extra/usr/lib/systemd/user");
   mkdirSync(units, { recursive: true });
   writeFileSync(
@@ -55,7 +55,7 @@ const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
   const d = tree({ source: PRODUCER });
   const r = run(d);
   check("a publisher with no pin passes, because the default is now right", r.code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Pinned, so it passes.
@@ -67,7 +67,7 @@ const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
   const pinned = run(d);
   check("a publisher pinned at /run/arlen is caught", pinned.code === 1);
   check("and the message names the pin", pinned.out.includes("ARLEN_PRODUCER_SOCKET"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The check's own first bug: a PURE PRODUCER does not need a consumer pin, and
@@ -78,7 +78,7 @@ const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
     unitEnv: ["ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock"],
   });
   check("a pure producer is not asked for a consumer pin", !run(d).out.includes("CONSUMER"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A subscriber needs the other direction, and only that one.
@@ -90,33 +90,33 @@ const NEITHER = "struct S { event_bus: u8 }\nfn f() {}\n";
   const r = run(d);
   check("a subscriber pinned at /run/arlen is caught", r.code === 1);
   check("and is not asked for a producer pin", !r.out.includes("PRODUCER"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The check's second bug: a struct field named `event_bus` is not bus usage.
 {
   const d = tree({ source: NEITHER });
   check("a crate that only names `event_bus` is not a subject", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A unit whose binary no crate builds means this check silently skipped a unit,
 // which is the shape it exists to refuse.
 {
-  const dir = mkdtempSync(join(tmpdir(), "bus-pins-orphan-"));
+  const dir = mint("bus-pins-orphan-");
   const units = join(dir, "dev/mkosi/mkosi.extra/usr/lib/systemd/user");
   mkdirSync(units, { recursive: true });
   writeFileSync(join(units, "x.service"), "[Service]\nExecStart=/usr/bin/arlen-ghost\n");
   const r = run(dir);
   check("a unit whose binary no crate builds is refused", r.code === 1);
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 // No units at all is a scan that read nothing.
 {
-  const dir = mkdtempSync(join(tmpdir(), "bus-pins-empty-"));
+  const dir = mint("bus-pins-empty-");
   check("a tree with no user units is an error, not a pass", run(dir).code === 2);
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");

@@ -19,10 +19,10 @@
 //
 // Run: node dev/scripts/test-check-graph-columns.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-graph-columns.py");
@@ -44,7 +44,7 @@ mod tests {
 `;
 
 function check(name, source, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-graphcol-"));
+  const dir = mint("arlen-graphcol-");
   const src = join(dir, "daemons/knowledge/src");
   mkdirSync(src, { recursive: true });
   writeFileSync(join(src, "graph.rs"), SCHEMA);
@@ -54,7 +54,7 @@ function check(name, source, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const GOOD = 'const Q: &str = "MATCH (f:File) RETURN f.path";\n';

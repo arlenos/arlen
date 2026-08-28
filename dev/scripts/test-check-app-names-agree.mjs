@@ -1,11 +1,11 @@
 // Control for check-app-names-agree.py. The gate is green on the tree, so every
 // case here plants a disagreement and confirms it is seen - and plants the two
 // shapes that are NOT defects and confirms they are not.
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, "check-app-names-agree.py");
@@ -34,12 +34,12 @@ function app(root, name, { deskEn, deskDe, catEn, catDe, confTitle, noDesktop })
 }
 
 function run(build) {
-  const root = mkdtempSync(join(tmpdir(), "app-names-"));
+  const root = mint("app-names-");
   mkdirSync(join(root, "dev", "scripts"), { recursive: true });
   copyFileSync(script, join(root, "dev", "scripts", "check.py"));
   build(root);
   const r = spawnSync("python3", [join(root, "dev", "scripts", "check.py")], { encoding: "utf8" });
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
   return r;
 }
 

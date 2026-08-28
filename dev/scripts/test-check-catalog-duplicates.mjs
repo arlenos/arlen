@@ -6,10 +6,10 @@
 // (that is what a catalogue is), and an empty tree has to refuse rather than
 // report a clean scan of nothing.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-catalog-duplicates.py");
@@ -22,7 +22,7 @@ const bad = (n, d) => {
 };
 
 function tree(body) {
-  const dir = mkdtempSync(join(tmpdir(), "catalog-dup-"));
+  const dir = mint("catalog-dup-");
   const at = join(dir, "apps/one/src/lib/i18n");
   mkdirSync(at, { recursive: true });
   writeFileSync(join(at, "messages.ts"), body);
@@ -56,7 +56,7 @@ const messages = {
   const r = run(d);
   if (r.code === 0) ok("the same id in two locales is what a catalogue is");
   else bad("the same id in two locales is what a catalogue is", r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 {
@@ -77,7 +77,7 @@ const messages = {
   if (r.code === 1 && r.out.includes("a.one") && r.out.includes("en"))
     ok("a duplicate inside one locale is caught, with the locale named");
   else bad("a duplicate inside one locale is caught", `exit ${r.code}: ${r.out}`);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 {
@@ -98,15 +98,15 @@ const messages = {
   if (r.code === 1 && r.out.includes("de"))
     ok("a duplicate in a later locale block is reached");
   else bad("a duplicate in a later locale block is reached", `exit ${r.code}: ${r.out}`);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 {
-  const d = mkdtempSync(join(tmpdir(), "catalog-dup-empty-"));
+  const d = mint("catalog-dup-empty-");
   const r = run(d);
   if (r.code === 2) ok("a tree with no catalogue is an error, not a pass");
   else bad("a tree with no catalogue is an error, not a pass", `exit ${r.code}`);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nboth directions hold");

@@ -14,10 +14,10 @@
 //
 // Run: node dev/scripts/test-check-crate-coverage.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-crate-coverage.py");
@@ -26,7 +26,7 @@ const failures = [];
 
 /// `rust` and `front` are the four lists; `crates` are the roots on disk.
 function check(name, { rustCi, rustJust, frontCi, frontJust, crates, fronts }, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-cratecov-"));
+  const dir = mint("arlen-cratecov-");
   const write = (rel, body) => {
     mkdirSync(join(dir, dirname(rel)), { recursive: true });
     writeFileSync(join(dir, rel), body);
@@ -63,7 +63,7 @@ function check(name, { rustCi, rustJust, frontCi, frontJust, crates, fronts }, e
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log("check-crate-coverage:");

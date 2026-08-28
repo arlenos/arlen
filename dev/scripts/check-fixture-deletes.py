@@ -119,68 +119,7 @@ def offenders(code: str, raw: str) -> list[str]:
 # takes its path from a variable in the same function, which is why they have not
 # eaten anything. MAY SHRINK, MAY NOT GROW.
 MIGRATED_LATER: set[str] = {
-    "test-build-image-trap.mjs",
-    "test-check-announced-refusal.mjs",
-    "test-check-app-capabilities.mjs",
-    "test-check-app-locale-used.mjs",
-    "test-check-app-names-agree.mjs",
-    "test-check-app-profiles.mjs",
-    "test-check-apps-on-image.mjs",
-    "test-check-binary-names.mjs",
-    "test-check-bus-declarations.mjs",
-    "test-check-bus-names-covered.mjs",
-    "test-check-bus-path-in-source.mjs",
-    "test-check-bus-socket-pins.mjs",
-    "test-check-calendar-has-no-mail-path.mjs",
-    "test-check-catalog-duplicates.mjs",
-    "test-check-comment-paths.mjs",
-    "test-check-components-rendered.mjs",
-    "test-check-consent-input-ordering.mjs",
-    "test-check-crate-coverage.mjs",
-    "test-check-cypher-groups.mjs",
-    "test-check-daemon-stop.mjs",
-    "test-check-dbus-activation.mjs",
-    "test-check-dbus-callers.mjs",
-    "test-check-dbus-members-exist.mjs",
-    "test-check-dbus-method-names.mjs",
-    "test-check-default-handlers.mjs",
-    "test-check-default-then-write.mjs",
-    "test-check-dependency-direction.mjs",
-    "test-check-desktop-entries.mjs",
-    "test-check-dev-ports.mjs",
-    "test-check-dev-prefix-admission.mjs",
-    "test-check-emitters-declared.mjs",
-    "test-check-executor-gate.mjs",
-    "test-check-fixtures.mjs",
-    "test-check-gate-drift.mjs",
-    "test-check-gates-registered.mjs",
-    "test-check-grant-visibility.mjs",
-    "test-check-granted-and-used.mjs",
-    "test-check-graph-clock.mjs",
-    "test-check-graph-columns.mjs",
-    "test-check-greetd-config.mjs",
-    "test-check-help-citations.mjs",
-    "test-check-image-contents.mjs",
-    "test-check-image-writes.mjs",
-    "test-check-inert-switches.mjs",
-    "test-check-invoke-scope.mjs",
-    "test-check-invoke-shape.mjs",
-    "test-check-invokes.mjs",
-    "test-check-kit-defaults.mjs",
-    "test-check-knowledge-socket.mjs",
-    "test-check-linked-libraries.mjs",
-    "test-check-locale-adopted.mjs",
-    "test-check-lockfiles-current.mjs",
-    "test-check-log-filters.mjs",
-    "test-check-menu-labels-translated.mjs",
-    "test-check-message-keys.mjs",
-    "test-check-mime-claims-decodable.mjs",
-    "test-check-network-scope-marked.mjs",
-    "test-check-openable-apps-can-read.mjs",
-    "test-check-opener-args.mjs",
-    "test-check-optimistic-write.mjs",
     "test-check-peer-identity-sandbox.mjs",
-    "test-check-plugin-command-grants.mjs",
     "test-check-plugin-grants.mjs",
     "test-check-portal-interfaces.mjs",
     "test-check-probe-admission.mjs",
@@ -189,49 +128,32 @@ MIGRATED_LATER: set[str] = {
     "test-check-profile-claims.mjs",
     "test-check-profile-keys.mjs",
     "test-check-profile-principals.mjs",
-    "test-check-proto-drift.mjs",
     "test-check-read-grants-cover-queries.mjs",
     "test-check-read-scope.mjs",
     "test-check-readme-tree.mjs",
     "test-check-refusal-language.mjs",
     "test-check-refusal-shape.mjs",
     "test-check-release-routes.mjs",
-    "test-check-runtime-assets.mjs",
-    "test-check-runtime-deps.mjs",
     "test-check-runtime-dir-closed.mjs",
     "test-check-sandbox-env.mjs",
-    "test-check-sensing-vectors.mjs",
     "test-check-serde-nesting.mjs",
     "test-check-session-origin.mjs",
     "test-check-setup-runtime.mjs",
-    "test-check-shared-env-names.mjs",
     "test-check-shared-files.mjs",
-    "test-check-smoke-coverage.mjs",
     "test-check-socket-servers.mjs",
     "test-check-sound-theme.mjs",
-    "test-check-spawned-binaries.mjs",
     "test-check-spawned-tools-classified.mjs",
-    "test-check-subscribe-scope.mjs",
     "test-check-tests-run.mjs",
     "test-check-toast-is-named.mjs",
     "test-check-token-unions.mjs",
-    "test-check-unit-directives.mjs",
     "test-check-unit-identity.mjs",
-    "test-check-units.mjs",
-    "test-check-unrendered-error.mjs",
     "test-check-untranslated-render.mjs",
     "test-check-user-unit-firewall.mjs",
-    "test-check-user-units-started.mjs",
     "test-check-verify-image.mjs",
     "test-check-webview-sandbox.mjs",
-    "test-check-window-capability.mjs",
-    "test-check-window-grants.mjs",
     "test-check-wired.mjs",
     "test-ci-system-deps.mjs",
-    "test-pi-completion-shape.mjs",
-    "test-pre-commit-hook.mjs",
     "test-probe-verdict.mjs",
-    "test-typecheck-gating.mjs",
 }
 
 
@@ -242,6 +164,7 @@ def main() -> int:
         return 1
 
     problems: list[str] = []
+    still_offending: set[str] = set()
     checked = 0
     present = {n for n in MIGRATED_LATER if (SCRIPTS / n).is_file()}
     # Only in a tree that actually holds these controls. A small fixture holds none
@@ -259,6 +182,7 @@ def main() -> int:
         if not found:
             continue
         if path.name in MIGRATED_LATER:
+            still_offending.add(path.name)
             continue
         problems.append(
             f"{path.relative_to(ROOT)} deletes recursively on its own "
@@ -273,6 +197,17 @@ def main() -> int:
             f"{name} is listed in MIGRATED_LATER and is not there any more. "
             f"Drop the entry: a list of files that do not exist hides how much is left."
         )
+
+    # An entry that no longer offends is an entry that has been migrated, and a
+    # list that keeps it reports a backlog that is smaller than it says. This is
+    # what makes the count go down rather than the list go quiet.
+    if present:
+        for name in sorted(present - still_offending):
+            problems.append(
+                f"{name} no longer deletes on its own and is still listed in "
+                f"MIGRATED_LATER. Drop the entry, so the number left to migrate is "
+                f"the real one."
+            )
 
     if problems:
         for p in problems:

@@ -13,10 +13,10 @@
 // that never ends leaves the rest of the file unchecked, which reads exactly like a clean board.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-cypher-groups.py");
@@ -42,7 +42,7 @@ const GROUPED = CLEAN.replace(
 );
 
 function tree(files) {
-  const root = mkdtempSync(join(tmpdir(), "cypher-groups-"));
+  const root = mint("cypher-groups-");
   for (const [rel, body] of Object.entries(files)) {
     mkdirSync(join(root, dirname(rel)), { recursive: true });
     writeFileSync(join(root, rel), body);
@@ -65,7 +65,7 @@ function run(root) {
   rc === 1
     ? ok("a grouped WHERE in a gated reader is caught")
     : bad("a grouped WHERE in a gated reader is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -74,7 +74,7 @@ function run(root) {
   rc === 0
     ? ok("an ungrouped predicate passes")
     : bad("an ungrouped predicate passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -94,7 +94,7 @@ function run(root) {
   rc === 0
     ? ok("the daemon's own source is out of scope")
     : bad("the daemon's own source is out of scope", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -112,7 +112,7 @@ fn unrelated() -> &'static str { "MATCH (x:X) RETURN x" }
   rc === 0
     ? ok("SQL is not judged by a Cypher rule")
     : bad("SQL is not judged by a Cypher rule", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -126,7 +126,7 @@ fn unrelated() -> &'static str { "MATCH (x:X) RETURN x" }
   rc === 0
     ? ok("a comment about the shape is not a query")
     : bad("a comment about the shape is not a query", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -141,7 +141,7 @@ fn unrelated() -> &'static str { "MATCH (x:X) RETURN x" }
   rc === 1
     ? ok("a bare back-reference is caught")
     : bad("a bare back-reference is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -154,7 +154,7 @@ fn unrelated() -> &'static str { "MATCH (x:X) RETURN x" }
   rc === 0
     ? ok("repeating the label passes")
     : bad("repeating the label passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -178,7 +178,7 @@ mod tests {
   rc === 0
     ? ok("a parser test's unlabelled pattern is not a query")
     : bad("a parser test's unlabelled pattern is not a query", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -202,7 +202,7 @@ fn later(c: &UnixGraphClient) {
   rc === 1
     ? ok("checking resumes after the test module closes")
     : bad("checking resumes after the test module closes", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {

@@ -9,10 +9,10 @@
 // reads exactly like a clean board.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-daemon-stop.py");
@@ -54,7 +54,7 @@ const WITHOUT_HANDLER = `fn main() {
 `;
 
 function tree({ unit, unitName = "arlen-demo.service", source }) {
-  const root = mkdtempSync(join(tmpdir(), "daemon-stop-"));
+  const root = mint("daemon-stop-");
   mkdirSync(join(root, "daemons/demo/dist"), { recursive: true });
   mkdirSync(join(root, "daemons/demo/src"), { recursive: true });
   writeFileSync(join(root, "daemons/demo/dist", unitName), unit);
@@ -77,7 +77,7 @@ function run(root) {
   rc === 1
     ? ok("a long-running unit with no SIGTERM handler is caught")
     : bad("a long-running unit with no SIGTERM handler is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -86,7 +86,7 @@ function run(root) {
   rc === 0
     ? ok("handling SIGTERM passes")
     : bad("handling SIGTERM passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -103,7 +103,7 @@ function run(root) {
   rc === 0
     ? ok("a oneshot is not demanded")
     : bad("a oneshot is not demanded", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -119,7 +119,7 @@ function run(root) {
   rc === 1
     ? ok("an activation file alone is not treated as a service")
     : bad("an activation file alone is not treated as a service", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
