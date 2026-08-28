@@ -925,10 +925,12 @@ jobs:
             # to pin svelte, to raise TypeScript past 5.6.3, or to change the
             # tooltip - a toolchain decision rather than a code one.
             #
-            # Listed apps stay LOUD rather than silent - the crash is printed
-            # either way. The list may shrink and may not grow: a new entry is an
-            # app that started lying about being checked.
-            TYPECHECK_CRASHES="apps/settings apps/files apps/harness apps/calendar apps/mail apps/pdf apps/system-monitor"
+            # TAKEN 28 August: the second way out. Every app pins
+            # `typescript` at ~5.9.3, and all seven apps that used to drop a
+            # file now finish the tree - settings 11937 files, files 11960,
+            # harness 11963, calendar 8226, mail 8223, pdf 8214,
+            # system-monitor 8056, each 0 errors. There is no exemption list
+            # any more, so the check below fails the build.
             set +e
             npm run check 2>&1 | tee /tmp/svelte-check-$$.log
             CHECK_STATUS=${PIPESTATUS[0]}
@@ -939,14 +941,10 @@ jobs:
               [ "$CHECK_STATUS" -eq 0 ]
             fi
             if grep -q "Cannot read properties of undefined (reading 'flags')" /tmp/svelte-check-$$.log; then
-              if printf ' %s ' "$TYPECHECK_CRASHES" | grep -qF " $APP "; then
-                echo "KNOWN: $APP drops at least one file's diagnostics (see the note above)"
-              else
-                echo "$APP crashed the type checker, so it did not check every file -"
-                echo "and it reported success anyway. Either fix it, or add it to"
-                echo "TYPECHECK_CRASHES with the reason." >&2
-                exit 1
-              fi
+              echo "$APP crashed the type checker, so it did not check every file -"
+              echo "and it reported success anyway. Do not silence this by listing"
+              echo "the app: the last one was cured by raising typescript." >&2
+              exit 1
             fi
             rm -f /tmp/svelte-check-$$.log
             # The unit tests are gating where a package declares them, so logic
