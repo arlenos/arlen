@@ -16,17 +16,17 @@
 //
 // Run: node dev/scripts/test-check-help-citations.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-help-citations.py");
 const failures = [];
 
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-help-"));
+  const dir = mint("arlen-help-");
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(join(p, ".."), { recursive: true });
@@ -57,7 +57,7 @@ check(
   r.code === 1 && /forage-recipes\.md/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // Shape 2: a hand-written usage const.
 d = tree({
@@ -69,7 +69,7 @@ check(
   r.code === 1 && /design-notes\.md/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // Negative 1: the design reference on a `//` line, which clap does not print.
 d = tree({
@@ -77,7 +77,7 @@ d = tree({
 });
 r = run(d);
 check("a `//` design reference beside a clean `///` is fine", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // Negative 2: a one-line const must not open a region that swallows the file.
 // This is the third false positive, exactly as it happened.
@@ -93,7 +93,7 @@ check(
   r.code === 0 && !/README/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // Negative 3: `.md` that is not a filename at all.
 d = tree({
@@ -107,7 +107,7 @@ check(
   r.code === 0 && !/spacing/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // Reading nothing is not passing.
 d = tree({ "src/lib.rs": "pub fn f() {}\n" });
@@ -117,7 +117,7 @@ check(
   r.code === 2 && /NOTHING WAS READ/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);

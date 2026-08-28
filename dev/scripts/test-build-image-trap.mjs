@@ -20,10 +20,10 @@
 //
 // Run: node dev/scripts/test-build-image-trap.mjs
 
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const SCRIPT = join(ROOT, "dev/mkosi/build-image.sh");
@@ -56,7 +56,7 @@ const header = lines
 const failures = [];
 
 function runWith(tail) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-trap-"));
+  const dir = mint("arlen-trap-");
   // `here` resolves to the script's own directory, so the script under test has
   // to live where the fake image is.
   writeFileSync(join(dir, "arlen.raw"), COMPLETE);
@@ -68,7 +68,7 @@ function runWith(tail) {
   // is the failure this whole trap exists to prevent.
   const content = survived ? readFileSync(join(dir, "arlen.raw"), "utf8") : null;
   const strayPrev = existsSync(join(dir, "arlen.raw.prev"));
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { survived, content, strayPrev, code: r.status ?? 1 };
 }
 

@@ -14,10 +14,10 @@
 // stale, and it refuses to be fooled by a step that only mentions an app in passing.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-apps-on-image.py");
@@ -43,7 +43,7 @@ const excused = execFileSync("python3", [check, "--excused"], { encoding: "utf8"
   .filter(Boolean);
 
 function tree(apps, steps) {
-  const root = mkdtempSync(join(tmpdir(), "apps-on-image-"));
+  const root = mint("apps-on-image-");
   for (const a of apps) mkdirSync(join(root, "apps", a, "src-tauri"), { recursive: true });
   // A tree missing the excused apps is a tree whose excuse list is stale, and the
   // check says so - correctly. Create them so each case tests the one thing it means
@@ -77,7 +77,7 @@ install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/apps/dev.arlen.${app}/bin/arlen-${
   rc === 1
     ? ok("an app with no build step is caught")
     : bad("an app with no build step is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 2. Both staged: the ordinary green.
@@ -90,7 +90,7 @@ install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/apps/dev.arlen.${app}/bin/arlen-${
   rc === 0
     ? ok("every app staged passes")
     : bad("every app staged passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 3. A step that only MENTIONS another app - in a comment, say - must not vouch for
@@ -104,7 +104,7 @@ install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/apps/dev.arlen.${app}/bin/arlen-${
   rc === 1
     ? ok("a passing mention does not count as staging")
     : bad("a passing mention does not count as staging", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 4. A step that names an app but installs nothing into the apps tree is not a
@@ -117,17 +117,17 @@ install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/apps/dev.arlen.${app}/bin/arlen-${
   rc === 1
     ? ok("naming an app without installing it does not count")
     : bad("naming an app without installing it does not count", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 5. The layout moving must not read as a pass.
 {
-  const root = mkdtempSync(join(tmpdir(), "apps-on-image-empty-"));
+  const root = mint("apps-on-image-empty-");
   const rc = run(root);
   rc === 1
     ? ok("a moved layout is not a pass")
     : bad("a moved layout is not a pass", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 6. The real tree passes, which is what the pre-commit hook runs.

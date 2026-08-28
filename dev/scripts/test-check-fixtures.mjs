@@ -13,10 +13,10 @@
 //
 // Run: node dev/scripts/test-check-fixtures.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup, isMinted } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 
@@ -31,7 +31,7 @@ const made = [];
 
 /** Write `files` into a throwaway tree and return its path. */
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-fixture-"));
+  const dir = mint("arlen-fixture-");
   made.push(dir);
   for (const [rel, body] of Object.entries(files)) {
     const path = join(dir, rel);
@@ -210,7 +210,7 @@ export async function search(query: string): Promise<void> {
     `exit ${r5.code}: ${r5.out.trim()}`,
   );
 
-  for (const d of [caught, ok, getT, inFn, empty]) rmSync(d, { recursive: true, force: true });
+  for (const d of [caught, ok, getT, inFn, empty]) cleanup(d);
 }
 
 reactivityFixtures();
@@ -381,7 +381,7 @@ await invoke("no_such_command");
   );
 
   for (const d of [sameName, interpolated, wrong, renamed, nested, reallyMissing, undeclared]) {
-    rmSync(d, { recursive: true, force: true });
+    cleanup(d);
   }
 }
 
@@ -471,7 +471,7 @@ function catalogFixtures() {
     `exit ${r4.code}: ${r4.out.trim()}`,
   );
 
-  for (const d of [good, broken, empty, dup]) rmSync(d, { recursive: true, force: true });
+  for (const d of [good, broken, empty, dup]) cleanup(d);
 }
 
 // ---------------------------------------------------------------------------
@@ -715,12 +715,16 @@ export function loadOther() {
   );
 
   for (const d of [caught, flag, styleComment, stale, moved, second, embedded, prose])
-    rmSync(d, { recursive: true, force: true });
+    cleanup(d);
 }
 
 fixtureMarkupFixtures();
 
-for (const d of made) rmSync(d, { recursive: true, force: true });
+// The catch-all sweep, for a case that returned early or forgot. Most cases clean
+// up as they finish, so this skips what is already gone: the shared helper refuses
+// a path it no longer has a record of, which is how the double cleanup that the
+// old `force: true` had been swallowing came to light.
+for (const d of made) if (isMinted(d)) cleanup(d);
 
 if (failures.length) {
   console.log(`\n${failures.length} fixture(s) failed: ${failures.join(", ")}`);

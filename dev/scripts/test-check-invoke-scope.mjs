@@ -11,10 +11,10 @@
 //
 // Run: node dev/scripts/test-check-invoke-scope.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-invoke-scope.py");
@@ -29,7 +29,7 @@ const OWNER =
   "#[tauri::command]\npub fn own_thing() -> u32 { 2 }\n";
 
 function check(name, files, expect, { acknowledged } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-scope-"));
+  const dir = mint("arlen-scope-");
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(dirname(p), { recursive: true });
@@ -54,7 +54,7 @@ function check(name, files, expect, { acknowledged } = {}) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log("check-invoke-scope:");

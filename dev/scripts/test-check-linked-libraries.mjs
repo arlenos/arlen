@@ -12,11 +12,11 @@
 //
 // Run: node dev/scripts/test-check-linked-libraries.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const GATE = join(ROOT, "dev/scripts/check-linked-libraries.py");
@@ -32,7 +32,7 @@ function check(name, ok, detail) {
 
 /// A tree with the two package lists and one crate manifest.
 function tree({ deps, packages, manifest, at = "apps/viewers/decode-heic" }) {
-  const dir = mkdtempSync(join(tmpdir(), "linked-libs-"));
+  const dir = mint("linked-libs-");
   mkdirSync(join(dir, "dev/mkosi/mkosi.build.d"), { recursive: true });
   writeFileSync(join(dir, "dev/mkosi/mkosi.build.d/01-install-deps.sh"), deps);
   writeFileSync(
@@ -59,7 +59,7 @@ console.log("check-linked-libraries:");
   const d = tree({ deps: GOOD_DEPS, packages: GOOD_PKGS, manifest: HEIC });
   const r = run(d);
   check("both sides declared is a pass", r.code === 0, r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The half that actually happened, and the one that stopped the build.
@@ -71,7 +71,7 @@ console.log("check-linked-libraries:");
     r.code === 1 && r.out.includes("libheif-dev"),
     r.out,
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The worse half: this one builds fine and fails in front of a person.
@@ -83,7 +83,7 @@ console.log("check-linked-libraries:");
     r.code === 1 && r.out.includes("libheif1"),
     r.out,
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Naming the container library is not enough when the codecs are plugins.
@@ -95,7 +95,7 @@ console.log("check-linked-libraries:");
     r.code === 1 && r.out.includes("libheif-plugin-libde265"),
     r.out,
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // So a new C-linking crate cannot arrive with nobody noticing, which is the whole
@@ -112,7 +112,7 @@ console.log("check-linked-libraries:");
     r.code === 1 && r.out.includes("foobar-sys"),
     r.out,
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The roots beyond apps/ and daemons/, widened 18 August. A claim about scope is
@@ -126,7 +126,7 @@ for (const at of ["sdk/net-guard", "contracts/capsule", "forage/store"]) {
   });
   const r = run(d);
   check(`a -sys dependency under ${at} is seen`, r.code === 1 && r.out.includes("foobar-sys"), r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A name inside a features list is not a dependency; reading it as one would make
@@ -139,18 +139,18 @@ for (const at of ["sdk/net-guard", "contracts/capsule", "forage/store"]) {
   });
   const r = run(d);
   check("a features entry is not read as a dependency", r.code === 0, r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Pointed at a tree with no manifests, "nothing wrong" would describe a scan that
 // read nothing.
 {
-  const d = mkdtempSync(join(tmpdir(), "linked-libs-empty-"));
+  const d = mint("linked-libs-empty-");
   mkdirSync(join(d, "dev/mkosi/mkosi.build.d"), { recursive: true });
   writeFileSync(join(d, "dev/mkosi/mkosi.build.d/01-install-deps.sh"), GOOD_DEPS);
   writeFileSync(join(d, "dev/mkosi/mkosi.conf"), "Packages=\n        libheif1\n");
   check("a tree with no crates is an error, not a pass", run(d).code === 2);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 console.log(failures ? `\n${failures} case(s) failed` : "\nboth sides of a linked library are held");

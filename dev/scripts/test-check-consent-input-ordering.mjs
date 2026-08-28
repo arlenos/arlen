@@ -5,10 +5,10 @@
 // The control for `check-consent-input-ordering`: it has to fail on the shape it
 // was written for, and it has to refuse rather than pass when it reads nothing.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-consent-input-ordering.py");
@@ -21,7 +21,7 @@ const bad = (n, d) => {
 };
 
 function tree(source) {
-  const dir = mkdtempSync(join(tmpdir(), "consent-ordering-"));
+  const dir = mint("consent-ordering-");
   const at = join(dir, "apps/desktop-shell/src-tauri/src");
   mkdirSync(at, { recursive: true });
   writeFileSync(join(at, "consent_window.rs"), source);
@@ -56,7 +56,7 @@ ${ARM}`);
   const r = run(d);
   if (r.code === 0) ok("mapping with an empty region and arming separately passes");
   else bad("mapping with an empty region and arming separately passes", r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 {
@@ -70,7 +70,7 @@ ${ARM}`);
   if (r.code === 1 && r.out.includes("32767x32767"))
     ok("a full input region at map time is caught");
   else bad("a full input region at map time is caught", `exit ${r.code}: ${r.out}`);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 {
@@ -83,7 +83,7 @@ ${ARM}`);
   if (r.code === 1 && r.out.includes("keyboard"))
     ok("taking the keyboard at map time is caught");
   else bad("taking the keyboard at map time is caught", `exit ${r.code}: ${r.out}`);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 {
@@ -98,15 +98,15 @@ pub fn show(app: &AppHandle) {
   if (r.code === 1 && r.out.includes("no `arm`"))
     ok("a surface with no way to become answerable is caught too");
   else bad("a surface with no way to become answerable is caught too", `exit ${r.code}: ${r.out}`);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 {
-  const d = mkdtempSync(join(tmpdir(), "consent-ordering-empty-"));
+  const d = mint("consent-ordering-empty-");
   const r = run(d);
   if (r.code === 2) ok("a tree with no consent surface is an error, not a pass");
   else bad("a tree with no consent surface is an error, not a pass", `exit ${r.code}`);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nboth directions hold");

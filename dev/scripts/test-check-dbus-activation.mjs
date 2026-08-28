@@ -7,11 +7,11 @@
 // it would have run the install daemon - the one that writes as root - outside the
 // sandbox its own unit declares, while looking identical to the confined path.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../..");
@@ -27,7 +27,7 @@ function check(name, ok) {
 const EXEC = "/usr/lib/arlen/libexec/arlen-thing";
 
 function tree({ pointer = "arlen-thing.service", withUnit = true, unitExec = EXEC }) {
-  const dir = mkdtempSync(join(tmpdir(), "dbus-activation-"));
+  const dir = mint("dbus-activation-");
   const dist = join(dir, "daemons/thing/dist");
   mkdirSync(dist, { recursive: true });
   writeFileSync(
@@ -55,7 +55,7 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("an activation file with no SystemdService is caught", r.code === 1);
   check("and the message says the daemon starts unconfined", r.out.includes("OUTSIDE the sandbox"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A pointer at nothing is as quiet as no pointer, and fails later - when a user
@@ -65,7 +65,7 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("a pointer at a unit that does not exist is caught", r.code === 1);
   check("and the message names the missing unit", r.out.includes("arlen-typo.service"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Two lines describing one daemon, disagreeing. Invisible while systemd answers,
@@ -75,7 +75,7 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("an Exec that differs from the unit's ExecStart is caught", r.code === 1);
   check("and the message gives both binaries", r.out.includes("arlen-thing-old") && r.out.includes(EXEC));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A hardened unit decorates its ExecStart with `+`, `!` or `-`; that is the same
@@ -83,22 +83,22 @@ check("the repository as it stands passes", run(ROOT).code === 0);
 {
   const d = tree({ unitExec: `+${EXEC}` });
   check("a prefixed ExecStart is not a disagreement", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The intended arrangement stays quiet, or the gate forbids what it exists to require.
 {
   const d = tree({});
   check("a file pointing at a unit that exists is not a finding", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A tree with no activation files has not been checked, and saying so beats a
 // cheerful pass - the failure mode this project has hit twice.
 {
-  const dir = mkdtempSync(join(tmpdir(), "dbus-activation-empty-"));
+  const dir = mint("dbus-activation-empty-");
   check("a tree with no activation files is an error, not a pass", run(dir).code === 2);
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");

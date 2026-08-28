@@ -6,11 +6,11 @@
 // for and watch it fail. A gate that has only ever been run against a tree that
 // already passes cannot be told apart from one that always passes.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-bus-declarations.py");
@@ -31,7 +31,7 @@ const EXCUSED = "knowledge";
 const EXCUSED_PROFILE = `[info]\napp_id = "${EXCUSED}"\n\n[event_bus]\npublish = ["project.*"]\n`;
 
 function tree(profiles, { excused = true } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "bus-decl-"));
+  const dir = mint("bus-decl-");
   mkdirSync(join(dir, PROFILES), { recursive: true });
   if (excused) writeFileSync(join(dir, PROFILES, `${EXCUSED}.toml`), EXCUSED_PROFILE);
   for (const [name, body] of Object.entries(profiles)) {
@@ -56,7 +56,7 @@ const NO_BUS = '[info]\napp_id = "c"\n\n[graph]\nread = ["system.File.id"]\n';
   const r = run(d);
   check("a publisher that never declares subscribe is caught", r.code === 1);
   check("and the message names the missing half", r.out.includes("`subscribe`"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // An EMPTY list is an answer, not an omission - the distinction the whole tier
@@ -64,7 +64,7 @@ const NO_BUS = '[info]\napp_id = "c"\n\n[graph]\nread = ["system.File.id"]\n';
 {
   const d = tree({ a: BOTH });
   check("declaring subscribe = [] passes", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Not every profile is a bus participant, and one that never mentions the bus
@@ -72,15 +72,15 @@ const NO_BUS = '[info]\napp_id = "c"\n\n[graph]\nread = ["system.File.id"]\n';
 {
   const d = tree({ c: NO_BUS });
   check("a profile with no event_bus section is not a subject", run(d).code === 0);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Pointed at a tree with no profiles at all, "found nothing wrong" would be a
 // lie about a scan that read nothing.
 {
-  const d = mkdtempSync(join(tmpdir(), "bus-decl-empty-"));
+  const d = mint("bus-decl-empty-");
   check("an absent profile directory is an error, not a pass", run(d).code === 2);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The reverse direction, which is what keeps the excuse list honest: a name
@@ -91,7 +91,7 @@ const NO_BUS = '[info]\napp_id = "c"\n\n[graph]\nread = ["system.File.id"]\n';
   const r = run(d);
   check("an excuse for a component that ships nothing is caught", r.code === 1);
   check("and the message says to delete the entry", r.out.includes("delete the entry"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");

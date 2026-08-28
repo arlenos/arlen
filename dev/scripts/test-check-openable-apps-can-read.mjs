@@ -9,10 +9,10 @@
 // string.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-openable-apps-can-read.py");
@@ -21,7 +21,7 @@ const ok = (n) => console.log(`  ok   ${n}`);
 const bad = (n, d) => { console.log(`  FAIL ${n}`); console.log(`       ${d}`); failures += 1; };
 
 function tree({ entry, profile } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "openable-"));
+  const root = mint("openable-");
   mkdirSync(join(root, "apps/thing/dist"), { recursive: true });
   mkdirSync(join(root, "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"), { recursive: true });
   writeFileSync(join(root, "apps/thing/dist/arlen-thing.desktop"), entry);
@@ -57,7 +57,7 @@ function run(root) {
   rc === 1
     ? ok("an app that opens files with only a custom directory is caught")
     : bad("an app that opens files with only a custom directory is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -67,7 +67,7 @@ function run(root) {
   });
   const rc = run(root);
   rc === 0 ? ok("a home grant passes") : bad("a home grant passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -80,7 +80,7 @@ function run(root) {
   });
   const rc = run(root);
   rc === 0 ? ok("a read-only grant on a user directory passes") : bad("a read-only grant on a user directory passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -91,7 +91,7 @@ function run(root) {
   });
   const rc = run(root);
   rc === 1 ? ok("a read-only path outside the user's files is not a read grant") : bad("a read-only path outside the user's files is not a read grant", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -102,7 +102,7 @@ function run(root) {
   });
   const rc = run(root);
   rc === 0 ? ok("a narrower user directory passes too") : bad("a narrower user directory passes too", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -116,7 +116,7 @@ function run(root) {
   rc === 1
     ? ok("a home flag in another section does not count")
     : bad("a home flag in another section does not count", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -127,15 +127,15 @@ function run(root) {
   });
   const rc = run(root);
   rc === 0 ? ok("an app that opens nothing is not asked to read") : bad("an app that opens nothing is not asked to read", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
   // Reading nothing must not read as a pass.
-  const root = mkdtempSync(join(tmpdir(), "openable-empty-"));
+  const root = mint("openable-empty-");
   const rc = run(root);
   rc === 2 ? ok("finding no entries at all is not a pass") : bad("finding no entries at all is not a pass", `expected 2, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
