@@ -49,10 +49,11 @@ STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 # rather than assumed, and each says which kind of absence it is.
 NOT_ON_IMAGE: dict[str, str] = {
     "greeter": (
-        "the image autologs in and has no greeter UI - `mkosi.extra/etc/greetd/config.toml` "
-        "runs arlen-session for both the initial and the default session, and says so. "
-        "The app is real; shipping it is a decision about whether this image stays a "
-        "single-user appliance, not an oversight"
+        "IT IS on the image, and this check cannot see it: `04r-greeter` installs it at "
+        "/usr/bin/arlen-greeter rather than under /usr/lib/arlen/apps, because it is not "
+        "an app. Nobody launches it, it has no desktop entry, and it runs before any "
+        "session exists - greetd's `[default_session]` is what starts it. The /usr/bin "
+        "path is also what gives it an identity, by rule (2) of `path_to_app_id`"
     ),
     "trash-rm": (
         "a command-line tool (`arlen-trash-rm`), not a desktop app, so it has no launcher "

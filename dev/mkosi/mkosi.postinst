@@ -21,6 +21,21 @@ if ! id arlen >/dev/null 2>&1; then
     useradd --create-home --shell /bin/bash --groups video,input,render,systemd-journal arlen
 fi
 
+# The greeter runs as `_greetd` - the system user Debian's greetd package creates -
+# and it needs the same DRM + evdev access the desktop user has, for the same
+# reason: `cage` is a wlroots compositor taking DRM master on vt1, and the login
+# screen has to accept a keystroke. The package creates the user without those
+# groups, so a greeter shipped without this line starts, finds no device it may
+# open, and leaves a black screen on logout.
+#
+# Guarded on the user rather than assumed: it exists because `greetd` is in the
+# package list, and if that ever changes this should say so instead of failing.
+if id _greetd >/dev/null 2>&1; then
+    usermod -aG video,input,render _greetd
+else
+    echo ">> no _greetd user; the greeter has no account to run as"
+fi
+
 # The per-uid permission directories are shipped as an overlay, and an overlay
 # carries whatever mode the checkout had - 0755, which is listable by anybody.
 # `permission-helper` creates the same directories at 0711 on purpose and says
