@@ -82,6 +82,42 @@ pub fn safe_name(original: &str) -> Option<String> {
     Some(cleaned)
 }
 
+/// A bottle id derived from an installer's file name.
+///
+/// The name a person recognises, folded into what a bottle id may be
+/// (`registry::valid_id`: lower-case letters, digits, dash and dot, never leading
+/// with a dot). `SetupGame_v2.exe` becomes `setupgame-v2`, which is what they will
+/// see in the list.
+///
+/// `None` when nothing usable survives the fold, so the caller asks rather than
+/// inventing a name like `bottle-1` that means nothing to anybody.
+pub fn id_from_installer(file_name: &str) -> Option<String> {
+    let stem = file_name
+        .rsplit('/')
+        .next()
+        .unwrap_or(file_name)
+        .rsplit_once('.')
+        .map(|(stem, _ext)| stem)
+        .unwrap_or(file_name);
+    let mut out = String::new();
+    for c in stem.chars() {
+        let c = c.to_ascii_lowercase();
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            out.push(c);
+        } else if !out.ends_with('-') && !out.is_empty() {
+            // One dash for any run of separators, and never a leading one: an id
+            // that starts with punctuation reads as a mistake in a list.
+            out.push('-');
+        }
+    }
+    let trimmed = out.trim_end_matches('-').to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
 /// Copy an installer into a bottle's prefix and answer where it landed.
 ///
 /// The answer is a host path INSIDE the prefix, which is what the confined Wine
@@ -132,6 +168,26 @@ mod tests {
         );
         assert_eq!(safe_name(".."), None);
         assert_eq!(safe_name(""), None);
+    }
+
+    #[test]
+    fn a_bottle_id_is_derived_from_the_installer_and_is_always_a_legal_one() {
+        use crate::registry::valid_id;
+
+        for (file, want) in [
+            ("SetupGame_v2.exe", "setupgame-v2"),
+            ("my game (setup).exe", "my-game-setup"),
+            ("/home/u/Downloads/Photoshop.msi", "photoshop"),
+            ("7zip.exe", "7zip"),
+        ] {
+            let id = id_from_installer(file).expect("a name survives the fold");
+            assert_eq!(id, want, "for {file}");
+            assert!(valid_id(&id), "{id} has to be a name a bottle may have");
+        }
+        // Nothing usable is left, so the caller is told rather than handed an
+        // invented name.
+        assert_eq!(id_from_installer("___.exe"), None);
+        assert_eq!(id_from_installer(""), None);
     }
 
     #[test]
