@@ -82,9 +82,14 @@ if [ -e "$SHOOT_APP" ]; then
   _bin="$(basename "$SHOOT_APP")"
   _crate="$(grep -rl "^name = \"$_bin\"" "$_repo"/apps/*/src-tauri/Cargo.toml 2>/dev/null | head -1)"
   if [ -n "$_crate" ]; then
+    # `|| true` because this runs under `set -e` and a find that matches nothing
+    # exits non-zero - which killed the whole script silently the first time this
+    # was written, so every drive ran, printed one line and reported a failure
+    # about a page it never loaded. The parentheses matter too: without them the
+    # `-o` binds so that `-newer` applies to the first name only.
     _newer="$(find "$(dirname "$_crate")/src" "$(dirname "$(dirname "$_crate")")/src" \
-                -name '*.rs' -o -name '*.svelte' -o -name '*.ts' 2>/dev/null \
-              | while read -r f; do [ "$f" -nt "$SHOOT_APP" ] && echo "$f" && break; done)"
+                \( -name '*.rs' -o -name '*.svelte' -o -name '*.ts' \) \
+                -newer "$SHOOT_APP" -print -quit 2>/dev/null || true)"
     if [ -n "$_newer" ]; then
       echo "!! that binary is OLDER than its source ($_newer changed since it was" >&2
       echo "   built). Whatever this run reports is about the old code - rebuild" >&2
