@@ -706,6 +706,12 @@ export const b: Catalogs = {
     "s.wa.followTheme": "Follow the Arlen theme",
     "s.wa.manageReach": "Manage what this app can reach",
     "s.wa.manageAccess": "Manage access",
+    "s.wa.whichProgram": "Which program is the app?",
+    "s.wa.whichProgramDesc":
+      "The installer left more than one program behind. Pick the one to start; the others are usually an uninstaller or a helper.",
+    "s.wa.whichProgramNone":
+      "No program was found in this app's files yet. If the installer is still running, finish it and come back.",
+    "s.wa.useThis": "Use this one",
     "s.wa.compat": "Compatibility",
     "s.wa.notManaged":
       "This app's compatibility settings are not managed yet, so there is nothing here to change.",
@@ -1657,6 +1663,12 @@ export const b: Catalogs = {
     "s.wa.followTheme": "Dem Arlen-Thema folgen",
     "s.wa.manageReach": "Verwalten, worauf diese App zugreifen darf",
     "s.wa.manageAccess": "Zugriff verwalten",
+    "s.wa.whichProgram": "Welches Programm ist die App?",
+    "s.wa.whichProgramDesc":
+      "Der Installer hat mehr als ein Programm hinterlassen. W\u00e4hle das, das gestartet werden soll; die anderen sind meist ein Deinstallations- oder Hilfsprogramm.",
+    "s.wa.whichProgramNone":
+      "In den Dateien dieser App wurde noch kein Programm gefunden. Falls der Installer noch l\u00e4uft, schlie\u00dfe ihn ab und komm zur\u00fcck.",
+    "s.wa.useThis": "Dieses nehmen",
     "s.wa.compat": "Kompatibilit\u00e4t",
     "s.wa.notManaged":
       "Die Kompatibilit\u00e4tseinstellungen dieser App werden noch nicht verwaltet, hier gibt es also nichts zu \u00e4ndern.",

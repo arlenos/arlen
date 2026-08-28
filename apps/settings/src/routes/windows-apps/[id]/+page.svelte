@@ -37,6 +37,9 @@
     browseFiles,
     clearCaches,
     deleteBottle,
+    bottlePrograms,
+    setBottleProgram,
+    type BottleProgram,
     type Bottle,
     type BottleHealth,
   } from "$lib/stores/windows-apps";
@@ -53,6 +56,18 @@
   $effect(() => {
     if (!bottle) return;
     void bottleHealth(bottle.id).then((h) => (health = h));
+  });
+
+  // What the installer left, asked for ONLY while nobody has picked yet. A bottle
+  // with a program does not need the list, and walking a prefix to build one
+  // nobody will read costs the same as one somebody will.
+  let programs = $state<BottleProgram[]>([]);
+  $effect(() => {
+    if (!bottle || bottle.hasProgram) {
+      programs = [];
+      return;
+    }
+    void bottlePrograms(bottle.id).then((p) => (programs = p));
   });
 
   const versionOptions = wineVersions.map((v) => ({ value: v, label: v }));
@@ -140,6 +155,35 @@
           <ShieldAlert size={16} strokeWidth={1.75} />
           <span>{$t("s.wa.healthWarn", { count: health.escapes })}</span>
         </div>
+      {/if}
+
+      <!-- THE QUESTION AN INSTALL LEAVES BEHIND. A Windows installer does not say
+           what it installed, so between running one and starting the app there is
+           a step only a person can take. Without this row the launch button
+           refuses with "nothing to run" and nothing on screen says what to do
+           about it. It sits above the access rows because it is the one thing
+           this page is waiting for. -->
+      {#if !bottle.hasProgram}
+        <Section label={$t("s.wa.whichProgram")} class="span-full">
+          {#if programs.length === 0}
+            <p class="not-managed">{$t("s.wa.whichProgramNone")}</p>
+          {:else}
+            <Row id="win-which-program" label={$t("s.wa.whichProgramDesc")} />
+            {#each programs as p (p.path)}
+              <Row id={`win-program-${p.name}`} label={p.name}>
+                {#snippet control()}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onclick={() => bottle && setBottleProgram(bottle.id, p.path)}
+                  >
+                    {$t("s.wa.useThis")}
+                  </Button>
+                {/snippet}
+              </Row>
+            {/each}
+          {/if}
+        </Section>
       {/if}
 
       <Section label={$t("s.wa.access")} class="span-full">
