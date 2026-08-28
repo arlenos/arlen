@@ -18,36 +18,15 @@
 //
 // Run: node dev/scripts/test-check-plugin-command-grants.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const GATE = new URL("./check-plugin-command-grants.py", import.meta.url).pathname;
 const REPO = new URL("../..", import.meta.url).pathname;
 const failures = [];
-
-/// Every directory this process created, and the only ones it may remove.
-const minted = new Set();
-
-/// A fresh temp directory, recorded so `cleanup` can tell it apart from a path
-/// that was passed in.
-function mint(prefix) {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  minted.add(dir);
-  return dir;
-}
-
-/// Remove a directory this file made. Refuses anything else, loudly: a helper
-/// that deletes its fixture must never receive a path it did not create.
-function cleanup(dir) {
-  if (!minted.has(dir)) {
-    console.log(`  REFUSED to remove ${dir}: not a directory this test created`);
-    process.exit(1);
-  }
-  minted.delete(dir);
-  rmSync(dir, { recursive: true, force: true });
-}
 
 /// A tree with one app: what its frontend calls, what its capability grants.
 function tree({ app = "demo", calls = [], permissions = [] } = {}) {
