@@ -56,6 +56,11 @@ pub enum Request {
     /// than trusted: this is what `Launch` runs, so a caller that could name any
     /// host path would have turned a launch into "run what I name, under Wine,
     /// with this bottle's grants".
+    ///
+    /// Not caller-gated the way `Forget` is, and the containment is why: with the
+    /// inside-the-prefix check, the most a same-uid peer can do is point a bottle
+    /// at another program the same person already installed there - and it could
+    /// run that program directly without asking this daemon at all.
     SetProgram { id: String, program: String },
     /// Run an installer inside an existing bottle.
     ///

@@ -187,11 +187,23 @@ pub async fn serve_connection(
                     |p| p.exists(),
                     spawn_detached,
                 ),
-                // `handle_request` answered `None` for something this does not
-                // route. Dropping the connection is the fail-closed end of that:
-                // a new ask must be added in both places or it reaches nobody.
-                other => {
-                    tracing::error!(?other, "no answer for this ask and no route for it");
+                // NAMED rather than a catch-all, so the compiler is the thing that
+                // notices. `handle_request` is exhaustive, so a new ask cannot be
+                // forgotten there; this match had an `other` arm, so a variant that
+                // returned `None` and was never routed compiled cleanly and dropped
+                // every connection asking for it - at runtime, on a machine, with a
+                // log line nobody was reading. Listing them means forgetting either
+                // half is a build error.
+                Request::ListBottles
+                | Request::Health { .. }
+                | Request::Prefix { .. }
+                | Request::ClearCaches { .. }
+                | Request::Programs { .. }
+                | Request::SetProgram { .. } => {
+                    // Unreachable: `handle_request` answers all of these. Kept as an
+                    // arm rather than an `unreachable!()` so a daemon never panics on
+                    // a reachable-in-future path.
+                    tracing::error!(?request, "an ask that should have been answered was not");
                     return;
                 }
             },
