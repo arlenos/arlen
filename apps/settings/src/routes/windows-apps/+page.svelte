@@ -14,8 +14,6 @@
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import {
     winApps,
@@ -27,11 +25,9 @@
     loadRuntimes,
     runtimesKnown,
     defaults,
-    wineVersions,
     load,
     installExe,
     launchApp,
-    patchDefaults,
     type Bottle,
   } from "$lib/stores/windows-apps";
 
@@ -43,13 +39,6 @@
     void loadRuntimes();
   });
 
-  const versionOptions = wineVersions.map((v) => ({ value: v, label: v }));
-  // Derived, not constant: a top-level array is built once at import, so its
-  // labels would hold whichever language was loaded then and stay in it.
-  const bottleModeOptions = $derived([
-    { value: "per-app", label: $t("s.wa.ownBottle") },
-    { value: "shared", label: $t("s.wa.sharedBottle") },
-  ]);
 
   // The compat tier as honest prose, never a "just works" promise.
   function compatLine(b: Bottle): string {
@@ -134,27 +123,22 @@
       </Row>
     </Section>
 
+    <!-- Named for what it holds. It was "Defaults" while it carried two settings,
+         and both of those are gone until they have somewhere to write; what is left
+         is a reading of this machine. -->
     <Section label={$t("s.wa.defaults")} class="span-full">
-      <Row id="win-default-version" label={$t("s.wa.defaultVersion")} description={$t("s.wa.defaultVersionDesc")}>
-        {#snippet control()}
-          <PopoverSelect
-            value={$defaults.version}
-            options={versionOptions}
-            ariaLabel={$t("s.wa.defaultCompat")}
-            onchange={(v) => patchDefaults({ version: v })}
-          />
-        {/snippet}
-      </Row>
-      <Row id="win-new-apps" label={$t("s.wa.newAppsGet")} description={$t("s.wa.newAppsGetDesc")}>
-        {#snippet control()}
-          <SegmentedControl
-            value={$defaults.bottleMode}
-            options={bottleModeOptions}
-            ariaLabel={$t("s.wa.newAppsGet")}
-            onchange={(v) => patchDefaults({ bottleMode: v as "per-app" | "shared" })}
-          />
-        {/snippet}
-      </Row>
+      <!-- TWO CONTROLS USED TO STAND HERE and both wrote to `set_windows_defaults`,
+           which no host defines - so clicking either reverted and raised the error
+           banner. The version picker was worse than inert: it opened on the literal
+           string "Wine 9.0" as this machine's default, while the rows below MEASURE
+           what Wine is actually here and can answer that there is none. A default
+           drawn from nothing, presented next to a measurement, is the shape this
+           panel was cleaned of in August.
+
+           They come back when they have somewhere to write: a bottle mode is a real
+           preference once the install path reads one, and a version picker is a real
+           choice once more than one runtime can be installed. Until then the section
+           says what is on the machine and nothing else. -->
       <!-- No runtimes rather than four invented ones: the list of what is
            installed is an observation. Empty now means two different things and
            they get two different rows - the runtime was asked and there is none,
