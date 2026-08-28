@@ -159,6 +159,45 @@ async fn store_install(
     }
 }
 
+/// Uninstall an installed app.
+///
+/// WHICH METHOD depends on where the app came from, and the answer is read from
+/// installd rather than passed in: it owns the record of what is installed, and a
+/// caller supplying the layer could aim a Flatpak removal at a lunpkg app and get
+/// a refusal it could not explain. An id installd does not know is refused here
+/// rather than sent, so "you never installed that" does not arrive as a D-Bus
+/// error about a missing app.
+///
+/// Answers the job id. The removal itself happens on installd's queue and its
+/// outcome arrives on `JobCompleted`; installd refuses outright anything that is
+/// part of the desktop, so this cannot be used to remove Settings or the shell.
+#[tauri::command]
+async fn store_uninstall(id: String) -> Result<String, String> {
+    let installed = fetch_installed().await.map_err(|e| e.to_string())?;
+    let source = installed
+        .iter()
+        .find(|(app_id, _, _, _)| app_id == &id)
+        .map(|(_, _, _, source)| source.clone())
+        .ok_or_else(|| format!("{id} is not installed"))?;
+
+    // The one branch, and the token installd's own listing uses on each side.
+    let method = if source == "flatpak" {
+        "UninstallFlatpak"
+    } else {
+        "Uninstall"
+    };
+    let conn = zbus::Connection::session()
+        .await
+        .map_err(|e| e.to_string())?;
+    let proxy = zbus::Proxy::new(&conn, INSTALLD, INSTALLD_PATH, INSTALLD)
+        .await
+        .map_err(|e| e.to_string())?;
+    proxy
+        .call(method, &(id,))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// The installed apps whose own source now offers a different version.
 ///
 /// A local read of the cached catalog against the install lock, so opening a
@@ -274,6 +313,7 @@ pub fn run() {
             store_trust_signals,
             store_variants,
             store_install,
+            store_uninstall,
             store_observed_vs_declared,
             store_outdated,
             store_skip_update,
