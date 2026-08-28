@@ -27,6 +27,14 @@ pub enum JobKind {
     Uninstall { app_id: String },
     /// Uninstall a Flatpak app.
     UninstallFlatpak { app_id: String },
+    /// Update a Flatpak app from the remote it came from.
+    ///
+    /// Gated the same way [`JobKind::Upgrade`] is, and for the same reason: a
+    /// version that asks for more than the installed one is a widening, and a
+    /// store button is not a place to accept one silently. The difference is
+    /// where the comparison comes from - a lunpkg carries its manifest, a Flatpak
+    /// is asked (`flatpak remote-info --show-permissions`).
+    UpdateFlatpak { app_id: String },
     /// Upgrade an already-installed app from a local .lunpkg.
     ///
     /// Distinct from `InstallPackage` because install REFUSES an app that is
@@ -294,6 +302,9 @@ pub async fn run_worker(queue: std::sync::Arc<JobQueue>, conn: Connection) {
             JobKind::UninstallFlatpak { ref app_id } => {
                 run_uninstall_flatpak(&queue, &conn, &job_id, app_id).await
             }
+            JobKind::UpdateFlatpak { ref app_id } => {
+                run_update_flatpak(&queue, &conn, &job_id, app_id).await
+            }
             JobKind::Upgrade { ref path } => run_upgrade(&queue, &conn, &job_id, path).await,
         };
 
@@ -310,6 +321,7 @@ pub async fn run_worker(queue: std::sync::Arc<JobQueue>, conn: Connection) {
             JobKind::UninstallFlatpak { app_id } => {
                 ("uninstall", "flatpak", Some(app_id.as_str()))
             }
+            JobKind::UpdateFlatpak { app_id } => ("upgrade", "flatpak", Some(app_id.as_str())),
             JobKind::Upgrade { .. } => ("upgrade", "lunpkg", None),
         };
         if let Err(e) = audit
@@ -620,6 +632,66 @@ async fn run_uninstall_flatpak(
         }
     }
 
+    Ok(())
+}
+
+/// Update one Flatpak app, refusing a version that asks for more than the
+/// installed one.
+///
+/// The gate is the same shape as [`run_upgrade`]'s and stops in the same place:
+/// it emits `ConsentRequired` and changes nothing, because there is still no
+/// trusted channel for a surface to answer that signal. Letting the caller assert
+/// its own consent would mean any caller could wave through exactly the widening
+/// this exists to catch.
+///
+/// CANNOT-CHECK IS NOT PERMISSION. An unreachable remote, an app with no origin,
+/// an unparseable answer - each ends the job rather than updating on the grounds
+/// that nothing was found to object to. The alternative reads as safe and is the
+/// opposite: the one case where the comparison fails is the one where the update
+/// applies unexamined.
+async fn run_update_flatpak(
+    queue: &JobQueue,
+    conn: &Connection,
+    job_id: &str,
+    app_id: &str,
+) -> Result<(), install::InstallError> {
+    use crate::flatpak;
+
+    if !flatpak::is_valid_app_id(app_id) {
+        return Err(install::InstallError::FlatpakFailed(format!(
+            "invalid flatpak app_id: {app_id}"
+        )));
+    }
+
+    queue.update_progress(job_id, 10, "checking the update");
+    emit_progress(conn, job_id, 10, "checking the update").await;
+
+    let installed = flatpak::get_flatpak_context(app_id)
+        .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
+    let remote = flatpak::get_origin(app_id)
+        .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
+    let offered = flatpak::get_remote_context(&remote, app_id)
+        .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
+
+    let widened = flatpak::widened(&installed, &offered);
+    if !widened.is_empty() {
+        queue.update_progress(job_id, 15, "waiting for your approval");
+        // The app id as the name: a Flatpak's display name lives in its AppStream
+        // data rather than anywhere this job has read, and inventing one here
+        // would put a made-up name in a consent prompt.
+        emit_consent_required(conn, job_id, app_id, app_id, widened.clone()).await;
+        return Err(install::InstallError::ConsentRequired(widened.join(", ")));
+    }
+
+    queue.update_progress(job_id, 40, "updating via flatpak");
+    emit_progress(conn, job_id, 40, "updating via flatpak").await;
+    flatpak::update_flatpak(app_id)
+        .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
+
+    // The permission profile is deliberately NOT rewritten. It is the grant the
+    // person holds, an update that asked for nothing new needs no change to it,
+    // and AUTH-CANONICAL §2 says a profile somebody may have narrowed is never
+    // overwritten by an install path.
     Ok(())
 }
 

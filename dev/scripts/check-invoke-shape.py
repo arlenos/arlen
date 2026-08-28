@@ -576,8 +576,6 @@ DEAD_INVOKES: dict[str, str] = {
         "the Knowledge app. Its Rust side exists; papers, books, notes and mail are bridge-ingested entities that are not graph nodes yet, so there is nothing to read"
     ),
     # the store's update actions against installd - arlen-ui's surface, coder owes the commands
-    "store_update": "the store's update actions against installd",
-    "store_update_all_routine": "the store's update actions against installd",
     # apps/text-editor is the same shape as apps/knowledge: a frontend with no
     # src-tauri, so these three have nowhere to live yet - needs the same decision
     "ai_edit": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
