@@ -180,11 +180,20 @@ async fn store_uninstall(id: String) -> Result<String, String> {
         .map(|(_, _, _, source)| source.clone())
         .ok_or_else(|| format!("{id} is not installed"))?;
 
-    // The one branch, and the token installd's own listing uses on each side.
-    let method = if source == "flatpak" {
-        "UninstallFlatpak"
-    } else {
-        "Uninstall"
+    // Both tokens are named, and anything else is refused rather than routed. The
+    // strings are installd's - `flatpak::list_installed_flatpaks` pushes "flatpak"
+    // and `install::list_installed` pushes "lunpkg" - and nothing binds them to this
+    // file. An `else` would send an unrecognised source down the lunpkg path, where
+    // it would fail somewhere deeper, or worse succeed at removing the wrong thing.
+    let method = match source.as_str() {
+        "flatpak" => "UninstallFlatpak",
+        "lunpkg" => "Uninstall",
+        other => {
+            return Err(format!(
+                "{id} is recorded as installed from {other}, which this build has no \
+                 way to remove"
+            ))
+        }
     };
     let conn = zbus::Connection::session()
         .await
@@ -217,11 +226,22 @@ async fn store_update(id: String) -> Result<String, String> {
         .find(|(app_id, _, _, _)| app_id == &id)
         .map(|(_, _, _, source)| source.clone())
         .ok_or_else(|| format!("{id} is not installed"))?;
-    if source != "flatpak" {
-        return Err(format!(
-            "{id} was installed as {source}, and updating that layer needs a package \
-             nothing on this machine fetches yet"
-        ));
+    // Named rather than defaulted, for the reason `store_uninstall` gives: an
+    // unrecognised source is not a lunpkg.
+    match source.as_str() {
+        "flatpak" => {}
+        "lunpkg" => {
+            return Err(format!(
+                "{id} was installed as a package file, and updating that layer needs \
+                 one nothing on this machine fetches yet"
+            ))
+        }
+        other => {
+            return Err(format!(
+                "{id} is recorded as installed from {other}, which this build has no \
+                 way to update"
+            ))
+        }
     }
     let conn = zbus::Connection::session()
         .await
