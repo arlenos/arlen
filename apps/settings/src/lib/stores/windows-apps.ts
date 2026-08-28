@@ -194,7 +194,7 @@ const FIXTURE: Bottle[] = [
     diskUsage: "320 MB",
     followsTheme: false,
     access: { network: true, homeFolder: true },
-    hasProgram: true,
+    hasProgram: false,
     drives: [
       { letter: "C", path: null },
       { letter: "D", path: "/home/mara" },
@@ -516,6 +516,16 @@ export async function bottlePrograms(id: string): Promise<BottleProgram[]> {
   try {
     return await invoke<BottleProgram[]>("bottle_programs", { id });
   } catch {
+    // Under vite there is no daemon to walk a prefix, and a list nobody can see
+    // is a row nobody can design. Live, an unreachable daemon answers nothing,
+    // which the panel renders as "no program found yet" - the honest reading,
+    // since it did not find one.
+    if (!tauriAvailable) {
+      return [
+        { path: "/pfx/drive_c/Program Files/Ledger/ledger.exe", name: "ledger.exe" },
+        { path: "/pfx/drive_c/Program Files/Ledger/report-tool.exe", name: "report-tool.exe" },
+      ];
+    }
     return [];
   }
 }

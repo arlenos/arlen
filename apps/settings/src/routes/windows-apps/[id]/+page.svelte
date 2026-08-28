@@ -168,7 +168,10 @@
           {#if programs.length === 0}
             <p class="not-managed">{$t("s.wa.whichProgramNone")}</p>
           {:else}
-            <Row id="win-which-program" label={$t("s.wa.whichProgramDesc")} />
+            <!-- A paragraph and not a Row label: a Row truncates to one line, and
+                 the screenshot of the first cut ended at "usually an unins...",
+                 which is the half of the sentence that says nothing. -->
+            <p class="not-managed">{$t("s.wa.whichProgramDesc")}</p>
             {#each programs as p (p.path)}
               <Row id={`win-program-${p.name}`} label={p.name}>
                 {#snippet control()}
