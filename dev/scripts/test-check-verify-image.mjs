@@ -12,10 +12,10 @@
 //
 // Run: node dev/scripts/test-check-verify-image.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-verify-image.sh");
@@ -24,7 +24,7 @@ const D = "dev/mkosi/mkosi.build.d";
 const failures = [];
 
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-verify-gate-"));
+  const dir = mint("arlen-verify-gate-");
   for (const [rel, body] of Object.entries(files)) {
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
@@ -49,7 +49,7 @@ function check(name, dir, expect) {
   const ok = expect(code, out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, code, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const RELEASE = 'install -Dm755 "$out" "$DESTDIR/usr/bin/arlen-thing"\n';

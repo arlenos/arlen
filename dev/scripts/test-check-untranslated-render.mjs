@@ -8,10 +8,10 @@
 // every case that must PASS is a real shape from the tree beside it.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-untranslated-render.py");
@@ -20,7 +20,7 @@ const ok = (n) => console.log(`  ok   ${n}`);
 const bad = (n, d) => { console.log(`  FAIL ${n}`); console.log(`       ${d}`); failures += 1; };
 
 function tree(files) {
-  const root = mkdtempSync(join(tmpdir(), "untranslated-"));
+  const root = mint("untranslated-");
   for (const [rel, body] of Object.entries(files ?? {})) {
     mkdirSync(join(root, dirname(rel)), { recursive: true });
     writeFileSync(join(root, rel), body);
@@ -49,7 +49,7 @@ console.log("check-untranslated-render:");
   r.code === 1 && r.out.includes("opError")
     ? ok("a stringified error drawn bare is caught")
     : bad("a stringified error drawn bare is caught", `got ${r.code}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -62,7 +62,7 @@ console.log("check-untranslated-render:");
   });
   const r = run(root);
   r.code === 0 ? ok("holding a key and calling the catalogue passes") : bad("holding a key and calling the catalogue passes", r.out);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -77,7 +77,7 @@ console.log("check-untranslated-render:");
   r.code === 1 && r.out.includes("opError")
     ? ok("a taint imported from a store is followed into the markup")
     : bad("a taint imported from a store is followed into the markup", `got ${r.code}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -90,7 +90,7 @@ console.log("check-untranslated-render:");
   });
   const r = run(root);
   r.code === 0 ? ok("a same-named local in an unrelated file is not a taint") : bad("a same-named local in an unrelated file is not a taint", r.out);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -101,7 +101,7 @@ console.log("check-untranslated-render:");
   });
   const r = run(root);
   r.code === 0 ? ok("a count and a path drawn bare are not findings") : bad("a count and a path drawn bare are not findings", r.out);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -115,7 +115,7 @@ console.log("check-untranslated-render:");
   });
   const r = run(root);
   r.code === 0 ? ok("a taint inside a translate call is left to the sibling check") : bad("a taint inside a translate call is left to the sibling check", r.out);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -129,7 +129,7 @@ console.log("check-untranslated-render:");
   r.code === 1 && r.out.includes("failure.reason")
     ? ok("a tainted field drawn as a field is caught")
     : bad("a tainted field drawn as a field is caught", `got ${r.code}: ${r.out}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -144,7 +144,7 @@ console.log("check-untranslated-render:");
   });
   const r = run(root);
   r.code === 0 ? ok("a local of the same name as a tainted field passes") : bad("a local of the same name as a tainted field passes", r.out);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -158,7 +158,7 @@ console.log("check-untranslated-render:");
   });
   const r = run(root);
   r.code === 0 ? ok("a raw error in a title attribute is a detail, not a claim") : bad("a raw error in a title attribute is a detail, not a claim", r.out);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -174,7 +174,7 @@ console.log("check-untranslated-render:");
   });
   const r = run(root);
   r.code === 0 ? ok("a shorthand prop is an attribute, not drawn text") : bad("a shorthand prop is an attribute, not drawn text", r.out);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -187,7 +187,7 @@ console.log("check-untranslated-render:");
   });
   const r = run(root);
   r.code === 1 ? ok("the same name drawn as element text still fails") : bad("the same name drawn as element text still fails", r.out);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -196,7 +196,7 @@ console.log("check-untranslated-render:");
   r.code === 2 && r.out.includes("NOTHING WAS READ")
     ? ok("finding no sources at all is not a pass")
     : bad("finding no sources at all is not a pass", `got ${r.code}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -211,7 +211,7 @@ console.log("check-untranslated-render:");
   r.code === 1 && r.out.includes("display/+page.svelte")
     ? ok("a carried file that grows a second one fails")
     : bad("a carried file that grows a second one fails", `got ${r.code}: ${r.out}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 console.log(

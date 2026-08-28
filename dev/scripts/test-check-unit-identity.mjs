@@ -11,11 +11,11 @@
 // daemon ships, nothing maps it, and it authenticates as nobody, which from
 // outside looks exactly like a daemon refused for a good reason.
 
-import { mkdtempSync, writeFileSync, mkdirSync, cpSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, mkdirSync, cpSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const CHECK = join(ROOT, "dev/scripts/check-unit-identity.py");
@@ -33,7 +33,7 @@ function check(name, ok) {
 // Run the check against a COPY of the tree, so a planted defect never touches the
 // real one. The check resolves its paths from its own location, so it travels.
 function withTree(mutate) {
-  const dir = mkdtempSync(join(tmpdir(), "unit-identity-"));
+  const dir = mint("unit-identity-");
   mkdirSync(join(dir, UNITS), { recursive: true });
   mkdirSync(join(dir, USER_UNITS), { recursive: true });
   mkdirSync(join(dir, dirname(RESOLVER)), { recursive: true });
@@ -65,7 +65,7 @@ function withTree(mutate) {
   const r = spawnSync("python3", [join(dir, "dev/scripts/check-unit-identity.py")], {
     encoding: "utf8",
   });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
 }
 

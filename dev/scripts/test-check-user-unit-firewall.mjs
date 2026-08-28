@@ -11,11 +11,11 @@
 // the restriction instead.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-user-unit-firewall.py");
@@ -27,12 +27,12 @@ function check(name, ok) {
 }
 
 function run(body, name = "arlen-thing.service") {
-  const dir = mkdtempSync(join(tmpdir(), "userfw-"));
+  const dir = mint("userfw-");
   const u = join(dir, "dev/mkosi/mkosi.extra/usr/lib/systemd/user");
   mkdirSync(u, { recursive: true });
   writeFileSync(join(u, name), body);
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
@@ -65,9 +65,9 @@ console.log("user unit IP firewall:");
   check("a KNOWN unit is excused", r.code === 0);
 }
 {
-  const dir = mkdtempSync(join(tmpdir(), "userfw-empty-"));
+  const dir = mint("userfw-empty-");
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   check("a tree with no user units refuses rather than passing", r.status === 2);
 }
 

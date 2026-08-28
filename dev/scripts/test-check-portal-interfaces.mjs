@@ -11,10 +11,10 @@
 // state where the two files disagree about the same interface.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-portal-interfaces.py");
@@ -22,7 +22,7 @@ let failures = 0;
 
 /** A tree with the given served types, portal line and preferred keys. */
 function tree({ served, portal, preferred }) {
-  const root = mkdtempSync(join(tmpdir(), "portal-iface-"));
+  const root = mint("portal-iface-");
   const src = join(root, "daemons/xdg-portal/daemon/src/interfaces");
   const dist = join(root, "daemons/xdg-portal/dist/xdg-desktop-portal/portals");
   mkdirSync(src, { recursive: true });
@@ -79,7 +79,7 @@ function expect(name, root, wantFail, mustSay) {
     failures++;
     console.log(`  FAIL ${name}\n       exit ${code}\n${out}`);
   }
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 console.log("check-portal-interfaces:");

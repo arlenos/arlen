@@ -1,17 +1,17 @@
 // Control for check-toast-is-named.py. The tree is at zero, which is the state
 // where a broken checker and a working one look the same, so every case here is
 // written for it.
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = join(here, "check-toast-is-named.py");
 
 function run(files) {
-  const root = mkdtempSync(join(tmpdir(), "toast-named-"));
+  const root = mint("toast-named-");
   mkdirSync(join(root, "dev", "scripts"), { recursive: true });
   copyFileSync(script, join(root, "dev", "scripts", "check.py"));
   for (const [rel, text] of Object.entries(files)) {
@@ -20,7 +20,7 @@ function run(files) {
     writeFileSync(p, text);
   }
   const r = spawnSync("python3", [join(root, "dev", "scripts", "check.py")], { encoding: "utf8" });
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
   return r;
 }
 

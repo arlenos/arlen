@@ -20,11 +20,16 @@ creating, which is what `lib/fixture.mjs` does.
 So: a recursive delete in a control must come from that helper. A direct
 `rmSync(x, { recursive: true })` is what this refuses.
 
-THE LIST IS THE HONEST PART. Every control written before the helper existed still
-deletes directly, and rewriting all of them at once is a worse risk than the one
-being closed. They are named in MIGRATED_LATER, which MAY SHRINK AND MAY NOT GROW: a
-new control cannot introduce an unguarded delete, which is where the danger actually
-was - the delete that ran was in a file being written that evening.
+THE LIST IS EMPTY, and keeping it that way is the point. All 75 controls that
+deleted directly were moved onto the helper in two passes on 28 August, each one run
+afterwards. The migration found one real thing the old `force: true` had been
+swallowing: `test-check-fixtures.mjs` cleaned every fixture twice, which a helper
+that keeps a record notices and a flag that means "do not mind if it is already
+gone" cannot.
+
+An entry here is a control that deletes on its own, and the list MAY SHRINK AND MAY
+NOT GROW. Adding one is saying that a new control may do the thing that cost a
+working tree.
 """
 
 from __future__ import annotations
@@ -114,47 +119,9 @@ def offenders(code: str, raw: str) -> list[str]:
     return found
 
 
-# Controls that predate `lib/fixture.mjs` and still delete directly. Written from a
-# measurement rather than by hand: the count is what it is, and every one of them
-# takes its path from a variable in the same function, which is why they have not
-# eaten anything. MAY SHRINK, MAY NOT GROW.
-MIGRATED_LATER: set[str] = {
-    "test-check-peer-identity-sandbox.mjs",
-    "test-check-plugin-grants.mjs",
-    "test-check-portal-interfaces.mjs",
-    "test-check-probe-admission.mjs",
-    "test-check-profile-agreement.mjs",
-    "test-check-profile-case.mjs",
-    "test-check-profile-claims.mjs",
-    "test-check-profile-keys.mjs",
-    "test-check-profile-principals.mjs",
-    "test-check-read-grants-cover-queries.mjs",
-    "test-check-read-scope.mjs",
-    "test-check-readme-tree.mjs",
-    "test-check-refusal-language.mjs",
-    "test-check-refusal-shape.mjs",
-    "test-check-release-routes.mjs",
-    "test-check-runtime-dir-closed.mjs",
-    "test-check-sandbox-env.mjs",
-    "test-check-serde-nesting.mjs",
-    "test-check-session-origin.mjs",
-    "test-check-setup-runtime.mjs",
-    "test-check-shared-files.mjs",
-    "test-check-socket-servers.mjs",
-    "test-check-sound-theme.mjs",
-    "test-check-spawned-tools-classified.mjs",
-    "test-check-tests-run.mjs",
-    "test-check-toast-is-named.mjs",
-    "test-check-token-unions.mjs",
-    "test-check-unit-identity.mjs",
-    "test-check-untranslated-render.mjs",
-    "test-check-user-unit-firewall.mjs",
-    "test-check-verify-image.mjs",
-    "test-check-webview-sandbox.mjs",
-    "test-check-wired.mjs",
-    "test-ci-system-deps.mjs",
-    "test-probe-verdict.mjs",
-}
+# Controls that delete on their own. EMPTY, and the header says why it should stay
+# that way. MAY SHRINK, MAY NOT GROW.
+MIGRATED_LATER: set[str] = set()
 
 
 def main() -> int:

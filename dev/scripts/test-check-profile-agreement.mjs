@@ -11,17 +11,17 @@
 //
 // Run: node dev/scripts/test-check-profile-agreement.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-profile-agreement.py");
 const failures = [];
 
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-agree-"));
+  const dir = mint("arlen-agree-");
   mkdirSync(join(dir, "sdk/permissions/profiles"), { recursive: true });
   mkdirSync(join(dir, "dev"), { recursive: true });
   for (const [name, body] of Object.entries(files)) {
@@ -63,7 +63,7 @@ check(
 run(dir, ["--update"]);
 r = run(dir);
 check("a recorded disagreement no longer fails", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 // Agreement is the passing case.
 dir = tree({
@@ -72,7 +72,7 @@ dir = tree({
 });
 r = run(dir);
 check("ids that agree are not reported", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 // A category word is not an app name. Without this the three `*.Client` ids
 // (Dropbox, Skype, Spotify) read as one program disagreeing with itself.
@@ -91,7 +91,7 @@ check(
   r.code === 0 && !/Client/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 // A distro build carries a desktop-environment prefix the upstream id does not.
 // Obfuscate held the whole home tree as `gnome-obfuscate` and Pictures as
@@ -107,7 +107,7 @@ check(
   r.code === 1 && /obfuscate/i.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 // But stripping that prefix must not turn every terminal into one program:
 // `gnome-terminal` becomes `terminal`, which is a category, not an app.
@@ -122,7 +122,7 @@ check(
   r.code === 0 && !/terminal/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 // A release channel is not an app name. Taking the last segment made Spotify,
 // Chromium, Thunderbird and GNOME Snapshot one program, because all four ids end
@@ -139,7 +139,7 @@ check(
   r.code === 0,
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 // The channel still resolves to its own program, so a real disagreement between
 // a stable id and its snapshot channel is still found.
@@ -153,17 +153,17 @@ check(
   r.code === 1 && /chromium/i.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 // Reading nothing is not passing.
-dir = mkdtempSync(join(tmpdir(), "arlen-agree-empty-"));
+dir = mint("arlen-agree-empty-");
 r = run(dir);
 check(
   "a tree with no profiles refuses rather than passing",
   r.code === 2 && /NOTHING WAS READ/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);

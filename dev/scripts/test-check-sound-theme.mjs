@@ -14,10 +14,10 @@
 //
 // Run: node dev/scripts/test-check-sound-theme.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-sound-theme.py");
@@ -57,14 +57,14 @@ function cue(path, amplitude) {
 const skipped = (code, out) => code === 0 && out.includes("SKIPPED");
 
 function run(name, build, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-sound-"));
+  const dir = mint("arlen-sound-");
   build(dir);
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
   const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
   const ok = expect(r.status ?? 1, out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, code: r.status, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log("sound theme:");

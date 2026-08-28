@@ -11,10 +11,10 @@
 // 16 August: a worker spawned with piped stdio and no cleared environment.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-sandbox-env.py");
@@ -37,7 +37,7 @@ function passes(root) {
 }
 
 function tree(files) {
-  const root = mkdtempSync(join(tmpdir(), "sandbox-env-"));
+  const root = mint("sandbox-env-");
   for (const [rel, body] of Object.entries(files)) {
     const full = join(root, rel);
     mkdirSync(dirname(full), { recursive: true });
@@ -66,13 +66,13 @@ let root = tree({ "ai/ai-sandbox/src/lib.rs": DIRTY });
 passes(root)
   ? bad("a worker spawned without env_clear is refused", "the check passed it")
   : ok("a worker spawned without env_clear is refused");
-rmSync(root, { recursive: true, force: true });
+cleanup(root);
 
 root = tree({ "ai/ai-sandbox/src/lib.rs": CLEAN });
 passes(root)
   ? ok("the same spawn with env_clear passes")
   : bad("the same spawn with env_clear passes", "the check refused it");
-rmSync(root, { recursive: true, force: true });
+cleanup(root);
 
 // A literal path rather than a variable: the same defect, spelled differently.
 root = tree({
@@ -84,7 +84,7 @@ root = tree({
 passes(root)
   ? bad("a literal worker path is refused too", "the check passed it")
   : ok("a literal worker path is refused too");
-rmSync(root, { recursive: true, force: true });
+cleanup(root);
 
 // Not every spawn is a worker. A check that demanded env_clear from nmcli would be
 // wrong and would be turned off within the week.
@@ -97,14 +97,14 @@ root = tree({
 passes(root)
   ? ok("an ordinary shell-out is left alone")
   : bad("an ordinary shell-out is left alone", "the check refused it");
-rmSync(root, { recursive: true, force: true });
+cleanup(root);
 
 // Tests drive the worker binaries directly and ship nothing.
 root = tree({ "ai/ai-sandbox/tests/thumbnail_integration.rs": DIRTY });
 passes(root)
   ? ok("a test that drives a worker directly is not held to it")
   : bad("a test that drives a worker directly is not held to it", "the check refused it");
-rmSync(root, { recursive: true, force: true });
+cleanup(root);
 
 // ... and neither is an in-file test module, which is where most of ours live.
 root = tree({
@@ -119,7 +119,7 @@ mod tests {
 passes(root)
   ? ok("a #[cfg(test)] module is not held to it")
   : bad("a #[cfg(test)] module is not held to it", "the check refused it");
-rmSync(root, { recursive: true, force: true });
+cleanup(root);
 
 // The one that keeps the exclusion honest: shipped code in a file that ALSO has a
 // test module must still be checked, or the exclusion becomes a way to opt out.
@@ -135,7 +135,7 @@ mod tests {
 passes(root)
   ? bad("shipped code beside a test module is still checked", "the check passed it")
   : ok("shipped code beside a test module is still checked");
-rmSync(root, { recursive: true, force: true });
+cleanup(root);
 
 // A tree with no Rust in it is a walk that reached nothing, and this used to
 // print "check-sandbox-env: ok" over it - the one sentence a check about
@@ -154,7 +154,7 @@ root = tree({ "README.md": "no rust here\n" });
     ? ok("a tree with no Rust source refuses rather than passing")
     : bad("a tree with no Rust source refuses rather than passing", `exit ${code}: ${out}`);
 }
-rmSync(root, { recursive: true, force: true });
+cleanup(root);
 
 if (failures) {
   console.log(`\n${failures} control(s) failed`);

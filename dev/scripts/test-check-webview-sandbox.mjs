@@ -14,10 +14,10 @@
 //
 // Run: node dev/scripts/test-check-webview-sandbox.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-webview-sandbox.py");
@@ -25,7 +25,7 @@ const GATE = join(ROOT, "dev/scripts/check-webview-sandbox.py");
 const failures = [];
 
 function check(name, files, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-webkit-"));
+  const dir = mint("arlen-webkit-");
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(dirname(p), { recursive: true });
@@ -36,7 +36,7 @@ function check(name, files, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const ASKS =

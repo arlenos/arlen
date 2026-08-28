@@ -11,10 +11,10 @@
 //
 // Run: node dev/scripts/test-check-profile-case.mjs
 
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const CHECK = join(ROOT, "dev/scripts/check-profile-case.sh");
@@ -35,7 +35,7 @@ console.log("check-profile-case:");
 
 // The planted defect: a desktop-id whose only difference from a shipped profile
 // is its case.
-const bad = mkdtempSync(join(tmpdir(), "arlen-desktop-bad-"));
+const bad = mint("arlen-desktop-bad-");
 writeFileSync(join(bad, "Kitty.desktop"), "[Desktop Entry]\nName=Kitty\n");
 const r1 = run(bad);
 check(
@@ -43,10 +43,10 @@ check(
   r1.code === 1 && /Kitty\.desktop is unreachable/.test(r1.out),
   `exit=${r1.code} out=${r1.out}`,
 );
-rmSync(bad, { recursive: true, force: true });
+cleanup(bad);
 
 // The same app, named the way the profile is: nothing to report.
-const good = mkdtempSync(join(tmpdir(), "arlen-desktop-good-"));
+const good = mint("arlen-desktop-good-");
 writeFileSync(join(good, "kitty.desktop"), "[Desktop Entry]\nName=kitty\n");
 const r2 = run(good);
 check(
@@ -63,18 +63,18 @@ check(
   r3.code === 0,
   `exit=${r3.code} out=${r3.out}`,
 );
-rmSync(good, { recursive: true, force: true });
+cleanup(good);
 
 // Reading nothing is not passing. Without this the check reports clean on a
 // machine with no applications, which is every CI runner.
-const empty = mkdtempSync(join(tmpdir(), "arlen-desktop-empty-"));
+const empty = mint("arlen-desktop-empty-");
 const r4 = run(empty);
 check(
   "a directory with no entries refuses rather than passing",
   r4.code === 2 && /NOTHING WAS READ/.test(r4.out),
   `exit=${r4.code} out=${r4.out}`,
 );
-rmSync(empty, { recursive: true, force: true });
+cleanup(empty);
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);

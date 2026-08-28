@@ -21,10 +21,10 @@
 //
 // Run: node dev/scripts/test-check-shared-files.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-shared-files.py");
@@ -40,7 +40,7 @@ const PAIR = {
 };
 
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-shared-gate-"));
+  const dir = mint("arlen-shared-gate-");
   for (const [rel, body] of Object.entries({ ...PAIR, ...files })) {
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
@@ -67,7 +67,7 @@ function check(name, dir, compositor, expect) {
   const ok = expect(r.code, r.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...r });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const XML = '<protocol name="arlen_titlebar_v1"><interface name="a"/></protocol>\n';
@@ -103,7 +103,7 @@ check(
     comp, // the gate appends resources/protocols itself
     (code, out) => code === 1 && out.includes("arlen-titlebar-v1.xml"),
   );
-  rmSync(comp, { recursive: true, force: true });
+  cleanup(comp);
 }
 
 // An absent checkout must read as "not compared", never as agreement - that is

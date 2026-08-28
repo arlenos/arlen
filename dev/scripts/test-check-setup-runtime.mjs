@@ -14,10 +14,10 @@
 //
 // Run: node dev/scripts/test-check-setup-runtime.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-setup-runtime.py");
@@ -29,7 +29,7 @@ const failures = [];
 // all is a scan that ran somewhere the apps are not, and it used to print
 // "0 setup hook body/bodies ... checked" and exit 0.
 function checkEmpty(name, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-setuprt-"));
+  const dir = mint("arlen-setuprt-");
   mkdirSync(join(dir, "daemons/probe/src"), { recursive: true });
   writeFileSync(join(dir, "daemons/probe/src/main.rs"), "fn main() {}\n");
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
@@ -37,11 +37,11 @@ function checkEmpty(name, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 function check(name, lib, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-setuprt-"));
+  const dir = mint("arlen-setuprt-");
   const src = join(dir, "apps/probe/src-tauri/src");
   mkdirSync(src, { recursive: true });
   writeFileSync(join(src, "lib.rs"), lib);
@@ -50,7 +50,7 @@ function check(name, lib, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const HOOK = (inside) => `pub fn run() {

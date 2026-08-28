@@ -12,10 +12,10 @@
 // green run means nothing unless the failing shapes are exercised.
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-socket-servers.py");
@@ -29,11 +29,11 @@ function check(name, ok) {
 
 /** Run a modified copy of the gate against the real tree. */
 function run(mutate) {
-  const dir = mkdtempSync(join(tmpdir(), "socket-gate-"));
+  const dir = mint("socket-gate-");
   const path = join(dir, "check.py");
   writeFileSync(path, mutate(SRC));
   const r = spawnSync("python3", [path, ROOT], { encoding: "utf8", cwd: ROOT });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 

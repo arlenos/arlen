@@ -13,11 +13,11 @@
 //
 // Run: node dev/scripts/test-check-serde-nesting.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const GATE = join(ROOT, "dev/scripts/check-serde-nesting.py");
@@ -33,7 +33,7 @@ function check(name, ok, detail) {
 
 /// A tree with one Rust file under a crate root the gate reads.
 function tree(source) {
-  const dir = mkdtempSync(join(tmpdir(), "serde-nesting-"));
+  const dir = mint("serde-nesting-");
   mkdirSync(join(dir, "apps/thing/src"), { recursive: true });
   writeFileSync(join(dir, "apps/thing/src/lib.rs"), source);
   return dir;
@@ -68,7 +68,7 @@ pub struct LoadAverage {
     r.code === 1 && /per_core/.test(r.out) && /LoadAverage/.test(r.out),
     r.out,
   );
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The fix has to clear it.
@@ -88,7 +88,7 @@ pub struct LoadAverage {
 `);
   const r = run(d);
   check("the same pair with the attribute passes", r.code === 0, r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A per-field rename is the other legitimate fix, and must not be nagged at.
@@ -108,7 +108,7 @@ pub struct Inner {
 `);
   const r = run(d);
   check("an explicit per-field rename is accepted", r.code === 0, r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Not a campaign for camelCase: a snake_case struct nobody camelCase reaches is
@@ -127,7 +127,7 @@ pub struct Also {
 `);
   const r = run(d);
   check("a snake_case struct no camelCase parent reaches is left alone", r.code === 0, r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // `Vec<T>` and `Option<T>` reach T just as a bare field does.
@@ -146,7 +146,7 @@ pub struct Row {
 `);
   const r = run(d);
   check("a struct reached through Vec is checked too", r.code === 1 && /row_id/.test(r.out), r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A single-word field cannot disagree with anything, so it is not a finding.
@@ -166,16 +166,16 @@ pub struct Inner {
 `);
   const r = run(d);
   check("single-word fields are not a disagreement", r.code === 0, r.out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // Pointed at a tree with nothing to read, "no findings" would describe a scan
 // that read nothing.
 {
-  const d = mkdtempSync(join(tmpdir(), "serde-nesting-empty-"));
+  const d = mint("serde-nesting-empty-");
   mkdirSync(join(d, "apps"), { recursive: true });
   check("a tree with no Serialize structs is an error, not a pass", run(d).code === 2);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 console.log(failures ? `\n${failures} case(s) failed` : "\na nested struct cannot quietly disagree with its parent");

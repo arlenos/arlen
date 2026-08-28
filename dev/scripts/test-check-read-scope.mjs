@@ -16,10 +16,10 @@
 //
 // Run: node dev/scripts/test-check-read-scope.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-read-scope.py");
@@ -28,7 +28,7 @@ const PROFILES = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000";
 const failures = [];
 
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-read-scope-"));
+  const dir = mint("arlen-read-scope-");
   for (const [rel, body] of Object.entries(files)) {
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
@@ -52,7 +52,7 @@ function check(name, dir, expect) {
   const ok = expect(code, out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, code, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const PROFILE = (labels) =>

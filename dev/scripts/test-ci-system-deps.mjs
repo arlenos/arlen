@@ -24,10 +24,10 @@ import {
   rmSync,
   existsSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SCRIPT = join(ROOT, "dev/scripts/ci-system-deps.sh");
@@ -46,7 +46,7 @@ function check(name, ok, detail) {
 // The install shim writes a `.deb` per named package into apt's archive
 // directory, which is what the real one does and what the save step reads.
 function stage({ installFails = 0, archivesPrefilled = [], cached = [], fourOhFour = false, uris = [] } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "ci-deps-"));
+  const dir = mint("ci-deps-");
   const bin = join(dir, "bin");
   const archives = join(dir, "archives");
   const cache = join(dir, "cache");
@@ -141,7 +141,7 @@ console.log("ci-system-deps:");
     /APT::Keep-Downloaded-Packages=true/.test(argv),
     argv,
   );
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // Warm: the point of the exercise. The cached bodies must reach apt's archive
@@ -155,7 +155,7 @@ console.log("ci-system-deps:");
     r.code === 0 && /restored 2 cached package/.test(r.out),
     r.out,
   );
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // The bug that shipped last time: a loop that reports success no matter what.
@@ -167,7 +167,7 @@ console.log("ci-system-deps:");
     r.code === 1 && /failed after three attempts/.test(r.out),
     r.out,
   );
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // The key is a cache of the package LIST, not of the script that installs them.
@@ -195,7 +195,7 @@ console.log("ci-system-deps:");
     /package cache holds/.test(r.out),
     r.out,
   );
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // And the case the retry exists for: one bad mirror, then a good one.
@@ -207,7 +207,7 @@ console.log("ci-system-deps:");
     r.code === 0 && /attempt 1 stalled or failed/.test(r.out),
     r.out,
   );
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // THE CASE THE WARM-FIRST PATH EXISTS FOR. On 19 August a job died in
@@ -221,7 +221,7 @@ console.log("ci-system-deps:");
     r.code === 0 && !existsSync(join(s.dir, "update-calls")),
     r.out,
   );
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // And the fallback the staleness argument rests on: an install the image's
@@ -234,7 +234,7 @@ console.log("ci-system-deps:");
     r.code === 0 && existsSync(join(s.dir, "update-calls")),
     r.out,
   );
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // A cold run has nothing to try, so it must go the long way round.
@@ -246,7 +246,7 @@ console.log("ci-system-deps:");
     r.code === 0 && existsSync(join(s.dir, "update-calls")),
     r.out,
   );
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // A warm cache must not hide a failure either: having the bodies locally does
@@ -285,7 +285,7 @@ console.log("ci-system-deps:");
   }
 
   check("a warm cache does not turn a failed install green", r.code === 1, r.out);
-  rmSync(s.dir, { recursive: true, force: true });
+  cleanup(s.dir);
 }
 
 // The list in the script is the one the workflow must not keep a second copy
@@ -320,7 +320,7 @@ console.log("ci-system-deps:");
 
   // And prove it end to end: a marked script in a throwaway workflow is skipped
   // while an unmarked one beside it runs.
-  const d = mkdtempSync(join(tmpdir(), "gate-runner-"));
+  const d = mint("gate-runner-");
   mkdirSync(join(d, "dev/scripts"), { recursive: true });
   mkdirSync(join(d, ".github/workflows"), { recursive: true });
   writeFileSync(join(d, "dev/scripts/check-marked.sh"), "# not-a-local-gate: would touch the machine\nexit 1\n");
@@ -338,7 +338,7 @@ console.log("ci-system-deps:");
     out,
   );
   check("an unmarked script beside it still runs", /check-plain\.sh\s+ok/.test(out), out);
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // The cache key had an EMPTY segment on its first real run - `apt-Linux--<hash>`,

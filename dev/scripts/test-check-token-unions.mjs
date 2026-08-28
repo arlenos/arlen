@@ -16,17 +16,17 @@
 //
 // Run: node dev/scripts/test-check-token-unions.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-token-unions.py");
 const failures = [];
 
 function run(name, files, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-tok-"));
+  const dir = mint("arlen-tok-");
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(dirname(p), { recursive: true });
@@ -37,7 +37,7 @@ function run(name, files, expect) {
   const ok = expect(r.status ?? 1, out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, code: r.status, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const TS = (union) => `
