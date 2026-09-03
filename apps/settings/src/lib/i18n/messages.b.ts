@@ -773,6 +773,10 @@ export const b: Catalogs = {
       "These bottles are on this machine and could not be read, so they are missing from the list: {$names}.",
     "s.wa.launchNothing":
       "\"{$name}\" has nothing to start yet: no Windows program has been installed into it.",
+    "s.wa.installNoWine":
+      "Nothing on this machine can run Windows programs yet, so there is nowhere to install this.",
+    "s.wa.installExists": "There is already a Windows app by that name.",
+    "s.wa.installFailed": "That installer could not be set up.",
     "s.wa.launchNoWine":
       "\"{$name}\" was not launched: this machine has no Windows compatibility layer installed.",
     "s.wa.launchNoPrefix":
@@ -1732,6 +1736,10 @@ export const b: Catalogs = {
       "Diese Bottles liegen auf dieser Maschine und waren nicht lesbar, sie fehlen deshalb in der Liste: {$names}.",
     "s.wa.launchNothing":
       "\u201e{$name}\u201c hat noch nichts zu starten: Es wurde kein Windows-Programm hineininstalliert.",
+    "s.wa.installNoWine":
+      "Auf diesem Rechner kann noch nichts Windows-Programme ausf\u00fchren, es gibt also keinen Ort daf\u00fcr.",
+    "s.wa.installExists": "Es gibt bereits eine Windows-App mit diesem Namen.",
+    "s.wa.installFailed": "Dieses Installationsprogramm konnte nicht eingerichtet werden.",
     "s.wa.launchNoWine":
       "\u201e{$name}\u201c wurde nicht gestartet: Auf dieser Maschine ist keine Windows-Kompatibilit\u00e4tsschicht installiert.",
     "s.wa.launchNoPrefix":

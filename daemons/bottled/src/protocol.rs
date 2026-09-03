@@ -539,13 +539,27 @@ pub fn create(
         egress: crate::bottle::Egress::None,
         plumbing: crate::plumbing::Plumbing::default(),
     };
+    // A machine with no Wine is the one create failure a person can act on, so it
+    // is carried out rather than folded into "could not create". The flag is set
+    // by the closure because `create_bottle` only sees the boot's error string,
+    // and a message is not something to match on.
+    // `create_bottle` takes an `Fn`, so the flag is a Cell rather than a `mut`
+    // capture; single-threaded, one call, no contention.
+    let no_wine = std::cell::Cell::new(false);
     let boot = |prefix: &Path| -> Result<(), String> {
-        let argv = crate::create::boot_argv(prefix, usr, runtime_dir, exists)
-            .map_err(|e| e.to_string())?;
+        let argv = crate::create::boot_argv(prefix, usr, runtime_dir, exists).map_err(|e| {
+            if matches!(e, crate::launch::LaunchError::NoRuntime(_)) {
+                no_wine.set(true);
+            }
+            e.to_string()
+        })?;
         run(&argv)
     };
     match crate::create::create_bottle(bottles_dir, &new, boot) {
         Ok(bottle) => Response::Created { id: bottle.id },
+        Err(crate::create::CreateError::Boot(_)) if no_wine.get() => Response::Refused {
+            problem: Problem::NoWine,
+        },
         Err(crate::create::CreateError::AlreadyExists(_)) => Response::Refused {
             problem: Problem::BottleExists,
         },
@@ -963,8 +977,10 @@ mod tests {
         assert_eq!(
             answer,
             Response::Refused {
-                problem: Problem::CouldNotCreate
-            }
+                problem: Problem::NoWine
+            },
+            "the one create failure a person can act on is named - folding it into \
+             could-not-create tells them something went wrong and not what"
         );
         assert_eq!(
             handle_request(dir.path(), &Request::ListBottles),

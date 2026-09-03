@@ -19,6 +19,8 @@
     winApps,
     winActionFailed,
     launchFailed,
+    installFailed,
+    installFailureKey,
     launchFailureKey,
     forgetFailed,
     forgetFailureKey,
@@ -78,6 +80,12 @@
       <p class="note span-full" role="alert">
         {$t(forgetFailureKey($forgetFailed.reason), { name: $forgetFailed.name })}
       </p>
+    {/if}
+    <!-- The install path's own refusal, distinct from a launch's: "nothing here
+         runs Windows programs" is a different thing to do about it than "that app
+         would not start". -->
+    {#if $installFailed}
+      <p class="note span-full" role="alert">{$t(installFailureKey($installFailed))}</p>
     {/if}
     {#if $launchFailed}
       <p class="note span-full" role="alert">{$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}</p>

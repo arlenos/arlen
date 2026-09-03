@@ -319,20 +319,45 @@ export async function patchBottle(id: string, patch: Partial<Bottle>): Promise<v
   }
 }
 
+/// Why an install could not start, or null.
+///
+/// A REASON, not a boolean, for the same argument `launchFailed` makes: the
+/// daemon distinguishes "this machine has no Wine" from "something went wrong",
+/// and a banner that flattens the two sends somebody looking for the wrong
+/// problem.
+export const installFailed = writable<string | null>(null);
+
+/// The message key for an install refusal token.
+///
+/// The create path can answer: no-wine (nothing on this machine runs Windows
+/// programs), bottle-exists (a bottle by that name is already here), bad-id, and
+/// could-not-create for everything the machine did wrong. Anything else still
+/// gets a sentence - a token must never reach the screen.
+export function installFailureKey(reason: string): string {
+  switch (reason) {
+    case "no-wine":
+      return "s.wa.installNoWine";
+    case "bottle-exists":
+      return "s.wa.installExists";
+    default:
+      return "s.wa.installFailed";
+  }
+}
+
 /// Install a new Windows app: pick an installer, get a bottle, run it there.
 ///
 /// Answers the new bottle's id, or null when the picker was cancelled - which is
 /// not a failure and must not raise the error banner. The list is reloaded on the
 /// way out so the new bottle appears without the person going looking for it.
 export async function installExe(): Promise<string | null> {
-  winActionFailed.set(false);
+  installFailed.set(null);
   try {
     const id = await invoke<string | null>("install_windows_app");
     if (id) await load();
     return id;
-  } catch {
+  } catch (e) {
     // No bottle daemon under vite: the escape hatch is inert in the mock.
-    if (tauriAvailable) winActionFailed.set(true);
+    if (tauriAvailable) installFailed.set(String(e));
     return null;
   }
 }
