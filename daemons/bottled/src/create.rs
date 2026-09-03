@@ -139,6 +139,16 @@ impl From<RegistryError> for CreateError {
 ///
 /// `boot` is handed the prefix path and is expected to run `wineboot` against it,
 /// however the caller wants that done.
+///
+/// WHAT A FAILED CREATE LEAVES, because it is a real property and not a bug to
+/// go looking for. Everything after `create_dir_all` can fail with a booted
+/// prefix already on disk, and the description is saved last on purpose, so what
+/// remains is a directory with no `bottle.toml`. That is invisible by design:
+/// `registry::list_bottles` neither lists nor reports it, so no surface offers to
+/// remove it either. Retrying the same id reuses it and finishes - `wineboot -u`
+/// and the severing pass are both idempotent - which is the path back. Nobody
+/// retrying means a prefix's worth of disk that only a file manager can reclaim,
+/// and that is the trade for never showing a half-made bottle as a real one.
 pub fn create_bottle(
     bottles_dir: &Path,
     new: &NewBottle,
