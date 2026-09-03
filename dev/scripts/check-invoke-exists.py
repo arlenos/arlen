@@ -343,16 +343,31 @@ KNOWN: dict[str, dict[str, str]] = {
         ),
     },
     "settings": {
-        # The seven Windows-app entries are a different kind of missing from the
-        # rest of this list, and saying so keeps the count honest: **their surface
-        # is no longer reachable.** The page came off the navigation on 9 August
-        # because its backend is the Wine bottle daemon, which `wine-proton-plan.md`
-        # defers on purpose - a page whose subject does not exist rather than a page
-        # with dead buttons. The route, the store and the calls all still stand, so
-        # they still count here, but nobody can press them. Without this note the
-        # total reads as that many controls lying on screen, and seven of them are
-        # not on screen at all.
-        "set_bottle_config": "bottle settings (surface off the navigation)",
+        # ONE Windows-app entry is left of the seven that stood here, and the note
+        # that explained them has to be read with its date. It said the page came
+        # off the navigation on 9 August because "its backend is the Wine bottle
+        # daemon, which `wine-proton-plan.md` defers on purpose", and that nobody
+        # could press these controls because there was no way in.
+        #
+        # Both halves of that have since changed. `daemons/bottled` exists and
+        # answers: it makes bottles, installs into them, picks a program, launches
+        # it, cuts a bottle off the network, takes a folder away and measures the
+        # disk a prefix holds. And the second reason the note gave - the page
+        # arguing with itself, a default Wine version sitting two rows above
+        # "Runtimes not known" - is gone; the compat section is behind the recipe
+        # that would fill it and says so when there is none.
+        #
+        # What has NOT changed is the way in: `navigation.ts` still has no
+        # windows-apps entry, deliberately, with a comment saying it "comes back
+        # with the daemon". So the whole panel is reachable only by typing the
+        # route. That is now a navigation decision rather than a missing backend,
+        # and it belongs to whoever owns the panel's surface.
+        "set_bottle_config": (
+            "bottle settings. Needs the compat recipe, which is its own piece "
+            "(forage-distributed and signed) and does not exist - so there is no "
+            "measured value for it to write. The panel around it is reachable only "
+            "by route: `navigation.ts` has no entry for it yet"
+        ),
         # The four printer entries that stood here are gone rather than fixed, and
         # the way they were wrong is worth keeping: the CUPS backend exists and
         # `printers_list`/`printers_default` reach it, so "this is just wiring" was
