@@ -17,7 +17,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CHECK = join(HERE, "check-step-binaries.py");
 const REPO = join(HERE, "..", "..");
 
-function tree({ crate, search }) {
+function tree({ crate, search, install }) {
   const root = mint("step-binaries-");
   const write = (rel, body) => {
     const p = join(root, rel);
@@ -25,9 +25,12 @@ function tree({ crate, search }) {
     writeFileSync(p, body);
   };
   write("apps/demo/src-tauri/Cargo.toml", `[package]\nname = "${crate}"\nversion = "0.1.0"\n`);
+  const line = install
+    ? `install -Dm644 "$SRCDIR/arlen/${install}" "$DESTDIR/usr/share/x"\n`
+    : "";
   write(
     "dev/mkosi/mkosi.build.d/04z-demo.sh.chroot",
-    `#!/bin/sh\nout=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/${search}' | head -1)\n`,
+    `#!/bin/sh\nout=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/${search}' | head -1)\n${line}`,
   );
   return root;
 }
@@ -52,6 +55,28 @@ const cases = [
     "the real case is caught: crate arlen-pdf-app, phase looking for arlen-pdf",
     () => tree({ crate: "arlen-pdf-app", search: "arlen-pdf" }),
     (code, out) => code === 1 && out.includes("arlen-pdf"),
+    true,
+  ],
+  [
+    "a file the phase installs from the checkout must be there",
+    () =>
+      tree({
+        crate: "arlen-demo-app",
+        search: "arlen-demo-app",
+        install: "apps/demo/dist/moved-away.desktop",
+      }),
+    (code, out) => code === 1 && out.includes("moved-away.desktop"),
+    true,
+  ],
+  [
+    "and one that is there passes",
+    () =>
+      tree({
+        crate: "arlen-demo-app",
+        search: "arlen-demo-app",
+        install: "apps/demo/src-tauri/Cargo.toml",
+      }),
+    (code) => code === 0,
     true,
   ],
   [

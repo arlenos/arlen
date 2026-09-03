@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Tim Kicker
 #
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Check that a build step looks for a binary some crate actually produces.
+"""Check that a build step names things that exist: its artefact and its sources.
 
 WHY THIS EXISTS, and the cost is measured rather than imagined. Every app phase
 builds its frontend and backend, then finds the artefact by name:
@@ -26,6 +26,13 @@ A search name must be a `[[bin]]` name or a package name somewhere in the tree.
 That is deliberately loose: a step may install its artefact under a different name
 afterwards, which is normal and fine. What is not fine is looking for something
 nothing builds.
+
+THE SECOND RULE IS THE SAME MISTAKE FROM THE OTHER SIDE. A phase also installs
+files it does not build - a desktop entry, an icon, a unit, a tmpfiles snippet -
+by literal path under `$SRCDIR/arlen/`. A path that does not exist fails the phase
+exactly as expensively, and moving or renaming one of those files is a far more
+ordinary thing to do than renaming a crate. All 58 were present when this rule was
+added, which is the good time to add it.
 """
 
 from __future__ import annotations
@@ -42,6 +49,10 @@ STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 #: `-path '*/release/<name>'` and `-path '*/debug/<name>'`, the shape every phase
 #: uses to find what cargo just wrote.
 SEARCH = re.compile(r"-path\s+'\*/(?:release|debug)/([A-Za-z0-9_-]+)'")
+#: A file the phase installs from the checkout, by literal path. Only the literal
+#: form: a path built from a shell variable is not something a checker can resolve,
+#: and guessing at one would be worse than leaving it alone.
+SOURCE = re.compile(r'"\$SRCDIR/arlen/([^"$]+)"')
 #: A crate's own name, and any explicit `[[bin]] name`.
 PACKAGE = re.compile(r'^\s*name\s*=\s*"([A-Za-z0-9_-]+)"', re.M)
 
@@ -69,10 +80,21 @@ def main() -> int:
 
     problems: list[str] = []
     checked = 0
+    sources = 0
     for step in sorted(STEPS.glob("*")):
         if not step.is_file():
             continue
-        for name in SEARCH.findall(step.read_text(encoding="utf-8", errors="replace")):
+        text = step.read_text(encoding="utf-8", errors="replace")
+        for rel in SOURCE.findall(text):
+            sources += 1
+            if (ROOT / rel).exists():
+                continue
+            problems.append(
+                f"{step.name} installs `{rel}` from the checkout and that path is not "
+                f"there. The phase would fail during an image build, which is the "
+                f"expensive place to learn that a file moved."
+            )
+        for name in SEARCH.findall(text):
             checked += 1
             if name in produced:
                 continue
@@ -90,8 +112,8 @@ def main() -> int:
         return 1
 
     print(
-        f"{checked} artefact search(es) across the build steps, each naming a binary "
-        f"some crate produces"
+        f"{checked} artefact search(es) and {sources} installed source path(s) across "
+        f"the build steps, each naming something that exists"
     )
     return 0
 
