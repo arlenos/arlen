@@ -103,15 +103,27 @@ pub async fn list_bottles() -> Result<Bottles, String> {
 
 /// What one bottle's prefix says, against what the bottle says it is.
 ///
-/// The two fields the panel reads: whether the two agree, and how many links
-/// leave the prefix without a grant behind them. An error is "could not check",
-/// which the store already keeps apart from "healthy" - a green light nobody
-/// measured is the claim this whole surface exists to avoid.
+/// What the panel reads from the check: whether the two agree, and the three ways
+/// they can fail to. An error is "could not check", which the store already keeps
+/// apart from "healthy" - a green light nobody measured is the claim this whole
+/// surface exists to avoid.
+///
+/// THE COUNTS ARE SEPARATE BECAUSE THE SENTENCES ARE. This used to carry `agrees`
+/// and `escapes` alone, and the panel's one sentence read "N of its paths lead
+/// outside it" for every disagreement. A bottle missing a granted letter, or
+/// carrying one nobody granted, disagrees with `escapes` at zero - so the warning
+/// appeared and said "0 of its paths lead outside it", which is a sentence about
+/// the wrong fault with a nothing in it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BottleHealth {
     pub agrees: bool,
+    /// Links leaving the prefix with no grant behind them.
     pub escapes: usize,
+    /// Granted folders the prefix does not map: the program will not see them.
+    pub missing: usize,
+    /// Drives the prefix maps that no grant asked for: something else wrote them.
+    pub unexpected: usize,
 }
 
 /// Check one bottle against its prefix.
@@ -120,8 +132,17 @@ pub async fn bottle_health(id: String) -> Result<BottleHealth, String> {
     tokio::task::spawn_blocking(move || {
         match ask(&socket_path(), &Request::Health { id }) {
             Ok(Response::Health {
-                agrees, escapes, ..
-            }) => Ok(BottleHealth { agrees, escapes }),
+                agrees,
+                escapes,
+                missing,
+                unexpected,
+                ..
+            }) => Ok(BottleHealth {
+                agrees,
+                escapes,
+                missing: missing.len(),
+                unexpected: unexpected.len(),
+            }),
             // A refusal names which one, so the window can tell "no such bottle"
             // from "it is there and unreadable" rather than saying one for both.
             Ok(Response::Refused { problem }) => Err(format!("{problem:?}")),

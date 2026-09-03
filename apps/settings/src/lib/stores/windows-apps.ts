@@ -42,7 +42,12 @@ export interface BottleDrive {
 /// table claims, and that is the one thing this panel must never overstate.
 export interface BottleHealth {
   agrees: boolean;
+  /// Links leaving the prefix with no grant behind them.
   escapes: number;
+  /// Granted folders the prefix does not map: the app will not see them.
+  missing: number;
+  /// Drives the prefix maps that no grant asked for.
+  unexpected: number;
 }
 
 /// One Windows app in its bottle, as the panel renders it. The first few fields
@@ -201,9 +206,11 @@ const FIXTURE: Bottle[] = [
 /// The fixture's one unhealthy bottle: the deviating state has to be designable
 /// without a daemon that can produce it on demand.
 const FIXTURE_HEALTH: Record<string, BottleHealth> = {
-  b1: { agrees: true, escapes: 0 },
-  b2: { agrees: true, escapes: 0 },
-  "ledger-setup": { agrees: false, escapes: 2 },
+  b1: { agrees: true, escapes: 0, missing: 0, unexpected: 0 },
+  // Disagreeing with NO escaping path: the case that used to render "0 of its
+  // paths lead outside it". A granted folder its prefix does not map.
+  b2: { agrees: false, escapes: 0, missing: 1, unexpected: 0 },
+  "ledger-setup": { agrees: false, escapes: 2, missing: 0, unexpected: 1 },
 };
 
 /// The Wine/Proton versions the selectors offer.
