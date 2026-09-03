@@ -128,6 +128,44 @@ const cases = [
     true,
   ],
   [
+    "a greeter state directory owned by someone else is caught",
+    () => {
+      const root = wellFormed({
+        step:
+          'install -Dm755 "$out" "$DESTDIR/usr/bin/arlen-greeter"\n' +
+          'install -Dm644 "$SRCDIR/arlen/apps/greeter/dist/state.tmpfiles.conf" \\\n' +
+          '        "$DESTDIR/usr/lib/tmpfiles.d/arlen-greeter.conf"\n',
+      });
+      write(
+        root,
+        "apps/greeter/dist/state.tmpfiles.conf",
+        "# the greeter's own state\nd /var/lib/arlen/greeter 0700 someone-else someone-else -\n",
+      );
+      return root;
+    },
+    (code, out) => code === 1 && out.includes("someone-else"),
+    true,
+  ],
+  [
+    "and one owned by the session user passes",
+    () => {
+      const root = wellFormed({
+        step:
+          'install -Dm755 "$out" "$DESTDIR/usr/bin/arlen-greeter"\n' +
+          'install -Dm644 "$SRCDIR/arlen/apps/greeter/dist/state.tmpfiles.conf" \\\n' +
+          '        "$DESTDIR/usr/lib/tmpfiles.d/arlen-greeter.conf"\n',
+      });
+      write(
+        root,
+        "apps/greeter/dist/state.tmpfiles.conf",
+        "d /var/lib/arlen/greeter 0700 _greetd _greetd -\n",
+      );
+      return root;
+    },
+    (code) => code === 0,
+    true,
+  ],
+  [
     "a package that is only a comment does not count as installed",
     () =>
       wellFormed({
