@@ -82,6 +82,39 @@ pub fn safe_name(original: &str) -> Option<String> {
     Some(cleaned)
 }
 
+/// Throw away the installer copy once it has served its purpose.
+///
+/// The copy exists because this daemon made it: an installer is brought INTO the
+/// prefix rather than reached out to, so the folder it came from is never granted.
+/// That costs disk twice for the length of the install, and the second copy has no
+/// reason to outlive it - the original is still wherever the person keeps their
+/// downloads, and `bottle_disk_usage` counts this one against the app forever.
+///
+/// Best effort by design: a copy that will not delete is a few hundred megabytes
+/// somebody can remove by hand, and failing an install-finished step over it would
+/// be the tail wagging the dog. Answers how many bytes went.
+pub fn discard_installers(prefix_root: &Path) -> u64 {
+    let dir = prefix_root.join(INSTALLER_DIR);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return 0;
+    };
+    let mut freed = 0u64;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        // Files only, and never through a link. Nothing but our own copies is
+        // supposed to be in here, and "supposed to" is not a reason to walk into
+        // whatever a link points at.
+        if meta.is_file() && std::fs::remove_file(&path).is_ok() {
+            freed = freed.saturating_add(meta.len());
+        }
+    }
+    let _ = std::fs::remove_dir(&dir);
+    freed
+}
+
 /// A bottle id derived from an installer's file name.
 ///
 /// The name a person recognises, folded into what a bottle id may be
@@ -212,6 +245,35 @@ mod tests {
             downloads.join("tax-return.pdf").is_file(),
             "the folder it came from is untouched and ungranted"
         );
+    }
+
+    #[test]
+    fn the_installer_copy_goes_once_the_install_is_finished() {
+        let downloads = scratch("discard-downloads");
+        let installer = downloads.join("setup.exe");
+        std::fs::write(&installer, vec![0u8; 4096]).unwrap();
+
+        let prefix = scratch("discard-prefix");
+        let app = prefix.join("drive_c/Program Files/Game");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("game.exe"), b"MZ").unwrap();
+        bring_installer_in(&prefix, &installer).unwrap();
+
+        assert_eq!(discard_installers(&prefix), 4096);
+        assert!(
+            !prefix.join(INSTALLER_DIR).exists(),
+            "the directory goes with the last copy in it"
+        );
+        assert!(
+            app.join("game.exe").is_file(),
+            "what the installer installed is not what is being thrown away"
+        );
+        assert!(
+            installer.is_file(),
+            "and the person's own download is untouched - it was copied, not moved"
+        );
+        // Nothing left to discard is zero rather than a failure.
+        assert_eq!(discard_installers(&prefix), 0);
     }
 
     #[test]

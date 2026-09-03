@@ -913,9 +913,25 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
                     // is not the place to invent one.
                     bottle.program = vec![program.clone()];
                     match crate::registry::save_bottle(bottles_dir, &bottle) {
-                        Ok(_) => Response::ProgramSet {
-                            program: program.clone(),
-                        },
+                        Ok(_) => {
+                            // Picking the program is what "the install finished"
+                            // looks like from here, and the installer copy has no
+                            // reason to outlive it: the original is still in the
+                            // person's downloads, and this one would be counted
+                            // against the app's disk for as long as the bottle
+                            // exists. Best effort - a copy that will not delete is
+                            // not a reason to fail the pick.
+                            let freed = crate::install::discard_installers(&bottle.prefix_root);
+                            if freed > 0 {
+                                tracing::info!(
+                                    bytes = freed,
+                                    "discarded the installer copy after the install"
+                                );
+                            }
+                            Response::ProgramSet {
+                                program: program.clone(),
+                            }
+                        }
                         Err(_) => Response::Refused {
                             problem: Problem::Unreadable,
                         },
@@ -1396,6 +1412,11 @@ mod tests {
         assert_eq!(
             load_bottle(dir.path(), "game").unwrap().program,
             vec![programs[0].path.clone()]
+        );
+        assert!(
+            !prefix.join(crate::install::INSTALLER_DIR).exists(),
+            "picking the program is what finished looks like, so the installer copy \
+             this daemon made goes with it"
         );
     }
 
