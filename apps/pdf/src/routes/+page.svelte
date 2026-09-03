@@ -20,6 +20,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { ChevronLeft, ChevronRight, FileText, Minus, Plus, PanelLeft, Scan, X } from "@lucide/svelte";
   import { tauriAvailable } from "$lib/tauri";
   import { t } from "$lib/i18n/messages";
@@ -31,6 +32,7 @@
     launchFailure,
     launchedPath,
     openLaunched,
+    renderer,
     search,
     type SearchOutcome,
   } from "$lib/stores/pdf";
@@ -261,8 +263,11 @@
       bind:clientHeight={viewportH}
       onscroll={onScroll}
     >
+      {#if $renderer === "none"}
+        <Notice tone="caution" class="flow-note" text={$t("pdf.textFace")} />
+      {/if}
       {#each Array.from({ length: $doc.pages }, (_, i) => i + 1) as page (page)}
-        <PageCanvas {page} {scale} {ratio} {query} onmetrics={(r, w) => ((ratio = r), (ptWidth = w))} />
+        <PageCanvas {page} {scale} {ratio} {ptWidth} {query} onmetrics={(r, w) => ((ratio = r), (ptWidth = w))} />
       {/each}
     </div>
     <div class="overlay" class:shown={overlayShown}>
@@ -356,8 +361,13 @@
             onscroll={onScroll}
             onwheel={onWheel}
           >
+            <!-- Said once, above the flow, on the machine that cannot draw: the
+                 pages below are the document's words on paper, not failures. -->
+            {#if $renderer === "none"}
+              <Notice tone="caution" class="flow-note" text={$t("pdf.textFace")} />
+            {/if}
             {#each Array.from({ length: $doc.pages }, (_, i) => i + 1) as page (page)}
-              <PageCanvas {page} {scale} {ratio} {query} onmetrics={(r, w) => ((ratio = r), (ptWidth = w))} />
+              <PageCanvas {page} {scale} {ratio} {ptWidth} {query} onmetrics={(r, w) => ((ratio = r), (ptWidth = w))} />
             {/each}
           </div>
         {/if}
@@ -385,6 +395,11 @@
     padding: 24px;
     background: #0a0a0a;
     scroll-padding-top: 12px;
+  }
+  /* The one notice sits on the paper's width, not the whole letterbox. */
+  .pages :global(.flow-note) {
+    align-self: center;
+    width: min(100%, 800px);
   }
   .page-of {
     font-size: var(--text-xs, 12px);

@@ -49,6 +49,31 @@ export const searchFailure = writable<string | null>(null);
 /// True while the document is the FIXTURE - the surface says so.
 export const pdfMocked = writable(false);
 
+/// Whether this machine can draw a page at all, learnt from the first page
+/// that answered. `none` is the ordinary state today (no image ships a
+/// rasteriser), and it is said ONCE above the flow rather than on every page;
+/// the pages themselves become text sheets.
+export const renderer = writable<"unknown" | "none" | "present">("unknown");
+
+/// Under vite, `?text` in the URL makes the fixture answer the way every real
+/// machine answers today - no renderer, only the words - so the text face is
+/// designable without an engine to lack.
+const FIXTURE_TEXT_ONLY = typeof location !== "undefined" && location.search.includes("text");
+
+const FIXTURE_WORDS: Record<number, string> = {
+  1: `Chapter one
+
+Chapter one begins here with a needle in it. The argument opens on a single observation: that a reader who cannot see the page can still be given its words, and that the words, set with care, carry most of what the page meant to say.
+
+What follows is the case for that claim, made slowly. The first section states what a page is for. The second asks what is lost when its layout goes, and finds the answer smaller than expected: tables and columns suffer, running prose does not.`,
+  2: `Method
+
+The second page continues the argument with the method. Each document in the corpus was read twice, once as a picture and once as its text, and the two readings were compared for what the second one dropped.
+
+Footnotes lose their anchors. Captions lose their figures. Everything else arrives.`,
+  3: "",
+};
+
 // ---------------------------------------------------------------------------
 // Fixture: three drawn pages. The painter mimics a typeset page closely
 // enough to design against (title, rules, paragraph bars); the text layer and
@@ -145,6 +170,11 @@ export async function openLaunched(): Promise<void> {
 /// page standing.
 export async function fetchPage(page: number, scale: number): Promise<PageState> {
   if (!tauriAvailable) {
+    if (FIXTURE_TEXT_ONLY) {
+      renderer.set("none");
+      return { image: null, lines: [], failure: "no-renderer", words: FIXTURE_WORDS[page] ?? "", scale };
+    }
+    renderer.set("present");
     return {
       image: paintFixturePage(page, scale),
       lines: fixtureTextLayer(page, scale),
@@ -157,6 +187,7 @@ export async function fetchPage(page: number, scale: number): Promise<PageState>
     const img = await invoke<PageImage>("pdf_page_image", { page, scale });
     const image = new ImageData(new Uint8ClampedArray(img.rgba), img.width, img.height);
     const lines = await invoke<TextLine[]>("pdf_text_layer", { page, scale }).catch(() => []);
+    renderer.set("present");
     return { image, lines, failure: null, words: "", scale };
   } catch (e) {
     const words = await invoke<string>("pdf_page_text", { page }).catch(() => "");
@@ -173,6 +204,7 @@ export async function fetchPage(page: number, scale: number): Promise<PageState>
     const token = String(e);
     const failure =
       token === "no-renderer" || token === "lock-lost" ? token : "refused";
+    if (failure === "no-renderer") renderer.set("none");
     return { image: null, lines: [], failure, words, scale };
   }
 }
