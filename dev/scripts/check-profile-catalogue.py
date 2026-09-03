@@ -23,12 +23,15 @@ launches the app rather than here:
   * `[info] tier` is present. The tier decides which resolver rule applies; a
     profile without one is a profile whose authority is whatever the parser
     defaulted to.
-  * A WHOLE-HOME GRANT STATES ITS REASON. `filesystem.home = true` is the widest
-    thing a profile here can say, and 158 of them say it - terminals, backup
-    tools, disk-usage readers, archivers, all of which genuinely need it. The
-    rule is not that the grant is wrong, it is that a grant this wide must carry
-    the sentence explaining it, the way every other wide grant in this tree does.
-    An unexplained one is indistinguishable from a copied template, and the next
+  * A WIDE GRANT STATES ITS REASON. Two grants here are the widest a profile can
+    make: `filesystem.home = true` (158 of them - terminals, backup tools,
+    disk-usage readers, archivers, all of which genuinely need it) and
+    `network.allow_all = true` (714, every one of them currently carrying the
+    same NETWORK-SCOPE-PENDING note: a narrowed host list has nowhere to send its
+    refusal until something raises a consent for an undeclared host). The rule is
+    not that either grant is wrong, it is that a grant this wide must carry the
+    sentence explaining it, the way every other wide grant in this tree does. An
+    unexplained one is indistinguishable from a copied template, and the next
     person cannot tell which of the two they are reading.
 
 What this does NOT check: whether the grants match what the application actually
@@ -54,7 +57,8 @@ CATALOGUE = (
 # A comment that is ABOUT the width of the grant, rather than any comment at all.
 # Matching a bare `#` would pass the SPDX header and every unrelated note, which
 # is the same as not checking.
-REASON = re.compile(r"\bhome\b|whole|everything|anywhere|entire|all of", re.IGNORECASE)
+HOME_REASON = re.compile(r"\bhome\b|whole|everything|anywhere|entire|all of", re.IGNORECASE)
+NET_REASON = re.compile(r"network|online|internet|whole|scope", re.IGNORECASE)
 
 
 def comments(text: str) -> str:
@@ -77,6 +81,7 @@ def main() -> int:
 
     problems: list[str] = []
     wide = 0
+    open_net = 0
     for path in files:
         text = path.read_text(encoding="utf-8", errors="replace")
         try:
@@ -99,19 +104,31 @@ def main() -> int:
                 f"{path.name} states no `[info] tier`, so which resolver rule applies "
                 f"to it is whatever the parser defaulted to."
             )
+        said = comments(text)
         if declared.get("filesystem", {}).get("home") is True:
             wide += 1
-            if not REASON.search(comments(text)):
+            if not HOME_REASON.search(said):
                 problems.append(
                     f"{path.name} grants the whole home and no comment says why. The "
                     f"grant may well be right - a terminal or a backup tool needs it - "
                     f"but the widest thing this file can say has to carry the sentence "
                     f"that explains it, or nobody can tell it from a copied template."
                 )
+        if declared.get("network", {}).get("allow_all") is True:
+            open_net += 1
+            if not NET_REASON.search(said):
+                problems.append(
+                    f"{path.name} grants the whole network and no comment says why. "
+                    f"Every one of these today carries the same note - a narrowed host "
+                    f"list has nowhere to send its refusal yet - and the day that "
+                    f"changes, the profiles to revisit are the ones that argued for "
+                    f"the width. One that never argued cannot be found again."
+                )
 
     print(
         f"{len(files)} curated profile(s): each parses, names its own app and states a "
-        f"tier; {wide} grant the whole home and each says why."
+        f"tier; {wide} grant the whole home and {open_net} the whole network, and each "
+        f"of those says why."
     )
     if problems:
         print("\nprofiles that would not enrol as they read:\n")
