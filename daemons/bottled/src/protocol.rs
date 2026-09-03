@@ -653,110 +653,15 @@ fn fit_programs(all: Vec<ProgramView>) -> (Vec<ProgramView>, bool) {
     (kept, truncated)
 }
 
-/// Answer one request against a bottles directory, or say it is not this
-/// function's to answer.
+
+/// Narrow what one bottle may reach: the three asks that only ever take away.
 ///
-/// Pure over the filesystem it is handed, so the reading vocabulary is testable
-/// without a socket, a peer or a running Wine. `None` is [`Request::Launch`],
-/// which needs the host it will run on - where `/usr` is, the runtime dir, the
-/// display - and is answered by [`launch`] instead. Returning `None` rather than a
-/// refusal keeps that boundary honest: nothing was attempted, so no refusal would
-/// be true.
-pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response> {
-    Some(match request {
-        Request::ListBottles => match list_bottles(bottles_dir) {
-            Ok(listing) => Response::Bottles {
-                bottles: listing.bottles.iter().map(view).collect(),
-                unreadable: listing
-                    .unreadable
-                    .iter()
-                    .map(|(path, _why)| {
-                        // The directory name is the bottle id; the reason stays
-                        // here rather than travelling, because it is a parser's
-                        // words and the window writes the sentence.
-                        path.parent()
-                            .and_then(|p| p.file_name())
-                            .map(|n| n.to_string_lossy().into_owned())
-                            .unwrap_or_else(|| path.to_string_lossy().into_owned())
-                    })
-                    .collect(),
-            },
-            Err(_) => Response::Refused {
-                problem: Problem::Unreadable,
-            },
-        },
-        // Neither is answered here: a launch needs the host it will run on, and a
-        // forget needs a trash and a caller allowed to ask. Both are the server's.
-        // Neither is answered here: a launch needs the host it will run on, a
-        // forget needs a trash and a caller allowed to ask, and reading a runtime
-        // version means running the thing. All three are the server's.
-        Request::Launch { .. }
-        | Request::Forget { .. }
-        | Request::Runtimes
-        // A create needs the host too: booting a prefix means running Wine on
-        // this machine, which is exactly what `handle_request` is pure of. So does
-        // an install, which runs one.
-        | Request::Create { .. }
-        | Request::Install { .. } => return None,
-        Request::Programs { id } => match load_bottle(bottles_dir, id) {
-            Ok(bottle) => {
-                let all: Vec<ProgramView> = crate::programs::candidates(&bottle.prefix_root)
-                    .into_iter()
-                    .map(|c| ProgramView {
-                        path: c.path.to_string_lossy().into_owned(),
-                        name: c.name,
-                    })
-                    .collect();
-                let (programs, truncated) = fit_programs(all);
-                Response::Programs {
-                    programs,
-                    truncated,
-                }
-            }
-            Err(RegistryError::BadId(_)) => Response::Refused {
-                problem: Problem::BadId,
-            },
-            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
-                problem: Problem::NoSuchBottle,
-            },
-            Err(_) => Response::Refused {
-                problem: Problem::Unreadable,
-            },
-        },
-        Request::SetProgram { id, program } => match load_bottle(bottles_dir, id) {
-            Ok(mut bottle) => {
-                if !crate::programs::is_inside_prefix(
-                    &bottle.prefix_root,
-                    std::path::Path::new(program),
-                ) {
-                    Response::Refused {
-                        problem: Problem::NotInThisBottle,
-                    }
-                } else {
-                    // One element: the argv a launch runs is the program and
-                    // nothing else. Arguments are a compat-recipe field, and this
-                    // is not the place to invent one.
-                    bottle.program = vec![program.clone()];
-                    match crate::registry::save_bottle(bottles_dir, &bottle) {
-                        Ok(_) => Response::ProgramSet {
-                            program: program.clone(),
-                        },
-                        Err(_) => Response::Refused {
-                            problem: Problem::Unreadable,
-                        },
-                    }
-                }
-            }
-            Err(RegistryError::BadId(_)) => Response::Refused {
-                problem: Problem::BadId,
-            },
-            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
-                problem: Problem::NoSuchBottle,
-            },
-            Err(_) => Response::Refused {
-                problem: Problem::Unreadable,
-            },
-        },
+/// Together in one function because they share the one property that matters -
+/// each removes reach and none can give it back - and the server gates them as a
+/// group. Pure over the filesystem it is handed, like [`handle_request`]; the
+/// caller check and the audit are the server's, above this.
+pub fn narrow(bottles_dir: &Path, request: &Request) -> Response {
+    match request {
         Request::Sever { id } => match load_bottle(bottles_dir, id) {
             Ok(bottle) => {
                 let granted: Vec<std::path::PathBuf> =
@@ -857,6 +762,127 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
                         // The bottle is unchanged on disk, so answering anything
                         // but a refusal would tell somebody their app is cut off
                         // when the next launch still reaches out.
+                        Err(_) => Response::Refused {
+                            problem: Problem::Unreadable,
+                        },
+                    }
+                }
+            }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
+        // Not one of the three. The server routes only those here, and the
+        // compiler holds it to that by naming them; this arm is unreachable.
+        other => {
+            tracing::error!(?other, "narrow was handed an ask that does not narrow");
+            Response::Refused {
+                problem: Problem::NotAllowed,
+            }
+        }
+    }
+}
+
+/// Answer one request against a bottles directory, or say it is not this
+/// function's to answer.
+///
+/// Pure over the filesystem it is handed, so the reading vocabulary is testable
+/// without a socket, a peer or a running Wine. `None` is [`Request::Launch`],
+/// which needs the host it will run on - where `/usr` is, the runtime dir, the
+/// display - and is answered by [`launch`] instead. Returning `None` rather than a
+/// refusal keeps that boundary honest: nothing was attempted, so no refusal would
+/// be true.
+pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response> {
+    Some(match request {
+        Request::ListBottles => match list_bottles(bottles_dir) {
+            Ok(listing) => Response::Bottles {
+                bottles: listing.bottles.iter().map(view).collect(),
+                unreadable: listing
+                    .unreadable
+                    .iter()
+                    .map(|(path, _why)| {
+                        // The directory name is the bottle id; the reason stays
+                        // here rather than travelling, because it is a parser's
+                        // words and the window writes the sentence.
+                        path.parent()
+                            .and_then(|p| p.file_name())
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| path.to_string_lossy().into_owned())
+                    })
+                    .collect(),
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
+        // Neither is answered here: a launch needs the host it will run on, and a
+        // forget needs a trash and a caller allowed to ask. Both are the server's.
+        // Neither is answered here: a launch needs the host it will run on, a
+        // forget needs a trash and a caller allowed to ask, and reading a runtime
+        // version means running the thing. All three are the server's.
+        Request::Launch { .. }
+        | Request::Forget { .. }
+        | Request::Runtimes
+        // A create needs the host too: booting a prefix means running Wine on
+        // this machine, which is exactly what `handle_request` is pure of. So does
+        // an install, which runs one.
+        | Request::Create { .. }
+        | Request::Install { .. }
+        // The three narrowing asks need the CALLER, which a pure dispatch has no
+        // way to know: nothing here widens, so an unadmitted one could strip a
+        // bottle and leave no route back through this API.
+        | Request::Sever { .. }
+        | Request::RevokeDrive { .. }
+        | Request::RevokeNetwork { .. } => return None,
+        Request::Programs { id } => match load_bottle(bottles_dir, id) {
+            Ok(bottle) => {
+                let all: Vec<ProgramView> = crate::programs::candidates(&bottle.prefix_root)
+                    .into_iter()
+                    .map(|c| ProgramView {
+                        path: c.path.to_string_lossy().into_owned(),
+                        name: c.name,
+                    })
+                    .collect();
+                let (programs, truncated) = fit_programs(all);
+                Response::Programs {
+                    programs,
+                    truncated,
+                }
+            }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
+        Request::SetProgram { id, program } => match load_bottle(bottles_dir, id) {
+            Ok(mut bottle) => {
+                if !crate::programs::is_inside_prefix(
+                    &bottle.prefix_root,
+                    std::path::Path::new(program),
+                ) {
+                    Response::Refused {
+                        problem: Problem::NotInThisBottle,
+                    }
+                } else {
+                    // One element: the argv a launch runs is the program and
+                    // nothing else. Arguments are a compat-recipe field, and this
+                    // is not the place to invent one.
+                    bottle.program = vec![program.clone()];
+                    match crate::registry::save_bottle(bottles_dir, &bottle) {
+                        Ok(_) => Response::ProgramSet {
+                            program: program.clone(),
+                        },
                         Err(_) => Response::Refused {
                             problem: Problem::Unreadable,
                         },
@@ -1399,7 +1425,7 @@ mod tests {
         .unwrap();
 
         let Some(Response::Severed { cut, still_escaping }) =
-            handle_request(dir.path(), &Request::Sever { id: "game".into() })
+            Some(narrow(dir.path(), &Request::Sever { id: "game".into() }))
         else {
             panic!("a sever ask is answered with what it cut");
         };
@@ -1450,13 +1476,13 @@ mod tests {
         assert_eq!(crate::dosdevices::granted_letters(&prefix).unwrap().len(), 2);
 
         assert_eq!(
-            handle_request(
+            Some(narrow(
                 dir.path(),
                 &Request::RevokeDrive {
                     id: "game".into(),
                     host: music.to_string_lossy().into_owned(),
                 }
-            ),
+            )),
             Some(Response::DriveRevoked { changed: true })
         );
         // BOTH halves: the description and the table the program actually reads.
@@ -1466,13 +1492,13 @@ mod tests {
 
         // A folder that was never granted is nothing to take away, not an error.
         assert_eq!(
-            handle_request(
+            Some(narrow(
                 dir.path(),
                 &Request::RevokeDrive {
                     id: "game".into(),
                     host: music.to_string_lossy().into_owned(),
                 }
-            ),
+            )),
             Some(Response::DriveRevoked { changed: false })
         );
     }
@@ -1498,7 +1524,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            handle_request(dir.path(), &Request::RevokeNetwork { id: "game".into() }),
+            Some(narrow(dir.path(), &Request::RevokeNetwork { id: "game".into() })),
             Some(Response::NetworkRevoked { changed: true })
         );
         assert!(
@@ -1509,12 +1535,12 @@ mod tests {
         // Idempotent, and the second answer says there was nothing to do rather
         // than pretending it acted.
         assert_eq!(
-            handle_request(dir.path(), &Request::RevokeNetwork { id: "game".into() }),
+            Some(narrow(dir.path(), &Request::RevokeNetwork { id: "game".into() })),
             Some(Response::NetworkRevoked { changed: false })
         );
 
         assert_eq!(
-            handle_request(dir.path(), &Request::RevokeNetwork { id: "absent".into() }),
+            Some(narrow(dir.path(), &Request::RevokeNetwork { id: "absent".into() })),
             Some(Response::Refused {
                 problem: Problem::NoSuchBottle
             })
