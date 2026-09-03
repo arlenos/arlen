@@ -3,9 +3,17 @@
 /// believed. The wire type mirrors store-backend's `PendingUpdate` exactly
 /// (`store_outdated` / `store_skip_update` return it verbatim, unflattened);
 /// everything the page renders on top (label, icon, delta grouping, prose
-/// lines) is derived HERE in a view model, so there is one shape on the wire
-/// and one place that interprets it. Under vite a fixture in the wire shape
-/// stands in and the actions apply locally so the whole flow drives.
+/// lines, the state of each row) is derived HERE, so there is one shape on the
+/// wire and one place that interprets it. Under vite a fixture in the wire
+/// shape stands in and the actions apply locally so the whole flow drives.
+///
+/// State is PER ROW, never one global sentence: a refusal that cannot say which
+/// app it was about is a refusal the reader has to guess at. And a row never
+/// vanishes on an unanswered question - the gate's answer to `store_update`
+/// arrives later, as installd's `ConsentRequired` signal, which nothing in this
+/// window can hear yet (the job-outcome channel is a named seam). Until it
+/// exists, a started update whose row is still listed after a reload is said
+/// to be exactly that: started, outcome not known here.
 import { derived, get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { apps, type SourceLayer } from "./catalog";
@@ -35,6 +43,16 @@ export function deltaOf(u: PendingUpdate): Delta {
   if (u.new_capabilities === null) return "unknown";
   return u.new_capabilities.length > 0 ? "widened" : "none";
 }
+
+/// What one row is doing. `refused` carries the backend's own sentence (free
+/// prose today - a tagged refusal vocabulary is a named seam); `unconfirmed`
+/// is a started update whose row survived the reload; `notStarted` is a
+/// routine-batch member the daemon never reached.
+export type RowStatus =
+  | { kind: "applying" }
+  | { kind: "unconfirmed" }
+  | { kind: "refused"; reason: string }
+  | { kind: "notStarted" };
 
 const FIXTURE: PendingUpdate[] = [
   {
@@ -67,22 +85,45 @@ const FIXTURE: PendingUpdate[] = [
   },
 ];
 
+/// A refusal the fixture shows, so the state is designable without a daemon
+/// that refuses on demand. The sentence is the shape installd really returns
+/// for a Debian-layer app.
+const FIXTURE_STATUS: Record<string, RowStatus> = {
+  "org.example.timer": {
+    kind: "refused",
+    reason: "org.example.timer is recorded as installed from apt, which this build has no way to update",
+  },
+};
+
 /// The pending updates in the wire shape; the page derives its view per row.
 export const pendingUpdates = writable<PendingUpdate[]>([]);
 /// True while the list is the FIXTURE.
 export const updatesMocked = writable(false);
-/// The last action that the backend refused, as its own words. A refusal must
-/// never render as "done": the daemons learned to say "refused" instead of
-/// answering emptily, and swallowing that here would turn it right back.
-export const updateFailure = writable<string | null>(null);
-/// The quiet rail count.
-export const updateCount = derived(pendingUpdates, ($u) => $u.length);
+/// Each row's state, keyed by app id; absent means idle.
+export const rowStatus = writable<Record<string, RowStatus>>({});
+/// Updates skipped this session. A skipped widening leaves the decision group
+/// because the user decided, and stays visible because a silently vanishing
+/// capability widening is the one thing U-4 forbids. The backend filters
+/// skipped versions out of `store_outdated`; reading them back is a seam.
+export const skippedUpdates = writable<PendingUpdate[]>([]);
+/// The rail count: only rows that need a decision (U-5 - no red dot for
+/// routine updates).
+export const updateCount = derived(pendingUpdates, ($u) => $u.filter((p) => deltaOf(p) !== "none").length);
 
 /// Display name + icon for an update row, resolved from the loaded catalog
 /// when it knows the app; the id itself is the honest fallback.
 export function updateApp(id: string): { name: string; icon: string | null } {
   const known = get(apps).find((a) => a.id === id);
   return known ? { name: known.name, icon: known.icon } : { name: id, icon: null };
+}
+
+function setStatus(id: string, status: RowStatus | null): void {
+  rowStatus.update((m) => {
+    const next = { ...m };
+    if (status) next[id] = status;
+    else delete next[id];
+    return next;
+  });
 }
 
 /// Load the pending updates. Live: `store_outdated` (a local computation over
@@ -93,16 +134,8 @@ export async function loadUpdates(): Promise<void> {
     updatesMocked.set(false);
   } catch {
     pendingUpdates.set(structuredClone(FIXTURE));
+    if (!get(updatesMocked)) rowStatus.set({ ...FIXTURE_STATUS });
     updatesMocked.set(true);
-  }
-}
-
-function refused(e: unknown): void {
-  // Under vite there is no backend at all - the fixture flow applies locally
-  // and silence is honest. Live, a rejection is a refusal and it is said.
-  if (!get(updatesMocked)) {
-    updateFailure.set(String(e));
-    void loadUpdates();
   }
 }
 
@@ -110,47 +143,90 @@ function drop(id: string): void {
   pendingUpdates.update((u) => u.filter((p) => p.id !== id));
 }
 
-/// Apply one update. A widened one rides the consent friction-ladder at the
-/// gate (U-4, the actuator's job); the row leaves the list either way.
+/// After a started update: reload, and any started row still listed is said
+/// to be unconfirmed rather than done. Under vite the local apply IS the
+/// behaviour, so the row simply leaves.
+async function settle(started: string[]): Promise<void> {
+  if (get(updatesMocked)) {
+    for (const id of started) {
+      drop(id);
+      setStatus(id, null);
+    }
+    return;
+  }
+  await new Promise((r) => setTimeout(r, 1500));
+  await loadUpdates();
+  const still = new Set(get(pendingUpdates).map((p) => p.id));
+  for (const id of started) setStatus(id, still.has(id) ? { kind: "unconfirmed" } : null);
+}
+
+/// Apply one update. The gate at installd refuses a version asking for more
+/// than the installed one; the page never offers this button on a widened row
+/// (it would be refused), only on routine and unknown ones.
 export async function applyUpdate(id: string): Promise<void> {
-  drop(id);
+  setStatus(id, { kind: "applying" });
   try {
     await invoke("store_update", { id });
   } catch (e) {
-    refused(e);
+    if (get(updatesMocked)) {
+      drop(id);
+      setStatus(id, null);
+      return;
+    }
+    setStatus(id, { kind: "refused", reason: String(e) });
+    return;
   }
+  await settle([id]);
 }
 
 /// Update everything routine (safe precisely because widened AND unknown ones
-/// are excluded - unknown is not routine).
+/// are excluded - unknown is not routine). The daemon enqueues in order and
+/// stops at the first refusal, returning the job ids it DID enqueue - so the
+/// first `jobs.length` ids started and the rest did not, and the rest are
+/// told so rather than folded into a success.
 export async function applyAllRoutine(): Promise<void> {
-  const routine = get(pendingUpdates).filter((p) => deltaOf(p) === "none");
-  pendingUpdates.update((u) => u.filter((p) => deltaOf(p) !== "none"));
+  const ids = get(pendingUpdates)
+    .filter((p) => deltaOf(p) === "none")
+    .map((p) => p.id);
+  for (const id of ids) setStatus(id, { kind: "applying" });
+  let jobs: string[];
   try {
-    await invoke("store_update_all_routine", { ids: routine.map((p) => p.id) });
+    jobs = await invoke<string[]>("store_update_all_routine", { ids });
   } catch (e) {
-    refused(e);
+    if (get(updatesMocked)) {
+      await settle(ids);
+      return;
+    }
+    // The first one refused: nothing started.
+    for (const id of ids) setStatus(id, { kind: "refused", reason: String(e) });
+    return;
   }
+  const started = ids.slice(0, jobs.length);
+  for (const id of ids.slice(jobs.length)) setStatus(id, { kind: "notStarted" });
+  await settle(started);
 }
 
-/// Skip this update (it stops asking until the next version).
+/// Skip this version (the app keeps asking at the next one). The row moves to
+/// the skipped group instead of vanishing.
 export async function skipUpdate(id: string): Promise<void> {
+  const row = get(pendingUpdates).find((p) => p.id === id);
+  if (!row) return;
   drop(id);
+  setStatus(id, null);
+  skippedUpdates.update((s) => [...s.filter((p) => p.id !== id), row]);
   try {
     await invoke("store_skip_update", { id });
   } catch (e) {
-    refused(e);
+    if (get(updatesMocked)) return;
+    // The skip did not record: the row comes back, with the reason.
+    skippedUpdates.update((s) => s.filter((p) => p.id !== id));
+    pendingUpdates.update((u) => [...u, row]);
+    setStatus(id, { kind: "refused", reason: String(e) });
   }
 }
 
-/// Uninstall instead of accepting a widening - the third honest answer to
-/// "now also wants". The row leaves the list; the removal itself is the
-/// actuator's job.
-export async function uninstallApp(id: string): Promise<void> {
+/// A row was uninstalled from this page; it leaves the list.
+export function forgetUpdate(id: string): void {
   drop(id);
-  try {
-    await invoke("store_uninstall", { id });
-  } catch (e) {
-    refused(e);
-  }
+  setStatus(id, null);
 }

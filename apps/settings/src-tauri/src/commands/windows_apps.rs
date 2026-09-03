@@ -272,6 +272,32 @@ pub struct ProgramRow {
     pub name: String,
 }
 
+/// The host path behind a `file://` URI from the picker.
+///
+/// PERCENT-DECODED, which is the whole reason this is a function. The portal
+/// answers with a URI, and a path with a space in it - `Paint.NET Setup.exe`, the
+/// shape half the installers in the world have - arrives as `%20`. Handing that
+/// through unchanged makes the daemon report the file as not there, so the person
+/// picks a real installer and is told it does not exist.
+///
+/// A URI that is not `file://` is refused rather than treated as a path: the
+/// picker can in principle answer with another scheme, and a remote thing is not
+/// something to hand a bottle.
+fn path_from_file_uri(uri: &str) -> Result<String, String> {
+    let rest = uri
+        .strip_prefix("file://")
+        .ok_or_else(|| "not-a-local-file".to_string())?;
+    // `file:///path` leaves the host empty and the path absolute; anything else
+    // (a named host) is not local.
+    if !rest.starts_with('/') {
+        return Err("not-a-local-file".to_string());
+    }
+    Ok(percent_encoding::percent_decode_str(rest)
+        .decode_utf8()
+        .map_err(|_| "not-a-local-file".to_string())?
+        .into_owned())
+}
+
 /// Install a Windows app: pick an installer, make a bottle for it, run it there.
 ///
 /// Three daemon asks rather than one, because they fail differently and the person
@@ -314,8 +340,7 @@ pub async fn install_windows_app() -> Result<Option<String>, String> {
         },
         PickerResult::Cancelled => return Ok(None),
     };
-    // The portal answers with a URI; the daemon takes a path.
-    let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
+    let path = path_from_file_uri(&uri)?;
     let name = path.rsplit('/').next().unwrap_or(&path).to_string();
     let id = arlen_wine_core::install::id_from_installer(&name)
         .ok_or_else(|| "unnamed-installer".to_string())?;
@@ -406,4 +431,44 @@ pub async fn set_bottle_program(id: String, program: String) -> Result<(), Strin
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The picker's URI to a real path, including the case that made this a
+    /// function rather than a `strip_prefix`.
+    #[test]
+    fn an_installer_whose_name_has_a_space_resolves_to_its_real_path() {
+        assert_eq!(
+            path_from_file_uri("file:///home/mara/Downloads/Paint.NET%20Setup.exe").unwrap(),
+            "/home/mara/Downloads/Paint.NET Setup.exe"
+        );
+        // Nothing to decode is left alone.
+        assert_eq!(
+            path_from_file_uri("file:///home/mara/setup.exe").unwrap(),
+            "/home/mara/setup.exe"
+        );
+        // A literal percent in a file name survives its own encoding.
+        assert_eq!(
+            path_from_file_uri("file:///home/mara/100%25%20off.exe").unwrap(),
+            "/home/mara/100% off.exe"
+        );
+    }
+
+    #[test]
+    fn anything_that_is_not_a_local_file_is_refused() {
+        for uri in [
+            "https://example.com/setup.exe",
+            "file://remote-host/share/setup.exe",
+            "/home/mara/setup.exe",
+            "",
+        ] {
+            assert!(
+                path_from_file_uri(uri).is_err(),
+                "{uri} is not a local file URI"
+            );
+        }
+    }
 }
