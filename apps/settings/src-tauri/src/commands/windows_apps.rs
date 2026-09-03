@@ -493,3 +493,22 @@ pub async fn revoke_bottle_network(id: String) -> Result<bool, String> {
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// Take one granted folder away from a bottle.
+///
+/// The host path, not the drive letter: letters are assigned by sorting the
+/// grants, so they shift when one is removed and revoking `D:` twice would take
+/// two different folders. One direction only, like the network.
+#[tauri::command]
+pub async fn revoke_bottle_drive(id: String, host: String) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::RevokeDrive { id, host }) {
+            Ok(Response::DriveRevoked { changed }) => Ok(changed),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
