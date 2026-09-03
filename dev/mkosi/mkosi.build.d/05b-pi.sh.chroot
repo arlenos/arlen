@@ -24,6 +24,12 @@
 set -eu
 
 cache="${BUILDDIR:-/var/tmp/arlen-build}"
+# Every other phase reaches this directory through a `mkdir -p "$cache/<sub>"`,
+# which makes the parent on the way past. This one is the only phase that `cd`s
+# into it directly, so it was the only one that needed it to already exist - and
+# on the first real run of this phase it did not, so the build died here after
+# forty minutes with `can't cd to /var/tmp/arlen-build`.
+mkdir -p "$cache"
 
 # --- 1. node >=22 (pinned + checksum-verified) -------------------------------
 NODE_VER=22.23.0
