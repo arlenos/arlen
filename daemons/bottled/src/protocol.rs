@@ -64,6 +64,12 @@ pub enum Request {
     SetProgram { id: String, program: String },
     /// Run an installer inside an existing bottle.
     ///
+    /// Not caller-gated, and the reasoning is the same as `Create`'s: what this
+    /// runs is a file the caller can already read and a bottle whose grants are
+    /// the caller's own directories, so a same-uid peer gains nothing here it does
+    /// not have directly. The gate is on the asks that TAKE reach away, because
+    /// those are the ones nothing on this socket can undo.
+    ///
     /// The path is a HOST path, and the daemon copies the file into the prefix
     /// before running it rather than granting the folder it came from - see
     /// `crate::install` for why that trade is the wrong one to make for a one-off.
@@ -778,10 +784,23 @@ pub fn narrow(bottles_dir: &Path, request: &Request) -> Response {
                 problem: Problem::Unreadable,
             },
         },
-        // Not one of the three. The server routes only those here, and the
-        // compiler holds it to that by naming them; this arm is unreachable.
-        other => {
-            tracing::error!(?other, "narrow was handed an ask that does not narrow");
+        // NAMED, not a catch-all, for the reason the server's dispatch is: an
+        // `other` arm here would take a fourth narrowing ask somebody routed to
+        // this function and refuse it silently. Fail-closed is the right direction
+        // and a silent one is still a defect. Listing them means adding an ask is
+        // a decision the compiler asks for.
+        Request::ListBottles
+        | Request::Health { .. }
+        | Request::Prefix { .. }
+        | Request::Programs { .. }
+        | Request::SetProgram { .. }
+        | Request::ClearCaches { .. }
+        | Request::Create { .. }
+        | Request::Install { .. }
+        | Request::Launch { .. }
+        | Request::Forget { .. }
+        | Request::Runtimes => {
+            tracing::error!(?request, "narrow was handed an ask that does not narrow");
             Response::Refused {
                 problem: Problem::NotAllowed,
             }
