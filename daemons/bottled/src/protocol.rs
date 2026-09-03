@@ -1792,5 +1792,52 @@ mod tests {
             answered,
             r#"{"answer":"refused","problem":"no-such-bottle"}"#
         );
+
+        // EVERY ask that carries a name a reader would recognise, pinned for the
+        // same reason as the one above: these are what a captured frame says, and
+        // renaming one should be a decision somebody makes rather than a thing
+        // serde does when a variant is spelled differently.
+        for (request, wire) in [
+            (Request::Prefix { id: "b".into() }, r#"{"ask":"prefix","id":"b"}"#),
+            (
+                Request::ClearCaches { id: "b".into() },
+                r#"{"ask":"clear-caches","id":"b"}"#,
+            ),
+            (Request::Programs { id: "b".into() }, r#"{"ask":"programs","id":"b"}"#),
+            (
+                Request::SetProgram {
+                    id: "b".into(),
+                    program: "p".into(),
+                },
+                r#"{"ask":"set-program","id":"b","program":"p"}"#,
+            ),
+            (Request::Create { id: "b".into() }, r#"{"ask":"create","id":"b"}"#),
+            (
+                Request::Install {
+                    id: "b".into(),
+                    installer: "i".into(),
+                },
+                r#"{"ask":"install","id":"b","installer":"i"}"#,
+            ),
+            (
+                Request::DiskUsage { id: "b".into() },
+                r#"{"ask":"disk-usage","id":"b"}"#,
+            ),
+            (Request::Sever { id: "b".into() }, r#"{"ask":"sever","id":"b"}"#),
+            (
+                Request::RevokeDrive {
+                    id: "b".into(),
+                    host: "h".into(),
+                },
+                r#"{"ask":"revoke-drive","id":"b","host":"h"}"#,
+            ),
+            (
+                Request::RevokeNetwork { id: "b".into() },
+                r#"{"ask":"revoke-network","id":"b"}"#,
+            ),
+        ] {
+            assert_eq!(serde_json::to_string(&request).unwrap(), wire);
+            assert_eq!(serde_json::from_str::<Request>(wire).unwrap(), request);
+        }
     }
 }
