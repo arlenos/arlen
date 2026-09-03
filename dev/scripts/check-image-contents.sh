@@ -89,6 +89,26 @@ out=$(guestfish --ro -a "$img" run : mount-ro /dev/sda2 / : sh '
     find /etc/systemd /usr/lib/systemd -name "$n" -type l 2>/dev/null | grep -q . || echo "$n"
   done
 
+  echo "=== the login manager"
+  # Nothing else here reads the config that decides who greets a person at the
+  # machine. Two ways it fails silently: greetd starts with no config and falls
+  # over, or its `[default_session]` names a greeter the image does not ship - in
+  # which case logging OUT lands on nothing, which is the state this config was
+  # changed to fix in the first place (autologin as `[initial_session]`, the
+  # greeter as `[default_session]`).
+  if [ -f /etc/greetd/config.toml ]; then
+    for c in $(grep -hoE "^command *= *\"[^\"]+" /etc/greetd/config.toml | sed "s/^command *= *\"//"); do
+      for w in $c; do
+        case "$w" in
+          /*) [ -e "$w" ] || echo "MISSING $w (named by /etc/greetd/config.toml)" ;;
+        esac
+      done
+    done
+    grep -cE "^\[(default|initial)_session\]" /etc/greetd/config.toml | sed "s/^/sessions declared: /"
+  else
+    echo "MISSING /etc/greetd/config.toml (greetd has nothing to start)"
+  fi
+
   echo "=== accessibility bus"
   if [ -e /usr/libexec/at-spi-bus-launcher ] || [ -e /usr/lib/at-spi2-core/at-spi-bus-launcher ]; then
     echo present
