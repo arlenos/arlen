@@ -178,6 +178,17 @@ async fn main() {
     // The cost of the wrong note: it read as "nothing to do here, the surface left",
     // so the AI leg sat downgraded to best-effort against a cause that had already
     // been fixed - while the actual blocker, an admission decision, went unmade.
+    //
+    // THAT DECISION HAS SINCE BEEN MADE, and this note was the second one to go
+    // stale about it. `09-verify-probes.sh.chroot` stages
+    // `/var/lib/arlen/permissions/user-surfaces.extra` with `dogfood` in it, which
+    // `identity::is_user_surface` reads per call - so on a VERIFY image both this
+    // call and `completed_actions` are admitted and the executor proof runs. On a
+    // plain image they are refused, correctly, and the skip line is the honest
+    // answer rather than a fault. Read a `DOGFOOD EXECUTOR skipped` on a boot by
+    // asking first which image it was: `dev/mkosi/build-image.sh --verify` makes the
+    // one where that leg is meant to run.
+    //
     // A failure here is still NOT a dogfood failure; the executor write above is the
     // deterministic proof.
     let mut answered = false;
