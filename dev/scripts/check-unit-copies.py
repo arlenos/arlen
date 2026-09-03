@@ -64,7 +64,22 @@ CRATE_ROOTS = ("daemons", "ai", "apps", "contracts", "sdk")
 DECISION_PENDING: dict[str, str] = {
     "arlen-config-broker.service": (
         "the crate copy runs a dedicated uid the image does not create, and the "
-        "image runs it as root - which of the two is the design needs deciding"
+        "image runs it as root. Which is the design is still a decision, but it is "
+        "no longer a symmetric one, because the crate copy AS WRITTEN cannot work. "
+        "`server.rs::owner_uid` says the separate-uid deployment needs "
+        "ARLEN_CONFIG_BROKER_OWNER_UID to carry the SESSION user's uid, 'set by the "
+        "systemd unit', and falls back to the broker's own uid without it - so a "
+        "broker running as `arlen-config` with no override would expect every peer "
+        "to be `arlen-config`, and every legitimate caller (Settings, the AI daemon) "
+        "runs as the session user. All of them refused. The crate copy sets no "
+        "override. It also has EnvironmentFile=/etc/arlen/config-broker.env with no "
+        "leading `-`, and no phase stages that file, so the unit would fail to start "
+        "before reaching any of it. The image copy is coherent today: root, "
+        "OWNER_UID=1000, callers accepted. Its one dead line is the "
+        "SystemCallFilter re-allowing the three landlock calls - nothing in the "
+        "crate calls landlock. So the separate-uid target costs three things the "
+        "crate copy does not have (the user, the OWNER_UID environment, the env "
+        "file or a `-` on it), and that is the shape of the decision"
     ),
 }
 
