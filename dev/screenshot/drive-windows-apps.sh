@@ -61,9 +61,9 @@ cat > "$work/probe-list.js" <<'JS'
 const text = document.body.innerText;
 return JSON.stringify({
   unavailable: text.includes("Cannot read your Windows apps right now"),
-  noneUnknown: text.includes("Not known: your Windows apps could not be read."),
+  noneUnknown: !text.includes("No Windows apps installed yet") && !text.includes("Installed apps"),
   runtimesUnknown: text.includes("Runtimes not known"),
-  noFixture: !text.includes("Notepad++") && !text.includes("LegacyTool"),
+  noFixture: !text.includes("Notepad++") && !text.includes("ledger-setup"),
 });
 JS
 

@@ -4,8 +4,12 @@
   /// managed compatibility layer that is auto-configured for known apps, so this
   /// page keeps only what a glance needs: each installed app with its honest
   /// compat tier (curated-verified vs best-effort, never "just works") and a
-  /// Launch, plus the install entry and the global defaults. Everything deeper
-  /// lives on the app's own page - shallow by default, deep on demand.
+  /// Launch, plus the install entry and what this machine can run. Everything
+  /// deeper lives on the app's own page - shallow by default, deep on demand.
+  ///
+  /// Every state the page can be in is said in the house register: a page-level
+  /// fact or refusal is a Notice above the cards, and an empty list is not a card
+  /// saying "empty" but the install row stepping forward as the one thing to do.
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { ChevronRight } from "lucide-svelte";
@@ -14,6 +18,7 @@
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import {
     winApps,
@@ -24,6 +29,7 @@
     launchFailureKey,
     forgetFailed,
     forgetFailureKey,
+    forgotten,
     loadRuntimes,
     runtimesKnown,
     defaults,
@@ -41,13 +47,24 @@
     void loadRuntimes();
   });
 
-
-  // The compat tier as honest prose, never a "just works" promise.
-  function compatLine(b: Bottle): string {
-    return b.tier === "curated"
-      ? $t("s.wa.compat.curated", { recipe: b.recipe })
-      : $t("s.wa.compat.best");
+  // The second line under an app's name: the one thing this page is waiting
+  // for if nobody has picked its program yet, otherwise the compat tier as
+  // honest prose, never a "just works" promise.
+  function subline(b: Bottle): string {
+    if (!b.hasProgram) return $t("s.wa.programPending");
+    if (b.tier === "curated") return $t("s.wa.compat.curated", { recipe: b.recipe });
+    if (b.tier === "best-effort") return $t("s.wa.compat.best");
+    return $t("s.wa.compat.none");
   }
+
+  // An install runs in the installer's own window; the new bottle's page is
+  // where the person picks what it left behind, so that is where they go.
+  async function install() {
+    const id = await installExe();
+    if (id) await goto(`/windows-apps/${id}`);
+  }
+
+  const empty = $derived(!$winApps.loading && !$winApps.unavailable && $winApps.bottles.length === 0);
 </script>
 
 <Page
@@ -56,102 +73,112 @@
 >
   <SectionGrid>
     {#if $winApps.mocked}
-      <p class="note span-full">
-        {$t("s.wa.mocked")}
-      </p>
+      <Notice tone="neutral" class="span-full" text={$t("s.wa.mocked")} />
     {:else if $winApps.unavailable}
-      <p class="note span-full">
-        {$t("s.wa.unavailable")}
-      </p>
-    {/if}
-    {#if $winActionFailed}
-      <p class="note span-full" role="alert">{$t("s.wa.actionFailed")}</p>
+      <Notice tone="caution" class="span-full" text={$t("s.wa.unavailable")} />
     {/if}
     <!-- A bottle that is on disk and will not read. Named rather than dropped:
-         the list above cannot hold it, so without this line it simply is not
-         there and the count reads as the truth about this machine. The daemon
-         keeps it apart from the ones that read for the same reason. -->
+         the list below cannot hold it, so without this line it simply is not
+         there and the count reads as the truth about this machine. -->
     {#if $winApps.unreadable.length > 0}
-      <p class="note span-full" role="alert">
-        {$t("s.wa.someUnreadable", { names: $winApps.unreadable.join(", ") })}
-      </p>
+      <Notice
+        tone="caution"
+        class="span-full"
+        text={$t("s.wa.someUnreadable", { names: $winApps.unreadable.join(", ") })}
+      />
+    {/if}
+    {#if $forgotten}
+      <Notice
+        tone="neutral"
+        class="span-full"
+        text={$t($forgotten.trashed ? "s.wa.forgotten" : "s.wa.forgottenNoFiles", { name: $forgotten.name })}
+      />
+    {/if}
+    {#if $winActionFailed}
+      <Notice tone="error" class="span-full" text={$t("s.wa.actionFailed")} />
     {/if}
     {#if $forgetFailed}
-      <p class="note span-full" role="alert">
-        {$t(forgetFailureKey($forgetFailed.reason), { name: $forgetFailed.name })}
-      </p>
+      <Notice
+        tone="error"
+        class="span-full"
+        text={$t(forgetFailureKey($forgetFailed.reason), { name: $forgetFailed.name })}
+      />
     {/if}
     <!-- The install path's own refusal, distinct from a launch's: "nothing here
          runs Windows programs" is a different thing to do about it than "that app
          would not start". -->
     {#if $installFailed}
-      <p class="note span-full" role="alert">{$t(installFailureKey($installFailed))}</p>
+      <Notice tone="error" class="span-full" text={$t(installFailureKey($installFailed))} />
     {/if}
     {#if $launchFailed}
-      <p class="note span-full" role="alert">{$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}</p>
+      <Notice
+        tone="error"
+        class="span-full"
+        text={$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}
+      />
     {/if}
 
-    <Section label={$t("s.wa.installed")} class="span-full">
-      {#if $winApps.bottles.length === 0}
-        <!-- "none installed" is a claim about this machine; the banner above says
-             we could not read it. The label has to be where the sentence is. -->
-        <p class="empty">{$winApps.unavailable ? $t("s.wa.noneUnknown") : $t("s.wa.none")}</p>
-      {/if}
-      {#each $winApps.bottles as b (b.id)}
-        <!-- The whole row leads to the app's page (the /apps list pattern); the
-             stretched button underneath carries the click so the Launch button
-             can sit on top of it as its own control. -->
-        <div class="win-row">
-          <button
-            type="button"
-            class="win-go"
-            aria-label={b.appName ?? b.id}
-            onclick={() => goto(`/windows-apps/${b.id}`)}
-          ></button>
-          <AppAvatar appId={b.appId ?? b.id} label={b.appName ?? b.id} size={32} />
-          <span class="win-text">
-            <span class="win-name">{b.appName ?? b.id}</span>
-            <span class="win-tier">{compatLine(b)}</span>
-          </span>
-          <span class="win-launch">
-            <Button variant="outline" size="sm" onclick={() => launchApp(b.id)}>
-              {$t("s.wa.launchApp")}
+    <!-- The list exists only when there is something to list. "None" is not a
+         card: it is the install row below, leading. And "could not read" is the
+         notice above, said once. -->
+    {#if $winApps.bottles.length > 0}
+      <Section label={$t("s.wa.installed")} class="span-full">
+        {#each $winApps.bottles as b (b.id)}
+          <!-- The whole row leads to the app's page (the /apps list pattern); the
+               stretched button underneath carries the click so the Launch button
+               can sit on top of it as its own control. -->
+          <div class="win-row">
+            <button
+              type="button"
+              class="win-go"
+              aria-label={b.appName ?? b.id}
+              onclick={() => goto(`/windows-apps/${b.id}`)}
+            ></button>
+            <AppAvatar appId={b.appId ?? b.id} label={b.appName ?? b.id} size={32} />
+            <span class="win-text">
+              <span class="win-name">{b.appName ?? b.id}</span>
+              <span class="win-tier" class:pending={!b.hasProgram}>{subline(b)}</span>
+            </span>
+            <!-- Launch only where there is something to launch; a bottle still
+                 waiting for its program has the row itself as the way to answer. -->
+            {#if b.hasProgram}
+              <span class="win-launch">
+                <Button variant="outline" size="sm" onclick={() => launchApp(b.id)}>
+                  {$t("s.wa.launchApp")}
+                </Button>
+              </span>
+            {/if}
+            <span class="chev"><ChevronRight size={15} strokeWidth={2} /></span>
+          </div>
+        {/each}
+      </Section>
+    {/if}
+
+    {#if !$winApps.loading}
+      <Section label={$t("s.wa.addApp")} class="span-full">
+        <Row
+          id="win-install"
+          label={empty ? $t("s.wa.none") : $t("s.wa.installApp")}
+          description={$t("s.wa.installAppDesc")}
+        >
+          {#snippet control()}
+            <Button variant={empty ? "default" : "outline"} size="sm" onclick={install}>
+              {$t("s.wa.chooseInstaller")}
             </Button>
-          </span>
-          <span class="chev"><ChevronRight size={15} strokeWidth={2} /></span>
-        </div>
-      {/each}
-    </Section>
+          {/snippet}
+        </Row>
+      </Section>
+    {/if}
 
-    <Section label={$t("s.wa.addApp")} class="span-full">
-      <Row id="win-install" label={$t("s.wa.installApp")} description={$t("s.wa.installAppDesc")}>
-        {#snippet control()}
-          <Button variant="default" size="sm" onclick={installExe}>{$t("s.wa.chooseInstaller")}</Button>
-        {/snippet}
-      </Row>
-    </Section>
-
-    <!-- Named for what it holds. It was "Defaults" while it carried two settings,
-         and both of those are gone until they have somewhere to write; what is left
-         is a reading of this machine. -->
+    <!-- A reading of this machine, nothing else. It carried a default version
+         and a bottle mode while they had somewhere to write; a preference drawn
+         from nothing, presented next to a measurement, is the shape this panel
+         was cleaned of in August. They come back with a backend that reads them. -->
     <Section label={$t("s.wa.defaults")} class="span-full">
-      <!-- TWO CONTROLS USED TO STAND HERE and both wrote to `set_windows_defaults`,
-           which no host defines - so clicking either reverted and raised the error
-           banner. The version picker was worse than inert: it opened on the literal
-           string "Wine 9.0" as this machine's default, while the rows below MEASURE
-           what Wine is actually here and can answer that there is none. A default
-           drawn from nothing, presented next to a measurement, is the shape this
-           panel was cleaned of in August.
-
-           They come back when they have somewhere to write: a bottle mode is a real
-           preference once the install path reads one, and a version picker is a real
-           choice once more than one runtime can be installed. Until then the section
-           says what is on the machine and nothing else. -->
       <!-- No runtimes rather than four invented ones: the list of what is
-           installed is an observation. Empty now means two different things and
+           installed is an observation. Empty means two different things and
            they get two different rows - the runtime was asked and there is none,
-           or nobody could ask. Telling somebody "none installed" when the daemon
-           was simply unreachable sends them looking for the wrong problem. -->
+           or nobody could ask. -->
       {#if $defaults.runtimes.length === 0}
         <Row
           id="win-runtimes"
@@ -161,16 +188,10 @@
             : $t("s.wa.runtimesUnknownDesc")}
         />
       {/if}
-      <!-- The state lives in the control slot alone; a description repeating
-           "Installed" said the same thing twice on one line. -->
       {#each $defaults.runtimes as r (r.name)}
         <Row label={r.name}>
           {#snippet control()}
-            {#if r.installed}
-              <span class="win-installed">{$t("s.wa.runtimeInstalled")}</span>
-            {:else}
-              <Button variant="outline" size="sm">{$t("s.wa.install")}</Button>
-            {/if}
+            <span class="win-installed">{$t("s.wa.runtimeInstalled")}</span>
           {/snippet}
         </Row>
       {/each}
@@ -179,19 +200,6 @@
 </Page>
 
 <style>
-  .note {
-    margin: 0;
-    padding: 0 0.25rem 0.5rem;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
-  .empty {
-    margin: 0;
-    padding: var(--space-row, 0.75rem) 1rem;
-    font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-
   /* One row per app inside the Section card (the card draws the dividers). */
   .win-row {
     position: relative;
@@ -228,6 +236,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* The one line on this page that asks for something: a shade louder than
+     a tier, still not an alarm. */
+  .win-tier.pending {
+    color: color-mix(in srgb, var(--foreground) 75%, transparent);
   }
   /* Above the stretched row button, so Launch is its own click. */
   .win-launch {
