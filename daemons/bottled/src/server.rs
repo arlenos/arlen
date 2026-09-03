@@ -210,6 +210,7 @@ pub async fn serve_connection(
                 | Request::Health { .. }
                 | Request::Prefix { .. }
                 | Request::ClearCaches { .. }
+                | Request::DiskUsage { .. }
                 | Request::Programs { .. }
                 | Request::SetProgram { .. }
                 | Request::RevokeNetwork { .. }

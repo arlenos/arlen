@@ -547,3 +547,23 @@ pub async fn sever_bottle(id: String) -> Result<SeverResult, String> {
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// How much disk one bottle holds, in bytes.
+///
+/// `None` means there is nothing to measure yet - a bottle made and never booted -
+/// which the panel must render as unmeasured rather than as zero. Its own command
+/// rather than a field on the listing, because measuring walks a Wine prefix and
+/// the list shows every bottle at once.
+#[tauri::command]
+pub async fn bottle_disk_usage(id: String) -> Result<Option<u64>, String> {
+    tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::DiskUsage { id }) {
+            Ok(Response::Disk { bytes }) => Ok(bytes),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
