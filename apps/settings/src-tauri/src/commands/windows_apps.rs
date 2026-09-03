@@ -512,3 +512,38 @@ pub async fn revoke_bottle_drive(id: String, host: String) -> Result<bool, Strin
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// What a sever cut, and what is left.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeverResult {
+    pub cut: usize,
+    pub still_escaping: usize,
+}
+
+/// Cut the links that lead out of a bottle's prefix.
+///
+/// The remedy for the health warning. `bottle_health` reports how many paths reach
+/// outside a prefix with no grant behind them; until now that was a sentence with
+/// nothing to do about it, and Wine writes those links on every boot, so it is the
+/// expected state rather than a rare fault. Granted drives are left alone.
+///
+/// `stillEscaping` should be zero and comes back rather than being assumed: a pass
+/// that could not finish must not read as one that did.
+#[tauri::command]
+pub async fn sever_bottle(id: String) -> Result<SeverResult, String> {
+    tokio::task::spawn_blocking(move || match ask(&socket_path(), &Request::Sever { id }) {
+        Ok(Response::Severed {
+            cut,
+            still_escaping,
+        }) => Ok(SeverResult {
+            cut,
+            still_escaping,
+        }),
+        Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+        Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+        Err(e) => Err(e.to_string()),
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

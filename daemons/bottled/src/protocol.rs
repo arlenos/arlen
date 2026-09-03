@@ -83,6 +83,18 @@ pub enum Request {
     /// Not gated the way `Forget` is: this creates rather than destroys, and a
     /// bottle with no grants and no network is the least a caller can ask for.
     Create { id: String },
+    /// Cut the links that lead out of a bottle's prefix.
+    ///
+    /// THE ONE ACTION HEALTH HAD NO ANSWER FOR. `Health` reports how many paths
+    /// reach outside a prefix without a grant behind them, and a person reading
+    /// "2 of its paths lead outside it" had nothing to do about it. Wine writes
+    /// those links on every boot, so drift is the expected state rather than a
+    /// rare fault, and a warning with no remedy is one that gets learned as noise.
+    ///
+    /// Granted drives are left alone: they point out of the prefix because someone
+    /// asked them to. Only reach nobody granted is cut, so this narrows and never
+    /// widens, like the two revokes above it.
+    Sever { id: String },
     /// Take one granted folder away from a bottle.
     ///
     /// BY HOST PATH, not by drive letter, and that is a correctness point rather
@@ -239,6 +251,12 @@ pub enum Response {
     },
     /// The program was recorded, and this is what a launch will now start.
     ProgramSet { program: String },
+    /// The prefix was cut loose, and this is how much of it there was to cut.
+    ///
+    /// `cut` counts the links removed; `still_escaping` is what is left reaching
+    /// out afterwards, which should be zero and is reported rather than assumed -
+    /// a pass that could not finish must not read as one that did.
+    Severed { cut: usize, still_escaping: usize },
     /// The folder is no longer reachable from the bottle.
     ///
     /// `changed` is false when the bottle was not granted it, so a caller can tell
@@ -727,6 +745,47 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
                             problem: Problem::Unreadable,
                         },
                     }
+                }
+            }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
+        Request::Sever { id } => match load_bottle(bottles_dir, id) {
+            Ok(bottle) => {
+                let granted: Vec<std::path::PathBuf> =
+                    bottle.grants.iter().map(|g| g.host.clone()).collect();
+                let cut = crate::sever::prefix_links(&bottle.prefix_root)
+                    .and_then(|links| {
+                        crate::sever::apply(&crate::sever::plan(
+                            &bottle.prefix_root,
+                            &links,
+                            &granted,
+                        ))
+                    })
+                    .map(|done| done.len());
+                match cut.and_then(|cut| {
+                    crate::sever::still_escaping(&bottle.prefix_root, &granted)
+                        .map(|left| (cut, left.len()))
+                }) {
+                    Ok((cut, still_escaping)) => Response::Severed {
+                        cut,
+                        still_escaping,
+                    },
+                    // A prefix that is not there has nothing to cut, and that is
+                    // the same answer a launch gives for the same absence.
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Response::Refused {
+                        problem: Problem::PrefixMissing,
+                    },
+                    Err(_) => Response::Refused {
+                        problem: Problem::Unreadable,
+                    },
                 }
             }
             Err(RegistryError::BadId(_)) => Response::Refused {
@@ -1302,6 +1361,59 @@ mod tests {
         let (kept, truncated) = fit_programs(short);
         assert_eq!(kept.len(), 1);
         assert!(!truncated);
+    }
+
+    #[test]
+    fn severing_cuts_the_ungranted_links_and_leaves_a_granted_drive_alone() {
+        use crate::registry::save_bottle;
+        use crate::{Access, PathGrant};
+
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("game/pfx");
+        let dos = prefix.join("dosdevices");
+        let user = prefix.join("drive_c/users/u");
+        std::fs::create_dir_all(&dos).unwrap();
+        std::fs::create_dir_all(&user).unwrap();
+
+        let home = dir.path().join("home");
+        let docs = dir.path().join("Documents");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&docs).unwrap();
+
+        // What wineboot leaves behind: a shell folder pointing at the real home.
+        std::os::unix::fs::symlink(&home, user.join("Documents")).unwrap();
+        // And the drive the person actually granted.
+        let grants = vec![PathGrant { host: docs.clone(), access: Access::ReadWrite }];
+        crate::dosdevices::write_drives(&prefix, &crate::map_drives(&grants).unwrap()).unwrap();
+        save_bottle(
+            dir.path(),
+            &Bottle {
+                id: "game".into(),
+                prefix_root: prefix.clone(),
+                grants,
+                egress: Egress::None,
+                plumbing: Default::default(),
+                program: vec![],
+            },
+        )
+        .unwrap();
+
+        let Some(Response::Severed { cut, still_escaping }) =
+            handle_request(dir.path(), &Request::Sever { id: "game".into() })
+        else {
+            panic!("a sever ask is answered with what it cut");
+        };
+        assert!(cut >= 1, "the shell folder pointing at the real home is cut");
+        assert_eq!(still_escaping, 0, "and nothing ungranted is left reaching out");
+        assert!(
+            !user.join("Documents").is_symlink(),
+            "the link out of the prefix is gone"
+        );
+        assert!(
+            crate::dosdevices::granted_letters(&prefix).unwrap().len() == 1,
+            "the granted drive points out of the prefix because somebody asked it \
+             to, and a sever that took it would be undoing the person's own grant"
+        );
     }
 
     #[test]
