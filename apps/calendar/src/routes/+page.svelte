@@ -36,6 +36,7 @@
     updateEvent,
     type Agenda,
     type AgendaEvent,
+    type EventChanges,
   } from "$lib/stores/calendar";
   import CalendarSidebar from "$lib/components/CalendarSidebar.svelte";
   import QuickCreate from "$lib/components/QuickCreate.svelte";
@@ -61,7 +62,7 @@
   let scopeAsk = $state<{
     event: AgendaEvent;
     action: "edit" | "delete" | "move";
-    changes?: { date: string; time: string; endTime: string };
+    changes?: EventChanges;
   } | null>(null);
   let editScope = $state<Scope>("this");
 
@@ -75,7 +76,7 @@
     creating = true;
   }
 
-  function moveRepeat(e: AgendaEvent, changes: { date: string; time: string; endTime: string }): void {
+  function moveRepeat(e: AgendaEvent, changes: EventChanges): void {
     scopeAsk = { event: e, action: "move", changes };
   }
 
@@ -404,7 +405,7 @@
             onmoverepeat={moveRepeat}
           />
         {:else}
-          <MonthView month={focus} events={visibleEvents} onopenday={openDay} onedit={openEdit} />
+          <MonthView month={focus} events={visibleEvents} onopenday={openDay} onedit={openEdit} onmoverepeat={moveRepeat} />
         {/if}
       {/if}
     </div>

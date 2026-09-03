@@ -6,6 +6,8 @@
 /// lane's to redo; these rules are not, so they should not be in the file that
 /// is going away.
 
+import type { Reminder } from "$lib/stores/calendar";
+
 /// A translator: the message id and its values in, the sentence out.
 export type Translate = (key: string, values?: Record<string, unknown>) => string;
 
@@ -73,6 +75,51 @@ export function repeatLabel(
   if (e.on_days.length === 0) return every;
   const days = e.on_days.map((d) => (DAY_KEY[d] ? t(DAY_KEY[d]) : d)).join(", ");
   return t("cal.onDays", { every, days });
+}
+
+/// What a reminder line says: "10 minutes before", "1 hour before the end",
+/// "On Friday, 4 September, 18:00". Written from the trigger's parts rather
+/// than carried as a sentence, so it is in the reader's language; a span is
+/// said in the largest unit that divides it (a day, not 1440 minutes).
+export function reminderLabel(r: Reminder, t: Translate, loc: string): string {
+  if ("at" in r.trigger) {
+    const [date, time] = r.trigger.at.split("T");
+    const when = time ? `${dayLabel(date, loc)}, ${time.slice(0, 5)}` : dayLabel(date, loc);
+    return t("cal.remind.on", { when });
+  }
+  const { seconds, related } = r.trigger;
+  if (seconds === 0) return t(related === "end" ? "cal.remind.atEnd" : "cal.remind.atStart");
+  const span = spanLabel(Math.abs(seconds), t);
+  const before = seconds < 0;
+  const key =
+    related === "end"
+      ? before
+        ? "cal.remind.beforeEnd"
+        : "cal.remind.afterEnd"
+      : before
+        ? "cal.remind.beforeStart"
+        : "cal.remind.afterStart";
+  return t(key, { span });
+}
+
+/// A duration in the largest unit that divides it exactly.
+export function spanLabel(seconds: number, t: Translate): string {
+  if (seconds % 86_400 === 0) return t("cal.span.days", { n: seconds / 86_400 });
+  if (seconds % 3_600 === 0) return t("cal.span.hours", { n: seconds / 3_600 });
+  return t("cal.span.minutes", { n: Math.round(seconds / 60) });
+}
+
+/// The ISO 8601 week number of a `YYYY-MM-DD`: weeks start on Monday and
+/// week 1 is the one holding the year's first Thursday, which is why the
+/// last days of December can be week 1 and the first days of January week 53.
+/// Computed in UTC from the parts so the reader's zone cannot shift the day.
+export function isoWeek(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  const at = new Date(Date.UTC(y, m - 1, d));
+  const weekday = at.getUTCDay() || 7;
+  at.setUTCDate(at.getUTCDate() + 4 - weekday);
+  const yearStart = Date.UTC(at.getUTCFullYear(), 0, 1);
+  return Math.ceil(((at.getTime() - yearStart) / 86_400_000 + 1) / 7);
 }
 
 /// The bar title for a month: "August 2026", in the reader's language.

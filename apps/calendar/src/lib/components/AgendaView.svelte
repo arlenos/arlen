@@ -5,7 +5,7 @@
   /// badge, the honest repeat sentences, "only this date" for a refused rule,
   /// the tz chips, and the two different kinds of empty, both naming the
   /// directory.
-  import { MapPin, Repeat } from "@lucide/svelte";
+  import { Bell, MapPin, Repeat } from "@lucide/svelte";
   import { t, locale } from "$lib/i18n/messages";
   import { dayLabel, isToday, repeatLabel } from "$lib/wording";
   import { calendars, colorOf, type Agenda, type AgendaEvent } from "$lib/stores/calendar";
@@ -75,6 +75,14 @@
                 {#if !e.expanded}
                   <span class="unexpanded">{$t("cal.onlyThisOne")}</span>
                 {/if}
+              {/if}
+              <!-- The mark alone: the row is a list, and the popover on the
+                   other views says when. Drawn only when the backend carries
+                   reminders, never as "none". -->
+              {#if e.alarms && e.alarms.length > 0}
+                <span class="bell" aria-label={$t("cal.form.reminders")}>
+                  <Bell size={12} strokeWidth={2} />
+                </span>
               {/if}
             </span>
           </li>
@@ -160,5 +168,9 @@
     gap: 3px;
     font-size: 11px;
     color: var(--color-fg-secondary, #a3a3a3);
+  }
+  .bell {
+    display: inline-flex;
+    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
 </style>

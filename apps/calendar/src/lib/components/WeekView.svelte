@@ -23,6 +23,7 @@
     createEvent,
     ymd,
     type AgendaEvent,
+    type EventChanges,
   } from "$lib/stores/calendar";
   import EventPopover from "./EventPopover.svelte";
 
@@ -42,7 +43,7 @@
     onedit: (e: AgendaEvent) => void;
     /// A repeating occurrence was dropped somewhere: ask the scope question
     /// before anything is written.
-    onmoverepeat: (e: AgendaEvent, changes: { date: string; time: string; endTime: string }) => void;
+    onmoverepeat: (e: AgendaEvent, changes: EventChanges) => void;
   } = $props();
 
   const HOUR = 48; // px per hour -> 24px per half-hour slot, the floor.
@@ -207,6 +208,7 @@
         repeat: "none",
         onDays: [],
         calendarId: d.event.calendar ?? "",
+        alarms: d.event.alarms ?? [],
       });
     } else {
       await updateEvent(d.event.uid, d.event.calendar ?? "", changes);

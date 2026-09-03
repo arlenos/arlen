@@ -8,7 +8,7 @@
 // they lived inside the component.
 
 import { describe, expect, it } from "vitest";
-import { dayLabel, isToday, repeatLabel } from "./wording";
+import { dayLabel, isToday, isoWeek, reminderLabel, repeatLabel } from "./wording";
 
 const echo = (key: string, values?: Record<string, unknown>) =>
   values ? `${key}:${JSON.stringify(values)}` : key;
@@ -74,5 +74,57 @@ describe("repeatLabel", () => {
   it("shows a weekday key it does not know as written", () => {
     const out = repeatLabel({ every: "weekly", every_n: 2, on_days: ["xyz"] }, echo);
     expect(out).toContain("xyz");
+  });
+});
+
+describe("reminderLabel", () => {
+  it("says a span in the largest unit that divides it", () => {
+    expect(reminderLabel({ trigger: { seconds: -600, related: "start" } }, echo, "en-GB")).toBe(
+      'cal.remind.beforeStart:{"span":"cal.span.minutes:{\\"n\\":10}"}',
+    );
+    expect(reminderLabel({ trigger: { seconds: -3600, related: "start" } }, echo, "en-GB")).toContain(
+      'cal.span.hours:{\\"n\\":1}',
+    );
+    expect(reminderLabel({ trigger: { seconds: -86400, related: "start" } }, echo, "en-GB")).toContain(
+      'cal.span.days:{\\"n\\":1}',
+    );
+    // Ninety minutes is not a whole hour, so it stays minutes.
+    expect(reminderLabel({ trigger: { seconds: -5400, related: "start" } }, echo, "en-GB")).toContain(
+      'cal.span.minutes:{\\"n\\":90}',
+    );
+  });
+
+  it("keeps which end it counts from, and which direction", () => {
+    expect(reminderLabel({ trigger: { seconds: -3600, related: "end" } }, echo, "en-GB")).toContain("cal.remind.beforeEnd");
+    expect(reminderLabel({ trigger: { seconds: 300, related: "start" } }, echo, "en-GB")).toContain("cal.remind.afterStart");
+    expect(reminderLabel({ trigger: { seconds: 0, related: "start" } }, echo, "en-GB")).toBe("cal.remind.atStart");
+    expect(reminderLabel({ trigger: { seconds: 0, related: "end" } }, echo, "en-GB")).toBe("cal.remind.atEnd");
+  });
+
+  it("writes a fixed instant as its day and time", () => {
+    const out = reminderLabel({ trigger: { at: "2026-09-04T18:00" } }, echo, "en-GB");
+    expect(out).toContain("cal.remind.on");
+    expect(out).toContain("18:00");
+    expect(out).toContain("4");
+  });
+});
+
+describe("isoWeek", () => {
+  it("numbers an ordinary week", () => {
+    expect(isoWeek("2026-09-03")).toBe(36);
+    expect(isoWeek("2026-08-31")).toBe(36);
+    expect(isoWeek("2026-09-06")).toBe(36);
+  });
+
+  it("puts the last days of December into week 1 when Thursday says so", () => {
+    // 2024-12-30 is a Monday whose Thursday is 2 January 2025.
+    expect(isoWeek("2024-12-30")).toBe(1);
+    expect(isoWeek("2025-01-01")).toBe(1);
+  });
+
+  it("puts the first days of January into week 53 when they belong to the old year", () => {
+    // 2021-01-01 is a Friday: still week 53 of 2020.
+    expect(isoWeek("2021-01-01")).toBe(53);
+    expect(isoWeek("2021-01-04")).toBe(1);
   });
 });
