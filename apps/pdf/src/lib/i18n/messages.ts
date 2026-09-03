@@ -57,8 +57,9 @@ const messages: Catalogs = {
     "pdf.pageFailed": "This page could not be drawn.",
     "pdf.pageLockLost":
       "The document is in an unknown state, so this page could not be drawn. Open the file again.",
-    "pdf.pageNoRenderer": "This machine has nothing installed that can draw a page.",
-    "pdf.textInstead": "The text of this page, without its layout:",
+    "pdf.textFace": "This machine has nothing installed that can draw a page, so the document is shown as its text, without its layout.",
+    "pdf.pageNoText": "This page carries no text. It may be a scanned image.",
+    "pdf.pageTextInstead": "This page could not be drawn, so its text is shown here, without its layout.",
   },
   de: {
     "pdf.app.title": "Dokument",
@@ -112,8 +113,9 @@ const messages: Catalogs = {
     "pdf.pageFailed": "Diese Seite konnte nicht gezeichnet werden.",
     "pdf.pageLockLost":
       "Das Dokument ist in einem unbekannten Zustand, deshalb konnte diese Seite nicht gezeichnet werden. Öffne die Datei erneut.",
-    "pdf.pageNoRenderer": "Auf diesem Rechner ist nichts installiert, das eine Seite zeichnen kann.",
-    "pdf.textInstead": "Der Text dieser Seite, ohne ihr Layout:",
+    "pdf.textFace": "Auf diesem Rechner ist nichts installiert, das eine Seite zeichnen kann, deshalb wird das Dokument als sein Text gezeigt, ohne sein Layout.",
+    "pdf.pageNoText": "Diese Seite trägt keinen Text. Sie ist womöglich ein gescanntes Bild.",
+    "pdf.pageTextInstead": "Diese Seite konnte nicht gezeichnet werden, deshalb steht hier ihr Text, ohne sein Layout.",
   },
 };
 
