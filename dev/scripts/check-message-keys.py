@@ -44,6 +44,19 @@ KEY = re.compile(r'"([a-zA-Z0-9_.\-]+)"\s*:')
 # invisible here on purpose; see the module docstring.
 USE = re.compile(r'\$?\bt\(\s*"([a-zA-Z0-9_.\-]+)"')
 
+# A key that is RETURNED rather than translated on the spot. The panels map a
+# daemon's refusal token to a key (`launchFailureKey`, `installFailureKey`,
+# `forgetFailureKey`) and the markup translates whatever comes back, so the key
+# literal never sits inside a `t(` and this check could not see it. Three keys
+# reached the tree that way on 28 August, each of which would have rendered as
+# itself on the one screen a refusal is read.
+#
+# Bounded by the catalogue rather than by a table: the literal must be key-shaped
+# AND its first segment must be one an existing key already uses, so a returned
+# `"file.tar.gz"` is only mistaken for a key in an app whose catalogue has a
+# `file.` namespace.
+RETURNED = re.compile(r'return\s+"([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+){2,})"')
+
 SKIP = ("node_modules", "/.svelte-kit/", "/build/")
 
 
@@ -56,13 +69,16 @@ def catalogues(app_src: Path) -> dict[str, set[str]]:
     return out
 
 
-def uses(app_src: Path) -> dict[str, str]:
+def uses(app_src: Path, namespaces: set[str]) -> dict[str, str]:
     """Literal key -> the first file that asks for it."""
     found: dict[str, str] = {}
     for f in list(app_src.rglob("*.svelte")) + list(app_src.rglob("*.ts")):
         if "/i18n/" in str(f) or any(s in str(f) for s in SKIP):
             continue
-        for k in USE.findall(f.read_text(encoding="utf-8", errors="replace")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        keys = list(USE.findall(text))
+        keys += [k for k in RETURNED.findall(text) if k.split(".")[0] in namespaces]
+        for k in keys:
             found.setdefault(k, str(f.relative_to(app_src.parent)))
     return found
 
@@ -90,7 +106,10 @@ def main() -> int:
         if not locales:
             problems.append(f"{app}: has an i18n directory and no catalogue this can read.")
             continue
-        used = uses(src)
+        # The namespaces this app's own catalogue uses, so the returned-key rule
+        # is bounded by what a key can look like HERE rather than by a guess.
+        namespaces = {k.split(".")[0] for keys in locales.values() for k in keys}
+        used = uses(src, namespaces)
         seen_uses += len(used)
         for key, where in sorted(used.items()):
             absent = sorted(loc for loc, keys in locales.items() if key not in keys)
