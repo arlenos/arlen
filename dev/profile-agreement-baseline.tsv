@@ -51,7 +51,6 @@ micro	io.github.zyedidia.micro micro
 musescore	musescore org.musescore.MuseScore
 neochat	neochat org.kde.neochat
 nextcloud	com.nextcloud.desktopclient.nextcloud nextcloud
-notes	io.github.nuttyartist.notes org.gnome.Notes
 openshot	openshot openshot-qt org.openshot.OpenShot
 peek	com.uploadedlobster.peek peek
 pencil2d	org.pencil2d.Pencil2D pencil2d

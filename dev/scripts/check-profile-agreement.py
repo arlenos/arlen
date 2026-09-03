@@ -46,6 +46,15 @@ BASELINE = ROOT / "dev/profile-agreement-baseline.tsv"
 GENERIC = {
     "browser", "client", "app", "desktop", "player", "editor", "viewer",
     "manager", "studio", "console", "terminal", "shell", "launcher", "tool",
+    # The second half of the same problem: app names that are also the plain
+    # word for what the app IS. `io.elementary.calculator` and
+    # `org.gnome.Calculator` are two different calculators by two different
+    # projects, and grouping them reported a disagreement between programs that
+    # have nothing to do with each other - which is worse than a missed one,
+    # because the fix it invites is making GNOME's calculator match
+    # elementary's. Same for the other five: two desktops each ship a calendar,
+    # a code editor, a music player, a notes app and a metronome.
+    "calculator", "calendar", "code", "music", "notes", "metronome",
 }
 
 #: Packaging suffixes that decorate a name without changing the program.

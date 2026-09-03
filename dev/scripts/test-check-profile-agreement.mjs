@@ -124,6 +124,28 @@ check(
 );
 cleanup(dir);
 
+// Two desktops each ship a calculator, and they are not the same program. The
+// last segment is the plain word for what the app IS, which is the same trap as
+// the category words above wearing an app's clothes - and here the fix it would
+// have invited is making GNOME's calculator match elementary's.
+dir = tree({
+  "org.gnome.Calculator": prof("org.gnome.Calculator", ["documents"], false),
+  "io.elementary.calculator": prof("io.elementary.calculator", [], false),
+  "org.gnome.Calendar": prof("org.gnome.Calendar", ["documents"], true),
+  "io.elementary.calendar": prof("io.elementary.calendar", [], false),
+  // One id whose last segment is a real app name, so the read is not empty:
+  // every id above is stripped to nothing, and a tree the gate could read
+  // nothing from refuses rather than passing.
+  kitty: prof("kitty", ["home"], false),
+});
+r = run(dir);
+check(
+  "one desktop's calculator is not another's",
+  r.code === 0,
+  `exit=${r.code} out=${r.out}`,
+);
+cleanup(dir);
+
 // A release channel is not an app name. Taking the last segment made Spotify,
 // Chromium, Thunderbird and GNOME Snapshot one program, because all four ids end
 // in `.snapshot` - a group that would have told somebody to give four unrelated
