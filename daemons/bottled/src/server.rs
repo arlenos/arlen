@@ -200,7 +200,8 @@ pub async fn serve_connection(
                 | Request::ClearCaches { .. }
                 | Request::Programs { .. }
                 | Request::SetProgram { .. }
-                | Request::RevokeNetwork { .. } => {
+                | Request::RevokeNetwork { .. }
+                | Request::RevokeDrive { .. } => {
                     // Unreachable: `handle_request` answers all of these. Kept as an
                     // arm rather than an `unreachable!()` so a daemon never panics on
                     // a reachable-in-future path.

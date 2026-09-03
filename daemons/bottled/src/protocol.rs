@@ -83,6 +83,15 @@ pub enum Request {
     /// Not gated the way `Forget` is: this creates rather than destroys, and a
     /// bottle with no grants and no network is the least a caller can ask for.
     Create { id: String },
+    /// Take one granted folder away from a bottle.
+    ///
+    /// BY HOST PATH, not by drive letter, and that is a correctness point rather
+    /// than a preference: letters are assigned by sorting the grants, so removing
+    /// one SHIFTS the letters of the rest. Revoking `D:` twice would take two
+    /// different folders. The path is what the grant actually is.
+    ///
+    /// Narrowing only, like [`Request::RevokeNetwork`], and for the same reason.
+    RevokeDrive { id: String, host: String },
     /// Cut a bottle off the network.
     ///
     /// NARROWING ONLY, and there is deliberately no ask that widens. A grant is
@@ -230,6 +239,11 @@ pub enum Response {
     },
     /// The program was recorded, and this is what a launch will now start.
     ProgramSet { program: String },
+    /// The folder is no longer reachable from the bottle.
+    ///
+    /// `changed` is false when the bottle was not granted it, so a caller can tell
+    /// "done" from "there was nothing to take away".
+    DriveRevoked { changed: bool },
     /// The bottle no longer reaches the network.
     ///
     /// `changed` is false when it already did not, so a caller can tell "done" from
@@ -710,6 +724,54 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
                             program: program.clone(),
                         },
                         Err(_) => Response::Refused {
+                            problem: Problem::Unreadable,
+                        },
+                    }
+                }
+            }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
+        Request::RevokeDrive { id, host } => match load_bottle(bottles_dir, id) {
+            Ok(mut bottle) => {
+                let before = bottle.grants.len();
+                bottle
+                    .grants
+                    .retain(|g| g.host.to_string_lossy() != host.as_str());
+                if bottle.grants.len() == before {
+                    Response::DriveRevoked { changed: false }
+                } else {
+                    // THE TABLE FIRST, then the description. A prefix that still
+                    // exposes a folder the description no longer claims is a
+                    // window saying "cut off" over a program that still reaches
+                    // it; the other order can only leave the bottle claiming more
+                    // reach than it has, which the next launch narrows anyway.
+                    //
+                    // A prefix that was never booted has no table to narrow, and
+                    // that is not a failure: the boundary is written from the
+                    // description at boot.
+                    let table = match crate::map_drives(&bottle.grants) {
+                        Ok(drives) => {
+                            match crate::dosdevices::write_drives(&bottle.prefix_root, &drives) {
+                                Ok(_) => Ok(()),
+                                Err(crate::dosdevices::WriteError::NoPrefix(_)) => Ok(()),
+                                Err(_) => Err(()),
+                            }
+                        }
+                        Err(_) => Err(()),
+                    };
+                    match table.and_then(|()| {
+                        crate::registry::save_bottle(bottles_dir, &bottle).map_err(|_| ())
+                    }) {
+                        Ok(_) => Response::DriveRevoked { changed: true },
+                        Err(()) => Response::Refused {
                             problem: Problem::Unreadable,
                         },
                     }
@@ -1240,6 +1302,67 @@ mod tests {
         let (kept, truncated) = fit_programs(short);
         assert_eq!(kept.len(), 1);
         assert!(!truncated);
+    }
+
+    #[test]
+    fn revoking_a_folder_takes_the_letter_out_of_the_prefix_too() {
+        use crate::registry::{load_bottle, save_bottle};
+        use crate::{Access, PathGrant};
+
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("game/pfx");
+        std::fs::create_dir_all(prefix.join("dosdevices")).unwrap();
+        let docs = dir.path().join("Documents");
+        let music = dir.path().join("Music");
+        for d in [&docs, &music] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let grants = vec![
+            PathGrant { host: docs.clone(), access: Access::ReadWrite },
+            PathGrant { host: music.clone(), access: Access::ReadOnly },
+        ];
+        // The prefix starts out exposing both, as a booted bottle would.
+        crate::dosdevices::write_drives(&prefix, &crate::map_drives(&grants).unwrap()).unwrap();
+        save_bottle(
+            dir.path(),
+            &Bottle {
+                id: "game".into(),
+                prefix_root: prefix.clone(),
+                grants,
+                egress: Egress::None,
+                plumbing: Default::default(),
+                program: vec![],
+            },
+        )
+        .unwrap();
+        assert_eq!(crate::dosdevices::granted_letters(&prefix).unwrap().len(), 2);
+
+        assert_eq!(
+            handle_request(
+                dir.path(),
+                &Request::RevokeDrive {
+                    id: "game".into(),
+                    host: music.to_string_lossy().into_owned(),
+                }
+            ),
+            Some(Response::DriveRevoked { changed: true })
+        );
+        // BOTH halves: the description and the table the program actually reads.
+        // A bottle that merely stopped claiming the folder would still reach it.
+        assert_eq!(load_bottle(dir.path(), "game").unwrap().grants.len(), 1);
+        assert_eq!(crate::dosdevices::granted_letters(&prefix).unwrap().len(), 1);
+
+        // A folder that was never granted is nothing to take away, not an error.
+        assert_eq!(
+            handle_request(
+                dir.path(),
+                &Request::RevokeDrive {
+                    id: "game".into(),
+                    host: music.to_string_lossy().into_owned(),
+                }
+            ),
+            Some(Response::DriveRevoked { changed: false })
+        );
     }
 
     #[test]

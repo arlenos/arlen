@@ -101,6 +101,7 @@ pub fn run() {
             commands::windows_apps::bottle_programs,
             commands::windows_apps::set_bottle_program,
             commands::windows_apps::revoke_bottle_network,
+            commands::windows_apps::revoke_bottle_drive,
             commands::capsules::list_capsules,
             commands::capsules::revoke_capsule,
             commands::ai::ai_behaviours,
