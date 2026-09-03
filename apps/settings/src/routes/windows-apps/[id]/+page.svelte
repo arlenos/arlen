@@ -47,9 +47,16 @@
     deleteBottle,
     bottlePrograms,
     setBottleProgram,
+    revokeNetwork,
+    revokeDrive,
+    severBottle,
+    bottleDisk,
+    reachChanged,
+    reachFailed,
     type BottleProgram,
     type Bottle,
     type BottleHealth,
+    type ReachChange,
   } from "$lib/stores/windows-apps";
   import { t } from "$lib/i18n/messages";
 
@@ -114,7 +121,79 @@
     if ($cleared?.id === b.id) {
       return $t("s.wa.clearedCaches", { size: formatSize($cleared.bytes), count: $cleared.files });
     }
+    // The measured answer first: `diskUsage` is the recipe's field and nothing
+    // fills it, while `bottle_disk_usage` walks the prefix and returns bytes.
+    // Both absent stays absent - an unmeasured bottle is not an empty one.
+    if (diskBytes !== null) return $t("s.wa.storageUsed", { size: formatSize(diskBytes) });
     return b.diskUsage ? $t("s.wa.storageUsed", { size: b.diskUsage }) : undefined;
+  }
+
+  // What the bottle holds on disk, asked once per bottle. Its own ask because
+  // measuring walks the whole prefix; `null` is "nothing measured it", which is
+  // NOT zero, so the line stays absent rather than claiming an empty bottle.
+  let diskBytes = $state<number | null>(null);
+  $effect(() => {
+    if (!bottle) return;
+    void bottleDisk(bottle.id).then((b) => (diskBytes = b));
+  });
+
+  // The three revoking asks are one-directional - nothing on this page gives
+  // network or a folder back - so each one confirms first (design-system.md
+  // §6.2). The pending target is held rather than passed through the dialog so
+  // a cancel leaves nothing half-applied.
+  let confirmNetwork = $state(false);
+  let confirmSever = $state(false);
+  let confirmDrive = $state<string | null>(null);
+
+  /// The sentence for what the last reach ask actually did. Every branch is a
+  /// real answer including "nothing changed": a revoke of what was already gone
+  /// is not a failure, and silence there would read as a removal that happened.
+  function reachLine(c: ReachChange): string {
+    if (c.kind === "network") {
+      return c.changed ? $t("s.wa.networkRevoked") : $t("s.wa.networkAlreadyOff");
+    }
+    if (c.kind === "drive") {
+      return c.changed
+        ? $t("s.wa.driveRevoked", { path: c.host })
+        : $t("s.wa.driveAlreadyGone", { path: c.host });
+    }
+    if (c.cut === 0 && c.stillEscaping === 0) return $t("s.wa.severedNone");
+    return c.stillEscaping > 0
+      ? $t("s.wa.severedLeft", { cut: c.cut, left: c.stillEscaping })
+      : $t("s.wa.severed", { cut: c.cut });
+  }
+
+  /// The sentence for a reach ask that did not happen. Named per action because
+  /// what is still true differs: the folder is still granted, the network is
+  /// still reachable, the links still lead out.
+  function reachFailLine(f: { name: string; action: "network" | "drive" | "sever" }): string {
+    if (f.action === "network") return $t("s.wa.networkFailed", { name: f.name });
+    if (f.action === "drive") return $t("s.wa.driveFailed", { name: f.name });
+    return $t("s.wa.severFailed", { name: f.name });
+  }
+
+  async function onSeverConfirmed() {
+    if (!bottle) return;
+    const id = bottle.id;
+    confirmSever = false;
+    await severBottle(id);
+    // The warning above is what this was for, so it is re-read rather than
+    // left showing a count the cut has already changed.
+    health = await bottleHealth(id);
+  }
+
+  async function onDriveConfirmed() {
+    if (!bottle || confirmDrive === null) return;
+    const [id, host] = [bottle.id, confirmDrive];
+    confirmDrive = null;
+    await revokeDrive(id, host);
+  }
+
+  async function onNetworkConfirmed() {
+    if (!bottle) return;
+    const id = bottle.id;
+    confirmNetwork = false;
+    await revokeNetwork(id);
   }
 
   let confirmDelete = $state(false);
@@ -257,10 +336,23 @@
       {/if}
 
       <Section label={$t("s.wa.access")} class="span-full">
+        <!-- Every row here is a thing the app can reach, and every control on
+             one takes that away. Nothing on this page gives reach back: the
+             grants are made where the folder is chosen, so a revoke is
+             one-directional and confirms first (design-system.md §6.2). -->
         {#each bottle.drives as d (d.letter)}
           <Row id={`win-drive-${d.letter.toLowerCase()}`} label={d.path ?? $t("s.wa.driveOwn")}>
             {#snippet leading()}
               <span class="drive-chip">{d.letter}:</span>
+            {/snippet}
+            {#snippet control()}
+              <!-- The system drive is the app's OWN files, not a folder of the
+                   user's, so there is nothing there to take away. -->
+              {#if d.path !== null}
+                <Button variant="ghost" size="sm" onclick={() => (confirmDrive = d.path)}>
+                  {$t("s.wa.takeAway")}
+                </Button>
+              {/if}
             {/snippet}
           </Row>
         {/each}
@@ -268,7 +360,28 @@
           id="win-network"
           label={$t("s.wa.network")}
           description={bottle.access.network ? $t("s.wa.networkOn") : $t("s.wa.networkOff")}
-        />
+        >
+          {#snippet control()}
+            {#if bottle.access.network}
+              <Button variant="ghost" size="sm" onclick={() => (confirmNetwork = true)}>
+                {$t("s.wa.cutOff")}
+              </Button>
+            {/if}
+          {/snippet}
+        </Row>
+        <!-- The remedy for the warning above, and it sits here rather than with
+             it because a link leading out of the prefix IS reach - it belongs
+             with the rows that say what this app can touch. Offered whether or
+             not the check found anything: the check is a read of a moment, Wine
+             writes those links on every boot, and a cut that finds nothing says
+             so. -->
+        <Row id="win-sever" label={$t("s.wa.sever")} description={$t("s.wa.severDesc")}>
+          {#snippet control()}
+            <Button variant="ghost" size="sm" onclick={() => (confirmSever = true)}>
+              {$t("s.wa.severConfirmLabel")}
+            </Button>
+          {/snippet}
+        </Row>
         <Row id="win-manage-access" label={$t("s.wa.manageReach")}>
           {#snippet control()}
             <Button variant="outline" size="sm" onclick={() => bottle && goto(`/apps/${bottle.appId}`)}>
@@ -276,6 +389,17 @@
             </Button>
           {/snippet}
         </Row>
+        <!-- What the last ask on this card DID, at the end of the card rather
+             than under the row that started it: three rows share this line, and
+             between two of them it read as a caption on the row below instead of
+             an answer to the one above. Each sentence names its own subject, so
+             one place is enough. -->
+        {#if $reachChanged}
+          <p class="quiet">{reachLine($reachChanged)}</p>
+        {/if}
+        {#if $reachFailed}
+          <Notice tone="error" text={reachFailLine($reachFailed)} />
+        {/if}
       </Section>
 
       <!-- THE RECIPE HALF, and it is absent until there is a recipe. Every
@@ -448,6 +572,39 @@
     {/if}
   </SectionGrid>
 </Page>
+
+<ConfirmDialog
+  open={confirmDrive !== null}
+  title={$t("s.wa.driveConfirmTitle")}
+  message={$t("s.wa.driveConfirmMsg", {
+    name: bottle?.appName ?? bottle?.id ?? "",
+    path: confirmDrive ?? "",
+  })}
+  confirmLabel={$t("s.wa.driveConfirmLabel")}
+  variant="destructive"
+  onConfirm={onDriveConfirmed}
+  onCancel={() => (confirmDrive = null)}
+/>
+
+<ConfirmDialog
+  open={confirmNetwork}
+  title={$t("s.wa.networkConfirmTitle")}
+  message={$t("s.wa.networkConfirmMsg", { name: bottle?.appName ?? bottle?.id ?? "" })}
+  confirmLabel={$t("s.wa.networkConfirmLabel")}
+  variant="destructive"
+  onConfirm={onNetworkConfirmed}
+  onCancel={() => (confirmNetwork = false)}
+/>
+
+<ConfirmDialog
+  open={confirmSever}
+  title={$t("s.wa.severConfirmTitle")}
+  message={$t("s.wa.severConfirmMsg", { name: bottle?.appName ?? bottle?.id ?? "" })}
+  confirmLabel={$t("s.wa.severConfirmLabel")}
+  variant="destructive"
+  onConfirm={onSeverConfirmed}
+  onCancel={() => (confirmSever = false)}
+/>
 
 <ConfirmDialog
   open={confirmDelete}
