@@ -258,6 +258,7 @@ jobs:
           python3 dev/scripts/check-dev-prefix-admission.py
           python3 dev/scripts/check-fixture-on-failure.py
           python3 dev/scripts/check-app-profiles.py
+          python3 dev/scripts/check-profile-catalogue.py
           python3 dev/scripts/check-profile-principals.py
           node dev/scripts/test-check-profile-principals.mjs
           python3 dev/scripts/check-openable-apps-can-read.py
@@ -312,6 +313,7 @@ jobs:
           node dev/scripts/test-check-optimistic-write.mjs
           node dev/scripts/test-check-dbus-callers.mjs
           node dev/scripts/test-check-app-profiles.mjs
+          node dev/scripts/test-check-profile-catalogue.mjs
           node dev/scripts/test-check-bus-declarations.mjs
           node dev/scripts/test-check-log-filters.mjs
           node dev/scripts/test-check-runtime-deps.mjs
