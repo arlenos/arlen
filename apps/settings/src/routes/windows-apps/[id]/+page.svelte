@@ -1,19 +1,21 @@
 <script lang="ts">
   /// One Windows app's page (windows-apps-plan.md): identity first, then the
+  /// question an install leaves behind (which program is the app), then the
   /// sovereign angle - the drive table is the bottle's file boundary made
   /// visible, one row per letter the app can see - then the compatibility,
-  /// launch and tweak depth, storage last. A bottle whose prefix no longer
-  /// matches its description banners the whole page before anything below it
-  /// is read, because every access row under it could be understating.
+  /// launch and tweak depth, files, removal last. A bottle whose prefix no
+  /// longer matches its description says so above everything below it,
+  /// because every access row under it could be understating.
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
-  import { ShieldAlert, FolderOpen, Eraser, ArrowLeft } from "lucide-svelte";
+  import { FolderOpen, Eraser, ArrowLeft } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
@@ -29,6 +31,12 @@
     launchFailureKey,
     forgetFailed,
     forgetFailureKey,
+    fileActionFailed,
+    programFailed,
+    programFailureKey,
+    installStarted,
+    cleared,
+    formatSize,
     wineVersions,
     load,
     patchBottle,
@@ -60,19 +68,22 @@
 
   // What the installer left, asked for ONLY while nobody has picked yet. A bottle
   // with a program does not need the list, and walking a prefix to build one
-  // nobody will read costs the same as one somebody will.
+  // nobody will read costs the same as one somebody will. Asked again on
+  // demand: nothing says when an installer is done, so the person looks.
   let programs = $state<BottleProgram[]>([]);
   let programsCut = $state(false);
+  async function readPrograms(id: string) {
+    const r = await bottlePrograms(id);
+    programs = r.programs;
+    programsCut = r.truncated;
+  }
   $effect(() => {
     if (!bottle || bottle.hasProgram) {
       programs = [];
       programsCut = false;
       return;
     }
-    void bottlePrograms(bottle.id).then((r) => {
-      programs = r.programs;
-      programsCut = r.truncated;
-    });
+    void readPrograms(bottle.id);
   });
 
   const versionOptions = wineVersions.map((v) => ({ value: v, label: v }));
@@ -88,11 +99,22 @@
     { value: "fullscreen", label: $t("s.wa.fullscreen") },
   ]);
 
-  // The compat tier as honest prose, never a "just works" promise.
-  function compatLine(b: Bottle): string {
-    return b.tier === "curated"
-      ? $t("s.wa.compat.curated", { recipe: b.recipe })
-      : $t("s.wa.compat.best");
+  // The line under the name: what the page is waiting for, or the compat tier
+  // as honest prose, never a "just works" promise.
+  function subline(b: Bottle): string {
+    if (!b.hasProgram) return $t("s.wa.programPending");
+    if (b.tier === "curated") return $t("s.wa.compat.curated", { recipe: b.recipe });
+    if (b.tier === "best-effort") return $t("s.wa.compat.best");
+    return $t("s.wa.compat.none");
+  }
+
+  // The files row's second line: what the last clear freed, else the measured
+  // size, else nothing - a size nobody measured is not a line.
+  function filesLine(b: Bottle): string | undefined {
+    if ($cleared?.id === b.id) {
+      return $t("s.wa.clearedCaches", { size: formatSize($cleared.bytes), count: $cleared.files });
+    }
+    return b.diskUsage ? $t("s.wa.storageUsed", { size: b.diskUsage }) : undefined;
   }
 
   let confirmDelete = $state(false);
@@ -121,78 +143,115 @@
     </div>
 
     {#if $winApps.mocked}
-      <p class="note span-full">{$t("s.wa.mocked")}</p>
+      <Notice tone="neutral" class="span-full" text={$t("s.wa.mocked")} />
     {/if}
     {#if $winActionFailed}
-      <p class="note span-full" role="alert">{$t("s.wa.actionFailed")}</p>
+      <Notice tone="error" class="span-full" text={$t("s.wa.actionFailed")} />
     {/if}
     {#if $forgetFailed}
-      <p class="note span-full" role="alert">
-        {$t(forgetFailureKey($forgetFailed.reason), { name: $forgetFailed.name })}
-      </p>
+      <Notice
+        tone="error"
+        class="span-full"
+        text={$t(forgetFailureKey($forgetFailed.reason), { name: $forgetFailed.name })}
+      />
     {/if}
     {#if $launchFailed}
-      <p class="note span-full" role="alert">{$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}</p>
+      <Notice
+        tone="error"
+        class="span-full"
+        text={$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}
+      />
+    {/if}
+    {#if $programFailed}
+      <Notice tone="error" class="span-full" text={$t(programFailureKey($programFailed))} />
+    {/if}
+    {#if $fileActionFailed}
+      <Notice
+        tone="error"
+        class="span-full"
+        text={$t($fileActionFailed.action === "browse" ? "s.wa.browseFailed" : "s.wa.clearFailed", {
+          name: $fileActionFailed.name,
+        })}
+      />
     {/if}
 
-    {#if !bottle}
+    {#if $winApps.loading}
+      <!-- Nothing yet: an id is neither found nor missing until the list
+           answered, and a refusal that flashes before the answer is a lie. -->
+    {:else if !bottle}
       <!-- Absent covers both an id that never existed and a list that could
            not be read; the sentence claims no more than that. -->
       <Section class="span-full">
-        <p class="empty">{$t("s.wa.notFound")}</p>
+        <p class="quiet">{$t("s.wa.notFound")}</p>
       </Section>
     {:else}
       <div class="head span-full">
         <AppAvatar appId={bottle.appId ?? bottle.id} label={bottle.appName ?? bottle.id} size={48} />
         <div class="head-text">
           <span class="head-name">{bottle.appName ?? bottle.id}</span>
-          <span class="head-meta">{compatLine(bottle)}</span>
+          <span class="head-meta">{subline(bottle)}</span>
         </div>
         <div class="head-actions">
-          <Button variant="default" size="sm" onclick={() => bottle && launchApp(bottle.id)}>
+          <!-- Disabled, not hidden, while nothing is picked: the button is the
+               page's primary action and the line beside the name says why it
+               waits. -->
+          <Button
+            variant="default"
+            size="sm"
+            disabled={!bottle.hasProgram}
+            onclick={() => bottle && launchApp(bottle.id)}
+          >
             {$t("s.wa.launchApp")}
           </Button>
         </div>
       </div>
 
+      <!-- An install started from this window runs in the installer's own
+           window, and nothing says when it is done; the page says what is
+           happening and what comes after. -->
+      {#if $installStarted === bottle.id && !bottle.hasProgram}
+        <Notice tone="neutral" class="span-full" text={$t("s.wa.installerRunning")} />
+      {/if}
+
       {#if health && (!health.agrees || health.escapes > 0)}
-        <div class="banner span-full" role="note">
-          <ShieldAlert size={16} strokeWidth={1.75} />
-          <span>{$t("s.wa.healthWarn", { count: health.escapes })}</span>
-        </div>
+        <Notice tone="caution" class="span-full" text={$t("s.wa.healthWarn", { count: health.escapes })} />
       {/if}
 
       <!-- THE QUESTION AN INSTALL LEAVES BEHIND. A Windows installer does not say
            what it installed, so between running one and starting the app there is
-           a step only a person can take. Without this row the launch button
+           a step only a person can take. Without this card the launch button
            refuses with "nothing to run" and nothing on screen says what to do
            about it. It sits above the access rows because it is the one thing
            this page is waiting for. -->
       {#if !bottle.hasProgram}
         <Section label={$t("s.wa.whichProgram")} class="span-full">
-          {#if programs.length === 0}
-            <p class="not-managed">{$t("s.wa.whichProgramNone")}</p>
-          {:else}
-            <!-- A paragraph and not a Row label: a Row truncates to one line, and
-                 the screenshot of the first cut ended at "usually an unins...",
-                 which is the half of the sentence that says nothing. -->
-            <p class="not-managed">{$t("s.wa.whichProgramDesc")}</p>
-            {#if programsCut}
-              <p class="not-managed">{$t("s.wa.whichProgramMore")}</p>
-            {/if}
-            {#each programs as p (p.path)}
-              <Row id={`win-program-${p.name}`} label={p.name}>
-                {#snippet control()}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onclick={() => bottle && setBottleProgram(bottle.id, p.path)}
-                  >
-                    {$t("s.wa.useThis")}
-                  </Button>
-                {/snippet}
-              </Row>
-            {/each}
+          <!-- A sentence and not a Row label: a Row truncates to one line, and
+               the half of this sentence that matters is the second half. The
+               look-again sits with it because the list can change under the
+               page while an installer is still writing. -->
+          <div class="lead">
+            <p class="quiet">
+              {programs.length === 0 ? $t("s.wa.whichProgramNone") : $t("s.wa.whichProgramDesc")}
+            </p>
+            <Button variant="ghost" size="sm" onclick={() => bottle && readPrograms(bottle.id)}>
+              {$t("s.wa.lookAgain")}
+            </Button>
+          </div>
+          {#each programs as p (p.path)}
+            <Row id={`win-program-${p.name}`} label={p.name}>
+              {#snippet control()}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onclick={() => bottle && setBottleProgram(bottle.id, p.path)}
+                >
+                  {$t("s.wa.useThis")}
+                </Button>
+              {/snippet}
+            </Row>
+          {/each}
+          {#if programsCut}
+            <p class="quiet">{$t("s.wa.whichProgramMore")}</p>
           {/if}
         </Section>
       {/if}
@@ -232,136 +291,136 @@
              recipe half arrives whole or not at all. They are there because the
              check narrows `wineVersion` and TypeScript cannot carry that to its
              neighbours, not because any of them is a value worth showing. -->
-      <Section label={$t("s.wa.compat")} class="span-full">
-        <Row id="win-wine-version" label={$t("s.wa.compatVersion")}>
-          {#snippet control()}
-            <PopoverSelect
-              value={bottle.wineVersion ?? ""}
-              options={versionOptions}
-              ariaLabel={$t("s.wa.compatVersion")}
-              onchange={(v) => bottle && patchBottle(bottle.id, { wineVersion: v })}
-            />
-          {/snippet}
-        </Row>
-        <Row id="win-windows-version" label={$t("s.wa.winVersion")}>
-          {#snippet control()}
-            <SegmentedControl
-              value={bottle.windowsVersion ?? "10"}
-              options={winVersionOptions}
-              ariaLabel={$t("s.wa.winVersion")}
-              onchange={(v) => bottle && patchBottle(bottle.id, { windowsVersion: v as Bottle["windowsVersion"] })}
-            />
-          {/snippet}
-        </Row>
-        <Row id="win-dxvk" label={$t("s.wa.dxvk")}>
-          {#snippet control()}
-            <Switch
-              value={bottle.dxvk ?? false}
-              ariaLabel={$t("s.wa.dxvkAria")}
-              onchange={(v) => bottle && patchBottle(bottle.id, { dxvk: v })}
-            />
-          {/snippet}
-        </Row>
-        <Row id="win-scaling" label={$t("s.wa.scaling")}>
-          {#snippet control()}
-            <NumberInput
-              value={bottle.scaling ?? 100}
-              min={100}
-              max={300}
-              step={25}
-              unit="%"
-              ariaLabel={$t("s.wa.scaling")}
-              onchange={(v) => bottle && patchBottle(bottle.id, { scaling: v })}
-            />
-          {/snippet}
-        </Row>
-        <Row id="win-window-mode" label={$t("s.wa.windowMode")}>
-          {#snippet control()}
-            <SegmentedControl
-              value={bottle.windowMode ?? "windowed"}
-              options={windowModeOptions}
-              ariaLabel={$t("s.wa.windowMode")}
-              onchange={(v) => bottle && patchBottle(bottle.id, { windowMode: v as Bottle["windowMode"] })}
-            />
-          {/snippet}
-        </Row>
-        <Row id="win-follow-theme" label={$t("s.wa.followTheme")}>
-          {#snippet control()}
-            <Switch
-              value={bottle.followsTheme ?? false}
-              ariaLabel={$t("s.wa.followTheme")}
-              onchange={(v) => bottle && patchBottle(bottle.id, { followsTheme: v })}
-            />
-          {/snippet}
-        </Row>
-      </Section>
+        <Section label={$t("s.wa.compat")} class="span-full">
+          <Row id="win-wine-version" label={$t("s.wa.compatVersion")}>
+            {#snippet control()}
+              <PopoverSelect
+                value={bottle.wineVersion ?? ""}
+                options={versionOptions}
+                ariaLabel={$t("s.wa.compatVersion")}
+                onchange={(v) => bottle && patchBottle(bottle.id, { wineVersion: v })}
+              />
+            {/snippet}
+          </Row>
+          <Row id="win-windows-version" label={$t("s.wa.winVersion")}>
+            {#snippet control()}
+              <SegmentedControl
+                value={bottle.windowsVersion ?? "10"}
+                options={winVersionOptions}
+                ariaLabel={$t("s.wa.winVersion")}
+                onchange={(v) => bottle && patchBottle(bottle.id, { windowsVersion: v as Bottle["windowsVersion"] })}
+              />
+            {/snippet}
+          </Row>
+          <Row id="win-dxvk" label={$t("s.wa.dxvk")}>
+            {#snippet control()}
+              <Switch
+                value={bottle.dxvk ?? false}
+                ariaLabel={$t("s.wa.dxvkAria")}
+                onchange={(v) => bottle && patchBottle(bottle.id, { dxvk: v })}
+              />
+            {/snippet}
+          </Row>
+          <Row id="win-scaling" label={$t("s.wa.scaling")}>
+            {#snippet control()}
+              <NumberInput
+                value={bottle.scaling ?? 100}
+                min={100}
+                max={300}
+                step={25}
+                unit="%"
+                ariaLabel={$t("s.wa.scaling")}
+                onchange={(v) => bottle && patchBottle(bottle.id, { scaling: v })}
+              />
+            {/snippet}
+          </Row>
+          <Row id="win-window-mode" label={$t("s.wa.windowMode")}>
+            {#snippet control()}
+              <SegmentedControl
+                value={bottle.windowMode ?? "windowed"}
+                options={windowModeOptions}
+                ariaLabel={$t("s.wa.windowMode")}
+                onchange={(v) => bottle && patchBottle(bottle.id, { windowMode: v as Bottle["windowMode"] })}
+              />
+            {/snippet}
+          </Row>
+          <Row id="win-follow-theme" label={$t("s.wa.followTheme")}>
+            {#snippet control()}
+              <Switch
+                value={bottle.followsTheme ?? false}
+                ariaLabel={$t("s.wa.followTheme")}
+                onchange={(v) => bottle && patchBottle(bottle.id, { followsTheme: v })}
+              />
+            {/snippet}
+          </Row>
+        </Section>
 
-      <Section label={$t("s.wa.launch")} class="span-full">
-        <Row id="win-launch-args" label={$t("s.wa.args")}>
-          {#snippet control()}
-            <Input
-              value={bottle.launchArgs ?? ""}
-              placeholder={$t("s.wa.argsHint")}
-              aria-label={$t("s.wa.args")}
-              oninput={(e) => bottle && patchBottle(bottle.id, { launchArgs: e.currentTarget.value })}
-            />
-          {/snippet}
-        </Row>
-        <Row id="win-working-dir" label={$t("s.wa.workDir")}>
-          {#snippet control()}
-            <Input
-              value={bottle.workingDir ?? ""}
-              placeholder={$t("s.wa.default")}
-              aria-label={$t("s.wa.workDir")}
-              oninput={(e) => bottle && patchBottle(bottle.id, { workingDir: e.currentTarget.value })}
-            />
-          {/snippet}
-        </Row>
-        <Row id="win-env" label={$t("s.wa.env")}>
-          {#snippet below()}
-            <div class="chips">
-              <ChipList
-                items={bottle.envVars ?? []}
-                placeholder={$t("s.wa.envHint")}
-                onchange={(items) => bottle && patchBottle(bottle.id, { envVars: items })}
+        <Section label={$t("s.wa.launch")} class="span-full">
+          <Row id="win-launch-args" label={$t("s.wa.args")}>
+            {#snippet control()}
+              <Input
+                value={bottle.launchArgs ?? ""}
+                placeholder={$t("s.wa.argsHint")}
+                aria-label={$t("s.wa.args")}
+                oninput={(e) => bottle && patchBottle(bottle.id, { launchArgs: e.currentTarget.value })}
               />
-            </div>
-          {/snippet}
-        </Row>
-      </Section>
+            {/snippet}
+          </Row>
+          <Row id="win-working-dir" label={$t("s.wa.workDir")}>
+            {#snippet control()}
+              <Input
+                value={bottle.workingDir ?? ""}
+                placeholder={$t("s.wa.default")}
+                aria-label={$t("s.wa.workDir")}
+                oninput={(e) => bottle && patchBottle(bottle.id, { workingDir: e.currentTarget.value })}
+              />
+            {/snippet}
+          </Row>
+          <Row id="win-env" label={$t("s.wa.env")}>
+            {#snippet below()}
+              <div class="chips">
+                <ChipList
+                  items={bottle.envVars ?? []}
+                  placeholder={$t("s.wa.envHint")}
+                  onchange={(items) => bottle && patchBottle(bottle.id, { envVars: items })}
+                />
+              </div>
+            {/snippet}
+          </Row>
+        </Section>
 
-      <Section label={$t("s.wa.tweaks")} class="span-full">
-        <Row id="win-dll" label={$t("s.wa.dll")}>
-          {#snippet below()}
-            <div class="chips">
-              <ChipList
-                items={bottle.dllOverrides ?? []}
-                placeholder={$t("s.wa.dllHint")}
-                onchange={(items) => bottle && patchBottle(bottle.id, { dllOverrides: items })}
-              />
-            </div>
-          {/snippet}
-        </Row>
-        <Row id="win-winetricks" label={$t("s.wa.winetricks")}>
-          {#snippet below()}
-            <div class="chips">
-              <ChipList
-                items={bottle.winetricks ?? []}
-                placeholder={$t("s.wa.winetricksHint")}
-                onchange={(items) => bottle && patchBottle(bottle.id, { winetricks: items })}
-              />
-            </div>
-          {/snippet}
-        </Row>
-      </Section>
+        <Section label={$t("s.wa.tweaks")} class="span-full">
+          <Row id="win-dll" label={$t("s.wa.dll")}>
+            {#snippet below()}
+              <div class="chips">
+                <ChipList
+                  items={bottle.dllOverrides ?? []}
+                  placeholder={$t("s.wa.dllHint")}
+                  onchange={(items) => bottle && patchBottle(bottle.id, { dllOverrides: items })}
+                />
+              </div>
+            {/snippet}
+          </Row>
+          <Row id="win-winetricks" label={$t("s.wa.winetricks")}>
+            {#snippet below()}
+              <div class="chips">
+                <ChipList
+                  items={bottle.winetricks ?? []}
+                  placeholder={$t("s.wa.winetricksHint")}
+                  onchange={(items) => bottle && patchBottle(bottle.id, { winetricks: items })}
+                />
+              </div>
+            {/snippet}
+          </Row>
+        </Section>
       {:else}
         <Section label={$t("s.wa.compat")} class="span-full">
-          <p class="not-managed">{$t("s.wa.notManaged")}</p>
+          <p class="quiet">{$t("s.wa.notManaged")}</p>
         </Section>
       {/if}
 
       <Section label={$t("s.wa.files")} class="span-full">
-        <Row id="win-storage" label={$t("s.wa.storageUsed", { size: bottle.diskUsage })}>
+        <Row id="win-storage" label={$t("s.wa.filesLabel")} description={filesLine(bottle)}>
           {#snippet control()}
             <span class="file-btns">
               <Button variant="outline" size="sm" onclick={() => bottle && browseFiles(bottle.id)}>
@@ -393,7 +452,7 @@
 <ConfirmDialog
   open={confirmDelete}
   title={$t("s.wa.confirmTitle")}
-  message={$t("s.wa.confirmMsg", { name: bottle?.appName ?? "" })}
+  message={$t("s.wa.confirmMsg", { name: bottle?.appName ?? bottle?.id ?? "" })}
   confirmLabel={$t("s.wa.confirmLabel")}
   variant="destructive"
   onConfirm={onDeleteConfirmed}
@@ -407,17 +466,25 @@
     margin-inline-start: -0.65rem;
   }
 
-  .note {
-    margin: 0;
-    padding: 0 0.25rem 0.5rem;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
-  .empty {
+  /* A sentence inside a Section card, on the row inset: the register for an
+     empty list, a gate that says what it is, a note under a list. */
+  .quiet {
     margin: 0;
     padding: var(--space-row, 0.75rem) 1rem;
     font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  }
+  /* The sentence with its one action beside it, as a Row lays a control. */
+  .lead {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding-inline-end: 0.75rem;
+  }
+  .lead .quiet {
+    flex: 1;
+    min-width: 0;
   }
 
   /* Identity head: the app's mark and name anchor the page; the launch sits
@@ -447,24 +514,6 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-  }
-
-  /* The deviating bottle qualifies everything below it, so it sits above
-     everything and keeps the warning register (never red alarm). */
-  .banner {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.625rem 1rem;
-    border: 1px solid color-mix(in srgb, var(--color-warning, #ca8a04) 35%, transparent);
-    border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--color-warning, #ca8a04) 8%, transparent);
-    font-size: var(--text-sm);
-    color: var(--foreground);
-  }
-  .banner :global(svg) {
-    flex-shrink: 0;
-    color: var(--color-warning, #ca8a04);
   }
 
   /* A drive letter the way the Windows app sees it: a fixed-width mark, so
