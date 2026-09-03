@@ -1,0 +1,8 @@
+# Starting permission profile for a documents/notes app. Works with Documents; no
+# network and no Knowledge Graph by default (cloud sync is refined later).
+[info]
+app_id = "wordgrinder-x11"
+tier = "third-party"
+
+[filesystem]
+documents = true
