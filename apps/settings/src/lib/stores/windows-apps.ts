@@ -544,6 +544,129 @@ export async function bottleHealth(id: string): Promise<BottleHealth | null> {
   }
 }
 
+/// What the last reach change actually did.
+///
+/// `changed: false` is an ANSWER, not a failure: revoking a folder a bottle no
+/// longer had is a thing somebody asked for and nothing happened, and saying so
+/// beats a silent success that reads as "it was taken away" when there was
+/// nothing to take. Cleared on the next reach action.
+export type ReachChange =
+  | { kind: "network"; changed: boolean }
+  | { kind: "drive"; changed: boolean; host: string }
+  | { kind: "sever"; cut: number; stillEscaping: number };
+export const reachChanged = writable<ReachChange | null>(null);
+
+/// Why a reach change did not happen, and to which bottle.
+///
+/// Its own store rather than `winActionFailed`, which says a CONFIG change did not
+/// stick. This is not that: the reach a Windows app has is the sovereign question
+/// the panel exists to answer, and "the folder is still granted" is what somebody
+/// who pressed Take away needs told, not "your setting did not save".
+export const reachFailed = writable<{ name: string; action: "network" | "drive" | "sever" } | null>(
+  null,
+);
+
+/// Cut a bottle off the network. Live: `revoke_bottle_network`.
+///
+/// One direction only - there is no ask that gives it back, by design - so the
+/// caller confirms first. The local row follows the daemon's answer rather than
+/// being set optimistically: an app the panel shows as cut off while it still
+/// reaches the network is the one mistake this section must not make.
+export async function revokeNetwork(id: string): Promise<void> {
+  reachFailed.set(null);
+  reachChanged.set(null);
+  try {
+    const changed = await invoke<boolean>("revoke_bottle_network", { id });
+    if (changed) {
+      winApps.update((s) => ({
+        ...s,
+        bottles: s.bottles.map((b) =>
+          b.id === id ? { ...b, access: { ...b.access, network: false } } : b,
+        ),
+      }));
+    }
+    reachChanged.set({ kind: "network", changed });
+  } catch {
+    if (!tauriAvailable) {
+      winApps.update((s) => ({
+        ...s,
+        bottles: s.bottles.map((b) =>
+          b.id === id ? { ...b, access: { ...b.access, network: false } } : b,
+        ),
+      }));
+      reachChanged.set({ kind: "network", changed: true });
+      return;
+    }
+    reachFailed.set({ name: nameOf(id), action: "network" });
+  }
+}
+
+/// Take one granted folder away from a bottle. Live: `revoke_bottle_drive`.
+///
+/// Keyed by the HOST path, never the drive letter: letters are handed out by
+/// sorting the grants, so they shift the moment one goes and revoking `D:` twice
+/// would take two different folders away.
+export async function revokeDrive(id: string, host: string): Promise<void> {
+  reachFailed.set(null);
+  reachChanged.set(null);
+  try {
+    const changed = await invoke<boolean>("revoke_bottle_drive", { id, host });
+    if (changed) dropDrive(id, host);
+    reachChanged.set({ kind: "drive", changed, host });
+  } catch {
+    if (!tauriAvailable) {
+      dropDrive(id, host);
+      reachChanged.set({ kind: "drive", changed: true, host });
+      return;
+    }
+    reachFailed.set({ name: nameOf(id), action: "drive" });
+  }
+}
+
+function dropDrive(id: string, host: string): void {
+  winApps.update((s) => ({
+    ...s,
+    bottles: s.bottles.map((b) =>
+      b.id === id ? { ...b, drives: b.drives.filter((d) => d.path !== host) } : b,
+    ),
+  }));
+}
+
+/// Cut the links that lead out of a bottle's prefix. Live: `sever_bottle`.
+///
+/// The remedy for the health warning, and the reason `stillEscaping` comes back
+/// rather than being assumed zero: Wine writes those links on every boot, so a
+/// pass that could not finish must not read as one that did.
+export async function severBottle(id: string): Promise<void> {
+  reachFailed.set(null);
+  reachChanged.set(null);
+  try {
+    const r = await invoke<{ cut: number; stillEscaping: number }>("sever_bottle", { id });
+    reachChanged.set({ kind: "sever", cut: r.cut, stillEscaping: r.stillEscaping });
+  } catch {
+    if (!tauriAvailable) {
+      reachChanged.set({ kind: "sever", cut: 3, stillEscaping: 0 });
+      return;
+    }
+    reachFailed.set({ name: nameOf(id), action: "sever" });
+  }
+}
+
+/// How much disk one bottle holds, in bytes. Live: `bottle_disk_usage`.
+///
+/// `null` means nothing measured it - a bottle made and never booted, or a read
+/// that failed - and the caller renders that as an absent line, never as zero.
+/// Its own ask rather than a field on the listing, because measuring walks a
+/// whole Wine prefix and the list shows every bottle at once.
+export async function bottleDisk(id: string): Promise<number | null> {
+  try {
+    return await invoke<number | null>("bottle_disk_usage", { id });
+  } catch {
+    if (!tauriAvailable) return 1_200_000_000;
+    return null;
+  }
+}
+
 /// Read what this machine can actually run Windows programs with.
 ///
 /// Replaces the opening list of runtimes that said "installed" about a disk nobody
