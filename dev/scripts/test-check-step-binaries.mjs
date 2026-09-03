@@ -17,6 +17,26 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CHECK = join(HERE, "check-step-binaries.py");
 const REPO = join(HERE, "..", "..");
 
+// A phase that enters the shared build cache, with or without creating it. The
+// third rule's fixture: `05b-pi` did exactly this and killed a whole build.
+function cacheTree({ makes }) {
+  const root = mint("step-cache-");
+  // The gate refuses a tree it could read nothing from, so the fixture carries a
+  // crate even though this rule does not look at one.
+  const c = join(root, "apps/demo/src-tauri/Cargo.toml");
+  mkdirSync(dirname(c), { recursive: true });
+  writeFileSync(c, `[package]\nname = "arlen-demo-app"\nversion = "0.1.0"\n`);
+  const p = join(root, "dev/mkosi/mkosi.build.d/05z-cache.sh.chroot");
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(
+    p,
+    `#!/bin/sh\nset -eu\ncache="\${BUILDDIR:-/var/tmp/arlen-build}"\n` +
+      (makes ? `mkdir -p "$cache"\n` : "") +
+      `cd "$cache"\ncurl -fsSLO https://example.invalid/x.tar.xz\n`,
+  );
+  return root;
+}
+
 function tree({ crate, search, install }) {
   const root = mint("step-binaries-");
   const write = (rel, body) => {
@@ -48,6 +68,18 @@ const cases = [
   [
     "a phase looking for the name its crate writes passes",
     () => tree({ crate: "arlen-demo-app", search: "arlen-demo-app" }),
+    (code) => code === 0,
+    true,
+  ],
+  [
+    "a phase entering the build cache without creating it is caught",
+    () => cacheTree({ makes: false }),
+    (code, out) => code === 1 && out.includes("build cache"),
+    true,
+  ],
+  [
+    "the same phase creating it first passes",
+    () => cacheTree({ makes: true }),
     (code) => code === 0,
     true,
   ],

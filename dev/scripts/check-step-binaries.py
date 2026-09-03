@@ -33,6 +33,19 @@ by literal path under `$SRCDIR/arlen/`. A path that does not exist fails the pha
 exactly as expensively, and moving or renaming one of those files is a far more
 ordinary thing to do than renaming a crate. All 58 were present when this rule was
 added, which is the good time to add it.
+
+THE THIRD RULE COST ANOTHER FORTY MINUTES, later the same day. A phase that
+`cd`s into the shared build cache must create it first. Every phase spells the
+cache the same way - `cache="${BUILDDIR:-/var/tmp/arlen-build}"` - and every one
+of them reaches it through a `mkdir -p "$cache/<something>"`, which makes the
+parent on the way past. `05b-pi` was the only phase that entered the cache
+directly, so it was the only one that needed the directory to already be there,
+and on its first real run it was not. The build had cross-compiled every daemon
+and built four frontends before finding out.
+
+`$SRCDIR` paths are deliberately NOT covered by this rule: those are mounted
+build sources that exist by construction, and the second rule already asks
+whether what a phase installs from them is there.
 """
 
 from __future__ import annotations
@@ -53,6 +66,16 @@ SEARCH = re.compile(r"-path\s+'\*/(?:release|debug)/([A-Za-z0-9_-]+)'")
 #: form: a path built from a shell variable is not something a checker can resolve,
 #: and guessing at one would be worse than leaving it alone.
 SOURCE = re.compile(r'"\$SRCDIR/arlen/([^"$]+)"')
+
+#: `cd "$cache"` / `cd "$BUILDDIR"` - entering the shared build cache rather than
+#: a mounted source. The name is whatever the phase called it; every phase so far
+#: calls it `cache`.
+ENTER_CACHE = re.compile(r'cd\s+"\$(cache|BUILDDIR)"')
+
+#: Any `mkdir -p` that would create that directory, directly or as the parent of
+#: something under it.
+def makes_cache(text: str, name: str) -> bool:
+    return re.search(r'mkdir -p [^\n]*"\$' + re.escape(name) + r'(/[^"]*)?"', text) is not None
 #: A crate's own name, and any explicit `[[bin]] name`.
 PACKAGE = re.compile(r'^\s*name\s*=\s*"([A-Za-z0-9_-]+)"', re.M)
 
@@ -80,6 +103,7 @@ def main() -> int:
 
     problems: list[str] = []
     checked = 0
+    entered = 0
     sources = 0
     for step in sorted(STEPS.glob("*")):
         if not step.is_file():
@@ -93,6 +117,19 @@ def main() -> int:
                 f"{step.name} installs `{rel}` from the checkout and that path is not "
                 f"there. The phase would fail during an image build, which is the "
                 f"expensive place to learn that a file moved."
+            )
+        for m in ENTER_CACHE.finditer(text):
+            name = m.group(1)
+            before = text[: m.start()]
+            entered += 1
+            if makes_cache(before, name):
+                continue
+            problems.append(
+                f"{step.name} does `cd \"${name}\"` into the shared build cache and "
+                f"nothing above it creates that directory. Every other phase gets it "
+                f"for free from a `mkdir -p \"${name}/<sub>\"`; a phase that enters it "
+                f"directly has to make it, or the build dies here - and it dies after "
+                f"everything before it has already been built."
             )
         for name in SEARCH.findall(text):
             checked += 1
@@ -112,8 +149,9 @@ def main() -> int:
         return 1
 
     print(
-        f"{checked} artefact search(es) and {sources} installed source path(s) across "
-        f"the build steps, each naming something that exists"
+        f"{checked} artefact search(es), {sources} installed source path(s) and "
+        f"{entered} entry(s) into the build cache across the build steps, each naming "
+        f"something that exists"
     )
     return 0
 
