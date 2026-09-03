@@ -55,6 +55,12 @@ GENERIC = {
     # elementary's. Same for the other five: two desktops each ship a calendar,
     # a code editor, a music player, a notes app and a metronome.
     "calculator", "calendar", "code", "music", "notes", "metronome",
+    # Two more of the same, latent rather than firing: these agree today, so the
+    # gate says nothing - but `io.elementary.photos` (a Shotwell descendant) and
+    # `org.gnome.Photos` are different programs, as are elementary's Tasks and
+    # COSMIC's, and the first edit to either would report a disagreement between
+    # apps that share nothing but a noun.
+    "photos", "tasks",
 }
 
 #: Packaging suffixes that decorate a name without changing the program.
