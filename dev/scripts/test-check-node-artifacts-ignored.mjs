@@ -51,6 +51,12 @@ check(
 );
 
 check(
+  "a rule written `node_modules/` - directories only - still passes",
+  (dir) => pkg(dir, "ai/demo", "node_modules/\n"),
+  (code) => code === 0,
+);
+
+check(
   "a package covered by an ignore higher up passes",
   (dir) => {
     writeFileSync(join(dir, ".gitignore"), "**/node_modules\n");

@@ -37,10 +37,19 @@ from pathlib import Path
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
 
-def ignored(path: Path) -> bool:
-    """Whether git would ignore this path, asked of git rather than guessed."""
+def ignored(path: Path, directory: bool = False) -> bool:
+    """Whether git would ignore this path, asked of git rather than guessed.
+
+    `directory=True` appends the trailing slash, and it is not cosmetic: a rule
+    written `node_modules/` matches DIRECTORIES ONLY, and `check-ignore` on a
+    bare name it cannot see on disk does not know it would be one - so it answers
+    "not ignored" about a package that is perfectly well covered. The first cut of
+    this check asked without the slash and would have failed every package that
+    spells its rule with one. Found by the same mechanism a few hours later, on
+    the root `target/` rule, which reads as unignored for exactly this reason.
+    """
     r = subprocess.run(
-        ["git", "-C", str(ROOT), "check-ignore", "-q", str(path)],
+        ["git", "-C", str(ROOT), "check-ignore", "-q", str(path) + ("/" if directory else "")],
         capture_output=True,
     )
     return r.returncode == 0
@@ -54,7 +63,7 @@ def main() -> int:
     packages = [
         p
         for p in ROOT.rglob("package.json")
-        if "node_modules" not in p.parts and not ignored(p.parent)
+        if "node_modules" not in p.parts and not ignored(p.parent, directory=True)
     ]
     if not packages:
         print(f"no Node packages under {ROOT}; the layout moved and this check did not")
@@ -63,7 +72,7 @@ def main() -> int:
     problems = []
     for pkg in sorted(packages):
         mods = pkg.parent / "node_modules"
-        if ignored(mods):
+        if ignored(mods, directory=True):
             continue
         problems.append(
             f"{pkg.parent.relative_to(ROOT)} is a Node package and nothing ignores its "
