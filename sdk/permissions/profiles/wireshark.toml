@@ -1,7 +1,24 @@
-# Starting permission profile for a self-contained app (education, network config,
-# capture, fonts, ambient or a simple game). No file access, no network and no
-# Knowledge Graph by default; data lives in its own dir and any privileged
-# capture/config elevates via polkit.
+# Starting permission profile for Wireshark (a network protocol analyzer).
+# Network is its function (live capture); capture files (.pcap/.pcapng) are
+# opened and saved from Documents. No graph, no other user dirs. NB live capture
+# also needs a raw-socket/dumpcap privilege the install grants out of band; this
+# profile covers only the app-data surface.
+#
+# The same program packaged under another name, and it gets the answer that was
+# already worked out for `org.wireshark.Wireshark` rather than the generic template it
+# had. Where an app came from is not a reason to confine it differently.
 [info]
 app_id = "wireshark"
 tier = "third-party"
+
+[filesystem]
+documents = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true

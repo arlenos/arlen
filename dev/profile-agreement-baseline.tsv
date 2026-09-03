@@ -15,12 +15,10 @@ collision	collision dev.geopjr.Collision
 czkawka	com.github.qarmin.czkawka czkawka
 datagrip	com.jetbrains.DataGrip datagrip
 decoder	com.belmoussaoui.Decoder com.vixalien.decoder gnome-decoder
-dolphin-emu	dolphin-emu org.DolphinEmu.dolphin-emu
 duckstation	duckstation org.duckstation.DuckStation
 eyedropper	com.github.finefindus.eyedropper eyedropper io.github.finefindus.eyedropper
 filezilla	filezilla org.filezillaproject.Filezilla
 firmware	gnome-firmware org.gnome.Firmware
-flare	de.schmidhuberj.Flare flare
 fluffychat	fluffychat im.fluffychat.Fluffychat
 flycast	flycast org.flycast.Flycast
 freetube	FreeTube io.freetubeapp.FreeTube
@@ -34,7 +32,6 @@ iotas	iotas org.gnome.World.Iotas org.gnome.gitlab.cheywood.Iotas
 itch	io.itch.itch itch
 jami	jami org.jami.Jami
 jellyfin-media-player	com.github.iwalton3.jellyfin-media-player io.github.iwalton3.jellyfin-media-player jellyfin-media-player
-joplin	joplin joplin-desktop
 kaddressbook	kaddressbook org.kde.kaddressbook
 kcolorchooser	kcolorchooser org.kde.kcolorchooser
 kdeconnect	kdeconnect org.kde.kdeconnect
@@ -56,7 +53,6 @@ neochat	neochat org.kde.neochat
 nextcloud	com.nextcloud.desktopclient.nextcloud nextcloud
 notes	io.github.nuttyartist.notes org.gnome.Notes
 openshot	openshot openshot-qt org.openshot.OpenShot
-pcsx2	net.pcsx2.PCSX2 pcsx2
 peek	com.uploadedlobster.peek peek
 pencil2d	org.pencil2d.Pencil2D pencil2d
 pidgin	im.pidgin.Pidgin pidgin
@@ -64,24 +60,19 @@ podcasts	gnome-podcasts org.gnome.Podcasts
 postman	com.getpostman.Postman postman
 prusaslicer	com.prusa3d.PrusaSlicer org.prusa3d.PrusaSlicer
 pycharm-community	com.jetbrains.PyCharm-Community pycharm-community
-retroarch	org.libretro.RetroArch retroarch
 rider	com.jetbrains.Rider rider
 rpcs3	net.rpcs3.RPCS3 rpcs3
 ryujinx	org.ryujinx.Ryujinx ryujinx
-scribus	net.scribus.Scribus org.scribus.Scribus scribus
 shotcut	org.shotcut.Shotcut shotcut
 showtime	org.gnome.Showtime showtime
 snes9x	com.snes9x.Snes9x snes9x
 solfege	org.gnome.Solfege solfege
-standardnotes	org.standardnotes.standardnotes standardnotes
 stellarium	org.stellarium.Stellarium stellarium
-supertuxkart	org.supertuxkart.SuperTuxKart supertuxkart
 synfigstudio	org.synfig.SynfigStudio synfigstudio
 torbrowser-launcher	com.github.micahflee.torbrowser-launcher org.torproject.torbrowser-launcher
 vorta	com.borgbase.Vorta vorta
 wardrobe	com.github.swordpuffin.wardrobe io.github.swordpuffin.wardrobe
 wesnoth	org.wesnoth.Wesnoth wesnoth
-wireshark	org.wireshark.Wireshark wireshark
 xemu	app.xemu.xemu xemu
 zathura	org.pwmt.zathura zathura
 zeal	org.zealdocs.Zeal zeal

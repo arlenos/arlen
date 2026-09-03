@@ -1,8 +1,21 @@
-# Starting permission profile for a documents/notes app. Works with Documents; no
-# network and no Knowledge Graph by default (cloud sync is refined later).
+# Starting permission profile for Joplin (note-taking with sync). Works with
+# Documents and needs network to sync notes; no Knowledge Graph access.
+#
+# The same program packaged under another name, and it gets the answer that was
+# already worked out for `joplin-desktop` rather than the generic template it
+# had. Where an app came from is not a reason to confine it differently.
 [info]
 app_id = "joplin"
 tier = "third-party"
 
 [filesystem]
 documents = true
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true
