@@ -1,0 +1,13 @@
+# Starting permission profile for DOSBox-X (a console/computer
+# emulator). It runs local game images; no network or Knowledge Graph access by
+# default. Game files live under Documents.
+#
+# The Debian package of the same app as `com.dosbox_x.DOSBox-X`, and it gets the
+# same grants: where an app came from is not a reason to confine it differently,
+# which is what `check-profile-agreement.py` exists to hold.
+[info]
+app_id = "dosbox-x"
+tier = "third-party"
+
+[filesystem]
+documents = true
