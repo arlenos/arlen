@@ -82,11 +82,13 @@ if [ -e "$SHOOT_APP" ]; then
   _bin="$(basename "$SHOOT_APP")"
   _crate="$(grep -rl "^name = \"$_bin\"" "$_repo"/apps/*/src-tauri/Cargo.toml 2>/dev/null | head -1)"
   if [ -n "$_crate" ]; then
-    # `|| true` because this runs under `set -e` and a find that matches nothing
-    # exits non-zero - which killed the whole script silently the first time this
-    # was written, so every drive ran, printed one line and reported a failure
-    # about a page it never loaded. The parentheses matter too: without them the
-    # `-o` binds so that `-newer` applies to the first name only.
+    # The first version of this was a `find | while read` pipeline, and a pipeline
+    # whose loop ends without matching returns non-zero: under `set -e` the
+    # assignment carrying it killed the script, so every drive printed one line and
+    # then reported assertions about a page it never loaded. `find -print -quit`
+    # cannot fail that way - matching nothing is a 0 exit - and `|| true` covers
+    # what is left, an unreadable directory. The parentheses matter too: without
+    # them the `-o` binds so that `-newer` applies to the first name only.
     _newer="$(find "$(dirname "$_crate")/src" "$(dirname "$(dirname "$_crate")")/src" \
                 \( -name '*.rs' -o -name '*.svelte' -o -name '*.ts' \) \
                 -newer "$SHOOT_APP" -print -quit 2>/dev/null || true)"
@@ -217,3 +219,13 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   [ -n "${SHOOT_INJECT_SETTLE:-}" ] && args+=(--inject-settle "$SHOOT_INJECT_SETTLE")
   python3 "$SHOOT_HERE/shoot_app.py" "${args[@]}"
 '
+
+# THE SHOT HAS TO EXIST. This script spent an hour on 28 August exiting 0 having
+# done nothing at all - a `find | while read` pipeline above returned non-zero, the
+# assignment carrying it failed under `set -e`, and everything below never ran. The drives then reported
+# assertions about a page that was never loaded, which reads exactly like a broken
+# app. Whatever goes wrong above, "no file was written" is not a success.
+if [ ! -s "$SHOOT_OUT" ]; then
+  echo "!! no shot was written to $SHOOT_OUT - this run proved nothing about the app" >&2
+  exit 1
+fi
