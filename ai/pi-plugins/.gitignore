@@ -1,2 +1,7 @@
-node_modules/
-dist/
+# The image build's pi phase runs `npm ci` and `tsc` in this directory, inside
+# the checkout, because it is a mounted build source. Neither output belongs in
+# git, and `ai/.gitignore` is a Rust one - this is the only Node package under
+# it, so nothing here was covered and a build left thousands of untracked files
+# for the next `git add` to sweep in.
+node_modules
+dist
