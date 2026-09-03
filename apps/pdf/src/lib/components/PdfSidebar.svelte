@@ -16,6 +16,7 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import { pdfMocked, type DocumentInfo, type SearchOutcome } from "$lib/stores/pdf";
 
@@ -78,15 +79,13 @@
   <SidebarContent>
     {#if $pdfMocked}
       <SidebarGroup>
-        <p class="side-note">{$t("pdf.sample")}</p>
+        <Notice tone="neutral" text={$t("pdf.sample")} />
       </SidebarGroup>
     {/if}
 
     {#if failed}
       <SidebarGroup class="pt-0">
-        <p class="side-note" role="alert">
-          {$t(SEARCH_FAILURE[failed] ?? "pdf.search.failed")}
-        </p>
+        <Notice tone="error" text={$t(SEARCH_FAILURE[failed] ?? "pdf.search.failed")} />
       </SidebarGroup>
     {:else if results}
       <SidebarGroup class="pt-0">
@@ -109,7 +108,9 @@
              missing from BOTH answers, and the empty one is where a reader is
              most likely to conclude the word is not in the document. -->
         {#if results.unsearchable.length > 0}
-          <p class="side-note">{$t("pdf.search.unsearchable", { count: results.unsearchable.length })}</p>
+          <div class="side-notice">
+            <Notice tone="caution" text={$t("pdf.search.unsearchable", { count: results.unsearchable.length })} />
+          </div>
         {/if}
       </SidebarGroup>
     {:else}
@@ -150,6 +151,9 @@
   .head-search {
     width: 100%;
     --search-radius: max(0px, calc(var(--radius-window, var(--radius-card)) - 0.375rem));
+  }
+  .side-notice {
+    padding: 6px 4px 2px;
   }
   .side-note {
     margin: 6px 8px 2px;
