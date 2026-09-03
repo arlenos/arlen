@@ -45,9 +45,15 @@ fi
 echo ">> tauri build --no-bundle (production) arlen-pdf"
 ./node_modules/.bin/tauri build --no-bundle
 
-out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-pdf' 2>/dev/null \
+# THE CRATE IS `arlen-pdf-app` AND THE INSTALLED BINARY IS `arlen-pdf`, which is
+# the whole trap this line fell into. `tauri build --no-bundle` produces the cargo
+# artefact and nothing renames it: `productName` in tauri.conf.json only names a
+# BUNDLE, which this build does not make. Searching for the installed name found
+# nothing and failed the phase, and with it the whole image. The sibling calendar
+# step has the same crate-vs-installed split and gets it right.
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-pdf-app' 2>/dev/null \
         | head -1)
-[ -n "$out" ] || { echo "!! arlen-pdf not found after build" >&2; exit 1; }
+[ -n "$out" ] || { echo "!! arlen-pdf-app not found after build" >&2; exit 1; }
 
 install -Dm755 "$out" \
         "$DESTDIR/usr/lib/arlen/apps/dev.arlen.pdf/bin/arlen-pdf"
