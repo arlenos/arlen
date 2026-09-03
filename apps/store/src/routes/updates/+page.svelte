@@ -2,26 +2,31 @@
   /// Pending updates (update-flow-plan.md U-5): grouped by consequence, never
   /// alphabet. A capability widening needs your decision and sits on top with
   /// the delta as a first-class line - and an UNKNOWN delta sits there too,
-  /// because "couldn't compare" is not routine. Rows render straight off the
-  /// backend wire shape; name and icon resolve from the catalog. Quiet by
-  /// default so the loud case is believed.
+  /// because "couldn't compare" is not routine. A widened row offers no Update
+  /// button: installd's gate would refuse it, and nothing in this window can
+  /// answer the consent it asks for yet, so the honest choices are Skip and
+  /// Uninstall - said in the row, not implied by a button that silently fails.
+  /// Every row carries its own state (updating, refused with the daemon's
+  /// sentence, not started, unconfirmed); a skipped row moves down, never away.
   import { onMount } from "svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t } from "$lib/i18n/messages";
   import { capText } from "$lib/caps";
   import IconTile from "$lib/components/IconTile.svelte";
-  import { loadCatalog } from "$lib/stores/catalog";
+  import { loadCatalog, uninstallApp, uninstallStatus } from "$lib/stores/catalog";
   import {
     pendingUpdates,
+    skippedUpdates,
     updatesMocked,
-    updateFailure,
+    rowStatus,
     loadUpdates,
     applyUpdate,
     applyAllRoutine,
     skipUpdate,
-    uninstallApp,
+    forgetUpdate,
     deltaOf,
     updateApp,
+    type PendingUpdate,
     type SourceLayer,
   } from "$lib/stores/updates";
 
@@ -42,75 +47,139 @@
     Apt: "st.src.debian",
     Native: "st.src.native",
   };
+
+  /// A row is busy while its update or its removal is in flight.
+  function busy(id: string): boolean {
+    const s = $rowStatus[id];
+    return s?.kind === "applying" || $uninstallStatus[id]?.kind === "removing";
+  }
+
+  async function remove(u: PendingUpdate) {
+    if (await uninstallApp(u.id)) forgetUpdate(u.id);
+  }
 </script>
 
 <main class="st-main">
-      <div class="st-content">
-        {#if $updatesMocked}
-          <p class="sample">{$t("st.sample")}</p>
-        {/if}
+  <div class="st-content">
+    {#if $updatesMocked}
+      <p class="sample">{$t("st.sample")}</p>
+    {/if}
 
-        {#if $updateFailure}
-          <p class="failure" role="alert">{$t("st.upd.failed", { reason: $updateFailure })}</p>
-        {/if}
-
-        {#if $pendingUpdates.length === 0}
-          <p class="quiet">{$t("st.upd.empty")}</p>
-        {:else}
-          {#if decision.length > 0}
-            <div class="group-label">{$t("st.upd.decision")}</div>
-            {#each decision as u (u.id)}
-              {@const app = updateApp(u.id)}
-              <div class="upd" id={`upd-${u.id}`}>
-                <IconTile icon={app.icon} name={app.name} size="2.5rem" />
-                <div class="upd-body">
-                  <div class="upd-head">
-                    <span class="upd-name">{app.name}</span>
-                    <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
-                  </div>
-                  {#if u.new_capabilities === null}
-                    <p class="delta">{$t("st.upd.unknownDelta")}</p>
-                  {:else}
-                    {#each u.new_capabilities as cap (cap)}
-                      <p class="delta">{$t("st.upd.wants", { what: capText($t, cap) })}</p>
-                    {/each}
-                  {/if}
-                  <div class="actions">
-                    <Button size="sm" onclick={() => applyUpdate(u.id)}>{$t("st.upd.update")}</Button>
-                    <Button variant="ghost" size="sm" onclick={() => skipUpdate(u.id)}>{$t("st.upd.skip")}</Button>
-                    <Button variant="ghost" size="sm" class="text-muted-foreground" onclick={() => uninstallApp(u.id)}>{$t("st.upd.uninstall")}</Button>
-                  </div>
-                </div>
+    {#if $pendingUpdates.length === 0 && $skippedUpdates.length === 0}
+      <p class="quiet">{$t("st.upd.empty")}</p>
+    {:else}
+      {#if decision.length > 0}
+        <div class="group-label">{$t("st.upd.decision")}</div>
+        {#each decision as u (u.id)}
+          {@const app = updateApp(u.id)}
+          {@const status = $rowStatus[u.id]}
+          {@const removal = $uninstallStatus[u.id]}
+          <div class="upd" id={`upd-${u.id}`}>
+            <IconTile icon={app.icon} name={app.name} size="2.5rem" />
+            <div class="upd-body">
+              <div class="upd-head">
+                <span class="upd-name">{app.name}</span>
+                <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
               </div>
-            {/each}
-          {/if}
-
-          {#if routine.length > 0}
-            <div class="group-row">
-              <div class="group-label routine-label">{$t("st.upd.routine")}</div>
-              <Button variant="outline" size="sm" id="update-all-routine" onclick={() => applyAllRoutine()}>
-                {$t("st.upd.updateAll")}
-              </Button>
+              {#if u.new_capabilities === null}
+                <p class="delta">{$t("st.upd.unknownDelta")}</p>
+              {:else}
+                {#each u.new_capabilities as cap (cap)}
+                  <p class="delta">{$t("st.upd.wants", { what: capText($t, cap) })}</p>
+                {/each}
+                <!-- The system's own sentence about the one answer it cannot give
+                     yet. A widened update has no Update button: the gate would
+                     refuse it, and a button that fails in silence is worse than a
+                     line that says so. -->
+                <p class="cannot">{$t("st.upd.cannotAllow")}</p>
+              {/if}
+              {@render state(u.id, status, removal)}
+              <div class="actions">
+                {#if u.new_capabilities === null}
+                  <Button size="sm" disabled={busy(u.id)} onclick={() => applyUpdate(u.id)}>{$t("st.upd.update")}</Button>
+                {/if}
+                <Button variant="ghost" size="sm" disabled={busy(u.id)} onclick={() => skipUpdate(u.id)}>{$t("st.upd.skip")}</Button>
+                <Button variant="ghost" size="sm" class="text-muted-foreground" disabled={busy(u.id)} onclick={() => remove(u)}>
+                  {$t("st.upd.uninstall")}
+                </Button>
+              </div>
             </div>
-            {#each routine as u (u.id)}
-              {@const app = updateApp(u.id)}
-              <div class="upd" id={`upd-${u.id}`}>
-                <IconTile icon={app.icon} name={app.name} size="2.5rem" />
-                <div class="upd-body">
-                  <div class="upd-head">
-                    <span class="upd-name">{app.name}</span>
-                    <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
-                  </div>
-                  <div class="actions">
-                    <Button variant="outline" size="sm" onclick={() => applyUpdate(u.id)}>{$t("st.upd.update")}</Button>
-                  </div>
-                </div>
+          </div>
+        {/each}
+      {/if}
+
+      {#if routine.length > 0}
+        <div class="group-row">
+          <div class="group-label routine-label">{$t("st.upd.routine")}</div>
+          <Button variant="outline" size="sm" id="update-all-routine" onclick={() => applyAllRoutine()}>
+            {$t("st.upd.updateAll")}
+          </Button>
+        </div>
+        {#each routine as u (u.id)}
+          {@const app = updateApp(u.id)}
+          {@const status = $rowStatus[u.id]}
+          <div class="upd" id={`upd-${u.id}`}>
+            <IconTile icon={app.icon} name={app.name} size="2.5rem" />
+            <div class="upd-body">
+              <div class="upd-head">
+                <span class="upd-name">{app.name}</span>
+                <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
               </div>
-            {/each}
-          {/if}
-        {/if}
-      </div>
+              {@render state(u.id, status, undefined)}
+              <div class="actions">
+                <Button variant="outline" size="sm" disabled={busy(u.id)} onclick={() => applyUpdate(u.id)}>
+                  {status?.kind === "refused" ? $t("st.upd.retry") : $t("st.upd.update")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        {/each}
+      {/if}
+
+      {#if $skippedUpdates.length > 0}
+        <!-- Skipped stays on the page, quiet: the user decided, and a capability
+             widening that vanished is the one thing they must be able to
+             revisit (U-4). -->
+        <div class="group-label">{$t("st.upd.skipped")}</div>
+        {#each $skippedUpdates as u (u.id)}
+          {@const app = updateApp(u.id)}
+          <div class="upd skipped" id={`upd-${u.id}`}>
+            <IconTile icon={app.icon} name={app.name} size="2.5rem" />
+            <div class="upd-body">
+              <div class="upd-head">
+                <span class="upd-name">{app.name}</span>
+                <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
+              </div>
+              <p class="quiet-line">{$t("st.upd.skippedHint")}</p>
+            </div>
+          </div>
+        {/each}
+      {/if}
+    {/if}
+  </div>
 </main>
+
+<!-- One row's state line: what its update or removal is doing right now, in
+     the row it is about. -->
+{#snippet state(
+  id: string,
+  status: { kind: string; reason?: string } | undefined,
+  removal: { kind: string; reason?: string } | undefined,
+)}
+  {#if removal?.kind === "removing"}
+    <p class="quiet-line">{$t("st.app.removing")}</p>
+  {:else if removal?.kind === "refused"}
+    <p class="refused" role="alert">{$t("st.app.uninstallRefused", { reason: removal.reason ?? "" })}</p>
+  {:else if status?.kind === "applying"}
+    <p class="quiet-line">{$t("st.upd.applying")}</p>
+  {:else if status?.kind === "unconfirmed"}
+    <p class="quiet-line">{$t("st.upd.unconfirmed")}</p>
+  {:else if status?.kind === "notStarted"}
+    <p class="quiet-line">{$t("st.upd.notStarted")}</p>
+  {:else if status?.kind === "refused"}
+    <p class="refused" role="alert">{$t("st.upd.refused", { reason: status.reason ?? "" })}</p>
+  {/if}
+{/snippet}
 
 <style>
   .st-main {
@@ -123,11 +192,6 @@
     max-width: 46rem;
     margin: 0 auto;
     padding: 1.25rem 1.5rem 2rem;
-  }
-  .failure {
-    margin: 0 0 0.75rem;
-    font-size: var(--text-sm);
-    color: var(--color-error, #dc2626);
   }
   .sample {
     margin: 0 0 0.75rem;
@@ -152,12 +216,10 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
+    margin: 1.25rem 0 0.6rem;
   }
   .routine-label {
     margin-bottom: 0;
-  }
-  .group-row {
-    margin: 1.25rem 0 0.6rem;
   }
 
   .upd {
@@ -169,6 +231,10 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
+  }
+  /* A skipped row is the same card at rest: read, decided, kept. */
+  .upd.skipped {
+    opacity: 0.6;
   }
   .upd-body {
     flex: 1;
@@ -192,13 +258,28 @@
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     font-variant-numeric: tabular-nums;
   }
-  /* The capability delta is the first-class line: full foreground when it
-     widens (the one loud case), quiet when it narrows. */
+  /* The capability delta is the first-class line: full foreground, the one
+     loud case on the page. */
   .delta {
     margin: 0;
     font-size: var(--text-sm);
     line-height: 1.45;
     color: var(--color-fg-primary);
+  }
+  /* The system's sentence under a widening: quieter than the delta, still a
+     full sentence, never a badge. */
+  .cannot,
+  .quiet-line {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
+  }
+  .refused {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    color: var(--color-error, #dc2626);
   }
   .actions {
     display: flex;

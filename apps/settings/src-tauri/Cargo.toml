@@ -34,6 +34,10 @@ arlen-print = { path = "../../../daemons/print", features = ["cups"] }
 tauri = { version = "2", features = ["protocol-asset"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The file picker answers with a URI, and a path with a space comes back
+# percent-encoded. Decoding it by hand is the kind of small parser that is wrong
+# on the third case, and the crate is already in this tree (apps/files/core).
+percent-encoding = "2"
 toml = "0.8"
 # Format-preserving TOML editor for surgical writes into
 # user-authored config files (compositor.toml, shell.toml). Plain
