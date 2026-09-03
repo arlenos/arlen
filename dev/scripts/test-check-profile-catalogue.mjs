@@ -93,7 +93,24 @@ check(
   {
     "backup.toml": '# A backup tool: it copies the whole home, so anything narrower\n# would silently miss files.\n[info]\napp_id = "backup"\ntier = "third-party"\n\n[filesystem]\nhome = true\n',
   },
-  (code, out) => code === 0 && out.includes("each says why"),
+  (code, out) => code === 0 && out.includes("1 grant the whole home"),
+);
+
+check(
+  "a whole-network grant with no reason is caught",
+  {
+    "goodedit.toml": GOOD,
+    "phoning.toml": '# An editor.\n[info]\napp_id = "phoning"\ntier = "third-party"\n\n[network]\nallow_all = true\n',
+  },
+  (code, out) => code === 1 && out.includes("grants the whole network"),
+);
+
+check(
+  "a whole-network grant that says why passes",
+  {
+    "chat.toml": '# A chat client: it needs the network for the service it talks to,\n# and a narrowed host list has nowhere to send its refusal yet.\n[info]\napp_id = "chat"\ntier = "third-party"\n\n[network]\nallow_all = true\n',
+  },
+  (code, out) => code === 0 && out.includes("says why"),
 );
 
 check(
