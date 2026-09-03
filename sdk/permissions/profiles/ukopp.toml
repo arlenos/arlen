@@ -1,0 +1,9 @@
+# Starting permission profile for a user-file backup tool. It backs up the whole
+# of the user's files, so anything narrower would silently miss some; no network
+# and no Knowledge Graph by default.
+[info]
+app_id = "ukopp"
+tier = "third-party"
+
+[filesystem]
+home = true
