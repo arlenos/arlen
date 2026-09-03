@@ -6,6 +6,7 @@
   import { Check, Plus } from "@lucide/svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { SidebarGroupLabel } from "@arlen/ui-kit/components/ui/sidebar";
   import { t } from "$lib/i18n/messages";
@@ -37,7 +38,7 @@
   <!-- Where the colour was chosen, so the sentence is beside the swatch that
        went back rather than somewhere else on the page. -->
   {#if $colorFailed}
-    <p class="color-failed" role="alert">{$colorFailed}</p>
+    <Notice tone="error" class="mb-1.5" text={$colorFailed} />
   {/if}
   <div class="sets">
     <button type="button" class="set-chip" onclick={() => applySet(null)}>{$t("cal.sets.all")}</button>
@@ -111,14 +112,6 @@
 {/if}
 
 <style>
-  .color-failed {
-    margin: 0 0 6px;
-    padding: 0 4px;
-    font-size: 11px;
-    line-height: 1.35;
-    color: var(--color-fg-secondary);
-  }
-
   .sets {
     display: flex;
     flex-wrap: wrap;

@@ -16,6 +16,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Plus } from "@lucide/svelte";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t, locale } from "$lib/i18n/messages";
   import { dayLabel } from "$lib/wording";
   import { agenda, calendarMocked, calendars, colorOf, type AgendaEvent } from "$lib/stores/calendar";
@@ -103,15 +104,20 @@
     {/if}
 
     <SidebarGroup class="pt-0">
-      {#if $calendarMocked}
-        <p class="side-note">{$t("cal.sample")}</p>
-      {/if}
-      {#if $agenda && !$agenda.service_running && !launched && !$calendarMocked}
-        <p class="side-note bad" role="status">{$t("cal.serviceDown")}</p>
-      {/if}
-      {#if $agenda && $agenda.unreadable > 0}
-        <p class="side-note bad" role="alert">{$t("cal.unreadable", { count: $agenda.unreadable })}</p>
-      {/if}
+      <!-- The house register for a fact beside the content: neutral for the
+           sample, caution for a service that is not arming reminders, error
+           for files that are missing from what is shown. -->
+      <div class="side-notes">
+        {#if $calendarMocked}
+          <Notice tone="neutral" text={$t("cal.sample")} />
+        {/if}
+        {#if $agenda && !$agenda.service_running && !launched && !$calendarMocked}
+          <Notice tone="caution" text={$t("cal.serviceDown")} />
+        {/if}
+        {#if $agenda && $agenda.unreadable > 0}
+          <Notice tone="error" text={$t("cal.unreadable", { count: $agenda.unreadable })} />
+        {/if}
+      </div>
     </SidebarGroup>
   </SidebarContent>
   <SidebarRail />
@@ -177,6 +183,12 @@
     font-size: var(--text-2xs, 11px);
     color: color-mix(in srgb, currentColor 55%, transparent);
     font-variant-numeric: tabular-nums;
+  }
+  .side-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0 4px;
   }
   .side-note {
     margin: 0 8px 4px;
