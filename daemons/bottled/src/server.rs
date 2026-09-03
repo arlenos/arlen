@@ -24,7 +24,7 @@ use tokio::net::{UnixListener, UnixStream};
 use arlen_permissions::peer_pidfd::PeerPidfd;
 
 use crate::protocol::{
-    create, forget, handle_request, install, launch, Problem, Request, Response,
+    create, forget, handle_request, install, launch, narrow, Problem, Request, Response,
 };
 use audit_proto::{AuditKind, AuditSink, IngestRequest, StructuralRecord};
 
@@ -88,7 +88,7 @@ where
     writer.flush().await
 }
 
-/// App ids permitted to FORGET a bottle.
+/// App ids permitted to narrow or forget a bottle.
 ///
 /// The reading vocabulary is open to any same-uid caller - the bottles are the
 /// person's own and a read tells them nothing they could not read off the disk.
@@ -96,11 +96,18 @@ where
 /// something every process that can reach this socket gets to ask for. The Settings
 /// panel is the surface that offers it, and it is the only id here.
 ///
+/// THE NARROWING ASKS ARE HERE FOR A SHARPER REASON. Revoking a bottle's network,
+/// taking a granted folder back and severing its links are all one-way through
+/// this API - nothing here widens, deliberately - so an unadmitted caller could
+/// strip a bottle of everything it was granted and leave no route back except
+/// editing `bottle.toml` by hand. That the person could do the same damage with a
+/// text editor is not the point: this socket should not be the tool for it.
+///
 /// EXACT, never a prefix: a prefix match would admit every locally-built binary to
 /// the one operation this gate exists for. The `dev.arlen-settings` spelling is the
 /// cargo-run id and is admitted in debug only, the convention the capsule daemon
 /// and the audit ingest both follow.
-fn forget_caller_admitted(app_id: &str) -> bool {
+fn settings_only(app_id: &str) -> bool {
     if app_id == "dev.arlen.settings" {
         return true;
     }
@@ -159,6 +166,11 @@ pub async fn serve_connection(
                 Request::Runtimes => runtimes().await,
                 Request::Forget { id } => {
                     forget_for(bottles_dir, id, app_id.as_deref(), &*audit).await
+                }
+                Request::Sever { .. }
+                | Request::RevokeDrive { .. }
+                | Request::RevokeNetwork { .. } => {
+                    narrow_for(bottles_dir, &request, app_id.as_deref(), &*audit).await
                 }
                 Request::Create { id } => create(
                     bottles_dir,
@@ -286,7 +298,7 @@ async fn forget_for(
     app_id: Option<&str>,
     audit: &dyn AuditSink,
 ) -> Response {
-    if !app_id.is_some_and(forget_caller_admitted) {
+    if !app_id.is_some_and(settings_only) {
         tracing::warn!(app_id = app_id.unwrap_or("unresolved"), "refused a forget");
         // Best-effort: a refusal is worth recording, and the answer is the refusal
         // whether or not the ledger took it.
@@ -306,6 +318,70 @@ async fn forget_for(
             .map(|slot| PathBuf::from(slot.trashed().as_str()))
             .map_err(|e| format!("{e:?}"))
     })
+}
+
+/// Narrow a bottle's reach, gated and recorded.
+///
+/// Same shape as [`forget_for`] and for a related reason: this is a permission
+/// change, and a permission change that leaves no record is one nobody can answer
+/// "who cut my app off the network" from. The audit is best effort rather than
+/// fail-closed, which is the difference from forgetting: refusing to narrow
+/// because a ledger is down would leave the wider state standing, and of the two
+/// failures that is the worse one.
+async fn narrow_for(
+    bottles_dir: &Path,
+    request: &Request,
+    app_id: Option<&str>,
+    audit: &dyn AuditSink,
+) -> Response {
+    let what = match request {
+        Request::Sever { id } => ("sever", id.as_str()),
+        Request::RevokeDrive { id, .. } => ("revoke-drive", id.as_str()),
+        Request::RevokeNetwork { id } => ("revoke-network", id.as_str()),
+        _ => ("narrow", ""),
+    };
+    if !app_id.is_some_and(settings_only) {
+        tracing::warn!(
+            app_id = app_id.unwrap_or("unresolved"),
+            ask = what.0,
+            "refused a narrowing"
+        );
+        let _ = audit.submit(narrow_event(what.0, "refused", what.1)).await;
+        return Response::Refused {
+            problem: Problem::NotAllowed,
+        };
+    }
+    let answer = narrow(bottles_dir, request);
+    let outcome = match &answer {
+        Response::Refused { problem } => format!("refused:{problem:?}"),
+        _ => "narrowed".to_string(),
+    };
+    let _ = audit.submit(narrow_event(what.0, &outcome, what.1)).await;
+    answer
+}
+
+/// The ledger entry for a narrowing attempt.
+///
+/// The bottle id and WHICH narrowing travel; the folder taken away does not. A
+/// host path is the person's own directory layout, and the record does not need it
+/// to say what happened.
+fn narrow_event(ask: &str, outcome: &str, id: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject: format!("bottle.{ask}:{id}"),
+            node_types: Vec::new(),
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
 }
 
 /// The ledger entry for a forget attempt.
@@ -385,9 +461,40 @@ fn current_uid() -> u32 {
 mod tests {
     use super::*;
 
+    /// The narrowing asks share the forget gate, so a caller that may not forget a
+    /// bottle may not strip it either - which matters more than it looks, since
+    /// nothing on this socket can give the reach back.
+    #[tokio::test]
+    async fn a_caller_that_may_not_forget_may_not_narrow_either() {
+        use audit_proto::sink::MockAuditSink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let audit = MockAuditSink::accepting();
+        for ask in [
+            Request::RevokeNetwork { id: "game".into() },
+            Request::Sever { id: "game".into() },
+            Request::RevokeDrive {
+                id: "game".into(),
+                host: "/home/mara/Documents".into(),
+            },
+        ] {
+            let answer = narrow_for(dir.path(), &ask, Some("ai-agent"), &audit).await;
+            assert_eq!(
+                answer,
+                Response::Refused {
+                    problem: Problem::NotAllowed
+                },
+                "{ask:?} from an unadmitted caller"
+            );
+        }
+        // The refusal is recorded too: a permission change nobody asked for is
+        // exactly the thing somebody later wants to find in the ledger.
+        assert_eq!(audit.count().await, 3);
+    }
+
     #[test]
     fn only_the_panel_may_forget_a_bottle() {
-        assert!(forget_caller_admitted("dev.arlen.settings"));
+        assert!(settings_only("dev.arlen.settings"));
         // Everything else, including the assistant and this daemon's own siblings.
         for other in [
             "ai-agent",
@@ -399,14 +506,14 @@ mod tests {
             "",
         ] {
             assert!(
-                !forget_caller_admitted(other),
+                !settings_only(other),
                 "{other} must not be able to throw away somebody's installed program"
             );
         }
         // The cargo-run spelling is a debug convenience and must never be a
         // release one.
         assert_eq!(
-            forget_caller_admitted("dev.arlen-settings"),
+            settings_only("dev.arlen-settings"),
             cfg!(debug_assertions)
         );
     }

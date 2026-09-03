@@ -44,5 +44,9 @@ libc = "0.2"
 arlen-confiner = { path = "../../sdk/confiner" }
 # The wire format is pinned by a test that reads the bytes a caller would see.
 tempfile = "3"
+# `MockAuditSink`, for the test that a narrowing an unadmitted caller asked for is
+# refused AND recorded. Gated behind `test-util` in the proto crate on purpose: it
+# is an accepting sink, which is the wrong thing to have in a release build.
+audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
 
 [workspace]
