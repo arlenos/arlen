@@ -611,7 +611,16 @@ export async function revokeDrive(id: string, host: string): Promise<void> {
   reachChanged.set(null);
   try {
     const changed = await invoke<boolean>("revoke_bottle_drive", { id, host });
-    if (changed) dropDrive(id, host);
+    if (changed) {
+      dropDrive(id, host);
+      // AND THEN ASK AGAIN, because removing a grant SHIFTS the letters of the
+      // ones that remain - the daemon assigns them by sorting the grants
+      // (`revoke_grant` in bottled). Dropping the row locally is right about
+      // which folder went and wrong about what the survivors are called, and a
+      // panel showing `E:` for a drive the app now sees as `D:` is the kind of
+      // claim this page exists not to make.
+      await load();
+    }
     reachChanged.set({ kind: "drive", changed, host });
   } catch {
     if (!tauriAvailable) {
