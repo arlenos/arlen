@@ -61,7 +61,16 @@ ROOT = (
 #: this list is a statement that the caller is COMING, not that the entry is
 #: fine: each one is a surface that cannot reach its daemon today.
 NOT_PACKAGED_YET = {
-    "org.arlen.calendar": "shared-entity writer for an app that does not exist yet",
+    "org.arlen.calendar": (
+        "shared-entity writer, and the reason is NOT that the app is missing any "
+        "more - `apps/calendar` ships and `04k-calendar.sh.chroot` stages it. It "
+        "is staged at `/usr/lib/arlen/apps/dev.arlen.calendar/`, so resolver rule "
+        "(3) gives it the id `dev.arlen.calendar`, which is neither this string "
+        "nor an `org.arlen.` prefix - so nothing that runs on the image can "
+        "present it. Building the app was not what this entry was waiting for; "
+        "reconciling the two spellings is, and that is the same question the "
+        "shell's `dev.arlen.desktop-shell` pair below already answers once"
+    ),
     "org.arlen.contacts": "shared-entity writer for an app that does not exist yet",
     "org.arlen.places": "shared-entity writer for an app that does not exist yet",
     "system": "the daemons' own reserved principal, not a binary on disk",
