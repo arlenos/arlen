@@ -206,16 +206,20 @@ pub async fn serve_connection(
                 // every connection asking for it - at runtime, on a machine, with a
                 // log line nobody was reading. Listing them means forgetting either
                 // half is a build error.
+                //
+                // The three narrowing asks are NOT here, and their absence is the
+                // point: they also return `None` from `handle_request`, and they
+                // are routed above. Listing them twice compiled, said "answered
+                // by handle_request" about three asks it does not answer, and the
+                // compiler called the second copy dead - which is exactly the
+                // signal this arm exists to produce.
                 Request::ListBottles
                 | Request::Health { .. }
                 | Request::Prefix { .. }
                 | Request::ClearCaches { .. }
                 | Request::DiskUsage { .. }
                 | Request::Programs { .. }
-                | Request::SetProgram { .. }
-                | Request::RevokeNetwork { .. }
-                | Request::RevokeDrive { .. }
-                | Request::Sever { .. } => {
+                | Request::SetProgram { .. } => {
                     // Unreachable: `handle_request` answers all of these. Kept as an
                     // arm rather than an `unreachable!()` so a daemon never panics on
                     // a reachable-in-future path.

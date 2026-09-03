@@ -94,11 +94,9 @@ fn walk(dir: &Path, cleared: &mut Cleared) {
             } else {
                 walk(&path, cleared);
             }
-        } else if meta.is_file() && is_cache_file(&path) {
-            if std::fs::remove_file(&path).is_ok() {
-                cleared.bytes += meta.len();
-                cleared.files += 1;
-            }
+        } else if meta.is_file() && is_cache_file(&path) && std::fs::remove_file(&path).is_ok() {
+            cleared.bytes += meta.len();
+            cleared.files += 1;
         }
     }
 }
