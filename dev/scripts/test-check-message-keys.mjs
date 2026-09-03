@@ -51,6 +51,40 @@ console.log("message keys:");
   check("a key defined in every locale passes", r.code === 0);
 }
 {
+  // The shape three keys reached the tree in: a mapper turning a daemon's refusal
+  // token into a key, translated by whoever calls it, so the literal never sits
+  // inside a `t(`.
+  const r = run({
+    "apps/demo/src/lib/i18n/messages.ts": catalogue(
+      '    "a.hi.there": "Hi",',
+      '    "a.hi.there": "Hallo",',
+    ),
+    "apps/demo/src/lib/stores/refusal.ts":
+      'export function key(reason: string): string {\n' +
+      '  if (reason === "gone") return "a.hi.missing";\n' +
+      '  return "a.hi.there";\n' +
+      "}\n",
+  });
+  check(
+    "a key only ever RETURNED from a mapper is checked too",
+    r.code === 1 && r.out.includes("a.hi.missing"),
+  );
+}
+{
+  // The bound on that rule: a returned string is only treated as a key when its
+  // first segment is one this catalogue actually uses, so an ordinary dotted
+  // string is not dragged in.
+  const r = run({
+    "apps/demo/src/lib/i18n/messages.ts": catalogue('    "a.hi": "Hi",', '    "a.hi": "Hallo",'),
+    // A real use as well, or the gate refuses the whole tree for having read
+    // nothing - which would make this case pass for the wrong reason.
+    "apps/demo/src/routes/+page.svelte": '<p>{$t("a.hi")}</p>\n',
+    "apps/demo/src/lib/stores/name.ts":
+      'export function archive(): string {\n  return "backup.tar.gz";\n}\n',
+  });
+  check("a dotted string outside the catalogue's namespaces is not a key", r.code === 0);
+}
+{
   const r = run({
     "apps/demo/src/lib/i18n/messages.ts": catalogue('    "a.hi": "Hi",', '    "a.other": "X",'),
     "apps/demo/src/routes/+page.svelte": '<p>{$t("a.hi")}</p>\n',
