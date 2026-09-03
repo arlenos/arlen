@@ -390,6 +390,8 @@ jobs:
           node dev/scripts/test-check-greetd-config.mjs
           python3 dev/scripts/check-unit-copies.py
           node dev/scripts/test-check-unit-copies.mjs
+          python3 dev/scripts/check-step-binaries.py
+          node dev/scripts/test-check-step-binaries.mjs
           node dev/scripts/test-fixture-helper.mjs
           python3 dev/scripts/check-fixture-deletes.py
           node dev/scripts/test-check-fixture-deletes.mjs
