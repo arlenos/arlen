@@ -89,6 +89,29 @@ out=$(guestfish --ro -a "$img" run : mount-ro /dev/sda2 / : sh '
     find /etc/systemd /usr/lib/systemd -name "$n" -type l 2>/dev/null | grep -q . || echo "$n"
   done
 
+  echo "=== verify-only probes"
+  # `check-probe-admission.py` holds three tree-level rules keeping these files off
+  # a release image, and says in its own header what it cannot do: "whether a built
+  # release image really lacks the file ... needs an image to inspect and this runs
+  # on the tree". This runs on the image.
+  #
+  # It cannot know which variant it was handed, so it does not guess: it reports
+  # what is there, and refuses only a MIXTURE. The probe files arrive from one
+  # phase, so all present is a verify image and none present is a release image;
+  # some present is an image that is neither, and the one where a shipped system
+  # would carry an admission or an echo provider nobody meant to ship.
+  probes=0
+  for f in /var/lib/arlen/permissions/user-surfaces.extra \
+           /usr/lib/systemd/user/arlen-ai-proxy.service.d/10-echo.conf \
+           /usr/bin/arlen-kg-probe; do
+    if [ -e "$f" ]; then echo "present $f"; probes=$((probes+1)); else echo "absent  $f"; fi
+  done
+  case "$probes" in
+    0) echo "variant: release (no verify probe on it)" ;;
+    3) echo "variant: verify (every probe present)" ;;
+    *) echo "MIXED: $probes of 3 verify probes present - this image is neither variant" ;;
+  esac
+
   echo "=== the login manager"
   # Nothing else here reads the config that decides who greets a person at the
   # machine. Two ways it fails silently: greetd starts with no config and falls
@@ -284,3 +307,18 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 echo "no unit names a missing arlen binary"
+
+# The variant answer, drawn from the section above. A mixture is the only failure:
+# a release image carrying one probe is a shipped system with an admission or an
+# echo provider on it, and a verify image missing one is a verify run that will
+# report a refusal as a finding - which is the false skip that sent this check
+# looking in the first place.
+echo
+if printf '%s' "$out" | grep -q "^MIXED:"; then
+  printf '%s\n' "$out" | grep "^MIXED:" | sed 's/^/  /'
+  echo "  The verify probes come from one phase, so they arrive together or not at"
+  echo "  all. Some of them means a phase changed and the two image variants have"
+  echo "  stopped being release-plus-probes."
+  exit 1
+fi
+printf '%s\n' "$out" | grep -E "^variant: " | sed 's/^/image /' 
