@@ -18,10 +18,15 @@
 # boot before the app is even reached if the desktop did not render, so a failure
 # here is never ambiguous about which half broke.
 #
-# NB it does NOT assert on OCR. `--require-app-text` exists and works, but under
-# llvmpipe the OCR misses rendered text often enough that a red would say more
-# about the software rasteriser than about the app. The frames are kept and meant
-# to be LOOKED at; that is the whole point of taking them.
+# NB it does NOT assert on OCR, for two reasons and the first is decisive: this
+# host has no `tesseract`, so `--require-app-text` cannot read anything here at
+# all. `verify.py` is honest about that - its `ocr()` answers None, "I could not
+# look", rather than an empty string, after that exact confusion made a text
+# assert fail for an app that had drawn perfectly. The second reason holds even
+# where tesseract is installed: under llvmpipe the OCR misses rendered text often
+# enough that a red would say more about the software rasteriser than about the
+# app. The frames are kept and meant to be LOOKED at; that is the whole point of
+# taking them.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 img="${IMAGE:-$here/../mkosi/arlen.raw}"
