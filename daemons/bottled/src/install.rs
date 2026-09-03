@@ -125,13 +125,19 @@ pub fn discard_installers(prefix_root: &Path) -> u64 {
 /// `None` when nothing usable survives the fold, so the caller asks rather than
 /// inventing a name like `bottle-1` that means nothing to anybody.
 pub fn id_from_installer(file_name: &str) -> Option<String> {
-    let stem = file_name
-        .rsplit('/')
-        .next()
-        .unwrap_or(file_name)
+    // The basename FIRST, and then the extension off it - and the fallback for a
+    // name with no extension has to be that basename, not the argument. It was
+    // `file_name`, so an installer with no dot in its name folded its whole path
+    // into the id: `/home/mara/Downloads/setup` became `home-mara-downloads-setup`,
+    // a bottle named after where the file happened to sit. Latent, because the one
+    // caller reduces to a basename before asking - but the `rsplit('/')` on the
+    // line above says this function takes a path, and the next caller will read
+    // that and believe it.
+    let base = file_name.rsplit('/').next().unwrap_or(file_name);
+    let stem = base
         .rsplit_once('.')
         .map(|(stem, _ext)| stem)
-        .unwrap_or(file_name);
+        .unwrap_or(base);
     let mut out = String::new();
     for c in stem.chars() {
         let c = c.to_ascii_lowercase();
@@ -219,6 +225,11 @@ mod tests {
         }
         // Nothing usable is left, so the caller is told rather than handed an
         // invented name.
+        // A path with no extension: the whole directory used to land in the id.
+        assert_eq!(
+            id_from_installer("/home/mara/Downloads/setup"),
+            Some("setup".to_string())
+        );
         assert_eq!(id_from_installer("___.exe"), None);
         assert_eq!(id_from_installer(""), None);
     }
