@@ -104,6 +104,29 @@ def created_users() -> set[str]:
     return set(re.findall(r"useradd[^\n]*?\s([A-Za-z_][A-Za-z0-9_-]*)\s*$", text, re.MULTILINE))
 
 
+def greeter_state_owners(step_text: str, root: Path) -> list[tuple[str, str]]:
+    """The (path, owner) pairs of every tmpfiles line the greeter's step installs.
+
+    Read off the step rather than from a fixed filename: whichever step installs
+    the greeter also installs its state directory, so the two cannot drift apart
+    by someone renaming a file.
+    """
+    out: list[tuple[str, str]] = []
+    for src in re.findall(
+        r'install\s+-D[a-zA-Z0-9]*\s+"\$SRCDIR/arlen/([^"]+\.tmpfiles\.conf)"', step_text
+    ):
+        conf = root / src
+        if not conf.is_file():
+            continue
+        for line in conf.read_text(encoding="utf-8", errors="replace").splitlines():
+            fields = line.split()
+            # `d <path> <mode> <user> <group> <age>` - a directory entry with an
+            # owner. Anything shorter is a comment or a different directive.
+            if len(fields) >= 4 and fields[0] == "d":
+                out.append((fields[1], fields[3]))
+    return out
+
+
 def commands(session: dict) -> list[str]:
     """The absolute paths a session command runs.
 
@@ -176,6 +199,27 @@ def main() -> int:
         # default session (it is the greeter), GENERAL_SERVICE for everything else.
         # Checking only an explicit `service =` would miss the common case, which is
         # a config that names none and depends on a file it never mentions.
+        # The greeter's own state directory has to be owned by the user the
+        # greeter runs as. Its header says so and nothing enforced it: a
+        # deployment that changes one and not the other gets a directory the
+        # greeter cannot write, which fails exactly as silently as the directory
+        # not being there at all.
+        if name == "default_session" and user is not None:
+            for path, install_step in sorted(paths.items()):
+                if not path.endswith("/arlen-greeter"):
+                    continue
+                step_text = (STEPS / install_step).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+                for state_path, owner in greeter_state_owners(step_text, ROOT):
+                    if owner != user:
+                        problems.append(
+                            f"{install_step} ships a state directory {state_path} owned by "
+                            f"'{owner}', and [{name}] runs the greeter as '{user}'. The "
+                            f"directory would exist and the greeter could not write it, "
+                            f"which looks the same as it not being there."
+                        )
+
         service = session.get("service") or (
             "greetd-greeter" if name == "default_session" else "greetd"
         )
