@@ -301,16 +301,64 @@ pub fn widened(before: &FlatpakContext, after: &FlatpakContext) -> Vec<String> {
     out
 }
 
+/// The commit hash out of a `flatpak remote-info` answer.
+///
+/// Accepts both shapes the CLI produces: `--show-commit` alone prints the bare
+/// hash on its own line, while the full info block carries a `Commit:` field.
+/// A hash is 64 lowercase hex characters; anything else is not one, and a caller
+/// that cannot read the commit must not update (it would be applying a version
+/// it never examined).
+pub fn parse_commit(output: &str) -> Option<String> {
+    for line in output.lines() {
+        let line = line.trim();
+        let candidate = line.strip_prefix("Commit:").map(str::trim).unwrap_or(line);
+        if candidate.len() == 64 && candidate.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(candidate.to_ascii_lowercase());
+        }
+    }
+    None
+}
+
+/// The commit the remote currently offers for an app.
+///
+/// Read BEFORE the permission comparison so the whole gate can be pinned to one
+/// version: without it, the remote may publish between "what does it ask for" and
+/// "apply it", and the update lands unexamined.
+pub fn get_remote_commit(remote: &str, app_id: &str) -> Result<String, FlatpakError> {
+    let output = Command::new("flatpak")
+        .args([
+            "remote-info",
+            "--user",
+            "--show-commit",
+            remote,
+            app_id,
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(FlatpakError::InfoFailed(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+    parse_commit(&String::from_utf8_lossy(&output.stdout)).ok_or_else(|| {
+        FlatpakError::InfoFailed(format!("{app_id} on {remote} reports no commit"))
+    })
+}
+
 /// Read what the REMOTE offers for an app, which is what an update would apply.
 ///
 /// `flatpak remote-info --show-permissions`, the counterpart of
 /// [`get_flatpak_context`]'s `flatpak info`: one reads what is installed, this
 /// reads what is on offer, and an update gate needs both.
-pub fn get_remote_context(remote: &str, app_id: &str) -> Result<FlatpakContext, FlatpakError> {
+pub fn get_remote_context(
+    remote: &str,
+    app_id: &str,
+    commit: &str,
+) -> Result<FlatpakContext, FlatpakError> {
     let output = Command::new("flatpak")
         .args([
             "remote-info",
             "--user",
+            &format!("--commit={commit}"),
             "--show-permissions",
             remote,
             app_id,
@@ -339,12 +387,22 @@ pub fn get_origin(app_id: &str) -> Result<String, FlatpakError> {
     })
 }
 
-/// Update an installed Flatpak app from its remote.
-pub fn update_flatpak(app_id: &str) -> Result<(), FlatpakError> {
+/// Update an installed Flatpak app to the exact commit that was examined.
+///
+/// PINNED, not "update to whatever is newest now". The gate reads what a specific
+/// commit declares; deploying anything else would apply a version nobody compared,
+/// which is the whole thing the gate exists to stop.
+pub fn update_flatpak_to(app_id: &str, commit: &str) -> Result<(), FlatpakError> {
     check_flatpak_available()?;
 
     let output = Command::new("flatpak")
-        .args(["update", "--user", "--noninteractive", app_id])
+        .args([
+            "update",
+            "--user",
+            "--noninteractive",
+            &format!("--commit={commit}"),
+            app_id,
+        ])
         .output()?;
 
     if !output.status.success() {
@@ -451,6 +509,27 @@ mod tests {
         // Not installed, or a build that prints no origin: the caller must not
         // read that as "the same remote as last time".
         assert_eq!(parse_origin("error: not installed"), None);
+    }
+
+    #[test]
+    fn the_commit_is_read_from_either_answer_shape_and_never_guessed() {
+        // `--show-commit` alone: the bare hash.
+        let bare = "  a3f5".to_string() + &"0".repeat(60) + "  \n";
+        assert_eq!(parse_commit(&bare).as_deref(), Some(("a3f5".to_string() + &"0".repeat(60)).as_str()));
+
+        // The full info block, where it is a field among others.
+        let block = format!(
+            "Ledger - keep books\n         Ref: app/org.example.Ledger/x86_64/stable\n      Commit: {}\n     Origin: flathub\n",
+            "b".repeat(64)
+        );
+        assert_eq!(parse_commit(&block), Some("b".repeat(64)));
+
+        // Anything that is not a 64-hex hash is not a commit. A caller that cannot
+        // read one must refuse the update rather than apply an unexamined version.
+        assert_eq!(parse_commit("error: not found"), None);
+        assert_eq!(parse_commit(&format!("Commit: {}", "z".repeat(64))), None);
+        assert_eq!(parse_commit(&format!("Commit: {}", "a".repeat(63))), None);
+        assert_eq!(parse_commit(""), None);
     }
 
     #[test]
