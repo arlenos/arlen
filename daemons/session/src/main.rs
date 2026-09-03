@@ -280,14 +280,24 @@ fn main() -> std::process::ExitCode {
                 // that photographs that has proved something about nothing.
                 let file = requested_file(&dmi(PRODUCT_VERSION))
                     .filter(|f| std::path::Path::new(f).is_file());
+                // TAGGED WITH THE APP'S OWN NAME, not a generic `verify-app`.
+                // Everything here runs through `systemd-cat --identifier=<tag>`, so
+                // the tag is what the journal - and the serial console reading it -
+                // calls the app's output. Under one shared tag a boot's journal
+                // cannot say WHICH app it launched, and the boot harness's own
+                // second launch signal, an `<app>[pid]` journal line, could never
+                // appear for a verify-launched app at all: it was looking for a name
+                // this call had just replaced. The name is `[a-z0-9-]` by the time it
+                // gets here (`requested_app` filters it), so it is safe as an
+                // identifier by construction.
                 match &file {
                     Some(f) => {
                         say(&format!("launching verify app '{app}' on '{f}'"));
-                        let _ = spawn_logged_with_args("verify-app", &app, &[f.as_str()], &env);
+                        let _ = spawn_logged_with_args(&app, &app, &[f.as_str()], &env);
                     }
                     None => {
                         say(&format!("launching verify app '{app}'"));
-                        let _ = spawn_logged("verify-app", &app, &env);
+                        let _ = spawn_logged(&app, &app, &env);
                     }
                 }
             } else {
