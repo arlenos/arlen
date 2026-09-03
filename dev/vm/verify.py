@@ -613,15 +613,31 @@ def observed_servers(text, also=()):
     )
     seen = set()
     for line in text.splitlines():
-        who = re.search(rf"({names})\[\d+\]", line)
-        socks = re.findall(r"(/run[^\s\"]*\.sock)", line)
-        if not who or not socks:
+        socks = list(re.finditer(r"(/run[^\s\"]*\.sock)", line))
+        if not socks:
             continue
         if not re.search(r"listen|bound|serving", line, re.I):
             continue
-        name = JOURNAL_ALIASES.get(who.group(1), who.group(1))
+        speakers = list(re.finditer(rf"({names})\[\d+\]", line))
+        if not speakers:
+            continue
+        # THE NEAREST PRECEDING SPEAKER, not the first one on the line. A serial
+        # console is one shared channel and journal messages interleave on it under
+        # load: this check read a physical line carrying three of them - two
+        # `arlen-notifyd` fragments and then the undo signer's own
+        # `undo-signer listening socket=/run/user/1000/arlen/undo-signer.sock` - took
+        # the first identifier and reported that notifyd had bound the signer's
+        # socket. That is the exact accusation this check exists to make, made
+        # falsely, and the message it prints says a wrong value "sends the next
+        # reader to the wrong daemon". The daemon that announced the socket is always
+        # the one whose identifier sits closest before it.
         for sock in socks:
-            seen.add((sock.rsplit("/", 1)[-1], name))
+            before = [sp for sp in speakers if sp.start() < sock.start()]
+            if not before:
+                continue
+            who = before[-1].group(1)
+            name = JOURNAL_ALIASES.get(who, who)
+            seen.add((sock.group(1).rsplit("/", 1)[-1], name))
     return seen
 
 
