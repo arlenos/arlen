@@ -1,8 +1,13 @@
-# Starting permission profile for a documents/notes app. Works with Documents; no
-# network and no Knowledge Graph by default (cloud sync is refined later).
+# Starting permission profile for Scribus (a desktop-publishing app).
+# Lays out documents with embedded images; no network by function. No graph.
+#
+# The same program packaged under another name, and it gets the answer that was
+# already worked out for `net.scribus.Scribus` rather than the generic template it
+# had. Where an app came from is not a reason to confine it differently.
 [info]
 app_id = "scribus"
 tier = "third-party"
 
 [filesystem]
 documents = true
+pictures = true

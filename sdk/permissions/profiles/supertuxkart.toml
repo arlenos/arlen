@@ -1,6 +1,18 @@
-# Starting permission profile for a self-contained app (game, emulator or the
-# screen reader). No file access, no network and no Knowledge Graph by default;
-# its data lives in its own app dir (ROM/library paths are granted explicitly).
+# Starting permission profile for SuperTuxKart (a kart-racing game).
+# Online races over the network by function. No Knowledge Graph access.
+#
+# The same program packaged under another name, and it gets the answer that was
+# already worked out for `org.supertuxkart.SuperTuxKart` rather than the generic template it
+# had. Where an app came from is not a reason to confine it differently.
 [info]
 app_id = "supertuxkart"
 tier = "third-party"
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true
