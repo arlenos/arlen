@@ -10,6 +10,7 @@
   import { ArrowLeft, Check, Minus } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
+  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { t } from "$lib/i18n/messages";
   import { reachRows } from "$lib/caps";
   import IconTile from "$lib/components/IconTile.svelte";
@@ -20,6 +21,8 @@
     trustFor,
     observedFor,
     installApp,
+    uninstallApp,
+    uninstallStatus,
     trustOf,
     layerFor,
     type LayerSignals,
@@ -28,8 +31,14 @@
     type StoreVariant,
     type Tier,
   } from "$lib/stores/catalog";
+  import { pendingUpdates, loadUpdates } from "$lib/stores/updates";
 
   const id = $derived($page.params.id);
+  // An update waiting for this app; the Updates page owns the decision, this
+  // head only points at it.
+  const pending = $derived($pendingUpdates.some((u) => u.id === id));
+  const removal = $derived(id ? $uninstallStatus[id] : undefined);
+  let confirmUninstall = $state(false);
   const app = $derived($apps.find((a) => a.id === id) ?? null);
 
   // The chosen install variant; the capability panel below follows it, so
@@ -42,6 +51,7 @@
   let observed = $state<ObservedStatus | null>(null);
 
   onMount(async () => {
+    void loadUpdates();
     await loadCatalog();
   });
 
@@ -122,12 +132,36 @@
         </div>
         <span class="head-action">
           {#if app.installed}
+            <!-- Installed is a state with two acts beside it, not a dead badge:
+                 the update (decided on the Updates page) and the removal. -->
             <Badge variant="success" class="h-control px-3">{$t("st.installed")}</Badge>
+            {#if pending}
+              <Button variant="outline" id="update-available" onclick={() => goto("/updates")}>{$t("st.app.updateAvailable")}</Button>
+            {/if}
+            <Button
+              variant="outline"
+              id="uninstall"
+              disabled={removal?.kind === "removing"}
+              onclick={() => (confirmUninstall = true)}
+            >
+              {$t("st.app.uninstall")}
+            </Button>
           {:else if app.installable}
             <Button id="install" onclick={() => installApp(app.id, layerFor(app, chosen))}>{$t("st.install")}</Button>
           {/if}
         </span>
       </header>
+
+      {#if removal?.kind === "removing"}
+        <p class="quiet">{$t("st.app.removing")}</p>
+      {:else if removal?.kind === "started"}
+        <p class="quiet">{$t("st.app.removalStarted")}</p>
+      {:else if removal?.kind === "refused"}
+        <!-- The daemon's own refusal, in place: a desktop app it will not
+             remove, or a layer this build cannot remove. It is built to be
+             offered Remove and to say no; the page shows the no. -->
+        <p class="refused" role="alert">{$t("st.app.uninstallRefused", { reason: removal.reason })}</p>
+      {/if}
 
       {#if !app.installable && !app.installed}
         <p class="quiet">{$t("st.notInstallable")}</p>
@@ -263,6 +297,19 @@
     {/if}
   </div>
 </main>
+
+<ConfirmDialog
+  open={confirmUninstall}
+  title={$t("st.app.uninstallTitle", { name: app?.name ?? "" })}
+  message={$t("st.app.uninstallMsg")}
+  confirmLabel={$t("st.app.uninstall")}
+  variant="destructive"
+  onConfirm={async () => {
+    confirmUninstall = false;
+    if (app) await uninstallApp(app.id);
+  }}
+  onCancel={() => (confirmUninstall = false)}
+/>
 
 <style>
   .st-main {
@@ -458,6 +505,11 @@
     font-size: var(--text-sm);
     line-height: 1.55;
     color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
+  }
+  .refused {
+    margin: 0 0 0.75rem;
+    font-size: var(--text-sm);
+    color: var(--color-error, #dc2626);
   }
   .quiet {
     margin: 0 0 1rem;

@@ -9,7 +9,7 @@
 /// `read:File`), never prose - the prose lives in the message catalogue, because
 /// the backend is not translated and this app is. A second frontend-only shape
 /// is how the last mismatch happened, so there is none.
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// The mechanism that installs a variant. Visible ONLY in the install picker
@@ -435,6 +435,48 @@ export async function observedFor(id: string): Promise<ObservedStatus> {
   } catch {
     return FIXTURE_OBSERVED[id] ?? { state: "unavailable" };
   }
+}
+
+/// What an uninstall is doing, per app id. `started` is the honest success:
+/// installd queues the removal and finishes it later, so the app leaves the
+/// installed list when the job is done, not when the button was pressed.
+/// `refused` carries the daemon's own sentence (a desktop app it will not
+/// remove, a layer this build cannot remove).
+export type UninstallStatus =
+  | { kind: "removing" }
+  | { kind: "started" }
+  | { kind: "refused"; reason: string };
+
+export const uninstallStatus = writable<Record<string, UninstallStatus>>({});
+
+function setUninstall(id: string, status: UninstallStatus | null): void {
+  uninstallStatus.update((m) => {
+    const next = { ...m };
+    if (status) next[id] = status;
+    else delete next[id];
+    return next;
+  });
+}
+
+/// Remove an installed app through the daemon that installed it. Live:
+/// `store_uninstall`, which returns the job id; under vite the catalogue's own
+/// flag flips so the flow drives.
+export async function uninstallApp(id: string): Promise<boolean> {
+  setUninstall(id, { kind: "removing" });
+  try {
+    await invoke("store_uninstall", { id });
+  } catch (e) {
+    if (get(catalogMocked)) {
+      apps.update((list) => list.map((a) => (a.id === id ? { ...a, installed: false } : a)));
+      setUninstall(id, null);
+      return true;
+    }
+    setUninstall(id, { kind: "refused", reason: String(e) });
+    return false;
+  }
+  setUninstall(id, { kind: "started" });
+  void loadCatalog();
+  return true;
 }
 
 /// Install the CHOSEN variant: resolves the install handoff (the consent
