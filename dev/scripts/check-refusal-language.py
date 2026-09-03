@@ -126,15 +126,6 @@ ACKNOWLEDGED = {
     "apps/settings/src/routes/appearance/quicksettings/+page.svelte:385": (
         "guarded by `readsAsInternal`: same trade on the reset path"
     ),
-    # NOT argued for - recorded. `apps/store` is arlen-ui's live work and the
-    # coder does not edit it, so the finding is held here where its owner can see
-    # it rather than left as a standing red that teaches everybody to pass
-    # `--no-verify`. `updateFailure` is set from `String(e)` in
-    # `apps/store/src/lib/stores/updates.ts` and finishes `st.upd.failed`; the
-    # fix is the usual one, a token from the backend and the sentence here.
-    "apps/store/src/routes/updates/+page.svelte:54": (
-        "arlen-ui's app; reported to its owner rather than edited from this lane"
-    ),
     # 539 until 26 Aug, when two imports and a comment went in above it. The
     # line-keyed acknowledgement is brittle to any edit above the line ON
     # PURPOSE - see the note above the dict - and it earned that here: it made
