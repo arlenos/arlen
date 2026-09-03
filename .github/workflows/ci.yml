@@ -203,6 +203,7 @@ jobs:
           python3 -m pip install --quiet --disable-pip-version-check Pillow
           python3 dev/vm/test_frame_checks.py
           python3 dev/vm/test_timed_plan.py
+          python3 dev/vm/test_socket_attribution.py
       - name: structural checks
         # The build-free checks and their controls, run directly rather than
         # through `just`, which the runner does not have. Each is deterministic
