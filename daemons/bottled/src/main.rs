@@ -71,6 +71,12 @@ async fn main() -> std::process::ExitCode {
     // refuse to start.
     let audit: std::sync::Arc<dyn audit_proto::AuditSink> =
         std::sync::Arc::new(audit_proto::sink::LedgerAuditSink::at_default_socket());
+    // SAY SO, like every sibling daemon does. Without this line a booted image
+    // gives no evidence the runtime came up at all: it logs when something goes
+    // wrong and nothing when it works, so "the Windows panel says no daemon" and
+    // "the daemon is running and there are no bottles" read the same from the
+    // journal. The socket path is the useful half - it is what a client dials.
+    tracing::info!(socket = %socket.display(), "bottle daemon listening");
     let serving = run(&socket, dir, audit);
     tokio::select! {
         result = serving => {
