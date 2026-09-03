@@ -24,6 +24,11 @@
 //! shell's dialog then surfaces the request; verify.py can screenshot it. It is
 //! best-effort and never gates the dogfood.
 //!
+//! It is SKIPPED when the SMBIOS SKU names an app, because that boot belongs to
+//! that app: `dev/vm/verify-apps.sh` boots once per app and photographs the
+//! result, and a modal held for the rest of the boot lands over the middle of
+//! every one of those frames. A boot with no app in the SKU still raises it.
+//!
 //! Markers (grepped by dev/vm/verify.py): `DOGFOOD EMIT ok`, `DOGFOOD WRITE ok`,
 //! `DOGFOOD UNDO ok`, `DOGFOOD ASK ok`, `DOGFOOD CONSENT ok`, `DOGFOOD OK` /
 //! `DOGFOOD FAIL <reason>`.
@@ -117,14 +122,32 @@ async fn main() {
     // The `_consent` binding keeps the intake connection alive to the end of main;
     // the broker queues the request regardless, but holding it removes any reliance
     // on queue-survives-disconnect behaviour.
-    let _consent = match raise_consent() {
-        Some(conn) => {
-            println!("DOGFOOD CONSENT ok (exec_confined queued on the intake socket)");
-            Some(conn)
-        }
-        None => {
-            println!("DOGFOOD CONSENT skipped (best-effort: intake socket unavailable)");
-            None
+    //
+    // NOT ON A BOOT THAT IS VERIFYING AN APP. Holding the dialog for the rest of
+    // the boot is the point of this probe - and it collides head-on with the
+    // app boot-verify added later, which boots the image once per app with the
+    // binary in the SMBIOS SKU and photographs the result. Measured on the first
+    // image that ever reached it: the settings and harness frames are the app
+    // rendering correctly with a modal consent dialog sitting over the middle of
+    // it. Both features work; each ruins the other's evidence. A boot that names
+    // an app belongs to that app, and a boot that names none still exercises the
+    // consent path exactly as before.
+    let verifying_app = std::fs::read_to_string("/sys/class/dmi/id/product_sku")
+        .map(|s| s.trim().chars().any(|c| c.is_ascii_alphanumeric()))
+        .unwrap_or(false);
+    let _consent = if verifying_app {
+        println!("DOGFOOD CONSENT skipped (this boot is verifying an app; the dialog would cover it)");
+        None
+    } else {
+        match raise_consent() {
+            Some(conn) => {
+                println!("DOGFOOD CONSENT ok (exec_confined queued on the intake socket)");
+                Some(conn)
+            }
+            None => {
+                println!("DOGFOOD CONSENT skipped (best-effort: intake socket unavailable)");
+                None
+            }
         }
     };
 
