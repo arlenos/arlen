@@ -74,7 +74,14 @@ pub enum Reach {
 pub struct Escape {
     /// The link itself, as found under the prefix.
     pub link: PathBuf,
-    /// What it points at.
+    /// Where it actually leads, RESOLVED - not the raw target as written.
+    ///
+    /// The two differ for a relative link, and the difference decided a real
+    /// answer wrong: the callers that ask "is this one of the folders the user
+    /// granted" compare this against the grant list, and a relative link into a
+    /// granted folder reads as `../../../home/u/Documents`, which begins with no
+    /// grant. So a granted folder came back as an ungranted escape - counted in
+    /// the health warning, and planned for severing.
     pub target: PathBuf,
     /// The classification [`reach`] gave it.
     pub reach: Reach,
@@ -139,7 +146,7 @@ pub fn escapes(prefix_root: &Path, links: &[(PathBuf, PathBuf)]) -> Vec<Escape> 
             let reach = reach(prefix_root, link, target);
             (reach != Reach::Contained).then(|| Escape {
                 link: link.clone(),
-                target: target.clone(),
+                target: resolve_target(link, target),
                 reach,
             })
         })

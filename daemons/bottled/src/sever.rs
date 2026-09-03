@@ -169,6 +169,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_relative_link_into_a_granted_folder_is_not_severed_and_is_not_escaping() {
+        // The two halves of one bug. A grant is an absolute host path, and a
+        // link into it may be written relative - `winecfg` and a hand-made
+        // prefix both do. Compared as written, `../../../home/u/Documents`
+        // begins with no grant at all, so the folder the user deliberately
+        // handed over came back as reach nobody asked for: the health warning
+        // counted it, and the severing pass planned to delete it.
+        let root = PathBuf::from("/home/u/.bottle");
+        let granted = vec![PathBuf::from("/home/u/Documents")];
+        let links = vec![(
+            root.join("drive_c/users/u/Documents"),
+            PathBuf::from("../../../../Documents"),
+        )];
+        assert_eq!(plan(&root, &links, &granted), Vec::new());
+        assert_eq!(
+            escapes(&root, &links)
+                .into_iter()
+                .filter(|e| !granted.iter().any(|g| e.target.starts_with(g)))
+                .count(),
+            0,
+            "the same comparison still_escaping makes"
+        );
+    }
+
+    #[test]
     fn the_filesystem_drive_is_removed_and_the_shell_folders_are_replaced() {
         let root = PathBuf::from("/p");
         let links = vec![
