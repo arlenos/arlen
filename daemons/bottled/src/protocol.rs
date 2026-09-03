@@ -89,6 +89,13 @@ pub enum Request {
     /// Not gated the way `Forget` is: this creates rather than destroys, and a
     /// bottle with no grants and no network is the least a caller can ask for.
     Create { id: String },
+    /// How much disk a bottle holds.
+    ///
+    /// ITS OWN ASK rather than a field on the listing, like `Health` and for the
+    /// same reason: measuring means walking a Wine prefix, which is thousands of
+    /// files, and the panel lists every bottle at once. One bottle's page can pay
+    /// for one bottle's walk.
+    DiskUsage { id: String },
     /// Cut the links that lead out of a bottle's prefix.
     ///
     /// THE ONE ACTION HEALTH HAD NO ANSWER FOR. `Health` reports how many paths
@@ -257,6 +264,12 @@ pub enum Response {
     },
     /// The program was recorded, and this is what a launch will now start.
     ProgramSet { program: String },
+    /// How many bytes the bottle's prefix holds.
+    ///
+    /// `None` when there is no prefix yet: a bottle that was made and never booted
+    /// has no size, and answering zero would read as "it holds nothing" for
+    /// something that has not been measured at all.
+    Disk { bytes: Option<u64> },
     /// The prefix was cut loose, and this is how much of it there was to cut.
     ///
     /// `cut` counts the links removed; `still_escaping` is what is left reaching
@@ -795,6 +808,7 @@ pub fn narrow(bottles_dir: &Path, request: &Request) -> Response {
         | Request::Programs { .. }
         | Request::SetProgram { .. }
         | Request::ClearCaches { .. }
+        | Request::DiskUsage { .. }
         | Request::Create { .. }
         | Request::Install { .. }
         | Request::Launch { .. }
@@ -908,6 +922,20 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
                     }
                 }
             }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
+        Request::DiskUsage { id } => match load_bottle(bottles_dir, id) {
+            Ok(bottle) => Response::Disk {
+                bytes: crate::caches::prefix_bytes(&bottle.prefix_root),
+            },
             Err(RegistryError::BadId(_)) => Response::Refused {
                 problem: Problem::BadId,
             },

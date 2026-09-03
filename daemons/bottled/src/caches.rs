@@ -155,6 +155,45 @@ fn empty_directory(dir: &Path, cleared: &mut Cleared) {
     }
 }
 
+/// How many bytes a bottle's prefix holds.
+///
+/// MEASURED, and `None` when there is no prefix to measure - a bottle that was
+/// made and never booted has no size, which is a different thing from being empty
+/// and must not read as zero.
+///
+/// Never follows a symlink, for the reason the sweep gives at the top of this
+/// file: a prefix is full of links into the person's home, and counting through
+/// one would report the size of their Documents folder as the size of a Windows
+/// app. Link sizes themselves are not counted either; what is being answered is
+/// how much disk this bottle would give back.
+pub fn prefix_bytes(prefix_root: &Path) -> Option<u64> {
+    if !prefix_root.is_dir() {
+        return None;
+    }
+    let mut total = 0u64;
+    let mut stack = vec![prefix_root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if meta.is_symlink() {
+                continue;
+            }
+            if meta.is_dir() {
+                stack.push(path);
+            } else if meta.is_file() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    Some(total)
+}
+
 /// The prefix directories a sweep would look at, for a caller that wants to say
 /// what it is about to do. Absolute, under the given prefix.
 pub fn cache_locations(prefix_root: &Path) -> Vec<PathBuf> {
@@ -244,6 +283,32 @@ mod tests {
         assert!(!prefix
             .join("drive_c/users/arlen/AppData/Local/D3DSCache")
             .exists());
+    }
+
+    #[test]
+    fn a_prefix_reports_its_size_and_an_absent_one_reports_nothing() {
+        let outside = scratch("size-outside");
+        std::fs::write(outside.join("thesis.pdf"), vec![0u8; 5000]).unwrap();
+
+        let prefix = scratch("size");
+        let app = prefix.join("drive_c/Program Files/Game");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("game.exe"), vec![0u8; 300]).unwrap();
+        std::fs::write(app.join("data.pak"), vec![0u8; 700]).unwrap();
+        // The shell folder wineboot leaves pointing at the person's real files.
+        std::os::unix::fs::symlink(&outside, app.join("Documents")).unwrap();
+
+        assert_eq!(
+            prefix_bytes(&prefix),
+            Some(1000),
+            "counting through the link would report the size of somebody's \
+             Documents folder as the size of a Windows app"
+        );
+        assert_eq!(
+            prefix_bytes(Path::new("/nonexistent/prefix")),
+            None,
+            "a bottle that was never booted has no size, which is not zero"
+        );
     }
 
     #[test]
