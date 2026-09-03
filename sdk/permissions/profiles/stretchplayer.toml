@@ -1,0 +1,8 @@
+# Starting permission profile for a music player. Works with the Music folder; no
+# network and no Knowledge Graph by default (streaming is refined later).
+[info]
+app_id = "stretchplayer"
+tier = "third-party"
+
+[filesystem]
+music = true
