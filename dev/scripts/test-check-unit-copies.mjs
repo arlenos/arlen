@@ -28,6 +28,22 @@ function tree({ shipped, crate }) {
   return root;
 }
 
+/// The activation-file half: same shape, a different directory, and the one whose
+/// missing `SystemdService=` line once meant a daemon started outside its unit.
+function busTree({ shipped, crate }) {
+  const root = mint("unit-copies-bus-");
+  const write = (rel, body) => {
+    const p = join(root, rel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, body);
+  };
+  // A shipped unit as well, so the run has something to read either way.
+  write("dev/mkosi/mkosi.extra/usr/lib/systemd/user/demo.service", UNIT);
+  write("dev/mkosi/mkosi.extra/usr/share/dbus-1/services/org.demo.Thing.service", shipped);
+  write("daemons/demo/dist/org.demo.Thing.service", crate);
+  return root;
+}
+
 function gateOn(root) {
   try {
     return { code: 0, out: execFileSync("python3", [CHECK, root], { encoding: "utf-8" }) };
@@ -70,6 +86,17 @@ const cases = [
     "a unit the image ships and no crate keeps is not compared",
     () => tree({ shipped: UNIT }),
     (code) => code === 0,
+    true,
+  ],
+  [
+    "an activation file that drops its SystemdService line is caught",
+    () =>
+      busTree({
+        shipped:
+          "[D-BUS Service]\nName=org.demo.Thing\nExec=/usr/lib/arlen/libexec/demo\nSystemdService=demo.service\n",
+        crate: "[D-BUS Service]\nName=org.demo.Thing\nExec=/usr/lib/arlen/libexec/demo\n",
+      }),
+    (code, out) => code === 1 && out.includes("SystemdService=demo.service"),
     true,
   ],
   [

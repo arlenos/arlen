@@ -39,6 +39,11 @@ ROOT = (
     Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 )
 SHIPPED = ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd"
+#: The OTHER artefact kept in two places and read by a daemon starter: a D-Bus
+#: activation file. Same trap, same rule - and the same stakes, since one of these
+#: was missing its `SystemdService=` line in August, which meant activation started
+#: the bare binary and skipped the unit's whole sandbox.
+DBUS = ROOT / "dev/mkosi/mkosi.extra/usr/share/dbus-1/services"
 #: Where a crate keeps its own copy. Every component root that has daemons in it.
 CRATE_ROOTS = ("daemons", "ai", "apps", "contracts", "sdk")
 
@@ -93,7 +98,7 @@ def main() -> int:
 
     shipped = sorted(
         p for sub in ("user", "system") for p in (SHIPPED / sub).glob("*.service")
-    )
+    ) + sorted(DBUS.glob("*.service") if DBUS.is_dir() else [])
     if not shipped:
         print("NOTHING WAS READ: the image ships no unit files", file=sys.stderr)
         return 2
@@ -133,8 +138,8 @@ def main() -> int:
         return 1
 
     print(
-        f"{len(shipped)} shipped unit(s), {compared} of them kept in a crate too, "
-        f"each pair agreeing on every directive"
+        f"{len(shipped)} shipped unit and activation file(s), {compared} of them kept "
+        f"in a crate too, each pair agreeing on every directive"
     )
     return 0
 
