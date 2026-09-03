@@ -83,6 +83,18 @@ pub enum Request {
     /// Not gated the way `Forget` is: this creates rather than destroys, and a
     /// bottle with no grants and no network is the least a caller can ask for.
     Create { id: String },
+    /// Cut a bottle off the network.
+    ///
+    /// NARROWING ONLY, and there is deliberately no ask that widens. A grant is
+    /// made when a bottle is made, where the person is deciding what a foreign
+    /// Windows program may reach; a switch that could hand back the network would
+    /// turn that decision into something a stray click undoes. The same shape the
+    /// capability revoke takes: the closed set of asks cannot express a widening.
+    ///
+    /// Discarding a host allowlist is what revoking means rather than data lost:
+    /// after this the bottle reaches nothing, which is the state that was asked
+    /// for. Idempotent - a bottle already cut off answers the same.
+    RevokeNetwork { id: String },
     /// Remove the regenerable caches inside a bottle's prefix.
     ///
     /// Not gated the way [`Request::Forget`] is, and the difference is what is at
@@ -218,6 +230,11 @@ pub enum Response {
     },
     /// The program was recorded, and this is what a launch will now start.
     ProgramSet { program: String },
+    /// The bottle no longer reaches the network.
+    ///
+    /// `changed` is false when it already did not, so a caller can tell "done" from
+    /// "there was nothing to do" without either being an error.
+    NetworkRevoked { changed: bool },
     /// The bottle was made, and this is its id.
     ///
     /// The id is echoed rather than assumed: a caller that let the daemon settle
@@ -692,6 +709,33 @@ pub fn handle_request(bottles_dir: &Path, request: &Request) -> Option<Response>
                         Ok(_) => Response::ProgramSet {
                             program: program.clone(),
                         },
+                        Err(_) => Response::Refused {
+                            problem: Problem::Unreadable,
+                        },
+                    }
+                }
+            }
+            Err(RegistryError::BadId(_)) => Response::Refused {
+                problem: Problem::BadId,
+            },
+            Err(RegistryError::NoSuchBottle(_)) => Response::Refused {
+                problem: Problem::NoSuchBottle,
+            },
+            Err(_) => Response::Refused {
+                problem: Problem::Unreadable,
+            },
+        },
+        Request::RevokeNetwork { id } => match load_bottle(bottles_dir, id) {
+            Ok(mut bottle) => {
+                if matches!(bottle.egress, crate::bottle::Egress::None) {
+                    Response::NetworkRevoked { changed: false }
+                } else {
+                    bottle.egress = crate::bottle::Egress::None;
+                    match crate::registry::save_bottle(bottles_dir, &bottle) {
+                        Ok(_) => Response::NetworkRevoked { changed: true },
+                        // The bottle is unchanged on disk, so answering anything
+                        // but a refusal would tell somebody their app is cut off
+                        // when the next launch still reaches out.
                         Err(_) => Response::Refused {
                             problem: Problem::Unreadable,
                         },
@@ -1196,6 +1240,50 @@ mod tests {
         let (kept, truncated) = fit_programs(short);
         assert_eq!(kept.len(), 1);
         assert!(!truncated);
+    }
+
+    #[test]
+    fn revoking_the_network_cuts_it_off_and_cannot_hand_it_back() {
+        use crate::registry::{load_bottle, save_bottle};
+
+        let dir = tempfile::tempdir().unwrap();
+        save_bottle(
+            dir.path(),
+            &Bottle {
+                id: "game".into(),
+                prefix_root: dir.path().join("game/pfx"),
+                grants: vec![],
+                // An allowlist, so the discard is the interesting case rather than
+                // a flip between two empty states.
+                egress: Egress::Hosts(vec!["updates.example.com".into()]),
+                plumbing: Default::default(),
+                program: vec![],
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            handle_request(dir.path(), &Request::RevokeNetwork { id: "game".into() }),
+            Some(Response::NetworkRevoked { changed: true })
+        );
+        assert!(
+            matches!(load_bottle(dir.path(), "game").unwrap().egress, Egress::None),
+            "the allowlist is gone, which is what revoking a grant means"
+        );
+
+        // Idempotent, and the second answer says there was nothing to do rather
+        // than pretending it acted.
+        assert_eq!(
+            handle_request(dir.path(), &Request::RevokeNetwork { id: "game".into() }),
+            Some(Response::NetworkRevoked { changed: false })
+        );
+
+        assert_eq!(
+            handle_request(dir.path(), &Request::RevokeNetwork { id: "absent".into() }),
+            Some(Response::Refused {
+                problem: Problem::NoSuchBottle
+            })
+        );
     }
 
     #[test]
