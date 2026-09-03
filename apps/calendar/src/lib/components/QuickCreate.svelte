@@ -56,6 +56,11 @@
       repeat: "none",
       onDays: [],
       calendarId: $calendars[0]?.id ?? "",
+      // No reminder, which is what the full editor gives a NEW event too
+      // (EventForm sets `reminders = []` on open). A quick-created event
+      // that arrived with a reminder the same event made the long way does
+      // not have would be two answers to one question.
+      alarms: [],
     });
     if (refusal) {
       failed = refusal;
