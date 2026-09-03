@@ -292,8 +292,20 @@
         <Notice tone="neutral" class="span-full" text={$t("s.wa.installerRunning")} />
       {/if}
 
-      {#if health && (!health.agrees || health.escapes > 0)}
+      <!-- ONE SENTENCE PER FAULT, because there are three and they are not the
+           same fault. This was a single line about paths leading outside, shown
+           whenever the check disagreed - so a bottle missing a granted folder,
+           which disagrees with no path leading anywhere, said "0 of its paths
+           lead outside it". A warning with a nothing in it teaches the reader to
+           stop reading warnings. -->
+      {#if health && health.escapes > 0}
         <Notice tone="caution" class="span-full" text={$t("s.wa.healthWarn", { count: health.escapes })} />
+      {/if}
+      {#if health && health.missing > 0}
+        <Notice tone="caution" class="span-full" text={$t("s.wa.healthMissing", { count: health.missing })} />
+      {/if}
+      {#if health && health.unexpected > 0}
+        <Notice tone="caution" class="span-full" text={$t("s.wa.healthUnexpected", { count: health.unexpected })} />
       {/if}
 
       <!-- THE QUESTION AN INSTALL LEAVES BEHIND. A Windows installer does not say
