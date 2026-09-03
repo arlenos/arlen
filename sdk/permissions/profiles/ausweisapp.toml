@@ -1,0 +1,14 @@
+# Starting permission profile for an app whose whole function is reaching another
+# machine. Needs network; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "ausweisapp"
+tier = "third-party"
+
+# NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
+# nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the
+# egress proxy for a FilteredHosts policy and no longer refuses the launch. What is
+# still missing is the ask - nothing raises a consent for a host an app did not
+# declare, so a scoped app meets a bare 403 and cannot request the host. Revisit
+# when that lands: most of these want a host list, and the list is the easy half.
+[network]
+allow_all = true
