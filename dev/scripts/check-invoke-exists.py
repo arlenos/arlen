@@ -413,17 +413,34 @@ KNOWN: dict[str, dict[str, str]] = {
             "transfer daemon is one producer of many it would need. The missing "
             "piece is a job-report contract, not a command"
         ),
-        # The shell's open-a-Windows-file dialog. These three had no reason at
-        # all, which made them read as unclaimed wiring; they are the same
-        # deferred bottle daemon the Settings entries above wait on
-        # (`wine-proton-plan.md` defers it deliberately), reached from the other
-        # side. The store says as much in its own header - the trigger, the compat
-        # lookup, the icon extraction and the run/install calls are all seams on
-        # that one daemon - so this is one blocker wearing three names, and the
-        # surface renders from a fixture meanwhile rather than pretending.
-        "windows_file_install": "installing a Windows file (deferred bottle daemon)",
-        "windows_file_request": "the Windows file prompt (deferred bottle daemon)",
-        "windows_file_run": "running a Windows file (deferred bottle daemon)",
+        # The shell's open-a-Windows-file dialog. The reason here USED to be "the
+        # deferred bottle daemon", and that reason is now wrong: `daemons/bottled`
+        # exists and makes bottles, installs into them, picks a program and
+        # launches it, and the Settings Windows panel drives all of it. A stale
+        # reason is worse than none, because it parks work behind a blocker that
+        # was removed.
+        #
+        # What is actually missing is the TRIGGER. Nothing on this machine claims
+        # a Windows executable: no desktop entry declares
+        # `application/x-ms-dos-executable` or `x-msi`, so double-clicking a .exe
+        # in the file manager reaches nothing and the shell is never asked. The
+        # run and install halves are wiring on a daemon that answers today; the
+        # request half needs somebody to route the open, which is a MIME-handler
+        # decision (a shell entry that claims the type, versus the portal handing
+        # it over) and not a command.
+        "windows_file_request": (
+            "the Windows file prompt. Needs the TRIGGER, not the daemon: nothing "
+            "claims application/x-ms-dos-executable or x-msi, so no open ever "
+            "reaches the shell to be asked about"
+        ),
+        "windows_file_install": (
+            "installing a Windows file, downstream of windows_file_request - "
+            "there is no pending open to install"
+        ),
+        "windows_file_run": (
+            "running a Windows file, downstream of windows_file_request - there "
+            "is no pending open to run"
+        ),
     },
     "store": {
         # The store app is arlen-ui's live surface, so these three are theirs to
