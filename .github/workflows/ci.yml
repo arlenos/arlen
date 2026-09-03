@@ -370,6 +370,7 @@ jobs:
           python3 dev/scripts/check-counted-messages.py
           node dev/scripts/test-check-message-keys.mjs
           node dev/scripts/test-check-counted-messages.mjs
+          node dev/scripts/test-check-node-artifacts-ignored.mjs
           python3 dev/scripts/check-release-routes.py
           node dev/scripts/test-check-release-routes.mjs
           python3 dev/scripts/check-shared-env-names.py
@@ -466,6 +467,7 @@ jobs:
           python3 dev/scripts/check-calendar-has-no-mail-path.py
           node dev/scripts/test-check-calendar-has-no-mail-path.mjs
           python3 dev/scripts/check-lockfiles-current.py
+          python3 dev/scripts/check-node-artifacts-ignored.py
           node dev/scripts/test-check-lockfiles-current.mjs
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then

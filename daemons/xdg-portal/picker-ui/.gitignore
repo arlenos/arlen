@@ -1,0 +1,6 @@
+# Same as `ai/pi-plugins`: the portal phase builds this in place, inside the
+# checkout, so its install and its output are build artefacts that live here.
+node_modules
+build
+.svelte-kit
+dist
