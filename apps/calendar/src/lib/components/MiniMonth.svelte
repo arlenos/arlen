@@ -1,12 +1,12 @@
 <script lang="ts">
   /// The sidebar's month instrument: a small grid to stand somewhere else in
   /// time. Click picks a focus date, chevrons page the month, today wears the
-  /// accent, days that hold events carry a dot. Purely navigational - the big
-  /// views do the showing.
+  /// accent, days that hold events carry a dot, each row is led by its ISO
+  /// week number. Purely navigational - the big views do the showing.
   import { ChevronLeft, ChevronRight } from "@lucide/svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { t, locale } from "$lib/i18n/messages";
-  import { monthTitle } from "$lib/wording";
+  import { isoWeek, monthTitle } from "$lib/wording";
   import { addDays, parseYmd, startOfWeek, ymd } from "$lib/stores/calendar";
 
   let {
@@ -36,10 +36,14 @@
     shown = `${ymd(d).slice(0, 7)}-01`;
   }
 
-  /// Six rows of seven, Monday first, spanning the shown month.
-  const cells = $derived.by(() => {
+  /// Six rows of seven, Monday first, spanning the shown month, each with
+  /// the week number its Monday falls in.
+  const rows = $derived.by(() => {
     const first = startOfWeek(shown);
-    return Array.from({ length: 42 }, (_, i) => addDays(first, i));
+    return Array.from({ length: 6 }, (_, r) => {
+      const monday = addDays(first, r * 7);
+      return { monday, week: isoWeek(monday), days: Array.from({ length: 7 }, (_, i) => addDays(monday, i)) };
+    });
   });
 
   const dayLetters = $derived.by(() => {
@@ -62,21 +66,25 @@
     </span>
   </div>
   <div class="mini-grid" role="presentation">
+    <span class="mini-wk" aria-hidden="true"></span>
     {#each dayLetters as l, i (i)}
       <span class="mini-dow">{l}</span>
     {/each}
-    {#each cells as d (d)}
-      <button
-        type="button"
-        class="mini-day"
-        class:other={d.slice(0, 7) !== shown.slice(0, 7)}
-        class:today={d === today}
-        class:focus={d === focus}
-        onclick={() => onpick(d)}
-      >
-        {parseYmd(d).getDate()}
-        {#if marked.has(d)}<span class="mark" aria-hidden="true"></span>{/if}
-      </button>
+    {#each rows as row (row.monday)}
+      <span class="mini-wk" aria-label={$t("cal.weekN", { n: row.week })}>{row.week}</span>
+      {#each row.days as d (d)}
+        <button
+          type="button"
+          class="mini-day"
+          class:other={d.slice(0, 7) !== shown.slice(0, 7)}
+          class:today={d === today}
+          class:focus={d === focus}
+          onclick={() => onpick(d)}
+        >
+          {parseYmd(d).getDate()}
+          {#if marked.has(d)}<span class="mark" aria-hidden="true"></span>{/if}
+        </button>
+      {/each}
     {/each}
   </div>
 </div>
@@ -101,9 +109,10 @@
   .mini-nav {
     display: flex;
   }
+  /* The week column is narrower than a day and reads as the axis it is. */
   .mini-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: 1.1rem repeat(7, 1fr);
     gap: 1px;
   }
   .mini-dow {
@@ -111,6 +120,14 @@
     font-size: var(--text-2xs, 10px);
     color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
     padding-bottom: 2px;
+  }
+  .mini-wk {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: color-mix(in srgb, var(--color-fg-primary) 30%, transparent);
+    font-variant-numeric: tabular-nums;
   }
   .mini-day {
     position: relative;

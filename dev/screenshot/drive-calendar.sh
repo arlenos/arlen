@@ -150,7 +150,7 @@ const seg = document.getElementById("cal-view");
 const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
 if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
 
-return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1200);
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 6000);
 JS
 got=$(drive "$fix/p-agenda.js" "$fix" calendar-agenda.png)
 
@@ -235,7 +235,7 @@ const seg = document.getElementById("cal-view");
 const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
 if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
 
-return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 700);
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 3000);
 JS
 got=$(drive "$fix/p-empty.js" "$empty" calendar-no-files.png)
 # Opening the app CREATES the directory (the watcher cannot watch a path that is
@@ -256,7 +256,7 @@ const seg = document.getElementById("cal-view");
 const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
 if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
 
-return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1200);
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 6000);
 JS
 ( sleep 2; cat > "$fix/arlen/calendars/added.ics" <<'ICS'
 BEGIN:VCALENDAR
@@ -319,7 +319,7 @@ const seg = document.getElementById("cal-view");
 const b = seg && [...seg.querySelectorAll("button")].find(x => /Agenda/.test(x.textContent || ""));
 if (b) { b.click(); await new Promise(r => setTimeout(r, 500)); }
 return `stillOffering=${document.querySelector(".keep button") ? 1 : 0} `
-  + `body=${JSON.stringify(document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 700))}`;
+  + `body=${JSON.stringify(document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 3000))}`;
 JS
 keepdir="$fix/keep"
 rm -rf "$keepdir" && mkdir -p "$keepdir"

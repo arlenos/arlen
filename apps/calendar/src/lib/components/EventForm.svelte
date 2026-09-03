@@ -8,18 +8,20 @@
   /// The write is `calendar_create_event` - one VEVENT into the store
   /// directory, the watcher and the reminder daemon do the rest - and a
   /// refusal comes back as a sentence, not a pretence.
-  import { CalendarDays, Clock, MapPin, Repeat } from "@lucide/svelte";
+  import { Bell, CalendarDays, Clock, MapPin, Repeat } from "@lucide/svelte";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Dialog } from "@arlen/ui-kit/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { Toggle } from "@arlen/ui-kit/components/ui/toggle";
   import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
+  import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
   import { DaysPicker } from "@arlen/ui-kit/components/ui/days-picker";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { t, locale } from "$lib/i18n/messages";
-  import { dayLabel } from "$lib/wording";
+  import { dayLabel, reminderLabel } from "$lib/wording";
   import { parseQuick } from "$lib/quickparse";
   import {
     calendars,
@@ -27,8 +29,10 @@
     createEvent,
     updateEvent,
     deleteEvent,
+    remindersSupported,
     type AgendaEvent,
     type EventDraft,
+    type Reminder,
   } from "$lib/stores/calendar";
   import { Trash2 } from "@lucide/svelte";
   import MiniMonth from "./MiniMonth.svelte";
@@ -68,6 +72,40 @@
   let titleEl = $state<HTMLInputElement | null>(null);
   let calendarId = $state("");
 
+  /// The reminders the event will carry. Presets are whole seconds before the
+  /// start, toggled as chips; anything else arrives through the custom row
+  /// and stays a chip of its own until it is toggled off again.
+  let reminders = $state<Reminder[]>([]);
+  const PRESETS = [0, 5 * 60, 10 * 60, 30 * 60, 3600, 86_400];
+  let customOpen = $state(false);
+  let customN = $state(15);
+  let customUnit = $state<"minutes" | "hours" | "days">("minutes");
+  let customRel = $state<"start" | "end">("start");
+  const UNIT_SECONDS = { minutes: 60, hours: 3600, days: 86_400 };
+
+  function isPreset(r: Reminder, s: number): boolean {
+    return "seconds" in r.trigger && r.trigger.seconds === -s && r.trigger.related === "start";
+  }
+  function hasPreset(s: number): boolean {
+    return reminders.some((r) => isPreset(r, s));
+  }
+  function setPreset(s: number, on: boolean): void {
+    if (on && !hasPreset(s)) reminders = [...reminders, { trigger: { seconds: -s, related: "start" }, action: "DISPLAY" }];
+    if (!on) reminders = reminders.filter((r) => !isPreset(r, s));
+  }
+  const custom = $derived(reminders.filter((r) => !PRESETS.some((s) => isPreset(r, s))));
+  function presetLabel(s: number): string {
+    return s === 0 ? $t("cal.remind.atStart") : reminderLabel({ trigger: { seconds: -s, related: "start" } }, $t, $locale);
+  }
+  function addCustom(): void {
+    const seconds = -Math.max(1, Math.round(customN)) * UNIT_SECONDS[customUnit];
+    const next: Reminder = { trigger: { seconds, related: customRel }, action: "DISPLAY" };
+    const same = (r: Reminder) =>
+      "seconds" in r.trigger && r.trigger.seconds === seconds && r.trigger.related === customRel;
+    if (!reminders.some(same)) reminders = [...reminders, next];
+    customOpen = false;
+  }
+
   // The first calendar is the resting choice; follows the list arriving.
   $effect(() => {
     if (!calendarId && $calendars.length > 0) calendarId = $calendars[0].id;
@@ -86,14 +124,21 @@
         location = editing.location;
         repeat = "none";
         calendarId = editing.calendar ?? calendarId;
+        reminders = editing.alarms ?? [];
       } else {
+        // A new event starts blank every time: the fields must not carry an
+        // edit that was cancelled a moment ago. The calendar choice stays,
+        // the way the last-used calendar sticks in every calendar.
         day = date;
-        if (seed) {
-          summary = seed.title;
-          from = seed.time;
-          to = seed.endTime;
-          allDay = false;
-        }
+        summary = seed?.title ?? "";
+        location = "";
+        allDay = false;
+        from = seed?.time ?? "09:00";
+        to = seed?.endTime ?? "10:00";
+        repeat = "none";
+        onDays = [];
+        reminders = [];
+        customOpen = false;
       }
       setTimeout(() => titleEl?.focus(), 50);
     }
@@ -130,6 +175,8 @@
     location = "";
     repeat = "none";
     onDays = [];
+    reminders = [];
+    customOpen = false;
   }
 
   async function submit(): Promise<void> {
@@ -145,6 +192,9 @@
           time: allDay ? null : from,
           endTime: allDay ? null : to,
           location: location.trim(),
+          // Only where the backend showed reminders: a list sent to one that
+          // never said would be a write nobody can read back.
+          alarms: $remindersSupported ? reminders : undefined,
         },
         editScope,
         editing.date,
@@ -160,6 +210,7 @@
         repeat,
         onDays: repeat === "weekly" ? onDays.map((i) => DAY_NAMES[i]) : [],
         calendarId,
+        alarms: reminders,
       };
       refusal = await createEvent(draft);
     }
@@ -282,6 +333,58 @@
         {/if}
       </span>
     </div>
+
+    <!-- Reminders, only where this backend carries them: the same gate that
+         draws the bell in the popover opens this row, because a reminder
+         written into a file nothing here can read back is not a reminder the
+         person can check. -->
+    {#if $remindersSupported}
+      <div class="row top">
+        <Bell size={15} strokeWidth={1.75} aria-hidden="true" />
+        <span class="remind-col">
+          <span class="chips" role="group" aria-label={$t("cal.form.reminders")}>
+            {#each PRESETS as s (s)}
+              <Toggle class="rchip" pressed={hasPreset(s)} onPressedChange={(p) => setPreset(s, p)}>
+                {presetLabel(s)}
+              </Toggle>
+            {/each}
+            {#each custom as r, i (i)}
+              <Toggle class="rchip" pressed={true} onPressedChange={() => (reminders = reminders.filter((x) => x !== r))}>
+                {reminderLabel(r, $t, $locale)}
+              </Toggle>
+            {/each}
+            <Toggle class="rchip" bind:pressed={customOpen}>{$t("cal.remind.custom")}</Toggle>
+          </span>
+          {#if customOpen}
+            <span class="custom">
+              <NumberInput value={customN} min={1} max={999} step={1} ariaLabel={$t("cal.remind.custom")} onchange={(v) => (customN = v)} />
+              <PopoverSelect
+                value={customUnit}
+                options={[
+                  { value: "minutes", label: $t("cal.unit.minutes") },
+                  { value: "hours", label: $t("cal.unit.hours") },
+                  { value: "days", label: $t("cal.unit.days") },
+                ]}
+                width="120px"
+                ariaLabel={$t("cal.unit.minutes")}
+                onchange={(v) => (customUnit = v as typeof customUnit)}
+              />
+              <PopoverSelect
+                value={customRel}
+                options={[
+                  { value: "start", label: $t("cal.remind.beforeTheStart") },
+                  { value: "end", label: $t("cal.remind.beforeTheEnd") },
+                ]}
+                width="150px"
+                ariaLabel={$t("cal.form.reminders")}
+                onchange={(v) => (customRel = v as typeof customRel)}
+              />
+              <Button variant="outline" size="sm" id="event-reminder-add" onclick={addCustom}>{$t("cal.remind.add")}</Button>
+            </span>
+          {/if}
+        </span>
+      </div>
+    {/if}
 
     <!-- Already a whole sentence in the reader's language: the store's
          refusal() writes it from the command's named problem. -->
@@ -407,11 +510,39 @@
   .dash {
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
-  .repeat-col {
+  .repeat-col,
+  .remind-col {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     align-items: flex-start;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  /* A reminder chip: the kit toggle at chip size, its pressed face the
+     selection tint, so on and off read at a glance across the row. */
+  .chips :global(.rchip) {
+    height: 1.6rem;
+    padding: 0 0.6rem;
+    border: 1px solid var(--color-border-default, #2a2a2a);
+    border-radius: var(--radius-chip, 4px);
+    font-size: var(--text-xs, 12px);
+    font-weight: 500;
+    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
+  }
+  .chips :global(.rchip[data-state="on"]) {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
+    color: var(--color-fg-primary);
+  }
+  .custom {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
   }
   .failed {
     margin: 0;

@@ -9,10 +9,23 @@
 /// and the reminder daemon pick it up with no further wiring. Until it exists
 /// a live press answers with an honest refusal; the fixture applies locally so
 /// the whole flow drives.
-import { writable, get } from "svelte/store";
+import { derived, writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
 import { t } from "$lib/i18n/messages";
+
+/// When a reminder goes off, exactly as the core's `Trigger` says it: a signed
+/// number of seconds from one end of the event (negative is before, which is
+/// what almost every real reminder is), or a fixed instant the file states.
+export type ReminderTrigger = { seconds: number; related: "start" | "end" } | { at: string };
+
+/// One `VALARM`, as the core parses it. `action` is carried verbatim (DISPLAY,
+/// AUDIO, EMAIL) and never interpreted here: presentation is the notification
+/// daemon's, and a reminder with no action is still a reminder.
+export interface Reminder {
+  trigger: ReminderTrigger;
+  action?: string | null;
+}
 
 /// One expanded occurrence, exactly as the backend serialises it (snake_case).
 export type AgendaEvent = {
@@ -33,6 +46,12 @@ export type AgendaEvent = {
   /// INTENDED SEAM: the core view does not carry this yet; until it does, a
   /// live event falls back to the one unnamed calendar.
   calendar?: string;
+  /// The reminders the event carries. INTENDED SEAM: the core parses them and
+  /// the daemon arms them, but the view does not carry them yet. Absent means
+  /// this backend has not said, and the surfaces show nothing rather than
+  /// "no reminders"; the same absence keeps the form's reminder row closed,
+  /// because a backend that cannot show a reminder cannot write one either.
+  alarms?: Reminder[];
 };
 
 /// One calendar in the store: an .ics file, its display name and its colour.
@@ -71,6 +90,10 @@ export interface EventDraft {
   /// The store file the event is written into. INTENDED SEAM: the live
   /// command picks its default file until it learns this field.
   calendarId: string;
+  /// The reminders to write as VALARMs. INTENDED SEAM: the command ignores
+  /// the field until it learns it, and the form only offers the row when
+  /// `remindersSupported` says the backend carries reminders at all.
+  alarms: Reminder[];
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +201,12 @@ function fixtureAgenda(): Agenda {
     every_n: 1,
     on_days: [],
     expanded: false,
+    alarms: [],
     ...partial,
+  });
+  const before = (seconds: number, related: "start" | "end" = "start"): Reminder => ({
+    trigger: { seconds: -seconds, related },
+    action: "DISPLAY",
   });
   const events: AgendaEvent[] = [];
   for (let i = 0; i < 5; i++) {
@@ -194,6 +222,7 @@ function fixtureAgenda(): Agenda {
         on_days: ["mon", "tue", "wed", "thu", "fri"],
         expanded: true,
         calendar: "work",
+        alarms: [before(10 * 60)],
       }),
     );
   }
@@ -206,8 +235,25 @@ function fixtureAgenda(): Agenda {
     ev({ uid: "birthday", summary: "Mara's birthday", date: addDays(monday, 5), kind: "day", repeats: true, every: "yearly", expanded: true, calendar: "family" }),
     ev({ uid: "planning", summary: "Planning breakfast", date: addDays(monday, 7 + 1), time: "09:30", end_time: "10:30", location: "Cafe am Eck", calendar: "work" }),
     ev({ uid: "rent", summary: "Rent due", date: addDays(monday, 9), repeats: true, every: null, expanded: false, calendar: "personal" }),
-    ev({ uid: "dentist", summary: "Dentist", date: addDays(monday, 16), time: "08:15", end_time: "09:00", calendar: "family" }),
-    ev({ uid: "concert", summary: "Concert", date: addDays(monday, -3), time: "20:00", end_time: "22:30", location: "Stadthalle", calendar: "personal" }),
+    ev({
+      uid: "dentist",
+      summary: "Dentist",
+      date: addDays(monday, 16),
+      time: "08:15",
+      end_time: "09:00",
+      calendar: "family",
+      alarms: [before(24 * 3600), before(3600, "end")],
+    }),
+    ev({
+      uid: "concert",
+      summary: "Concert",
+      date: addDays(monday, -3),
+      time: "20:00",
+      end_time: "22:30",
+      location: "Stadthalle",
+      calendar: "personal",
+      alarms: [{ trigger: { at: `${addDays(monday, -3)}T18:00` } }],
+    }),
   );
   events.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
   return {
@@ -222,6 +268,12 @@ function fixtureAgenda(): Agenda {
 
 /// The agenda (fixture or live).
 export const agenda = writable<Agenda | null>(null);
+
+/// Whether this backend carries reminders at all: true once any loaded event
+/// says `alarms` (the fixture always does). One gate for showing and for
+/// setting, because they land together - a view that cannot say what
+/// reminders an event has is not one a form should be writing them into.
+export const remindersSupported = derived(agenda, ($a) => $a?.events.some((e) => e.alarms !== undefined) ?? false);
 /// True while the agenda is the FIXTURE - the surface says so.
 export const calendarMocked = writable(false);
 
@@ -452,6 +504,7 @@ export async function createEvent(draft: EventDraft): Promise<string | null> {
         every_n: 1,
         on_days: draft.repeat === "weekly" ? draft.onDays : [],
         expanded: draft.repeat !== "none",
+        alarms: draft.alarms,
       };
       const events = [...a.events];
       if (draft.repeat === "none") events.push(base);
@@ -481,6 +534,8 @@ export interface EventChanges {
   time?: string | null;
   endTime?: string | null;
   location?: string;
+  /// The whole reminder list, replaced; absent leaves it.
+  alarms?: Reminder[];
 }
 
 /// Which part of a repeating series a change touches. In-file semantics for
@@ -533,6 +588,7 @@ export async function updateEvent(
           time: changes.allDay ? null : changes.time !== undefined ? changes.time : ev.time,
           end_time: changes.allDay ? null : changes.endTime !== undefined ? changes.endTime : ev.end_time,
           kind: changes.allDay ? "day" : changes.allDay === false && ev.kind === "day" ? "floating" : ev.kind,
+          alarms: changes.alarms ?? ev.alarms,
         };
       });
       events.sort((x, y) => x.date.localeCompare(y.date) || (x.time ?? "").localeCompare(y.time ?? ""));
