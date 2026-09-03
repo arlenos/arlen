@@ -645,8 +645,8 @@ async fn run_uninstall_flatpak(
 /// this exists to catch.
 ///
 /// CANNOT-CHECK IS NOT PERMISSION. An unreachable remote, an app with no origin,
-/// an unparseable answer - each ends the job rather than updating on the grounds
-/// that nothing was found to object to. The alternative reads as safe and is the
+/// an unreadable commit, an unparseable answer - each ends the job rather than
+/// updating on the grounds that nothing was found to object to. The alternative reads as safe and is the
 /// opposite: the one case where the comparison fails is the one where the update
 /// applies unexamined.
 async fn run_update_flatpak(
@@ -670,7 +670,13 @@ async fn run_update_flatpak(
         .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
     let remote = flatpak::get_origin(app_id)
         .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
-    let offered = flatpak::get_remote_context(&remote, app_id)
+    // ONE version end to end. The commit is read first, the permission comparison
+    // is made against THAT commit, and the deploy names it - so a remote that
+    // publishes mid-job cannot slip a version past the gate that examined a
+    // different one.
+    let commit = flatpak::get_remote_commit(&remote, app_id)
+        .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
+    let offered = flatpak::get_remote_context(&remote, app_id, &commit)
         .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
 
     let widened = flatpak::widened(&installed, &offered);
@@ -685,7 +691,7 @@ async fn run_update_flatpak(
 
     queue.update_progress(job_id, 40, "updating via flatpak");
     emit_progress(conn, job_id, 40, "updating via flatpak").await;
-    flatpak::update_flatpak(app_id)
+    flatpak::update_flatpak_to(app_id, &commit)
         .map_err(|e| install::InstallError::FlatpakFailed(e.to_string()))?;
 
     // The permission profile is deliberately NOT rewritten. It is the grant the
