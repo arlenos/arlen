@@ -1972,14 +1972,26 @@ def main():
         return 1
     if args.app:
         # Confirm the SKU launch hook actually fired, not just that --app was passed.
-        # Two independent signals, either suffices: (1) the session's explicit marker
-        # (arlen-session logs `launching verify app '<app>'`), and (2) the launched
-        # app's own journal identifier (`<app>[<pid>]:`). The one-shot session marker
-        # is piped through `systemd-cat` and can lose the early journal-to-console
-        # forwarding race, whereas the app logs to the journal directly under its own
-        # identifier once it is up - which forwards to serial reliably - so its
-        # presence is direct launch evidence. A systemd unit line reads `systemd[1]:`,
-        # never `<app>[`, so this does not false-match a mere "Started ..." log.
+        # THREE independent signals, any one suffices: (1) the session's explicit
+        # marker (arlen-session logs `launching verify app '<app>'`), (2) the launched
+        # app's own journal identifier (`<app>[<pid>]:`), and (3) the shell reporting
+        # a Wayland toplevel with that app_id. The one-shot session marker is piped
+        # through `systemd-cat` and can lose the early journal-to-console forwarding
+        # race, whereas the app logs to the journal directly under its own identifier
+        # once it is up - which forwards to serial reliably - so its presence is
+        # direct launch evidence. A systemd unit line reads `systemd[1]:`, never
+        # `<app>[`, so this does not false-match a mere "Started ..." log.
+        #
+        # THE THIRD SIGNAL WAS ADDED AFTER A FALSE FAIL, and it is the strongest of
+        # the three. `arlen-mail` was reported as never launched on a boot where it
+        # plainly had: the shell logged `new_toplevel ... app_id="arlen-mail"` at
+        # 12.5s, the app queried the graph for its own project, and its window.focused
+        # was promoted into the KG at 40s. What was missing was only the two lines
+        # this checked for - the session marker lost in a serial flooded by the graph
+        # daemon's DEBUG output, and an app identifier that never appears because mail
+        # logs nothing of its own. The first two signals are somebody saying they
+        # started it; the toplevel is the window existing, reported by a component
+        # that logs on every boot.
         try:
             with open(serial, "r", errors="replace") as fh:
                 journal = fh.read()
@@ -1993,6 +2005,8 @@ def main():
             return 1
         elif f"{args.app}[" in journal:
             print(f"app: {args.app} is running ({args.app}[pid] in the journal; SKU hook fired)")
+        elif f'app_id="{args.app}"' in journal:
+            print(f"app: {args.app} has a window (the shell logged its toplevel; SKU hook fired)")
         else:
             print(f"VERIFY FAIL: --app {args.app} - no launch signal in the serial "
                   f"(neither the session marker nor a {args.app}[pid] journal line)")
