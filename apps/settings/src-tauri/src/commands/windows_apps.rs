@@ -472,3 +472,24 @@ mod tests {
         }
     }
 }
+
+/// Cut a bottle off the network.
+///
+/// ONE DIRECTION. There is no command that hands the network back, because the
+/// daemon has no ask that widens: a grant is decided when the bottle is made, and
+/// a switch that could undo that decision with a stray click is not the shape this
+/// belongs in. Answers whether anything changed, so a surface can tell "done" from
+/// "it already could not reach anything".
+#[tauri::command]
+pub async fn revoke_bottle_network(id: String) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::RevokeNetwork { id }) {
+            Ok(Response::NetworkRevoked { changed }) => Ok(changed),
+            Ok(Response::Refused { problem }) => Err(problem_token(problem)),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
