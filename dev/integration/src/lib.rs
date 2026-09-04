@@ -1411,12 +1411,12 @@ mod module_reachability {
         //                           `org.arlen.Sentinel1` daemon that does not
         //                           exist, like its siblings below.
         //
-        // The `sentinel-detect` entries come off together when that daemon lands:
-        // they are one feature waiting on one caller, not separate decisions.
-        // `readout` joined them on 4 September and took `exposure` off the list in
-        // the same commit - it composes exposure's six surface postures into the
-        // ordered list Settings renders, so it reaches exposure while nothing yet
-        // reaches it.
+        // The `sentinel-detect` entries come off as their daemon reaches them, and
+        // three did on 4 September. `readout` joined the list that morning and left
+        // it the same day: `arlen-sentineld` now composes exposure's surfaces
+        // through it and serves the result to the Settings privacy page, which
+        // took `exposure` and `readout` off together. The three below are the
+        // detectors that daemon does not run yet.
         "daemons/code-indexer/resolve",
         "daemons/integration-packages/manifest",
         "daemons/sentinel-detect/tracker",
@@ -1441,7 +1441,6 @@ mod module_reachability {
         "daemons/knowledge/lifecycle",
         "daemons/knowledge/migration",
         "daemons/sentinel-detect/movement",
-        "daemons/sentinel-detect/readout",
         "daemons/sentinel-detect/recording",
         "daemons/sentinel-detect/usb",
     ];
@@ -1529,8 +1528,8 @@ mod module_reachability {
     /// `daemons/*` "unreferenced in this tree" means unreferenced anywhere.
     ///
     /// The check is per module, so it does not see an entire crate going unused -
-    /// `sentinel-detect`'s modules reference each other, which is why only five of
-    /// its seven appear above while the crate as a whole has no consumer at all.
+    /// `sentinel-detect`'s modules reference each other, which is why only four of
+    /// its seven appear above.
     #[test]
     fn no_new_daemon_module_is_unreachable() {
         let root = repo_path("");

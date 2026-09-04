@@ -1170,6 +1170,14 @@ pub fn permissions_dir() -> Option<PathBuf> {
 /// app unaddressable. Ids are compared and stored verbatim, never case-folded, so
 /// two ids differing only in case are two apps - which is how a case-sensitive
 /// filesystem and Flatpak itself already treat them.
+///
+/// `+` is accepted for the same reason, found by a curated profile that could not
+/// be addressed: enrolment keys on the DEBIAN PACKAGE NAME, and Debian's own
+/// policy allows `+` in one, which is how `xgalaga++`, `g++` and `libstdc++6` are
+/// spelled. Rejecting it meant every `++` package was permanently unprofileable
+/// while its profile sat on disk looking enrolled. It is as inert a path
+/// component as a letter: no separator, no traversal, nothing a shell here would
+/// see, because these ids are joined into a path and never passed to one.
 pub fn is_valid_app_id(app_id: &str) -> bool {
     !app_id.is_empty()
         && app_id != ".."
@@ -1178,7 +1186,7 @@ pub fn is_valid_app_id(app_id: &str) -> bool {
         && !app_id.contains("..")
         && app_id
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+'))
 }
 
 /// The system-tier (root-owned) profile path for `app_id`, or `None` if the id is
@@ -1773,6 +1781,22 @@ always_confirm_overrides = ["empty_trash"]
             assert!(profile_path(id).is_ok(), "{id} must build a profile path");
             assert!(system_profile_path(id).is_some(), "{id} must build a system path");
         }
+    }
+
+    #[test]
+    fn a_debian_package_name_with_pluses_is_addressable() {
+        // Regression, and it was sitting on disk: `xgalaga++` was curated as a
+        // starting profile, and enrolment keys on the Debian package name, so the
+        // file was named for an id the resolver then refused. The profile existed
+        // and the app could never load it. Debian policy allows `+` in a package
+        // name, so this is not one odd game.
+        for id in ["xgalaga++", "g++", "libstdc++6"] {
+            assert!(is_valid_app_id(id), "{id} is a real package name");
+            assert!(profile_path(id).is_ok(), "{id} must build a profile path");
+        }
+        // And it stays a single path component: nothing about `+` weakens the
+        // traversal guard it sits beside.
+        assert!(!is_valid_app_id("../x++"));
     }
 
     #[test]

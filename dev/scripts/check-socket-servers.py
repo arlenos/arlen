@@ -80,6 +80,7 @@ SERVERS = {
     "notification.sock": "arlen-notifyd",
     "power.sock": "arlen-powerd",
     "search.sock": "arlen-desktop-shell",
+    "sentinel.sock": "arlen-sentineld",
     "store.sock": "arlen-store-backend",
     "topbar.sock": "arlen-desktop-shell",
     "undo-signer.sock": "arlen-ai-undo-signer",

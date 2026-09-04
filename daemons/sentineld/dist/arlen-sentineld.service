@@ -1,0 +1,40 @@
+[Unit]
+Description=Arlen physical-world privacy sentinel (user service)
+Documentation=https://github.com/arlenos/arlen
+# It answers what this machine broadcasts about itself over Wi-Fi and Bluetooth,
+# and holds the switches for the detectors that watch for it
+# (privacy-sentinel-plan.md). Settings reads it; nothing else does yet.
+# No ordering dependency. Nothing must wait on it: a caller that cannot connect
+# gets a failed connect, which the privacy page renders as "nothing is reporting"
+# rather than as a clean machine. That distinction is the whole point of the
+# page, so a startup race here degrades honestly instead of lying.
+
+[Service]
+# Type=simple: the sentinel does not call sd_notify. Settings connects lazily, so
+# an unbound socket is a failed connect and no readiness barrier is needed.
+Type=simple
+ExecStart=/usr/lib/arlen/libexec/arlen-sentineld
+# It exits non-zero when it cannot find where the switches live or cannot bind
+# its socket. Restart with back-off so a persistent fault surfaces in the journal
+# rather than crash-looping fast.
+Restart=on-failure
+RestartSec=2
+
+# NO MOUNT-NAMESPACE OPTIONS - not ProtectSystem, ProtectHome, PrivateTmp,
+# PrivateDevices or ProtectKernel*. Peer authentication reads the caller through
+# /proc, and under any single one of those a same-uid /proc/<pid> read fails
+# EACCES. Measured on this host for capsuled, the audit daemon and the consent
+# broker, each of which omits them for the same reason: a daemon that rejects
+# every connection is not hardened, it is off.
+#
+# The boundary here is the peer credential and the 0600 socket, plus the fact
+# that the two remediations go through NetworkManager and BlueZ, which do their
+# own authorization rather than trusting this service.
+RestrictNamespaces=yes
+LockPersonality=yes
+NoNewPrivileges=yes
+MemoryDenyWriteExecute=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

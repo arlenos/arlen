@@ -1,0 +1,35 @@
+#!/bin/sh
+# Phase 8y (CHROOT): the physical-world privacy sentinel (arlen-sentineld). It
+# reads what this machine broadcasts about itself over Wi-Fi and Bluetooth, holds
+# the switches for the detectors that watch for it, and serves both over a socket
+# the Settings privacy page reads (`privacy-sentinel-plan.md`).
+#
+# IT SHIPS BECAUSE THE PAGE ALREADY SHIPPED. Settings has asked for this state
+# since 26 August and got nothing back, and the page above it was written to tell
+# somebody they are protected. An image with the page and without the daemon is a
+# protection screen with no protection behind it.
+#
+# Resolves as a standalone package (cargo build --manifest-path) -> its own target
+# dir in the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-sentineld"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the privacy sentinel (arlen-sentineld) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/sentineld/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-sentineld" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-sentineld"
+echo ">> staged arlen-sentineld into the image"

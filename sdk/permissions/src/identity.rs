@@ -565,6 +565,15 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-bottled" => {
             return Ok("bottled".to_string());
         }
+        // The privacy sentinel, pinned for the same reason as the bottle runtime
+        // beside it: it records a detector being switched off before it does it
+        // and refuses the change when the record cannot be written, so an
+        // unnamed binary would make turning a protection off fail on every image
+        // rather than only where it should. `sentineld` is the name its unit
+        // table entry uses.
+        "/usr/lib/arlen/libexec/arlen-sentineld" => {
+            return Ok("sentineld".to_string());
+        }
         // The install daemon, pinned canonically so its install/uninstall audit
         // (GAP-2) submits under the stable id `installd`, the id the audit
         // daemon's ADMITTED allowlist keys on. Same rationale as the accounts and
