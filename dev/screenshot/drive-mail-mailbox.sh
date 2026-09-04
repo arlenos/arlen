@@ -28,6 +28,9 @@
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
+# The frontend is served from a preview below, not baked into the binary, so the
+# staleness guard compares Rust only (see shoot-app.sh).
+export SHOOT_FRONTEND_SERVED=1
 # shellcheck source=dev/screenshot/lib/wait.sh
 . "$here/lib/wait.sh"
 # shellcheck source=dev/screenshot/lib/preview.sh

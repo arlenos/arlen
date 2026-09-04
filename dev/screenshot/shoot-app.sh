@@ -89,9 +89,27 @@ if [ -e "$SHOOT_APP" ]; then
     # cannot fail that way - matching nothing is a 0 exit - and `|| true` covers
     # what is left, an unreadable directory. The parentheses matter too: without
     # them the `-o` binds so that `-newer` applies to the first name only.
-    _newer="$(find "$(dirname "$_crate")/src" "$(dirname "$(dirname "$_crate")")/src" \
-                \( -name '*.rs' -o -name '*.svelte' -o -name '*.ts' \) \
-                -newer "$SHOOT_APP" -print -quit 2>/dev/null || true)"
+    # WHICH SOURCES COUNT DEPENDS ON WHERE THE FRONTEND COMES FROM. A release
+    # binary carries the built frontend inside it, so a `.svelte` or `.ts` edit
+    # genuinely makes it stale. A debug binary loads `devUrl` and the drive serves
+    # the frontend from a preview - so a frontend edit reaches the run without the
+    # binary being rebuilt at all, and comparing them refuses a binary that is
+    # perfectly current.
+    #
+    # That cost two runs on 5 September while sweeping copy: `cargo build`
+    # finished in under a second because no Rust had changed, the binary's mtime
+    # stayed put, and the guard refused over a `messages.b.ts` the preview was
+    # already serving. A guard that is wrong in a mode people use gets worked
+    # around, and a guard people work around protects nothing.
+    #
+    # SHOOT_FRONTEND_SERVED=1 says the caller is serving the frontend itself.
+    _look=("$(dirname "$_crate")/src")
+    _kinds=(-name '*.rs')
+    if [ "${SHOOT_FRONTEND_SERVED:-0}" != 1 ]; then
+      _look+=("$(dirname "$(dirname "$_crate")")/src")
+      _kinds=(-name '*.rs' -o -name '*.svelte' -o -name '*.ts')
+    fi
+    _newer="$(find "${_look[@]}" \( "${_kinds[@]}" \) -newer "$SHOOT_APP" -print -quit 2>/dev/null || true)"
     if [ -n "$_newer" ]; then
       # STDERR IS NOT ENOUGH, and that took until 5 September to notice. Every
       # drive invokes this as `... 2>&1 | sed -n 's/^inject result: //p'`, which
