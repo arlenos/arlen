@@ -47,13 +47,13 @@ trap cleanup EXIT
 # PRESENT IS NOT CURRENT. The binary check one line up says when it is older than
 # its source, after a stale one cost a cycle on 28 August; the built frontend is
 # the same trap on the other half, and this drive reads the SVELTE - every
-# assertion below is about what the page renders. A rebuild is cheap; believing an
-# old page is not.
-if [ -n "$(find "$root/apps/settings/src" -newer "$root/apps/settings/build" -name '*.svelte' -o \
-                -newer "$root/apps/settings/build" -name '*.ts' 2>/dev/null | head -1)" ]; then
-  echo "!! the built frontend is OLDER than apps/settings/src - rebuild before" >&2
-  echo "   believing a failure: (cd apps/settings && npm run build)" >&2
-fi
+# assertion below is about what the page renders.
+#
+# This used to be a hand-rolled `find` that WARNED on stderr, which is the one
+# channel a drive discards (`2>&1 | sed -n 's/^inject result: //p'`), so it was
+# invisible in every run that mattered - the same shape as the swallowed binary
+# warning that became a refusal on 5 September. Now it refuses, through the
+# shared helper, so there is one implementation of the rule rather than two.
 
 # Through the shared helper, which refuses a port it did not start and kills the
 # server's whole process group. This was `( ... ) &` with `preview_pid=$!`, and
@@ -61,6 +61,7 @@ fi
 # kill missed it and every run left a server behind. The next run's readiness
 # check then passed against THAT one and read a frontend built at some earlier
 # time - a suite passing while testing a page nobody had just built.
+require_fresh_frontend "$root/apps/settings/build" "$root/apps/settings/src" || exit 2
 start_preview "$root/apps/settings" 1421 || exit 1
 wait_for_http "http://localhost:1421/" || exit 1
 
