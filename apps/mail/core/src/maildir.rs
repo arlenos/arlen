@@ -171,6 +171,43 @@ pub fn folders(root: &std::path::Path) -> Vec<Folder> {
     out
 }
 
+/// One folder by its relative path, resolved without listing the others.
+///
+/// [`folders`] enumerates, and enumerating to answer "is this one there" costs an
+/// unread scan of every folder to learn the name of one. That is what listing a
+/// mailbox was paying: the surface asks for each folder's rows in turn, so the
+/// cost went up with the square of the number of folders and every scan but one
+/// was thrown away.
+///
+/// TWO GATES, the pair [`message_path`] uses and for its reason: `rel` arrives
+/// from the surface, so [`safe_id`] rules on what was typed and the canonicalized
+/// containment rules on what the filesystem resolved. [`folders`] needs neither,
+/// because the names it returns came from `read_dir` rather than off the wire.
+///
+/// A folder here is a direct child named for its rail, so a `rel` carrying a
+/// separator is refused before any of that.
+#[must_use]
+pub fn folder_at(root: &std::path::Path, rel: &str) -> Option<Folder> {
+    if rel.is_empty() {
+        return is_maildir(root).then(|| Folder {
+            kind: FolderKind::Inbox,
+            rel: String::new(),
+            unread: unread_in(root),
+        });
+    }
+    if !safe_id(rel) || rel.contains('/') {
+        return None;
+    }
+    let kind = kind_of(rel)?;
+    let dir = root.join(rel);
+    let real = std::fs::canonicalize(&dir).ok()?;
+    let real_root = std::fs::canonicalize(root).ok()?;
+    if !real.starts_with(&real_root) {
+        return None;
+    }
+    is_maildir(&dir).then(|| Folder { kind, rel: rel.to_string(), unread: unread_in(&dir) })
+}
+
 /// How many messages in this folder have not been read.
 ///
 /// FILES ONLY, and that is not pedantry. `envelopes` skips anything that is not a
@@ -383,6 +420,59 @@ mod tests {
         // `new/1` plus `cur/3` (flagged R, never S). `cur/2` is Seen.
         assert_eq!(fs[0].unread, 2);
         assert_eq!(fs[1].unread, 0, ".Sent's only message is Seen");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn resolving_one_folder_agrees_with_listing_them_all() {
+        // THE control for the substitution: the list path stopped enumerating, so
+        // what it gets back has to be what `folders` would have handed it, kind
+        // and count included rather than only the name it asked with.
+        let root = a_maildir();
+        // `.Sent`'s one message is Seen, so comparing the fixture as built would
+        // compare two zeroes and pass with the count left out entirely. It did,
+        // when the count was stubbed to check.
+        std::fs::write(root.join(".Sent/new/5.host"), b"Subject: unsent\n\nbody\n").unwrap();
+        let fs = folders(&root);
+        assert!(fs.iter().any(|f| !f.rel.is_empty() && f.unread > 0), "nothing to compare: {fs:?}");
+        for f in fs {
+            assert_eq!(folder_at(&root, &f.rel).as_ref(), Some(&f), "{:?}", f.rel);
+        }
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_folder_id_that_is_not_a_folder_resolves_to_nothing() {
+        let root = a_maildir();
+        // Has no rail, so it is not a folder this shows - the same answer
+        // `folders` gives by leaving it out.
+        assert!(folder_at(&root, ".Work.2019").is_none());
+        assert!(folder_at(&root, ".Nothing").is_none());
+        for bad in ["../../etc", ".Sent/cur", "/etc", ".Sent/../.Sent"] {
+            assert!(folder_at(&root, bad).is_none(), "{bad} must be refused");
+        }
+        // The empty rel is not a refusal: it is how the inbox is named.
+        assert_eq!(folder_at(&root, "").map(|f| f.kind), Some(FolderKind::Inbox));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_folder_linked_out_of_the_maildir_is_refused_by_the_second_gate() {
+        let root = a_maildir();
+        let outside =
+            std::env::temp_dir().join(format!("arlen-outside-folder-{}", std::process::id()));
+        for d in ["cur", "new"] {
+            std::fs::create_dir_all(outside.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(&outside, root.join(".Trash")).unwrap();
+        assert!(safe_id(".Trash"), "the name itself looks ordinary");
+        assert!(kind_of(".Trash").is_some(), "and it names a real rail");
+        assert!(
+            folder_at(&root, ".Trash").is_none(),
+            "a folder linked out of the maildir must not resolve"
+        );
+        std::fs::remove_dir_all(&outside).ok();
         std::fs::remove_dir_all(&root).ok();
     }
 
