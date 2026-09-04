@@ -15,6 +15,7 @@
   /// toggles; for focus it opens the project flyout (orchestrator's
   /// choice).
   import type { Snippet } from "svelte";
+  import * as Tooltip from "../ui/tooltip/index.js";
 
   let {
     icon,
@@ -37,8 +38,9 @@
     /// muted foreground. Almost all badges are active when visible —
     /// the prop exists for the rare "show ambient" case.
     active?: boolean;
-    /// `title` attribute (native tooltip). Component does not own the
-    /// shadcn Tooltip — wrap externally if a styled one is needed.
+    /// What the badge stands for, in words. Shown as the kit tooltip
+    /// (never the native one, design-system.md §6.4) and read as the
+    /// badge's accessible name when it has no visible label.
     title?: string;
     /// `true` adds a slow pulse animation. Used for the Recording
     /// badge to draw the eye.
@@ -49,7 +51,7 @@
   } = $props();
 </script>
 
-{#if visible}
+{#snippet badge(props: Record<string, unknown>)}
   {#if onclick}
     <button
       type="button"
@@ -57,7 +59,8 @@
       class:active
       class:pulsate
       class:has-label={label.length > 0}
-      {title}
+      aria-label={label ? undefined : title || undefined}
+      {...props}
       onclick={(e) => {
         e.stopPropagation();
         onclick();
@@ -74,13 +77,29 @@
       class:active
       class:pulsate
       class:has-label={label.length > 0}
-      {title}
+      aria-label={label ? undefined : title || undefined}
+      {...props}
     >
       <span class="status-badge-icon">{@render icon()}</span>
       {#if label}
         <span class="status-badge-label">{label}</span>
       {/if}
     </span>
+  {/if}
+{/snippet}
+
+{#if visible}
+  {#if title}
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          {@render badge(props)}
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.TooltipContent side="bottom">{title}</Tooltip.TooltipContent>
+    </Tooltip.Root>
+  {:else}
+    {@render badge({})}
   {/if}
 {/if}
 
