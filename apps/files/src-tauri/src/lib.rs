@@ -1200,8 +1200,18 @@ async fn files_op(
             }
             Ok(()) => j.finish("done", "").await,
             Err(_) => {
+                // `error-fatal`, not a word of my own choosing. This string goes
+                // straight onto the wire through `SetState`, and the vocabulary is
+                // KDE JobViewV3's - `error-recoverable` / `error-fatal` - which the
+                // shell translates in exactly one place. An unknown token is
+                // carried through rather than dropped, so inventing "failed" here
+                // would land the job in a state the zone has no branch for and
+                // render as nothing: the same defect the shell's `jobs.rs` header
+                // was written about, reintroduced from the producer end. Fatal
+                // rather than recoverable because the zone cannot retry a file
+                // operation - the person repeats it from the window.
                 j.finish(
-                    "failed",
+                    "error-fatal",
                     "This did not finish. Anything already done was left as it is.",
                 )
                 .await
