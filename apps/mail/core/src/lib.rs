@@ -48,6 +48,7 @@ pub mod alternative;
 pub mod exfiltration;
 pub mod sync;
 pub mod message;
+pub mod maildir;
 
 use std::collections::BTreeSet;
 
