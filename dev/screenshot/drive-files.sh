@@ -93,6 +93,11 @@ window.dispatchEvent(new KeyboardEvent("keydown",
   { key: "z", ctrlKey: true, bubbles: true, cancelable: true }));
 await wait(2000);
 out.afterUndo = listing();
+// The same sentence again, AFTER the undo. Nothing checked this and the
+// screenshot showed why it should: the file was back in the list and the line
+// still said "Moved to Trash. Ctrl+Z puts it back." - a state that no longer
+// held, offering an action that no longer applied.
+out.saidAfterUndo = (document.body.innerText.match(/Moved to Trash[^\n]*/) || [""])[0].trim();
 return JSON.stringify(out);
 JS
 } > "$work/.undo.js"
@@ -119,6 +124,9 @@ say "Ctrl+Z puts it back on disk with its contents" \
   "$(printf '%s' "$got" | grep -q '"afterUndo":\["alpha.txt","beta.txt","sub"\]' \
      && [ -e "$work/beta.txt" ] && [ "$(cat "$work/beta.txt")" = two ] && echo 1 || echo 0)" \
   "$got (beta.txt on disk: $([ -e "$work/beta.txt" ] && echo present || echo GONE))"
+
+say "and the window stops saying the file is in the trash" \
+  "$(printf '%s' "$got" | grep -q '"saidAfterUndo":""' && echo 1 || echo 0)" "$got"
 
 
 # Rename and search each get their own run and their own fixture state, for the
