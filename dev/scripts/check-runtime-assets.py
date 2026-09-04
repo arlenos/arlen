@@ -101,7 +101,12 @@ NOT_PROVIDED: dict[str, str] = {
         "the image: there is no default image or manifest in the tree, so shipping one is "
         "an asset-and-design decision rather than a missing install line. NB the two names "
         "differ by one letter and mean different things, which is how a manual sweep "
-        "matched `wallpaper` inside `wallpapers` and called this provided"
+        "matched `wallpaper` inside `wallpapers` and called this provided. SECOND READER, "
+        "found 5 Sep: the GREETER reads this same manifest (`greeter_wallpaper`), and there "
+        "the consequence is more visible than a flat desktop - the login screen is the first "
+        "thing anyone sees, and without this file it shows its fallback on every boot while "
+        "a whole reader sits behind it. Whoever decides the default image should know it "
+        "settles two surfaces, not one"
     ),
     "share:settings-schemas": (
         "read by the Settings app, which is not on the image either. It lands with "
