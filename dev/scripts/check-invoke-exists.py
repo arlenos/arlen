@@ -398,34 +398,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # not decided to have. Listed so it is not mistaken for plumbing.
         "dictation_status": "the dictation indicator (no speech engine)",
         "stop_dictation": "stopping dictation (no speech engine)",
-        # The shell's open-a-Windows-file dialog. The reason here USED to be "the
-        # deferred bottle daemon", and that reason is now wrong: `daemons/bottled`
-        # exists and makes bottles, installs into them, picks a program and
-        # launches it, and the Settings Windows panel drives all of it. A stale
-        # reason is worse than none, because it parks work behind a blocker that
-        # was removed.
-        #
-        # What is actually missing is the TRIGGER. Nothing on this machine claims
-        # a Windows executable: no desktop entry declares
-        # `application/x-ms-dos-executable` or `x-msi`, so double-clicking a .exe
-        # in the file manager reaches nothing and the shell is never asked. The
-        # run and install halves are wiring on a daemon that answers today; the
-        # request half needs somebody to route the open, which is a MIME-handler
-        # decision (a shell entry that claims the type, versus the portal handing
-        # it over) and not a command.
-        "windows_file_request": (
-            "the Windows file prompt. Needs the TRIGGER, not the daemon: nothing "
-            "claims application/x-ms-dos-executable or x-msi, so no open ever "
-            "reaches the shell to be asked about"
-        ),
-        "windows_file_install": (
-            "installing a Windows file, downstream of windows_file_request - "
-            "there is no pending open to install"
-        ),
-        "windows_file_run": (
-            "running a Windows file, downstream of windows_file_request - there "
-            "is no pending open to run"
-        ),
     },
     "store": {
         # The store app is arlen-ui's live surface, so these three are theirs to

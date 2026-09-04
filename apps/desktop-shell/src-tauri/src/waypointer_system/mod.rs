@@ -161,6 +161,9 @@ fn open_request(request: arlen_launch_contract::LaunchRequest) -> Result<(), Str
     ));
     match outcome {
         launch::LaunchOutcome::Started { .. } => Ok(()),
+        // The shell asked instead of opening: a dialog is on screen and the
+        // person decides. Not an error to the caller - the request was taken.
+        launch::LaunchOutcome::Asked { .. } => Ok(()),
         launch::LaunchOutcome::NoHandler { mime } => {
             Err(format!("nothing is set up to open {mime}"))
         }
