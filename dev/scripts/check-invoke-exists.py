@@ -311,22 +311,18 @@ KNOWN: dict[str, dict[str, str]] = {
     # The store answers a real host with an empty, honestly unconnected mailbox
     # rather than a sample, so the catch does not invent a mailbox either.
     "mail": {
-        # FALSE WHEN: `mail-app.md` §6 names a mailbox model. It currently says in
-        # its own words that the section "produced no surviving claims, so any
-        # scope list I wrote now would be convention dressed as research", and §7
-        # adds that encryption is the last blocker to calling the strand planned.
-        "mail_folders": (
-            "the mailbox model is undecided (mail-app.md §6); a real host gets an "
-            "unconnected mailbox rather than a sample"
-        ),
-        "mail_list": (
-            "the mailbox model is undecided (mail-app.md §6); a real host gets an "
-            "unconnected mailbox rather than a sample"
-        ),
-        "mail_open": (
-            "the mailbox model is undecided (mail-app.md §6); a real host gets an "
-            "unconnected mailbox rather than a sample, and a failed open says so"
-        ),
+        # THE THREE MAILBOX COMMANDS ARE BUILT (5 Sep) and their entries are gone.
+        # The reason they carried was wrong, and how it was wrong is worth keeping:
+        # it said "the mailbox model is undecided (mail-app.md §6)", but §6 defers
+        # WHICH FEATURES ARE LOAD-BEARING - a scope question - and says nothing
+        # about whether a folder list can be read off a disk. A scope note was
+        # read as a blocker and repeated for a week, including by me in every
+        # report. What §1 and §5 actually settle is that IMAP is the floor and the
+        # client layer is an open choice, so there is no ACCOUNT - which is why
+        # these read a local Maildir and answer with an empty list when there is
+        # none, rather than waiting for a decision that was never theirs.
+        #
+        # The one below is a different gate, and a real one.
         "mail_sender_person": (
             "NEEDS A PRODUCER: `shared.Person` has an owner and a decided contract "
             "(contacts-decision.md - mail reads people, never owns them) and "

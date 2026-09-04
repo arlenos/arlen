@@ -534,9 +534,6 @@ DEAD_INVOKES: dict[str, str] = {
     # has decided, and inventing one in a Tauri command would decide it by
     # accident. The store already answers a real host with an empty, honestly
     # unconnected mailbox rather than a sample - planner, mail-app.md §6
-    "mail_folders": "the mailbox model is undecided (mail-app.md §6); the store answers a real host with an unconnected mailbox rather than a sample",
-    "mail_list": "the mailbox model is undecided (mail-app.md §6); the store answers a real host with an unconnected mailbox rather than a sample",
-    "mail_open": "the mailbox model is undecided (mail-app.md §6); the store answers a real host with an unconnected mailbox rather than a sample",
     # `shared.Person` has an owner on paper (`org.arlen.contacts`) and a decided
     # contract - mail READS people and never owns them - but no producer: no
     # contacts surface and no CardDAV bridge writes one yet, so the command would

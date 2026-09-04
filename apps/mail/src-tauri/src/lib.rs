@@ -121,6 +121,131 @@ enum ReadProblem {
     NotAMessage,
 }
 
+/// Where this machine keeps its mail.
+///
+/// `$HOME/Maildir`, the convention, because there is no account backend to ask
+/// and no config that names one yet - §1 leaves the IMAP client layer an open
+/// choice and §5 keeps it open. When one lands it will say where the store is
+/// and this becomes its fallback rather than its answer.
+///
+/// The override is debug-gated, like `install-helper`'s and the greeter's: a
+/// release build reading a mailbox path out of the environment it was started in
+/// is the same hazard as reading anything else out of it, and the tests are the
+/// only caller that needs one.
+fn maildir_root() -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    if let Some(dir) = std::env::var_os("ARLEN_MAILDIR") {
+        return Some(PathBuf::from(dir));
+    }
+    dirs::home_dir().map(|h| h.join("Maildir"))
+}
+
+/// One folder in the rail, as the surface declares it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderDto {
+    /// `inbox` for the maildir root, else the folder's own directory name.
+    ///
+    /// A name rather than the empty string the root has on disk: the surface
+    /// hands this straight back as `folderId`, and an empty id in a URL or a
+    /// log is the kind of value that reads as absent when it is meant.
+    id: String,
+    kind: &'static str,
+    unread: usize,
+}
+
+/// One list row. camelCase, because the surface's `Envelope` is - unlike its
+/// `Message`, which is the snake_case shape `mail_read` already emits. Two
+/// casings on one wire is not tidy, and matching what each consumer declares
+/// beats making them agree with each other.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvelopeDto {
+    id: String,
+    folder_id: String,
+    /// The sender's ADDRESS, or empty when the message carried none.
+    ///
+    /// Empty rather than a sentence: an English "unknown sender" written here
+    /// would reach a German reader in English, which is the mistake this app
+    /// already made once with its refusal text. What an absent sender looks like
+    /// is the catalogue's decision.
+    from: String,
+    subject: String,
+    snippet: String,
+    date_ms: i64,
+    unread: bool,
+}
+
+fn kind_name(k: arlen_mail_core::maildir::FolderKind) -> &'static str {
+    use arlen_mail_core::maildir::FolderKind as K;
+    match k {
+        K::Inbox => "inbox",
+        K::Sent => "sent",
+        K::Drafts => "drafts",
+        K::Archive => "archive",
+        K::Trash => "trash",
+    }
+}
+
+/// The folders in this machine's mailbox.
+///
+/// An empty list is the honest answer for a machine with no maildir, which is
+/// most of them: the store renders "no account connected" from it rather than an
+/// inbox that was never there.
+#[tauri::command]
+fn mail_folders() -> Vec<FolderDto> {
+    let Some(root) = maildir_root() else { return Vec::new() };
+    arlen_mail_core::maildir::folders(&root)
+        .into_iter()
+        .map(|f| FolderDto {
+            id: if f.rel.is_empty() { "inbox".to_string() } else { f.rel.clone() },
+            kind: kind_name(f.kind),
+            unread: f.unread,
+        })
+        .collect()
+}
+
+/// The rows for one folder, newest first.
+///
+/// A folder id the mailbox does not have yields an empty list rather than an
+/// error: the surface asks for whatever it was last showing, and a mailbox that
+/// changed under it is an ordinary thing rather than a fault to report.
+#[tauri::command]
+fn mail_list(folder_id: String) -> Vec<EnvelopeDto> {
+    let Some(root) = maildir_root() else { return Vec::new() };
+    let rel = if folder_id == "inbox" { String::new() } else { folder_id.clone() };
+    let Some(folder) = arlen_mail_core::maildir::folders(&root).into_iter().find(|f| f.rel == rel)
+    else {
+        return Vec::new();
+    };
+    arlen_mail_core::maildir::envelopes(&root, &folder)
+        .into_iter()
+        .map(|r| EnvelopeDto {
+            id: r.id,
+            folder_id: folder_id.clone(),
+            from: r.from.unwrap_or_default(),
+            subject: r.subject.unwrap_or_default(),
+            snippet: r.snippet,
+            date_ms: r.date_ms.unwrap_or(0),
+            unread: r.unread,
+        })
+        .collect()
+}
+
+/// Open one message from the mailbox, by the id its row carried.
+///
+/// The same `MessageDto` `mail_read` returns - one shape on the wire, as the
+/// store asks. The id is resolved through `maildir::message_path`, which refuses
+/// what would leave the mailbox and refuses again after following symlinks; a
+/// refused id is `NotAMessage`, because there is no id a person can type and a
+/// bad one deserves no explanation of the layout.
+#[tauri::command]
+fn mail_open(id: String) -> Result<MessageDto, ReadProblem> {
+    let root = maildir_root().ok_or(ReadProblem::NotAMessage)?;
+    let path = arlen_mail_core::maildir::message_path(&root, &id).ok_or(ReadProblem::NotAMessage)?;
+    mail_read(path.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 fn mail_read(path: String) -> Result<MessageDto, ReadProblem> {
     let raw = std::fs::read(&path).map_err(|e| ReadProblem::Unreadable { why: e.to_string() })?;
@@ -265,7 +390,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
         .manage(LaunchFile(launched))
-        .invoke_handler(tauri::generate_handler![launch_file, mail_read, mail_save_attachment])
+        .invoke_handler(tauri::generate_handler![
+            launch_file,
+            mail_read,
+            mail_save_attachment,
+            mail_folders,
+            mail_list,
+            mail_open
+        ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-mail");
 }
