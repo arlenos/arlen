@@ -57,7 +57,15 @@ CATALOGUE = (
 # A comment that is ABOUT the width of the grant, rather than any comment at all.
 # Matching a bare `#` would pass the SPDX header and every unrelated note, which
 # is the same as not checking.
-HOME_REASON = re.compile(r"\bhome\b|whole|everything|anywhere|entire|all of", re.IGNORECASE)
+# `wherever` earned its place the way a keyword list should: a profile arrived
+# saying "it works WHEREVER the person keeps their files, so anything narrower
+# would leave folders it cannot open", which is exactly the argument this rule
+# asks for, and the rule rejected it for lacking a word. A gate that refuses a good
+# sentence teaches people to write for the gate. The list grows one measured case
+# at a time and never by loosening into "any comment at all".
+HOME_REASON = re.compile(
+    r"\bhome\b|whole|everything|anywhere|wherever|entire|all of", re.IGNORECASE
+)
 NET_REASON = re.compile(r"network|online|internet|whole|scope", re.IGNORECASE)
 
 
