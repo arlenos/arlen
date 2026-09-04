@@ -22,6 +22,7 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
@@ -78,8 +79,15 @@
   }
 
   function openSession(id: string): void {
+    if (id === $activeSessionId && onChat) return;
     selectSession(id);
     if (!onChat) goto("/");
+  }
+  // A double click means rename, on whichever route the row is seen from; the
+  // single clicks that precede it select the row, which is what a click does.
+  function renameOnDouble(e: MouseEvent, id: string, title: string): void {
+    e.stopPropagation();
+    beginRename(id, title);
   }
   function startNew(): void {
     newSession();
@@ -140,7 +148,7 @@
     <SidebarGroup>
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton id="harness-new-chat" title={$t("h.sidebar.newChatTitle")} onclick={startNew}>
+          <SidebarMenuButton id="harness-new-chat" onclick={startNew}>
             <Plus strokeWidth={2} />
             <span>{$t("h.sidebar.newChat")}</span>
           </SidebarMenuButton>
@@ -173,7 +181,7 @@
   <SidebarFooter>
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton id="harness-share-context" title={$t("h.sidebar.shareContextTitle")} onclick={openMint}>
+        <SidebarMenuButton id="harness-share-context" onclick={openMint}>
           <Share2 strokeWidth={2} />
           <span>{$t("h.sidebar.shareContext")}</span>
         </SidebarMenuButton>
@@ -181,7 +189,6 @@
       <SidebarMenuItem>
         <SidebarMenuButton
           id="harness-activity"
-          title={$t("h.sidebar.activityTitle")}
           isActive={!onChat}
           onclick={() => goto("/agent")}
         >
@@ -217,11 +224,10 @@
       <SidebarMenuButton
         class="pe-7"
         isActive={onChat && s.id === $activeSessionId}
-        title={s.title}
         onclick={() => openSession(s.id)}
-        ondblclick={() => beginRename(s.id, s.title)}
+        ondblclick={(e: MouseEvent) => renameOnDouble(e, s.id, s.title)}
       >
-        <span class="truncate">{s.title}</span>
+        <span class="truncate"><OverflowLabel text={s.title} /></span>
         {#if s.pinned}
           <Pin strokeWidth={1.75} class="ms-auto opacity-50" aria-label={$t("h.sidebar.pinned")} />
         {/if}
