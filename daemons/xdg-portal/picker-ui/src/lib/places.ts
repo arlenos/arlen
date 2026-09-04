@@ -6,11 +6,12 @@
 /// The folder set is built client-side from `home` for the common XDG
 /// layout; a `picker_places` daemon command would resolve localized or
 /// user-relocated XDG dirs correctly (flagged in arlen-ui-reports.md).
-/// Recent comes from the routed `picker_recent` command, which NOTHING
-/// REGISTERS today, so on a real machine the group is always omitted and the
-/// sidebar is Places only. Only the mock in `routes/_pickertest` answers it.
-/// The omission is the right behaviour; the absence of a producer is the
-/// reason it always happens.
+/// Recent comes from `picker_recent`, which the host has answered since
+/// 4 September: the folders this picker last had something picked from, kept in
+/// its own state file. Not the system's recent FILES - the file manager reads
+/// those from the graph for its own section, and a list of documents in a folder
+/// sidebar would be a category error. The group is still omitted when there are
+/// none, which on a first run is every time.
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Place, PlaceGroup } from "@arlen/ui-kit/components/browser";
@@ -57,14 +58,19 @@ export function conventionalPlaces(home: string, write: Write): PlaceGroup {
   return { label: write("p.places.places"), places };
 }
 
-/// Fetch the recent places from the routed picker-side recent feed.
-/// Returns null (the group does not render) when there is no recent
-/// data or the command is unavailable.
+/// Fetch the recent places: the folders this picker last had something chosen
+/// from, kept by its own host. Returns null (the group does not render) when
+/// there are none - a first run, or a machine where every remembered folder has
+/// since been deleted.
+///
+/// The host sends a name and a path and no icon, which is deliberate rather than
+/// an omission: the icon is this side's decision, and Recent is the one group
+/// that hides from the collapsed rail.
 export async function recentPlaces(): Promise<Place[] | null> {
   try {
-    const recent = await invoke<Place[]>("picker_recent");
+    const recent = await invoke<{ label: string; path: string }[]>("picker_recent");
     if (!recent || recent.length === 0) return null;
-    return recent.map((p) => ({ ...p, icon: "recent" }));
+    return recent.map((p) => ({ label: p.label, path: p.path, icon: "recent" }));
   } catch {
     return null;
   }

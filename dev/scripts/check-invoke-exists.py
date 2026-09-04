@@ -317,19 +317,19 @@ KNOWN: dict[str, dict[str, str]] = {
             "address until contacts or the CardDAV bridge exists"
         ),
     },
-    # The file picker. Both of these are NEEDS A PRODUCER: the portal daemon has
-    # no recent-files source and no thumbnailer, so on a real machine the Recent
-    # group never appears and the grid shows icons only. They read as features in
-    # `routes/_pickertest`, which answers both from its mock - which is how a
-    # look-mock ends up showing a section the product does not have.
-    "picker-ui": {
-        "picker_recent": (
-            "the sidebar's Recent group. Needs a producer: nothing in the portal "
-            "daemon keeps a recent-files list, and the picker is confined to the "
-            "daemon's cap-std root, so it cannot read one itself"
-        ),
-
-    },
+    # The file picker's two entries are gone as of 4 September, and what they said
+    # is worth keeping because both reasons were wrong in the same way. They read
+    # "NEEDS A PRODUCER: the portal daemon has no recent-files source and no
+    # thumbnailer, and the picker is confined to the daemon's cap-std root". The
+    # confinement is the DAEMON's; the picker-ui lists directories with plain
+    # `tokio::fs` over absolute paths. The thumbnailer existed in `apps/files/core`
+    # with a sandboxed worker behind it, and Recent needed no producer at all once
+    # it was read as what a sidebar place is - a folder, remembered by the picker
+    # itself, rather than the system's recent files.
+    #
+    # The lesson for the entries below: a reason that names another component's
+    # constraint should say how it was checked, because the next reader cannot
+    # tell a measurement from an assumption.
     "knowledge": {
         "knowledge_library": (
             "the library view. Traced: the bridge-ingest daemon writes into dynamic "

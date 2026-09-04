@@ -3,6 +3,7 @@
 //! Connects to the daemon's IPC socket, drives request/response
 //! round-trips, and shows/hides the WebviewWindow accordingly.
 
+mod recent;
 mod thumbnail;
 mod fs_commands;
 mod ipc_client;
@@ -29,6 +30,15 @@ async fn picker_respond(
     app: AppHandle,
     state: State<'_, Arc<PickerState>>,
 ) -> Result<(), String> {
+    // Remember where a pick came from before the response goes out: the folder
+    // somebody chose from is one they will want again. Best-effort and after
+    // nothing else depends on it - a pick must not fail because a convenience
+    // list could not be written.
+    if let PickerResponse::Picked { paths, .. } = &response {
+        for path in paths {
+            recent::record(path, path.is_dir());
+        }
+    }
     state
         .client
         .send(&response)
@@ -120,6 +130,7 @@ pub fn run() {
             frontend_log,
             get_theme,
             locale::locale_get,
+            recent::picker_recent,
             thumbnail::picker_thumbnail,
             fs_commands::list_directory,
             fs_commands::resolve_start_dir,
