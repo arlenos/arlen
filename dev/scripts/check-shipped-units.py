@@ -177,19 +177,42 @@ NO_UNIT: dict[str, str] = {
         "silent-success shape this work exists to remove. The unit lands with the "
         "seams, and `arlen-session` launches it the way it launches the shell"
     ),
-    "bridge-ingest": "runs from the dogfood path today, unreviewed as a standalone service",
-    "integration-packages": "a library and CLI for package assembly, not a running service",
-    "lock-auth": "the lock screen's auth backend, consumed in-process, not a service",
+    # Each reason says what would end it. Added 4 September, after five notes
+    # across this tree turned out to describe a state that had already ended: a
+    # reason written as a description ages into a verdict, and the next reader
+    # cannot tell one from the other without going and looking.
+    "bridge-ingest": (
+        "runs from the dogfood path today, unreviewed as a standalone service. "
+        "FALSE WHEN a bridge is meant to run on a booted image rather than under "
+        "the dogfood harness"
+    ),
+    "integration-packages": (
+        "a library and CLI for package assembly, not a running service. FALSE "
+        "WHEN something has to assemble packages while nobody is at the machine"
+    ),
+    "lock-auth": (
+        "the lock screen's auth backend, consumed in-process, not a service. "
+        "FALSE WHEN a second surface needs it, since two consumers of an "
+        "in-process backend is two copies of it"
+    ),
     # Corrected twice, and the second time is the useful one. On 18 Aug the old
     # reason ("the portal is itself unstaged") stopped being true. On 4 Sep the
     # replacement ("no surface calls them") stopped being true as well: the
     # portal's Print backend now asks the shell's dialog and prints what it
     # answers, so these operations are reached on every print. What keeps `print`
     # unitless is simply what it is - a library the portal links, not a service.
-    "print": "a library the portal's Print backend links, not a service (4 Sep)",
+    "print": (
+        "a library the portal's Print backend links, not a service (4 Sep). "
+        "FALSE WHEN something outside that backend has to reach a printer"
+    ),
     # Same day, same shape: `arlen-sentineld` now consumes this crate and ships
     # its own unit, so "no daemon shape yet" describes a state that ended.
-    "sentinel-detect": "the pure detector core arlen-sentineld links, not a service (4 Sep)",
+    "sentinel-detect": (
+        "the pure detector core arlen-sentineld links, not a service (4 Sep). "
+        "FALSE WHEN a detector needs its own process - the BLE pair share one "
+        "radio and one advertisement monitor, which is why the plan puts them in "
+        "the daemon rather than beside it"
+    ),
 }
 
 
