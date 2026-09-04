@@ -109,7 +109,7 @@ const messages: Catalogs = {
     "cal.noFiles": "No calendar files yet. Put .ics files in {$dir} and they show up here.",
     "cal.keep": "Keep this calendar",
     "cal.unreadable": "{$count} of your calendar files could not be read, so events in them are missing.",
-    "cal.serviceDown": "Showing your files directly: the calendar service is not running, so no reminders are being set for these events.",
+    "cal.serviceDown": "The calendar service is not running, so no reminders are being set.",
     // Named causes rather than whatever the layer below said. The five keep
     // failures used to reach the window as English sentences with no catalogue
     // around them at all.
@@ -236,7 +236,7 @@ const messages: Catalogs = {
     "cal.noFiles": "Noch keine Kalenderdateien. Lege .ics-Dateien in {$dir} ab, dann erscheinen sie hier.",
     "cal.keep": "Diesen Kalender behalten",
     "cal.unreadable": "{$count} deiner Kalenderdateien konnten nicht gelesen werden, die Termine darin fehlen also.",
-    "cal.serviceDown": "Deine Dateien werden direkt gelesen: der Kalenderdienst läuft nicht, deshalb werden für diese Termine keine Erinnerungen gestellt.",
+    "cal.serviceDown": "Der Kalenderdienst läuft nicht, deshalb werden keine Erinnerungen gestellt.",
     "cal.failed.launch":
       "Dieses Fenster konnte nicht herausfinden, welche Datei es öffnen sollte, deshalb hat es keine geöffnet.",
     "cal.failed.noHome": "Diese Sitzung hat kein Home-Verzeichnis, es gibt also keinen Kalenderordner zu lesen.",
