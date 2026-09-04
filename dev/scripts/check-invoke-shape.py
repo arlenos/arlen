@@ -521,9 +521,6 @@ DEAD_INVOKES: dict[str, str] = {
     "capture_status": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     "stop_capture": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     # the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not - coder
-    "poll_print_request": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
-    "submit_print": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
-    "cancel_print": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
     # The Settings printers page had three more entries here, and they are gone
     # because the buttons are: `printers_add`, `printers_remove` and
     # `printers_discover` no longer appear on the panel. Add and remove are CUPS
