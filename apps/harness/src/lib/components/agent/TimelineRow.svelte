@@ -7,6 +7,7 @@
   import { t } from "$lib/i18n/messages";
   import { ChevronDown, Undo2 } from "@lucide/svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import type { Tone } from "$lib/ledger";
 
   interface Annotation {
@@ -61,7 +62,7 @@
   <span class="badge" data-tone={tone}>{label}</span>
   <div class="body">
     <div class="line">
-      <span class="subject" title={subject}>{subject}</span>
+      <span class="subject"><OverflowLabel text={subject} /></span>
       {#each subjectMeta as m (m.text)}
         <span class="meta" data-tone={m.tone ?? "neutral"}>{m.text}</span>
       {/each}
