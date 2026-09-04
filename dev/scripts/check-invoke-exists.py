@@ -479,6 +479,58 @@ def handler_names(text: str) -> set[str]:
     return out
 
 
+def stale_reasons() -> list[str]:
+    """Inventory entries whose stated REASON has stopped being true.
+
+    The two directions above ask whether an entry's CALL is current. Neither asks
+    whether the sentence explaining it still holds, and that is the failure this
+    file has watched happen elsewhere all week: a note written as a description
+    ages into a verdict, because nobody re-reads a thing that is not failing. I
+    caught myself repeating "seventeen, all gated" from memory across six reports
+    before measuring it.
+
+    Only the falsifiers that NAME a mechanical test are checked. The rest turn on
+    a document decision or a runtime config, and a check that guessed at those
+    would be inventing a condition rather than reading one - which is how a gate
+    starts producing noise and stops being read. Two qualify today, and each is
+    written against the entry's own sentence rather than my paraphrase of it.
+    """
+    out = []
+
+    # The capture five: "FALSE WHEN a PipeWire producer exists and the portal's
+    # `Start` returns real node ids - at which point `arlen.portal` can list
+    # ScreenCast in its `Interfaces` line, WHICH IS THE SINGLE CHECK for whether
+    # this is still true." The entry names its own test, so run it.
+    portal = ROOT / "daemons/xdg-portal/dist/xdg-desktop-portal/portals/arlen.portal"
+    if portal.exists() and "ScreenCast" in portal.read_text():
+        out.append(
+            "the capture five are carried as needing a PipeWire producer, and "
+            "`arlen.portal` now advertises ScreenCast - which that entry names as "
+            "the single check for whether it is still true. Re-measure the entry."
+        )
+
+    # `set_bottle_config`: "FALSE WHEN a recipe format exists and a bottle records
+    # a Wine version, DLL overrides or a window mode that can be read back."
+    bottled = ROOT / "daemons/bottled/src"
+    if bottled.is_dir():
+        recorded = [
+            f.name
+            for f in sorted(bottled.glob("*.rs"))
+            for field in ("wine_version", "dll_override", "window_mode")
+            if field in "".join(
+                l for l in f.read_text().splitlines() if not l.lstrip().startswith("//")
+            )
+        ]
+        if recorded:
+            out.append(
+                "`set_bottle_config` is carried as having no measured value to "
+                f"write, and {sorted(set(recorded))} now records one of the fields "
+                "its entry names (a Wine version, DLL overrides, a window mode). "
+                "Re-measure the entry."
+            )
+    return out
+
+
 def main() -> int:
     plugin: set[str] = set()
     for f in (ROOT / "sdk" / "tauri-plugin-shell").rglob("*.rs"):
@@ -588,6 +640,8 @@ def main() -> int:
             )
         for name in sorted(handlers - calls - indirect):
             uncalled.append(f"apps/{app.name}: `{name}`")
+
+    findings.extend(stale_reasons())
 
     print(
         f"{len(apps)} app(s) checked that every invoked command exists. "
