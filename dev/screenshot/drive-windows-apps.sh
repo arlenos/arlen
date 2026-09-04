@@ -26,6 +26,8 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$root/dev/screenshot/lib/wait.sh"
 # shellcheck source=dev/screenshot/lib/preview.sh
 . "$root/dev/screenshot/lib/preview.sh"
+# shellcheck source=dev/screenshot/lib/fresh.sh
+. "$root/dev/screenshot/lib/fresh.sh"
 out="${1:-$root/dev/screenshot/out}"
 app="$root/target/debug/arlen-settings"
 work="$(mktemp -d)"
@@ -152,11 +154,7 @@ if [ ! -x "$bottled" ]; then
   echo "   cargo build --manifest-path daemons/bottled/Cargo.toml" >&2
   exit 0
 fi
-if [ -n "$(find "$root/daemons/bottled/src" -newer "$bottled" -name '*.rs' -print -quit 2>/dev/null)" ]; then
-  echo "!! arlen-bottled is older than its source; the live half below would be" >&2
-  echo "   about the old daemon. Rebuild it, or read only the half above." >&2
-  exit 1
-fi
+require_fresh "$bottled" "$root/daemons/bottled/src" || exit 1
 
 runtime="$work/run"
 mkdir -p "$runtime/arlen"

@@ -26,6 +26,8 @@
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=dev/screenshot/lib/fresh.sh
+. "$root/dev/screenshot/lib/fresh.sh"
 out="$root/dev/screenshot/out"
 work=/tmp/arlen-drive-kg
 app="$root/target/debug/arlen-knowledge-app"
@@ -34,6 +36,14 @@ fail=0
 for b in "$app" "$root/target/debug/event-bus" "$root/target/debug/arlen-graph-daemon" \
          "$root/target/debug/arlen-event-emit"; do
     [ -x "$b" ] || { echo "missing $b - build it first" >&2; exit 2; }
+    # Whichever of the four this is, its sources live under the crate that
+    # produced it; the loop is over binaries so the source dirs are looked up
+    # rather than listed twice.
+    case "$(basename "$b")" in
+      event-bus) require_fresh "$b" "$root/daemons/event-bus/src" || exit 2 ;;
+      arlen-graph-daemon) require_fresh "$b" "$root/daemons/knowledge/src" || exit 2 ;;
+      arlen-knowledge-app) require_fresh "$b" "$root/apps/knowledge/src-tauri/src" || exit 2 ;;
+    esac
 done
 
 # The app is a Tauri binary; a debug build loads its devUrl, so something has to
