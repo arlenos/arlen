@@ -138,8 +138,11 @@
       </p>
     {/if}
     <!-- A default change, an option change or a job action that did not reach
-         the print service. The list below is unchanged, and saying so is the
-         difference between "this is set" and "you asked for it". -->
+         the print service. It used to add "so nothing about your printers
+         changed", and this comment argued for that clause - but the list below
+         IS unchanged and the reader can see it, which is the whole test in
+         design-system.md §6.7. The message names the non-event; the screen
+         shows the state. -->
     {#if $printers.actionFailed}
       <p class="note" role="alert">{$t("s.pr.actionFailed")}</p>
     {/if}
