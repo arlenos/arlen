@@ -137,7 +137,6 @@
     font-size: var(--text-sm);
     color: var(--color-fg-primary);
     text-align: start;
-    cursor: pointer;
   }
   .wo-match:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
@@ -217,7 +216,6 @@
     border-radius: var(--radius-button, 6px);
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
-    cursor: pointer;
   }
   .wo-remove:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);

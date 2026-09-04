@@ -245,7 +245,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
     transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .remove:hover {
@@ -272,7 +271,6 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
-    cursor: pointer;
     transition:
       color var(--duration-micro, 100ms) var(--ease-out, ease),
       transform var(--duration-micro, 100ms) var(--ease-out, ease);

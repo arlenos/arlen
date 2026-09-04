@@ -385,7 +385,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
     transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .remove:hover {
@@ -480,7 +479,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
     transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .restore:hover {
@@ -514,7 +512,6 @@
     font-size: var(--text-sm);
     font-weight: 600;
     color: var(--color-accent, var(--foreground));
-    cursor: pointer;
   }
   .snack-undo:hover {
     text-decoration: underline;

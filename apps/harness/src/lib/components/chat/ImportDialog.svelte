@@ -118,7 +118,6 @@
     border-radius: var(--radius-card, 12px);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
     transition:
       border-color var(--duration-fast) var(--ease-out),
       background-color var(--duration-fast) var(--ease-out),

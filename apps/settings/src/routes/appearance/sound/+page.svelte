@@ -233,7 +233,6 @@
      audition and picker step back until the switch returns. */
   .snd-control.silenced .snd-play {
     opacity: 0.4;
-    cursor: default;
   }
   .snd-play {
     display: inline-flex;
@@ -245,7 +244,6 @@
     border-radius: 6px;
     background: transparent;
     color: var(--color-fg-secondary, #a3a3a3);
-    cursor: pointer;
   }
   .snd-play:hover:not(:disabled) {
     color: var(--color-fg-primary, #fafafa);

@@ -104,7 +104,6 @@
     padding: 0.25rem;
     border-radius: var(--radius-button, 6px);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
     transition:
       opacity 100ms ease,
       color 100ms ease;

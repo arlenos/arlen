@@ -471,7 +471,6 @@
        which axe reported on all nine headers. 50% is the smallest step that
        clears it, at 5.13, and the difference on screen is 121 grey against 132. */
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-    cursor: pointer;
     text-align: start;
   }
   .h:hover {
@@ -531,7 +530,6 @@
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
   }
   .row {
-    cursor: pointer;
     outline: none;
   }
   .row:hover {
@@ -566,7 +564,6 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
-    cursor: pointer;
   }
   .twist :global(svg) {
     transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);

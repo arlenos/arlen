@@ -416,7 +416,6 @@
     font: inherit;
     font-size: var(--text-2xs, 11px);
     color: var(--color-fg-primary);
-    cursor: pointer;
   }
   .scroll {
     flex: 1;
@@ -499,7 +498,6 @@
     font: inherit;
     text-align: start;
     color: var(--color-fg-primary);
-    cursor: pointer;
     touch-action: none;
   }
   .block.dragging {

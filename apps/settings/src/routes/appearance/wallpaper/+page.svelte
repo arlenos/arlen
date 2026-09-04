@@ -117,7 +117,6 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
     border-radius: var(--radius-card, 12px);
     padding: 0;
-    cursor: pointer;
     overflow: hidden;
     transition: transform var(--duration-fast, 150ms) ease, box-shadow var(--duration-fast, 150ms) ease;
   }

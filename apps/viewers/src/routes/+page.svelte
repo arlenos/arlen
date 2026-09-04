@@ -617,7 +617,6 @@
   }
   .undobar button {
     all: unset;
-    cursor: pointer;
     padding: 4px 10px;
     border-radius: 8px;
     font-weight: 600;

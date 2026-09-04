@@ -240,7 +240,6 @@
     border-radius: var(--radius-card, 12px);
     background: color-mix(in srgb, #0a0a0a 55%, transparent);
     color: var(--color-fg-primary, #fafafa);
-    cursor: pointer;
     backdrop-filter: blur(8px);
   }
 
@@ -255,7 +254,6 @@
     border: none;
     background: transparent;
     color: var(--color-fg-primary, #fafafa);
-    cursor: pointer;
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
   }
   .edge.left {

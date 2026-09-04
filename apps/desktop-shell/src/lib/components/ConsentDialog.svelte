@@ -588,7 +588,6 @@
     color: var(--color-error);
     font-size: var(--text-base);
     font-weight: 500;
-    cursor: pointer;
     user-select: none;
   }
   .cd-hold-fill {

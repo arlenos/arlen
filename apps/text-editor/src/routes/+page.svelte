@@ -425,7 +425,6 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     border-radius: 5px;
     padding: 3px 9px;
     font: inherit;
-    cursor: pointer;
   }
   .disk-bar button.quiet {
     background: transparent;

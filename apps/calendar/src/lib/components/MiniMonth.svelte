@@ -139,7 +139,6 @@
     font-size: var(--text-2xs, 11px);
     color: color-mix(in srgb, var(--color-fg-primary) 80%, transparent);
     font-variant-numeric: tabular-nums;
-    cursor: pointer;
   }
   .mini-day:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);

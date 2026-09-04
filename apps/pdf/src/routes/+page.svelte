@@ -417,7 +417,6 @@
     font-size: var(--text-xs, 12px);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
     font-variant-numeric: tabular-nums;
-    cursor: pointer;
   }
   .zoom-pct:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);

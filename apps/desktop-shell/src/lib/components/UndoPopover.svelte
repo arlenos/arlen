@@ -151,7 +151,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-    cursor: pointer;
     white-space: nowrap;
     transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
   }

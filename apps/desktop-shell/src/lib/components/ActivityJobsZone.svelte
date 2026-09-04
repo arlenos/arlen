@@ -213,7 +213,6 @@
     background: transparent;
     border-radius: var(--radius-input);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .job-btn:hover {
@@ -274,7 +273,6 @@
     background: transparent;
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
   }
   .job-expand:hover {
     color: var(--foreground);

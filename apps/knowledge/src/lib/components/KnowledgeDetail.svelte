@@ -160,7 +160,6 @@
     border-radius: var(--radius-input);
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
-    cursor: pointer;
   }
   .kn-detail-close:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
@@ -196,7 +195,6 @@
     font-size: var(--text-2xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-    cursor: pointer;
   }
   .kn-more:hover {
     color: var(--color-fg-primary);

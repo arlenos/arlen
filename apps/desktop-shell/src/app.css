@@ -444,9 +444,6 @@
   padding: 14px;
   /* Runtime corner radius — scales with appearance.toml [window].corner_radius. */
   border-radius: var(--radius-card);
-  /* Click-to-focus-app: signal that the body is interactive. Action
-     buttons get their own cursor via browser default. */
-  cursor: pointer;
 }
 [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-icon] {
   grid-column: 1;
@@ -502,7 +499,6 @@
   color: var(--color-fg-shell);
   font-size: 0.8125rem;
   font-weight: 500;
-  cursor: pointer;
   transition:
     background-color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),

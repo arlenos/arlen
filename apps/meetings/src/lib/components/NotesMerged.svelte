@@ -167,9 +167,6 @@
     margin-top: 0.2rem;
     opacity: 0.7;
   }
-  .ai.linked {
-    cursor: pointer;
-  }
   .ai.linked:hover {
     background: color-mix(in srgb, var(--color-ai) 10%, transparent);
   }

@@ -151,7 +151,6 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .li-row:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);

@@ -182,7 +182,6 @@
     border-radius: var(--radius-input, 6px);
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-    cursor: pointer;
   }
   .add-btn:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
@@ -205,7 +204,6 @@
     background: transparent;
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-    cursor: pointer;
   }
   .tab:hover,
   .tab.active {
