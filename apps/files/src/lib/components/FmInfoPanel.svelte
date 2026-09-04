@@ -8,6 +8,7 @@
   import { type ReadOutcome, reasonState, rows } from "$lib/read-outcome";
   import { invoke } from "@tauri-apps/api/core";
   import { X, ChevronRight, ChevronDown } from "lucide-svelte";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import {
     entryIcon,
     formatModified,
@@ -269,7 +270,7 @@
         </div>
       {/if}
       <div class="ident-text">
-        <span class="ident-name" title={name}>{name}</span>
+        <span class="ident-name"><OverflowLabel text={name} /></span>
         {#if $info}
           <span class="ident-sub">
             {kindLabel($info.conventional.kind)}{$info.conventional.kind !==
