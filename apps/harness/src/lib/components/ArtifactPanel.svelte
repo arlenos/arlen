@@ -8,6 +8,7 @@
   import { t } from "$lib/i18n/messages";
   import { onDestroy } from "svelte";
   import { X } from "@lucide/svelte";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import ArtifactView from "$lib/components/artifact/ArtifactView.svelte";
   import { kindLabel, type Artifact } from "$lib/components/artifact/types";
@@ -82,7 +83,7 @@
     onkeydown={onKey}
   ></div>
   <header class="ap-head">
-    <span class="ap-title" title={title}>{title}</span>
+    <span class="ap-title"><OverflowLabel text={title} /></span>
     <span class="ap-badge">{kindLabel(artifact.kind)}</span>
     <button class="ap-close" aria-label={$t("h.artifact.close")} onclick={() => onclose?.()}>
       <X size={15} strokeWidth={2} />
