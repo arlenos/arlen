@@ -140,6 +140,93 @@ done <<< "$known"
 say "and it is a sentence the app ships, not the backend's own words" \
   "$in_catalogue" "on screen: [$alert] - not one of the $(printf '%s' "$known" | wc -l) catalogue strings"
 
-rm -rf "$run" "$probe" 2>/dev/null
-[ "$fail" = 0 ] && echo "the login screen says when it cannot log you in, and why"
+# THE OTHER CORNER. A login screen's accessibility menu is not a nicety: a person
+# who cannot read this contrast or this type size has no session to fix it from,
+# which is why the greeter owns these toggles itself rather than borrowing the
+# session's (greeter-onboarding-plan.md 2). Nothing had ever pressed them. The
+# menu, four switches and the code that paints them were all built and none of it
+# had been driven, so "it applies now" was a claim from the source.
+#
+# WHAT IS MEASURED IS THE PAINT, NOT THE FLAG. A check that reads
+# `dataset.contrast` would go green on a page whose stylesheet never loaded - the
+# attribute is set by the same line either way. So the probe reads the RESOLVED
+# custom properties off the root before and after: a border that is white and a
+# scale that is 1.25 mean the sheet reached the screen.
+a11y=$(mktemp)
+cat > "$a11y" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const root = document.documentElement;
+const read = () => {
+  const cs = getComputedStyle(root);
+  return {
+    contrast: root.dataset.contrast || "",
+    scale: cs.getPropertyValue("--greeter-scale").trim(),
+    border: cs.getPropertyValue("--color-border").trim(),
+  };
+};
+await wait(1500);
+const before = read();
+const trigger = document.querySelector("#greeter-a11y");
+if (!trigger) return JSON.stringify({ opened: false, before });
+trigger.click();
+await wait(500);
+const labelled = () => [...document.querySelectorAll("[aria-label]")];
+const offered = labelled().map((e) => e.getAttribute("aria-label"));
+const pick = (name) => labelled().find((e) => e.getAttribute("aria-label") === name);
+const hc = pick("High contrast");
+const lt = pick("Larger text");
+if (!hc || !lt) return JSON.stringify({ opened: true, found: false, offered, before });
+hc.click();
+await wait(400);
+const afterContrast = read();
+lt.click();
+await wait(400);
+const afterBoth = read();
+return JSON.stringify({ opened: true, found: true, offered, before, afterContrast, afterBoth });
+JS
+
+acc=$(SHOOT_INJECT="$a11y" SHOOT_INJECT_SETTLE=2 \
+  "$here/shoot-app.sh" "$app" "$here/out/greeter-a11y.png" 2>&1 | sed -n 's/^inject result: //p')
+
+say "the accessibility corner opens, and offers the four options" \
+  "$(printf '%s' "$acc" | grep -q '"found":true' \
+     && printf '%s' "$acc" | grep -q "On-screen keyboard" \
+     && printf '%s' "$acc" | grep -q "Screen reader" && echo 1 || echo 0)" "$acc"
+
+# High contrast against its own before-reading, so a page that was already white
+# on black cannot pass it by standing still.
+say "high contrast repaints the screen rather than only setting a flag" \
+  "$(printf '%s' "$acc" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(0); raise SystemExit
+a, b = d.get("before", {}), d.get("afterContrast", {})
+# A custom property comes back as the stylesheet wrote it - "#fff" here, not an
+# rgb() triple - so whiteness is decided after normalising, not by looking for
+# "255" in the string. The first cut did the latter and went red against a screen
+# that had repainted correctly.
+def white(v):
+    v = v.strip().lower().lstrip("#")
+    if len(v) == 3:
+        v = "".join(c * 2 for c in v)
+    return v == "ffffff" or v.replace(" ", "") in ("rgb(255,255,255)", "rgba(255,255,255,1)")
+ok = b.get("contrast") == "high" and b.get("border") != a.get("border") and white(b.get("border", ""))
+print(1 if ok else 0)
+')" "$acc"
+
+say "and larger text scales the screen it is on" \
+  "$(printf '%s' "$acc" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(0); raise SystemExit
+a, b = d.get("before", {}), d.get("afterBoth", {})
+print(1 if b.get("scale") == "1.25" and a.get("scale") != b.get("scale") else 0)
+')" "$acc"
+
+rm -rf "$run" "$probe" "$a11y" 2>/dev/null
+[ "$fail" = 0 ] && echo "the login screen says when it cannot log you in, and why, and its accessibility corner works"
 exit "$fail"
