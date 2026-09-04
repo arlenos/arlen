@@ -182,7 +182,27 @@ const afterContrast = read();
 lt.click();
 await wait(400);
 const afterBoth = read();
-return JSON.stringify({ opened: true, found: true, offered, before, afterContrast, afterBoth });
+// The third toggle is the one that can half-fail: it applies to this login (a
+// store update) and is meant to survive the next start (a file write), and only
+// the write can go wrong. On this machine it does - the state directory is
+// /var/lib/arlen/greeter and a person cannot create it - so the sentence that
+// says so is reachable here without any harness.
+const sr = pick("Screen reader");
+if (sr) {
+  sr.click();
+  await wait(600);
+}
+const menu = document.querySelector("[role=menu]") || document.body;
+return JSON.stringify({
+  opened: true,
+  found: true,
+  offered,
+  before,
+  afterContrast,
+  afterBoth,
+  readerOn: !!sr && sr.getAttribute("aria-checked") === "true",
+  menuText: menu.innerText.replace(/\s+/g, " ").trim().slice(0, 400),
+});
 JS
 
 acc=$(SHOOT_INJECT="$a11y" SHOOT_INJECT_SETTLE=2 \
@@ -226,6 +246,32 @@ except Exception:
 a, b = d.get("before", {}), d.get("afterBoth", {})
 print(1 if b.get("scale") == "1.25" and a.get("scale") != b.get("scale") else 0)
 ')" "$acc"
+
+# THE HALF-FAILURE, said beside the switch that made the claim. Flipping the
+# reader does two things and only one of them can fail; silence would let
+# somebody set it once and find it gone at every boot, which is the exclusion
+# this whole corner exists to remove. The sentence was written for that case and
+# nothing had ever produced the case.
+#
+# WHETHER THE CASE HAPPENS HERE IS A FACT ABOUT THIS MACHINE, so it is read
+# rather than assumed. The release greeter writes to /var/lib/arlen/greeter; a
+# packaged machine provisions it and the write succeeds, a development one does
+# not have it and a person cannot create it. Asserting the sentence unconditionally
+# would go red on a correctly-provisioned machine for a reason that has nothing to
+# do with the greeter - the class of check that is green or red for the wrong
+# cause. So the demand is made only where the write genuinely cannot land.
+if [ -w /var/lib/arlen ] || { [ -e /var/lib/arlen/greeter ] && [ -w /var/lib/arlen/greeter ]; }; then
+  echo "  --   the reader state directory is writable here, so the unsaved sentence is not this machine's case"
+else
+  say "a reader that could not be written down says so, beside the switch" \
+    "$(printf '%s' "$acc" | grep -q "could not be saved" && echo 1 || echo 0)" "$acc"
+fi
+
+# And it is a half-failure rather than a refusal: the reader is on for THIS
+# login. A sentence about the next start beside a switch that had snapped back
+# would be describing a different failure than the one that happened.
+say "and the reader is on for this login anyway, which is what the sentence claims" \
+  "$(printf '%s' "$acc" | grep -q '"readerOn":true' && echo 1 || echo 0)" "$acc"
 
 rm -rf "$run" "$probe" "$a11y" 2>/dev/null
 [ "$fail" = 0 ] && echo "the login screen says when it cannot log you in, and why, and its accessibility corner works"
