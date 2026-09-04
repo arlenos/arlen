@@ -2,7 +2,7 @@
   /// The mail client, three panes on the files chrome: the folder rail, the
   /// message list, the reading surface. The mailbox reads this machine's
   /// maildir (mailbox.ts), stands in a fixture under vite and is honestly
-  /// unconnected on a host without one; a message opened from Files
+  /// empty on a host without one, naming the place it looked; a message from Files
   /// (`launch_file` + `mail_read`) renders into the same reading surface as a
   /// transient row that belongs to no folder. Live the client is a reader: the
   /// writes appear only while the mailbox is the sample that keeps them.
@@ -37,6 +37,7 @@
     type Envelope,
     mailboxMocked,
     mailboxState,
+    mailboxRoot,
     mailboxWritable,
     openedFile,
     loadMailbox,
@@ -367,7 +368,7 @@
 </script>
 
 <!-- The rail exists when it has a row to hold: folders, or Compose while the
-     sample keeps a draft. An unconnected mailbox gets no empty column. -->
+     sample keeps a draft. A machine with no maildir gets no empty column. -->
 <SidebarProvider class="h-screen min-h-0 overflow-hidden">
   {#if $folders.length > 0 || $mailboxWritable}
     <FolderRail activeFolder={composing ? null : selectedFolder} onselect={selectFolder} oncompose={() => startCompose()} />
@@ -474,8 +475,10 @@
                 {$t("ml.loading")}
               {:else if $folders.length > 0}
                 {$t("ml.noneSelected")}
-              {:else if tauriAvailable}
-                {$t("ml.unconnected")}
+              {:else if $mailboxState === "unreadable"}
+                {$t("ml.mailboxUnreadable")}
+              {:else if $mailboxState === "absent"}
+                {$mailboxRoot ? $t("ml.noMailbox", { path: $mailboxRoot }) : $t("ml.noMailboxHere")}
               {:else}
                 {$t("ml.nothingOpen")}
               {/if}

@@ -89,7 +89,11 @@ return JSON.stringify({
   // that "archives" a file which is back at the next start is the sample's
   // trick, and only the sample gets to play it.
   compose: !!document.querySelector("#mail-compose"),
-  unconnected: text.includes("No account is connected"),
+  // The empty-mailbox sentence must name the PLACE it looked. It said "No
+  // account is connected" until 5 September - a thing this system has no way to
+  // connect - so a reader went hunting for a setting instead of a directory.
+  namesPlace: /no mailbox at \S/.test(text),
+  saysAccount: /account|konto/i.test(text),
 });
 JS
 
@@ -170,8 +174,10 @@ say "with no mailbox it shows none, rather than the sample one" \
 
 say "and says so rather than rendering an empty frame" \
   "$(printf '%s' "$empty" | grep -qE '"text":"[^"]{10,}' && echo 1 || echo 0)" "$empty"
-say "and what it says is that no account is connected" \
-  "$(printf '%s' "$empty" | grep -q '"unconnected":true' && echo 1 || echo 0)" "$empty"
+say "and what it says is where it looked, so the reader knows where to put one" \
+  "$(printf '%s' "$empty" | grep -q '"namesPlace":true' && echo 1 || echo 0)" "$empty"
+say "and does not name an account, which nothing on this machine can connect" \
+  "$(printf '%s' "$empty" | grep -q '"saysAccount":false' && echo 1 || echo 0)" "$empty"
 
 [ "$fail" = 0 ] && echo "the mailbox reads this machine's maildir, and says so when there is none"
 exit "$fail"

@@ -312,17 +312,27 @@ const FIXTURE_MESSAGES: Record<string, Message> = {
 // State
 // ---------------------------------------------------------------------------
 
-/// The folders in the rail; empty means no account is connected.
+/// The folders in the rail; empty means there is no maildir to read.
 export const folders = writable<Folder[]>([]);
 /// Every envelope the store knows, across folders; the page slices per folder.
 export const envelopes = writable<Envelope[]>([]);
 
-/// Where the mailbox stands: still being read, read from this machine, no
-/// mailbox to read, or the sample under vite. Distinct from the folders being
-/// empty, because "nothing answered yet" and "nothing is connected" are
-/// different sentences and only one of them is true while a big maildir loads.
-export type MailboxState = "loading" | "live" | "unconnected" | "sample";
+/// Where the mailbox stands: still being read, read from this machine, absent,
+/// unreadable, or the sample under vite. Distinct from the folders being empty,
+/// because "nothing answered yet" and "there is nothing to read" are different
+/// sentences and only one of them is true while a big maildir loads.
+///
+/// `absent` and `unreadable` were one state until 5 September, and it said "no
+/// account is connected" for both. Nothing in this system has accounts - the
+/// host reads a maildir at a path - so the sentence sent a reader looking for a
+/// setting that does not exist. They are two facts with two different things to
+/// do about them: put a maildir where the host looks, or find out why the host
+/// could not answer.
+export type MailboxState = "loading" | "live" | "absent" | "unreadable" | "sample";
 export const mailboxState = writable<MailboxState>("loading");
+/// Where this machine keeps mail, as `mail_store` writes it (`~/Maildir`). Null
+/// until the host says, and on a host that has no home to look in.
+export const mailboxRoot = writable<string | null>(null);
 /// True while the mailbox is the FIXTURE - the surface says so.
 export const mailboxMocked = derived(mailboxState, ($s) => $s === "sample");
 /// Whether the writes (compose, archive, delete) are on offer: only the sample
@@ -334,8 +344,8 @@ export const unreadCount = derived(envelopes, ($e) => $e.filter((x) => x.unread 
 /// Load folders and envelopes. Live: `mail_folders`, then one `mail_list` per
 /// folder. The rail stands as soon as the folders are known and the state stays
 /// `loading` until the rows are in, so a large maildir shows "reading" rather
-/// than "no account is connected" for the seconds it takes. The catch answers
-/// with the fixture under vite and an honestly-unconnected mailbox on a host.
+/// than an empty mailbox for the seconds it takes. The catch answers with the
+/// fixture under vite and an unreadable mailbox on a host.
 export async function loadMailbox(): Promise<void> {
   mailboxState.set("loading");
   let f: Folder[];
@@ -343,11 +353,11 @@ export async function loadMailbox(): Promise<void> {
     f = await invoke<Folder[]>("mail_folders");
   } catch {
     if (tauriAvailable) {
-      // A real host with no mailbox backend: an unconnected mailbox, not a
-      // pretend one. The launch path (`mail_read`) still works beside this.
+      // The host is there and did not answer: a fault to report, not an empty
+      // mailbox. The launch path (`mail_read`) still works beside this.
       folders.set([]);
       envelopes.set([]);
-      mailboxState.set("unconnected");
+      mailboxState.set("unreadable");
     } else {
       folders.set(structuredClone(FIXTURE_FOLDERS));
       envelopes.set(structuredClone(FIXTURE_ENVELOPES));
@@ -356,10 +366,18 @@ export async function loadMailbox(): Promise<void> {
     return;
   }
   if (f.length === 0) {
-    // The host answered and there is no maildir: the same sentence as no host.
+    // The host answered and there is no maildir. `folders` yields the inbox for
+    // any real one, so an empty list means exactly that and nothing else. Ask
+    // where it looked, so the window can name the place instead of the reader
+    // guessing at it.
     folders.set([]);
     envelopes.set([]);
-    mailboxState.set("unconnected");
+    try {
+      mailboxRoot.set(await invoke<string | null>("mail_store"));
+    } catch {
+      mailboxRoot.set(null);
+    }
+    mailboxState.set("absent");
     return;
   }
   folders.set(f);

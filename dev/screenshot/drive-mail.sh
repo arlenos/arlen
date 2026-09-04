@@ -220,12 +220,19 @@ JS
 bare=$(SHOOT_INJECT="$fix/p-bare.js" \
   "$here/shoot-app.sh" "$app" "$here/out/mail-no-file.png" 2>&1 | sed -n 's/^inject result: //p')
 
-# The client shape: with no account backend and no launched file, the one
-# sentence names the one fact - no account is connected. It used to add that a
+# The client shape: with no maildir and no launched file, the one sentence names
+# the one fact, and the fact is a PLACE. It said "No account is connected" until
+# 5 September, which named a thing this system does not have - no setting, no
+# command, no route anywhere is an account - so a reader went looking for one
+# instead of at the directory that would have worked. It used to add that a
 # message opened from Files still shows here, which is the surface narrating a
 # row the reader sees when it exists (design-system.md 6.7).
-say "launched with no message, it says no account is connected" \
-  "$(printf '%s' "$bare" | grep -qE "account|Konto" && echo 1 || echo 0)" "$bare"
+say "launched with no message, it names the place it looked for mail" \
+  "$(printf '%s' "$bare" | grep -q "Maildir" && echo 1 || echo 0)" "$bare"
+
+# And the word that sent the reader nowhere is gone, in both languages.
+say "and does not offer an account this machine has no way to connect" \
+  "$(printf '%s' "$bare" | grep -qiE "account|konto" && echo 0 || echo 1)" "$bare"
 
 [ "$fail" = 0 ] && echo "the window says what the message is doing, including the half it will not show, and an empty one says where to get a message"
 exit "$fail"

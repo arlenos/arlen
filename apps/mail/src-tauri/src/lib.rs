@@ -24,7 +24,7 @@
 //! about itself - and it says out loud that the HTML part exists and is not
 //! being shown, which is a fact about the message rather than a missing feature.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -140,6 +140,27 @@ fn maildir_root() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join("Maildir"))
 }
 
+/// The mailbox path, as a person would write it.
+///
+/// The window needs it for the one sentence it cannot compose alone: an empty
+/// mailbox is only actionable if it names the place that was empty, and where
+/// this machine keeps mail is the host's knowledge. Home-relative, because
+/// `~/Maildir` is what a person types and what the convention is called.
+#[tauri::command]
+fn mail_store() -> Option<String> {
+    let root = maildir_root()?;
+    Some(home_relative(&root, dirs::home_dir().as_deref()))
+}
+
+/// `~/Maildir` for a path inside this user's home, the full path otherwise.
+fn home_relative(path: &Path, home: Option<&Path>) -> String {
+    match home.and_then(|h| path.strip_prefix(h).ok()) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Some(rest) => format!("~/{}", rest.display()),
+        None => path.display().to_string(),
+    }
+}
+
 /// One folder in the rail, as the surface declares it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -190,8 +211,9 @@ fn kind_name(k: arlen_mail_core::maildir::FolderKind) -> &'static str {
 /// The folders in this machine's mailbox.
 ///
 /// An empty list is the honest answer for a machine with no maildir, which is
-/// most of them: the store renders "no account connected" from it rather than an
-/// inbox that was never there.
+/// most of them, and it means exactly that one thing: `folders` answers with the
+/// inbox for any real maildir, so nothing but an absent store empties it. The
+/// surface names the place with `mail_store` rather than inventing an account.
 #[tauri::command]
 fn mail_folders() -> Vec<FolderDto> {
     let Some(root) = maildir_root() else { return Vec::new() };
@@ -397,6 +419,7 @@ pub fn run() {
             mail_read,
             mail_save_attachment,
             mail_folders,
+            mail_store,
             mail_list,
             mail_open
         ])
@@ -445,6 +468,17 @@ mod tests {
         let third = free_path(&dir, "scan.pdf");
         assert_eq!(third.file_name().unwrap(), "scan (3).pdf");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_mailbox_path_reads_the_way_a_person_writes_it() {
+        let home = Path::new("/home/ada");
+        assert_eq!(home_relative(Path::new("/home/ada/Maildir"), Some(home)), "~/Maildir");
+        // A store outside this user's home is named in full: shortening it to a
+        // tilde it does not live under would name the wrong place.
+        assert_eq!(home_relative(Path::new("/srv/mail"), Some(home)), "/srv/mail");
+        assert_eq!(home_relative(Path::new("/home/ada"), Some(home)), "~");
+        assert_eq!(home_relative(Path::new("/home/ada/Maildir"), None), "/home/ada/Maildir");
     }
 
     #[test]
