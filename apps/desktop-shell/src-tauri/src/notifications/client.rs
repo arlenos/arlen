@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use arlen_desktop_shell_core::retry::Backoff;
 use notification_proto::proto;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::WriteHalf;
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
@@ -247,25 +247,34 @@ async fn try_connect(
             proto::server_message::Msg::JobUpdate(ju) => {
                 // The job-progress surface (job-progress-surface.md): the same
                 // daemon hosts the JobView server and pushes each register/
-                // update/finish here. Forward it verbatim to the Activity/Jobs
-                // zone; the shell owns the visibility threshold, not the daemon.
-                let _ = app.emit("notification:job", serde_json::json!({
-                    "id": ju.id,
-                    "appId": ju.app_id,
-                    "title": ju.title,
-                    "state": ju.state,
-                    "stateMessage": ju.state_message,
-                    "unit": ju.unit,
-                    "processed": ju.processed,
-                    "determinate": ju.determinate,
-                    "total": ju.total,
-                    "fraction": ju.fraction,
-                    "killable": ju.killable,
-                    "suspendable": ju.suspendable,
-                    "startedAt": ju.started_at,
-                    "egressHost": ju.egress_host,
-                    "removed": ju.removed,
-                }));
+                // update/finish here. It goes two places, and they carry the same
+                // row on purpose: the live set behind `list_jobs`, so a store
+                // that loads mid-copy has something to render, and the event, so
+                // an open zone follows along. The shell owns the visibility
+                // threshold either way, not the daemon.
+                let row = crate::jobs::row_from_update(
+                    ju.id,
+                    &ju.app_id,
+                    &ju.title,
+                    &ju.state,
+                    &ju.state_message,
+                    &ju.unit,
+                    ju.processed,
+                    ju.determinate,
+                    ju.total,
+                    ju.fraction,
+                    ju.killable,
+                    ju.suspendable,
+                    ju.started_at,
+                    &ju.egress_host,
+                );
+                if let Some(live) = app.try_state::<crate::jobs::LiveJobs>() {
+                    crate::jobs::apply(&live, ju.id, row.clone(), ju.removed);
+                }
+                let _ = app.emit(
+                    "notification:job",
+                    serde_json::json!({ "job": row, "removed": ju.removed }),
+                );
             }
         }
     }
