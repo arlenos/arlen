@@ -70,12 +70,13 @@ export const pickerAdapter: BrowserAdapter = {
     const raw = await invoke<DirEntry[]>("list_directory", { path });
     return sortEntries(raw.map(toEntry), sort);
   },
-  // Plain files with a decodable extension. NOTHING REGISTERS
-  // `picker_thumbnail` today - not the picker's host, not the daemon - so on a
-  // real machine this throws every time and the grid is icons. The mock in
-  // `routes/_pickertest` answers it, which is the only place thumbnails have
-  // ever appeared; a screenshot of that route is not evidence the feature
-  // exists. The fallback is right either way: the tile never breaks.
+  // Plain files with a decodable extension. The host registers
+  // `picker_thumbnail` since 4 September: it reads the file and hands the bytes
+  // to the same sandboxed worker the file manager uses, sharing its cache, so a
+  // picture already thumbnailed there costs nothing here. The fallback stays
+  // exactly as it was and is still the right one - a missing worker, an
+  // unreadable image or a type the decoder does not know all end as the tile's
+  // icon rather than a broken tile.
   thumbnail: async (path: string, entry: FileEntry) => {
     if (entry.kind !== "file" || !THUMBNAILABLE.test(entry.name)) return null;
     try {
