@@ -48,15 +48,19 @@ export const PANELS: PanelMeta[] = [
   { id: "topbar", title: "s.nav.topbar", icon: "PanelTop", enabled: true, href: "/topbar" },
   { id: "notifications", title: "s.nav.notifications", icon: "Bell", enabled: true, href: "/notifications" },
   { id: "printers", title: "s.nav.printers", icon: "Printer", enabled: true, href: "/printers" },
-  // No windows-apps entry, and not `enabled: false` either - a greyed row is
-  // still a row promising a place. Its backend is the Wine bottle daemon, which
-  // `wine-proton-plan.md` defers deliberately, so this is not a page with dead
-  // controls; it is a page whose subject does not exist yet. Seen plainly at
-  // desktop width on 9 August: "Default compatibility version: Wine 9.0" sat two
-  // rows above "Runtimes not known - nothing reports which Wine or Proton
-  // versions are installed", which is the page arguing with itself in public.
-  // The route, the store and the plan all stay and still build; what is gone is
-  // the way in, and it comes back with the daemon.
+  // The windows-apps row came off on 9 August and is back, because the comment
+  // that removed it named its own condition for returning and the condition is
+  // met. It read: the backend is a bottle daemon `wine-proton-plan.md` defers on
+  // purpose, and the page argues with itself in public ("Default compatibility
+  // version: Wine 9.0" two rows above "Runtimes not known"). The daemon now makes
+  // bottles, installs into them, picks and launches a program, cuts one off the
+  // network, takes a folder back and measures a prefix; the compat section sits
+  // behind the recipe that would fill it and says so when there is none.
+  //
+  // It uses the row form its neighbours already have and invents nothing - a
+  // navigation entry is not a design decision, and arlen-ui restyles the panel it
+  // leads to either way (`windows-apps-plan.md`, "The way in goes back now").
+  { id: "windows-apps", title: "s.wa.title", icon: "AppWindow", enabled: true, href: "/windows-apps" },
   { id: "language", title: "s.nav.language", icon: "Languages", enabled: true, href: "/language" },
   { id: "about", title: "s.nav.about", icon: "Info", enabled: true, href: "/about" },
 
@@ -96,9 +100,7 @@ export const PANELS: PanelMeta[] = [
 export const SECTIONS = [
   {
     label: "s.section.system",
-    // No windows-apps: see the note above PANELS. The route and its store are
-    // still here and still build; what is gone is the way in.
-    panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "language", "about"] as const,
+    panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "windows-apps", "language", "about"] as const,
   },
   {
     label: "s.section.personal",
