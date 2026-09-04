@@ -25,6 +25,8 @@
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
+# shellcheck source=dev/screenshot/lib/fresh.sh
+. "$here/lib/fresh.sh"
 app="${1:-$root/target/release/arlen-pdf-app}"
 fix="$HOME/.cache/arlen-drive-pdf"
 fail=0
@@ -42,6 +44,15 @@ if [ -x "$worker" ] && strings "$worker" 2>/dev/null | grep -qi mupdf; then
   echo "  FAIL the worker on disk is a MuPDF build, which the tree removed on licence grounds"
   echo "       rebuild it: cargo build --release --manifest-path apps/pdf/decode-page/Cargo.toml"
   exit 1
+fi
+# AND ITS AGE, which the licence check above does not ask about. On 4 September
+# the worker on disk was from 21 August, so it answered a page failure the way it
+# did before the `no-renderer` token existed - and the reader printed the wrong
+# cause on every page while this suite reported all green. The app binary's
+# staleness is guarded by shoot-app; a binary the app SPAWNS was not, which is
+# the case `lib/fresh.sh` was written for.
+if [ -x "$worker" ]; then
+  require_fresh "$worker" "$root/apps/pdf/decode-page/src" || exit 2
 fi
 
 # Whether this machine can draw a page at all. `pdfium-render` binds to a
@@ -171,6 +182,17 @@ JS
   say "a page it cannot draw still shows the words" \
     "$(printf '%s' "$words" | grep -q "without its layout" \
        && printf '%s' "$words" | grep -q "Chapter one begins here" && echo 1 || echo 0)" "$words"
+
+  # AND NAMES THE RIGHT CAUSE. "without its layout" is the tail BOTH sentences
+  # share, so the check above passes whichever the reader shows - it did, on both
+  # sides of the fix, which is how a stale worker went unnoticed. What separates
+  # them is the half that says why: this machine has no engine, said once for the
+  # document, rather than "this page could not be drawn" repeated per page, which
+  # is true and the wrong cause.
+  say "and says the machine has no engine rather than blaming the page" \
+    "$(printf '%s' "$words" | grep -q "nothing installed that can draw" \
+       && ! printf '%s' "$words" | grep -q "This page could not be drawn" \
+       && echo 1 || echo 0)" "$words"
 else
 say "the page is drawn as opaque paper rather than a transparent sheet" \
   "$(printf '%s' "$ink" | grep -qE "opaque=[1-9]" && echo 1 || echo 0)" "$ink"
