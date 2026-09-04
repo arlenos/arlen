@@ -65,6 +65,17 @@ export function saveProblemKey(e: unknown): string {
       return "te.save.notAbsolute";
     case "no-parent":
       return "te.save.noParent";
+    // EVERYTHING FOR THIS WAS BUILT EXCEPT THIS LINE. The host has a
+    // `ChangedOnDisk` variant, it carries the `file-changed-on-disk` tag, and
+    // `te.save.changedOnDisk` has said the right sentence in both languages the
+    // whole time - the Rust doc even states that "the page's existing branch on
+    // that word keeps working". There was no such branch. So a save refused
+    // because somebody else had written the file fell through to `other`,
+    // "Could not save. The detail is in the log.", and the one sentence written
+    // for exactly this moment could not be reached. The `console.warn` below
+    // fired every time, into the one place nobody reads.
+    case "file-changed-on-disk":
+      return "te.save.changedOnDisk";
     case "unwritable":
       return "te.save.unwritable";
     default:
