@@ -41,6 +41,7 @@ DAEMONS=(
     "arlen-auditd|audit-ingest.sock|"
     "arlen-bottled|bottled.sock|"
     "arlen-capsuled|capsule.sock|"
+    "arlen-sentineld|sentinel.sock|"
     "arlen-settings-broker|settings-broker.sock|"
     "arlen-modulesd|modulesd.sock|"
     # The knowledge daemon needs its store paths pointed somewhere disposable,

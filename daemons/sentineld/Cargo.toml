@@ -1,0 +1,44 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-sentineld"
+version = "0.1.0"
+edition = "2021"
+description = "The physical-world privacy sentinel: what this machine broadcasts about itself, and the switches that decide which detectors watch for it (privacy-sentinel-plan.md)"
+
+[[bin]]
+name = "arlen-sentineld"
+path = "src/main.rs"
+
+[lib]
+name = "arlen_sentineld"
+path = "src/lib.rs"
+
+[dependencies]
+# The detector cores. Pure, no radio, no I/O: this crate does the reading and
+# hands the readings over, so the comparisons stay unit-testable without hardware.
+arlen-sentinel-detect = { path = "../sentinel-detect" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The switches on disk. Same format as every other Arlen config.
+toml = "0.8"
+# NetworkManager and BlueZ are where the radio identity surface actually lives,
+# and both speak the system bus. Same client every other Arlen daemon uses.
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["net", "io-util", "rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# The socket authenticates its peer the way every other Arlen broker does, rather
+# than with a second hand-rolled credential read.
+arlen-permissions = { path = "../../sdk/permissions" }
+# Turning a protection off is recorded before it happens.
+audit-proto = { path = "../../contracts/audit-proto" }
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+# `MockAuditSink`, behind `test-util` on purpose: it accepts everything, which is
+# the wrong thing to have in a release build.
+audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[workspace]

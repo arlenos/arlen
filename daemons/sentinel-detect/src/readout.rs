@@ -40,6 +40,22 @@ pub enum Surface {
     BlerPrivacy,
 }
 
+impl Surface {
+    /// Every surface, in the order [`compose`] is given them.
+    ///
+    /// Exists so a caller mapping surfaces to something else - a sentence, a wire
+    /// key - can prove it covered all of them rather than trusting a match arm it
+    /// wrote by hand.
+    pub const ALL: [Surface; 6] = [
+        Surface::WifiMac,
+        Surface::SavedMacPolicy,
+        Surface::HiddenNetwork,
+        Surface::DhcpHostname,
+        Surface::BluetoothDiscoverable,
+        Surface::BlerPrivacy,
+    ];
+}
+
 /// One line of the posture readout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Line {

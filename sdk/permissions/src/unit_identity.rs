@@ -199,6 +199,10 @@ const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-modulesd.service", "modulesd"),
     ("arlen-notifyd.service", "notifyd"),
     ("arlen-powerd.service", "powerd"),
+    // The privacy sentinel. Installs at `/usr/lib/arlen/libexec/`, so the path
+    // rules resolve it to `sentineld`, so both resolvers name it the same and
+    // there is no deviation to record.
+    ("arlen-sentineld.service", "sentineld"),
     ("arlen-terminal-run-mcp.service", "terminal-run-mcp"),
     ("arlen-timeline.service", "timeline"),
     ("arlen-undod.service", "undod"),
