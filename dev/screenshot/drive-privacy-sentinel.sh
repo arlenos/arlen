@@ -47,12 +47,10 @@ trap cleanup EXIT
 # nothing checked - a sentineld from last week would answer with last week's
 # postures and every assertion below would be about those.
 require_fresh "$sentineld" "$root/daemons/sentineld/src" "$root/daemons/sentinel-detect/src" || exit 1
-[ -d "$root/apps/settings/build" ] || { echo "!! build the frontend first: (cd apps/settings && npm run build)" >&2; exit 1; }
-if [ -n "$(find "$root/apps/settings/src" -newer "$root/apps/settings/build" -name '*.svelte' -o \
-                -newer "$root/apps/settings/build" -name '*.ts' 2>/dev/null | head -1)" ]; then
-  echo "!! the built frontend is OLDER than apps/settings/src - rebuild before" >&2
-  echo "   believing a failure: (cd apps/settings && npm run build)" >&2
-fi
+# And the page it renders, on the same rule. This was a hand-rolled `find` that
+# WARNED on stderr, which is the one channel a drive discards, so it was
+# invisible in every run that mattered; now it refuses, through the shared
+# helper, so one implementation of the rule serves every drive.
 
 # Through the shared helper, which refuses a port it did not start and kills the
 # server's whole process group. This was `( ... ) &` with `preview_pid=$!`, and
@@ -60,6 +58,7 @@ fi
 # kill missed it and every run left a server behind. The next run's readiness
 # check then passed against THAT one and read a frontend built at some earlier
 # time - a suite passing while testing a page nobody had just built.
+require_fresh_frontend "$root/apps/settings/build" "$root/apps/settings/src" || exit 2
 start_preview "$root/apps/settings" 1421 || exit 1
 wait_for_http "http://localhost:1421/" || exit 1
 

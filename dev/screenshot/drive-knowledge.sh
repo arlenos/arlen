@@ -59,6 +59,9 @@ done
 
 # The app is a Tauri binary; a debug build loads its devUrl, so something has to
 # serve that port or every probe reads a connection-refused page.
+# And that what it serves is current: `build/` is written by a command nobody
+# is forced to run, so a preview can serve a page the tree left behind.
+require_fresh_frontend "$root/apps/knowledge/build" "$root/apps/knowledge/src" || exit 2
 if ! curl -sf -o /dev/null http://localhost:1436/; then
     echo "nothing is serving http://localhost:1436, so the app would load an error page." >&2
     echo "  (cd $root/apps/knowledge && npx vite build && npx vite preview --port 1436)" >&2
