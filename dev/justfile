@@ -454,6 +454,7 @@ drive-apps:
     fail=0
     ran=0
     served=()
+    stale=()
     serve_for() {  # serve_for <port> - build and preview the app that claims it
         local port="$1" conf app
         for conf in "{{ROOT}}"/apps/*/src-tauri/tauri.conf.json; do
@@ -487,12 +488,29 @@ drive-apps:
             out="$("$script" 2>&1)"
             rc=$?
         fi
+        # A suite that refused because its binary predates its source. Collected
+        # rather than acted on: the frontend case above is a `vite build` and a
+        # server, seconds of work, but rebuilding a Tauri release binary is ten
+        # to twenty minutes and there are eighteen of these - a runner that did
+        # it silently would work for hours without being asked. Every assertion
+        # in a refused suite carries the same sentence, so without this the
+        # person reads eighty identical REFUSED lines to learn which five
+        # binaries to rebuild.
+        stale_bin="$(printf '%s' "$out" | grep -oE 'REFUSED: [^ ]+ is older' | head -1 | cut -d' ' -f2)"
+        [ -n "$stale_bin" ] && stale+=("$(basename "$stale_bin")")
         printf '%s\n' "$out"
         [ "$rc" = 0 ] || fail=1
     done
     for port in "${served[@]:-}"; do
         [ -n "$port" ] && pkill -f "vite preview --port $port" >/dev/null 2>&1
     done
+    if [ "${#stale[@]}" != 0 ]; then
+        echo
+        echo "$( printf '%s\n' "${stale[@]}" | sort -u | wc -l ) binary(s) are older than their source and refused rather than"
+        echo "test last month's app. Rebuild these, then press again:"
+        printf '%s\n' "${stale[@]}" | sort -u | sed 's/^/  /'
+        echo "  (cd apps/<app> && npm run build && npx tauri build --no-bundle)"
+    fi
     [ "$fail" = 0 ] && echo "$ran app suite(s) answered when they were pressed"
     exit "$fail"
 
