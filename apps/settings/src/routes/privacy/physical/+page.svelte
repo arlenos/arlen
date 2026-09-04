@@ -13,6 +13,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import {
     sentinel,
@@ -99,14 +100,14 @@
 <Page title={$t("s.sent.title")} description={$t("s.sent.desc")}>
   <SectionGrid>
     {#if $sentinelMocked}
-      <p class="sample span-full">{$t("s.sent.sample")}</p>
+      <Notice tone="neutral" class="span-full" text={$t("s.sent.sample")} />
     {:else if $sentinelUnavailable}
-      <p class="sample span-full">{$t("s.sent.unavailable")}</p>
+      <Notice tone="caution" class="span-full" text={$t("s.sent.unavailable")} />
     {/if}
     <!-- A switch that did not reach the service is back where it was; saying so
          is the difference between "you turned this off" and "this is off". -->
     {#if $sentinelChangeFailed}
-      <p class="sample span-full" role="alert">{$t("s.sent.changeFailed")}</p>
+      <Notice tone="error" class="span-full" text={$t("s.sent.changeFailed")} />
     {/if}
 
     {#if $sentinel}
@@ -129,7 +130,11 @@
                  than in whatever the daemon was compiled with. -->
             {#each $sentinel.posture as line (line.surface)}
               <div class="posture-line" class:warn={line.posture === "exposed"}>
-                <span>{$t(`s.sent.post.${line.surface}.${line.posture}`)}</span>
+                <!-- The finding as a dot of the house family before the words:
+                     a readout is read by colour first, and a surface nothing
+                     could measure must not look like a surface that is fine. -->
+                <span class="found" data-posture={line.posture} aria-hidden="true"></span>
+                <span class="said">{$t(`s.sent.post.${line.surface}.${line.posture}`)}</span>
                 {#if line.fix}
                   <Button variant="outline" size="sm" id="sent-exposure-fix" onclick={() => fixPosture(line.surface)}>
                     {$t("s.sent.fix")}
@@ -290,12 +295,6 @@
 />
 
 <style>
-  .sample {
-    margin: 0;
-    font-size: var(--text-2xs);
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
   .section-label {
     padding: 0.5rem 0.25rem 0;
     font-size: var(--text-2xs);
@@ -316,14 +315,35 @@
   .posture-line {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.6rem;
     font-size: var(--text-sm);
     line-height: 1.45;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .posture-line.warn {
     color: var(--foreground);
+  }
+  .said {
+    flex: 1;
+    min-width: 0;
+  }
+  /* 6px on the chip radius, the status-dot family: warning for a surface
+     that exposes, success for one that protects, and a quiet ring for one
+     nothing could read - not a colour, because no finding is not a finding. */
+  .found {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-chip, 4px);
+  }
+  .found[data-posture="exposed"] {
+    background: var(--color-warning);
+  }
+  .found[data-posture="protected"] {
+    background: var(--color-success);
+  }
+  .found[data-posture="unknown"] {
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--foreground) 40%, transparent);
   }
 
   .status {
