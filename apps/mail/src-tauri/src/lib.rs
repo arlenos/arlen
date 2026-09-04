@@ -214,8 +214,10 @@ fn mail_folders() -> Vec<FolderDto> {
 fn mail_list(folder_id: String) -> Vec<EnvelopeDto> {
     let Some(root) = maildir_root() else { return Vec::new() };
     let rel = if folder_id == "inbox" { String::new() } else { folder_id.clone() };
-    let Some(folder) = arlen_mail_core::maildir::folders(&root).into_iter().find(|f| f.rel == rel)
-    else {
+    // Resolved on its own rather than found in the full listing: the surface asks
+    // for one folder's rows at a time, so listing every folder here counted the
+    // unread in all of them to learn the name of one.
+    let Some(folder) = arlen_mail_core::maildir::folder_at(&root, &rel) else {
         return Vec::new();
     };
     arlen_mail_core::maildir::envelopes(&root, &folder)
