@@ -30,8 +30,10 @@ export function trashProblem(raw: string): TrashProblem {
   switch (parsed.problem) {
     case "cross-device":
       return { key: "v.trash.crossDevice", detail: "" };
+    // No detail: the host stopped sending one, because it was a path already on
+    // screen plus an errno for the log. The sentence stands on its own.
     case "no-trash-here":
-      return { key: "v.trash.noTrashHere", detail: String(parsed.why ?? "") };
+      return { key: "v.trash.noTrashHere", detail: "" };
     case "not-found":
       return { key: "v.trash.notFound", detail: "" };
     case "unsupported":
