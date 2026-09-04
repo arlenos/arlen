@@ -243,6 +243,14 @@ export async function undoLast(): Promise<void> {
   try {
     await invoke<boolean>("files_undo");
     opError.set(null);
+    // AND THE LINE THAT DESCRIBED WHAT WAS JUST UNDONE. `runOp` clears `opDone`
+    // when the NEXT operation starts, which is not the same as clearing it when
+    // this one is reverted: after Ctrl+Z the file is back in the list and the
+    // status line still read "Moved to Trash. Ctrl+Z puts it back." - a sentence
+    // about a state that no longer holds, offering an action that no longer
+    // applies. Only on success: if the undo failed, the file IS still in the
+    // trash and that line is still the truth, with `opError` beside it.
+    opDone.set(null);
     await get(activeController)?.refresh();
   } catch (e) {
     console.warn("files: undo refused", e);
