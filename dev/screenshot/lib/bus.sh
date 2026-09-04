@@ -25,11 +25,18 @@
 # Hello without being registered"; export DBUS_SESSION_BUS_ADDRESS and pass
 # `--session` instead. That cost a diagnosis and reads as a daemon fault.
 
-# Start a private session bus with its socket under $1. Echoes the address.
+# Start a private session bus with its socket under $1.
 #
-# Sets BUS_PID for the caller's cleanup trap. Permissive policy: any client may
-# own a name and talk to any other, which is right for a bus with exactly the
-# processes this script started on it.
+# Sets BUS_ADDR and BUS_PID in the CALLER'S shell and echoes nothing, which is
+# not a style choice. The first version echoed the address, so every caller wrote
+# `addr="$(start_private_bus ...)"` - and command substitution runs in a subshell,
+# where the `BUS_PID=$!` landed and died with it. The parent's trap then killed
+# an empty string, and four runs of one drive left four dbus-daemons alive on
+# this machine. A cleanup that looks right and frees nothing is worse than none,
+# because nobody goes looking.
+#
+# Permissive policy: any client may own a name and talk to any other, which is
+# right for a bus with exactly the processes this script started on it.
 start_private_bus() {
     _bus_dir="$1"
     _bus_sock="$_bus_dir/bus.sock"
@@ -47,8 +54,9 @@ start_private_bus() {
 XML
     dbus-daemon --config-file="$_bus_dir/bus.conf" --nofork --nopidfile >/dev/null 2>&1 &
     BUS_PID=$!
+    BUS_ADDR="unix:path=$_bus_sock"
     for _ in $(seq 1 40); do
-        [ -S "$_bus_sock" ] && { echo "unix:path=$_bus_sock"; return 0; }
+        [ -S "$_bus_sock" ] && return 0
         sleep 0.25
     done
     echo "!! the private bus never bound $_bus_sock" >&2

@@ -45,6 +45,7 @@ work="$HOME/arlen-drive-files-jobs"
 bus_dir="$(mktemp -d)"
 fail=0
 BUS_PID=""
+BUS_ADDR=""
 nd_pid=""
 mon_pid=""
 
@@ -83,7 +84,10 @@ printf 'not a directory\n' > "$bus_dir/data/Trash"
 
 echo "file manager jobs:"
 
-addr="$(start_private_bus "$bus_dir")" || exit 1
+# Not `addr="$(start_private_bus ...)"`: that subshell would swallow BUS_PID and
+# leak the daemon (see lib/bus.sh).
+start_private_bus "$bus_dir" || exit 1
+addr="$BUS_ADDR"
 XDG_DATA_HOME="$bus_dir/data" XDG_CONFIG_HOME="$bus_dir/cfg" XDG_RUNTIME_DIR="$bus_dir" \
   DBUS_SESSION_BUS_ADDRESS="$addr" "$notifyd" >"$bus_dir/notifyd.log" 2>&1 &
 nd_pid=$!
