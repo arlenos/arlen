@@ -1391,6 +1391,15 @@ mod module_reachability {
     ///
     /// The point of the list is that it cannot grow silently. Removing an entry
     /// once it is wired up is the expected direction of travel.
+    ///
+    /// EVERY ENTRY SHOULD SAY WHAT WOULD END IT. On 4 September five reasons
+    /// across this tree turned out to describe a state that had already ended -
+    /// a dialog somebody had since decided to build, a contract already written,
+    /// a thumbnailer that existed, a confinement belonging to a different
+    /// process. Each read as a verdict because it was written as a description,
+    /// and a description ages while a name does not. A line naming what somebody
+    /// could go and check turns "this waits" into "this waits, and here is how
+    /// you would know it does not any more".
     const KNOWN_UNREACHED: &[&str] = &[
         // BR-4's `auth`: when a credential must be renewed. Not reachable
         // until the broker seam exists to hand one over. Its sibling `retry`
@@ -1411,6 +1420,7 @@ mod module_reachability {
         //                           `org.arlen.Sentinel1` daemon that does not
         //                           exist, like its siblings below.
         //
+        // FALSE WHEN `arlen-sentineld` grows the detector that reads each one.
         // The `sentinel-detect` entries come off as their daemon reaches them, and
         // three did on 4 September. `readout` joined the list that morning and left
         // it the same day: `arlen-sentineld` now composes exposure's surfaces
