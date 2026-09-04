@@ -46,6 +46,14 @@ for b in "$app" "$root/target/debug/event-bus" "$root/target/debug/arlen-graph-d
       event-bus) require_fresh "$b" "$root/daemons/event-bus/src" || exit 2 ;;
       arlen-graph-daemon) require_fresh "$b" "$root/daemons/knowledge/src" || exit 2 ;;
       arlen-knowledge-app) require_fresh "$b" "$root/apps/knowledge/src-tauri/src" || exit 2 ;;
+      arlen-event-emit) require_fresh "$b" "$root/dev/event-emit/src" || exit 2 ;;
+      # EXHAUSTIVE OR IT REFUSES. The comment above said "whichever of the four"
+      # while this had three arms, so `arlen-event-emit` - the thing that puts
+      # the events into the bus this whole suite then reads back - was checked
+      # for existence and never for age. A silent fall-through is how a list and
+      # the sentence describing it drift apart; now adding a binary above without
+      # a rule here stops the run instead of quietly skipping it.
+      *) echo "no freshness rule for $(basename "$b") - add one" >&2; exit 2 ;;
     esac
 done
 
