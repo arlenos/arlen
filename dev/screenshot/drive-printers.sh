@@ -98,7 +98,7 @@ if [ "$running" = 1 ] && [ "$count" = 0 ]; then
   # print service right now", so the assertion passed against a page that was
   # both unreached and wrong.
   say "with a running print service and no printers it says you have none" \
-    "$(printf '%s' "$out" | grep -q "Cannot reach the print service" && echo 0 || echo 1)" "$out"
+    "$(case "$out" in ""|REFUSED:*) echo 0;; *) printf '%s' "$out" | grep -q "Cannot reach the print service" && echo 0 || echo 1;; esac)" "$out"
   say "and it says so in the words for an empty machine" \
     "$(printf '%s' "$out" | grep -q "No printers set up" && echo 1 || echo 0)" "$out"
 elif [ "$running" = 0 ]; then

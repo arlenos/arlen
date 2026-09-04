@@ -115,6 +115,15 @@ if [ -e "$SHOOT_APP" ]; then
       #
       # SHOOT_ALLOW_STALE=1 for the real case of pointing this at an old binary
       # on purpose: bisecting a regression, or checking what last week shipped.
+      #
+      # `REFUSED:` IS A CONTRACT, not just a word. A drive assertion of the form
+      # "X is absent" is satisfied by a payload that contains no X - including a
+      # refusal, which contains nothing about the app at all. Every negative
+      # check in every drive therefore tests for `REFUSED:` alongside empty
+      # before it believes an absence (`case "$out" in ""|REFUSED:*)`), so this
+      # prefix must stay stable and stay at the START of the line. Found the hard
+      # way: the first cut of that guard only tested for empty, and the screenshot
+      # suite still reported its negative check green over a refusal.
       echo "!! that binary is OLDER than its source ($_newer changed since it was" >&2
       echo "   built). Whatever this run reports is about the old code - rebuild" >&2
       echo "   before believing a failure." >&2

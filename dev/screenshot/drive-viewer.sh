@@ -251,7 +251,7 @@ say "launched with no file, it says where a file comes from" \
   "$(printf '%s' "$bare" | grep -qE "file manager|Dateiverwaltung" && echo 1 || echo 0)" "$bare"
 
 say "and shows no invented track" \
-  "$(printf '%s' "$bare" | grep -q "Nightswim" && echo 0 || echo 1)" "$bare"
+  "$(case "$bare" in ""|REFUSED:*) echo 0;; *) printf '%s' "$bare" | grep -q "Nightswim" && echo 0 || echo 1;; esac)" "$bare"
 
 [ "$fail" = 0 ] && echo "every behaviour the plan names answered when it was pressed, and an empty window that says what to do"
 exit "$fail"

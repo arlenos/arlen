@@ -192,7 +192,7 @@ say "launched with no file, it says the document is an example" \
 
 # And it must not offer to save invented text under an invented name.
 say "and offers no save over it" \
-  "$(printf '%s' "$bare" | grep -qE 'Save|Speichern' && echo 0 || echo 1)" "$bare"
+  "$(case "$bare" in ""|REFUSED:*) echo 0;; *) printf '%s' "$bare" | grep -qE 'Save|Speichern' && echo 0 || echo 1;; esac)" "$bare"
 
 [ "$fail" = 0 ] && echo "a real buffer over a real file, a find panel, a save that lands on disk, and a sample that says it is one"
 exit "$fail"

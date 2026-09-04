@@ -98,7 +98,7 @@ say "the sender is shown as a claim rather than as identity" \
 # THE case. The HTML part's own sentence must never reach the screen; the words
 # that differ, which the divergence notice names, must.
 say "the html part's sentence is not on the screen" \
-  "$(printf '%s' "$out" | grep -q "pay at evil-collector.example before Friday" && echo 0 || echo 1)" "$out"
+  "$(case "$out" in ""|REFUSED:*) echo 0;; *) printf '%s' "$out" | grep -q "pay at evil-collector.example before Friday" && echo 0 || echo 1;; esac)" "$out"
 
 # The words are named WHOLE. This used to check for "collector", which is a
 # fragment of `evil-collector.example` produced by splitting on punctuation, so
@@ -161,11 +161,11 @@ say "and the window says it did not read it" \
 # an invitation" and "carries one file, not opened: a file the sender did not
 # name" about the same bytes.
 say "the invitation is not listed a second time as an unnamed file" \
-  "$(printf '%s' "$inv" | grep -q "carries one file" && echo 0 || echo 1)" "$inv"
+  "$(case "$inv" in ""|REFUSED:*) echo 0;; *) printf '%s' "$inv" | grep -q "carries one file" && echo 0 || echo 1;; esac)" "$inv"
 
 # The protocol token stays out of the window: REQUEST is for the machine.
 say "the method is not printed raw at the reader" \
-  "$(printf '%s' "$inv" | grep -q "REQUEST" && echo 0 || echo 1)" "$inv"
+  "$(case "$inv" in ""|REFUSED:*) echo 0;; *) printf '%s' "$inv" | grep -q "REQUEST" && echo 0 || echo 1;; esac)" "$inv"
 
 # A SEALED MESSAGE. PGP and S/MIME messages have no readable text part, so the
 # window said "this message has no text part" over two attachments named things
@@ -193,10 +193,10 @@ say "an encrypted message says it is encrypted" \
 # Its envelope is not an enclosure. The window said "This message carries 2
 # files, not opened" over the PGP version part and the ciphertext.
 say "and does not offer its envelope as files somebody sent" \
-  "$(printf '%s' "$sealed" | grep -q "carries 2 files" && echo 0 || echo 1)" "$sealed"
+  "$(case "$sealed" in ""|REFUSED:*) echo 0;; *) printf '%s' "$sealed" | grep -q "carries 2 files" && echo 0 || echo 1;; esac)" "$sealed"
 
 say "and does not report itself as a message with no text" \
-  "$(printf '%s' "$sealed" | grep -q "no text part" && echo 0 || echo 1)" "$sealed"
+  "$(case "$sealed" in ""|REFUSED:*) echo 0;; *) printf '%s' "$sealed" | grep -q "no text part" && echo 0 || echo 1;; esac)" "$sealed"
 
 amb=$(SHOOT_APP_ARGS="$fix/ambiguous.eml" SHOOT_INJECT="$fix/probe.js" \
   "$here/shoot-app.sh" "$app" "$here/out/mail-ambiguous.png" 2>&1 | sed -n 's/^inject result: //p')
