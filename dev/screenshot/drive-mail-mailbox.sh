@@ -85,6 +85,11 @@ return JSON.stringify({
   // The fixture's own senders. If these appear, a sample mailbox reached a
   // window that is meant to be reading a real one.
   fixture: /Priya|Dominik|Renata|Aoife/.test(text),
+  // The writes. A maildir this client cannot write to offers no Compose: a row
+  // that "archives" a file which is back at the next start is the sample's
+  // trick, and only the sample gets to play it.
+  compose: !!document.querySelector("#mail-compose"),
+  unconnected: text.includes("No account is connected"),
 });
 JS
 
@@ -100,6 +105,8 @@ say "and a second folder's mail is not mixed into the inbox" \
 
 say "and no fixture sender is on a screen reading a real mailbox" \
   "$(printf '%s' "$got" | grep -q '"fixture":false' && echo 1 || echo 0)" "$got"
+say "and a mailbox nothing can write to offers no Compose" \
+  "$(printf '%s' "$got" | grep -q '"compose":false' && echo 1 || echo 0)" "$got"
 
 # And that a row opens. `mail_open` is the one that turns an id from the surface
 # back into a path, through both gates - `safe_id` on what was typed and a
@@ -135,6 +142,10 @@ return JSON.stringify({
   clickable: true,
   // Only the reading pane can carry the tail: the snippet is cut at 140 chars.
   opened: text.includes("the ridge tiles") && !text.includes("Select a message"),
+  // With a message open the header would show Archive and Delete, if the
+  // mailbox could keep either. It cannot, so they are not there.
+  writes: [...document.querySelectorAll("button")].some((b) =>
+    /^(Archive|Delete|Reply|Forward)$/.test(b.getAttribute("aria-label") || "")),
   text: text.slice(-300),
 });
 JS
@@ -145,6 +156,8 @@ opened=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/open.js" S
 
 say "and a row it listed is a row that opens" \
   "$(printf '%s' "$opened" | grep -q '"opened":true' && echo 1 || echo 0)" "$opened"
+say "and an open message offers no archive, delete, reply or forward it could not keep" \
+  "$(printf '%s' "$opened" | grep -q '"writes":false' && echo 1 || echo 0)" "$opened"
 
 # THE case. With no maildir the app must show an unconnected mailbox, not the
 # sample one - three plausible senders are indistinguishable from real mail.
@@ -157,6 +170,8 @@ say "with no mailbox it shows none, rather than the sample one" \
 
 say "and says so rather than rendering an empty frame" \
   "$(printf '%s' "$empty" | grep -qE '"text":"[^"]{10,}' && echo 1 || echo 0)" "$empty"
+say "and what it says is that no account is connected" \
+  "$(printf '%s' "$empty" | grep -q '"unconnected":true' && echo 1 || echo 0)" "$empty"
 
 [ "$fail" = 0 ] && echo "the mailbox reads this machine's maildir, and says so when there is none"
 exit "$fail"

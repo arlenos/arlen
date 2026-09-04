@@ -220,11 +220,12 @@ JS
 bare=$(SHOOT_INJECT="$fix/p-bare.js" \
   "$here/shoot-app.sh" "$app" "$here/out/mail-no-file.png" 2>&1 | sed -n 's/^inject result: //p')
 
-# The client shape: with no account backend and no launched file, the honest
-# sentence names both facts - no account yet, and a message opened from Files
-# still shows here.
-say "launched with no message, it says no account is connected and where a message comes from" \
-  "$(printf '%s' "$bare" | grep -qE "account|Konto" && printf '%s' "$bare" | grep -qE "Files|Dateien" && echo 1 || echo 0)" "$bare"
+# The client shape: with no account backend and no launched file, the one
+# sentence names the one fact - no account is connected. It used to add that a
+# message opened from Files still shows here, which is the surface narrating a
+# row the reader sees when it exists (design-system.md 6.7).
+say "launched with no message, it says no account is connected" \
+  "$(printf '%s' "$bare" | grep -qE "account|Konto" && echo 1 || echo 0)" "$bare"
 
 [ "$fail" = 0 ] && echo "the window says what the message is doing, including the half it will not show, and an empty one says where to get a message"
 exit "$fail"
