@@ -496,11 +496,33 @@ fi
 cat > "$probes/p-rate.js" <<'JS'
 const wait = ms => new Promise(r => setTimeout(r, ms));
 await wait(2500);
-const sel = document.querySelector("select.rate-select");
-if (!sel) return JSON.stringify({ error: "no rate control" });
+// THE KIT'S PopoverSelect, NOT A NATIVE SELECT. This read
+// `document.querySelector("select.rate-select")` and set `.value` on it, which
+// is what the control WAS. It is now a trigger button plus a `[role=listbox]`
+// of `[role=option]` buttons, so the probe answered "no rate control" and the
+// check went red with nothing wrong in the app - a check whose expectation aged
+// when the widget improved. Driven the way a person drives it instead: click the
+// trigger, click the option by its label.
+const ariaFor = "How often to re-read the system";
+const trigger = [...document.querySelectorAll("button[aria-label]")]
+  .find((b) => b.getAttribute("aria-label") === ariaFor);
+if (!trigger) return JSON.stringify({ error: "no rate control" });
+const labelFor = (ms) => (Number(ms) < 1000 ? `${ms} ms` : `${Number(ms) / 1000} s`);
+let opts = [];
+// A SETTER THAT FAILS QUIETLY would report itself as "both cadences were slow",
+// which is the app's fault-shape rather than the probe's, and somebody would go
+// looking in the wrong place. So a click that finds nothing says which step.
+let problem = null;
 const set = async (v) => {
-  sel.value = v;
-  sel.dispatchEvent(new Event("change", { bubbles: true }));
+  trigger.click();
+  await wait(300);
+  const box = document.querySelector("[role=listbox]");
+  if (!box) { problem = "the trigger opened no listbox"; return; }
+  const items = [...box.querySelectorAll("[role=option]")];
+  if (!opts.length) opts = items.map((o) => (o.innerText || "").trim());
+  const opt = items.find((o) => (o.innerText || "").trim() === labelFor(v));
+  if (!opt) { problem = `no option labelled ${labelFor(v)} among ${opts.join("/")}`; return; }
+  opt.click();
   await wait(400);
 };
 // How often the top row's text changes over `secs`. CPU figures move every poll
@@ -526,7 +548,7 @@ const stored = localStorage.getItem("arlen.system-monitor.refreshMs");
 // expected figures, and that probe went red with nothing wrong in the app. A
 // probe that changes remembered state has to change it back.
 await set("2000");
-return JSON.stringify({ opts: [...sel.options].map(o => o.textContent.trim()),
+return JSON.stringify({ opts, problem,
   fast, slow, stored, restored: localStorage.getItem("arlen.system-monitor.refreshMs") });
 JS
 got=$(drive "$probes/p-rate.js" sysmon-rate.png)
