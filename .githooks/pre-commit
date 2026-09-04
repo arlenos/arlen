@@ -122,18 +122,32 @@ fi
 # costs about three seconds warm. A missing toolchain or an unbuildable tree lets
 # the commit through with a line, like the runner above - the net does not block
 # work when its own plumbing is absent.
-reach="cargo test --manifest-path $root/dev/integration/Cargo.toml \
-       --lib no_new_daemon_module_is_unreachable"
+# THE WHOLE LIB, not one test by name. It used to name
+# `no_new_daemon_module_is_unreachable` alone, and its sibling in the same file -
+# `no_new_library_crate_is_unconsumed`, same purpose, same failure mode - went red
+# on 4 September when a new daemon consumed a crate the list still called
+# unconsumed, and stayed red for ten hours across a dozen commits because nothing
+# ran it. Naming tests is the same trap as the hand-kept lists this hook exists to
+# replace: it is correct until somebody adds the next one.
+reach="cargo test --manifest-path $root/dev/integration/Cargo.toml --lib"
 if ! out=$($reach 2>&1); then
-    if printf '%s' "$out" | grep -q "daemon modules that compile and test but nothing reaches"; then
+    # A FAILED TEST IS A REFUSAL, whatever it was. The old shape matched one
+    # sentence and fell through to "could not run" for anything else, which meant
+    # a compile error in that crate - or any other test in it failing - let the
+    # commit through with a line saying the check had not run. A net that reports
+    # itself as absent when it has actually caught something is worse than no net.
+    if printf '%s' "$out" | grep -qE "test result: FAILED|panicked at"; then
         echo >&2
-        printf '%s\n' "$out" | grep -A20 "daemon modules that" >&2
-        echo "pre-commit: a daemon module nothing reaches would land." >&2
-        echo "Wire it up, or name it in KNOWN_UNREACHED with the reason it waits." >&2
+        printf '%s\n' "$out" | grep -B2 -A20 -E "panicked at|failures:" | head -40 >&2
+        echo "pre-commit: dev/integration is red, so this commit would land broken." >&2
+        echo "Wire the thing up, or name it in the list its test points at." >&2
         warn_divergence
         exit 1
     fi
-    echo "pre-commit: could not run the reachability test (toolchain or build); not run" >&2
+    # No test failed, so this is the toolchain or an unbuildable tree. Let the
+    # commit through with a line, like the runner above: the net does not block
+    # work when its own plumbing is absent.
+    echo "pre-commit: could not run the dev/integration tests (toolchain or build); not run" >&2
 fi
 
 warn_divergence
