@@ -92,7 +92,13 @@ pub type SocketWriter = Arc<Mutex<Option<WriteHalf<UnixStream>>>>;
 /// Default socket path.
 pub fn default_socket_path() -> PathBuf {
     let uid = unsafe { libc::getuid() };
-    PathBuf::from(format!("/run/user/{uid}/arlen/notification.sock"))
+    // The variable first, matching the daemon: the two must not be able to
+    // disagree about where the socket is, which is exactly what a hardcoded path
+    // on one side and an honoured override on the other would produce.
+    match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(d) if !d.is_empty() => PathBuf::from(d).join("arlen").join("notification.sock"),
+        _ => PathBuf::from(format!("/run/user/{uid}/arlen/notification.sock")),
+    }
 }
 
 /// Connect to the notification daemon and start the read loop.
