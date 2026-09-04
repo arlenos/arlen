@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use arlen_desktop_shell_core::launch::entry::app_id_of;
 use arlen_desktop_shell_core::launch::exec::{expand_exec, ExecContext, ExecError};
 use arlen_desktop_shell_core::launch::plan::{plan, Launch};
 use arlen_desktop_shell_core::launch::refusal::refusal_detail;
@@ -306,16 +307,18 @@ fn parse_desktop_file(path: &Path, locale: &str) -> Option<AppEntry> {
 /// Derive an app's reverse-DNS id: an explicit non-empty `X-Arlen-AppId=` value
 /// wins; otherwise the `.desktop` file's basename without the extension (the
 /// freedesktop desktop-id, e.g. `org.gnome.Calculator.desktop` ->
-/// `org.gnome.Calculator`). Empty only if the path has no usable stem (it would
+/// `org.gnome.Calculator`). Empty only if the path has no usable name (it would
 /// then resolve no profile, the fail-closed outcome the launcher already gives).
+///
+/// ONE DERIVATION, NOT TWO. This id keys the permission profile `arlen-run`
+/// confines the app with, and the launcher's own [`app_id_of`] derives it from
+/// the desktop id. Two functions computing an application's identity is the
+/// drift this strand removes everywhere else, and the note on [`app_id_of`]
+/// asked for the merge once the launcher was wired. It is, so this is the
+/// adapter from a path to that one rule rather than a second copy of it.
 fn derive_app_id(explicit: Option<&str>, path: &Path) -> String {
-    if let Some(id) = explicit.map(str::trim).filter(|s| !s.is_empty()) {
-        return id.to_string();
-    }
-    path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or_default()
-        .to_string()
+    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+    app_id_of(explicit, name)
 }
 
 /// The lowercased identifiers this app declares its windows by.

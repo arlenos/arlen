@@ -87,10 +87,12 @@ pub fn parse_entry(desktop_id: &str, contents: &str, path: Option<&str>) -> Opti
 /// its `.desktop` suffix, which is the freedesktop application identifier and
 /// what every packaged app already uses.
 ///
-/// The shell's app index derives the same thing its own way, from the file path.
-/// Same rule, and the index's copy should come here once the service is wired -
-/// two derivations of an application's identity is exactly the class of drift
-/// this strand is removing everywhere else.
+/// THE one derivation. The shell's app index had its own, from the file path, on
+/// the note that it should come here once the launcher was wired; the launcher is
+/// wired, so `app_index::derive_app_id` is now the path-to-desktop-id adapter in
+/// front of this rather than a second copy of the rule. Two functions computing
+/// an application's identity is the drift this strand removes everywhere else,
+/// and this id keys the permission profile the app is confined with.
 pub fn app_id_of(declared: Option<&str>, desktop_id: &str) -> String {
     match declared.map(str::trim).filter(|s| !s.is_empty()) {
         Some(id) => id.to_string(),
