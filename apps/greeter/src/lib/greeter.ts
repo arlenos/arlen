@@ -115,9 +115,10 @@ export async function beginFactor(profileId: string, factor: Factor): Promise<Au
 }
 
 /// The wallpaper URL to show behind the login, or `null` for the calm
-/// gradient fallback. The coder wires the real source (the wallpaper
-/// manifest, or a greeter default under /usr/share/arlen); the surface
-/// always has a safe fallback.
+/// gradient fallback. The host reads the SYSTEM manifest only (no user's
+/// `wallpaper.toml` - the greeter runs before anyone has authenticated) and
+/// inlines the image as a `data:` URL, so the webview needs no filesystem
+/// reach. Every failure there is `None`, and the surface falls back.
 export async function readWallpaper(): Promise<string | null> {
   try {
     return await invoke<string | null>("greeter_wallpaper");

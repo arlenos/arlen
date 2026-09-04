@@ -5,10 +5,12 @@
 /// sandbox + the minted permission profile legible, and offers Run vs Install. The
 /// sibling of the unified consent dialog; it reuses that chrome.
 ///
-/// Mock-vs-live: fixture-backed. The trigger (the FM/portal opening a Windows file
-/// -> `windows_file_request`), the compat lookup, `.exe` icon extraction, and the
-/// run/install commands are all coder seams on the deferred bottle daemon; under
-/// vite the store serves a fixture so the surface renders.
+/// Mock-vs-live: live. `windows_file_request`, `windows_file_run` and
+/// `windows_file_install` are registered and reach `bottled`, which makes the
+/// bottle and launches or installs into it. The compat lookup still answers from
+/// what a bottle can be asked, not from a recipe - there is no recipe format yet,
+/// so a tier is stated as measured or not stated. Under vite, and only when the
+/// URL asks with `?wfmock=`, the store serves a fixture so the surface renders.
 
 import { writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";

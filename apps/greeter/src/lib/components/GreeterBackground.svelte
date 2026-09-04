@@ -2,8 +2,9 @@
   /// The fullscreen background: the wallpaper, exactly as the desktop shows
   /// it behind the (transparent) shell. A single flat, even dim sits over it
   /// so the panel and clock read on any wallpaper. No gradient scrim, no
-  /// blur. High contrast drops the image for a flat black field. The real
-  /// wallpaper source is wired by the coder; there is always a safe fallback.
+  /// blur. High contrast drops the image for a flat black field. `image` is
+  /// the system wallpaper inlined by `greeter_wallpaper`; it may be null, and
+  /// the fallback below is what a login with no wallpaper shows.
   let {
     image = null,
     highContrast = false,
