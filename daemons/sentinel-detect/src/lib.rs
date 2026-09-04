@@ -7,6 +7,7 @@
 
 pub mod exposure;
 pub mod movement;
+pub mod readout;
 pub mod recording;
 pub mod tracker;
 pub mod trigger;

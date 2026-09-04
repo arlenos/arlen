@@ -1410,6 +1410,13 @@ mod module_reachability {
         //   sentinel-detect/tracker the finder-tag classifier for a
         //                           `org.arlen.Sentinel1` daemon that does not
         //                           exist, like its siblings below.
+        //
+        // The `sentinel-detect` entries come off together when that daemon lands:
+        // they are one feature waiting on one caller, not separate decisions.
+        // `readout` joined them on 4 September and took `exposure` off the list in
+        // the same commit - it composes exposure's six surface postures into the
+        // ordered list Settings renders, so it reaches exposure while nothing yet
+        // reaches it.
         "daemons/code-indexer/resolve",
         "daemons/integration-packages/manifest",
         "daemons/sentinel-detect/tracker",
@@ -1433,8 +1440,8 @@ mod module_reachability {
         "daemons/knowledge/backup",
         "daemons/knowledge/lifecycle",
         "daemons/knowledge/migration",
-        "daemons/sentinel-detect/exposure",
         "daemons/sentinel-detect/movement",
+        "daemons/sentinel-detect/readout",
         "daemons/sentinel-detect/recording",
         "daemons/sentinel-detect/usb",
     ];
@@ -1522,8 +1529,8 @@ mod module_reachability {
     /// `daemons/*` "unreferenced in this tree" means unreferenced anywhere.
     ///
     /// The check is per module, so it does not see an entire crate going unused -
-    /// `sentinel-detect`'s modules reference each other, which is why only four of
-    /// its six appear above while the crate as a whole has no consumer at all.
+    /// `sentinel-detect`'s modules reference each other, which is why only five of
+    /// its seven appear above while the crate as a whole has no consumer at all.
     #[test]
     fn no_new_daemon_module_is_unreachable() {
         let root = repo_path("");
