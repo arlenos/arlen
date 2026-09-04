@@ -64,7 +64,6 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
     transition:
       background-color var(--duration-micro, 100ms) var(--ease-out, ease),
       color var(--duration-micro, 100ms) var(--ease-out, ease);

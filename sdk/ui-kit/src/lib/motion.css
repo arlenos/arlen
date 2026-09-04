@@ -64,6 +64,22 @@
    Shared Interaction Classes
    ============================================================ */
 
+/* The pointer stays an arrow (design-system.md 6.5). A desktop application
+   is mostly controls, so buttons, rows, tabs and chips keep the arrow, and
+   the hand marks only a link that leaves Arlen. The browser puts the hand on
+   every anchor with an href; this takes it back for in-app routes and keeps
+   it for an address outside. It lives here, not in the kit's own app.css,
+   because this is the one sheet every app imports. */
+a {
+  cursor: default;
+}
+a[href^="http:"],
+a[href^="https:"],
+a[href^="mailto:"],
+a[href^="tel:"] {
+  cursor: pointer;
+}
+
 /* Clickable chrome element: hover-tint + tactile press feedback.
    Apply to indicators, trigger buttons, row buttons. */
 .interactive {
