@@ -1041,7 +1041,18 @@ async fn files_op(
     // (a permanent delete records nothing - it has no inverse). A `Skipped`
     // outcome contributes no undo entry.
     let mut undoable: Vec<UndoableOp> = Vec::new();
-    match kind.as_str() {
+    // THE RESULT IS CAUGHT, NOT RETURNED THROUGH. `j.finish` is below this match,
+    // and every `?` inside it used to return straight out of the function past it
+    // - seven such sites in the kinds that carry a job. A multi-file delete that
+    // failed on the third entry left "Deleting 5 items" registered with the shell
+    // and never completed it, so the row sat in the notification popover, which
+    // outlives this window, still claiming the work was in progress.
+    //
+    // Worse than a stuck row: `finish` was only ever reachable with "done", so the
+    // zone could be told an operation succeeded or was stopped and NEVER that it
+    // failed. The protocol has that state; this app could not send it.
+    let outcome: Result<(), OpProblem> = async {
+        match kind.as_str() {
         "new_folder" => {
             let parent = dst.ok_or_else(|| bad_request("new_folder needs the destination folder"))?;
             let name = src.first().ok_or_else(|| bad_request("new_folder needs a name"))?;
@@ -1155,28 +1166,49 @@ async fn files_op(
             }
             // A permanent delete has no inverse; nothing is recorded.
         }
-        other => return Err(bad_request(&format!("unknown operation: {other}"))),
+            other => return Err(bad_request(&format!("unknown operation: {other}"))),
+        }
+        Ok(())
     }
-    // Journal each op's durable inverse to the signed undo-log (CAH-3) BEFORE the
-    // in-memory record moves the batch, so an FM delete/create is undoable across
-    // sessions, not only through this session's Ctrl+Z stack.
-    journal_undo_ops(&undoable);
-    if let Ok(mut stack) = undo.lock() {
-        stack.record(undoable);
+    .await;
+
+    if outcome.is_ok() {
+        // Journal each op's durable inverse to the signed undo-log (CAH-3) BEFORE
+        // the in-memory record moves the batch, so an FM delete/create is undoable
+        // across sessions, not only through this session's Ctrl+Z stack.
+        journal_undo_ops(&undoable);
+        if let Ok(mut stack) = undo.lock() {
+            stack.record(undoable);
+        }
     }
-    // What was done stands, and the zone is told which of the two happened. A
+    // What was done stands, and the zone is told which of the three happened. A
     // stopped operation that reported "done" would claim a copy finished when
     // part of it never ran, and the entries that DID complete are undoable
     // exactly as they would be otherwise.
+    //
+    // The failure sentence carries no path and no errno. `OpProblem`'s `why` is
+    // documented as being for the log, and this row renders in the shell's
+    // notification popover - which outlives this window and can be open in front
+    // of anybody, the same reason `display_name` shows a basename and not a
+    // directory. "Anything already done was left as it is" is true whether the
+    // operation failed before the first entry or partway through it.
     if let Some(j) = job {
-        if stopped {
-            j.finish("done", "Stopped. What had already been done was kept.")
-                .await;
-        } else {
-            j.finish("done", "").await;
+        match &outcome {
+            Ok(()) if stopped => {
+                j.finish("done", "Stopped. What had already been done was kept.")
+                    .await
+            }
+            Ok(()) => j.finish("done", "").await,
+            Err(_) => {
+                j.finish(
+                    "failed",
+                    "This did not finish. Anything already done was left as it is.",
+                )
+                .await
+            }
         }
     }
-    Ok(())
+    outcome
 }
 
 /// Best-effort: journal each undoable op's durable inverse to the signed undo-log.
