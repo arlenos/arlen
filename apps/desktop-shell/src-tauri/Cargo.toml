@@ -64,6 +64,9 @@ arlen-permissions = { path = "../../../sdk/permissions" }
 # complete (glob, magic, alias and parent tables), Apache-2.0, by a GNOME
 # platform developer - not a parser written here.
 xdg-mime = "0.4"
+# The print dialog handback: the portal holds the document and asks this shell
+# which printer, so both ends read one definition of that question.
+xdg-portal-arlen-protocol = { path = "../../../daemons/xdg-portal/protocol" }
 arlen-launch-contract = { path = "../../../contracts/launch" }
 audit-proto = { path = "../../../contracts/audit-proto" }
 arlen-theme = { path = "../../../sdk/theme" }

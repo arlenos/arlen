@@ -4,6 +4,7 @@ mod test_env;
 mod app_history;
 mod consent_window;
 mod app_index;
+mod print_dialog;
 mod printers;
 mod app_state;
 mod audio;
@@ -386,6 +387,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            print_dialog::poll_print_request,
+            print_dialog::submit_print,
+            print_dialog::cancel_print,
             printers::printers_list,
             printers::printers_default,
             log_frontend,
