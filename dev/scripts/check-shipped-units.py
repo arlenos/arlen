@@ -180,11 +180,16 @@ NO_UNIT: dict[str, str] = {
     "bridge-ingest": "runs from the dogfood path today, unreviewed as a standalone service",
     "integration-packages": "a library and CLI for package assembly, not a running service",
     "lock-auth": "the lock screen's auth backend, consumed in-process, not a service",
-    # Corrected 18 Aug when the portal was staged: the old reason ("the portal is
-    # itself unstaged") stopped being true that day. What actually keeps print
-    # waiting is the other half - five built operations that no surface reaches.
-    "print": "the print operations are built but no surface calls them (18 Aug)",
-    "sentinel-detect": "detection library, no daemon shape yet",
+    # Corrected twice, and the second time is the useful one. On 18 Aug the old
+    # reason ("the portal is itself unstaged") stopped being true. On 4 Sep the
+    # replacement ("no surface calls them") stopped being true as well: the
+    # portal's Print backend now asks the shell's dialog and prints what it
+    # answers, so these operations are reached on every print. What keeps `print`
+    # unitless is simply what it is - a library the portal links, not a service.
+    "print": "a library the portal's Print backend links, not a service (4 Sep)",
+    # Same day, same shape: `arlen-sentineld` now consumes this crate and ships
+    # its own unit, so "no daemon shape yet" describes a state that ended.
+    "sentinel-detect": "the pure detector core arlen-sentineld links, not a service (4 Sep)",
 }
 
 
