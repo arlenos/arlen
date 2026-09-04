@@ -776,7 +776,6 @@ export const b: Catalogs = {
     "s.wa.launchDrives":
       "\"{$name}\" was not launched: the folders it was granted are not reachable, and it would have seen drives it cannot open.",
     "s.wa.notFound": "This Windows app is not in the list that could be read.",
-    "s.wa.allApps": "All Windows apps",
     "s.wa.driveOwn": "This app's own files",
     "s.wa.network": "Network",
     "s.wa.networkOn": "Can use the network.",
@@ -1771,7 +1770,6 @@ export const b: Catalogs = {
     "s.wa.launchDrives":
       "\u201e{$name}\u201c wurde nicht gestartet: Die freigegebenen Ordner sind nicht erreichbar, und es h\u00e4tte Laufwerke gesehen, die es nicht \u00f6ffnen kann.",
     "s.wa.notFound": "Diese Windows-App ist nicht in der Liste, die gelesen werden konnte.",
-    "s.wa.allApps": "Alle Windows-Apps",
     "s.wa.driveOwn": "Die eigenen Dateien dieser App",
     "s.wa.network": "Netzwerk",
     "s.wa.networkOn": "Darf das Netzwerk nutzen.",

@@ -9,7 +9,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
-  import { FolderOpen, Eraser, ArrowLeft } from "lucide-svelte";
+  import { FolderOpen, Eraser } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -212,15 +212,6 @@
      repeat the name. -->
 <Page>
   <SectionGrid>
-    <!-- The way back. Every other sub-page's parent sits in the sidebar; this
-         panel is delisted until the daemon lands, so the page carries its own
-         return, named after where it goes. -->
-    <div class="back span-full">
-      <Button variant="ghost" size="sm" onclick={() => goto("/windows-apps")}>
-        <ArrowLeft size={15} strokeWidth={2} /> {$t("s.wa.allApps")}
-      </Button>
-    </div>
-
     {#if $winApps.mocked}
       <Notice tone="neutral" class="span-full" text={$t("s.wa.mocked")} />
     {/if}
@@ -361,7 +352,7 @@
               <!-- The system drive is the app's OWN files, not a folder of the
                    user's, so there is nothing there to take away. -->
               {#if d.path !== null}
-                <Button variant="ghost" size="sm" onclick={() => (confirmDrive = d.path)}>
+                <Button variant="outline" size="sm" onclick={() => (confirmDrive = d.path)}>
                   {$t("s.wa.takeAway")}
                 </Button>
               {/if}
@@ -375,7 +366,7 @@
         >
           {#snippet control()}
             {#if bottle.access.network}
-              <Button variant="ghost" size="sm" onclick={() => (confirmNetwork = true)}>
+              <Button variant="outline" size="sm" onclick={() => (confirmNetwork = true)}>
                 {$t("s.wa.cutOff")}
               </Button>
             {/if}
@@ -389,7 +380,7 @@
              so. -->
         <Row id="win-sever" label={$t("s.wa.sever")} description={$t("s.wa.severDesc")}>
           {#snippet control()}
-            <Button variant="ghost" size="sm" onclick={() => (confirmSever = true)}>
+            <Button variant="outline" size="sm" onclick={() => (confirmSever = true)}>
               {$t("s.wa.severConfirmLabel")}
             </Button>
           {/snippet}
@@ -629,12 +620,6 @@
 />
 
 <style>
-  /* The ghost button carries its own padding; pulled in so its label sits on
-     the grid edge with the sections below. */
-  .back {
-    margin-inline-start: -0.65rem;
-  }
-
   /* A sentence inside a Section card, on the row inset: the register for an
      empty list, a gate that says what it is, a note under a list. */
   .quiet {

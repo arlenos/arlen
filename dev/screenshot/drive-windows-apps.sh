@@ -76,7 +76,7 @@ cat > "$work/probe-detail.js" <<'JS'
 const text = document.body.innerText;
 return JSON.stringify({
   refused: text.includes("This Windows app is not in the list that could be read."),
-  wayBack: text.includes("All Windows apps"),
+  wayBack: [...document.querySelectorAll("button, a")].some((b) => b.textContent.trim() === "Windows apps"),
   noControls: !text.includes("DLL overrides") && !text.includes("Launch"),
 });
 JS
@@ -97,7 +97,7 @@ SHOOT_INJECT="$work/goto-detail.js:$work/probe-detail.js" SHOOT_INJECT_SETTLE=3 
   | tee "$work/run2.log" | grep -E "inject result" || true
 
 grep -q '"refused":true' "$work/run2.log" || { echo "!! the detail page did not refuse the unknown app" >&2; exit 1; }
-grep -q '"wayBack":true' "$work/run2.log" || { echo "!! the way back to the list is missing" >&2; exit 1; }
+grep -q '"wayBack":true' "$work/run2.log" || { echo "!! the sidebar has no way back to the list" >&2; exit 1; }
 grep -q '"noControls":true' "$work/run2.log" || { echo "!! controls rendered for a bottle nobody can read" >&2; exit 1; }
 
 echo ">> all green: the Windows page tells the truth without a daemon"
