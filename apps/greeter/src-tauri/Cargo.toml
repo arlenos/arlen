@@ -27,3 +27,7 @@ arlen-greeter-core = { path = "../core" }
 # in the core crate).
 arlen-lock-auth = { path = "../../../daemons/lock-auth", default-features = false, features = ["greetd"] }
 
+
+[dev-dependencies]
+# The wallpaper boundary test writes two manifests and proves only one is read.
+tempfile = "3"

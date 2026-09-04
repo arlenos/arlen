@@ -19,7 +19,8 @@
 //! to open one. Reading the image here costs one bounded IPC message at startup
 //! and keeps the webview with no filesystem reach at all.
 
-use arlen_wallpaper::config::active_manifest;
+use arlen_wallpaper::config::{active_manifest_from, SYSTEM_MANIFEST_PATH};
+use arlen_wallpaper::WallpaperManifest;
 use base64::Engine;
 use std::path::Path;
 
@@ -42,12 +43,25 @@ pub async fn greeter_wallpaper() -> Option<String> {
     // Reads a file, so it runs on the blocking pool rather than the async one:
     // a wallpaper is megabytes and the greeter's runtime also serves the
     // keystrokes of whoever is typing their password.
-    let manifest = active_manifest(None, |_, _| {})?;
+    let manifest = login_manifest(Path::new(SYSTEM_MANIFEST_PATH))?;
     let asset = manifest.default.asset.clone();
     tauri::async_runtime::spawn_blocking(move || inline_asset(Path::new(&asset)))
         .await
         .ok()
         .flatten()
+}
+
+/// The manifest the login screen shows: `system_path`, and nothing else.
+///
+/// The user path is pinned to `None` rather than left to the crate's default
+/// resolver. `active_manifest` would call `user_manifest_path()`, which reads
+/// `XDG_CONFIG_HOME`/`HOME` out of whatever environment this process happens to
+/// have been started in and tries that file FIRST - which is the exact thing the
+/// module header forbids, and it would be a file inherited rather than chosen.
+/// Naming both paths here puts the boundary in the call instead of in the
+/// ambient environment, and lets the test below prove it.
+fn login_manifest(system_path: &Path) -> Option<WallpaperManifest> {
+    active_manifest_from(None, None, system_path, |_, _| {})
 }
 
 /// Read `path` into a data URL, or `None` if it is not an inlinable wallpaper.
@@ -88,6 +102,35 @@ fn mime_for(path: &Path) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A manifest naming `asset`, written to `path`.
+    fn write_manifest(path: &Path, asset: &str) {
+        std::fs::write(
+            path,
+            format!("kind=\"image\"\n[default]\nasset=\"{asset}\"\nscale=\"fill\"\n"),
+        )
+        .expect("fixture written");
+    }
+
+    #[test]
+    fn the_login_screen_reads_the_system_manifest_and_never_a_user_one() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let system = dir.path().join("default.toml");
+        let user = dir.path().join("wallpaper.toml");
+        write_manifest(&system, "/usr/share/arlen/wallpapers/machine.png");
+        write_manifest(&user, "/home/someone/private.png");
+
+        // The control, and the whole reason this test exists: handed a user path,
+        // the shared resolver PREFERS it. That is right for the desktop and wrong
+        // for a screen nobody has authenticated to yet.
+        let with_user =
+            active_manifest_from(None, Some(user.clone()), &system, |_, _| {}).expect("manifest");
+        assert_eq!(with_user.default.asset, "/home/someone/private.png");
+
+        // The login screen takes the machine's, with that file sitting right there.
+        let shown = login_manifest(&system).expect("manifest");
+        assert_eq!(shown.default.asset, "/usr/share/arlen/wallpapers/machine.png");
+    }
 
     #[test]
     fn an_asset_outside_the_allowed_root_is_refused() {
