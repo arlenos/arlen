@@ -34,7 +34,7 @@ const messages: Catalogs = {
     "pdf.noPages": "This PDF contains no pages.",
     "pdf.launchUnknown":
       "The reader could not find out which document it was asked to open, so it opened none.",
-    "pdf.locked": "This document is locked with a password. This reader cannot ask for one yet, so it cannot be opened here.",
+    "pdf.locked": "This document is locked with a password. This reader cannot ask for one yet.",
     "pdf.menu.view": "View",
     "pdf.menu.go": "Go",
     "pdf.minimize": "Minimize",
@@ -87,7 +87,7 @@ const messages: Catalogs = {
     "pdf.noPages": "Dieses PDF enthält keine Seiten.",
     "pdf.launchUnknown":
       "Der Leser konnte nicht herausfinden, welches Dokument er öffnen sollte, deshalb hat er keines geöffnet.",
-    "pdf.locked": "Dieses Dokument ist mit einem Passwort gesperrt. Dieser Leser kann noch keins abfragen, also lässt es sich hier nicht öffnen.",
+    "pdf.locked": "Dieses Dokument ist mit einem Passwort gesperrt. Dieser Leser kann noch keins abfragen.",
     "pdf.menu.view": "Ansicht",
     "pdf.menu.go": "Gehe zu",
     "pdf.minimize": "Minimieren",
