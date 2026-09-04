@@ -126,6 +126,8 @@ pub struct Row {
     pub date_ms: Option<i64>,
     /// Whether the filename says it has been seen.
     pub unread: bool,
+    /// The opening of the body, whitespace collapsed.
+    pub snippet: String,
 }
 
 /// Whether `dir` looks like a maildir: a `cur` and a `new` beneath it.
@@ -197,6 +199,73 @@ pub fn message_path(root: &std::path::Path, id: &str) -> Option<std::path::PathB
     let real = std::fs::canonicalize(&joined).ok()?;
     let real_root = std::fs::canonicalize(root).ok()?;
     real.starts_with(&real_root).then_some(real)
+}
+
+/// The list rows for one folder, newest first.
+///
+/// WHY A LIGHT PARSE RATHER THAN [`crate::message::read`]. That one does the work
+/// a READER needs - the alternative-part divergence, the exfiltration channels,
+/// the ambiguity refusals - and a list row needs none of it. Running it per row
+/// would do the expensive half of opening every message in the folder in order to
+/// show a subject line. `mail_open` still uses it, so nothing the reader shows is
+/// weakened; this is the same parser asked a smaller question.
+///
+/// THE COST IS STILL REAL and worth saying: building the list reads every message
+/// in the folder. That is fine for a maildir somebody keeps and would not be for a
+/// synced account, where the envelopes belong in an index. When the IMAP backend
+/// lands it brings its own list; this is not the thing to grow into one.
+///
+/// An unreadable or unparseable file is SKIPPED rather than shown as a broken
+/// row: it is not a message, and a row that cannot be opened is worse than a row
+/// that is not there.
+#[must_use]
+pub fn envelopes(root: &std::path::Path, folder: &Folder) -> Vec<Row> {
+    let dir = if folder.rel.is_empty() { root.to_path_buf() } else { root.join(&folder.rel) };
+    let mut rows: Vec<Row> = ["new", "cur"]
+        .iter()
+        .flat_map(|sub| std::fs::read_dir(dir.join(sub)).into_iter().flatten().flatten())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let sub = e.path().parent()?.file_name()?.to_string_lossy().into_owned();
+            let raw = std::fs::read(e.path()).ok()?;
+            let parsed = mail_parser::MessageParser::default().parse(&raw)?;
+            let rel = if folder.rel.is_empty() {
+                format!("{sub}/{name}")
+            } else {
+                format!("{}/{sub}/{name}", folder.rel)
+            };
+            Some(Row {
+                id: rel,
+                folder: folder.rel.clone(),
+                // The ADDRESS, not the display name, exactly as `message::read`
+                // decided: a display name is whatever the sender typed.
+                from: parsed.from().and_then(|a| a.first()).and_then(|a| a.address().map(str::to_string)),
+                subject: parsed.subject().map(str::to_string),
+                date_ms: parsed.date().map(|d| d.to_timestamp() * 1000),
+                unread: sub == "new" || !seen(&name),
+                snippet: snippet_of(parsed.body_text(0).as_deref()),
+            })
+        })
+        .collect();
+    // Newest first, and a message with no date sorts last rather than first: an
+    // undated message is not news, and putting it at the top would let a sender
+    // who omits a Date header lead somebody's inbox.
+    rows.sort_by(|a, b| b.date_ms.unwrap_or(i64::MIN).cmp(&a.date_ms.unwrap_or(i64::MIN)));
+    rows
+}
+
+/// The first line or so of a body, for the list row.
+///
+/// Whitespace is collapsed so a quoted-printable body full of newlines does not
+/// become a row of nothing, and the cut is on a CHARACTER boundary rather than a
+/// byte one - a snippet is somebody's mail and half a codepoint is a crash.
+fn snippet_of(text: Option<&str>) -> String {
+    let Some(text) = text else { return String::new() };
+    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    match flat.char_indices().nth(140) {
+        Some((cut, _)) => flat[..cut].to_string(),
+        None => flat,
+    }
 }
 
 #[cfg(test)]
@@ -324,6 +393,88 @@ mod tests {
         );
         std::fs::remove_file(&outside).ok();
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// A maildir whose messages carry dates, for the ordering tests.
+    fn a_dated_maildir() -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "arlen-maildir-dated-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(root.join("cur")).unwrap();
+        std::fs::create_dir_all(root.join("new")).unwrap();
+        std::fs::write(
+            root.join("cur/old.host:2,S"),
+            b"From: a@example.com\nSubject: older\nDate: Mon, 1 Jan 2024 10:00:00 +0000\n\nfirst\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("cur/new.host:2,S"),
+            b"From: b@example.com\nSubject: newer\nDate: Tue, 2 Jan 2024 10:00:00 +0000\n\nsecond\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("new/undated.host"),
+            b"From: c@example.com\nSubject: no date\n\nthird\n",
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn the_list_is_newest_first_and_an_undated_message_does_not_lead_it() {
+        let root = a_dated_maildir();
+        let inbox = folders(&root).into_iter().next().unwrap();
+        let rows = envelopes(&root, &inbox);
+        let subjects: Vec<&str> = rows.iter().filter_map(|r| r.subject.as_deref()).collect();
+        // A sender who omits Date must not be able to lead somebody's inbox.
+        assert_eq!(subjects, vec!["newer", "older", "no date"], "{subjects:?}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_row_carries_the_address_the_snippet_and_the_id_that_opens_it() {
+        let root = a_dated_maildir();
+        let inbox = folders(&root).into_iter().next().unwrap();
+        let rows = envelopes(&root, &inbox);
+        let newest = &rows[0];
+        assert_eq!(newest.from.as_deref(), Some("b@example.com"));
+        assert_eq!(newest.snippet, "second");
+        assert_eq!(newest.id, "cur/new.host:2,S");
+        // The id it just handed out must be one that opens.
+        assert!(message_path(&root, &newest.id).is_some());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn everything_in_new_is_unread_however_its_name_reads() {
+        let root = a_dated_maildir();
+        let inbox = folders(&root).into_iter().next().unwrap();
+        let rows = envelopes(&root, &inbox);
+        let undated = rows.iter().find(|r| r.subject.as_deref() == Some("no date")).unwrap();
+        assert!(undated.unread, "it is in new/");
+        let seen_one = rows.iter().find(|r| r.subject.as_deref() == Some("newer")).unwrap();
+        assert!(!seen_one.unread, "cur/ and flagged S");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_snippet_is_cut_on_a_character_and_never_mid_codepoint() {
+        // A body of multi-byte characters longer than the cut. Slicing on byte
+        // 140 here would panic; this is the test that says so.
+        let long = "ü".repeat(300);
+        let out = snippet_of(Some(&long));
+        assert_eq!(out.chars().count(), 140);
+    }
+
+    #[test]
+    fn a_body_of_newlines_becomes_a_readable_line() {
+        assert_eq!(snippet_of(Some("one\n\n  two\r\nthree ")), "one two three");
+        assert_eq!(snippet_of(None), "");
     }
 
     #[test]
