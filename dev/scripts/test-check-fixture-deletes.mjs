@@ -77,6 +77,35 @@ const cases = [
     true,
   ],
   [
+    // The regression that made this half of the scanner necessary. Until 4
+    // September an apostrophe in an English comment opened a string as far as the
+    // gate was concerned, and every delete up to the next apostrophe went unseen.
+    // It hid 31 real offenders and its verdict flipped on whether a paragraph of
+    // prose happened to contain an even number of apostrophes.
+    "an apostrophe in a comment does not hide the delete below it",
+    () =>
+      tree({
+        "test-apostrophe.mjs":
+          // ONE apostrophe, deliberately. Two would balance out and the fixture
+          // would pass under the broken scanner too, which is how the first cut
+          // of this case failed to discriminate.
+          "// the machine's load\nrmSync(dir, { recursive: true });\n",
+      }),
+    (code, out) => code === 1 && out.includes("test-apostrophe.mjs"),
+    true,
+  ],
+  [
+    // The other side of it: blanking comments must not turn prose into evidence.
+    // A delete someone commented out does not delete anything.
+    "a delete inside a comment is not a delete",
+    () =>
+      tree({
+        "test-commented.mjs": "// rmSync(dir, { recursive: true, force: true });\nconst x = 1;\n",
+      }),
+    (code) => code === 0,
+    true,
+  ],
+  [
     "a non-recursive remove is not a fixture delete",
     () => tree({ "test-single.mjs": 'import { rmSync } from "node:fs";\nrmSync(file);\n' }),
     (code) => code === 0,

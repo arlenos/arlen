@@ -17,10 +17,10 @@
 //
 // Run: node dev/scripts/test-check-units.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-packaged-units.sh");
@@ -29,7 +29,7 @@ const failures = [];
 
 /** Write `files` into a throwaway tree and return its path. */
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-unit-gate-"));
+  const dir = mint("arlen-unit-gate-");
   for (const [rel, body] of Object.entries(files)) {
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
@@ -52,7 +52,7 @@ function check(name, dir, expect) {
   const ok = expect(code, out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, code, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 // A unit whose ExecStart binary the image installs, packaged: nothing to report.

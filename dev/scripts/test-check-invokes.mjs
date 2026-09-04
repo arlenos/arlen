@@ -19,10 +19,10 @@
 //
 // Run: node dev/scripts/test-check-invokes.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-invoke-exists.py");
@@ -30,7 +30,7 @@ const GATE = join(ROOT, "dev/scripts/check-invoke-exists.py");
 const failures = [];
 
 function tree(files) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-invoke-gate-"));
+  const dir = mint("arlen-invoke-gate-");
   for (const [rel, body] of Object.entries(files)) {
     const abs = join(dir, rel);
     mkdirSync(dirname(abs), { recursive: true });
@@ -68,7 +68,7 @@ function check(name, dir, expect) {
   const ok = expect(code, out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, code, out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 // Registration, not annotation. The gate reads the `generate_handler!` list
@@ -360,7 +360,7 @@ check(
   const ok = !out.includes("`open_thing`");
   console.log(`  ${ok ? "ok  " : "FAIL"} a command called only through the helper is not listed as uncalled`);
   if (!ok) failures.push({ name: "helper-only call counts as a call", out });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log(failures.length ? "\nsome cases regressed" : "\nboth directions hold");

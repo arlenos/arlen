@@ -16,10 +16,10 @@
 // it, so both spellings are pinned here.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-image-writes.py");
@@ -32,12 +32,12 @@ function check(name, ok) {
 }
 
 function run(body) {
-  const dir = mkdtempSync(join(tmpdir(), "imagewrites-"));
+  const dir = mint("imagewrites-");
   const p = join(dir, STEP);
   mkdirSync(dirname(p), { recursive: true });
   writeFileSync(p, body);
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 

@@ -13,10 +13,10 @@
 //
 // Run: node dev/scripts/test-check-unit-directives.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-unit-directives.py");
@@ -41,7 +41,7 @@ WantedBy=default.target
 `;
 
 function check(name, body, expect, tree = "user") {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-unitdir-"));
+  const dir = mint("arlen-unitdir-");
   const d = join(dir, `dev/mkosi/mkosi.extra/usr/lib/systemd/${tree}`);
   mkdirSync(d, { recursive: true });
   writeFileSync(join(d, "arlen-probe.service"), body);
@@ -50,7 +50,7 @@ function check(name, body, expect, tree = "user") {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 // The two ways this reports on nothing. Neither was caught before 12 Aug: the
@@ -59,14 +59,14 @@ function check(name, body, expect, tree = "user") {
 // committed source. The second printed "0 shipped unit(s) ... every directive is
 // one systemd knows", which is the same sentence a clean run prints.
 function checkTree(name, files, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-unitdir-"));
+  const dir = mint("arlen-unitdir-");
   for (const rel of files) mkdirSync(join(dir, rel), { recursive: true });
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
   const got = { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 console.log("check-unit-directives:");

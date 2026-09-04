@@ -27,6 +27,16 @@ swallowing: `test-check-fixtures.mjs` cleaned every fixture twice, which a helpe
 that keeps a record notices and a flag that means "do not mind if it is already
 gone" cannot.
 
+A third pass followed on 4 September, and it is the more useful story. This check
+had been reporting nothing left to migrate while 31 controls still deleted on their
+own: the scanner treated an apostrophe in an English comment as opening a string
+literal, so every delete between one apostrophe and the next was invisible to it.
+The bug surfaced by accident - a word with an apostrophe was added to a comment in
+an unrelated edit, the parity flipped, and a delete that had been in the file since
+it was written was suddenly reported. A check that says zero because it cannot see
+is worse than no check, because it is believed. `without_strings` now strips
+comments first, and the control has a case for each direction.
+
 An entry here is a control that deletes on its own, and the list MAY SHRINK AND MAY
 NOT GROW. Adding one is saying that a new control may do the thing that cost a
 working tree.
@@ -68,7 +78,7 @@ SHELL_DELETE = re.compile(
 
 
 def without_strings(text: str) -> str:
-    """The source with every string literal blanked out.
+    """The source with every string literal AND every comment blanked out.
 
     A control that TESTS this check has to write a bad delete into a fixture, and a
     scanner that cannot tell code from a quoted description of code reports the
@@ -76,13 +86,45 @@ def without_strings(text: str) -> str:
     ran. The same technique the Cypher token scanner in the knowledge daemon uses,
     for the same reason.
 
-    Quotes are replaced rather than removed so every offset still lines up, and an
+    COMMENTS ARE BLANKED FOR THE OPPOSITE REASON, and this half was missing until 4
+    September, when it let a real bare `rmSync` through. An apostrophe in an English
+    comment - "the machine's load" - opened a string as far as this scanner was
+    concerned, and everything up to the next apostrophe went blank, the delete
+    twenty lines below it included. The file passed. Adding one word with an
+    apostrophe to a comment flipped the parity back and the same delete, unchanged
+    since the file was written, was suddenly reported. A scanner whose verdict turns
+    on how many apostrophes a paragraph of prose happens to contain is not checking
+    anything. Comments are stripped first, so a quote inside one is prose, and a
+    `//` inside a string stays a string.
+
+    Both are replaced rather than removed so every offset still lines up, and an
     escaped quote inside a literal does not end it.
     """
     out = []
     quote = None
     escaped = False
-    for c in text:
+    line_comment = False
+    block_comment = False
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if line_comment:
+            if c == "\n":
+                line_comment = False
+                out.append("\n")
+            else:
+                out.append(" ")
+            i += 1
+            continue
+        if block_comment:
+            if c == "*" and text[i + 1 : i + 2] == "/":
+                block_comment = False
+                out.append("  ")
+                i += 2
+                continue
+            out.append(" " if c != "\n" else "\n")
+            i += 1
+            continue
         if quote:
             out.append(" " if c != "\n" else "\n")
             if escaped:
@@ -91,12 +133,25 @@ def without_strings(text: str) -> str:
                 escaped = True
             elif c == quote:
                 quote = None
+            i += 1
+            continue
+        if c == "/" and text[i + 1 : i + 2] == "/":
+            line_comment = True
+            out.append("  ")
+            i += 2
+            continue
+        if c == "/" and text[i + 1 : i + 2] == "*":
+            block_comment = True
+            out.append("  ")
+            i += 2
             continue
         if c in "\"'`":
             quote = c
             out.append(" ")
+            i += 1
             continue
         out.append(c)
+        i += 1
     return "".join(out)
 
 

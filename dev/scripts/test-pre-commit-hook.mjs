@@ -18,10 +18,10 @@
 //
 // Run: node dev/scripts/test-pre-commit-hook.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, chmodSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, copyFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const HOOK = join(ROOT, ".githooks/pre-commit");
@@ -40,7 +40,7 @@ function git(dir, ...args) {
 
 /** A repo with the hook installed and one committed file to build on. */
 function repo() {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-hook-test-"));
+  const dir = mint("arlen-hook-test-");
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "t");
@@ -77,7 +77,7 @@ function check(name, fn) {
   }
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 check("a whole staged file draws no warning", (dir) => {
