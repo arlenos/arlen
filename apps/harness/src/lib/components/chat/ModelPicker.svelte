@@ -101,7 +101,7 @@
       <button type="button" class="mp-trigger" {...props}>
         {#if activeEntry}
           {@render logo(activeEntry.provider)}
-          <span class="mp-active">{activeEntry.provider} · {activeEntry.model}</span>
+          <span class="mp-active">{activeEntry.provider}, {activeEntry.model}</span>
           {#if activeEntry.kind === "local"}
             <House size={11} strokeWidth={2} class="mp-kind" />
           {:else}
@@ -124,7 +124,7 @@
             {#if multi}
               {@const isLocal = group.models[0]?.kind === "local"}
               <div class="mp-group">
-                {group.provider} · {isLocal ? "local · no egress" : "cloud · egress, audited"}
+                {group.provider}, {isLocal ? "local, no egress" : "cloud, egress audited"}
               </div>
             {/if}
             {#each group.models as m (m.provider + "/" + m.model)}
