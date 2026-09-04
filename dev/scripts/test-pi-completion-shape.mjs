@@ -30,9 +30,10 @@
 
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
-import { tmpdir, homedir } from "node:os";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const NODE_BIN = process.env.ARLEN_PI_NODE_RUNTIME
   ? join(process.env.ARLEN_PI_NODE_RUNTIME, "bin/node")
@@ -94,7 +95,7 @@ const AS_FRAMES =
 /// machine gets the time it needs and an idle one is not made to wait for it.
 /// The deadline is the give-up, not the measurement.
 async function pi_turn(body, contentType, settled, deadline_ms = 90000) {
-  const dir = mkdtempSync(join(tmpdir(), "pi-shape-"));
+  const dir = mint("pi-shape-");
   const sock = join(dir, "proxy.sock");
   mkdirSync(join(dir, ".pi/agent"), { recursive: true });
   writeFileSync(
@@ -157,7 +158,7 @@ async function pi_turn(body, contentType, settled, deadline_ms = 90000) {
 
   pi.kill();
   srv.close();
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return outcome;
 }
 
