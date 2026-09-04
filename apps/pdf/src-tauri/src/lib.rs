@@ -206,7 +206,22 @@ fn pdf_page_image(page: usize, scale: f32, state: tauri::State<'_, Open>) -> Res
         // Kept out of the surface for the same reason: it names bwrap and carries
         // an errno. The reader shows its own sentence and the detail goes here.
         log::warn!("page {page} could not be drawn: {e}");
-        REFUSED.to_string()
+        // A WORKER THAT RAN AND HAD NOTHING TO DRAW WITH is the same fact as no
+        // worker at all, and until 4 September only the second was answered as
+        // itself. A present binary that cannot load libpdfium - every image
+        // today - came back as `refused`, so the reader said "could not be drawn"
+        // on every page: true, and the wrong cause. The worker names it with a
+        // token and `worker_reason` hands that token through unchanged.
+        // Compared against THIS crate's own constant rather than the worker's.
+        // Depending on the worker crate to share one string would pull
+        // `pdfium-render` into the reader, which is the single thing the worker
+        // exists to keep out of it. So the token is written twice, deliberately,
+        // the way the canary prefix is - and both sides say so.
+        if e == NO_RENDERER {
+            NO_RENDERER.to_string()
+        } else {
+            REFUSED.to_string()
+        }
     })?;
     decode_frame(&frame)
 }
