@@ -29,15 +29,34 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 # The frontend is served from a preview below, not baked into the binary, so the
 # staleness guard compares Rust only (see shoot-app.sh).
 export SHOOT_FRONTEND_SERVED=1
+# shellcheck source=dev/screenshot/lib/wait.sh
+. "$root/dev/screenshot/lib/wait.sh"
+# shellcheck source=dev/screenshot/lib/preview.sh
+. "$root/dev/screenshot/lib/preview.sh"
+# shellcheck source=dev/screenshot/lib/fresh.sh
+. "$root/dev/screenshot/lib/fresh.sh"
 out="${1:-$root/dev/screenshot/out}"
 app="$root/target/debug/arlen-settings"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+PREVIEW_PGID=""
+trap 'stop_preview; rm -rf "$work"' EXIT
 
 [ -x "$app" ] || { echo "!! build it first: cargo build --manifest-path apps/settings/src-tauri/Cargo.toml" >&2; exit 1; }
 
 export XDG_CONFIG_HOME="$work/config"
 mkdir -p "$XDG_CONFIG_HOME/arlen"
+
+# THE FRONTEND HAS TO BE SERVED, and this drive was the only one of the three
+# that press settings which never said so. A debug binary loads its `devUrl`, so
+# with nothing on 1421 the window has no page, never sizes, and the shot dies on
+# a degenerate 0x0 viewport - before the error-page check that would have named
+# the port. So `just drive-apps`, which heals this case by reading a port out of
+# the failure, had no port to read, and the suite reported a failed write for
+# what was really a missing server. Its two siblings on this same app have done
+# this since 3 September; this is the same three lines.
+require_fresh_frontend "$root/apps/settings/build" "$root/apps/settings/src" || exit 2
+start_preview "$root/apps/settings" 1421 || exit 1
+wait_for_http "http://localhost:1421/" || exit 1
 
 # The router is SvelteKit's, so navigation is a link CLICK. A raw pushState leaves
 # the page where it was and prints a cheerful "navigated" beside a screenshot of
@@ -89,7 +108,29 @@ SHOOT_INJECT="$work/goto.js:$work/write.js" SHOOT_INJECT_SETTLE=3 \
   "$root/dev/screenshot/shoot-app.sh" "$app" "$out/appearance-system-written.png" "" 8 \
   | tee "$work/run1.log" | grep -E "inject result|wrote " || true
 
-grep -q '"wrote":true' "$work/run1.log" || { echo "!! the write did not go through" >&2; exit 1; }
+# WHAT WENT WRONG, NOT ONE GUESS ABOUT IT. This said "the write did not go
+# through" for every reason the log could lack `"wrote":true` - including the two
+# that are not the app's fault at all. On 4 September the settings debug binary
+# was older than a `.svelte` edit, `shoot-app` refused exactly as it should, and
+# this drive reported a failed write: the harness's problem wearing the product's
+# fault-shape, which sends the reader into the app to look for a bug that is not
+# there. It also made `just drive-apps` exit 1 with no failing assertion anywhere
+# in its output.
+if ! grep -q '"wrote":true' "$work/run1.log"; then
+  if grep -q 'REFUSED:' "$work/run1.log"; then
+    grep -m1 'REFUSED:' "$work/run1.log" >&2
+    echo "!! nothing was tested: the shot refused before it ran" >&2
+    exit 2
+  fi
+  if ! grep -q 'inject result' "$work/run1.log"; then
+    echo "!! nothing was tested: the shot produced no result at all" >&2
+    echo "   (run it outside this script to see what it said)" >&2
+    exit 2
+  fi
+  echo "!! the write did not go through" >&2
+  grep -m1 'inject result' "$work/run1.log" >&2
+  exit 1
+fi
 
 # On disk, before anything reads it back through the app: a read-back that only
 # consults the app's own memory would pass with an empty file.
