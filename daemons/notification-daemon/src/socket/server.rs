@@ -20,6 +20,18 @@ pub struct SocketServer {
     path: PathBuf,
 }
 
+/// `$XDG_RUNTIME_DIR`, else `/run/user/{uid}`.
+fn runtime_dir() -> PathBuf {
+    match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(d) if !d.is_empty() => PathBuf::from(d),
+        _ => {
+            // Safe: `getuid` reads a process property and cannot fail.
+            let uid = unsafe { libc::getuid() };
+            PathBuf::from(format!("/run/user/{uid}"))
+        }
+    }
+}
+
 impl SocketServer {
     /// Create a new socket server.
     pub fn new(path: PathBuf) -> Self {
@@ -27,9 +39,18 @@ impl SocketServer {
     }
 
     /// Default socket path: `/run/user/{uid}/arlen/notification.sock`.
+    /// The socket both sides dial: `$XDG_RUNTIME_DIR/arlen/notification.sock`,
+    /// falling back to `/run/user/{uid}` when the variable is unset.
+    ///
+    /// THE VARIABLE COMES FIRST, and it is not only tidiness. Hardcoding
+    /// `/run/user/{uid}` made the daemon untestable beside a running session:
+    /// pointing an isolated instance at a private runtime dir bound over the
+    /// real socket anyway, which is how this was found. Every other Arlen daemon
+    /// honours the variable, so this also removes the one place a launcher could
+    /// move the runtime dir and have the notification socket alone stay behind.
+    /// In a normal session the two resolve to the same path.
     pub fn default_path() -> PathBuf {
-        let uid = unsafe { libc::getuid() };
-        PathBuf::from(format!("/run/user/{uid}/arlen/notification.sock"))
+        runtime_dir().join("arlen").join("notification.sock")
     }
 
     /// Start listening for connections.
@@ -395,8 +416,16 @@ mod tests {
     fn test_default_socket_path() {
         let path = SocketServer::default_path();
         let path_str = path.to_string_lossy();
-        assert!(path_str.contains("/run/user/"));
         assert!(path_str.ends_with("/arlen/notification.sock"));
+        // Under a set XDG_RUNTIME_DIR the path follows it; with none it falls
+        // back to the per-user runtime dir. Read rather than set, so this test
+        // does not mutate an environment its neighbours are reading.
+        match std::env::var_os("XDG_RUNTIME_DIR") {
+            Some(d) if !d.is_empty() => {
+                assert!(path.starts_with(std::path::Path::new(&d)), "{path_str}")
+            }
+            _ => assert!(path_str.contains("/run/user/"), "{path_str}"),
+        }
     }
 
     // A job registered BEFORE a shell connects must reach it on the Hello sync,
