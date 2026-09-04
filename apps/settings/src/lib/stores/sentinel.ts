@@ -23,10 +23,19 @@ export interface DetectorState {
   sensitivity?: string;
 }
 
-/// One line of the exposure posture readout; `fix` marks the one-click
-/// remediation the daemon offers for it.
+/// What was measured on one surface.
+export type PostureName = "exposed" | "protected" | "unknown";
+
+/// One line of the exposure posture readout.
+///
+/// It names a SURFACE and what was found there, never a sentence. The daemon
+/// cannot write the prose: every string a person reads comes from this app's own
+/// catalogue, so a daemon returning English would be a line no locale can reach.
+/// The page turns the pair into a sentence.
 export interface PostureLine {
-  text: string;
+  surface: string;
+  posture: PostureName;
+  /// Whether the daemon offers a one-click fix for it as it stands.
   fix?: boolean;
 }
 
@@ -34,11 +43,18 @@ export interface PostureLine {
 export interface SentinelState {
   detectors: Record<DetectorId, DetectorState>;
   posture: PostureLine[];
-  /// Whether anything is using the microphone or camera right now (the
-  /// capture-infra signal the sentinel subscribes to).
-  captureActive: boolean;
+  /// Whether anything is using the microphone or camera right now, or absent
+  /// when nothing could answer.
+  ///
+  /// The distinction is the sharpest one on this page. There is no microphone or
+  /// camera portal in this build, so nothing can say whether something is
+  /// capturing; "Nothing is using the microphone" on no evidence is the sentence
+  /// this surface exists to avoid, and an absent value renders as not measured.
+  captureActive?: boolean | null;
   /// The tracker needs a location grant; false = the card shows the re-grant line.
   trackerHasLocation: boolean;
+  /// Set when a surface could not be read, so the readout is partial and says so.
+  postureIncomplete?: boolean;
 }
 
 const FIXTURE: SentinelState = {
@@ -49,11 +65,13 @@ const FIXTURE: SentinelState = {
     tracker: { on: false, alerts: "notify", sensitivity: "balanced" },
   },
   posture: [
-    { text: "Wi-Fi uses a different hardware address for every network." },
-    { text: "Saved networks are not broadcast while disconnected." },
-    { text: "Bluetooth is discoverable right now.", fix: true },
+    { surface: "bluetooth_discoverable", posture: "exposed", fix: true },
+    { surface: "ble_privacy", posture: "unknown" },
+    { surface: "wifi_mac", posture: "protected" },
+    { surface: "hidden_network", posture: "protected" },
   ],
-  captureActive: false,
+  postureIncomplete: true,
+  captureActive: null,
   trackerHasLocation: false,
 };
 
@@ -88,13 +106,11 @@ export async function loadSentinel(): Promise<void> {
       return;
     }
     // A real session with nothing to read. Worth being exact about which:
-    // `sentinel_get_state` has NO backend anywhere - no Tauri command, and no
-    // daemon owns `org.arlen.Sentinel1`; only this store and the pure detector
-    // crate's doc comment mention the name. So this branch is not a transient
-    // failure, it is the permanent state of this build, and the wording says
-    // "nothing is reporting" rather than "cannot read right now", which would
-    // invite a retry that cannot succeed. It stays true if the daemon lands and
-    // is merely down.
+    // `arlen-sentineld` now answers this, so this branch is what it was always
+    // worded for: the daemon is not running, or it is and the ask failed. Either
+    // way nothing measured this machine, and "nothing is reporting" is the
+    // honest thing to say. It was written while there was no daemon at all and
+    // the wording did not have to change when one landed.
     //
     // A real session that could not read the sentinel. The fixture asserts that
     // the Wi-Fi address rotates, that saved networks are not broadcast and -
@@ -161,10 +177,15 @@ export async function setSensitivity(id: DetectorId, level: string): Promise<voi
 
 /// Run the one-click remediation behind a posture line (e.g. stop Bluetooth
 /// being discoverable). Live: the daemon applies it and re-reads.
-export async function fixPosture(index: number): Promise<void> {
+///
+/// Addressed by SURFACE, not by the line's position. The readout is recomputed on
+/// every read and sorted worst-first, so a radio that changed between the read
+/// and the tap moves the lines and an index would point the fix at the
+/// neighbouring one.
+export async function fixPosture(surface: string): Promise<void> {
   sentinelChangeFailed.set(false);
   try {
-    await invoke("sentinel_fix_posture", { index });
+    await invoke("sentinel_fix_posture", { surface });
     await loadSentinel();
   } catch {
     // The fixture stays under the DEV gate. Outside it, this catch used to write
@@ -180,8 +201,8 @@ export async function fixPosture(index: number): Promise<void> {
     }
     sentinel.update((s) => {
       if (!s) return s;
-      const posture = s.posture.map((p, i) =>
-        i === index ? { text: "Bluetooth is no longer discoverable." } : p,
+      const posture = s.posture.map((p) =>
+        p.surface === surface ? { surface, posture: "protected" as const } : p,
       );
       return { ...s, posture };
     });

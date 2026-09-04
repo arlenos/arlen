@@ -378,18 +378,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # panel instead: add and remove are queue administration wanting lpadmin,
         # which is a privilege decision to take on its own terms, and discover is a
         # DNS-SD listener, which is a subsystem rather than a command.
-        "sentinel_fix_posture": "the security posture fix (the unwritten Sentinel1 daemon, as sentinel_get_state)",
-        "sentinel_get_state": (
-            "the sentinel state. The blocker is a whole daemon, not a command: "
-            "`daemons/sentinel-detect` holds only the pure detectors and says so "
-            "in its own header - the `org.arlen.Sentinel1` that drives the BLE and "
-            "network hardware and owns the consent/audit boundary is unwritten, "
-            "and it needs a radio to be worth writing. All five sentinel_* entries "
-            "share this one blocker"
-        ),
-        "sentinel_set_alerts": "sentinel alerts (the unwritten Sentinel1 daemon, as sentinel_get_state)",
-        "sentinel_set_detector": "a sentinel detector toggle (the unwritten Sentinel1 daemon, as sentinel_get_state)",
-        "sentinel_set_sensitivity": "sentinel sensitivity (the unwritten Sentinel1 daemon, as sentinel_get_state)",
     },
     "desktop-shell": {
         # The shell has a print DIALOG whose three commands are missing, and the
