@@ -51,13 +51,16 @@ say() {
 }
 
 require_fresh "$app" "$root/apps/mail/src-tauri/src" "$root/apps/mail/core/src" || exit 2
-[ -d "$root/apps/mail/build" ] || { echo "!! build the frontend: (cd apps/mail && npm run build)" >&2; exit 2; }
+require_fresh_frontend "$root/apps/mail/build" "$root/apps/mail/src" || exit 2
 
 # A maildir with one read and one unread message, and a Sent folder. Written here
 # rather than committed: a fixture mailbox in the tree is a file somebody will
 # one day mistake for a test account.
 mkdir -p "$work/mail/cur" "$work/mail/new" "$work/mail/.Sent/cur" "$work/mail/.Sent/new"
-printf 'From: rosa@example.org\nSubject: the roof survey\nDate: Tue, 2 Jan 2024 10:00:00 +0000\n\nThe survey is attached.\n' \
+# The body runs PAST the 140-character snippet cut on purpose: everything after
+# it can only be on screen if the message was opened, which is what makes the
+# open check below able to fail. See the comment there.
+printf 'From: rosa@example.org\nSubject: the roof survey\nDate: Tue, 2 Jan 2024 10:00:00 +0000\n\nThe survey is attached. Page four is the section on the north roof and page five lists what the surveyor could not reach from the ladder. The closing line names the ridge tiles.\n' \
   > "$work/mail/cur/2.host:2,S"
 printf 'From: bank@example.com\nSubject: your statement\nDate: Wed, 3 Jan 2024 09:00:00 +0000\n\nYour statement is ready.\n' \
   > "$work/mail/new/1.host"
@@ -102,6 +105,16 @@ say "and no fixture sender is on a screen reading a real mailbox" \
 # back into a path, through both gates - `safe_id` on what was typed and a
 # containment check on what the filesystem resolved - so a row that lists but
 # does not open would mean the id it handed out is not the id it accepts.
+# TWICE WRONG AND STILL GREEN, until the picture was opened on 4 September. The
+# click walked `closest("[role=row], li, tr, div")`, and a row here is a
+# `button[role=option]` - which that list does not match - so `closest` sailed
+# past it to the listbox DIV and clicked the container. Nothing opened. The
+# assertion then looked for "The survey is attached", which is the SNIPPET the
+# list row already draws, so it passed anyway. Either fault alone would have been
+# caught by the other; together they made a check that asserts nothing.
+#
+# So the click names the row's own element, and the proof is two things the list
+# CANNOT show: the empty state going away, and a phrase from past the snippet cut.
 cat > "$work/open.js" <<'JS'
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const rowFor = (t) => [...document.querySelectorAll("*")]
@@ -109,14 +122,21 @@ const rowFor = (t) => [...document.querySelectorAll("*")]
 for (let i = 0; i < 60; i++) { if (rowFor("the roof survey")) break; await wait(250); }
 const cell = rowFor("the roof survey");
 if (!cell) return JSON.stringify({ listed: false });
-(cell.closest("[role=row], li, tr, div") || cell).click();
-// Wait for the body to arrive, not for a number.
+const row = cell.closest("button, [role=option], [role=row], li, tr");
+if (!row) return JSON.stringify({ listed: true, clickable: false });
+row.click();
 for (let i = 0; i < 60; i++) {
-  if (document.body.innerText.includes("The survey is attached")) break;
+  if (!document.body.innerText.includes("Select a message")) break;
   await wait(250);
 }
 const text = document.body.innerText.replace(/\s+/g, " ").trim();
-return JSON.stringify({ listed: true, opened: text.includes("The survey is attached"), text: text.slice(0, 400) });
+return JSON.stringify({
+  listed: true,
+  clickable: true,
+  // Only the reading pane can carry the tail: the snippet is cut at 140 chars.
+  opened: text.includes("the ridge tiles") && !text.includes("Select a message"),
+  text: text.slice(-300),
+});
 JS
 
 opened=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/open.js" SHOOT_INJECT_SETTLE=3 \
