@@ -1,10 +1,11 @@
 <script lang="ts">
   /// The mail client, three panes on the files chrome: the folder rail, the
-  /// message list, the reading surface. The mailbox model is the intended
-  /// contract (mailbox.ts) - fixture under vite, honestly unconnected on a
-  /// host without the account backend - while the one wire that IS real today
-  /// (`launch_file` + `mail_read`, a message opened from Files) renders into
-  /// the same reading surface as a transient row that belongs to no folder.
+  /// message list, the reading surface. The mailbox reads this machine's
+  /// maildir (mailbox.ts), stands in a fixture under vite and is honestly
+  /// unconnected on a host without one; a message opened from Files
+  /// (`launch_file` + `mail_read`) renders into the same reading surface as a
+  /// transient row that belongs to no folder. Live the client is a reader: the
+  /// writes appear only while the mailbox is the sample that keeps them.
   ///
   /// The HTML part of a message stays deliberately absent - see the app's
   /// `lib.rs` (EFAIL): containing the renderer does not stop the message
@@ -24,6 +25,7 @@
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import FolderRail from "$lib/components/FolderRail.svelte";
   import MessageList from "$lib/components/MessageList.svelte";
   import MessageView from "$lib/components/MessageView.svelte";
@@ -34,6 +36,8 @@
     envelopes,
     type Envelope,
     mailboxMocked,
+    mailboxState,
+    mailboxWritable,
     openedFile,
     loadMailbox,
     openMessage,
@@ -70,11 +74,14 @@
   let failure = $state<Failure | null>(null);
 
   // The shell menu's dispatch. Reply/forward no-op with nothing open, the
-  // same guard their toolbar twins carry.
+  // same guard their toolbar twins carry; the writes are gated once more here,
+  // because a menu registered while the mailbox was still loading may outlive
+  // the answer.
   $effect(() => {
     const a = $menuAction;
     if (!a) return;
     menuAction.set(null);
+    if (a.startsWith("message.") && !$mailboxWritable) return;
     if (a === "message.new") startCompose();
     else if (a === "message.reply") reply();
     else if (a === "message.forward") forward();
@@ -244,6 +251,7 @@
   }
 
   function startCompose(to = "", subject = "", body = ""): void {
+    if (!$mailboxWritable) return;
     preset = { to, subject, body };
     composing = true;
   }
@@ -276,6 +284,7 @@
     return out;
   }
   function archiveSelected(): void {
+    if (!$mailboxWritable) return;
     for (const id of folderMembers()) moveMessage(id, "archive");
     if (selected.size > 0) {
       selected = new Set();
@@ -283,6 +292,7 @@
     }
   }
   function deleteSelected(): void {
+    if (!$mailboxWritable) return;
     for (const id of folderMembers()) {
       if (selectedFolder === "trash") deleteForever(id);
       else moveMessage(id, "trash");
@@ -313,9 +323,21 @@
   });
 
   /// One message read: everything. Several: only the actions that make sense
-  /// for a pile (archive, delete) - a bulk Reply would be a lie.
-  const showSingleActions = $derived(!composing && !fileOpen && selected.size === 1 && reading !== null);
-  const showBulkActions = $derived(!composing && !fileOpen && selected.size > 1);
+  /// for a pile (archive, delete) - a bulk Reply would be a lie. None while
+  /// the mailbox cannot keep a write.
+  const showSingleActions = $derived(
+    $mailboxWritable && !composing && !fileOpen && selected.size === 1 && reading !== null,
+  );
+  const showBulkActions = $derived($mailboxWritable && !composing && !fileOpen && selected.size > 1);
+
+  /// The sentence for a launch that went wrong, one per named problem.
+  const failureText = $derived.by(() => {
+    if (!failure) return "";
+    if (failure.problem === "launch") return $t("ml.failed.launch");
+    if (failure.problem === "unreadable") return $t("ml.failed.unreadable", { why: failure.why });
+    if (failure.problem === "not-a-message") return $t("ml.failed.notAMessage");
+    return $t("ml.failed.other");
+  });
 
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
@@ -344,8 +366,12 @@
   }
 </script>
 
+<!-- The rail exists when it has a row to hold: folders, or Compose while the
+     sample keeps a draft. An unconnected mailbox gets no empty column. -->
 <SidebarProvider class="h-screen min-h-0 overflow-hidden">
-  <FolderRail activeFolder={composing ? null : selectedFolder} onselect={selectFolder} oncompose={() => startCompose()} />
+  {#if $folders.length > 0 || $mailboxWritable}
+    <FolderRail activeFolder={composing ? null : selectedFolder} onselect={selectFolder} oncompose={() => startCompose()} />
+  {/if}
 
   <SidebarInset class="h-svh min-h-0">
     <!-- The header is a drag surface (a non-keyboard pointer interaction); its
@@ -357,8 +383,10 @@
       ondblclick={toggleMax}
       class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
     >
-      <SidebarTrigger class="-ml-1" />
-      <Separator orientation="vertical" class="me-1 h-4" />
+      {#if $folders.length > 0 || $mailboxWritable}
+        <SidebarTrigger class="-ml-1" />
+        <Separator orientation="vertical" class="me-1 h-4" />
+      {/if}
       <span class="select-none truncate text-sm font-medium text-foreground">{barTitle}</span>
       <div class="flex-1"></div>
       {#if showSingleActions}
@@ -381,10 +409,10 @@
     </header>
 
     <div class="body-row">
-      {#if $folders.length > 0}
+      {#if $folders.length > 0 && $mailboxState !== "loading"}
         <div class="list-col">
           {#if $mailboxMocked}
-            <p class="sample">{$t("ml.sample")}</p>
+            <div class="sample"><Notice tone="neutral" text={$t("ml.sample")} /></div>
           {/if}
           {#if $openedFile}
             <button
@@ -422,21 +450,11 @@
             <ComposeView presetTo={preset.to} presetSubject={preset.subject} presetBody={preset.body} ondone={composeDone} />
           {/key}
         {:else if failure}
-          <div class="center">
-            <p class="note bad" role="alert">
-              {#if failure.problem === "launch"}{$t("ml.failed.launch")}
-              {:else if failure.problem === "unreadable"}{$t("ml.failed.unreadable", { why: failure.why })}
-              {:else if failure.problem === "not-a-message"}{$t("ml.failed.notAMessage")}
-              {:else}{$t("ml.failed.other")}{/if}
-            </p>
-          </div>
+          <div class="pane-note" role="alert"><Notice tone="error" text={failureText} /></div>
         {:else if fileOpen && $openedFile}
           <MessageView message={$openedFile} />
         {:else if readFailed}
-          <div class="center">
-            <Mail size={28} strokeWidth={1.5} aria-hidden="true" />
-            <p class="note" role="alert">{$t("ml.openFailed")}</p>
-          </div>
+          <div class="pane-note" role="alert"><Notice tone="error" text={$t("ml.openFailed")} /></div>
         {:else if selected.size === 1 && reading}
           {#if reading.messages.length === 1}
             <MessageView message={reading.messages[0]} />
@@ -452,7 +470,9 @@
           <div class="center">
             <Mail size={28} strokeWidth={1.5} aria-hidden="true" />
             <p class="note">
-              {#if $folders.length > 0}
+              {#if $mailboxState === "loading"}
+                {$t("ml.loading")}
+              {:else if $folders.length > 0}
                 {$t("ml.noneSelected")}
               {:else if tauriAvailable}
                 {$t("ml.unconnected")}
@@ -473,20 +493,23 @@
     flex: 1;
     min-height: 0;
   }
+  /* The list gives way before the reading pane does: at a narrow window the
+     column shrinks to its floor and the pane keeps room to set a sender line,
+     instead of the pane collapsing to a strip that breaks an address one
+     letter per line (seen at 720px in the native drive). */
   .list-col {
     display: flex;
     flex-direction: column;
-    width: 21rem;
+    flex: 0 1 21rem;
+    min-width: 13rem;
     min-height: 0;
-    flex-shrink: 0;
     border-inline-end: 1px solid var(--color-border-default, #2a2a2a);
   }
   .sample {
-    margin: 0;
-    padding: 0.4rem 0.7rem;
-    border-bottom: 1px solid var(--color-border-default, #2a2a2a);
-    font-size: var(--text-2xs, 11px);
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+    padding: 0.5rem 0.6rem 0;
+  }
+  .pane-note {
+    padding: 0.75rem 1rem 0;
   }
   .opened-file {
     display: flex;
@@ -530,7 +553,7 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    min-width: 0;
+    min-width: 14rem;
     min-height: 0;
     overflow-y: auto;
   }
@@ -550,8 +573,5 @@
     font-size: var(--text-sm, 13px);
     line-height: 1.5;
     color: var(--color-fg-secondary, #a3a3a3);
-  }
-  .note.bad {
-    color: var(--color-warning, #eab308);
   }
 </style>
