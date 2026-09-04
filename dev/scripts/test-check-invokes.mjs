@@ -11,11 +11,15 @@
 // expensive - a miss ships a dead button, a false alarm trains people to ignore
 // the count - so both directions are pinned here.
 //
-// NOT covered, deliberately: the known-missing inventory and its
-// stale-entry guard. Those key off a hardcoded per-app table, so a fixture for
-// them would pin this test to today's inventory and break every time the count
-// legitimately changes. The guard is real (`check-invoke-exists.py` reports an
-// entry whose call is gone); it just cannot be fixture-tested without coupling.
+// NOT covered, deliberately: the known-missing inventory and its stale-ENTRY
+// guard. Those key off a hardcoded per-app table, so a fixture for them would pin
+// this test to today's inventory and break every time the count legitimately
+// changes. The guard is real (`check-invoke-exists.py` reports an entry whose call
+// is gone); it just cannot be fixture-tested without coupling.
+//
+// COVERED since 5 September: the stale-REASON checks. Different thing, and the
+// distinction is the point - those read FILES rather than the table, so they pin
+// nothing about today's inventory and are tested at the bottom of this file.
 //
 // Run: node dev/scripts/test-check-invokes.mjs
 
@@ -361,6 +365,55 @@ check(
   console.log(`  ${ok ? "ok  " : "FAIL"} a command called only through the helper is not listed as uncalled`);
   if (!ok) failures.push({ name: "helper-only call counts as a call", out });
   cleanup(dir);
+}
+
+// Each falsifier fixture carries a well-formed app as well as the file under
+// test. The gate lists `apps/` before anything else and raises on a tree without
+// one, so a fixture holding only the portal file exercised the traceback instead
+// of the check - and the control read as a gate bug until I ran it by hand.
+const SOUND_APP = {
+  "apps/demo/package.json": "{}",
+  "apps/demo/src/lib/x.ts": 'await invoke("open_thing");\n',
+  "apps/demo/src-tauri/src/lib.rs": HOST,
+};
+
+// A FALSIFIER THAT NAMES ITS OWN TEST, and whether the gate runs it. Two of the
+// inventory reasons say in words what would make them false, and until 5 September
+// nothing checked either - I caught myself repeating "all gated" across six reports
+// from memory before measuring it by hand. These pin the measurement.
+//
+// Fixture-testable where the inventory table is not: they read files, not the
+// per-app table, and the gate takes its root as an argument - so a tree with those
+// files in it exercises them without coupling to today's inventory.
+{
+  const portal = "daemons/xdg-portal/dist/xdg-desktop-portal/portals/arlen.portal";
+  check("the capture five stay quiet while the portal offers no ScreenCast",
+    tree({ ...SOUND_APP, [portal]: "[portal]\nInterfaces=org.freedesktop.impl.portal.FileChooser;\n" }),
+    (_code, out) => !out.includes("capture five"));
+
+  check("and speak up the moment it does - the check that entry names for itself",
+    tree({ ...SOUND_APP, [portal]: "[portal]\nInterfaces=org.freedesktop.impl.portal.ScreenCast;\n" }),
+    (code, out) => code === 1 && out.includes("capture five"));
+}
+
+{
+  // `set_bottle_config`'s reason: no measured value to write, FALSE WHEN a bottle
+  // records a Wine version, DLL overrides or a window mode that can be read back.
+  const src = "daemons/bottled/src/bottle.rs";
+  check("set_bottle_config stays quiet while a bottle records none of those fields",
+    tree({ ...SOUND_APP, [src]: "pub struct Bottle { pub id: String }\n" }),
+    (_code, out) => !out.includes("set_bottle_config"));
+
+  check("and speaks up when a bottle records one",
+    tree({ ...SOUND_APP, [src]: "pub struct Bottle { pub wine_version: String }\n" }),
+    (code, out) => code === 1 && out.includes("set_bottle_config"));
+
+  // The tree is full of prose ABOUT these fields - the entry itself names all
+  // three - so a checker keying on the word rather than the code would fire on
+  // every comment that explains why the entry exists.
+  check("a comment naming the field is prose about the gap, not the gap closing",
+    tree({ ...SOUND_APP, [src]: "// The compat recipe would give a wine_version and a window_mode.\npub struct Bottle {}\n" }),
+    (_code, out) => !out.includes("set_bottle_config"));
 }
 
 console.log(failures.length ? "\nsome cases regressed" : "\nboth directions hold");
