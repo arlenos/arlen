@@ -52,6 +52,8 @@
   import { Toaster } from "svelte-sonner";
   import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
   import { initToastBridge } from "$lib/stores/toastBridge.js";
+  import { watchForPrints } from "$lib/stores/printDialog.js";
+  import { watchJobs } from "$lib/stores/jobs.js";
   import { initToolbarStore } from "$lib/stores/toolbarStore";
   import { initAppStateStores } from "$lib/stores/appStateStores";
 
@@ -250,6 +252,14 @@
       initAppStateStores(),
     ];
 
+    // Two listeners that resolve to their own disposer rather than returning
+    // one, so they cannot go in the array above. The print portal holds a
+    // connection open and says when a print is waiting; the jobs feed keeps the
+    // Activity zone following work that was already running when it opened.
+    // Torn down through the promise, which is why they are kept apart rather
+    // than fired and forgotten.
+    const asyncListeners = [watchForPrints(), watchJobs()];
+
     // Initialize theme system (loads appearance.toml, injects CSS vars,
     // subscribes to live theme-changed events from Rust). Its internal
     // `listen()` lives for the lifetime of the page — it has no init/
@@ -258,6 +268,9 @@
 
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {
+      for (const pending of asyncListeners) {
+        void pending.then((unlisten) => unlisten?.()).catch(() => {});
+      }
       document.removeEventListener("contextmenu", suppressBrowserContextMenu);
       window.removeEventListener("pointerdown", firstPointer, { capture: true });
       for (const dispose of disposers) dispose();

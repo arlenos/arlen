@@ -121,6 +121,37 @@ pub async fn cancel_print(id: String) -> Result<(), String> {
     cancel_answer(round_trip(DialogRequest::Cancel { id }).await?)
 }
 
+/// Hold a connection open until the portal has a print for somebody, then say so
+/// and open another.
+///
+/// A LOOP RATHER THAN A TIMER. The dialog has no reason to look on its own, so
+/// this is what tells it - one parked socket per shell, answered the moment a
+/// print arrives. A poll on an interval would be the same news later and a
+/// wakeup every few seconds on a machine that is not printing.
+///
+/// A portal that is not running is not an error to report: nothing can be
+/// printing, so this waits and tries again. The delay is what keeps a missing
+/// portal from becoming a reconnect loop.
+pub fn watch_for_prints(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        use tauri::Emitter;
+        loop {
+            match round_trip(DialogRequest::Await).await {
+                Ok(DialogResponse::Pending { request: Some(_) }) => {
+                    // The request itself is NOT carried in the event: the store
+                    // asks for it, and having two paths deliver the same pending
+                    // print is how the dialog would end up showing one that had
+                    // already been answered.
+                    let _ = app.emit("arlen://print-requested", ());
+                }
+                // A portal that answered something else, or none at all: wait
+                // before asking again so a broken one is not asked in a spin.
+                _ => tokio::time::sleep(std::time::Duration::from_secs(5)).await,
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
