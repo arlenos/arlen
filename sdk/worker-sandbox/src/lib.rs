@@ -349,6 +349,30 @@ mod tests {
         );
     }
 
+    /// A detail line printed BEFORE the worker's own line does not become the
+    /// reason.
+    ///
+    /// THE PRODUCTION SHAPE, and the one the ordering makes easy to get wrong.
+    /// `arlen-pdf-decode-page` writes its detail inside the `map_err` that
+    /// builds the failure, so the detail reaches stderr FIRST and the
+    /// `arlen-…: <token>` line second. Taking the first line would hand the
+    /// host that sentence instead of the token it compares against, and the
+    /// reader would go back to printing "could not be drawn" over every page of
+    /// a document with no engine to draw it - the exact defect this token was
+    /// added to fix. The `arlen-` search is what makes the order not matter.
+    #[test]
+    fn a_detail_line_before_the_token_does_not_become_the_reason() {
+        let out = worker_reason(
+            "  detail: no PDF engine (libpdfium) on this machine: dlopen failed\n\
+             arlen-pdf-decode-page: no-renderer",
+        );
+        assert_eq!(
+            out.as_deref(),
+            Some("no-renderer"),
+            "the host matches this against its own `no-renderer` constant"
+        );
+    }
+
     /// Escape codes and extra lines do not travel with it.
     ///
     /// The worker is the component this design assumes can be compromised, so
