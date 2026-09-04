@@ -449,6 +449,8 @@ provision-agent-profile:
 drive-apps:
     #!/usr/bin/env bash
     set -uo pipefail
+    # One definition of waiting, shared with the drive scripts themselves.
+    . "{{ROOT}}/dev/screenshot/lib/wait.sh"
     fail=0
     ran=0
     served=()
@@ -461,8 +463,14 @@ drive-apps:
             (cd "$app" && npx vite build >/dev/null 2>&1) || return 1
             (cd "$app" && setsid npx vite preview --port "$port" --strictPort \
                 >/dev/null 2>&1 < /dev/null &)
-            sleep 6
+            # Wait for the server, not for a number. The drives were swept for
+            # this on 4 September and this runner - the thing that starts the
+            # server they all wait on - kept its sleep. Six seconds is generous
+            # until the machine is loaded, and then it hands every suite below a
+            # page that never loaded, which reads as an app failure rather than
+            # as a slow preview.
             served+=("$port")
+            wait_for_http "http://localhost:$port/" || return 1
             return 0
         done
         return 1
