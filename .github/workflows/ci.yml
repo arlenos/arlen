@@ -461,6 +461,8 @@ jobs:
           node dev/scripts/test-check-graph-clock.mjs
           python3 dev/scripts/check-token-unions.py
           node dev/scripts/test-check-token-unions.mjs
+          python3 dev/scripts/check-master-switch-defaults.py
+          node dev/scripts/test-check-master-switch-defaults.mjs
           python3 dev/scripts/check-gates-registered.py
           node dev/scripts/test-check-gates-registered.mjs
           python3 dev/scripts/check-dependency-direction.py
