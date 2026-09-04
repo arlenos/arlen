@@ -22,6 +22,8 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=dev/screenshot/lib/wait.sh
+. "$root/dev/screenshot/lib/wait.sh"
 out="${1:-$root/dev/screenshot/out}"
 app="$root/target/debug/arlen-settings"
 work="$(mktemp -d)"
@@ -47,7 +49,7 @@ fi
 
 (cd "$root/apps/settings" && npx vite preview --port 1421 --outDir build >/dev/null 2>&1) &
 preview_pid=$!
-sleep 2
+wait_for_http "http://localhost:1421/" || exit 1
 
 cat > "$work/goto-list.js" <<'JS'
 location.assign("/windows-apps");
