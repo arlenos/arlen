@@ -8,7 +8,9 @@
   import { t } from "$lib/i18n/messages";
   import { statusSentence, statusTooltip } from "$lib/display";
   import type { Capability } from "$lib/capability";
-  import { principalLabel, reachLabel, type GrantView } from "$lib/transparency";
+  import { principalLabel, reachLabel, openAiSettings, settingsOpenFailed, type GrantView } from "$lib/transparency";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import SectionState from "./SectionState.svelte";
 
   let {
@@ -42,7 +44,15 @@
 
 <div class="access" id="transparency-access">
   {#if capability}
-    <p class="tier" title={statusTooltip(capability, $t)}>{statusSentence(capability, $t)}</p>
+    <div class="tier-row">
+      <p class="tier" title={statusTooltip(capability, $t)}>{statusSentence(capability, $t)}</p>
+      {#if off}
+        <Button variant="outline" size="sm" onclick={openAiSettings}>{$t("h.offswitch.turnOn")}</Button>
+      {/if}
+    </div>
+    {#if off && $settingsOpenFailed}
+      <div class="tier-note"><Notice tone="error" text={$t("h.settings.cannotOpen")} /></div>
+    {/if}
   {/if}
 
   {#if !loaded}
@@ -81,13 +91,23 @@
   }
   /* The tier line shares the section's voice with the chat capability
      strip: one plain sentence, the technical facts in its tooltip. */
-  .tier {
-    margin: 0;
+  .tier-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
     padding: 0.625rem var(--space-row, 0.75rem);
+    border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  .tier {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
     font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--foreground);
-    border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  .tier-note {
+    padding: 0.5rem var(--space-row, 0.75rem) 0;
   }
   .inactive {
     margin: 0;

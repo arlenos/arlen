@@ -9,6 +9,7 @@
 /// surface never renders an unmeasured zero as "never": until a feed
 /// exists it says "not measured yet."
 import { invoke } from "@tauri-apps/api/core";
+import { writable } from "svelte/store";
 
 /// One capability grant, mirroring `GrantView` in `sdk/os-sdk/src/graph.rs`
 /// (the daemon's `access_grants` projection). The harness reads only the
@@ -56,17 +57,22 @@ export interface WorkingSet {
   declaredReads: string | null;
 }
 
+/// True after the last attempt to open Settings did not open it (no Settings
+/// app on this machine, or the launch failed). A button that does nothing
+/// is the one thing a "turn it on in Settings" line must not become, so the
+/// place that was pressed says so; cleared on the next attempt.
+export const settingsOpenFailed = writable(false);
+
 /// Open the Settings app at its AI section, where the `[ai] enabled`
 /// master switch lives. There is no `settings://` scheme (open_url only
-/// allows http/https/mailto), so this rides a host launch command the
-/// coder wires (arlen-run to the Settings app, AI section). Failure is
-/// silent: the worst case is the button doing nothing, not a crash.
+/// allows http/https/mailto), so this rides the host's `open_ai_settings`,
+/// which starts `arlen-settings --panel ai`.
 export async function openAiSettings(): Promise<void> {
+  settingsOpenFailed.set(false);
   try {
     await invoke("open_ai_settings");
   } catch {
-    // The command is not wired yet (or the launch failed); nothing to
-    // surface on a transparency surface.
+    settingsOpenFailed.set(true);
   }
 }
 
