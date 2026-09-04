@@ -12,6 +12,7 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { tauriAvailable } from "$lib/tauri";
 
 /// A job's lifecycle state (mirrors the JobView state enum).
@@ -58,6 +59,13 @@ export interface Job {
   /// The host a network job reaches (no-silent-egress transparency).
   egressHost?: string;
   items?: JobItem[];
+  /// When the producer started it, epoch micros.
+  ///
+  /// The zone owns the visibility threshold - a job shows once it has run long
+  /// enough to be worth a row - and this is what that decision is made from. The
+  /// daemon deliberately does not decide it: a threshold in the producer would
+  /// be every producer inventing its own idea of "worth showing".
+  startedAt: number;
 }
 
 // i18n-foreign: a job's title is written by whichever daemon is doing the work
@@ -68,6 +76,7 @@ export interface Job {
 const MOCK_JOBS: Job[] = [
   {
     id: "fm-copy",
+    startedAt: 1000000,
     title: "Copying 240 photos to USB",
     appId: "org.arlen.files",
     appLabel: "Files",
@@ -89,6 +98,7 @@ const MOCK_JOBS: Job[] = [
   },
   {
     id: "model-pull",
+    startedAt: 2000000,
     title: "Downloading the language model",
     appId: "org.arlen.assistant",
     appLabel: "Assistant",
@@ -102,6 +112,7 @@ const MOCK_JOBS: Job[] = [
   },
   {
     id: "transfer",
+    startedAt: 3000000,
     title: "Sending files to your laptop",
     appId: "org.arlen.files",
     appLabel: "Files",
@@ -113,6 +124,7 @@ const MOCK_JOBS: Job[] = [
   },
   {
     id: "convert",
+    startedAt: 4000000,
     title: "Converting clip.mp4",
     appId: "org.arlen.media",
     appLabel: "Media",
@@ -125,6 +137,7 @@ const MOCK_JOBS: Job[] = [
   },
   {
     id: "fm-done",
+    startedAt: 5000000,
     title: "Copied 18 files to Documents",
     appId: "org.arlen.files",
     appLabel: "Files",
@@ -184,6 +197,33 @@ export async function pollJobs(): Promise<void> {
     mocked.set(false);
     lastError.set("sh.jobs.unavailable");
   }
+}
+
+/// Follow the daemon's live feed.
+///
+/// `pollJobs` is the snapshot a zone opens with; this is what keeps it moving.
+/// The two carry the SAME row - the shell builds it once from the wire and sends
+/// it both ways - so a job cannot read one way in the list and another as it
+/// updates.
+///
+/// A job arrives with `removed` when it finished or was cancelled, and it leaves
+/// the feed at that point: the transient "done" receipt is the zone's to show,
+/// and a store that kept finished rows would make the list a history rather than
+/// a picture of what is running.
+export async function watchJobs(): Promise<UnlistenFn | null> {
+  if (!tauriAvailable) return null;
+  return listen<{ job: Job; removed: boolean }>("notification:job", (event) => {
+    const { job, removed } = event.payload;
+    jobs.update((list) => {
+      const rest = list.filter((j) => j.id !== job.id);
+      // Oldest first, the same order `list_jobs` returns, so the snapshot and
+      // the feed cannot disagree about where a row sits. A row that moves as its
+      // progress changes is a row nobody can click.
+      return removed
+        ? rest
+        : [...rest, job].sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id));
+    });
+  });
 }
 
 /// Drive one job action optimistically, then reconcile with the daemon.

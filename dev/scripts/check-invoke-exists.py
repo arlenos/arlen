@@ -398,13 +398,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # not decided to have. Listed so it is not mistaken for plumbing.
         "dictation_status": "the dictation indicator (no speech engine)",
         "stop_dictation": "stopping dictation (no speech engine)",
-        "list_jobs": (
-            "the jobs zone. Not a wiring gap: the store models a cross-daemon feed "
-            "(running / paused / impeded / recoverable / fatal, per-item lists, "
-            "real-unit metrics) and no daemon reports jobs in that shape. The "
-            "transfer daemon is one producer of many it would need. The missing "
-            "piece is a job-report contract, not a command"
-        ),
         # The shell's open-a-Windows-file dialog. The reason here USED to be "the
         # deferred bottle daemon", and that reason is now wrong: `daemons/bottled`
         # exists and makes bottles, installs into them, picks a program and

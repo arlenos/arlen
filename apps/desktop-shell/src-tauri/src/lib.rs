@@ -4,6 +4,7 @@ mod test_env;
 mod app_history;
 mod consent_window;
 mod app_index;
+mod jobs;
 mod print_dialog;
 mod printers;
 mod app_state;
@@ -211,6 +212,8 @@ pub fn run() {
             });
             let _ = ctx;
         })
+        // The Activity/Jobs zone's live set, fed by the notification socket.
+        .manage(crate::jobs::new_live_jobs())
         .manage(Arc::clone(&overlay_sender))
         .manage(Arc::clone(&output_bar_registry))
         .manage(Arc::clone(&output_connector_table))
@@ -387,6 +390,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            jobs::list_jobs,
             print_dialog::poll_print_request,
             print_dialog::submit_print,
             print_dialog::cancel_print,
