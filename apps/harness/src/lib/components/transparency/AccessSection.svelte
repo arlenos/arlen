@@ -6,11 +6,9 @@
   /// revoking lives in Settings, never here. Rendering only; the page
   /// owns the reads.
   import { t } from "$lib/i18n/messages";
-  import { statusSentence, statusTooltip } from "$lib/display";
+  import { statusSentence } from "$lib/display";
   import type { Capability } from "$lib/capability";
-  import { principalLabel, reachLabel, openAiSettings, settingsOpenFailed, type GrantView } from "$lib/transparency";
-  import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { principalLabel, reachLabel, type GrantView } from "$lib/transparency";
   import SectionState from "./SectionState.svelte";
 
   let {
@@ -26,6 +24,11 @@
   } = $props();
 
   const off = $derived(capability !== null && !capability.enabled);
+  // The model in use is a fact worth seeing (design-system.md 6.6). The way to
+  // change it is the drawer's one Settings button, in the off-switch section.
+  const modelName = $derived(
+    capability ? [capability.provider, capability.model].filter(Boolean).join(" ") : "",
+  );
 
   // One entry per principal: its label and the union of reachable types
   // across that principal's live, non-revoked grants. A revoked or
@@ -45,14 +48,11 @@
 <div class="access" id="transparency-access">
   {#if capability}
     <div class="tier-row">
-      <p class="tier" title={statusTooltip(capability, $t)}>{statusSentence(capability, $t)}</p>
-      {#if off}
-        <Button variant="outline" size="sm" onclick={openAiSettings}>{$t("h.offswitch.turnOn")}</Button>
+      <p class="tier">{statusSentence(capability, $t)}</p>
+      {#if modelName}
+        <p class="model">{$t("h.access.model", { model: modelName })}</p>
       {/if}
     </div>
-    {#if off && $settingsOpenFailed}
-      <div class="tier-note"><Notice tone="error" text={$t("h.settings.cannotOpen")} /></div>
-    {/if}
   {/if}
 
   {#if !loaded}
@@ -90,24 +90,24 @@
     flex-direction: column;
   }
   /* The tier line shares the section's voice with the chat capability
-     strip: one plain sentence, the technical facts in its tooltip. */
+     strip: one plain sentence, the model under it as a quiet fact. */
   .tier-row {
     display: flex;
-    align-items: center;
-    gap: 0.75rem;
+    flex-direction: column;
+    gap: 0.125rem;
     padding: 0.625rem var(--space-row, 0.75rem);
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
   .tier {
-    flex: 1;
-    min-width: 0;
     margin: 0;
     font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--foreground);
   }
-  .tier-note {
-    padding: 0.5rem var(--space-row, 0.75rem) 0;
+  .model {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .inactive {
     margin: 0;

@@ -40,8 +40,10 @@
     /// True once applied: the card becomes the receipt with Undo.
     done?: boolean;
     /// True when applied with no gate, under a standing grant (auto-accept). The
-    /// receipt then says so and names the grant, so an unprompted change is never
-    /// silent - you see the diff and can undo it, you just did not click Approve.
+    /// receipt then says so and names the grant on the card (design-system.md
+    /// 6.6: why a change was allowed is content, not a hover), so an unprompted
+    /// change is never silent - you see the diff and can undo it, you just did
+    /// not click Approve.
     auto?: boolean;
     /// The grant that authorised an auto-applied change ("edits in this project").
     via?: string;
@@ -68,7 +70,7 @@
     {/if}
     <span class="gate-title">{title}</span>
     {#if done && auto}
-      <span class="auto-tag" title={via ? `Allowed by: ${via}` : undefined}>
+      <span class="auto-tag">
         <Sparkles size={11} strokeWidth={2} />
         Auto
       </span>
@@ -92,8 +94,8 @@
   <div class="gate-actions">
     {#if done}
       <span class="done-note">
-        {auto ? "Applied automatically" : "Applied"}
-        {#if via}<span class="via">via {via}</span>{/if}
+        {auto ? $t("h.gate.appliedAuto") : $t("h.gate.applied")}
+        {#if via}<span class="via">{$t("h.gate.allowedBy", { rule: via })}</span>{/if}
       </span>
       <Button variant="outline" size="sm" disabled={busy} onclick={() => onundo?.()}>
         <Undo2 size={13} strokeWidth={2} />

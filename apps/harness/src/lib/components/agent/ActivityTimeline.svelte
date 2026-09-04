@@ -119,10 +119,7 @@
       {$t("h.activity.entryCount", { n: activity.total })}
     {/if}
     {#if liveStale}
-      <span
-        class="stale"
-        title={$t("h.filter.stale")}
-      >
+      <span class="stale">
         <ShieldAlert size={12} strokeWidth={2} />{$t("h.activity.stale")}
       </span>
     {/if}

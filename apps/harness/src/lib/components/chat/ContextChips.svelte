@@ -1,8 +1,11 @@
 <script lang="ts">
   /// Attached-context chips inside the composer: the files grounding the
   /// next turn, each removable. The "grounded in your own data" gesture made
-  /// visible.
+  /// visible. The chip shows the file's name; its full path is the identity
+  /// reveal design-system.md 6.6 allows, through the kit tooltip and carrying
+  /// the path and nothing else.
   import { Paperclip, X } from "@lucide/svelte";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import type { MentionContent } from "$lib/stores/conversation";
 
   let {
@@ -17,18 +20,25 @@
 {#if attached.length > 0}
   <div class="chips">
     {#each attached as m (m.path)}
-      <span class="chip" title={m.path}>
-        <Paperclip size={12} strokeWidth={2} />
-        <span class="chip-name">{m.name}{m.truncated ? " (shortened)" : ""}</span>
-        <button
-          type="button"
-          class="chip-x"
-          aria-label={`Remove ${m.name}`}
-          onclick={() => onremove(m.path)}
-        >
-          <X size={12} strokeWidth={2.5} />
-        </button>
-      </span>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <span class="chip" {...props}>
+              <Paperclip size={12} strokeWidth={2} />
+              <span class="chip-name">{m.name}{m.truncated ? " (shortened)" : ""}</span>
+              <button
+                type="button"
+                class="chip-x"
+                aria-label={`Remove ${m.name}`}
+                onclick={() => onremove(m.path)}
+              >
+                <X size={12} strokeWidth={2.5} />
+              </button>
+            </span>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.TooltipContent>{m.path}</Tooltip.TooltipContent>
+      </Tooltip.Root>
     {/each}
   </div>
 {/if}
