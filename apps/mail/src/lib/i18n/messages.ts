@@ -15,8 +15,8 @@ const messages: Catalogs = {
     // is absent - a state a person never meets.
     "ml.failed.launch":
       "This window could not find out which message it was asked to open, so it opened none.",
-    "ml.failed.unreadable": "That file could not be read, so the message is not shown: {$why}",
-    "ml.failed.notAMessage": "That file is not a message, so there is nothing to show. A message file usually ends in .eml.",
+    "ml.failed.unreadable": "That file could not be read: {$why}",
+    "ml.failed.notAMessage": "That file is not a message. A message file usually ends in .eml.",
     "ml.failed.other": "That message could not be read. The detail is in the log.",
     "ml.from": "From",
     "ml.subject": "Subject",
@@ -26,17 +26,17 @@ const messages: Catalogs = {
     "ml.unsigned": "as written by the sender, not verified",
     "ml.knownPerson": "In your Knowledge Graph as {$name}",
     "ml.noText": "This message has no plain-text part.",
-    "ml.sealed.pgp": "This message is encrypted with PGP. Nothing here can open it, so there is nothing to show.",
-    "ml.sealed.smime": "This message is sealed with S/MIME. Nothing here can open it, so there is nothing to show.",
-    "ml.sealed.unknown": "This message says it is encrypted, in a way this app does not recognise, so there is nothing to show.",
+    "ml.sealed.pgp": "This message is encrypted with PGP. Nothing here can open it.",
+    "ml.sealed.smime": "This message is sealed with S/MIME. Nothing here can open it.",
+    "ml.sealed.unknown": "This message says it is encrypted, in a way this app does not recognise.",
     // Not a missing feature, and the sentence says which. See the module note in
     // the app's lib.rs: containing the renderer does not stop the message
     // calling home, so nothing renders it yet.
-    "ml.htmlNotShown": "This message also has an HTML part. It is not shown: displaying it safely is not built yet, and showing it unsafely would let the message report back that you read it.",
+    "ml.htmlNotShown": "This message also has an HTML part. Displaying it safely is not built yet, and showing it unsafely would let the message report back that you read it.",
     "ml.divergenceBoth": "The plain-text and formatted versions of this message differ. Only in the text: {$text}. Only in the formatting: {$html}.",
     "ml.divergenceText": "The plain-text version says things the formatted one does not: {$text}.",
     "ml.divergenceHtml": "The formatted version says things the plain-text one does not: {$html}.",
-    "ml.refused": "This message contradicts itself about its own format, so it is not being interpreted: {$reason}",
+    "ml.refused": "This message contradicts itself about its own format: {$reason}",
     "ml.channels": "Headers in this message ask to report back: {$list}",
     // Named and measured, never opened. Same principle as the HTML notice: say
     // what the message carries without acting on it.
@@ -56,7 +56,7 @@ const messages: Catalogs = {
     // `String(e)` would put `[object Object]` on the surface, which is what a
     // catch that stringifies a typed refusal always renders.
     "ml.attach.failed.unreadable": "The message file could not be read. {$why}",
-    "ml.attach.failed.notAMessage": "That file is not a message any more, so nothing could be taken out of it.",
+    "ml.attach.failed.notAMessage": "That file is not a message any more.",
     "ml.attach.failed.noSuchAttachment": "That attachment is not in the message.",
     "ml.attach.failed.noFolder": "There is no downloads folder to save into.",
     "ml.attach.failed.notWritten": "The file was not written. {$why}",
@@ -115,8 +115,8 @@ const messages: Catalogs = {
     "ml.nothingOpen": "Keine Nachricht geöffnet. Öffne eine aus Dateien, oder übergib eine auf der Kommandozeile.",
     "ml.failed.launch":
       "Dieses Fenster konnte nicht herausfinden, welche Nachricht es öffnen sollte, deshalb hat es keine geöffnet.",
-    "ml.failed.unreadable": "Diese Datei konnte nicht gelesen werden, deshalb wird die Nachricht nicht gezeigt: {$why}",
-    "ml.failed.notAMessage": "Diese Datei ist keine Nachricht, es gibt also nichts zu zeigen. Eine Nachrichtendatei endet meist auf .eml.",
+    "ml.failed.unreadable": "Diese Datei konnte nicht gelesen werden: {$why}",
+    "ml.failed.notAMessage": "Diese Datei ist keine Nachricht. Eine Nachrichtendatei endet meist auf .eml.",
     "ml.failed.other": "Diese Nachricht war nicht lesbar. Die Einzelheiten stehen im Protokoll.",
     "ml.from": "Von",
     "ml.subject": "Betreff",
@@ -126,14 +126,14 @@ const messages: Catalogs = {
     "ml.unsigned": "so geschrieben von der absendenden Seite, nicht geprüft",
     "ml.knownPerson": "In deinem Knowledge Graph als {$name}",
     "ml.noText": "Diese Nachricht hat keinen reinen Textteil.",
-    "ml.sealed.pgp": "Diese Nachricht ist mit PGP verschlüsselt. Hier kann sie nichts öffnen, es gibt also nichts zu zeigen.",
-    "ml.sealed.smime": "Diese Nachricht ist mit S/MIME versiegelt. Hier kann sie nichts öffnen, es gibt also nichts zu zeigen.",
-    "ml.sealed.unknown": "Diese Nachricht sagt, sie sei verschlüsselt, auf eine Art, die diese App nicht kennt. Es gibt also nichts zu zeigen.",
-    "ml.htmlNotShown": "Diese Nachricht hat auch einen HTML-Teil. Er wird nicht gezeigt: ihn sicher darzustellen ist noch nicht gebaut, und ihn unsicher zu zeigen würde der Nachricht erlauben zu melden, dass du sie gelesen hast.",
+    "ml.sealed.pgp": "Diese Nachricht ist mit PGP verschlüsselt. Hier kann sie nichts öffnen.",
+    "ml.sealed.smime": "Diese Nachricht ist mit S/MIME versiegelt. Hier kann sie nichts öffnen.",
+    "ml.sealed.unknown": "Diese Nachricht sagt, sie sei verschlüsselt, auf eine Art, die diese App nicht kennt.",
+    "ml.htmlNotShown": "Diese Nachricht hat auch einen HTML-Teil. Ihn sicher darzustellen ist noch nicht gebaut, und ihn unsicher zu zeigen würde der Nachricht erlauben zu melden, dass du sie gelesen hast.",
     "ml.divergenceBoth": "Der Textteil und der formatierte Teil dieser Nachricht unterscheiden sich. Nur im Text: {$text}. Nur in der Formatierung: {$html}.",
     "ml.divergenceText": "Der Textteil sagt Dinge, die der formatierte Teil nicht sagt: {$text}.",
     "ml.divergenceHtml": "Der formatierte Teil sagt Dinge, die der Textteil nicht sagt: {$html}.",
-    "ml.refused": "Diese Nachricht widerspricht sich über ihr eigenes Format, deshalb wird sie nicht interpretiert: {$reason}",
+    "ml.refused": "Diese Nachricht widerspricht sich über ihr eigenes Format: {$reason}",
     "ml.channels": "Header in dieser Nachricht wollen zurückmelden: {$list}",
     "ml.carries":
       ".input {$count :number}\n.match $count\none {{Diese Nachricht trägt eine Datei bei sich, nicht geöffnet:}}\n* {{Diese Nachricht trägt {$count} Dateien bei sich, nicht geöffnet:}}",
@@ -142,7 +142,7 @@ const messages: Catalogs = {
     "ml.attach.save": "{$name} in deine Dateien sichern",
     "ml.attach.saved": "Gespeichert nach {$path}",
     "ml.attach.failed.unreadable": "Die Nachrichtendatei ließ sich nicht lesen. {$why}",
-    "ml.attach.failed.notAMessage": "Diese Datei ist keine Nachricht mehr, es war also nichts herauszunehmen.",
+    "ml.attach.failed.notAMessage": "Diese Datei ist keine Nachricht mehr.",
     "ml.attach.failed.noSuchAttachment": "Dieser Anhang ist nicht in der Nachricht.",
     "ml.attach.failed.noFolder": "Es gibt keinen Download-Ordner zum Speichern.",
     "ml.attach.failed.notWritten": "Die Datei wurde nicht geschrieben. {$why}",
