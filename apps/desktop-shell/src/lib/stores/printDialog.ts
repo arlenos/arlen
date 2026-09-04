@@ -16,6 +16,7 @@
 import { get, writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 /// How the paper maps to the sheet (matches the Printers panel vocabulary; the
 /// coder maps to the portal/GTK `sides` strings at submit).
@@ -144,6 +145,23 @@ export async function openPrintDialog(): Promise<void> {
   if (!req) return;
   current.set(req);
   await loadPrinters();
+}
+
+/// Open the dialog whenever the portal has a print for somebody.
+///
+/// The host holds a connection to the portal and says so the moment one
+/// arrives; this is the half that listens. Without it the dialog would only ever
+/// open if a person went looking for it, which nobody does - they pressed Print
+/// in another app and expect to be asked.
+///
+/// The event carries NOTHING but the fact. The pending print is fetched here, so
+/// there is one path to it rather than two that could disagree about which
+/// document is on screen.
+export async function watchForPrints(): Promise<UnlistenFn | null> {
+  if (!tauriAvailable) return null;
+  return listen("arlen://print-requested", () => {
+    void openPrintDialog();
+  });
 }
 
 /// Send the job. Live: `submit_print` recalls the staged portal settings by the

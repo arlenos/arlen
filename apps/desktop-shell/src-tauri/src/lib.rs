@@ -307,6 +307,11 @@ pub fn run() {
                     brightness::replay_persisted_brightness(cfg.display.brightness).await;
                 }
             });
+            // Hold a connection to the print portal so a print reaches the
+            // dialog the moment it arrives. Without it the portal parks on a
+            // print nobody comes for and the app that asked hangs until the
+            // wait times out.
+            print_dialog::watch_for_prints(app.handle().clone());
             let notif_writer = notifications::start(app.handle().clone());
             app.manage(notif_writer);
             clipboard_history::start(

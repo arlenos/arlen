@@ -54,7 +54,13 @@ WAITING: dict[str, str] = {
         "the image stages no spooler - `daemons/print/src/cups.rs` speaks IPP to "
         "localhost:631 and `cups` is in neither mkosi.conf nor the build steps - and "
         "whether Arlen ships CUPS or prints direct to an IPP-Everywhere printer is an "
-        "open decision. Advertising it first would ship a print that silently fails"
+        "open decision. Advertising it first would ship a print that silently fails. "
+        "RE-MEASURED 4 Sep: still no `cups` anywhere in the image config. The rest of "
+        "the path was finished that day - the backend asks the shell's dialog, the "
+        "shell holds a connection open so a print reaches it the moment it arrives, "
+        "and the dialog's answer is what CUPS is handed - so this line is now the "
+        "ONLY thing between a print and a person. FALSE WHEN: the image stages a "
+        "spooler, or the direct-IPP decision is taken"
     ),
 }
 

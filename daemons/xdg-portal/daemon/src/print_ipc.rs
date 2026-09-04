@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{oneshot, Mutex, Notify};
 use xdg_portal_arlen_protocol::print::{
     DialogRequest, DialogResponse, PrintChoice, PrintRequest,
 };
@@ -47,6 +47,10 @@ pub enum Answer {
 /// Documents waiting for somebody to choose.
 #[derive(Default)]
 pub struct PendingPrints {
+    /// Woken when a document joins the queue, for the connections parked on
+    /// `Await`. A notify rather than a channel per waiter: every waiter wants
+    /// the same news and none of them wants a copy of it.
+    arrived: std::sync::Arc<Notify>,
     /// Waiting to be shown, oldest first. A request leaves the queue when the
     /// shell takes it, so two dialogs never open on one document.
     queue: VecDeque<PrintRequest>,
@@ -62,7 +66,19 @@ impl PendingPrints {
         let (tx, rx) = oneshot::channel();
         self.answers.insert(request.id.clone(), tx);
         self.queue.push_back(request);
+        // Every parked connection, not one: a shell that reconnected while
+        // another was still winding down would otherwise be the one told.
+        self.arrived.notify_waiters();
         rx
+    }
+
+    /// A handle to wait on for the next arrival.
+    ///
+    /// Cloned out rather than awaited under the lock, which is the whole point:
+    /// a waiter holding the registry's mutex would stop the very registration it
+    /// is waiting for.
+    pub fn arrivals(&self) -> std::sync::Arc<Notify> {
+        std::sync::Arc::clone(&self.arrived)
     }
 
     /// The next document to show, if any.
@@ -105,6 +121,10 @@ pub async fn handle(shared: &Shared, request: DialogRequest) -> DialogResponse {
         DialogRequest::Poll => DialogResponse::Pending {
             request: pending.take_next(),
         },
+        // Handled by the caller, which has to release the lock before waiting.
+        DialogRequest::Await => DialogResponse::Pending {
+            request: pending.take_next(),
+        },
         DialogRequest::Submit { id, settings } => {
             if pending.answer(&id, Answer::Print(Box::new(settings))) {
                 DialogResponse::Taken
@@ -138,6 +158,22 @@ pub async fn serve_connection(shared: &Shared, mut stream: UnixStream) {
         return;
     }
     let response = match serde_json::from_slice::<DialogRequest>(&body) {
+        // The parked ask: answer the moment something arrives, or when this
+        // connection goes away. Waiting happens with the registry's lock RELEASED
+        // - holding it would block the registration being waited for - so the
+        // queue is re-checked after each wake rather than trusted from before it.
+        Ok(DialogRequest::Await) => loop {
+            let arrivals = {
+                let mut pending = shared.lock().await;
+                if let Some(request) = pending.take_next() {
+                    break DialogResponse::Pending {
+                        request: Some(request),
+                    };
+                }
+                pending.arrivals()
+            };
+            arrivals.notified().await;
+        },
         Ok(request) => handle(shared, request).await,
         Err(e) => {
             tracing::warn!("print dialog: unreadable request: {e}");
@@ -360,6 +396,57 @@ mod tests {
         client.read_exact(&mut out).await.unwrap();
         let answer: DialogResponse = serde_json::from_slice(&out).unwrap();
         assert!(matches!(answer, DialogResponse::Pending { request: Some(r) } if r.id == "p4"));
+    }
+
+    #[tokio::test]
+    async fn a_parked_ask_is_answered_when_a_document_arrives() {
+        // The wake signal. Without it the shell has no reason to look, and a
+        // print waits out its timeout in front of somebody who was never told.
+        let shared: Shared = Arc::new(Mutex::new(PendingPrints::default()));
+        let (mut client, server) = UnixStream::pair().unwrap();
+        tokio::spawn({
+            let shared = Arc::clone(&shared);
+            async move { serve_connection(&shared, server).await }
+        });
+
+        let body = serde_json::to_vec(&DialogRequest::Await).unwrap();
+        client
+            .write_all(&(body.len() as u32).to_be_bytes())
+            .await
+            .unwrap();
+        client.write_all(&body).await.unwrap();
+
+        // Nothing is waiting yet, so the connection is parked. Register one.
+        tokio::task::yield_now().await;
+        let _rx = shared.lock().await.register(request("late"));
+
+        let mut len = [0u8; 4];
+        client.read_exact(&mut len).await.unwrap();
+        let mut out = vec![0u8; u32::from_be_bytes(len) as usize];
+        client.read_exact(&mut out).await.unwrap();
+        let answer: DialogResponse = serde_json::from_slice(&out).unwrap();
+        assert!(matches!(answer, DialogResponse::Pending { request: Some(r) } if r.id == "late"));
+    }
+
+    #[tokio::test]
+    async fn a_parked_ask_takes_what_is_already_there() {
+        // A shell reconnecting mid-print must not wait for the NEXT one.
+        let shared: Shared = Arc::new(Mutex::new(PendingPrints::default()));
+        let _rx = shared.lock().await.register(request("already"));
+        let (mut client, server) = UnixStream::pair().unwrap();
+        tokio::spawn({
+            let shared = Arc::clone(&shared);
+            async move { serve_connection(&shared, server).await }
+        });
+        let body = serde_json::to_vec(&DialogRequest::Await).unwrap();
+        client.write_all(&(body.len() as u32).to_be_bytes()).await.unwrap();
+        client.write_all(&body).await.unwrap();
+        let mut len = [0u8; 4];
+        client.read_exact(&mut len).await.unwrap();
+        let mut out = vec![0u8; u32::from_be_bytes(len) as usize];
+        client.read_exact(&mut out).await.unwrap();
+        let answer: DialogResponse = serde_json::from_slice(&out).unwrap();
+        assert!(matches!(answer, DialogResponse::Pending { request: Some(r) } if r.id == "already"));
     }
 
     #[test]

@@ -214,6 +214,16 @@ pub mod print {
     pub enum DialogRequest {
         /// Is anything waiting to be printed?
         Poll,
+        /// Hold this connection open until something IS.
+        ///
+        /// THE WAKE SIGNAL, and without it the rest of this is unreachable. The
+        /// dialog lives in the shell, which has no reason to ask unless somebody
+        /// tells it to - so the first cut had a portal parked on a print nobody
+        /// would ever come for, and an app whose print would hang until the
+        /// dialog timed out. A held connection says it the moment it happens,
+        /// costs one socket, and needs no event bus, no new dependency in the
+        /// portal and no timer in the shell.
+        Await,
         /// Print it with these choices.
         Submit { id: String, settings: PrintChoice },
         /// The person declined. Nothing is printed.
