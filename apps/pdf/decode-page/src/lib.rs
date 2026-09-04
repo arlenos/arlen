@@ -172,6 +172,24 @@ pub fn render_page(bytes: &[u8], page: usize, scale: f32) -> Result<Raster, Stri
 /// engine's source. `ARLEN_PDFIUM_LIB` names a specific library for a
 /// deployment or a test; otherwise the system one is used.
 ///
+/// The reason a worker gives when it has no engine to draw with.
+///
+/// A TOKEN, not the sentence it used to be. The host answered `no-renderer` only
+/// when the worker BINARY was absent, so a worker that is present and cannot load
+/// libpdfium - which is every image today - came back as `refused`, and the reader
+/// printed "could not be drawn" over every page: true, and the wrong cause. The
+/// distinction is a deployment fact, so it travels as a token the host can map and
+/// the window turns into its own sentence, which is what the sandbox's own comment
+/// says a routine condition should do. The prose it replaced still exists, on the
+/// detail line, where the journal keeps it and no reader meets it.
+///
+/// MUST MATCH `NO_RENDERER` in `apps/pdf/src-tauri/src/lib.rs`. The two crates
+/// share no dependency on purpose - the host depending on this one would pull
+/// `pdfium-render` into the reader, which is exactly what a separate worker is
+/// for - so the string is written twice and both sides say so, the way the
+/// canary prefix is shared between the agent and the knowledge daemon.
+pub const NO_ENGINE: &str = "no-renderer";
+
 /// # Errors
 /// A sentence naming the missing library rather than a panic, because "this
 /// machine has no PDF engine installed" is a deployment fact a reader has to be
@@ -188,13 +206,13 @@ fn library() -> Result<pdfium_render::prelude::Pdfium, String> {
     if let Some(path) = std::env::var_os("ARLEN_PDFIUM_LIB") {
         let path = path.to_string_lossy().into_owned();
         return Pdfium::bind_to_library(&path).map(Pdfium::new).map_err(|e| {
-            eprintln!("  detail: {e}");
-            format!("the PDF engine at {path} could not be loaded")
+            eprintln!("  detail: the PDF engine at {path} could not be loaded: {e}");
+            NO_ENGINE.to_string()
         });
     }
     Pdfium::bind_to_system_library().map(Pdfium::new).map_err(|e| {
-        eprintln!("  detail: {e}");
-        "no PDF engine (libpdfium) is installed on this machine".to_string()
+        eprintln!("  detail: no PDF engine (libpdfium) on this machine: {e}");
+        NO_ENGINE.to_string()
     })
 }
 
@@ -210,6 +228,27 @@ mod tests {
     /// suite that says the renderer works when nothing ran. Where the library
     /// comes from is an open packaging question, not something a test can paper
     /// over.
+    /// A machine with no engine says so as a TOKEN, not as prose.
+    ///
+    /// The case this whole change is about, and the one every machine in play is
+    /// in today: the host maps this token to `no-renderer` so the reader can say
+    /// "nothing installed can draw this" instead of "could not be drawn" over
+    /// every page. Skipped where an engine IS present, because then there is no
+    /// failure to make - and said out loud rather than silently, for the same
+    /// reason `engine()` below is.
+    #[test]
+    fn a_machine_with_no_engine_answers_with_the_token_the_host_maps() {
+        if engine() {
+            eprintln!("SKIPPED: this machine has a PDF engine, so the no-engine path cannot be taken");
+            return;
+        }
+        let err = render_page(b"%PDF-1.4\n", 0, 1.0).expect_err("no engine, so no raster");
+        assert_eq!(
+            err, NO_ENGINE,
+            "the host matches this string exactly; prose here becomes `refused` on every page"
+        );
+    }
+
     fn engine() -> bool {
         if library().is_ok() {
             return true;
