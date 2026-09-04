@@ -1,5 +1,14 @@
 # Starting permission profile for Iotas (a notes app).
-# Notes are kept locally; Nextcloud sync is opt-in. It needs no network and no user files. No Knowledge Graph access.
+# Saves notes to Documents; sync is a refinement an observe pass can add, never
+# a blanket network grant up front. No Knowledge Graph access.
+#
+# This id said the opposite - "it needs no network and no user files" - while the
+# other two ids for the same app say the notes are files under Documents. A notes
+# app that cannot reach where its notes live cannot open one, so the two that
+# name the location win over the one that does not.
 [info]
 app_id = "org.gnome.gitlab.cheywood.Iotas"
 tier = "third-party"
+
+[filesystem]
+documents = true

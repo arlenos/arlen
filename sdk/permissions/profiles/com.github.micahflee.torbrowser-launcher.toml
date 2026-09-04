@@ -1,9 +1,18 @@
-# Starting permission profile for Tor Browser Launcher (it downloads, verifies
-# and launches the Tor Browser). Network is its function; it installs into its own
-# data directory, so no standing user-files grant and no Knowledge Graph access.
+# Starting permission profile for the Tor Browser launcher (a web browser).
+# The open web over Tor is its function, so broad network; saves to Downloads.
+# Its own config dir is a launcher grant. No Knowledge Graph access.
+#
+# This id described only the FETCH - "it installs into its own data directory,
+# so no standing user-files grant" - which is true and half the story: the
+# thing it launches is a browser, and a browser with no Downloads cannot save
+# what somebody asked it to save. Same package, so it carries the grant that
+# covers both of the jobs it does.
 [info]
 app_id = "com.github.micahflee.torbrowser-launcher"
 tier = "third-party"
+
+[filesystem]
+downloads = true
 
 # NETWORK-SCOPE-PENDING: this grants the whole network because a narrowed one has
 # nowhere to send its refusal. HALF of that is now built: `arlen-run` installs the

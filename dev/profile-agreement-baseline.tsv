@@ -68,7 +68,6 @@ snes9x	com.snes9x.Snes9x snes9x
 solfege	org.gnome.Solfege solfege
 stellarium	org.stellarium.Stellarium stellarium
 synfigstudio	org.synfig.SynfigStudio synfigstudio
-torbrowser-launcher	com.github.micahflee.torbrowser-launcher org.torproject.torbrowser-launcher
 vorta	com.borgbase.Vorta vorta
 wardrobe	com.github.swordpuffin.wardrobe io.github.swordpuffin.wardrobe
 wesnoth	org.wesnoth.Wesnoth wesnoth
