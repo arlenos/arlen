@@ -36,6 +36,9 @@
 use std::path::PathBuf;
 
 /// Where the shared vector table lives, relative to this file.
+// Only the agreement test reads it, so the release build has no use for it and
+// says so rather than carrying a path nothing resolves.
+#[cfg(test)]
 const VECTOR_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dev/fixtures/sensing-vectors");
 
 /// The file holding the user's switch positions.

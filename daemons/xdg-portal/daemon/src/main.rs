@@ -14,6 +14,7 @@ mod interfaces;
 mod consent;
 mod picker_ipc;
 mod picker_lifecycle;
+mod print_ipc;
 mod request;
 mod sandbox;
 mod sensing;
@@ -91,6 +92,28 @@ async fn main() -> anyhow::Result<()> {
 
     let state = DaemonState::new(picker_ipc, picker_lifecycle);
 
+    // The print dialog handback. Bound before the interfaces are served, so a
+    // print that arrives in the first moments has somewhere to wait rather than
+    // finding no socket and going ahead unattended.
+    let print_dialog: crate::print_ipc::Shared = std::sync::Arc::new(
+        tokio::sync::Mutex::new(crate::print_ipc::PendingPrints::default()),
+    );
+    let print_socket = xdg_portal_arlen_protocol::print::socket_path();
+    match crate::print_ipc::bind(&print_socket) {
+        Ok(listener) => {
+            tracing::info!(socket = %print_socket.display(), "print dialog handback listening");
+            tokio::spawn(crate::print_ipc::run(listener, print_dialog.clone()));
+        }
+        // Not fatal, and the consequence is stated rather than left to be
+        // discovered: with no socket nobody can answer a print, so every print
+        // waits out its timeout and is refused. That is the safe direction, and
+        // the rest of the portal keeps working.
+        Err(e) => tracing::error!(
+            socket = %print_socket.display(),
+            "cannot bind the print dialog handback, so printing will be refused: {e}"
+        ),
+    }
+
     let _conn = connection::Builder::session()
         .context("failed to connect to session bus")?
         .name(BUS_NAME)
@@ -106,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
         // the PipeWire producer makes Start functional (capture-active #12).
         .serve_at(OBJECT_PATH, ScreenCast::new(state.clone()))
         .with_context(|| format!("failed to serve ScreenCast at {OBJECT_PATH}"))?
-        .serve_at(OBJECT_PATH, Print::new())
+        .serve_at(OBJECT_PATH, Print::new(print_dialog.clone()))
         .with_context(|| format!("failed to serve Print at {OBJECT_PATH}"))?
         .build()
         .await
