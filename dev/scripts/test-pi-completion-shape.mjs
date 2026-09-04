@@ -14,9 +14,14 @@
 // This drives a real pi against a stand-in socket in both shapes and asserts the
 // difference, so the endpoint's `completion_to_sse` has a check outside its own
 // unit tests - a Rust test proves the bytes are what we meant, this proves pi
-// accepts them. It takes about forty seconds and needs no model, no network and
-// no VM, which is the point: the twenty-minute image loop is the wrong instrument
-// for a question about a JSON shape.
+// accepts them. It needs no model, no network and no VM, which is the point: the
+// twenty-minute image loop is the wrong instrument for a question about a JSON
+// shape.
+//
+// It waits for the outcome rather than sleeping a fixed span. A 20s sleep per
+// turn passed on an idle laptop and went red inside a full pre-commit run, where
+// pi had not finished starting when the clock ran out: the gate was measuring the
+// machine's load, not pi's behaviour, and it failed an unrelated commit.
 //
 // Skips (exit 0) when pi or the node runtime is absent, the way the e2e gate
 // tests do - this is a developer control, not a gate that fails on a fresh clone.
@@ -84,7 +89,11 @@ const AS_FRAMES =
 /// pi made of it. stdin is held OPEN throughout: closing it makes pi exit before
 /// its first retry, which is what made the original VM journal look like a turn
 /// that simply stopped rather than one that errored and retried.
-async function pi_turn(body, contentType) {
+///
+/// `settled` says when the turn has shown what it is going to show, so a loaded
+/// machine gets the time it needs and an idle one is not made to wait for it.
+/// The deadline is the give-up, not the measurement.
+async function pi_turn(body, contentType, settled, deadline_ms = 90000) {
   const dir = mkdtempSync(join(tmpdir(), "pi-shape-"));
   const sock = join(dir, "proxy.sock");
   mkdirSync(join(dir, ".pi/agent"), { recursive: true });
@@ -126,29 +135,46 @@ async function pi_turn(body, contentType) {
   pi.stdout.on("data", (d) => events.push(String(d)));
   pi.stdin.write(JSON.stringify({ type: "prompt", message: "say hello" }) + "\n");
 
-  // Long enough for pi's own retry ladder (4s then 8s) to run out, so the
-  // failing shape is measured after it has finished trying rather than during.
-  await new Promise((r) => setTimeout(r, 20000));
+  const read = () => {
+    const text = events.join("");
+    return {
+      dials,
+      answered: text.includes(ANSWER),
+      errored: text.includes('"stopReason":"error"'),
+      retries: (text.match(/auto_retry_start/g) || []).length,
+    };
+  };
+
+  const started = Date.now();
+  while (!settled(read()) && Date.now() - started < deadline_ms) {
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  // A turn that has just said one thing may be about to say another - an error
+  // after an answer would change the verdict - so let the tail land before the
+  // checks read it.
+  await new Promise((r) => setTimeout(r, 1500));
+  const outcome = read();
+
   pi.kill();
   srv.close();
   rmSync(dir, { recursive: true, force: true });
-
-  const text = events.join("");
-  return {
-    dials,
-    answered: text.includes(ANSWER),
-    errored: text.includes('"stopReason":"error"'),
-    retries: (text.match(/auto_retry_start/g) || []).length,
-  };
+  return outcome;
 }
 
-const frames = await pi_turn(AS_FRAMES, "text/event-stream");
+// The good shape is settled once the answer is through.
+const frames = await pi_turn(AS_FRAMES, "text/event-stream", (s) => s.answered);
 check("pi dials the stand-in at all", frames.dials > 0);
 check("frames: pi delivers the answer", frames.answered);
 check("frames: no turn ends in error", !frames.errored);
 check("frames: no retries were needed", frames.retries === 0);
 
-const object = await pi_turn(AS_OBJECT, "application/json");
+// The bad shape is settled once it has errored AND retried at least once, which
+// is the whole claim: pi treats a plain JSON object as a turn that failed.
+const object = await pi_turn(
+  AS_OBJECT,
+  "application/json",
+  (s) => s.errored && s.retries > 0 && s.dials > 1,
+);
 check("object: pi delivers NOTHING", !object.answered);
 check("object: the turn ends in error", object.errored);
 check("object: pi retries silently", object.retries > 0);
