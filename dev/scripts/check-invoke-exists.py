@@ -291,6 +291,19 @@ HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
 
 # The commands with no host, as of 9 August, with what each one is. Keeping the
 # reason next to the name is the difference between an inventory and an alibi.
+#
+# EVERY REASON SHOULD CARRY ITS OWN FALSIFIER, written as `FALSE WHEN:`. The
+# convention was added on 4 September after five entries in two days turned out
+# to describe a state that had ended - a dialog the portal "does not consult"
+# that Tim had decided to build, a job contract that was already written, a
+# thumbnailer that existed, a confinement belonging to a different process. Each
+# read as a verdict because it was written as a description, and a description
+# ages while a name does not.
+#
+# A falsifier is one sentence naming what somebody could go and check. It costs a
+# line and it turns "this is blocked" into "this is blocked, and here is how you
+# would know it is not any more", which is the difference between a reader
+# believing the list and a reader testing it.
 KNOWN: dict[str, dict[str, str]] = {
     # The mailbox MODEL, which `mail-app.md` §6 leaves open: what a folder is on
     # this machine and what an id names. Not a missing function - a shape nobody
@@ -298,6 +311,10 @@ KNOWN: dict[str, dict[str, str]] = {
     # The store answers a real host with an empty, honestly unconnected mailbox
     # rather than a sample, so the catch does not invent a mailbox either.
     "mail": {
+        # FALSE WHEN: `mail-app.md` §6 names a mailbox model. It currently says in
+        # its own words that the section "produced no surviving claims, so any
+        # scope list I wrote now would be convention dressed as research", and §7
+        # adds that encryption is the last blocker to calling the strand planned.
         "mail_folders": (
             "the mailbox model is undecided (mail-app.md §6); a real host gets an "
             "unconnected mailbox rather than a sample"
@@ -331,6 +348,10 @@ KNOWN: dict[str, dict[str, str]] = {
     # constraint should say how it was checked, because the next reader cannot
     # tell a measurement from an assumption.
     "knowledge": {
+        # FALSE WHEN: a bridge runs on a booted image and writes entity rows - the
+        # Obsidian one exists as an EXAMPLE with no image step and no unit, so
+        # today the read would return four empty sections on every machine.
+        # `knowledge-app.md` decision 8 sequences it exactly this way.
         "knowledge_library": (
             "the library view. Traced: the bridge-ingest daemon writes into dynamic "
             "entity tables under a namespace, and the schema registry lists the "
@@ -359,11 +380,16 @@ KNOWN: dict[str, dict[str, str]] = {
         # with the daemon". So the whole panel is reachable only by typing the
         # route. That is now a navigation decision rather than a missing backend,
         # and it belongs to whoever owns the panel's surface.
+        # Half of what this said stopped being true on 4 September: the panel has
+        # a navigation row again, so it is no longer reachable only by typing the
+        # route. What remains is the whole of the reason.
         "set_bottle_config": (
             "bottle settings. Needs the compat recipe, which is its own piece "
             "(forage-distributed and signed) and does not exist - so there is no "
-            "measured value for it to write. The panel around it is reachable only "
-            "by route: `navigation.ts` has no entry for it yet"
+            "measured value for these controls to write. A switch drawn from an "
+            "invented default writes to a bottle that does not hold it. FALSE WHEN: "
+            "a recipe format exists and a bottle records a Wine version, DLL "
+            "overrides or a window mode that can be read back"
         ),
         # The four printer entries that stood here are gone rather than fixed, and
         # the way they were wrong is worth keeping: the CUPS backend exists and
@@ -383,6 +409,10 @@ KNOWN: dict[str, dict[str, str]] = {
         # says what is left is "the PipeWire producer that makes `Start` return
         # real node ids". Until that producer exists there is nothing for these
         # shell commands to hand back, so they are one job, not five.
+        # FALSE WHEN: a PipeWire producer exists and the portal's `Start` returns
+        # real node ids - at which point `arlen.portal` can list ScreenCast in its
+        # `Interfaces` line, which is the single check for whether this is still
+        # true. Re-measured 4 Sep: no `pipewire` dependency anywhere in the tree.
         "cancel_screencast": "cancelling a screencast (PipeWire producer)",
         "start_screencast": "starting a screencast (PipeWire producer)",
         "stop_capture": "stopping a capture (PipeWire producer)",
@@ -393,6 +423,8 @@ KNOWN: dict[str, dict[str, str]] = {
         ),
         # Dictation needs a speech engine, which this system does not have and has
         # not decided to have. Listed so it is not mistaken for plumbing.
+        # FALSE WHEN: a speech engine is provisioned on the image - a binary or
+        # model this tree ships and starts, not a crate somebody could add.
         "dictation_status": "the dictation indicator (no speech engine)",
         "stop_dictation": "stopping dictation (no speech engine)",
     },
@@ -403,6 +435,12 @@ KNOWN: dict[str, dict[str, str]] = {
         # three items nobody has picked up.
     },
     "text-editor": {
+        # FALSE WHEN: the gate registry classifies an edit action AND `executor_live`
+        # is on. Measured 4 Sep and worth writing down rather than re-deriving:
+        # the store models hunks the assistant ALREADY APPLIED on its own, which is
+        # the autonomous half and is exactly what that flag gates. A propose-only
+        # version - every hunk held for confirm - needs neither, and is a different
+        # feature from the one the surface draws rather than a smaller cut of it.
         "ai_edit": (
             "proposing an assistant edit (the gated edit path, executor-live)"
         ),
