@@ -42,3 +42,36 @@ require_fresh() {
     fi
     return 0
 }
+
+# Fail if the built frontend under $1 is older than any source under the rest.
+#
+# WHY THIS HALF WAS MISSING, and it cost a whole verification. `require_fresh`
+# reads `.rs`, and a drive whose frontend is SERVED from a preview
+# (`SHOOT_FRONTEND_SERVED=1`) deliberately compares the Rust only, because the
+# binary genuinely does not carry the frontend on that path. What nothing then
+# checked is the thing actually on screen: `vite preview` serves `build/`, and
+# `build/` is written by a command nobody is forced to run. On 4 September the
+# mail drive photographed a frontend eighty-nine minutes old, passed, and its
+# verdict was about a page no longer in the tree.
+#
+# Same mtime reasoning as above: a checkout makes it fire, which is the cheap
+# direction to be wrong in.
+require_fresh_frontend() {
+    _ff_build="$1"
+    shift
+    if [ ! -f "$_ff_build/index.html" ]; then
+        echo "!! no built frontend at $_ff_build (run: npm run build)" >&2
+        return 1
+    fi
+    _ff_newer="$(find "$@" \
+        \( -name '*.svelte' -o -name '*.ts' -o -name '*.js' -o -name '*.css' -o -name '*.html' \) \
+        -newer "$_ff_build/index.html" -print -quit 2>/dev/null || true)"
+    if [ -n "$_ff_newer" ]; then
+        echo "!! the built frontend at $_ff_build is OLDER than its source" >&2
+        echo "   ($_ff_newer changed since). The preview would serve that build and" >&2
+        echo "   this suite would report on a page that is not in the tree." >&2
+        echo "   Rebuild it first: npm run build" >&2
+        return 1
+    fi
+    return 0
+}
