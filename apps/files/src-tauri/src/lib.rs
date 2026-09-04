@@ -6,6 +6,7 @@
 //! richly in the meantime. Filesystem mutations (`files_op`) arrive
 //! with the operations UI.
 
+mod jobs;
 mod ai_gate;
 mod capability;
 mod remote;
@@ -1009,7 +1010,7 @@ fn bad_request(why: &str) -> OpProblem {
 /// `policy` is the conflict policy for copy/move ("fail" when absent);
 /// it is a proposed contract extension, flagged, not silently invented.
 #[tauri::command]
-fn files_op(
+async fn files_op(
     kind: String,
     src: Vec<String>,
     dst: Option<String>,
@@ -1017,6 +1018,17 @@ fn files_op(
     undo: tauri::State<'_, Mutex<UndoStack>>,
 ) -> Result<(), OpProblem> {
     let dir = root().map_err(|why| OpProblem::Io { why })?;
+    // The Activity/Jobs surface. Registered before the first entry so a long
+    // copy has a row from the start, and `None` when the daemon is unreachable -
+    // the operation runs identically either way (`jobs.rs` explains why).
+    let job = if jobs::worth_reporting(&kind, src.len() as u64) {
+        jobs::JobHandle::start(jobs::title_for(&kind, src.len() as u64), src.len() as u64).await
+    } else {
+        None
+    };
+    // Whether the person stopped it midway, so the finish says so rather than
+    // reporting a completed operation.
+    let mut stopped = false;
     let pol = conflict_policy(policy.as_deref());
     // The undoable ops this call produced; recorded as one batch on full success
     // (a permanent delete records nothing - it has no inverse). A `Skipped`
@@ -1045,18 +1057,37 @@ fn files_op(
         }
         "trash" => {
             let trash = trash_dir().map_err(|why| OpProblem::Io { why })?;
-            for s in &src {
+            for (done, s) in src.iter().enumerate() {
+                if let Some(j) = &job {
+                    if j.cancelled() {
+                        stopped = true;
+                        break;
+                    }
+                }
                 let trashed = ops::trash_entry(&dir, rel(s), &trash, Path::new(s))
                     .map_err(OpProblem::from)?;
                 undoable.push(UndoableOp::Trashed {
                     trashed_name: trashed.trashed_name,
                     original: PathBuf::from(rel(s)),
                 });
+                if let Some(j) = &job {
+                    j.advance(done as u64 + 1, src.len() as u64).await;
+                }
             }
         }
         "copy" | "move" => {
             let dest_dir = dst.ok_or_else(|| bad_request("copy and move need the destination folder"))?;
-            for s in &src {
+            for (done, s) in src.iter().enumerate() {
+                // Between entries, never inside one: a cancel that landed halfway
+                // through a file would leave a half-written target nobody asked
+                // for, and the entry boundary is the only place the loop knows
+                // its own state.
+                if let Some(j) = &job {
+                    if j.cancelled() {
+                        stopped = true;
+                        break;
+                    }
+                }
                 let (_, name) = split_parent(s).map_err(|why| bad_request(&why))?;
                 let target = format!("{}/{}", dest_dir.trim_end_matches('/'), name);
                 let outcome = if kind == "copy" {
@@ -1078,21 +1109,42 @@ fn files_op(
                     }
                     _ => {} // Skipped (or a mismatched shape): nothing to undo.
                 }
+                if let Some(j) = &job {
+                    j.advance(done as u64 + 1, src.len() as u64).await;
+                }
             }
         }
         "duplicate" => {
-            for s in &src {
+            for (done, s) in src.iter().enumerate() {
+                if let Some(j) = &job {
+                    if j.cancelled() {
+                        stopped = true;
+                        break;
+                    }
+                }
                 if let ops::OpOutcome::Created { target } =
                     ops::copy_entry(&dir, rel(s), &dir, rel(s), ops::ConflictPolicy::Rename)
                         .map_err(OpProblem::from)?
                 {
                     undoable.push(UndoableOp::Created { path: target });
                 }
+                if let Some(j) = &job {
+                    j.advance(done as u64 + 1, src.len() as u64).await;
+                }
             }
         }
         "delete" => {
-            for s in &src {
+            for (done, s) in src.iter().enumerate() {
+                if let Some(j) = &job {
+                    if j.cancelled() {
+                        stopped = true;
+                        break;
+                    }
+                }
                 ops::delete_permanent(&dir, rel(s)).map_err(OpProblem::from)?;
+                if let Some(j) = &job {
+                    j.advance(done as u64 + 1, src.len() as u64).await;
+                }
             }
             // A permanent delete has no inverse; nothing is recorded.
         }
@@ -1104,6 +1156,18 @@ fn files_op(
     journal_undo_ops(&undoable);
     if let Ok(mut stack) = undo.lock() {
         stack.record(undoable);
+    }
+    // What was done stands, and the zone is told which of the two happened. A
+    // stopped operation that reported "done" would claim a copy finished when
+    // part of it never ran, and the entries that DID complete are undoable
+    // exactly as they would be otherwise.
+    if let Some(j) = job {
+        if stopped {
+            j.finish("done", "Stopped. What had already been done was kept.")
+                .await;
+        } else {
+            j.finish("done", "").await;
+        }
     }
     Ok(())
 }
