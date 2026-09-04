@@ -227,7 +227,7 @@ async fn handle_client(
                     for view in &live_jobs {
                         let job_msg = proto::ServerMessage {
                             msg: Some(proto::server_message::Msg::JobUpdate(
-                                crate::dbus::job_view::to_job_update(view, false),
+                                crate::dbus::job_view::to_job_update_with_items(view, false),
                             )),
                         };
                         let _ = write_message(&mut *w, &job_msg).await;
@@ -450,6 +450,7 @@ mod tests {
             false,
             None,
             0,
+            vec!["a.txt".into(), "b.txt".into()],
         );
 
         let db = Arc::new(crate::storage::Database::open("sqlite::memory:").await.unwrap());

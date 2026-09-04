@@ -89,6 +89,17 @@ message JobUpdate {
     uint64 started_at = 13;    // epoch micros, for the elapsed line
     string egress_host = 14;   // the host this job reaches; empty = no egress
     bool removed = 15;         // true = the job is gone; clear it from the live set
+    // The entries this job works through, in order, so the zone can expand the
+    // aggregate bar into the per-item rows the plan insists on: never show only
+    // a total that hides the file names.
+    //
+    // SENT ONCE, with the registration, and left EMPTY on every later update.
+    // The list does not change while a job runs, and re-sending it on each tick
+    // would put the whole selection on the socket once per entry - a ten
+    // thousand file copy would move gigabytes to say the same names over and
+    // over. The consumer keeps what it was given. Which of them are done is not
+    // here either: `processed` says how many, and the order says which.
+    repeated string items = 16;
 }
 
 message NotificationAdded {

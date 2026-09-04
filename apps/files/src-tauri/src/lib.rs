@@ -1022,7 +1022,14 @@ async fn files_op(
     // copy has a row from the start, and `None` when the daemon is unreachable -
     // the operation runs identically either way (`jobs.rs` explains why).
     let job = if jobs::worth_reporting(&kind, src.len() as u64) {
-        jobs::JobHandle::start(jobs::title_for(&kind, src.len() as u64), src.len() as u64).await
+        jobs::JobHandle::start(
+            jobs::title_for(&kind, src.len() as u64),
+            src.len() as u64,
+            // The names as the person selected them, in the order the loop takes
+            // them, so the zone's rows and the progress count agree.
+            src.iter().map(|s| jobs::display_name(s)).collect(),
+        )
+        .await
     } else {
         None
     };

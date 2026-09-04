@@ -273,6 +273,7 @@ async fn try_connect(
                     ju.suspendable,
                     ju.started_at,
                     &ju.egress_host,
+                    ju.items,
                 );
                 if let Some(live) = app.try_state::<crate::jobs::LiveJobs>() {
                     crate::jobs::apply(&live, ju.id, row.clone(), ju.removed);

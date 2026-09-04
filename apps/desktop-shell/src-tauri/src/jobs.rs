@@ -21,6 +21,13 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 
+/// One entry inside a job, as the zone renders it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct JobItem {
+    pub name: String,
+    pub done: bool,
+}
+
 /// One real-unit metric, as the zone renders it ("84 of 240 files").
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct JobMetric {
@@ -49,6 +56,14 @@ pub struct JobRow {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub egress_host: Option<String>,
+    /// The entries this job works through, with the finished ones marked.
+    ///
+    /// The zone expands the aggregate bar into these rows: the plan is explicit
+    /// that showing only a total which hides the file names is the mistake
+    /// Chrome made. `done` is DERIVED here from the count and the order rather
+    /// than carried per item on the wire - the same fact twice is two facts that
+    /// eventually disagree.
+    pub items: Vec<JobItem>,
     /// When it began, epoch micros. The SHELL owns the visibility threshold, so
     /// this travels rather than a daemon-side decision about what is worth
     /// showing.
@@ -87,6 +102,7 @@ pub fn row_from_update(
     suspendable: bool,
     started_at: u64,
     egress_host: &str,
+    items: Vec<String>,
 ) -> JobRow {
     JobRow {
         id: id.to_string(),
@@ -112,6 +128,14 @@ pub fn row_from_update(
         error: (!state_message.is_empty()).then(|| state_message.to_string()),
         egress_host: (!egress_host.is_empty()).then(|| egress_host.to_string()),
         started_at,
+        items: items
+            .into_iter()
+            .enumerate()
+            .map(|(i, name)| JobItem {
+                name,
+                done: (i as u64) < processed,
+            })
+            .collect(),
     }
 }
 
@@ -125,15 +149,38 @@ pub fn new_live_jobs() -> LiveJobs {
 }
 
 /// Fold one update into the live set. `removed` takes the job out.
-pub fn apply(live: &LiveJobs, id: u64, row: JobRow, removed: bool) {
+///
+/// AN UPDATE WITH NO ENTRY LIST KEEPS THE ONE ALREADY HELD. The daemon sends the
+/// names once, with the registration, because re-sending them on every tick
+/// would put the whole selection on the socket once per entry. So a later update
+/// arriving with an empty list is saying nothing about the names, not saying
+/// there are none, and overwriting them would empty the expandable rows on the
+/// first tick after the job appeared.
+pub fn apply(live: &LiveJobs, id: u64, mut row: JobRow, removed: bool) {
     let Ok(mut map) = live.lock() else {
         return;
     };
     if removed {
         map.remove(&id);
-    } else {
-        map.insert(id, row);
+        return;
     }
+    if row.items.is_empty() {
+        if let Some(known) = map.get(&id) {
+            // Kept, and re-marked: the names are the ones already held, but how
+            // many are finished came with THIS tick.
+            let done = row.metrics.first().map_or(0, |m| m.processed);
+            row.items = known
+                .items
+                .iter()
+                .enumerate()
+                .map(|(i, it)| JobItem {
+                    name: it.name.clone(),
+                    done: (i as u64) < done,
+                })
+                .collect();
+        }
+    }
+    map.insert(id, row);
 }
 
 /// The jobs running right now, oldest first.
@@ -225,6 +272,7 @@ mod tests {
             false,
             started_at,
             "",
+            vec!["one.txt".into(), "two.txt".into()],
         )
     }
 
@@ -256,13 +304,13 @@ mod tests {
 
     #[test]
     fn a_job_with_no_total_yet_reports_no_metric_rather_than_a_zero() {
-        let r = row_from_update(1, "a", "t", "running", "", "bytes", 500, false, 0, 0.0, false, false, 1, "");
+        let r = row_from_update(1, "a", "t", "running", "", "bytes", 500, false, 0, 0.0, false, false, 1, "", Vec::new());
         assert!(r.metrics.is_empty(), "84 of 0 is not a sentence about anything");
     }
 
     #[test]
     fn a_networked_job_names_the_host_it_reaches() {
-        let r = row_from_update(1, "a", "t", "running", "", "bytes", 1, true, 2, 0.5, false, false, 1, "cdn.example");
+        let r = row_from_update(1, "a", "t", "running", "", "bytes", 1, true, 2, 0.5, false, false, 1, "cdn.example", Vec::new());
         assert_eq!(r.egress_host.as_deref(), Some("cdn.example"));
         let local = row(2, "running", 1);
         assert_eq!(local.egress_host, None, "a local job claims no destination");
@@ -277,6 +325,35 @@ mod tests {
         assert_eq!(live.lock().unwrap()[&1].state, "paused");
         apply(&live, 1, row(1, "done", 10), true);
         assert!(live.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_tick_with_no_names_keeps_the_ones_the_job_arrived_with() {
+        // The daemon sends the list once. An update that carries none is saying
+        // nothing about the names, and treating it as "there are none" would
+        // empty the expandable rows on the first tick after the job appeared.
+        let live = new_live_jobs();
+        apply(&live, 1, row(1, "running", 10), false);
+        let mut tick = row(1, "running", 10);
+        tick.items = Vec::new();
+        apply(&live, 1, tick, false);
+        let held = &live.lock().unwrap()[&1].items;
+        assert_eq!(
+            held.iter().map(|i| i.name.as_str()).collect::<Vec<_>>(),
+            vec!["one.txt", "two.txt"]
+        );
+    }
+
+    #[test]
+    fn the_first_of_the_names_are_marked_done_by_the_count() {
+        let r = row_from_update(
+            1, "a", "t", "running", "", "files", 2, true, 4, 0.5, false, false, 1, "",
+            vec!["a".into(), "b".into(), "c".into(), "d".into()],
+        );
+        assert_eq!(
+            r.items.iter().map(|i| i.done).collect::<Vec<_>>(),
+            vec![true, true, false, false]
+        );
     }
 
     #[test]
