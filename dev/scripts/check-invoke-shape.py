@@ -552,9 +552,6 @@ DEAD_INVOKES: dict[str, str] = {
     # listing, so it was superseded rather than waiting, and a shape nobody reads
     # is not a contract to negotiate.
     # the Windows-app (bottles) surface; no backend in the tree - needs a decision on whether this ships before the surface is finished
-    "windows_file_request": "the Windows-app (bottles) surface; no backend in the tree",
-    "windows_file_run": "the Windows-app (bottles) surface; no backend in the tree",
-    "windows_file_install": "the Windows-app (bottles) surface; no backend in the tree",
     "set_bottle_config": "the Windows-app (bottles) surface; no backend in the tree",
     # the wallpaper surface against wallpaperd; the daemon exists, these commands do not - coder
     # apps/knowledge has NO src-tauri at all: it is a SvelteKit frontend calling

@@ -6,6 +6,7 @@ mod consent_window;
 mod app_index;
 mod jobs;
 mod print_dialog;
+mod windows_file;
 mod printers;
 mod app_state;
 mod audio;
@@ -390,6 +391,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            windows_file::windows_file_request,
+            windows_file::windows_file_run,
+            windows_file::windows_file_install,
             jobs::list_jobs,
             jobs::cancel_job,
             jobs::pause_job,

@@ -187,9 +187,44 @@ pub enum LaunchOutcome {
         /// Why starting it failed.
         reason: String,
     },
+    /// The shell put the decision in front of the person instead of starting
+    /// anything.
+    ///
+    /// Opening a Windows executable is the case this exists for
+    /// (`windows-apps-plan.md`): a `.exe` is a foreign program, and running one
+    /// is a trust moment rather than a file type nobody has configured. The
+    /// shell raises its own prompt - what the app is, how well it is known to
+    /// work, what a fresh bottle would grant it, Run against Install - and
+    /// answers here.
+    ///
+    /// DISTINCT FROM `Started`, because nothing has started: a caller that
+    /// showed "opened" over a dialog somebody has not answered would be
+    /// reporting an act they have not decided to take. Distinct from `NoHandler`
+    /// for the opposite reason - something DID take the request, and telling a
+    /// person nothing opens `.exe` files while a dialog about that very file is
+    /// on screen is the surface contradicting itself.
+    Asked {
+        /// What is being asked about, for a caller that wants to say so.
+        what: String,
+    },
     /// The request was refused. The reason is deliberately coarse: a caller
     /// learning exactly which check it failed learns how to pass it.
     Refused,
+}
+
+/// The MIME types the shell asks about rather than hands to a handler.
+///
+/// Both Windows executable forms. A `.msi` is an installer and a `.exe` may be
+/// either, which the prompt says rather than guesses.
+pub const ASKS_FIRST: [&str; 2] = [
+    "application/x-ms-dos-executable",
+    "application/x-msi",
+];
+
+/// Whether a MIME type is one the shell asks about before opening.
+#[must_use]
+pub fn asks_first(mime: &str) -> bool {
+    ASKS_FIRST.contains(&mime)
 }
 
 /// The socket the shell serves this on, per user session.

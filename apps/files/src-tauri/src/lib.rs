@@ -1455,6 +1455,11 @@ async fn files_open(path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?
     {
         arlen_launch_contract::LaunchOutcome::Started { .. } => {}
+        // The shell asked instead of opening: a Windows executable, which is a
+        // trust decision rather than a file type. The request WAS taken, so this
+        // is not an error - and nothing has opened, so the graph is not told one
+        // did.
+        arlen_launch_contract::LaunchOutcome::Asked { .. } => return Ok(()),
         // THE OUTCOME, not a sentence about it. This used to return
         // `describe_launch(&other)` - an English sentence built here - which the
         // window then threw away in a `catch` whose comment promised a status
@@ -1487,6 +1492,11 @@ fn describe_launch(outcome: &arlen_launch_contract::LaunchOutcome) -> String {
         O::UnknownApplication { app_id } => format!("{app_id} is not installed"),
         O::MalformedEntry { app_id, reason } => format!("{app_id} is installed wrong: {reason}"),
         O::DidNotStart { app_id, reason } => format!("{app_id} did not start: {reason}"),
+        // The shell put the decision in front of the person - opening a Windows
+        // executable is a trust moment, not a file type. Nothing to say here:
+        // the dialog IS the answer, and a status line under it would be the file
+        // window narrating a question somebody is already reading.
+        O::Asked { .. } => String::new(),
         O::Refused => "the shell refused to open this".to_string(),
     }
 }

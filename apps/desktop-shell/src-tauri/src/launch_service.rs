@@ -183,6 +183,17 @@ pub fn self_caller() -> Caller {
 /// most like to be invisible, missing from the ledger because the code that
 /// records them was on the other side of a socket the shell never called.
 pub async fn dispatch(request: &proto::LaunchRequest, caller: &Caller) -> proto::LaunchOutcome {
+    // A WINDOWS EXECUTABLE IS ASKED ABOUT, NOT HANDED TO A HANDLER. Double-
+    // clicking a `.exe` is the on-ramp `wine-proton-plan.md` names, and running
+    // a foreign program is a trust moment rather than a file type nobody has
+    // configured - which is what it looked like until now, because no entry
+    // claims these types and every such open answered `no-handler`.
+    //
+    // Before the handler search rather than after: the answer must not depend on
+    // whether somebody happens to have a `.exe` handler configured.
+    if let Some(outcome) = ask_about_windows_file(request) {
+        return outcome;
+    }
     let env = XdgEnv::from_process();
     let handlers = search::load_mimeapps(&env);
     let confined = crate::shell_config::get_shell_config()
@@ -741,4 +752,60 @@ fn now_micros() -> i64 {
         // A clock before the epoch makes every window look closed, which refuses
         // rather than admits.
         .unwrap_or(0)
+}
+
+/// Raise the Windows-file prompt for a request that opens one, or `None` when
+/// the request is not that.
+///
+/// The prompt lives in the shell's own window, so this only registers what is
+/// waiting; the dialog reads it through `windows_file_request` and acts through
+/// the run and install commands.
+fn ask_about_windows_file(request: &proto::LaunchRequest) -> Option<proto::LaunchOutcome> {
+    // Only an Open. A caller that NAMED an application is asking for that
+    // application, and second-guessing it with a prompt about the document would
+    // be the shell overruling a request it was given plainly.
+    let (target, declared) = match request {
+        proto::LaunchRequest::Open { target, mime } => (target, mime.clone()),
+        proto::LaunchRequest::App { .. } => return None,
+    };
+    let path = target.path.clone()?;
+    // The caller's own type when it gave one, else the file's. The caller is
+    // trusted here for the same reason the resolver trusts it everywhere else:
+    // it can only ever make the shell ask a question about a file it already
+    // holds a path to.
+    let mime = declared.or_else(|| mime_of(target))?;
+    if !proto::asks_first(&mime) {
+        return None;
+    }
+    let raised = crate::windows_file::raise(
+        windows_file_slot(),
+        &path,
+        windows_file_ids(),
+    )?;
+    Some(proto::LaunchOutcome::Asked {
+        what: raised.file_name,
+    })
+}
+
+/// The one slot a waiting Windows file sits in, and the ids handed out for them.
+///
+/// Process-wide rather than Tauri-managed state: the launch service is a socket
+/// server started before the windows exist, and the command that reads the slot
+/// runs in the Tauri runtime. A shared static is what both can reach without
+/// threading a handle through a socket accept loop.
+fn windows_file_slot() -> &'static crate::windows_file::PendingSlot {
+    static SLOT: std::sync::OnceLock<crate::windows_file::PendingSlot> =
+        std::sync::OnceLock::new();
+    SLOT.get_or_init(crate::windows_file::new_slot)
+}
+
+/// Ids for the prompts, which only ever have to differ from each other.
+fn windows_file_ids() -> &'static std::sync::Mutex<u64> {
+    static IDS: std::sync::OnceLock<std::sync::Mutex<u64>> = std::sync::OnceLock::new();
+    IDS.get_or_init(|| std::sync::Mutex::new(0))
+}
+
+/// The Windows file waiting on a decision, for the shell's own commands.
+pub fn pending_windows_file() -> &'static crate::windows_file::PendingSlot {
+    windows_file_slot()
 }
