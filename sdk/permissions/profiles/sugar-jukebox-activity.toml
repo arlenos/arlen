@@ -1,0 +1,8 @@
+# Starting permission profile for a video app. Works with Videos; no network and
+# no Knowledge Graph by default.
+[info]
+app_id = "sugar-jukebox-activity"
+tier = "third-party"
+
+[filesystem]
+videos = true
