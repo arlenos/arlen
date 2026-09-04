@@ -242,21 +242,25 @@
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
-    background: #ffffff;
+    /* The sheet is paper, so its inks are shades of paper ink, not the
+       theme's: a preview of a white page reads the same on every theme. */
+    --paper: #ffffff;
+    --paper-ink: #1a1a1a;
+    background: var(--paper);
     color: var(--color-accent);
-    border: 1px solid color-mix(in srgb, #000 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--paper-ink) 12%, transparent);
     border-radius: var(--radius-input);
-    box-shadow: 0 6px 18px color-mix(in srgb, #000 18%, transparent);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--paper-ink) 18%, transparent);
   }
   .pd-sheet.mono {
-    color: #9ca3af;
+    color: color-mix(in srgb, var(--paper-ink) 35%, var(--paper));
   }
   .pd-sheet-label {
     font-size: var(--text-2xs);
     font-weight: 500;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #6b7280;
+    color: color-mix(in srgb, var(--paper-ink) 55%, var(--paper));
   }
   .pd-pager {
     display: inline-flex;
