@@ -132,6 +132,195 @@ pub enum FilterPattern {
     Mime { mime_type: String },
 }
 
+/// The print dialog's wire types (`printing-plan.md` PRN-R2/R3).
+///
+/// A SECOND SHAPE FOR A SECOND DIALOG, and the difference is why they do not
+/// share one enum. The file picker is a subprocess the daemon spawns per request
+/// and talks to over a socket it owns; the print dialog lives in the shell, which
+/// is already running and asks. So the traffic runs the other way: the shell
+/// polls for a pending request and posts back an answer, while the portal holds
+/// the document and waits.
+pub mod print {
+    use serde::{Deserialize, Serialize};
+
+    /// A document waiting for somebody to choose how to print it.
+    ///
+    /// Everything here is what the DIALOG needs to ask its question. The document
+    /// itself never crosses: the portal holds the bytes, the shell chooses the
+    /// printer, and the portal prints. A dialog that carried the document would
+    /// be handing the shell a copy of something an app only meant to print.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PrintRequest {
+        /// Correlates the answer with the waiting document.
+        pub id: String,
+        /// The document name, for the dialog header.
+        pub title: String,
+        /// The requesting app as the portal attested it, not as it named itself.
+        pub app_id: String,
+        /// The name to show for that app.
+        pub app_name: String,
+        /// How many pages, which drives the range control and the pager.
+        pub page_count: u32,
+    }
+
+    /// How the paper maps to the sheet. The shell's vocabulary, mapped to the
+    /// portal's `sides` strings on the way to CUPS.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum Duplex {
+        OneSided,
+        /// Flipped along the long edge, the usual book-style two-sided.
+        TwoSidedLong,
+        TwoSidedShort,
+    }
+
+    /// Colour or not.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum Color {
+        Color,
+        Mono,
+    }
+
+    /// Which pages.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum RangeMode {
+        All,
+        Current,
+        Range,
+    }
+
+    /// What the dialog came back with.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PrintChoice {
+        /// The printer's CUPS name.
+        pub printer: String,
+        pub copies: u32,
+        pub range_mode: RangeMode,
+        /// The typed range, meaningful only when `range_mode` is `Range`.
+        pub range_text: String,
+        pub duplex: Duplex,
+        pub color: Color,
+        /// The paper size as the dialog names it (`a4`, `letter`, `legal`).
+        pub paper: String,
+    }
+
+    /// Shell -> portal.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(tag = "op", rename_all = "snake_case")]
+    pub enum DialogRequest {
+        /// Is anything waiting to be printed?
+        Poll,
+        /// Print it with these choices.
+        Submit { id: String, settings: PrintChoice },
+        /// The person declined. Nothing is printed.
+        Cancel { id: String },
+    }
+
+    /// Portal -> shell.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(tag = "result", rename_all = "snake_case")]
+    pub enum DialogResponse {
+        /// The next waiting document, or nothing.
+        ///
+        /// A named field rather than a newtype: an internally tagged enum cannot
+        /// carry a bare `Option`, and `{"result":"pending","request":null}` is
+        /// the clearer wire shape anyway - the absence is stated rather than
+        /// inferred from a missing tag.
+        Pending { request: Option<PrintRequest> },
+        /// The answer was taken.
+        Taken,
+        /// No document is waiting under that id.
+        ///
+        /// Its own answer rather than an error: a dialog answering a request the
+        /// portal already gave up on (the app went away, the wait timed out) has
+        /// done nothing wrong, and the shell closes either way.
+        Unknown,
+    }
+
+    /// The socket the shell polls: `$XDG_RUNTIME_DIR/arlen/portal-print.sock`.
+    ///
+    /// Under the same prefix as the picker socket, for the same reason: every
+    /// Arlen runtime file in one place, and no collision with another portal
+    /// backend a person may have installed beside this one.
+    pub fn socket_path() -> std::path::PathBuf {
+        let base = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("/run"));
+        base.join("arlen").join("portal-print.sock")
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn choice() -> PrintChoice {
+            PrintChoice {
+                printer: "Office HP".into(),
+                copies: 2,
+                range_mode: RangeMode::Range,
+                range_text: "1-5, 8".into(),
+                duplex: Duplex::TwoSidedLong,
+                color: Color::Mono,
+                paper: "a4".into(),
+            }
+        }
+
+        /// The shell reads these fields straight out of the IPC, so a snake_case
+        /// name would arrive in the dialog as undefined and the control would
+        /// render its fallback with nothing saying why.
+        #[test]
+        fn the_shell_sees_the_names_it_declares() {
+            let json = serde_json::to_string(&choice()).unwrap();
+            assert!(json.contains("\"rangeMode\""), "{json}");
+            assert!(json.contains("\"rangeText\""), "{json}");
+            assert!(!json.contains("range_mode"), "{json}");
+
+            let req = PrintRequest {
+                id: "p1".into(),
+                title: "Quarterly report.pdf".into(),
+                app_id: "org.arlen.files".into(),
+                app_name: "Files".into(),
+                page_count: 12,
+            };
+            let json = serde_json::to_string(&req).unwrap();
+            assert!(json.contains("\"appId\"") && json.contains("\"pageCount\""), "{json}");
+        }
+
+        /// The dialog's own vocabulary, verbatim. `two-sided-long` is the shell's
+        /// word; the portal's `sides` string is `two-sided-long-edge`, and the
+        /// mapping between them is the portal's job rather than a rename here.
+        #[test]
+        fn the_choices_travel_as_the_dialog_spells_them() {
+            let json = serde_json::to_string(&choice()).unwrap();
+            assert!(json.contains("\"two-sided-long\""), "{json}");
+            assert!(json.contains("\"mono\""), "{json}");
+            assert!(json.contains("\"range\""), "{json}");
+        }
+
+        #[test]
+        fn a_request_round_trips() {
+            let r = DialogRequest::Submit {
+                id: "p1".into(),
+                settings: choice(),
+            };
+            let back: DialogRequest = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
+            assert_eq!(r, back);
+        }
+
+        #[test]
+        fn nothing_waiting_is_an_answer_not_an_error() {
+            let json = serde_json::to_string(&DialogResponse::Pending { request: None }).unwrap();
+            assert!(json.contains("\"request\":null"), "{json}");
+            let back: DialogResponse = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, DialogResponse::Pending { request: None });
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
