@@ -137,7 +137,7 @@ got=$(page Projects knowledge-projects.png)
 # No project signal was seeded, so the honest answer is an empty state - NOT an
 # error, and not an invented project. Either sentence is fine; a failure is not.
 say "projects says it has none rather than failing or inventing one" \
-  "$(printf '%s' "$got" | grep -qiE "could not|cannot|failed" && echo 0 || echo 1)" "$got"
+  "$(case "$got" in ""|REFUSED:*) echo 0;; *) printf '%s' "$got" | grep -qiE "could not|cannot|failed" && echo 0 || echo 1;; esac)" "$got"
 
 got=$(page Library knowledge-library.png)
 # `knowledge_library` has no host yet - it is on the known-missing list, waiting on
@@ -148,7 +148,7 @@ say "the library says it is not built rather than that a read failed" \
 
 got=$(page Searches knowledge-searches.png)
 say "the searches page answers without claiming a read failed" \
-  "$(printf '%s' "$got" | grep -qiE "could not|cannot|failed" && echo 0 || echo 1)" "$got"
+  "$(case "$got" in ""|REFUSED:*) echo 0;; *) printf '%s' "$got" | grep -qiE "could not|cannot|failed" && echo 0 || echo 1;; esac)" "$got"
 
 if [ "$fail" = 0 ]; then
   echo "every page answered from a real graph, and none of them claimed a failure"

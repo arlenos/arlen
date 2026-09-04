@@ -110,7 +110,7 @@ say "it does not draw a made-up desktop instead" \
 # Dismiss wrote it without being asked. An offer to save what does not exist is
 # the part that turns a rendering bug into somebody's file.
 say "and offers nothing to save or copy" \
-  "$(printf '%s' "$out" | grep -qE 'actions="[^"]*(Save|Copy|Annotate)' && echo 0 || echo 1)" "$out"
+  "$(case "$out" in ""|REFUSED:*) echo 0;; *) printf '%s' "$out" | grep -qE 'actions="[^"]*(Save|Copy|Annotate)' && echo 0 || echo 1;; esac)" "$out"
 
 rm -rf "$run" "$probe" 2>/dev/null
 [ "$fail" = 0 ] && echo "the screenshot tool shows your screen or nothing, never a plausible fake"

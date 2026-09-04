@@ -289,7 +289,7 @@ say "a word in the document is found on the page that has it" \
   "$(printf '%s' "$found" | grep -qE 'hits="[^"]*needle' && echo 1 || echo 0)" "$found"
 
 say "and only on that page" \
-  "$(printf '%s' "$found" | grep -q "|" && echo 0 || echo 1)" "$found"
+  "$(case "$found" in ""|REFUSED:*) echo 0;; *) printf '%s' "$found" | grep -q "|" && echo 0 || echo 1;; esac)" "$found"
 
 # A word nobody wrote must be answered, not ignored. This is the sentence that
 # stops an empty result reading as a broken search.
@@ -300,7 +300,7 @@ say "a word that is not there is answered rather than left blank" \
 # document that failed to open are different, and the second must not be
 # reported as the first.
 say "opening a document did not leave it saying nothing is open" \
-  "$(printf '%s' "$dom" | grep -q "No document is open" && echo 0 || echo 1)" "$dom"
+  "$(case "$dom" in ""|REFUSED:*) echo 0;; *) printf '%s' "$dom" | grep -q "No document is open" && echo 0 || echo 1;; esac)" "$dom"
 
 # A DOCUMENT WITH A PASSWORD ON IT. Bank statements and payslips arrive like
 # this, and until 22 August the window said "Could not open this document: this

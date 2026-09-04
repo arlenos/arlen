@@ -82,7 +82,7 @@ say "and it names which of the two, not a shrug" \
 # session that could not read anything must not also claim to be showing
 # examples. One of those sentences is about this machine and the other is not.
 say "it does not also claim to be showing examples" \
-  "$(printf '%s' "$out" | grep -q "Example meetings" && echo 0 || echo 1)" "$out"
+  "$(case "$out" in ""|REFUSED:*) echo 0;; *) printf '%s' "$out" | grep -q "Example meetings" && echo 0 || echo 1;; esac)" "$out"
 
 # And it shows no rows to click. A refusal above a list of clickable meetings is
 # the worst of the three states: the click either does nothing, which lies about

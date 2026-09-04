@@ -80,7 +80,7 @@ withd=$(env XDG_STATE_HOME="$run2/state" XDG_DATA_HOME="$run2/data" XDG_RUNTIME_
 # on behalf of is there. A sentence that stays up with the service running is a
 # sentence nobody will believe when it matters.
 say "with the service running it stops saying that" \
-  "$(printf '%s' "$withd" | grep -q "clock service is not running" && echo 0 || echo 1)" "$withd"
+  "$(case "$withd" in ""|REFUSED:*) echo 0;; *) printf '%s' "$withd" | grep -q "clock service is not running" && echo 0 || echo 1;; esac)" "$withd"
 
 # Paired with evidence the app rendered at all, because "the sentence is absent"
 # is also true of a window that never came up.
