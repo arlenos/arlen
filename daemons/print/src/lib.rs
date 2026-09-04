@@ -17,6 +17,7 @@
 //! Printing is never gated (it is a user-driven action); the portal isolation +
 //! the audit are the security posture (printing-plan.md §4).
 
+pub mod pages;
 pub mod audit;
 pub mod backend;
 #[cfg(feature = "cups")]
