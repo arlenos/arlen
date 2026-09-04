@@ -39,6 +39,7 @@ export interface JobItem {
   done: boolean;
 }
 
+
 /// A long-running operation, as the zone renders it.
 export interface Job {
   id: string;
@@ -58,7 +59,13 @@ export interface Job {
   error?: string;
   /// The host a network job reaches (no-silent-egress transparency).
   egressHost?: string;
-  items?: JobItem[];
+  /// The entries this job works through, with the finished ones marked.
+  ///
+  /// The zone expands its aggregate bar into these: showing only a total that
+  /// hides the file names is the mistake the plan names outright. Which are done
+  /// is DERIVED in the shell backend from the names and the count, not carried
+  /// per item - two copies of one fact eventually disagree.
+  items: JobItem[];
   /// When the producer started it, epoch micros.
   ///
   /// The zone owns the visibility threshold - a job shows once it has run long
@@ -98,6 +105,7 @@ const MOCK_JOBS: Job[] = [
   },
   {
     id: "model-pull",
+    items: [],
     startedAt: 2000000,
     title: "Downloading the language model",
     appId: "org.arlen.assistant",
@@ -112,6 +120,7 @@ const MOCK_JOBS: Job[] = [
   },
   {
     id: "transfer",
+    items: [],
     startedAt: 3000000,
     title: "Sending files to your laptop",
     appId: "org.arlen.files",
@@ -124,6 +133,7 @@ const MOCK_JOBS: Job[] = [
   },
   {
     id: "convert",
+    items: [],
     startedAt: 4000000,
     title: "Converting clip.mp4",
     appId: "org.arlen.media",
@@ -137,6 +147,7 @@ const MOCK_JOBS: Job[] = [
   },
   {
     id: "fm-done",
+    items: [],
     startedAt: 5000000,
     title: "Copied 18 files to Documents",
     appId: "org.arlen.files",

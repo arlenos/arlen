@@ -49,7 +49,7 @@ pub struct JobHandle {
 impl JobHandle {
     /// Register a job over `total` entries, or `None` if the surface cannot be
     /// reached. The caller carries on either way.
-    pub async fn start(title: String, total: u64) -> Option<JobHandle> {
+    pub async fn start(title: String, total: u64, items: Vec<String>) -> Option<JobHandle> {
         let connection = zbus::Connection::session().await.ok()?;
         let proxy = zbus::Proxy::new(&connection, SERVICE, PATH, INTERFACE)
             .await
@@ -66,6 +66,10 @@ impl JobHandle {
                     true,  // killable: the loop can stop between entries
                     false, // suspendable: a copy cannot resume cleanly
                     String::new(), // no egress: these bytes stay on this machine
+                    // The entries, in the order they will be worked through, so
+                    // the zone can expand its bar into the file names. Sent once;
+                    // the daemon caps the list and the count stays the true one.
+                    items,
                 ),
             )
             .await
@@ -164,6 +168,21 @@ pub fn worth_reporting(kind: &str, count: u64) -> bool {
     matches!(kind, "copy" | "move" | "trash" | "delete" | "duplicate") && count > 1
 }
 
+/// The name to show for one selected entry: its basename.
+///
+/// The full path is not shown, and that is a privacy call rather than a layout
+/// one. The zone lives in the shell's notification popover, which outlives the
+/// file window and can be open in front of anybody; "Invoices" is what somebody
+/// needs to see the copy is working, and the directory it sits in is not.
+#[must_use]
+pub fn display_name(path: &str) -> String {
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,6 +198,13 @@ mod tests {
     fn an_unknown_kind_still_says_what_it_is_doing() {
         let t = title_for("archive", 3);
         assert!(t.contains('3') && t.contains("archive"), "{t}");
+    }
+
+    #[test]
+    fn a_row_shows_the_name_and_not_where_it_lives() {
+        assert_eq!(display_name("/home/tim/Invoices/march.pdf"), "march.pdf");
+        assert_eq!(display_name("/home/tim/Invoices/"), "Invoices");
+        assert_eq!(display_name("march.pdf"), "march.pdf");
     }
 
     #[test]

@@ -29,11 +29,27 @@ impl JobViewDbus {
         JobViewDbus { server, events }
     }
 
-    /// Push the current view of job `id` to the shell. `removed = true` prunes
-    /// it from the live set. A vanished id (a race with removal) sends nothing.
+    /// Push the current view of job `id` to the shell, WITHOUT the entry list.
+    /// `removed = true` prunes it from the live set. A vanished id (a race with
+    /// removal) sends nothing.
+    ///
+    /// The list travels once, on the registration; the consumer keeps it. See
+    /// the `items` field on the proto for why re-sending it per tick is not an
+    /// option worth its bytes.
     fn emit(&self, id: u64, removed: bool) {
         if let Some(view) = self.server.get(id) {
-            let _ = self.events.send(NotifyEvent::Job(to_job_update(&view, removed)));
+            let _ = self
+                .events
+                .send(NotifyEvent::Job(to_job_update(&view, removed)));
+        }
+    }
+
+    /// The registration push: the same view WITH the entry list.
+    fn emit_with_items(&self, id: u64, removed: bool) {
+        if let Some(view) = self.server.get(id) {
+            let _ = self
+                .events
+                .send(NotifyEvent::Job(to_job_update_with_items(&view, removed)));
         }
     }
 }
@@ -57,6 +73,7 @@ impl JobViewDbus {
         killable: bool,
         suspendable: bool,
         egress_host: String,
+        items: Vec<String>,
     ) -> u64 {
         let total = determinate.then_some(total);
         let host = (!egress_host.is_empty()).then_some(egress_host);
@@ -69,8 +86,9 @@ impl JobViewDbus {
             suspendable,
             host,
             now_micros(),
+            items,
         );
-        self.emit(id, false);
+        self.emit_with_items(id, false);
         id
     }
 
@@ -258,6 +276,8 @@ fn now_micros() -> u64 {
 /// no-Option D-Bus convention the producer already speaks.
 pub fn to_job_update(view: &crate::job::JobView, removed: bool) -> crate::socket::protocol::proto::JobUpdate {
     crate::socket::protocol::proto::JobUpdate {
+        // Empty: the list went with the registration and the consumer kept it.
+        items: Vec::new(),
         id: view.id,
         app_id: view.app_id.clone(),
         title: view.title.clone(),
@@ -276,8 +296,70 @@ pub fn to_job_update(view: &crate::job::JobView, removed: bool) -> crate::socket
     }
 }
 
+/// The same, WITH the entry list: the registration push and the sync a shell
+/// gets on connect, which are the two moments a consumer has nothing to keep.
+pub fn to_job_update_with_items(
+    view: &crate::job::JobView,
+    removed: bool,
+) -> crate::socket::protocol::proto::JobUpdate {
+    crate::socket::protocol::proto::JobUpdate {
+        items: view.items.clone(),
+        ..to_job_update(view, removed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_entry_list_travels_once_and_the_ticks_after_it_are_empty() {
+        use super::{to_job_update, to_job_update_with_items};
+        let s = JobViewServer::new(std::sync::Arc::new(std::sync::Mutex::new(
+            JobRegistry::new(),
+        )));
+        let id = s.register(
+            "files".into(),
+            "Copy".into(),
+            "files",
+            Some(2),
+            true,
+            false,
+            None,
+            1,
+            vec!["one.txt".into(), "two.txt".into()],
+        );
+        let view = s.get(id).unwrap();
+        assert_eq!(to_job_update_with_items(&view, false).items.len(), 2);
+        // Every later tick leaves it out: the consumer kept what it was given,
+        // and re-sending a ten thousand name list per entry is the reason.
+        assert!(to_job_update(&view, false).items.is_empty());
+    }
+
+    #[test]
+    fn a_selection_too_long_to_read_is_cut_and_the_count_is_not() {
+        let s = JobViewServer::new(std::sync::Arc::new(std::sync::Mutex::new(
+            JobRegistry::new(),
+        )));
+        let many: Vec<String> = (0..500).map(|n| format!("file{n}.txt")).collect();
+        let id = s.register(
+            "files".into(),
+            "Copy".into(),
+            "files",
+            Some(500),
+            true,
+            false,
+            None,
+            1,
+            many,
+        );
+        let view = s.get(id).unwrap();
+        assert_eq!(view.items.len(), crate::job::MAX_JOB_ITEMS);
+        assert_eq!(
+            view.progress.total(),
+            Some(500),
+            "the list is cut, the job is not"
+        );
+    }
 
     #[test]
     fn an_action_needs_the_capability_its_button_was_drawn_from() {
@@ -328,6 +410,7 @@ mod tests {
             true,
             Some("api.example.com".into()),
             42,
+            vec!["one.txt".into(), "two.txt".into()],
         );
         s.update(id, 50, None);
         let view = s.snapshot().into_iter().next().unwrap();
@@ -359,7 +442,17 @@ mod tests {
         let dbus = super::JobViewDbus::new(server, tx);
 
         let id = dbus
-            .register("files".into(), "Copy".into(), "files".into(), 10, true, true, false, String::new())
+            .register(
+                "files".into(),
+                "Copy".into(),
+                "files".into(),
+                10,
+                true,
+                true,
+                false,
+                String::new(),
+                Vec::new(),
+            )
             .await;
         match rx.try_recv() {
             Ok(NotifyEvent::Job(u)) => {

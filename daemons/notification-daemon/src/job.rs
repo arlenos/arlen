@@ -229,7 +229,21 @@ pub struct JobView {
     pub started_at: u64,
     /// The sovereign field: the host this job reaches, when it egresses.
     pub egress_host: Option<String>,
+    /// The entries this job works through, in order.
+    ///
+    /// Capped at [`MAX_JOB_ITEMS`] on the way in: the list is for a person to
+    /// read, and a selection of ten thousand files is not a list anybody reads.
+    /// The count in `progress` stays the true total, so a truncated list never
+    /// makes the job look smaller than it is.
+    pub items: Vec<String>,
 }
+
+/// How many entry names a job carries.
+///
+/// Enough that an ordinary copy shows all of its files and small enough that the
+/// list stays something a person can look through. A producer may send more; the
+/// extra names are dropped, never the count.
+pub const MAX_JOB_ITEMS: usize = 100;
 
 /// The fields a producer supplies to register a new job. The registry assigns
 /// the stable `id` and starts it in [`JobState::Running`].
@@ -247,6 +261,8 @@ pub struct NewJob {
     pub egress_host: Option<String>,
     /// Start time, epoch micros.
     pub started_at: u64,
+    /// The entries it works through, in order (truncated to [`MAX_JOB_ITEMS`]).
+    pub items: Vec<String>,
 }
 
 /// The in-memory store of active jobs (job-progress-surface.md). The D-Bus
@@ -286,6 +302,9 @@ impl JobRegistry {
                 capabilities: spec.capabilities,
                 started_at: spec.started_at,
                 egress_host: spec.egress_host,
+                // Truncated here rather than at the caller, so every producer
+                // gets the same bound whatever it sends.
+                items: spec.items.into_iter().take(MAX_JOB_ITEMS).collect(),
             },
         );
         id
@@ -375,6 +394,7 @@ impl JobViewServer {
         suspendable: bool,
         egress_host: Option<String>,
         started_at: u64,
+        items: Vec<String>,
     ) -> u64 {
         let unit = Unit::from_wire(unit);
         let progress = match total {
@@ -391,6 +411,7 @@ impl JobViewServer {
             },
             egress_host,
             started_at,
+            items,
         };
         self.lock().register(spec)
     }
@@ -445,6 +466,7 @@ mod tests {
             },
             egress_host: None,
             started_at: 1,
+            items: Vec::new(),
         }
     }
 
@@ -597,7 +619,7 @@ mod tests {
     #[test]
     fn server_registers_from_wire_values() {
         let s = server();
-        let id = s.register("files".into(), "Copy".into(), "bytes", Some(1000), true, false, None, 1);
+        let id = s.register("files".into(), "Copy".into(), "bytes", Some(1000), true, false, None, 1, Vec::new());
         let snap = s.snapshot();
         assert_eq!(snap.len(), 1);
         assert_eq!(snap[0].id, id);
@@ -609,7 +631,7 @@ mod tests {
     #[test]
     fn server_handles_indeterminate_bad_unit_and_bad_state() {
         let s = server();
-        let id = s.register("app".into(), "Scan".into(), "widgets", None, false, false, None, 1);
+        let id = s.register("app".into(), "Scan".into(), "widgets", None, false, false, None, 1, Vec::new());
         {
             let j = s.snapshot();
             assert!(!j[0].progress.is_determinate(), "no total -> indeterminate");
