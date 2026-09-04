@@ -1,0 +1,47 @@
+#!/bin/sh
+# Phase 4a (CHROOT): the sandboxed thumbnail workers.
+#
+# WHY THEY GET THEIR OWN STEP, before the apps that use them: two surfaces look
+# for these at `/usr/lib/arlen/libexec/` - the file manager's grid and the portal
+# picker's - and neither owns them. A worker staged inside one app's step would
+# be a dependency of the other on an app it has nothing to do with.
+#
+# WHAT WAS WRONG BEFORE. Nothing staged them at all, so on every image built to
+# date the file manager's Pictures folder showed generic icons and so did the
+# file picker. Both degrade honestly - a failed generation renders the file's
+# icon, which is a complete tile - and that is exactly why it went unnoticed: the
+# broken state and the working state differ only in whether you see the picture.
+# Found on 4 September by asking what staged the binary the code names.
+#
+# NO NEW SYSTEM DEPENDENCY, checked against the manifest rather than assumed -
+# the trap the viewers step documents one file over, where a comment claimed
+# libheif was installed and the build died on it. The `music` feature implies
+# `thumbnail` and pulls `image` (png/jpeg/gif/bmp/webp, default features off),
+# `jxl-oxide` and `lofty`. All three are pure Rust; the C-linked AVIF/HEIC codec
+# lives behind a different feature and a different worker, and is not built here.
+#
+# One cargo build produces both binaries.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-sandbox-workers"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the thumbnail workers - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path ai/ai-sandbox/Cargo.toml --features music \
+    --bin arlen-thumbnail-sandbox --bin arlen-music-thumbnail-sandbox
+
+for w in arlen-thumbnail-sandbox arlen-music-thumbnail-sandbox; do
+    install -Dm755 "$CARGO_TARGET_DIR/release/$w" "$DESTDIR/usr/lib/arlen/libexec/$w"
+done
+echo ">> staged the thumbnail workers into the image"
