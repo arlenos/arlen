@@ -7,6 +7,7 @@
   /// AudioPopover for output picker / per-app mixer / mute / input.
   import { SliderTile } from "@arlen/ui-kit/components/quicksettings";
   import { Volume2, VolumeX, Volume1, Headphones, Speaker } from "lucide-svelte";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { invoke } from "@tauri-apps/api/core";
   import { shellAction } from "$lib/shellAction";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -98,27 +99,35 @@
     detailLabel={$t("sh.tile.audioDetail")}
   >
     {#snippet icon()}
-      <button
-        type="button"
-        class="audio-tile-icon-btn"
-        onclick={(e) => {
-          e.stopPropagation();
-          toggleMute();
-        }}
-        title={$t("sh.tile.muteHint")}
-      >
-        {#if status.muted || status.volume === 0}
-          <VolumeX size={16} strokeWidth={1.75} />
-        {:else if status.output_type.includes("headphone")}
-          <Headphones size={16} strokeWidth={1.75} />
-        {:else if status.output_type === "speaker" && status.volume < 50}
-          <Volume1 size={16} strokeWidth={1.75} />
-        {:else if status.output_type.includes("hdmi") || status.output_type.includes("bluetooth_speaker")}
-          <Speaker size={16} strokeWidth={1.75} />
-        {:else}
-          <Volume2 size={16} strokeWidth={1.75} />
-        {/if}
-      </button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <button
+              type="button"
+              class="audio-tile-icon-btn"
+              aria-label={$t("sh.tile.muteHint")}
+              onclick={(e) => {
+                e.stopPropagation();
+                toggleMute();
+              }}
+              {...props}
+            >
+              {#if status.muted || status.volume === 0}
+                <VolumeX size={16} strokeWidth={1.75} />
+              {:else if status.output_type.includes("headphone")}
+                <Headphones size={16} strokeWidth={1.75} />
+              {:else if status.output_type === "speaker" && status.volume < 50}
+                <Volume1 size={16} strokeWidth={1.75} />
+              {:else if status.output_type.includes("hdmi") || status.output_type.includes("bluetooth_speaker")}
+                <Speaker size={16} strokeWidth={1.75} />
+              {:else}
+                <Volume2 size={16} strokeWidth={1.75} />
+              {/if}
+            </button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.TooltipContent side="left">{$t("sh.tile.muteHint")}</Tooltip.TooltipContent>
+      </Tooltip.Root>
     {/snippet}
   </SliderTile>
 </div>

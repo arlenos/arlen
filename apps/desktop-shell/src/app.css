@@ -193,6 +193,7 @@
      110 quick-settings dropdowns
      120 workspace overlay
      300 portaled context menus, 310 their submenus
+     450 tooltips (portaled)
      500 dialogs
      10001 the drag ghost (above everything)
    Context menus are portaled bits-ui content; the kit component
@@ -202,6 +203,9 @@
    ============================================================ */
 [data-context-menu-content] { z-index: 300; }
 [data-context-menu-sub-content] { z-index: 310; }
+/* Tooltips ride above every popover and panel they are opened from and
+   below dialogs: a label reveal that hides behind its own panel is none. */
+[data-tooltip-content] { z-index: 450; }
 
 /* Themed scrollbar: applied to any element with `.themed-scroll`
    plus an `overflow: auto/scroll`. Uses WebKit pseudo-elements

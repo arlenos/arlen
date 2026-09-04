@@ -10,6 +10,7 @@
     } from "$lib/stores/windowHeaders";
     import { tabBars, activateTab } from "$lib/stores/tabBars";
     import { Minus, Square, X } from "lucide-svelte";
+    import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
 
     /// Look up the tabs (if any) for a given header. Stacks own
     /// tabs via the parallel `tabBars` store, keyed on `stack_id`.
@@ -100,7 +101,7 @@
                     onclick={() => activateTab(tab.stackId, tab.index)}
                     aria-selected={tab.active}
                 >
-                    <span class="header-tab-title" title={tab.title}>{tab.title}</span>
+                    <span class="header-tab-title"><OverflowLabel text={tab.title} /></span>
                 </button>
             {/each}
         </div>

@@ -7,6 +7,8 @@
   import { Music } from "lucide-svelte";
   import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
   import { MediaTransport } from "@arlen/ui-kit/components/ui/media-transport";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import { togglePopover } from "$lib/stores/activePopover.js";
@@ -51,9 +53,9 @@
           {/if}
         </span>
         <div class="np-meta">
-          <span class="np-title" title={n.title}>{n.title}</span>
-          <span class="np-artist" title={n.artist}>{n.artist}</span>
-          {#if n.album}<span class="np-album" title={n.album}>{n.album}</span>{/if}
+          <span class="np-title"><OverflowLabel text={n.title} /></span>
+          <span class="np-artist"><OverflowLabel text={n.artist} /></span>
+          {#if n.album}<span class="np-album"><OverflowLabel text={n.album} /></span>{/if}
         </div>
       </div>
 
@@ -89,21 +91,29 @@
       {#if $otherPlayers.length > 0}
         <div class="np-switch">
           {#each $otherPlayers as p (p.id)}
-            <button
-              class="np-player"
-              class:paused={p.status !== "playing"}
-              title={p.app}
-              onclick={() => pinPlayer(p.id)}
-            >
-              <span class="np-player-icon">
-                {#if p.icon}
-                  <img src={p.icon} alt="" />
-                {:else}
-                  <Music size={12} strokeWidth={1.75} />
-                {/if}
-              </span>
-              <span class="np-player-name">{p.app}</span>
-            </button>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <button
+                    class="np-player"
+                    class:paused={p.status !== "playing"}
+                    aria-label={p.app}
+                    onclick={() => pinPlayer(p.id)}
+                    {...props}
+                  >
+                    <span class="np-player-icon">
+                      {#if p.icon}
+                        <img src={p.icon} alt="" />
+                      {:else}
+                        <Music size={12} strokeWidth={1.75} />
+                      {/if}
+                    </span>
+                    <span class="np-player-name">{p.app}</span>
+                  </button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.TooltipContent>{p.app}</Tooltip.TooltipContent>
+            </Tooltip.Root>
           {/each}
         </div>
       {/if}
