@@ -8,13 +8,16 @@
 /// 200 ms, drops any reply whose `requestId` is no longer the
 /// active one, and returns the aggregated `SearchResult[]`.
 ///
-/// Why hidden iframes instead of a daemon-side runtime: the iframes
-/// already exist as the Tier 2 sandbox (CSP, nonce, capability
-/// gating via `module_host_call` postMessage proxy). Re-using them
-/// for search avoids a parallel Tier 1 WASM execution path which
-/// is not yet built. When Tier 1 lands, modulesd's
-/// `WaypointerSearchAll` handler can take over for WASM modules and
-/// this frontend pool stays as the Tier 2 path.
+/// Why hidden iframes and not the daemon: the iframes already exist
+/// as the Tier 2 sandbox (CSP, nonce, capability gating via the
+/// `module_host_call` postMessage proxy), so search re-uses the
+/// sandbox a Tier 2 module is already confined by.
+///
+/// This pool is the Tier 2 path ONLY. Tier 1 is live and is not this
+/// pool's job: modulesd's `WaypointerSearchAll` compiles and
+/// instantiates each WASM module itself, with a per-module timeout
+/// and an instance dropped on a trap. A WASM module searched here
+/// would be a second execution path for the same module.
 
 import { invoke } from "@tauri-apps/api/core";
 import { writable, type Writable } from "svelte/store";

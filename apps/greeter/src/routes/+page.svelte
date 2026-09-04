@@ -34,8 +34,8 @@
   /// True when the last power action was refused, so the bar can say so.
   let powerFailed = $state(false);
 
-  // The wallpaper URL; null until the coder wires the wallpaper source, so
-  // the calm gradient fallback shows. The mock may pass one.
+  // The wallpaper URL, read from `greeter_wallpaper` below; null whenever
+  // that answers nothing, so the calm fallback shows. The mock may pass one.
   let wallpaper = $state<string | null>(null);
 
   // `highlight` is the row's keyboard/visual highlight; `picked` is the
