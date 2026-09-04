@@ -330,10 +330,17 @@ pub fn state_dir() -> Result<PathBuf, StateError> {
     Err(StateError::NoStateDir)
 }
 
-/// Resolve the user's `ai.toml` path, matching the engine daemon's resolution so
-/// the broker migrates from the SAME file the engine reads today: the
-/// `ARLEN_AI_CONFIG` override (the seam the dev stack + tests pin), else
-/// `$HOME/.config/arlen/ai.toml`.
+/// Resolve the user's `ai.toml` path: the `ARLEN_AI_CONFIG` override (the seam
+/// the dev stack + tests pin), else `$HOME/.config/arlen/ai.toml`.
+///
+/// THIS RESOLVES THE SAME WAY AS THE ENGINE DAEMON AND REACHES A DIFFERENT FILE,
+/// which is the whole trap and is invisible in the source. The engine is a
+/// `--user` service, so its `HOME` is the person's. This broker exists precisely
+/// so that it does NOT run as that uid - `arlen-config` in the packaged unit,
+/// root on the image - so the same expression resolves to the service account's
+/// home. Neither shipped unit sets `ARLEN_AI_CONFIG`, and the packaged one adds
+/// `ProtectHome=yes`, which makes `/home` unreadable to this process even if it
+/// did. Identical code, different process, different file.
 pub fn ai_toml_path() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("ARLEN_AI_CONFIG") {
         return Some(PathBuf::from(p));
@@ -342,10 +349,24 @@ pub fn ai_toml_path() -> Option<PathBuf> {
 }
 
 /// The first-run seed for the broker: the user's existing `ai.toml` master
-/// switches when that file exists ([`AiMasterSwitches::from_ai_toml`], so the
-/// cutover preserves their settings), else the plain shipped default. A missing or
-/// unreadable file is not an error - the migration falls back to the shipped
-/// default, which is what a fresh install gets anyway.
+/// switches when that file is reachable ([`AiMasterSwitches::from_ai_toml`]),
+/// else the plain shipped default. A missing or unreadable file is not an error.
+///
+/// IN DEPLOYMENT IT IS ALWAYS THE SHIPPED DEFAULT, and this used to claim the
+/// cutover "preserves their settings", which it cannot: see [`ai_toml_path`] -
+/// no shipped unit hands this process a path to the person's file, and the
+/// packaged unit cannot read `/home` at all. The migration runs only where the
+/// broker runs as the user, which is the dev stack. That is why nothing noticed.
+///
+/// The direction it fails in, measured rather than assumed: the seed is
+/// `enabled: false` with `access_level: 3`. Somebody who had turned the
+/// assistant ON loses that, which is the safe direction; somebody who had
+/// deliberately NARROWED their read scope to 0 or 1 has it widened back to 3,
+/// behind the `enabled` gate. `executor_live` and autonomy stay at the floor
+/// either way, so no security switch is loosened - but a stated preference is
+/// discarded in silence, and the honest fix is a deployment decision (an
+/// installer-side migration, or a path handed in by the unit) rather than
+/// relaxing the separate-uid boundary this broker exists to hold.
 pub fn seed_from_ai_toml() -> AiMasterSwitches {
     match ai_toml_path().and_then(|p| std::fs::read_to_string(p).ok()) {
         Some(text) => AiMasterSwitches::from_ai_toml(&text),
