@@ -323,9 +323,385 @@ fn snippet_of(text: Option<&str>) -> String {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Writing
+//
+// THE MAILBOX IS FILES, so every write here is a rename, an unlink or a create,
+// and each one is the whole of its feature: the read mark is a rename that adds
+// a flag, archive is a rename into another directory, delete is the same rename
+// or an unlink, a draft is a file. None of it needs an account or a protocol
+// (mail-app.md, "Compose stays absent while the writes come back").
+//
+// EVERY WRITE ANSWERS WITH THE NEW ID. A maildir message's name IS its identity
+// and these operations change it, so a caller holding the old one is holding a
+// path that no longer exists. Returning it is not a convenience; a surface that
+// had to guess the new name would guess the flag order wrong the first time
+// somebody replied to a message before reading it.
+// ---------------------------------------------------------------------------
+
+/// What a write to the mailbox could not do.
+///
+/// The variants are for the SURFACE to word, which is why the io case keeps its
+/// text for a log and does not hand it to the window: an errno in a sentence is
+/// the machine talking about itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteProblem {
+    /// The id names nothing this may touch, or nothing that is there any more.
+    NoSuchMessage,
+    /// The destination is not a folder of this mailbox.
+    NoSuchFolder,
+    /// The filesystem refused.
+    Io(String),
+}
+
+/// The three parts of an id: the folder it is in, `new` or `cur`, and the name.
+///
+/// Split rather than parsed with a pattern because the folder half may itself
+/// contain dots and, in a nested maildir, slashes.
+#[must_use]
+fn split_id(id: &str) -> Option<(String, String, String)> {
+    let (head, name) = id.rsplit_once('/')?;
+    let (folder, sub) = match head.rsplit_once('/') {
+        Some((folder, sub)) => (folder.to_string(), sub.to_string()),
+        None => (String::new(), head.to_string()),
+    };
+    if sub != "new" && sub != "cur" {
+        return None;
+    }
+    (!name.is_empty()).then_some((folder, sub, name.to_string()))
+}
+
+/// Join a folder, a subdirectory and a name back into an id.
+#[must_use]
+fn join_id(folder: &str, sub: &str, name: &str) -> String {
+    if folder.is_empty() {
+        format!("{sub}/{name}")
+    } else {
+        format!("{folder}/{sub}/{name}")
+    }
+}
+
+/// The same name carrying `flag`, per the maildir flag convention.
+///
+/// Flags are single letters after the last `:2,` and the convention has them in
+/// ASCII order, which is not decoration: a client that writes `SR` where another
+/// writes `RS` produces two names for one state and the two disagree about
+/// whether a message was already flagged.
+#[must_use]
+pub fn with_flag(name: &str, flag: char) -> String {
+    match name.rsplit_once(":2,") {
+        Some((stem, flags)) if flags.contains(flag) => format!("{stem}:2,{flags}"),
+        Some((stem, flags)) => {
+            let mut all: Vec<char> = flags.chars().chain(std::iter::once(flag)).collect();
+            all.sort_unstable();
+            all.dedup();
+            format!("{stem}:2,{}", all.into_iter().collect::<String>())
+        }
+        None => format!("{name}:2,{flag}"),
+    }
+}
+
+/// Mark a message read: into `cur/`, carrying the `S` flag.
+///
+/// Idempotent by construction - a message already in `cur` with `S` renames to
+/// its own name, which is a no-op rather than an error, because the surface
+/// clears the dot on every open and the second open is not a fault.
+pub fn mark_seen(root: &std::path::Path, id: &str) -> Result<String, WriteProblem> {
+    let from = message_path(root, id).ok_or(WriteProblem::NoSuchMessage)?;
+    let (folder, _sub, name) = split_id(id).ok_or(WriteProblem::NoSuchMessage)?;
+    let new_name = with_flag(&name, 'S');
+    let new_id = join_id(&folder, "cur", &new_name);
+    let to = folder_dir(root, &folder).join("cur").join(&new_name);
+    if from == to {
+        return Ok(new_id);
+    }
+    std::fs::rename(&from, &to).map_err(|e| WriteProblem::Io(e.to_string()))?;
+    Ok(new_id)
+}
+
+/// Move a message into another folder, keeping whether it has been read.
+///
+/// `new` stays `new` and `cur` stays `cur`: archiving something is not reading
+/// it, and a client that landed everything in `cur` would silently mark a whole
+/// folder read on the way past.
+pub fn move_to(root: &std::path::Path, id: &str, dest: &str) -> Result<String, WriteProblem> {
+    let from = message_path(root, id).ok_or(WriteProblem::NoSuchMessage)?;
+    let (folder, sub, name) = split_id(id).ok_or(WriteProblem::NoSuchMessage)?;
+    if !dest.is_empty() && !safe_id(dest) {
+        return Err(WriteProblem::NoSuchFolder);
+    }
+    let dest_dir = folder_dir(root, dest);
+    if !is_maildir(&dest_dir) {
+        return Err(WriteProblem::NoSuchFolder);
+    }
+    if folder == dest {
+        return Ok(id.to_string());
+    }
+    let to = dest_dir.join(&sub).join(&name);
+    std::fs::rename(&from, &to).map_err(|e| WriteProblem::Io(e.to_string()))?;
+    Ok(join_id(dest, &sub, &name))
+}
+
+/// Delete a message: to the trash folder if this mailbox has one, else off disk.
+///
+/// `Ok(Some(id))` is where it went, `Ok(None)` means it is gone. A mailbox with
+/// no trash folder gets the unlink rather than a folder invented on its behalf:
+/// creating one would be this client deciding the shape of somebody's mailbox on
+/// the first delete, and the choice belongs to whoever set it up.
+///
+/// A message already in the trash is unlinked, so a second delete finishes the
+/// job rather than moving it to where it already is.
+pub fn delete(root: &std::path::Path, id: &str) -> Result<Option<String>, WriteProblem> {
+    let path = message_path(root, id).ok_or(WriteProblem::NoSuchMessage)?;
+    let (folder, _sub, _name) = split_id(id).ok_or(WriteProblem::NoSuchMessage)?;
+    let trash = folders(root).into_iter().find(|f| f.kind == FolderKind::Trash);
+    match trash {
+        Some(t) if t.rel != folder => move_to(root, id, &t.rel).map(Some),
+        _ => {
+            std::fs::remove_file(&path).map_err(|e| WriteProblem::Io(e.to_string()))?;
+            Ok(None)
+        }
+    }
+}
+
+/// Write a draft into the mailbox's drafts folder.
+///
+/// The folder is CREATED if this mailbox has none, which is the one place these
+/// writes make a directory: a draft has nowhere else to be, and `.Drafts` is the
+/// name every client reads. Landing in `cur` with `D` and `S`, because a draft
+/// somebody just typed is not unread mail and must not raise the inbox's count.
+pub fn save_draft(
+    root: &std::path::Path,
+    to: &str,
+    subject: &str,
+    body: &str,
+) -> Result<String, WriteProblem> {
+    let existing = folders(root).into_iter().find(|f| f.kind == FolderKind::Drafts);
+    let rel = existing.map_or_else(|| ".Drafts".to_string(), |f| f.rel);
+    let dir = folder_dir(root, &rel);
+    for sub in ["tmp", "new", "cur"] {
+        std::fs::create_dir_all(dir.join(sub)).map_err(|e| WriteProblem::Io(e.to_string()))?;
+    }
+    let name = format!("{}:2,DS", unique_stem());
+    let text = draft_text(to, subject, body);
+    // Through `tmp/` and then renamed, which is the maildir delivery rule and
+    // not ceremony: a reader listing `cur/` while this is being written would
+    // otherwise parse half a message and skip it as unreadable.
+    let staged = dir.join("tmp").join(&name);
+    std::fs::write(&staged, text.as_bytes()).map_err(|e| WriteProblem::Io(e.to_string()))?;
+    let landed = dir.join("cur").join(&name);
+    std::fs::rename(&staged, &landed).map_err(|e| WriteProblem::Io(e.to_string()))?;
+    Ok(join_id(&rel, "cur", &name))
+}
+
+/// The directory a folder's `rel` names.
+#[must_use]
+fn folder_dir(root: &std::path::Path, rel: &str) -> std::path::PathBuf {
+    if rel.is_empty() { root.to_path_buf() } else { root.join(rel) }
+}
+
+/// A maildir-unique filename stem: time, process, and this machine.
+#[must_use]
+fn unique_stem() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.M{}P{}.{}", now.as_secs(), now.subsec_nanos(), std::process::id(), host())
+}
+
+/// This machine's name, with the two characters a maildir name cannot carry
+/// removed. Falls back rather than failing: a draft that cannot be saved because
+/// the hostname was unreadable would be an absurd way to lose somebody's typing.
+#[must_use]
+fn host() -> String {
+    let raw = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    let cleaned: String = raw.trim().chars().filter(|c| *c != '/' && *c != ':').collect();
+    if cleaned.is_empty() { "arlen".to_string() } else { cleaned }
+}
+
+/// A draft as RFC 5322 text.
+///
+/// HEADER VALUES ARE FLATTENED, and that is the security half rather than
+/// tidiness: a subject carrying a newline would otherwise write further headers
+/// into the file, so a person typing `Subject: x\nBcc: someone` would author a
+/// message with a recipient they did not see. Every control character in a
+/// header value becomes a space; the body keeps its newlines, which is where
+/// newlines belong.
+#[must_use]
+pub fn draft_text(to: &str, subject: &str, body: &str) -> String {
+    let flat = |v: &str| -> String {
+        v.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().trim().to_string()
+    };
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let mut out = String::new();
+    out.push_str(&format!("Date: {}\n", rfc2822_utc(secs)));
+    out.push_str(&format!("To: {}\n", flat(to)));
+    out.push_str(&format!("Subject: {}\n", flat(subject)));
+    out.push_str("MIME-Version: 1.0\n");
+    out.push_str("Content-Type: text/plain; charset=utf-8\n");
+    out.push('\n');
+    out.push_str(body);
+    if !body.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// Epoch seconds as an RFC 2822 date in UTC.
+///
+/// Written out rather than pulled in: this crate has one dependency on purpose,
+/// and a date crate for one header is a poor trade. UTC with `+0000` rather than
+/// this machine's offset, because a draft is a file on disk and the offset would
+/// be the only part of it that depended on where the reader was sitting.
+#[must_use]
+pub fn rfc2822_utc(secs: u64) -> String {
+    const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    const MONTHS: [&str; 12] =
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    // Howard Hinnant's civil-from-days, the standard shift-the-era method.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{}, {:02} {} {} {:02}:{:02}:{:02} +0000",
+        DAYS[(days.rem_euclid(7)) as usize],
+        d,
+        MONTHS[(m - 1) as usize],
+        year,
+        rem / 3600,
+        (rem % 3600) / 60,
+        rem % 60,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reading_a_message_moves_it_into_cur_and_flags_it() {
+        let root = a_maildir();
+        let moved = mark_seen(&root, "new/1.host").unwrap();
+        assert_eq!(moved, "cur/1.host:2,S");
+        assert!(!root.join("new/1.host").exists(), "it must not still be unread");
+        assert!(root.join("cur/1.host:2,S").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reading_it_twice_is_not_a_fault() {
+        let root = a_maildir();
+        let once = mark_seen(&root, "new/1.host").unwrap();
+        // The surface clears the dot on every open, so the second open must be a
+        // no-op rather than a rename onto a name that is already taken.
+        let twice = mark_seen(&root, &once).unwrap();
+        assert_eq!(once, twice);
+        assert!(root.join("cur/1.host:2,S").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn flags_are_kept_and_ordered_rather_than_replaced() {
+        assert_eq!(with_flag("1.host:2,R", 'S'), "1.host:2,RS");
+        assert_eq!(with_flag("1.host:2,S", 'S'), "1.host:2,S");
+        assert_eq!(with_flag("1.host", 'S'), "1.host:2,S");
+        // Two clients disagreeing on the order produce two names for one state.
+        assert_eq!(with_flag("1.host:2,SR", 'F'), "1.host:2,FRS");
+    }
+
+    #[test]
+    fn moving_a_message_keeps_whether_it_had_been_read() {
+        let root = a_maildir();
+        let moved = move_to(&root, "new/1.host", ".Sent").unwrap();
+        assert_eq!(moved, ".Sent/new/1.host", "an archived message is not a read one");
+        assert!(root.join(".Sent/new/1.host").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_folder_this_mailbox_does_not_have_is_refused() {
+        let root = a_maildir();
+        assert_eq!(move_to(&root, "new/1.host", ".Nowhere"), Err(WriteProblem::NoSuchFolder));
+        assert_eq!(move_to(&root, "new/1.host", "../elsewhere"), Err(WriteProblem::NoSuchFolder));
+        assert!(root.join("new/1.host").exists(), "a refused move must move nothing");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn delete_puts_it_in_the_trash_when_this_mailbox_has_one() {
+        let root = a_maildir();
+        for d in [".Trash/cur", ".Trash/new"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        let gone = delete(&root, "new/1.host").unwrap();
+        assert_eq!(gone.as_deref(), Some(".Trash/new/1.host"));
+        assert!(root.join(".Trash/new/1.host").exists());
+        // And a second delete finishes the job rather than moving it to where it
+        // already is.
+        assert_eq!(delete(&root, ".Trash/new/1.host").unwrap(), None);
+        assert!(!root.join(".Trash/new/1.host").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn delete_takes_it_off_disk_when_there_is_no_trash() {
+        let root = a_maildir();
+        assert_eq!(delete(&root, "new/1.host").unwrap(), None);
+        assert!(!root.join("new/1.host").exists());
+        // No folder was invented on the mailbox's behalf.
+        assert!(!root.join(".Trash").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_draft_lands_in_a_drafts_folder_and_is_not_unread() {
+        let root = a_maildir();
+        let id = save_draft(&root, "ada@example.org", "Later", "half a thought").unwrap();
+        assert!(id.starts_with(".Drafts/cur/"), "{id}");
+        let text = std::fs::read_to_string(root.join(&id)).unwrap();
+        assert!(text.contains("To: ada@example.org"));
+        assert!(text.contains("Subject: Later"));
+        assert!(text.ends_with("half a thought\n"));
+        // A draft somebody just typed must not raise the drafts folder's count.
+        let drafts = folders(&root).into_iter().find(|f| f.kind == FolderKind::Drafts).unwrap();
+        assert_eq!(drafts.unread, 0);
+        // And nothing is left staged.
+        assert_eq!(std::fs::read_dir(root.join(".Drafts/tmp")).unwrap().count(), 0);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_subject_carrying_a_newline_cannot_write_a_second_header() {
+        // The header-injection case: without flattening, this authors a message
+        // with a recipient the person who typed it never saw.
+        let text = draft_text("ada@example.org", "hello\nBcc: quiet@example.org", "body");
+        assert!(!text.contains("Bcc:\n") && !text.contains("\nBcc:"), "{text}");
+        assert!(text.contains("Subject: hello Bcc: quiet@example.org"));
+        // The body is where newlines belong, and keeps them.
+        assert!(draft_text("a@b", "s", "one\ntwo").ends_with("one\ntwo\n"));
+    }
+
+    #[test]
+    fn the_date_header_is_the_one_the_epoch_names() {
+        // Checked against a date computed elsewhere, not against this function's
+        // own output: an arithmetic error would agree with itself.
+        assert_eq!(rfc2822_utc(0), "Thu, 01 Jan 1970 00:00:00 +0000");
+        assert_eq!(rfc2822_utc(1_756_000_000), "Sun, 24 Aug 2025 01:46:40 +0000");
+        assert_eq!(rfc2822_utc(951_782_400), "Tue, 29 Feb 2000 00:00:00 +0000");
+    }
 
     #[test]
     fn the_rails_are_named_however_the_folder_was_created() {
