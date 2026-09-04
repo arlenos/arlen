@@ -90,6 +90,37 @@ say "it does not also claim to be showing examples" \
 say "and it offers no meeting rows it cannot stand behind" \
   "$(printf '%s' "$out" | grep -q "rows=0" && echo 1 || echo 0)" "$out"
 
-rm -rf "$run" "$probe" 2>/dev/null
+# THE ONLY BUTTON ON THE SCREEN. With no service the window offers exactly one
+# action, "Start a meeting", and nothing gated it - so the question is what the
+# person meets after pressing the one thing they can press. Nothing tested this:
+# the checks above stop at the list. Driven on 5 September and the answer was
+# right, which is why it is now held: the capture route says the non-event, the
+# state that now holds, and a way out, rather than opening a recorder that is
+# not recording.
+press="$(mktemp)"
+cat > "$press" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+await wait(2000);
+const btn = document.querySelector("#start-meeting");
+if (!btn) return JSON.stringify({ pressed: false });
+btn.click();
+await wait(3000);
+const text = (document.body.innerText || "").replace(/\s+/g, " ").trim();
+return JSON.stringify({ pressed: true, route: location.pathname, text: text.slice(0, 300) });
+JS
+run2="$(mktemp -d)"
+after=$(env XDG_STATE_HOME="$run2/state" XDG_DATA_HOME="$run2/data" XDG_RUNTIME_DIR="$run2" HOME="$run2" \
+  SHOOT_INJECT="$press" "$here/shoot-app.sh" "$app" "$here/out/meetings-pressed.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+say "pressing the one thing it offers reaches a page that explains itself" \
+  "$(printf '%s' "$after" | grep -q '"route":"/capture"' \
+     && printf '%s' "$after" | grep -qE "did not start|nicht gestartet" && echo 1 || echo 0)" "$after"
+
+say "and that page says nothing is being captured rather than showing a recorder" \
+  "$(printf '%s' "$after" | grep -qE "Nothing is being captured|Es wird nichts aufgenommen" \
+     && echo 1 || echo 0)" "$after"
+
+rm -rf "$run" "$run2" "$probe" "$press" 2>/dev/null
 [ "$fail" = 0 ] && echo "the meetings app says what is wrong, not just that something is"
 exit "$fail"
