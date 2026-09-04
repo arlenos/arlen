@@ -24,6 +24,21 @@
 #
 # So this refuses to run against a server it did not start, rather than trusting
 # a port that answers.
+#
+# A THIRD COPY EXISTS, and saying so is better than quietly leaving it.
+# `shoot-no-backend.sh` worked this out first - its comment describes the exact
+# failure ("the screenshot is of that server's build, the previous one, taken
+# after the fix and looking exactly like a verification of it") and its stop
+# VERIFIES the port went quiet, which this one did not until it was read. That
+# check is now here too.
+#
+# It is not folded in, because the two differ on a POLICY rather than a
+# mechanism: it CLEARS a leftover port and then refuses if the clearing failed,
+# where this refuses outright. Clearing is kinder after an interrupted run;
+# refusing never signals a process this run did not start, which is the rule that
+# governs the fixture helper and the one this file learnt the hard way when an
+# earlier cut killed its own caller. Picking one is a decision about whose port
+# 1421 is, and it belongs to whoever owns that call - not to a tidy-up.
 
 # Serve $1's `build/` on port $2. Sets PREVIEW_PGID in the CALLER's shell.
 #
@@ -31,6 +46,7 @@
 # to die (see lib/bus.sh, same day, same mistake).
 start_preview() {
     _pv_app="$1"
+    # Kept for stop_preview, which verifies THIS port went quiet.
     _pv_port="$2"
     if curl -sS -o /dev/null --max-time 2 "http://localhost:$_pv_port/" 2>/dev/null; then
         echo "!! something is already serving port $_pv_port, and this drive did not" >&2
@@ -84,7 +100,26 @@ stop_preview() {
         PREVIEW_PGID=""
         return 1
     fi
-    kill -- "-$PREVIEW_PGID" 2>/dev/null
+    _pv_group="$PREVIEW_PGID"
     PREVIEW_PGID=""
-    return 0
+    kill -- "-$_pv_group" 2>/dev/null
+    # VERIFY, do not trust the kill. `shoot-no-backend.sh` had worked this out
+    # first and this helper had not: it escalates and then says so if the port is
+    # still answering. A stop that returns without checking is how the port stays
+    # occupied and the NEXT run reads someone else's frontend, which is the whole
+    # defect this file exists for - so the check belongs here rather than in the
+    # one script that happened to think of it.
+    for _ in $(seq 1 20); do
+        curl -sf -o /dev/null "http://localhost:$_pv_port/" 2>/dev/null || return 0
+        sleep 0.25
+    done
+    kill -9 -- "-$_pv_group" 2>/dev/null
+    for _ in $(seq 1 20); do
+        curl -sf -o /dev/null "http://localhost:$_pv_port/" 2>/dev/null || return 0
+        sleep 0.25
+    done
+    echo "!! a preview still answers on $_pv_port after SIGKILL. The next run will" >&2
+    echo "   refuse rather than test it, which is the right failure, but this one" >&2
+    echo "   left something behind: ps -eo pid,args | grep '[v]ite preview'" >&2
+    return 1
 }
