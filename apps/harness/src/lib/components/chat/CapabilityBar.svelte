@@ -4,7 +4,9 @@
   /// (model, provider, per-question independence) live in the tooltip. This
   /// is the in-body capability strip; nothing about it lives in the header.
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import type { Capability } from "$lib/capability";
+  import { openAiSettings, settingsOpenFailed } from "$lib/transparency";
   import { statusSentence, statusTooltip } from "$lib/display";
   import { t } from "$lib/i18n/messages";
 
@@ -25,14 +27,20 @@
   <div class="status">
     {#if capability}
       <p class="line" title={statusTooltip(capability, $t)}>
-        <span class="glyph" class:off={!capability.enabled} aria-hidden="true">◆</span>
+        <span class="dot" class:off={!capability.enabled} aria-hidden="true"></span>
         {statusSentence(capability, $t)}
       </p>
+      {#if !capability.enabled}
+        <Button variant="outline" size="sm" onclick={openAiSettings}>{$t("h.offswitch.turnOn")}</Button>
+      {/if}
     {:else}
       <p class="line">{$t("h.capability.unreachable")}</p>
       <Button variant="outline" size="sm" onclick={onretry}>{$t("h.tryAgain")}</Button>
     {/if}
   </div>
+  {#if $settingsOpenFailed}
+    <div class="status"><Notice tone="error" text={$t("h.settings.cannotOpen")} /></div>
+  {/if}
 {/if}
 
 <style>
@@ -53,11 +61,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .glyph {
-    color: var(--color-success);
-    margin-inline-end: 0.25rem;
+  /* The capability mark is a status dot of the house family: 6px on the
+     chip radius, success when the assistant is on, quiet when it is off. */
+  .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-inline-end: 0.4rem;
+    vertical-align: middle;
+    border-radius: var(--radius-chip, 4px);
+    background: var(--color-success);
   }
-  .glyph.off {
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+  .dot.off {
+    background: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
 </style>

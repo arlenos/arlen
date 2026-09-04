@@ -2,7 +2,9 @@
   /// The no-messages surface, one designed variant per capability state. No
   /// decorative icon; the words and the starters carry it.
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
+  import { openAiSettings, settingsOpenFailed } from "$lib/transparency";
 
   let {
     variant,
@@ -35,6 +37,13 @@
   {:else if variant === "off"}
     <p class="title">{$t("h.empty.off.title")}</p>
     <p class="sub">{$t("h.empty.off.sub")}</p>
+    <!-- The sentence names Settings, so the surface goes there: the master
+         switch lives in the Settings app, and this is the one full-screen
+         state a person meets with nothing else to press. -->
+    <Button variant="default" size="sm" class="mt-2" onclick={openAiSettings}>{$t("h.offswitch.turnOn")}</Button>
+    {#if $settingsOpenFailed}
+      <Notice tone="error" class="mt-2" text={$t("h.settings.cannotOpen")} />
+    {/if}
   {:else}
     <p class="title">{$t("h.empty.unreachable.title")}</p>
     <p class="sub">{$t("h.empty.unreachable.sub")}</p>
