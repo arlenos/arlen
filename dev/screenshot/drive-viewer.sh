@@ -26,11 +26,28 @@
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
+# shellcheck source=dev/screenshot/lib/fresh.sh
+. "$here/lib/fresh.sh"
 app="${1:-$root/target/release/arlen-viewers}"
 fix="$HOME/.cache/arlen-drive-viewer"
 fail=0
 
 [ -x "$app" ] || { echo "no viewer binary at $app"; exit 2; }
+
+# THE DECODERS TOO, and this drive never named them. `shoot-app` guards the app
+# binary; these four are separate binaries the app SPAWNS, so nothing here asked
+# how old they were - on 4 September they were three weeks older than the app and
+# no check in the tree could have said so. The pdf worker was the same shape and
+# cost a wrong verdict about the reader's own sentence.
+#
+# Absent is not this guard's business: the drive skips a format whose decoder is
+# not built, which is a different and honest answer. Present-but-old is what this
+# refuses.
+for w in decode-image decode-heic decode-jxl decode-audio; do
+  bin="$root/target/release/arlen-$w"
+  [ -x "$bin" ] || continue
+  require_fresh "$bin" "$root/apps/viewers/$w/src" "$root/apps/viewers/core/src" || exit 2
+done
 mkdir -p "$fix" "$here/out"
 
 python3 - "$fix" <<'PY'
@@ -247,8 +264,15 @@ bare=$(drive_bare "$fix/p-bare.js" viewer-no-file.png)
 # its own tells a person nothing they can act on. And the demo track the browser
 # preview shows must not be here: a shipped viewer once showed "Nightswim" with a
 # playhead at 1:13 of 3:40, none of which exists.
+#
+# THE ROUTE, NOT ONE WORDING. This asked for "file manager", and on 23 August the
+# sentence started naming the app by the name the desktop shows ("Open one from
+# Files"), which is better and left this red - unseen, because the drive had been
+# refusing on a stale binary ever since. So it now accepts EITHER route the
+# sentence can offer, in either language: a rename of the app does not break it,
+# and neither does dropping one of the two routes.
 say "launched with no file, it says where a file comes from" \
-  "$(printf '%s' "$bare" | grep -qE "file manager|Dateiverwaltung" && echo 1 || echo 0)" "$bare"
+  "$(printf '%s' "$bare" | grep -qE "Files|Dateien|command line|Kommandozeile" && echo 1 || echo 0)" "$bare"
 
 say "and shows no invented track" \
   "$(case "$bare" in ""|REFUSED:*) echo 0;; *) printf '%s' "$bare" | grep -q "Nightswim" && echo 0 || echo 1;; esac)" "$bare"
