@@ -18,10 +18,10 @@
 //
 // Run: node dev/scripts/test-check-image-contents.mjs
 
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-image-contents.sh");
@@ -32,7 +32,7 @@ if (spawnSync("command", ["-v", "guestfish"], { shell: true }).status !== 0) {
 }
 
 const failures = [];
-const dir = mkdtempSync(join(tmpdir(), "arlen-imgcheck-"));
+const dir = mint("arlen-imgcheck-");
 
 /// A minimal partitioned raw image with an ext4 root on sda2, which is what the
 /// check mounts. No shell in it: that is the point of this fixture.
@@ -175,7 +175,7 @@ check(
   if (!ok) failures.push({ name: "staged sources", code: 1, out: staged });
 }
 
-rmSync(dir, { recursive: true, force: true });
+cleanup(dir);
 
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);

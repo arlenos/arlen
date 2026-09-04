@@ -5,11 +5,11 @@
 // The positive control for check-runtime-deps, including the one the directive
 // named: removing a package from the image must turn it red.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, cpSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../..");
@@ -25,7 +25,7 @@ function check(name, ok) {
 // The TSV is NOT copied - the gate reads the real one beside itself, which is the
 // point: the list is the repo's, only the tree it is checked against varies.
 function tree({ packages, calls }) {
-  const dir = mkdtempSync(join(tmpdir(), "runtime-deps-"));
+  const dir = mint("runtime-deps-");
   mkdirSync(join(dir, "dev/mkosi"), { recursive: true });
   writeFileSync(
     join(dir, "dev/mkosi/mkosi.conf"),
@@ -57,7 +57,7 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("removing a needed package from the image turns it red", r.code === 1);
   check("and it names the package that went missing", r.out.includes("fuse3"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A shell-out nobody classified: the defect that let twenty-one binaries go
@@ -70,24 +70,24 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("an unlisted Command::new is caught", r.code === 1);
   check("and the message names the binary", r.out.includes("some-tool-nobody-listed"));
-  rmSync(d, { recursive: true, force: true });
+  cleanup(d);
 }
 
 // A tree with no Packages= block at all must not pass by finding nothing to check.
 {
-  const dir = mkdtempSync(join(tmpdir(), "runtime-deps-nopkg-"));
+  const dir = mint("runtime-deps-nopkg-");
   mkdirSync(join(dir, "daemons/x/src"), { recursive: true });
   writeFileSync(join(dir, "daemons/x/src/main.rs"), 'fn f() { Command::new("sh"); }\n');
   const r = run(dir);
   check("a tree with no Packages block is refused, not passed", r.code === 1);
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 // And a tree with no Rust at all is a scan that read nothing.
 {
-  const dir = mkdtempSync(join(tmpdir(), "runtime-deps-empty-"));
+  const dir = mint("runtime-deps-empty-");
   check("a tree with no sources is an error, not a pass", run(dir).code === 2);
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 {

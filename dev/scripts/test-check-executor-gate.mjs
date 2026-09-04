@@ -16,10 +16,10 @@
 //
 // Run: node dev/scripts/test-check-executor-gate.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-executor-gate.py");
@@ -51,7 +51,7 @@ impl Ack {
 `;
 
 function check(name, body, expect, file = "probe_executor.rs") {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-execgate-"));
+  const dir = mint("arlen-execgate-");
   const src = join(dir, "daemons/ai-engine-daemon/src");
   mkdirSync(src, { recursive: true });
   for (const f of ACKNOWLEDGED) writeFileSync(join(src, f), ACK_BODY);
@@ -63,7 +63,7 @@ function check(name, body, expect, file = "probe_executor.rs") {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const GATED = `impl Executor for ProbeExecutor {}

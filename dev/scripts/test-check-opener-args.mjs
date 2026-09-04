@@ -12,10 +12,10 @@
 //
 // Run: node dev/scripts/test-check-opener-args.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-opener-args.py");
@@ -23,7 +23,7 @@ const GATE = join(ROOT, "dev/scripts/check-opener-args.py");
 const failures = [];
 
 function check(name, files, expect, entry) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-opener-"));
+  const dir = mint("arlen-opener-");
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(dirname(p), { recursive: true });
@@ -51,7 +51,7 @@ function check(name, files, expect, entry) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const open = (chain) =>

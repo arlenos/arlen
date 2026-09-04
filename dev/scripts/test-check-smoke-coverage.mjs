@@ -15,10 +15,10 @@
 //
 // Run: node dev/scripts/test-check-smoke-coverage.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-smoke-coverage.py");
@@ -30,7 +30,7 @@ const smoke = (array, started, skipped) =>
   `SKIPPED=(\n${skipped.map((e) => `  "${e}"`).join("\n")}\n)\n`;
 
 function check(name, { manifest, started, skipped }, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-smokecov-"));
+  const dir = mint("arlen-smokecov-");
   const write = (rel, body) => {
     mkdirSync(join(dir, dirname(rel)), { recursive: true });
     writeFileSync(join(dir, rel), body);
@@ -52,7 +52,7 @@ function check(name, { manifest, started, skipped }, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const ONE_BIN = `[package]\nname = "probe"\nversion = "0.1.0"\n`;

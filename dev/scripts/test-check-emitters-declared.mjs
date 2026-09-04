@@ -11,10 +11,10 @@
 // and says so.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-emitters-declared.py");
@@ -48,7 +48,7 @@ const PROFILE = '[info]\napp_id = "powerd"\n\n[event_bus]\npublish = ["power.sta
 const CARRIED = 'NOT_SHIPPED: dict[str, str] = {"daemons/example": "not in the image yet"}';
 
 function run(files, mutate = (s) => s) {
-  const dir = mkdtempSync(join(tmpdir(), "emitters-"));
+  const dir = mint("emitters-");
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(dirname(p), { recursive: true });
@@ -57,7 +57,7 @@ function run(files, mutate = (s) => s) {
   const gate = join(dir, "check.py");
   writeFileSync(gate, mutate(readFileSync(GATE, "utf8")));
   const r = spawnSync("python3", [gate, dir], { encoding: "utf8" });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 

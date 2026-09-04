@@ -12,10 +12,10 @@
 //
 // Run: node dev/scripts/test-check-network-scope-marked.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-network-scope-marked.py");
@@ -24,7 +24,7 @@ const failures = [];
 const NOTE = "# NETWORK-SCOPE-PENDING: the scoped form is not enforceable yet.\n";
 
 function tree(files, imageFiles = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-netscope-"));
+  const dir = mint("arlen-netscope-");
   mkdirSync(join(dir, "sdk/permissions/profiles"), { recursive: true });
   for (const [name, body] of Object.entries(files)) {
     writeFileSync(join(dir, "sdk/permissions/profiles", `${name}.toml`), body);
@@ -68,19 +68,19 @@ check(
   r.code === 1 && /silent/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // The same grant, explained.
 d = tree({ explained: profile("explained", { net: "all", note: true }) });
 r = run(d);
 check("a wide grant that says why passes", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // A scoped grant is already the narrow thing and needs no note.
 d = tree({ scoped: profile("scoped", { net: "scoped" }) });
 r = run(d);
 check("a scoped grant needs no note", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // A note outliving its grant pads the work list.
 d = tree({ leftover: profile("leftover", { net: "none", note: true }) });
@@ -90,17 +90,17 @@ check(
   r.code === 1 && /leftover/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // Reading nothing is not passing.
-d = mkdtempSync(join(tmpdir(), "arlen-netscope-empty-"));
+d = mint("arlen-netscope-empty-");
 r = run(d);
 check(
   "a tree with no profiles refuses rather than passing",
   r.code === 2 && /NOTHING WAS READ/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 {
@@ -112,7 +112,7 @@ for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
     r.code === 1 && /dev\.arlen\.thing/.test(r.out),
     `exit ${r.code}: ${r.out}`,
   );
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 if (failures.length) process.exit(1);

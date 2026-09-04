@@ -15,10 +15,10 @@
 //
 // Run: node dev/scripts/test-check-sensing-vectors.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, chmodSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, copyFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-sensing-vectors.sh");
@@ -29,7 +29,7 @@ const failures = [];
 // the fixture is a copy of the script with a table beside it. Nothing about the
 // comparison changes; only where the two tables live.
 function check(name, { ours, theirs }, expect) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-sensing-"));
+  const dir = mint("arlen-sensing-");
   const comp = join(dir, "compositor");
 
   mkdirSync(join(dir, "scripts"), { recursive: true });
@@ -53,7 +53,7 @@ function check(name, { ours, theirs }, expect) {
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
   if (!ok) failures.push({ name, ...got });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
 }
 
 const TABLE = { "off__explicit.toml": 'sensing = "off"\n' };

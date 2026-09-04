@@ -9,10 +9,10 @@
 // as a contrived string.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-calendar-has-no-mail-path.py");
@@ -25,7 +25,7 @@ const bad = (name, detail) => {
 };
 
 function tree({ manifestExtra = "", source = "fn main() {}\n" } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "cal-mail-"));
+  const root = mint("cal-mail-");
   for (const part of ["apps/calendar/core/src", "daemons/calendar/src"]) {
     mkdirSync(join(root, part), { recursive: true });
   }
@@ -55,7 +55,7 @@ function run(root) {
   const root = tree();
   const rc = run(root);
   rc === 0 ? ok("a calendar that sends no mail passes") : bad("a calendar that sends no mail passes", `got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -66,7 +66,7 @@ function run(root) {
   rc === 1
     ? ok("a mail crate in the calendar's manifest is caught")
     : bad("a mail crate in the calendar's manifest is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -75,7 +75,7 @@ function run(root) {
   rc === 1
     ? ok("calendar code that speaks SMTP is caught")
     : bad("calendar code that speaks SMTP is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -86,17 +86,17 @@ function run(root) {
   rc === 0
     ? ok("reading an invitation is not a mail path")
     : bad("reading an invitation is not a mail path", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
   // Reading nothing must not read as a pass.
-  const root = mkdtempSync(join(tmpdir(), "cal-mail-empty-"));
+  const root = mint("cal-mail-empty-");
   const rc = run(root);
   rc === 2
     ? ok("finding no calendar at all is not a pass")
     : bad("finding no calendar at all is not a pass", `expected 2, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {

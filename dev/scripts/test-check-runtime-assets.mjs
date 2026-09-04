@@ -9,10 +9,10 @@
 // wearing a green tick.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-runtime-assets.py");
@@ -31,7 +31,7 @@ const excused = execFileSync("python3", [check, "--unprovided"], { encoding: "ut
 
 /// `reads` is Rust source keyed by file name under apps/; `steps` is build-step text.
 function tree(reads, steps) {
-  const root = mkdtempSync(join(tmpdir(), "runtime-assets-"));
+  const root = mint("runtime-assets-");
   mkdirSync(join(root, "apps/x/src"), { recursive: true });
   for (const [name, body] of Object.entries(reads)) {
     writeFileSync(join(root, "apps/x/src", name), body);
@@ -69,7 +69,7 @@ function run(root) {
   rc === 1
     ? ok("a path nothing installs is caught")
     : bad("a path nothing installs is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 2. A step that installs it passes.
@@ -85,7 +85,7 @@ function run(root) {
   rc === 0
     ? ok("a path the image installs passes")
     : bad("a path the image installs passes", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 3. The prefix trap that fooled a manual sweep: an installed `themes` must not vouch
@@ -102,7 +102,7 @@ function run(root) {
   rc === 1
     ? ok("a longer sibling name does not vouch for a shorter one")
     : bad("a longer sibling name does not vouch for a shorter one", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 4. A path named only inside #[cfg(test)] is a test, not a component asking for a file.
@@ -122,7 +122,7 @@ function run(root) {
   rc === 0
     ? ok("a path only named in a test is not a runtime asset")
     : bad("a path only named in a test is not a runtime asset", `expected 0, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 5. The second tree is read the same way: a trust anchor nothing installs is caught.
@@ -135,17 +135,17 @@ function run(root) {
   rc === 1
     ? ok("an /etc/arlen path nothing installs is caught")
     : bad("an /etc/arlen path nothing installs is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 6. A moved layout is not a pass.
 {
-  const root = mkdtempSync(join(tmpdir(), "runtime-assets-empty-"));
+  const root = mint("runtime-assets-empty-");
   const rc = run(root);
   rc === 1
     ? ok("a moved layout is not a pass")
     : bad("a moved layout is not a pass", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 // 7. The repository itself, which is what the hook runs.

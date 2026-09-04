@@ -15,17 +15,17 @@
 //
 // Run: node dev/scripts/test-check-dependency-direction.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-dependency-direction.py");
 const failures = [];
 
 function tree(knowledgeDeps) {
-  const dir = mkdtempSync(join(tmpdir(), "arlen-depdir-"));
+  const dir = mint("arlen-depdir-");
   mkdirSync(join(dir, "daemons/knowledge"), { recursive: true });
   writeFileSync(
     join(dir, "daemons/knowledge/Cargo.toml"),
@@ -49,7 +49,7 @@ console.log("check-dependency-direction:");
 let d = tree("");
 let r = run(d);
 check("the tree as it stands passes", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 d = tree('arlen-ai-core = { path = "../../ai/ai-core" }');
 r = run(d);
@@ -58,7 +58,7 @@ check(
   r.code === 1 && /arlen-ai-core/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 d = tree('[dependencies.arlen-ai-core]\npath = "../../ai/ai-core"');
 r = run(d);
@@ -67,7 +67,7 @@ check(
   r.code === 1 && /arlen-ai-core/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 d = tree('[dev-dependencies]\narlen-ai-engine = "0.1"');
 r = run(d);
@@ -76,23 +76,23 @@ check(
   r.code === 1 && /arlen-ai-engine/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // A near-miss: a crate whose name merely starts similarly must not trip it.
 d = tree('arlen-audit-proto = "0.1"');
 r = run(d);
 check("an unrelated arlen crate is not an AI dependency", r.code === 0, `exit=${r.code} out=${r.out}`);
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 // Reading nothing is not passing.
-d = mkdtempSync(join(tmpdir(), "arlen-depdir-empty-"));
+d = mint("arlen-depdir-empty-");
 r = run(d);
 check(
   "a tree with no manifests refuses rather than passing",
   r.code === 2 && /NOTHING WAS READ/.test(r.out),
   `exit=${r.code} out=${r.out}`,
 );
-rmSync(d, { recursive: true, force: true });
+cleanup(d);
 
 for (const f of failures) console.error(`\n--- ${f.name}\n${f.detail}`);
 if (failures.length) process.exit(1);

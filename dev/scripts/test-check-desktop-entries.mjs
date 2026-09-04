@@ -9,10 +9,10 @@
 // have passed all three, so the control proves it fails on a hint.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const check = join(here, "check-desktop-entries.py");
@@ -32,7 +32,7 @@ try {
 }
 
 function tree(entries, identifier = "dev.arlen.good") {
-  const root = mkdtempSync(join(tmpdir(), "desktop-entries-"));
+  const root = mint("desktop-entries-");
   for (const [name, body] of Object.entries(entries)) {
     mkdirSync(join(root, "apps", name, "dist"), { recursive: true });
     writeFileSync(join(root, "apps", name, "dist", `arlen-${name}.desktop`), body);
@@ -104,7 +104,7 @@ if (!haveValidator) {
   rc === 1
     ? ok("an entry that never says which app it is is caught")
     : bad("an entry that never says which app it is is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -113,7 +113,7 @@ if (!haveValidator) {
   rc === 1
     ? ok("two main categories is caught, though the entry is valid")
     : bad("two main categories is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
@@ -122,17 +122,17 @@ if (!haveValidator) {
   rc === 1
     ? ok("a hard error is caught")
     : bad("a hard error is caught", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {
-  const root = mkdtempSync(join(tmpdir(), "desktop-entries-empty-"));
+  const root = mint("desktop-entries-empty-");
   mkdirSync(join(root, "apps"), { recursive: true });
   const rc = run(root);
   rc === 1
     ? ok("finding no entry at all is not a pass")
     : bad("finding no entry at all is not a pass", `expected 1, got ${rc}`);
-  rmSync(root, { recursive: true, force: true });
+  cleanup(root);
 }
 
 {

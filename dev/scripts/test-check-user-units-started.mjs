@@ -15,10 +15,10 @@
 // which must not appear in shipped release code.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { mint, cleanup } from "./lib/fixture.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-user-units-started.py");
@@ -33,7 +33,7 @@ const UNIT = "[Unit]\nDescription=x\n\n[Service]\nExecStart=/bin/true\n\n[Instal
 
 // Builds a tree with one user unit, optionally in the table and/or wants-linked.
 function run({ inTable = false, linked = false, units = ["arlen-thing.service"] } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "userstart-"));
+  const dir = mint("userstart-");
   const u = join(dir, "dev/mkosi/mkosi.extra/usr/lib/systemd/user");
   mkdirSync(u, { recursive: true });
   for (const name of units) writeFileSync(join(u, name), UNIT);
@@ -51,7 +51,7 @@ function run({ inTable = false, linked = false, units = ["arlen-thing.service"] 
   writeFileSync(rs, `const USER_UNIT_APP_IDS: &[(&str, &str)] = &[\n${rows}];\n`);
 
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
@@ -85,9 +85,9 @@ console.log("user units are started:");
   check("all units are checked, not just one", r.code === 0 && partial.code === 0);
 }
 {
-  const dir = mkdtempSync(join(tmpdir(), "userstart-empty-"));
+  const dir = mint("userstart-empty-");
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
-  rmSync(dir, { recursive: true, force: true });
+  cleanup(dir);
   check("a tree with no user units refuses rather than passing", r.status === 2);
 }
 
