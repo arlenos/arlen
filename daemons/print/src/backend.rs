@@ -85,6 +85,14 @@ pub struct JobOptions {
     pub color: Option<ColorMode>,
     /// Media / paper size keyword (`media`, e.g. `iso_a4_210x297mm`).
     pub media: Option<String>,
+    /// Which pages to print (`page-ranges`), as the person typed them: `1-5, 8`.
+    /// `None` prints the whole document.
+    ///
+    /// Kept as the typed text rather than parsed ranges so the one place that
+    /// decides what `1-5, 8` means is [`crate::pages`], and a range nobody can
+    /// read refuses the job instead of quietly printing everything - which is the
+    /// wrong direction for the one option whose whole purpose is printing less.
+    pub page_ranges: Option<String>,
 }
 
 /// One job submission: the target queue, the document bytes, and the options.

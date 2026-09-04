@@ -60,6 +60,10 @@ pub fn job_options_from_settings(settings: &HashMap<String, OwnedValue>) -> JobO
         duplex,
         color,
         media,
+        // The app's own settings map may carry `page-ranges`, but this path is
+        // the one where the app chose everything, and a range is the person's
+        // choice to make. It travels on the dialog's answer instead.
+        page_ranges: None,
     }
 }
 

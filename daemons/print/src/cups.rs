@@ -368,6 +368,23 @@ fn job_option_attributes(opts: &crate::backend::JobOptions) -> Vec<IppAttribute>
             push("media", IppValue::Keyword(kw));
         }
     }
+    // A range that will not parse emits NOTHING, and the submit path refuses the
+    // job before it gets here. Dropping it the way an over-long `media` is
+    // dropped would print the whole document, which is the one wrong direction
+    // for the option that exists to print less.
+    if let Some(text) = &opts.page_ranges {
+        if let Ok(ranges) = crate::pages::parse(text, 0) {
+            let values: Vec<IppValue> = ranges
+                .into_iter()
+                .map(|(min, max)| IppValue::RangeOfInteger { min, max })
+                .collect();
+            if values.len() == 1 {
+                push("page-ranges", values.into_iter().next().unwrap());
+            } else if !values.is_empty() {
+                push("page-ranges", IppValue::Array(values));
+            }
+        }
+    }
     attrs
 }
 
