@@ -278,7 +278,14 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
 # assignment carrying it failed under `set -e`, and everything below never ran. The drives then reported
 # assertions about a page that was never loaded, which reads exactly like a broken
 # app. Whatever goes wrong above, "no file was written" is not a success.
-if [ ! -s "$SHOOT_OUT" ]; then
+#
+# ONLY WHEN ONE WAS ASKED FOR. A caller that wants no screenshot passes an empty
+# path - the appearance drive does it twice, for launches that only read a value
+# back - and `-s ""` is false, so this fired on runs that had just returned a
+# real inject result and told the reader they had proved nothing. A sentence that
+# is wrong on a passing run is the same fault this whole script exists to catch,
+# so it now asks the question it means: a shot was requested and none arrived.
+if [ -n "$SHOOT_OUT" ] && [ ! -s "$SHOOT_OUT" ]; then
   echo "!! no shot was written to $SHOOT_OUT - this run proved nothing about the app" >&2
   exit 1
 fi
