@@ -26,12 +26,15 @@
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
+# shellcheck source=dev/screenshot/lib/fresh.sh
+. "$root/dev/screenshot/lib/fresh.sh"
 app="${1:-$root/target/release/arlen-clock-app}"
 clockd="$root/target/debug/arlen-clockd"
 fail=0
 
 [ -x "$app" ] || { echo "no clock app at $app"; exit 2; }
 [ -x "$clockd" ] || { echo "no clock daemon at $clockd - cargo build it first"; exit 2; }
+require_fresh "$clockd" "$root/daemons/clock/src" || exit 2
 
 say() {  # say <name> <ok> <detail>
   if [ "$2" = 1 ]; then echo "  ok   $1"; else echo "  FAIL $1"; echo "       $3"; fail=1; fi

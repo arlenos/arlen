@@ -37,6 +37,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 # shellcheck source=dev/screenshot/lib/bus.sh
 . "$here/lib/bus.sh"
+# shellcheck source=dev/screenshot/lib/fresh.sh
+. "$here/lib/fresh.sh"
 app="${1:-$root/target/release/arlen-files}"
 notifyd="$root/target/debug/arlen-notifyd"
 # Directly under $HOME and without a leading dot, for the same reason the sibling
@@ -64,6 +66,7 @@ say() {
 }
 
 [ -x "$app" ] || { echo "no files binary at $app"; exit 2; }
+require_fresh "$notifyd" "$root/daemons/notification-daemon/src" || exit 2
 [ -x "$notifyd" ] || {
   echo "!! no arlen-notifyd at $notifyd - nothing would answer Register, so the" >&2
   echo "   app would register no job and this suite would pass without testing" >&2

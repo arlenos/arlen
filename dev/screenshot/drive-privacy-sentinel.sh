@@ -21,6 +21,8 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=dev/screenshot/lib/wait.sh
 . "$root/dev/screenshot/lib/wait.sh"
+# shellcheck source=dev/screenshot/lib/fresh.sh
+. "$root/dev/screenshot/lib/fresh.sh"
 # shellcheck source=dev/screenshot/lib/preview.sh
 . "$root/dev/screenshot/lib/preview.sh"
 out="${1:-$root/dev/screenshot/out}"
@@ -37,6 +39,11 @@ trap cleanup EXIT
 
 [ -x "$app" ] || { echo "!! build it first: cargo build --manifest-path apps/settings/src-tauri/Cargo.toml" >&2; exit 1; }
 [ -x "$sentineld" ] || { echo "!! build it first: cargo build --manifest-path daemons/sentineld/Cargo.toml" >&2; exit 1; }
+# EXISTS IS NOT CURRENT. This page's whole claim is that it says only what was
+# measured, and until 5 September it was driven against a daemon whose age
+# nothing checked - a sentineld from last week would answer with last week's
+# postures and every assertion below would be about those.
+require_fresh "$sentineld" "$root/daemons/sentineld/src" "$root/daemons/sentinel-detect/src" || exit 1
 [ -d "$root/apps/settings/build" ] || { echo "!! build the frontend first: (cd apps/settings && npm run build)" >&2; exit 1; }
 if [ -n "$(find "$root/apps/settings/src" -newer "$root/apps/settings/build" -name '*.svelte' -o \
                 -newer "$root/apps/settings/build" -name '*.ts' 2>/dev/null | head -1)" ]; then
