@@ -1,0 +1,13 @@
+# Starting permission profile for a self-contained app (game, emulator or the
+# screen reader). No file access, no network and no Knowledge Graph by default;
+# its data lives in its own app dir (extra scenery or online play is granted
+# explicitly).
+#
+# The Debian package of the same simulator as `org.flightgear.FlightGear`, and it
+# carries that id's answer: online play is an explicit grant rather than a
+# standing one. This file first said otherwise, and the packaging-agreement gate
+# caught it - the catalogue calls it an "open-source flight simulator" and says
+# nothing about multiplayer, so the sibling that had already decided wins.
+[info]
+app_id = "flightgear"
+tier = "third-party"
