@@ -93,9 +93,35 @@ if [ -e "$SHOOT_APP" ]; then
                 \( -name '*.rs' -o -name '*.svelte' -o -name '*.ts' \) \
                 -newer "$SHOOT_APP" -print -quit 2>/dev/null || true)"
     if [ -n "$_newer" ]; then
+      # STDERR IS NOT ENOUGH, and that took until 5 September to notice. Every
+      # drive invokes this as `... 2>&1 | sed -n 's/^inject result: //p'`, which
+      # merges stderr in and then prints ONLY the inject line - so this warning,
+      # written to be unmissable, was discarded by all fifteen of its callers.
+      # Measured rather than reasoned: a screenshot binary older than its source
+      # ran the whole suite to five green checks with no warning anywhere in the
+      # output. That is the "test of last month's app" this block exists to
+      # prevent, and it cost most of a cycle the day before.
+      #
+      # /dev/tty was the first fix and it is not one: there is no terminal under
+      # `just drive-apps`, CI, or an agent shell, which are the runs that matter.
+      #
+      # SO A STALE BINARY NOW REFUSES. Its results are not weakly informative,
+      # they are about different code, and the suite reporting green on them is
+      # the failure. Refusing costs a rebuild; passing costs a wrong belief about
+      # what the app does. The reason travels in the `inject result:` line
+      # because that is the ONE channel every caller keeps - so each assertion
+      # fails with this sentence in its detail, where the person is already
+      # looking, and no drive needed editing to get it.
+      #
+      # SHOOT_ALLOW_STALE=1 for the real case of pointing this at an old binary
+      # on purpose: bisecting a regression, or checking what last week shipped.
       echo "!! that binary is OLDER than its source ($_newer changed since it was" >&2
       echo "   built). Whatever this run reports is about the old code - rebuild" >&2
       echo "   before believing a failure." >&2
+      if [ "${SHOOT_ALLOW_STALE:-0}" != 1 ]; then
+        echo "inject result: REFUSED: $SHOOT_APP is older than its source ($_newer). This suite would be testing old code; rebuild, or set SHOOT_ALLOW_STALE=1 to run it anyway."
+        exit 4
+      fi
     fi
   fi
 fi
