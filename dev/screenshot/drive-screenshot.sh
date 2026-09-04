@@ -75,8 +75,31 @@ say "with no way to capture, it says so" \
 
 # Which cause, not just that there was one. "This compositor has no screen
 # capture" and "the capture call threw" are different problems.
+#
+# THE CAUSE IS THE SENTENCE. This grepped for "no screen capture on this
+# compositor" until 5 September, which is the COMPOSITOR'S OWN WORDS - the
+# untranslated string the bridge used to draw in every locale, and the exact
+# thing the `s.why.*` catalogue replaced. The check has been asserting the
+# presence of that defect ever since, and could not say so because nothing runs
+# these suites in the PR matrix. Same rot, same week, as the greeter's.
 say "and it names why" \
-  "$(printf '%s' "$out" | grep -q "no screen capture on this compositor" && echo 1 || echo 0)" "$out"
+  "$(printf '%s' "$out" | grep -q "does not offer screen capture to apps" && echo 1 || echo 0)" "$out"
+
+# And that the sentence is one the app SHIPS. The bridge's own words reaching the
+# screen is the regression the two checks above were written against, and a list
+# of forbidden strings only ever catches the leaks somebody thought of: the
+# greeter's blocklist missed its own historical leak verbatim. Asking whether the
+# body contains a catalogue sentence catches every shape of it, and follows a
+# rewording instead of going red at one.
+catalogue="$root/apps/screenshot/src/lib/i18n/messages.ts"
+why=$(grep -oE '"s\.why\.[A-Za-z]+": "[^"]+"' "$catalogue" | sed 's/^[^:]*: "//; s/"$//' | sort -u)
+shipped=0
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  printf '%s' "$out" | grep -qF "$line" && shipped=1 && break
+done <<< "$why"
+say "and the reason is a sentence the app ships, not the bridge's own words" \
+  "$shipped" "none of the s.why.* catalogue sentences is on screen: $out"
 
 # THE case. This is the assertion that fails if anything ever restores the
 # invented desktop on the no-capture path.
