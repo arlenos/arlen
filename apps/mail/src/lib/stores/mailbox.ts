@@ -1,14 +1,17 @@
-/// The mailbox model the client stands on. The INTENDED contract - flagged as a
-/// coder seam, not invented quietly: `mail_folders() -> Folder[]`,
-/// `mail_list(folderId) -> Envelope[]`, `mail_open(id) -> Message` (the existing
-/// `mail_read` DTO shape, one shape on the wire). None of the three exists in
-/// Rust yet, so live the store answers "no account connected" and under vite a
-/// fixture mailbox stands in - marked as an example on the surface, because a
-/// mock that reads as real state is a lie with good typography.
+/// The mailbox model the client stands on. Reading is live since 4 September:
+/// `mail_folders() -> Folder[]`, `mail_list(folderId) -> Envelope[]` and
+/// `mail_open(id) -> Message` (the `mail_read` DTO shape, one shape on the wire)
+/// read this machine's maildir. Under vite a fixture mailbox stands in, marked as
+/// an example on the surface, because a mock that reads as real state is a lie
+/// with good typography.
 ///
-/// Local actions (read-mark, archive, delete, drafts) apply to the fixture so
-/// the whole client drives; live they will ride `mail_move`/`mail_delete`/
-/// `mail_send` when the account backend lands.
+/// WRITING IS NOT LIVE. Archive, delete, drafts and the read mark are local
+/// mutations that the fixture keeps and a maildir does not - a file that was
+/// "archived" is back in the inbox at the next start. So the surface offers the
+/// writes only while the mailbox is the sample (`mailboxWritable`), and live it
+/// is a reader until `mail_move`/`mail_delete`/`mail_draft_save`/`mail_mark_seen`
+/// exist. The read mark is the one exception: the dot clears on reading, as in
+/// every client, and the flag write is the seam that makes it stick.
 import { derived, get, writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
@@ -313,34 +316,65 @@ const FIXTURE_MESSAGES: Record<string, Message> = {
 export const folders = writable<Folder[]>([]);
 /// Every envelope the store knows, across folders; the page slices per folder.
 export const envelopes = writable<Envelope[]>([]);
+
+/// Where the mailbox stands: still being read, read from this machine, no
+/// mailbox to read, or the sample under vite. Distinct from the folders being
+/// empty, because "nothing answered yet" and "nothing is connected" are
+/// different sentences and only one of them is true while a big maildir loads.
+export type MailboxState = "loading" | "live" | "unconnected" | "sample";
+export const mailboxState = writable<MailboxState>("loading");
 /// True while the mailbox is the FIXTURE - the surface says so.
-export const mailboxMocked = writable(false);
+export const mailboxMocked = derived(mailboxState, ($s) => $s === "sample");
+/// Whether the writes (compose, archive, delete) are on offer: only the sample
+/// keeps them, so live they are not shown rather than shown and undone.
+export const mailboxWritable = derived(mailboxState, ($s) => $s === "sample");
 /// The inbox unread count, derived so the rail never counts by hand.
 export const unreadCount = derived(envelopes, ($e) => $e.filter((x) => x.unread && x.folderId === "inbox").length);
 
-/// Load folders and envelopes. Live: the intended `mail_folders`/`mail_list`
-/// commands; until they exist the catch answers with the fixture under vite
-/// and with an empty, honestly-unconnected mailbox on a real host.
+/// Load folders and envelopes. Live: `mail_folders`, then one `mail_list` per
+/// folder. The rail stands as soon as the folders are known and the state stays
+/// `loading` until the rows are in, so a large maildir shows "reading" rather
+/// than "no account is connected" for the seconds it takes. The catch answers
+/// with the fixture under vite and an honestly-unconnected mailbox on a host.
 export async function loadMailbox(): Promise<void> {
+  mailboxState.set("loading");
+  let f: Folder[];
   try {
-    const f = await invoke<Folder[]>("mail_folders");
-    const lists = await Promise.all(f.map((x) => invoke<Envelope[]>("mail_list", { folderId: x.id })));
-    folders.set(f);
-    envelopes.set(lists.flat());
-    mailboxMocked.set(false);
+    f = await invoke<Folder[]>("mail_folders");
   } catch {
     if (tauriAvailable) {
       // A real host with no mailbox backend: an unconnected mailbox, not a
       // pretend one. The launch path (`mail_read`) still works beside this.
       folders.set([]);
       envelopes.set([]);
-      mailboxMocked.set(false);
+      mailboxState.set("unconnected");
     } else {
       folders.set(structuredClone(FIXTURE_FOLDERS));
       envelopes.set(structuredClone(FIXTURE_ENVELOPES));
-      mailboxMocked.set(true);
+      mailboxState.set("sample");
     }
+    return;
   }
+  if (f.length === 0) {
+    // The host answered and there is no maildir: the same sentence as no host.
+    folders.set([]);
+    envelopes.set([]);
+    mailboxState.set("unconnected");
+    return;
+  }
+  folders.set(f);
+  const lists = await Promise.all(
+    f.map(async (x) => {
+      try {
+        return await invoke<Envelope[]>("mail_list", { folderId: x.id });
+      } catch {
+        // One folder that would not list is an empty folder, not a dead mailbox.
+        return [];
+      }
+    }),
+  );
+  envelopes.set(lists.flat());
+  mailboxState.set("live");
 }
 
 /// Open one message. Live: the intended `mail_open`; fixture: the local map.

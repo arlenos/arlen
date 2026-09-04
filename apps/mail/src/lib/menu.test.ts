@@ -19,6 +19,18 @@ describe("the global menu", () => {
     locale.set("en");
   });
 
+  it("offers only Go while the mailbox cannot keep a write", () => {
+    const groups = appMenuGroups(get(t), false);
+    expect(groups.map((g) => g.label)).toEqual(["Go"]);
+    expect(groups[0].items.map((i) => i.action)).toEqual([
+      "go.inbox",
+      "go.sent",
+      "go.drafts",
+      "go.archive",
+      "go.trash",
+    ]);
+  });
+
   it("names an action on every item that is not a separator", () => {
     for (const g of appMenuGroups(get(t))) {
       expect(g.label).not.toMatch(/^ml\./);

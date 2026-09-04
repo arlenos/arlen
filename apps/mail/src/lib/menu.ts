@@ -9,9 +9,10 @@
 /// same routed seams as the pdf reader's.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { writable } from "svelte/store";
+import { derived, writable } from "svelte/store";
 import type { Translate } from "@arlen/ui-kit/i18n";
 import { t } from "$lib/i18n/messages";
+import { mailboxWritable } from "$lib/stores/mailbox";
 
 const APP_ID = "dev.arlen.mail";
 
@@ -33,21 +34,28 @@ const item = (label: string, action: string, shortcut?: string): MenuItem => ({
 const sep = (): MenuItem => ({ label: "", type: "separator" });
 
 /// The menu as the reader's language renders it. Pure, so a test can read the
-/// labels without a running app or a shell to publish into.
-export function appMenuGroups(t: Translate): MenuGroup[] {
+/// labels without a running app or a shell to publish into. The Message group
+/// is the writes, and it is offered only while the mailbox keeps one; a reader
+/// gets Go and nothing that would undo itself at the next start.
+export function appMenuGroups(t: Translate, writable = true): MenuGroup[] {
+  const message: MenuGroup[] = writable
+    ? [
+        {
+          label: t("ml.menu.message"),
+          items: [
+            item(t("ml.compose"), "message.new", "Ctrl+N"),
+            sep(),
+            item(t("ml.reply"), "message.reply"),
+            item(t("ml.forward"), "message.forward"),
+            sep(),
+            item(t("ml.archive"), "message.archive", "E"),
+            item(t("ml.delete"), "message.delete", "Del"),
+          ],
+        },
+      ]
+    : [];
   return [
-    {
-      label: t("ml.menu.message"),
-      items: [
-        item(t("ml.compose"), "message.new", "Ctrl+N"),
-        sep(),
-        item(t("ml.reply"), "message.reply"),
-        item(t("ml.forward"), "message.forward"),
-        sep(),
-        item(t("ml.archive"), "message.archive", "E"),
-        item(t("ml.delete"), "message.delete", "Del"),
-      ],
-    },
+    ...message,
     {
       label: t("ml.menu.go"),
       items: [
@@ -64,10 +72,12 @@ export function appMenuGroups(t: Translate): MenuGroup[] {
 /// The action a menu click dispatched; the page consumes and clears it.
 export const menuAction = writable<string | null>(null);
 
-/// Register the menu and route dispatched actions into the store.
+/// Register the menu and route dispatched actions into the store. Re-registered
+/// on a locale switch and when the mailbox settles, so the Message group comes
+/// and goes with what the mailbox can keep.
 export async function initAppMenu(): Promise<void> {
-  t.subscribe((tr) => {
-    void invoke("plugin:arlen-shell|menu_register", { groups: appMenuGroups(tr) }).catch(() => {
+  derived([t, mailboxWritable], ([tr, writable]) => ({ tr, writable })).subscribe(({ tr, writable }) => {
+    void invoke("plugin:arlen-shell|menu_register", { groups: appMenuGroups(tr, writable) }).catch(() => {
       // No shell relay (vite, or the permission seam not landed): absent.
     });
   });

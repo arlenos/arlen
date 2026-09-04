@@ -99,7 +99,8 @@
   }
 
   /// Today shows the clock time, everything older a short date - the reading
-  /// pane carries the full sent line, the list only orients.
+  /// pane carries the full sent line, the list only orients. A message with no
+  /// Date header arrives as 0 and gets no date at all: 1970 is not a reading.
   function listDate(ms: number, loc: string): string {
     const d = new Date(ms);
     const sameDay = new Date().toDateString() === d.toDateString();
@@ -138,8 +139,10 @@
         <span class="dot" class:unread={e.unread} aria-hidden="true"></span>
         <span class="row-body">
           <span class="row-top">
-            <span class="from" class:strong={e.unread}>{e.from}</span>
-            <span class="when">{listDate(e.dateMs, $locale)}</span>
+            <span class="from" class:strong={e.unread}>{e.from || $t("ml.noSender")}</span>
+            {#if e.dateMs > 0}
+              <span class="when">{listDate(e.dateMs, $locale)}</span>
+            {/if}
           </span>
           <span class="subject-line">
             <span class="subject" class:strong={e.unread}>{e.subject || $t("ml.noSubject")}</span>

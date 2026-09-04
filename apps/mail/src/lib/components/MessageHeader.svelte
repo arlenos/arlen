@@ -12,7 +12,7 @@
 
   let { message }: { message: Message } = $props();
 
-  const name = $derived(message.from ? displayName(message.from) : "?");
+  const name = $derived(message.from ? displayName(message.from) : "");
   const letter = $derived((name.trim()[0] ?? "?").toUpperCase());
 
   /// The graph's name for this sender, when the machine knows one. Reading the
@@ -36,8 +36,12 @@
     </Avatar>
     <div class="who">
       <p class="from">
-        {message.from ?? "-"}
-        <span class="caveat">({$t("ml.unsigned")})</span>
+        {#if message.from}
+          {message.from}
+          <span class="caveat">({$t("ml.unsigned")})</span>
+        {:else}
+          {$t("ml.noSender")}
+        {/if}
       </p>
       {#if known}
         <p class="known">
@@ -72,13 +76,18 @@
     min-width: 0;
     overflow-wrap: anywhere;
   }
+  /* The date wraps under the sender before the sender wraps a letter per
+     line: the name block keeps a floor of 14rem and the row breaks below it
+     (seen at 720px in the native drive, where the date held its width and the
+     address got ten pixels). */
   .from-line {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.7rem;
     align-items: flex-start;
   }
   .who {
-    flex: 1;
+    flex: 1 1 14rem;
     min-width: 0;
     display: flex;
     flex-direction: column;
