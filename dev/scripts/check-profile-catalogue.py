@@ -20,9 +20,13 @@ launches the app rather than here:
     enrolment hook writes the file out under the id it was found by and the
     resolver then trusts what is inside it, so a disagreement enrols one app's
     grants under another's name.
-  * `[info] tier` is present. The tier decides which resolver rule applies; a
-    profile without one is a profile whose authority is whatever the parser
-    defaulted to.
+  * `[info] tier` is present AND says `third-party`. The tier decides what a
+    caller is trusted for - `System` is what the resolver gives a binary under
+    `/usr/lib/arlen/`, and `FirstParty` the apps this project ships. Every file
+    here is a Debian package the enrolment hook matched by name, so a higher tier
+    in this directory would hand a third-party package the standing of an Arlen
+    daemon. All 2534 say `third-party` today, which is the right moment to say it
+    has to.
   * A WIDE GRANT STATES ITS REASON. Two grants here are the widest a profile can
     make: `filesystem.home = true` (158 of them - terminals, backup tools,
     disk-usage readers, archivers, all of which genuinely need it) and
@@ -107,10 +111,18 @@ def main() -> int:
                 f"{info.get('app_id')!r}. The hook finds the file by the id and then "
                 f"trusts what is inside it, so these must agree."
             )
-        if not info.get("tier"):
+        tier = info.get("tier")
+        if not tier:
             problems.append(
                 f"{path.name} states no `[info] tier`, so which resolver rule applies "
                 f"to it is whatever the parser defaulted to."
+            )
+        elif tier != "third-party":
+            problems.append(
+                f"{path.name} claims tier {tier!r}. This directory is the curated set "
+                f"for THIRD-PARTY packages - the enrolment hook matches them by Debian "
+                f"package name - so a higher tier here gives a package the standing "
+                f"this project reserves for its own daemons."
             )
         said = comments(text)
         if declared.get("filesystem", {}).get("home") is True:

@@ -80,6 +80,15 @@ check(
 );
 
 check(
+  "a profile claiming a tier this directory does not grant is caught",
+  {
+    "goodedit.toml": GOOD,
+    "climber.toml": '[info]\napp_id = "climber"\ntier = "first-party"\n',
+  },
+  (code, out) => code === 1 && out.includes("claims tier"),
+);
+
+check(
   "a whole-home grant with no reason is caught",
   {
     "goodedit.toml": GOOD,
