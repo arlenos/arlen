@@ -21,15 +21,16 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=dev/screenshot/lib/wait.sh
 . "$root/dev/screenshot/lib/wait.sh"
+# shellcheck source=dev/screenshot/lib/preview.sh
+. "$root/dev/screenshot/lib/preview.sh"
 out="${1:-$root/dev/screenshot/out}"
 app="$root/target/debug/arlen-settings"
 sentineld="$root/target/debug/arlen-sentineld"
 work="$(mktemp -d)"
-preview_pid=""
 daemon_pid=""
 cleanup() {
   [ -n "$daemon_pid" ] && kill "$daemon_pid" 2>/dev/null || true
-  [ -n "$preview_pid" ] && kill "$preview_pid" 2>/dev/null || true
+  stop_preview
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -43,8 +44,13 @@ if [ -n "$(find "$root/apps/settings/src" -newer "$root/apps/settings/build" -na
   echo "   believing a failure: (cd apps/settings && npm run build)" >&2
 fi
 
-(cd "$root/apps/settings" && npx vite preview --port 1421 --outDir build >/dev/null 2>&1) &
-preview_pid=$!
+# Through the shared helper, which refuses a port it did not start and kills the
+# server's whole process group. This was `( ... ) &` with `preview_pid=$!`, and
+# that pid is the SUBSHELL's: `npx` spawns the node that holds the port, so the
+# kill missed it and every run left a server behind. The next run's readiness
+# check then passed against THAT one and read a frontend built at some earlier
+# time - a suite passing while testing a page nobody had just built.
+start_preview "$root/apps/settings" 1421 || exit 1
 wait_for_http "http://localhost:1421/" || exit 1
 
 cat > "$work/goto.js" <<'JS'
