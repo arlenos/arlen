@@ -6,6 +6,7 @@
   /// nothing. Reuses the GateCard (gate when pending, receipt when done).
   import { t } from "$lib/i18n/messages";
   import GateCard from "./GateCard.svelte";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import {
     pendingProposals,
     completedActions,
@@ -32,7 +33,7 @@
   /// The proposal's concrete effect(s) + why, under the summary title.
   function proposalDetail(p: PendingProposal): string {
     const what = p.effects?.length ? p.effects.join("; ") : "";
-    return [what, p.reason].filter(Boolean).join(" · ");
+    return [what, p.reason].filter(Boolean).join(", ");
   }
 
   /// A content diff to review, when the change carries one (moves/graph writes
@@ -47,28 +48,40 @@
     return "h.aa.failed";
   }
 
-  async function run(fn: () => Promise<string>, ok: string[]) {
+  /// The proposals and receipts whose ask is on the wire right now. Approve,
+  /// Deny and Undo are the irreversible acts on this surface, so a second
+  /// click while the first is answering must not send a second ask; the
+  /// card's buttons are disabled for exactly that window.
+  let inflight = $state(new Set<string | number>());
+
+  async function run(key: string | number, fn: () => Promise<string>, ok: string[]) {
+    if (inflight.has(key)) return;
+    inflight = new Set([...inflight, key]);
     notice = null;
     try {
       const status = await fn();
       if (!ok.includes(status)) notice = humanStatus(status);
     } catch {
       notice = "h.aa.unreachable";
+    } finally {
+      const next = new Set(inflight);
+      next.delete(key);
+      inflight = next;
     }
   }
 
-  const approve = (id: number) => run(() => approveProposal(id), ["executed", "nothing-to-execute"]);
-  const deny = (id: number) => run(() => denyProposal(id), ["denied"]);
-  const undo = (id: string) => run(() => undoAction(id), ["retracted", "nothing-to-undo"]);
+  const approve = (id: number) => run(id, () => approveProposal(id), ["executed", "nothing-to-execute"]);
+  const deny = (id: number) => run(id, () => denyProposal(id), ["denied"]);
+  const undo = (id: string) => run(id, () => undoAction(id), ["retracted", "nothing-to-undo"]);
 </script>
 
 {#if unreadable || pending.length > 0 || recent.length > 0}
   <div class="agent-actions" role="region" aria-label={$t("h.agentActions.aria")}>
     {#if unreadable}
-      <p class="aa-notice" role="status">{$t("h.aa.unreadable")}</p>
+      <Notice tone="caution" text={$t("h.aa.unreadable")} />
     {/if}
     {#if notice}
-      <p class="aa-notice" role="status">{$t(notice)}</p>
+      <Notice tone="error" text={$t(notice)} />
     {/if}
 
     {#each pending as p (p.id)}
@@ -76,13 +89,14 @@
         title={p.summary}
         detail={proposalDetail(p)}
         diff={changeDiff(p.change)}
+        busy={inflight.has(p.id)}
         onapprove={() => approve(p.id)}
         ondeny={() => deny(p.id)}
       />
     {/each}
 
     {#each recent as c (c.id)}
-      <GateCard title={c.what} diff={changeDiff(c.change)} done onundo={() => undo(c.id)} />
+      <GateCard title={c.what} diff={changeDiff(c.change)} done busy={inflight.has(c.id)} onundo={() => undo(c.id)} />
     {/each}
 
     {#if ($completedActions ?? []).length > recent.length}
@@ -104,11 +118,6 @@
        composer off-screen. */
     max-height: 40vh;
     overflow-y: auto;
-  }
-  .aa-notice {
-    margin: 0;
-    font-size: var(--text-xs);
-    color: var(--color-warning, #d4b483);
   }
   .aa-all {
     align-self: flex-start;

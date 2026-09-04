@@ -84,6 +84,7 @@
     await tick();
   }
   function commitEdit() {
+    if ($busy) return;
     const text = editDraft.trim();
     editing = false;
     if (text.length === 0 || text === message.text) return;
@@ -168,7 +169,7 @@
         />
         <div class="edit-actions">
           <Button variant="ghost" size="sm" onclick={() => (editing = false)}>{$t("h.msg.cancel")}</Button>
-          <Button variant="default" size="sm" onclick={commitEdit}>{$t("h.msg.sendAgain")}</Button>
+          <Button variant="default" size="sm" disabled={$busy} onclick={commitEdit}>{$t("h.msg.sendAgain")}</Button>
         </div>
       </div>
     {:else if message.text}
