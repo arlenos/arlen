@@ -24,6 +24,7 @@
     done = false,
     auto = false,
     via,
+    busy = false,
     onapprove,
     ondeny,
     onalways,
@@ -44,6 +45,8 @@
     auto?: boolean;
     /// The grant that authorised an auto-applied change ("edits in this project").
     via?: string;
+    /// True while this card's ask is on the wire: every act on it waits.
+    busy?: boolean;
     onapprove?: () => void;
     ondeny?: () => void;
     /// Create a grant at the chosen scope ("project" narrow, "type" broad).
@@ -92,17 +95,17 @@
         {auto ? "Applied automatically" : "Applied"}
         {#if via}<span class="via">via {via}</span>{/if}
       </span>
-      <Button variant="outline" size="sm" onclick={() => onundo?.()}>
+      <Button variant="outline" size="sm" disabled={busy} onclick={() => onundo?.()}>
         <Undo2 size={13} strokeWidth={2} />
         Undo
       </Button>
     {:else}
-      <Button variant="default" size="sm" onclick={() => onapprove?.()}>{$t("h.gate.approve")}</Button>
+      <Button variant="default" size="sm" disabled={busy} onclick={() => onapprove?.()}>{$t("h.gate.approve")}</Button>
       {#if onalways}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
             {#snippet child({ props })}
-              <Button variant="outline" size="sm" {...props}>
+              <Button variant="outline" size="sm" disabled={busy} {...props}>
                 Always allow
                 <ChevronDown size={13} strokeWidth={2} />
               </Button>
@@ -118,7 +121,7 @@
           </DropdownMenu.Content>
         </DropdownMenu.Root>
       {/if}
-      <Button variant="ghost" size="sm" onclick={() => ondeny?.()}>{$t("h.gate.deny")}</Button>
+      <Button variant="ghost" size="sm" disabled={busy} onclick={() => ondeny?.()}>{$t("h.gate.deny")}</Button>
     {/if}
   </div>
 </div>
