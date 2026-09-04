@@ -1186,6 +1186,12 @@ async fn files_op(
     // part of it never ran, and the entries that DID complete are undoable
     // exactly as they would be otherwise.
     //
+    // ONE CLAUSE, ONE FACT (design-system.md §6.7). Both messages used to open by
+    // naming what happened - "Stopped." and "This did not finish." - and the zone
+    // already shows that: it has the job's state, which is the whole reason the
+    // state is sent. What it cannot show is what became of the work already done,
+    // so that is the half each message keeps.
+    //
     // The failure sentence carries no path and no errno. `OpProblem`'s `why` is
     // documented as being for the log, and this row renders in the shell's
     // notification popover - which outlives this window and can be open in front
@@ -1195,7 +1201,7 @@ async fn files_op(
     if let Some(j) = job {
         match &outcome {
             Ok(()) if stopped => {
-                j.finish("done", "Stopped. What had already been done was kept.")
+                j.finish("done", "What had already been done was kept.")
                     .await
             }
             Ok(()) => j.finish("done", "").await,
@@ -1210,10 +1216,7 @@ async fn files_op(
                 // was written about, reintroduced from the producer end. Fatal
                 // rather than recoverable because the zone cannot retry a file
                 // operation - the person repeats it from the window.
-                j.finish(
-                    "error-fatal",
-                    "This did not finish. Anything already done was left as it is.",
-                )
+                j.finish("error-fatal", "Anything already done was left as it is.")
                 .await
             }
         }

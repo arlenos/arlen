@@ -26,6 +26,9 @@
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The frontend is served from a preview below, not baked into the binary, so the
+# staleness guard compares Rust only (see shoot-app.sh).
+export SHOOT_FRONTEND_SERVED=1
 # shellcheck source=dev/screenshot/lib/fresh.sh
 . "$root/dev/screenshot/lib/fresh.sh"
 out="$root/dev/screenshot/out"

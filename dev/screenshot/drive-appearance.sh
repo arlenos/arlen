@@ -26,6 +26,9 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# The frontend is served from a preview below, not baked into the binary, so the
+# staleness guard compares Rust only (see shoot-app.sh).
+export SHOOT_FRONTEND_SERVED=1
 out="${1:-$root/dev/screenshot/out}"
 app="$root/target/debug/arlen-settings"
 work="$(mktemp -d)"
