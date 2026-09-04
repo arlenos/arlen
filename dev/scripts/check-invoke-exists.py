@@ -435,17 +435,20 @@ KNOWN: dict[str, dict[str, str]] = {
         # three items nobody has picked up.
     },
     "text-editor": {
-        # FALSE WHEN: the gate registry classifies an edit action. `executor_live`
-        # gates only HALF of what the surface draws, and I had this wrong an hour
-        # ago: the store shows hunks the assistant already applied on its own,
-        # which is the autonomous half that flag governs - but `ai_edit_accept`
-        # takes a hunk index and applies it, so a proposal whose hunks are all
-        # held for confirm is the SAME flow with the autonomous half off, which is
-        # what the gate does in suggest mode anyway. That is a smaller cut of this
-        # feature rather than a different one, and it is buildable without
-        # flipping anything. What it genuinely needs is the model call, the diff,
-        # and a write path to somebody's open file - the last of which is why it
-        # wants a careful sitting rather than a spare half hour.
+        # FALSE WHEN: the ACT executor is live. `text-editor-app.md` #1 ends on
+        # that sentence - "it lands when the ACT executor is live" - and this is
+        # the app's headline rather than a corner of it.
+        #
+        # Two facts sit under that, and I have now had them the wrong way round
+        # once in each direction, so both are written down. A propose-only cut is
+        # mechanically possible: `ai_edit_accept` takes a hunk index and applies
+        # it, so a proposal with every hunk held for confirm is this same flow
+        # with the autonomous half off. AND the value of the feature IS the
+        # autonomous half - the three-tier gate that auto-applies only safe
+        # reversible edits is the precise thing the doc says the market gets
+        # fatally wrong. Shipping the proposal without the gate demonstrates none
+        # of what it exists to demonstrate, so the sequencing is the doc's call
+        # and not a technical impossibility.
         "ai_edit": (
             "proposing an assistant edit (the gated edit path, executor-live)"
         ),
