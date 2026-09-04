@@ -68,6 +68,18 @@ out=$(guestfish --ro -a "$img" run : mount-ro /dev/sda2 / : sh '
   ls /usr/bin 2>/dev/null | grep "^arlen" | sed "s|^|/usr/bin/|"
   ls /usr/lib/arlen/libexec 2>/dev/null | sed "s|^|/usr/lib/arlen/libexec/|"
 
+  echo "=== sandboxed workers a surface spawns but no unit names"
+  # The ExecStart check above only sees binaries a UNIT names. These are spawned
+  # by an app when it needs one - the file manager and the portal picker both
+  # look for the thumbnail workers at this path - so nothing above would notice
+  # them missing, and nothing did: no build step staged either until 4 September,
+  # and every image to that date showed generic icons where pictures belong.
+  # They fail honestly, which is why it went unseen; this is the line that says
+  # so out loud.
+  for w in arlen-thumbnail-sandbox arlen-music-thumbnail-sandbox; do
+    [ -e "/usr/lib/arlen/libexec/$w" ] || echo "MISSING /usr/lib/arlen/libexec/$w"
+  done
+
   echo "=== desktop entries"
   ls /usr/share/applications/*.desktop 2>/dev/null | wc -l
 
