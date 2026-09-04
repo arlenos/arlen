@@ -23,6 +23,8 @@
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
+# shellcheck source=dev/screenshot/lib/wait.sh
+. "$here/lib/wait.sh"
 app="${1:-$root/target/release/arlen-system-monitor}"
 probes="$HOME/.cache/arlen-drive-sysmon"
 fail=0
@@ -159,8 +161,7 @@ quit.click(); await new Promise(r => setTimeout(r, 1500));
 return JSON.stringify({ first, asking });
 JS
   got=$(drive "$probes/p-kill.js" sysmon-kill.png)
-  sleep 2
-  gone=$(ps -p "$victim" >/dev/null 2>&1 && echo no || echo yes)
+  gone=$(wait_for_gone "$victim" && echo yes || echo no)
   say "force quit ends the process, and asks first" \
     "$([ "$gone" = yes ] && printf '%s' "$got" | grep -q '"asking"' && echo 1 || echo 0)" \
     "$got (target $victim gone: $gone)"
