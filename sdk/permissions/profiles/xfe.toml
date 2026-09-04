@@ -1,0 +1,9 @@
+# Starting permission profile for a file manager. It works wherever the person
+# keeps their files, so anything narrower would leave folders it cannot open; no
+# network and no Knowledge Graph by default.
+[info]
+app_id = "xfe"
+tier = "third-party"
+
+[filesystem]
+home = true
