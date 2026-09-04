@@ -211,6 +211,21 @@ def warn_if_error_page(base, sid, binary=None):
                 f"{where}.",
                 file=sys.stderr,
             )
+            # AND ON THE CHANNEL THE DRIVES KEEP. A drive reads this run as
+            # `... 2>&1 | sed -n 's/^inject result: //p'`, so everything above
+            # goes to the floor: on 4 September the mail reader suite reported
+            # twelve failures with an EMPTY reason each, and the sentence naming
+            # the cause had been printed and discarded. The staleness refusal
+            # already travels this way and is why that one is legible; this is
+            # the same rule applied to the other way a shot dies.
+            #
+            # `REFUSED:` because it is the contract a negative assertion tests
+            # (`case "$out" in ""|REFUSED:*)`): a window that never loaded does
+            # not contain the forbidden string either, and must not be read as
+            # proof of its absence.
+            print(
+                f"inject result: REFUSED: the app never loaded its page ({probe}) - {where}."
+            )
             return 1
     return 0
 
