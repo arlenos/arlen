@@ -116,6 +116,104 @@ mod tests {
         }
     }
 
+    /// The real thing, end to end: a real PNG through the real sandboxed worker
+    /// into a real cache, out as the data-URL a tile loads.
+    ///
+    /// `#[ignore]`d because it needs that worker built
+    /// (`cargo build -p arlen-ai-sandbox --features thumbnail`), which a plain
+    /// `cargo test` does not do. It takes the generator directly rather than
+    /// through the command so it can name the binary without setting an
+    /// environment variable its neighbours are reading at the same time.
+    ///
+    /// Run: `cargo test -- --ignored thumbnails_a_real_png`
+    #[test]
+    #[ignore = "needs the sandboxed worker built"]
+    fn thumbnails_a_real_png_through_the_sandboxed_worker() {
+        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../target/debug/arlen-thumbnail-sandbox");
+        assert!(bin.is_file(), "build it first: {}", bin.display());
+
+        // A 4x4 red PNG, written here so the check carries its own fixture.
+        let png: Vec<u8> = {
+            let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+            let chunk = |kind: &[u8], data: &[u8]| {
+                let mut c = kind.to_vec();
+                c.extend_from_slice(data);
+                let mut o = (data.len() as u32).to_be_bytes().to_vec();
+                o.extend_from_slice(&c);
+                o.extend_from_slice(&crc32(&c).to_be_bytes());
+                o
+            };
+            let mut ihdr = 4u32.to_be_bytes().to_vec();
+            ihdr.extend_from_slice(&4u32.to_be_bytes());
+            ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
+            out.extend_from_slice(&chunk(b"IHDR", &ihdr));
+            let raw: Vec<u8> = (0..4)
+                .flat_map(|_| {
+                    let mut row = vec![0u8];
+                    row.extend((0..4).flat_map(|_| [255u8, 0, 0]));
+                    row
+                })
+                .collect();
+            out.extend_from_slice(&chunk(b"IDAT", &deflate_stored(&raw)));
+            out.extend_from_slice(&chunk(b"IEND", b""));
+            out
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("red.png");
+        std::fs::write(&source, &png).unwrap();
+
+        let cache = ThumbnailCache::new(dir.path().join("cache"));
+        let generator = Sandboxed { bin };
+        let url = thumbnail_data_url(&cache, &generator, &source, is_thumbnailable)
+            .expect("the worker answered")
+            .expect("a thumbnail for a real png");
+        assert!(url.starts_with("data:image/png;base64,"), "{}", &url[..40.min(url.len())]);
+
+        // And the second ask is a cache hit rather than a second subprocess: the
+        // generator is swapped for one that would fail if it ran.
+        struct Never;
+        impl ThumbnailGenerator for Never {
+            fn generate(&self, _: &Path) -> Result<Vec<u8>, ThumbnailError> {
+                panic!("a cached thumbnail was regenerated");
+            }
+        }
+        let again = thumbnail_data_url(&cache, &Never, &source, is_thumbnailable)
+            .unwrap()
+            .unwrap();
+        assert_eq!(again, url);
+    }
+
+    /// A zlib stream with one stored (uncompressed) block, enough for a fixture.
+    fn deflate_stored(data: &[u8]) -> Vec<u8> {
+        let mut out = vec![0x78, 0x01];
+        out.push(0x01);
+        out.extend_from_slice(&(data.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(!(data.len() as u16)).to_le_bytes());
+        out.extend_from_slice(data);
+        let mut a: u32 = 1;
+        let mut b: u32 = 0;
+        for byte in data {
+            a = (a + u32::from(*byte)) % 65521;
+            b = (b + a) % 65521;
+        }
+        out.extend_from_slice(&((b << 16) | a).to_be_bytes());
+        out
+    }
+
+    /// CRC-32 as PNG chunks carry it.
+    fn crc32(data: &[u8]) -> u32 {
+        let mut crc = 0xffff_ffffu32;
+        for byte in data {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
+            }
+        }
+        !crc
+    }
+
     #[tokio::test]
     async fn an_unthumbnailable_path_never_reaches_a_worker() {
         // No sandbox binary exists in a test run, so reaching one would fail
