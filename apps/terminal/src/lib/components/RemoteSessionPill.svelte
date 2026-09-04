@@ -146,7 +146,6 @@
     color: var(--color-error);
     font-size: var(--text-xs);
     font-weight: 500;
-    cursor: pointer;
   }
   .rsp-revoke:hover {
     background: color-mix(in srgb, var(--color-error) 12%, transparent);

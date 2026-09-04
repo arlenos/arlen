@@ -195,7 +195,6 @@
     border: none;
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .al-time {
     /* All tile times share one size and one left edge. */

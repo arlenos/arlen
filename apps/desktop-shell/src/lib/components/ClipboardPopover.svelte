@@ -220,7 +220,6 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
-    cursor: pointer;
   }
   :global([data-selected]) .clip-delete,
   .clip-row:hover .clip-delete {
@@ -244,7 +243,6 @@
     border-radius: var(--radius-chip, 4px);
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
-    cursor: pointer;
   }
   .clip-clear:hover {
     color: var(--color-fg-shell);

@@ -113,7 +113,6 @@
     font-size: var(--text-sm);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    cursor: pointer;
   }
   :global(.exp-trigger:hover) {
     color: var(--foreground);

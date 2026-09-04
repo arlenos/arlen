@@ -121,7 +121,6 @@
     border-radius: var(--radius-card);
     background: var(--color-bg-card);
     box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 0.35));
-    cursor: pointer;
     animation: thumb-in var(--duration-fast, 200ms) var(--ease-out, ease);
     --container-radius: var(--radius-card);
     --container-inset: 0.5rem;
@@ -177,7 +176,6 @@
     border-radius: var(--radius-input);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    cursor: pointer;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .thumb-btn:hover {

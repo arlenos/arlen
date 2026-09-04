@@ -243,7 +243,6 @@
     font-size: var(--text-sm);
     color: var(--color-fg-primary);
     text-align: start;
-    cursor: pointer;
   }
   .mi:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);

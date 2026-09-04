@@ -184,7 +184,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-    cursor: pointer;
   }
   .pr-asof:hover {
     color: var(--color-fg-primary);
@@ -215,7 +214,6 @@
     font-size: var(--text-xs);
     color: var(--color-fg-primary);
     text-align: start;
-    cursor: pointer;
   }
   .pr-pick:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 7%, transparent);
@@ -241,7 +239,6 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
-    cursor: pointer;
   }
   .pr-chip-x:hover {
     color: var(--color-fg-primary);

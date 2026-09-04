@@ -104,7 +104,6 @@
     position: relative;
     height: 2.25rem;
     margin: 0.25rem 1.1rem 0;
-    cursor: pointer;
     touch-action: none;
     outline: none;
   }

@@ -107,7 +107,6 @@
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     border-radius: var(--radius-button, 6px);
-    cursor: pointer;
   }
   .x:hover {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -134,7 +133,6 @@
     border-radius: var(--radius-input, 8px);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .row:hover {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);

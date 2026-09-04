@@ -88,7 +88,6 @@
     border: none;
     background: transparent;
     text-align: start;
-    cursor: pointer;
     color: inherit;
     font: inherit;
   }

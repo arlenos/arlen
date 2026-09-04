@@ -363,7 +363,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
     transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .reset:hover {
@@ -389,14 +388,12 @@
     height: 1.75rem;
     border-radius: var(--radius-button, 6px);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
-    cursor: pointer;
     overflow: hidden;
   }
   .swatch input {
     position: absolute;
     inset: 0;
     opacity: 0;
-    cursor: pointer;
   }
 
   .keybind {
@@ -410,7 +407,6 @@
     background: var(--input, transparent);
     font-size: var(--text-xs);
     color: var(--foreground);
-    cursor: pointer;
   }
   .keybind.capturing {
     color: color-mix(in srgb, var(--foreground) 55%, transparent);

@@ -378,7 +378,6 @@ textarea,
   line-height: 1.2;
   vertical-align: baseline;
   white-space: nowrap;
-  cursor: pointer;
 }
 .markdown a.fileref:hover {
   background: color-mix(in srgb, var(--foreground) 11%, transparent);
@@ -391,7 +390,6 @@ textarea,
 .markdown a.fileref.missing {
   background: transparent;
   color: color-mix(in srgb, var(--foreground) 42%, transparent);
-  cursor: default;
 }
 .markdown a.fileref.missing:hover {
   background: transparent;

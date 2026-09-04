@@ -220,7 +220,6 @@
     height: 1.75rem;
     border-radius: var(--radius-button, 6px);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
-    cursor: pointer;
     overflow: hidden;
   }
   .ts-swatch.overridden {
@@ -231,7 +230,6 @@
     position: absolute;
     inset: 0;
     opacity: 0;
-    cursor: pointer;
   }
   .term-fgbg {
     display: flex;
@@ -253,7 +251,6 @@
     background: transparent;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
   }
   .term-reset:hover {
     color: var(--foreground);

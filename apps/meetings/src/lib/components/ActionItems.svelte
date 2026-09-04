@@ -124,9 +124,6 @@
     line-height: 1.5;
     color: var(--color-fg-primary);
   }
-  .item-text.linked {
-    cursor: pointer;
-  }
   .item-text.linked:hover {
     text-decoration: underline;
     text-underline-offset: 3px;
@@ -144,7 +141,6 @@
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 75%, transparent);
-    cursor: pointer;
   }
   .owner:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 13%, transparent);

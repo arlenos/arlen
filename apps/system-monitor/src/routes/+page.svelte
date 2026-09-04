@@ -303,7 +303,6 @@
     /* One step below the bar title: the tabs are navigation, not identity. */
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-    cursor: pointer;
   }
   .tab:hover {
     color: var(--color-fg-primary);
@@ -362,7 +361,6 @@
     background: transparent;
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-    cursor: pointer;
   }
   .toggle:hover {
     color: var(--color-fg-primary);

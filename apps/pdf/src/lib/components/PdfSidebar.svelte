@@ -181,7 +181,6 @@
     font: inherit;
     text-align: start;
     color: inherit;
-    cursor: pointer;
   }
   .hit:hover {
     background: color-mix(in srgb, currentColor 6%, transparent);

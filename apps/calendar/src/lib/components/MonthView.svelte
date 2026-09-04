@@ -239,7 +239,6 @@
     font-weight: 500;
     color: var(--color-fg-primary);
     font-variant-numeric: tabular-nums;
-    cursor: pointer;
   }
   .num:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
@@ -270,14 +269,12 @@
     font-size: var(--text-2xs, 11px);
     text-align: start;
     color: var(--color-fg-primary);
-    cursor: pointer;
     touch-action: none;
   }
   .pill.dragging {
     opacity: 0.35;
   }
   .pill.ghost {
-    cursor: default;
     border: 1px dashed color-mix(in srgb, var(--cal, var(--color-accent)) 60%, transparent);
     background: color-mix(in srgb, var(--cal, var(--color-accent, #6366f1)) 14%, transparent);
     padding: 0 4px;
@@ -306,7 +303,6 @@
     font: inherit;
     font-size: var(--text-2xs, 11px);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-    cursor: pointer;
   }
   .more:hover {
     color: var(--color-fg-primary);

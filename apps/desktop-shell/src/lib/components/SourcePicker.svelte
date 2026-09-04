@@ -173,7 +173,6 @@
     border-radius: var(--radius-input);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .sp-mon-prev {
     display: block;
@@ -211,7 +210,6 @@
     border-radius: var(--radius-input);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .sp-avatar {
     display: inline-flex;
@@ -252,7 +250,6 @@
     text-align: start;
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    cursor: pointer;
   }
 
   /* Selection: a foreground wash + a solid border, the ChoiceList language. */
@@ -284,7 +281,6 @@
   .sp-toggle label {
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
-    cursor: pointer;
   }
 
   .sp-foot {

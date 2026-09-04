@@ -277,11 +277,9 @@
     border-radius: var(--radius-input);
     background: transparent;
     color: var(--foreground);
-    cursor: pointer;
   }
   .pd-page-btn:disabled {
     opacity: 0.4;
-    cursor: default;
   }
   .pd-page-btn:not(:disabled):hover {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);

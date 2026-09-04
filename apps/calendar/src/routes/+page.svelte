@@ -471,7 +471,6 @@
     background: var(--color-bg-card, #171717);
     border: 1px solid var(--color-border-default, #2a2a2a);
     border-radius: var(--radius-button, 6px);
-    cursor: pointer;
   }
   .keep button:hover {
     border-color: var(--color-border-strong, #3a3a3a);

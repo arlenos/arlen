@@ -339,7 +339,6 @@
     background: transparent;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
-    cursor: pointer;
   }
   .back:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
@@ -411,7 +410,6 @@
     border-radius: var(--radius-input);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .variant:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);

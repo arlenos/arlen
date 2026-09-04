@@ -131,7 +131,6 @@
     font: inherit;
     font-size: var(--text-2xs, 11px);
     color: inherit;
-    cursor: pointer;
   }
   .set-chip:hover {
     background: color-mix(in srgb, currentColor 14%, transparent);
@@ -173,7 +172,6 @@
     height: 0.7rem;
     border: none;
     border-radius: var(--radius-chip, 4px);
-    cursor: pointer;
   }
   .dot:focus-visible,
   .name:focus-visible,
@@ -194,7 +192,6 @@
     font-size: var(--text-sm, 13px);
     text-align: start;
     color: inherit;
-    cursor: pointer;
   }
   .label {
     flex: 1;
@@ -217,7 +214,6 @@
     height: 1.4rem;
     border: 2px solid transparent;
     border-radius: var(--radius-chip, 4px);
-    cursor: pointer;
   }
   .swatch.on {
     border-color: var(--color-fg-primary, #fff);

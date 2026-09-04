@@ -287,9 +287,6 @@
     text-align: start;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
-  label.rel {
-    cursor: pointer;
-  }
   label.rel:hover {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
@@ -315,10 +312,8 @@
     align-items: center;
     gap: 0.625rem;
     padding: 0.25rem 0.125rem;
-    cursor: pointer;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    cursor: pointer;
   }
 
   .mint-summary {

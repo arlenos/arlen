@@ -83,7 +83,6 @@
     border: none;
     background: transparent;
     text-align: start;
-    cursor: pointer;
     transition: background var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .app-row:hover {

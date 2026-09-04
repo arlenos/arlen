@@ -430,7 +430,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-    cursor: pointer;
   }
   .tl-pause:hover,
   .tl-whats:hover {
@@ -520,7 +519,6 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .tl-row:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
@@ -601,7 +599,6 @@
     border: none;
     background: transparent;
     text-align: start;
-    cursor: pointer;
     border-radius: inherit;
   }
   .tl-session-head:hover {

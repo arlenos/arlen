@@ -109,7 +109,6 @@
     font: inherit;
     font-size: var(--text-xs, 12px);
     color: color-mix(in srgb, var(--color-fg-primary) 80%, transparent);
-    cursor: pointer;
   }
   .chip:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);

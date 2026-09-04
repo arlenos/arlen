@@ -214,7 +214,6 @@
     font-size: var(--text-sm);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    cursor: pointer;
   }
   :global(.all-trigger:hover) {
     color: var(--foreground);
@@ -259,14 +258,12 @@
     height: 1.5rem;
     border-radius: var(--radius-button, 6px);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
-    cursor: pointer;
     overflow: hidden;
   }
   .cf-swatch input {
     position: absolute;
     inset: 0;
     opacity: 0;
-    cursor: pointer;
   }
   .cf-hex {
     width: 6rem;

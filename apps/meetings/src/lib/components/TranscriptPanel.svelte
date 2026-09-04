@@ -152,7 +152,6 @@
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .utt-speaker.renamable {
-    cursor: pointer;
     text-decoration: underline dotted;
     text-underline-offset: 3px;
   }
@@ -170,7 +169,6 @@
     font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
-    cursor: pointer;
   }
   .utt-text:hover {
     color: var(--color-fg-primary);

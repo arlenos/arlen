@@ -225,7 +225,6 @@
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     background: color-mix(in srgb, var(--foreground) 3%, transparent);
     overflow: hidden;
-    cursor: pointer;
     transition:
       border-color var(--duration-fast, 150ms) var(--ease-out, ease),
       background var(--duration-fast, 150ms) var(--ease-out, ease);
@@ -308,14 +307,12 @@
     height: 1.75rem;
     border-radius: var(--radius-button, 6px);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
-    cursor: pointer;
     overflow: hidden;
   }
   .cf-swatch input {
     position: absolute;
     inset: 0;
     opacity: 0;
-    cursor: pointer;
   }
 
   .cust-grid {

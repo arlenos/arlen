@@ -235,7 +235,6 @@
     border-radius: var(--radius-input, 8px);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .rel-item:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
@@ -276,7 +275,6 @@
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-    cursor: pointer;
   }
   .proj-chip:hover {
     color: var(--color-fg-primary);

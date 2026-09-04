@@ -220,7 +220,6 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    cursor: pointer;
     border-radius: var(--radius-chip);
   }
   .qc-promote:hover {

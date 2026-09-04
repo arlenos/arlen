@@ -216,7 +216,6 @@
     inset: 0;
     border: none;
     background: transparent;
-    cursor: pointer;
   }
   .win-text {
     display: flex;

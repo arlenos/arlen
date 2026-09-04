@@ -181,7 +181,6 @@
     gap: 0.45rem;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 75%, transparent);
-    cursor: pointer;
   }
   .notes {
     display: flex;

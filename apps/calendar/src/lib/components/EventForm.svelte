@@ -483,7 +483,6 @@
     font: inherit;
     font-size: var(--text-sm, 13px);
     color: var(--color-fg-primary);
-    cursor: pointer;
   }
   .date-btn:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);

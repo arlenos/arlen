@@ -498,7 +498,6 @@
     border-radius: var(--radius-input, 8px);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .opened-file:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);

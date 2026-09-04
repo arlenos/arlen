@@ -164,7 +164,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
   }
   :global(.ovr-trigger:hover) {
     color: var(--foreground);
@@ -206,7 +205,6 @@
     padding: 0.25rem;
     border-radius: var(--radius-button, 6px);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
   }
   .ovr-reset:hover {
     color: var(--foreground);
@@ -217,14 +215,12 @@
     height: 1.5rem;
     border-radius: var(--radius-button, 6px);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
-    cursor: pointer;
     overflow: hidden;
   }
   .ovr-swatch input {
     position: absolute;
     inset: 0;
     opacity: 0;
-    cursor: pointer;
   }
   .ovr-note {
     margin: 0.5rem 0 0;

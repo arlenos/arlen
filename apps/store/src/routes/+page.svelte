@@ -217,7 +217,6 @@
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-    cursor: pointer;
     transition: background var(--duration-fast, 150ms) ease, color var(--duration-fast, 150ms) ease;
   }
   .chip:hover {

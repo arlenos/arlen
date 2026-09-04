@@ -266,7 +266,6 @@
     background: transparent;
     font-size: var(--text-xs);
     color: var(--color-error, #c96a6a);
-    cursor: pointer;
   }
   .dp-quit.confirm {
     background: color-mix(in srgb, var(--color-error, #c96a6a) 16%, transparent);
@@ -278,7 +277,6 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
-    cursor: pointer;
   }
   .dp-close:hover {
     color: var(--color-fg-primary);
@@ -297,7 +295,6 @@
     background: transparent;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
-    cursor: pointer;
   }
   .dp-tab:hover {
     color: var(--color-fg-primary);
@@ -364,7 +361,6 @@
     background: transparent;
     font-size: var(--text-sm);
     color: var(--color-fg-primary);
-    cursor: pointer;
   }
   .acc-manage:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);

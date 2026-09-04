@@ -131,7 +131,6 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
-    cursor: pointer;
   }
   .close:hover {
     color: var(--color-fg-primary);
@@ -255,7 +254,6 @@
     background: transparent;
     font-size: var(--text-xs);
     color: var(--color-fg-primary);
-    cursor: pointer;
     white-space: nowrap;
   }
   .act:hover {

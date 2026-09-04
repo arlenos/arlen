@@ -291,7 +291,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--color-fg-primary) 65%, transparent);
-    cursor: pointer;
   }
   .se-facet:hover {
     color: var(--color-fg-primary);
@@ -300,7 +299,6 @@
     border-color: color-mix(in srgb, var(--color-accent, #6aa9e0) 40%, transparent);
     background: color-mix(in srgb, var(--color-accent, #6aa9e0) 10%, transparent);
     color: var(--color-fg-primary);
-    cursor: default;
   }
   .se-facet-x {
     display: inline-flex;
@@ -309,7 +307,6 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
-    cursor: pointer;
   }
   .se-facet-x:hover {
     color: var(--color-fg-primary);
@@ -336,7 +333,6 @@
     font-size: var(--text-xs);
     color: var(--color-fg-primary);
     text-align: start;
-    cursor: pointer;
   }
   .se-option:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 7%, transparent);
@@ -379,7 +375,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--color-fg-primary) 65%, transparent);
-    cursor: pointer;
   }
   .se-save:hover {
     color: var(--color-fg-primary);
@@ -429,7 +424,6 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     text-align: start;
-    cursor: pointer;
   }
   .se-row:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);

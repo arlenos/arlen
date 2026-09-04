@@ -227,7 +227,6 @@
     border: none;
     border-radius: var(--radius-input, 8px);
     background: transparent;
-    cursor: pointer;
     text-align: start;
   }
   .dev:hover {
