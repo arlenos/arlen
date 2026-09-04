@@ -35,3 +35,18 @@ wait_for_socket() {
     echo "!! no socket at $path; nothing below is about what it serves" >&2
     return 1
 }
+
+# Wait until process $1 is gone, or give up after ~10s.
+#
+# A kill is a request, not an event: the process has to be scheduled to die, and
+# on a loaded machine that takes longer than a number somebody picked. Waiting a
+# fixed two seconds and then asking turns "the machine was busy" into "the force
+# quit did not work".
+wait_for_gone() {
+    pid="$1"
+    for _ in $(seq 1 40); do
+        ps -p "$pid" >/dev/null 2>&1 || return 0
+        sleep 0.25
+    done
+    return 1
+}
