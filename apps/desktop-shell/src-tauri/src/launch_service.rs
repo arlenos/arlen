@@ -809,3 +809,130 @@ fn windows_file_ids() -> &'static std::sync::Mutex<u64> {
 pub fn pending_windows_file() -> &'static crate::windows_file::PendingSlot {
     windows_file_slot()
 }
+
+#[cfg(test)]
+mod windows_file_tests {
+    use super::*;
+
+    /// A `.exe` on disk, so `mime_of` classifies a real file rather than a name.
+    fn write_exe(dir: &std::path::Path, name: &str) -> String {
+        let path = dir.join(name);
+        // The DOS header `MZ` is what the shared MIME database matches on, so a
+        // file named `.exe` with the wrong first bytes would classify as data -
+        // which is the case this test would otherwise silently pass.
+        std::fs::write(&path, b"MZ\x90\x00\x03\x00\x00\x00").unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    fn open(path: &str) -> proto::LaunchRequest {
+        proto::LaunchRequest::Open {
+            target: proto::Target {
+                uri: format!("file://{path}"),
+                path: Some(path.to_string()),
+            },
+            mime: None,
+        }
+    }
+
+    /// Whatever THIS machine calls a Windows program is a name the shell asks
+    /// about.
+    ///
+    /// The check that matters, and the one that was missing when the feature
+    /// shipped. There are at least four names in circulation for a `.exe` and
+    /// which one you get depends on the database and the library asking; the
+    /// list held only the legacy one, so the prompt never fired. Asserting
+    /// membership rather than a string means a database that changes its mind
+    /// fails here instead of silently switching the feature off.
+    #[test]
+    fn whatever_this_machine_calls_a_windows_program_is_on_the_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_exe(dir.path(), "LegacyTool.exe");
+        let target = proto::Target {
+            uri: format!("file://{path}"),
+            path: Some(path),
+        };
+        let mime = mime_of(&target).expect("a real executable classifies as something");
+        assert!(
+            proto::asks_first(&mime),
+            "this host calls a .exe {mime:?}, which is not a name the shell asks about"
+        );
+    }
+
+    #[test]
+    fn a_windows_program_is_asked_about_and_waits() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_exe(dir.path(), "LegacyTool.exe");
+
+        let outcome = ask_about_windows_file(&open(&path));
+        match outcome {
+            Some(proto::LaunchOutcome::Asked { what }) => assert_eq!(what, "LegacyTool.exe"),
+            other => panic!("a .exe was not asked about: {other:?}"),
+        }
+        // And it is waiting for the dialog, with the path kept out of the payload.
+        let held = pending_windows_file().lock().unwrap();
+        let pending = held.as_ref().expect("something is waiting");
+        assert_eq!(pending.request.file_name, "LegacyTool.exe");
+        assert_eq!(pending.path, path);
+    }
+
+    #[test]
+    fn an_ordinary_document_goes_to_its_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.txt");
+        std::fs::write(&path, "hello").unwrap();
+        assert!(
+            ask_about_windows_file(&open(&path.to_string_lossy())).is_none(),
+            "a text file must reach the handler search"
+        );
+    }
+
+    #[test]
+    fn naming_an_application_is_not_second_guessed() {
+        // A caller that asked for a specific app is asking for that app. Turning
+        // it into a prompt about the document would be the shell overruling a
+        // request it was given plainly.
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_exe(dir.path(), "Setup.exe");
+        let request = proto::LaunchRequest::App {
+            app_id: "arlen-files".to_string(),
+            targets: vec![proto::Target {
+                uri: format!("file://{path}"),
+                path: Some(path),
+            }],
+        };
+        assert!(ask_about_windows_file(&request).is_none());
+    }
+
+    #[test]
+    fn a_callers_own_type_is_taken_when_it_gives_one() {
+        // The caller can only ever make the shell ask about a file it already
+        // holds a path to, and saying the type saves the lookup. A path that does
+        // not exist proves the declared type is what was used.
+        let request = proto::LaunchRequest::Open {
+            target: proto::Target {
+                uri: "file:///nowhere/Installer.msi".to_string(),
+                path: Some("/nowhere/Installer.msi".to_string()),
+            },
+            mime: Some("application/x-msi".to_string()),
+        };
+        assert!(matches!(
+            ask_about_windows_file(&request),
+            Some(proto::LaunchOutcome::Asked { .. })
+        ));
+    }
+
+    #[test]
+    fn a_target_with_no_local_path_is_not_a_windows_file() {
+        let request = proto::LaunchRequest::Open {
+            target: proto::Target {
+                uri: "https://example.com/setup.exe".to_string(),
+                path: None,
+            },
+            mime: Some("application/x-ms-dos-executable".to_string()),
+        };
+        assert!(
+            ask_about_windows_file(&request).is_none(),
+            "there is no file to put in a bottle"
+        );
+    }
+}

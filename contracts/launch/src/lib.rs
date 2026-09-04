@@ -214,9 +214,28 @@ pub enum LaunchOutcome {
 
 /// The MIME types the shell asks about rather than hands to a handler.
 ///
-/// Both Windows executable forms. A `.msi` is an installer and a `.exe` may be
-/// either, which the prompt says rather than guesses.
-pub const ASKS_FIRST: [&str; 2] = [
+/// FOUR NAMES FOR ONE THING, and that is not defensiveness. Measured on 4
+/// September on one ordinary machine, asking three ways about the same `.exe`:
+///
+///   * the `xdg_mime` crate the shell resolves with says `application/x-msdownload`
+///   * the `xdg-mime` command-line tool says `application/x-dosexec`
+///   * the shared database globs `*.exe` to `application/vnd.microsoft.portable-executable`
+///   * `application/x-ms-dos-executable` is the legacy name, absent from that
+///     database entirely and still what some callers declare
+///
+/// The first cut of this list held only the legacy name, so a double-clicked
+/// `.exe` was classified as something not on it and went to the handler search -
+/// which finds nothing, and the prompt never appeared. The feature was shipped
+/// and inert on the machine it was written on. `windows_file_tests` now asserts
+/// that whatever this host answers for a real executable is IN this set, which
+/// is the check that survives a database changing its mind again.
+///
+/// A `.msi` is an installer and a `.exe` may be either, which the prompt says
+/// rather than guesses.
+pub const ASKS_FIRST: [&str; 5] = [
+    "application/x-msdownload",
+    "application/x-dosexec",
+    "application/vnd.microsoft.portable-executable",
     "application/x-ms-dos-executable",
     "application/x-msi",
 ];
