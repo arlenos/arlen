@@ -24,6 +24,7 @@ pub mod printers;
 pub mod privacy;
 pub mod search;
 pub mod sensing;
+pub mod sentinel;
 pub mod sound;
 pub mod theme;
 pub mod topbar;

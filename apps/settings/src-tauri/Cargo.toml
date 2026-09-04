@@ -135,6 +135,9 @@ arlen-consent-broker = { path = "../../../daemons/consent-broker" }
 capsuled = { path = "../../../daemons/capsuled" }
 # The Windows-app runtime: the panel reads its bottles over the daemon socket.
 arlen-wine-core = { path = "../../../daemons/bottled" }
+# The privacy sentinel: the wire types and the client, so the page reads what the
+# daemon measured rather than a second copy of the same judgement.
+arlen-sentineld = { path = "../../../daemons/sentineld" }
 
 [dev-dependencies]
 tempfile = "3"

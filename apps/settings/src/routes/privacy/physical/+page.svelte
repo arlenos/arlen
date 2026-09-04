@@ -124,17 +124,26 @@
         </Row>
         {#if d.exposure.on}
           <div class="posture">
-            {#each $sentinel.posture as line, i (line.text)}
-              <div class="posture-line" class:warn={line.fix}>
-                <span>{line.text}</span>
+            <!-- A line names a surface and what was found there; the sentence is
+                 this catalogue's, so it reads in the reader's language rather
+                 than in whatever the daemon was compiled with. -->
+            {#each $sentinel.posture as line (line.surface)}
+              <div class="posture-line" class:warn={line.posture === "exposed"}>
+                <span>{$t(`s.sent.post.${line.surface}.${line.posture}`)}</span>
                 {#if line.fix}
-                  <Button variant="outline" size="sm" id="sent-exposure-fix" onclick={() => fixPosture(i)}>
+                  <Button variant="outline" size="sm" id="sent-exposure-fix" onclick={() => fixPosture(line.surface)}>
                     {$t("s.sent.fix")}
                   </Button>
                 {/if}
               </div>
             {/each}
           </div>
+          <!-- A short green list reads as an all-clear, so a readout that is
+               missing a surface says so instead of presenting what it managed to
+               measure as the whole picture. -->
+          {#if $sentinel.postureIncomplete}
+            <p class="caveat">{$t("s.sent.post.incomplete")}</p>
+          {/if}
           <Row label={$t("s.sent.alerts")} id="sent-exposure-alerts">
             {#snippet control()}
               <SegmentedControl value={d.exposure.alerts} options={ALERT_OPTIONS} ariaLabel={$t("s.sent.alerts")} onchange={(v) => setAlerts("exposure", v as AlertMode)} />
@@ -173,8 +182,18 @@
       </Section>
 
       <Section label={$t("s.sent.capture")} class="span-full">
+        <!-- Three states, not two. "Nothing is using the microphone" is what a
+             person opens this page to find out, and nothing in this build can
+             answer it, so an absent reading says that rather than borrowing the
+             reassuring half of a boolean. -->
         <p class="status">
-          {$sentinel.captureActive ? $t("s.sent.capture.active") : $t("s.sent.capture.idle")}
+          {#if $sentinel.captureActive === true}
+            {$t("s.sent.capture.active")}
+          {:else if $sentinel.captureActive === false}
+            {$t("s.sent.capture.idle")}
+          {:else}
+            {$t("s.sent.capture.unmeasured")}
+          {/if}
         </p>
         <p class="caveat">{$t("s.sent.capture.caveat")}</p>
       </Section>
