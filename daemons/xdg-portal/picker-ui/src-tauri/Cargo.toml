@@ -34,6 +34,14 @@ toml = "0.8"
 dirs = "5"
 arlen-i18n = { path = "../../../../sdk/i18n" }
 notify = "6"
+# The thumbnail cache, the supported-type test and the data-URL encode, shared
+# with the file manager rather than written twice: two grids showing the same
+# pictures had two chances to disagree about what a failed decode looks like.
+arlen-file-browser-core = { path = "../../../../apps/files/core" }
+# The decode itself, in a Landlock+seccomp subprocess. A picker that decoded an
+# untrusted image in its own address space would be the widest surface in a
+# dialog whose job is showing files nobody has opened yet.
+arlen-ai-sandbox = { path = "../../../../ai/ai-sandbox", features = ["thumbnail"] }
 
 [features]
 default = ["custom-protocol"]

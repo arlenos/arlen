@@ -328,10 +328,7 @@ KNOWN: dict[str, dict[str, str]] = {
             "daemon keeps a recent-files list, and the picker is confined to the "
             "daemon's cap-std root, so it cannot read one itself"
         ),
-        "picker_thumbnail": (
-            "grid-view thumbnails. Needs a producer: no thumbnailer runs behind "
-            "the picker, so the tile falls back to its icon every time"
-        ),
+
     },
     "knowledge": {
         "knowledge_library": (

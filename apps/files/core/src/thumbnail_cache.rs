@@ -123,6 +123,58 @@ impl ThumbnailCache {
     }
 }
 
+/// Read up to `cap` bytes of `source`; a larger file is refused without loading
+/// it whole.
+///
+/// The cap is a PARAMETER rather than a constant here, and that is the point:
+/// the decoders live behind a sandbox in the AI layer, and this crate does not
+/// depend on that layer. Each host passes its own worker's limit, so the number
+/// stays with the thing that enforces it and this stays a file-browser core.
+pub fn read_capped(source: &Path, cap: usize) -> Result<Vec<u8>, ThumbnailError> {
+    use std::io::Read;
+    let file = std::fs::File::open(source).map_err(|e| ThumbnailError::Metadata(e.to_string()))?;
+    let mut buf = Vec::new();
+    file.take(cap as u64 + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| ThumbnailError::Generate(e.to_string()))?;
+    if buf.len() > cap {
+        return Err(ThumbnailError::Generate("source too large".to_string()));
+    }
+    Ok(buf)
+}
+
+/// A cached PNG as the data-URL an `<img>` loads.
+pub fn encode_data_url(cached: &Path) -> Result<String, String> {
+    let png = std::fs::read(cached).map_err(|e| e.to_string())?;
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
+    Ok(format!("data:image/png;base64,{b64}"))
+}
+
+/// A data-URL of `path`'s thumbnail, or `None` when the path is not `supported`,
+/// has no thumbnail, or generation failed - in which case the tile shows its
+/// icon and nothing says otherwise.
+///
+/// `supported` gates the spawn, so an unsupported path never reaches a worker.
+/// Shared by every surface that shows a thumbnail: the file manager's grid and
+/// the portal picker's, which had two chances to disagree about what a failed
+/// decode looks like and now have none.
+pub fn thumbnail_data_url(
+    cache: &ThumbnailCache,
+    generator: &dyn ThumbnailGenerator,
+    path: &Path,
+    supported: fn(&Path) -> bool,
+) -> Result<Option<String>, String> {
+    if !supported(path) {
+        return Ok(None);
+    }
+    let Ok(cached) = cache.get_or_generate(path, generator) else {
+        // Unsupported, no embedded art, or a decode failure: no thumbnail.
+        return Ok(None);
+    };
+    encode_data_url(&cached).map(Some)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,6 +3,7 @@
 //! Connects to the daemon's IPC socket, drives request/response
 //! round-trips, and shows/hides the WebviewWindow accordingly.
 
+mod thumbnail;
 mod fs_commands;
 mod ipc_client;
 mod locale;
@@ -119,6 +120,7 @@ pub fn run() {
             frontend_log,
             get_theme,
             locale::locale_get,
+            thumbnail::picker_thumbnail,
             fs_commands::list_directory,
             fs_commands::resolve_start_dir,
             fs_commands::parent_dir,

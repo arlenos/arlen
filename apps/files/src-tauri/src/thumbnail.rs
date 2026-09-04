@@ -19,7 +19,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use arlen_file_browser_core::thumbnail_cache::{
-    ThumbnailCache, ThumbnailError, ThumbnailGenerator,
+    encode_data_url, read_capped, thumbnail_data_url, ThumbnailCache, ThumbnailError,
+    ThumbnailGenerator,
 };
 
 /// Image extensions worth thumbnailing. Non-image files return `None` without
@@ -99,7 +100,7 @@ struct SandboxedThumbnailGenerator {
 
 impl ThumbnailGenerator for SandboxedThumbnailGenerator {
     fn generate(&self, source: &Path) -> Result<Vec<u8>, ThumbnailError> {
-        let bytes = read_capped(source)?;
+        let bytes = read_capped(source, arlen_ai_sandbox::MAX_BYTES)?;
         arlen_ai_sandbox::thumbnail(&self.sandbox_bin, &bytes)
             .map_err(|e| ThumbnailError::Generate(e.to_string()))
     }
@@ -127,7 +128,7 @@ struct MusicThumbnailGenerator {
 
 impl ThumbnailGenerator for MusicThumbnailGenerator {
     fn generate(&self, source: &Path) -> Result<Vec<u8>, ThumbnailError> {
-        let bytes = read_capped(source)?;
+        let bytes = read_capped(source, arlen_ai_sandbox::MAX_BYTES)?;
         match arlen_ai_sandbox::album_art_thumbnail(&self.sandbox_bin, &bytes) {
             Ok(Some(png)) => Ok(png),
             // No embedded art: fall back to the icon without caching an empty
@@ -386,52 +387,8 @@ impl ThumbnailGenerator for VideoThumbnailGenerator {
     }
 }
 
-/// Read up to the sandbox's byte cap; a larger file is refused (it would be
-/// rejected by the worker anyway) without loading it whole.
-fn read_capped(source: &Path) -> Result<Vec<u8>, ThumbnailError> {
-    use std::io::Read;
-    let file = std::fs::File::open(source).map_err(|e| ThumbnailError::Metadata(e.to_string()))?;
-    let cap = arlen_ai_sandbox::MAX_BYTES;
-    let mut buf = Vec::new();
-    file.take(cap as u64 + 1)
-        .read_to_end(&mut buf)
-        .map_err(|e| ThumbnailError::Generate(e.to_string()))?;
-    if buf.len() > cap {
-        return Err(ThumbnailError::Generate("source too large".to_string()));
-    }
-    Ok(buf)
-}
 
-/// The cached PNG as the data-URL the tile's `<img>` loads.
-fn encode(cached: &Path) -> Result<String, String> {
-    let png = std::fs::read(cached).map_err(|e| e.to_string())?;
-    use base64::Engine;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-    Ok(format!("data:image/png;base64,{b64}"))
-}
 
-/// The pure command logic: a data-URL of `path`'s thumbnail, or `None` when the
-/// path is not `supported`, has no thumbnail, or generation failed (the tile
-/// then shows its icon). `supported` gates the spawn so an unsupported path
-/// never reaches the worker; generation/cache go through `cache` + `gen`, so
-/// this is testable with a mock.
-fn thumbnail_data_url(
-    cache: &ThumbnailCache,
-    gen: &dyn ThumbnailGenerator,
-    path: &Path,
-    supported: fn(&Path) -> bool,
-) -> Result<Option<String>, String> {
-    if !supported(path) {
-        return Ok(None);
-    }
-    let cached = match cache.get_or_generate(path, gen) {
-        Ok(p) => p,
-        // Unsupported, no embedded art, or a decode failure: no thumbnail, fall
-        // back to the icon.
-        Err(_) => return Ok(None),
-    };
-    encode(&cached).map(Some)
-}
 
 /// Bounds concurrent sandboxed decodes: every cache miss is a worker
 /// subprocess plus an up-to-16MiB read, and the windowed grid can ask for a
@@ -483,7 +440,7 @@ pub async fn files_thumbnail(
         .map_err(|e| e.to_string())?
     };
     if let Some(cached) = hit {
-        return encode(&cached).map(Some);
+        return encode_data_url(&cached).map(Some);
     }
 
     let _permit = limiter.0.acquire().await.map_err(|e| e.to_string())?;
@@ -691,7 +648,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let cached = tmp.path().join("x.png");
         std::fs::write(&cached, b"PNGBYTES").unwrap();
-        let url = encode(&cached).unwrap();
+        let url = encode_data_url(&cached).unwrap();
         let prefix = "data:image/png;base64,";
         use base64::Engine;
         let decoded = base64::engine::general_purpose::STANDARD
