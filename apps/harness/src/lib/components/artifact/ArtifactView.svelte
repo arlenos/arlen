@@ -52,7 +52,7 @@
         {#if href}
           <a {href} rel="noreferrer noopener">{link.label ?? link.href}</a>
         {:else}
-          <span class="inert" title={$t("h.artifact.blockedScheme")}>{link.label ?? link.href}</span>
+          <span class="inert">{link.label ?? link.href}</span>
         {/if}
       </li>
     {/each}

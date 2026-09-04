@@ -7,7 +7,8 @@
   import { t } from "$lib/i18n/messages";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import type { Capability } from "$lib/capability";
-  import { openAiSettings } from "$lib/transparency";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { openAiSettings, settingsOpenFailed } from "$lib/transparency";
 
   let { capability }: { capability: Capability | null } = $props();
 
@@ -24,8 +25,11 @@
     <p class="status">{$t("h.offswitch.off")}</p>
   {/if}
   <Button id="transparency-offswitch-open" variant="default" size="sm" onclick={openAiSettings}>
-    {off ? $t("h.offswitch.turnOn") : $t("h.offswitch.openSettings")}
+    {$t("h.offswitch.openSettings")}
   </Button>
+  {#if $settingsOpenFailed}
+    <Notice tone="error" text={$t("h.settings.cannotOpen")} />
+  {/if}
 </div>
 
 <style>

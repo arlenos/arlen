@@ -1,6 +1,8 @@
 <script lang="ts">
   /// The no-messages surface, one designed variant per capability state. No
-  /// decorative icon; the words and the starters carry it.
+  /// decorative icon; the words and the starters carry it. The assistant's
+  /// no-memory limitation is stated here, once, before anyone relies on it
+  /// (design-system.md 6.6), and nowhere per row.
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
@@ -29,6 +31,7 @@
   {#if variant === "ready"}
     <p class="title">{$t("h.empty.ready.title")}</p>
     <p class="sub">{$t("h.empty.ready.sub")}</p>
+    <p class="limit">{$t("h.empty.ready.limit")}</p>
     <div class="starters">
       {#each STARTERS as s (s)}
         <button type="button" class="starter" onclick={() => onstarter(s)}>{s}</button>
@@ -40,7 +43,7 @@
     <!-- The sentence names Settings, so the surface goes there: the master
          switch lives in the Settings app, and this is the one full-screen
          state a person meets with nothing else to press. -->
-    <Button variant="default" size="sm" class="mt-2" onclick={openAiSettings}>{$t("h.offswitch.turnOn")}</Button>
+    <Button variant="default" size="sm" class="mt-2" onclick={openAiSettings}>{$t("h.offswitch.openSettings")}</Button>
     {#if $settingsOpenFailed}
       <Notice tone="error" class="mt-2" text={$t("h.settings.cannotOpen")} />
     {/if}
@@ -74,6 +77,11 @@
     font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .limit {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .starters {
     display: flex;

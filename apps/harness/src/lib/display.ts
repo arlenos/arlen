@@ -1,7 +1,7 @@
 /// The user-language layer over wire data: the single place that turns
 /// internal identifiers (audit kinds, tool names, capability flags) into the
 /// plain sentences the UI shows. Raw values stay available everywhere via
-/// expandable details and tooltips; this layer only decides the surface.
+/// expandable details; this layer only decides the surface.
 ///
 /// The copy itself lives in the message catalog; these functions take the
 /// bound translator (`t`) so the sentences follow the locale. Category labels
@@ -145,13 +145,4 @@ export function statusSentence(c: Capability, t: Translate): string {
   if (tierKey) parts.push(t(tierKey));
   parts.push(c.executorLive ? t("h.disp.canUndo") : t("h.disp.suggests"));
   return parts.join(" ");
-}
-
-/// Tooltip behind the status line: the technical facts, honestly, in one place.
-export function statusTooltip(c: Capability, t: Translate): string {
-  const model = [c.provider, c.model].filter(Boolean).join(" ");
-  const lines = [];
-  if (model) lines.push(t("h.disp.model", { model }));
-  lines.push(t("h.disp.noMemory"));
-  return lines.join("\n");
 }

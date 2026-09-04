@@ -1,13 +1,14 @@
 <script lang="ts">
   /// The quiet status line under the composer: capability and posture as one
-  /// plain sentence, anchored by the capability glyph. The technical facts
-  /// (model, provider, per-question independence) live in the tooltip. This
-  /// is the in-body capability strip; nothing about it lives in the header.
+  /// plain sentence, anchored by the capability glyph. The model in use is
+  /// visible in the picker above the composer and the no-memory limitation is
+  /// stated once where a conversation begins, so the line carries no tooltip.
+  /// This is the in-body capability strip; nothing about it lives in the header.
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import type { Capability } from "$lib/capability";
   import { openAiSettings, settingsOpenFailed } from "$lib/transparency";
-  import { statusSentence, statusTooltip } from "$lib/display";
+  import { statusSentence } from "$lib/display";
   import { t } from "$lib/i18n/messages";
 
   let {
@@ -26,12 +27,12 @@
 {#if loaded}
   <div class="status">
     {#if capability}
-      <p class="line" title={statusTooltip(capability, $t)}>
+      <p class="line">
         <span class="dot" class:off={!capability.enabled} aria-hidden="true"></span>
         {statusSentence(capability, $t)}
       </p>
       {#if !capability.enabled}
-        <Button variant="outline" size="sm" onclick={openAiSettings}>{$t("h.offswitch.turnOn")}</Button>
+        <Button variant="outline" size="sm" onclick={openAiSettings}>{$t("h.offswitch.openSettings")}</Button>
       {/if}
     {:else}
       <p class="line">{$t("h.capability.unreachable")}</p>

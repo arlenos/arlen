@@ -74,6 +74,12 @@
   <div class="model-bar">
     <ModelPicker models={$models} active={$active} onselect={select} />
   </div>
+{:else if $active}
+  <!-- Nothing to pick from, but the model in use is still a fact worth
+       seeing (design-system.md 6.6), so the bar states it. -->
+  <div class="model-bar">
+    <span class="model-fact">{$active.provider} {$active.model}</span>
+  </div>
 {/if}
 
 <style>
@@ -82,5 +88,10 @@
     align-items: center;
     padding: 0.125rem 0.25rem;
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  .model-fact {
+    padding: 0.25rem 0.5rem;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>
