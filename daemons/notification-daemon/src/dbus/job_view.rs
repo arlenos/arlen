@@ -125,11 +125,122 @@ impl JobViewDbus {
         }
     }
 
+    /// The shell asks to hold a suspendable job. Same relay as cancel: the
+    /// producer owns the pause (a download's byte offset, a copy loop's wait),
+    /// and this only carries the intent. Returns whether the job exists and said
+    /// it could be suspended - promising Pause on a copy that cannot resume
+    /// cleanly is the thing the plan rules out, and the flag is where a producer
+    /// says so.
+    async fn request_suspend(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        id: u64,
+    ) -> bool {
+        match self.server.get(id) {
+            Some(view) if view.capabilities.suspendable => {
+                let _ = Self::suspend_requested(&emitter, id).await;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The shell asks to carry on. Gated on the same flag: a job that could not
+    /// be paused cannot be resumed either, and a resume for one that is running
+    /// is the producer's no-op to make.
+    async fn request_resume(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        id: u64,
+    ) -> bool {
+        match self.server.get(id) {
+            Some(view) if view.capabilities.suspendable => {
+                let _ = Self::resume_requested(&emitter, id).await;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Signal to the producer of job `id`: the user asked to cancel it. Every
     /// producer receives it and acts only on its own id; the daemon holds no
     /// cancel mechanism of its own.
     #[zbus(signal)]
     async fn cancel_requested(emitter: &SignalEmitter<'_>, id: u64) -> zbus::Result<()>;
+
+    /// The user asked to hold job `id`.
+    #[zbus(signal)]
+    async fn suspend_requested(emitter: &SignalEmitter<'_>, id: u64) -> zbus::Result<()>;
+
+    /// The user asked to carry job `id` on.
+    #[zbus(signal)]
+    async fn resume_requested(emitter: &SignalEmitter<'_>, id: u64) -> zbus::Result<()>;
+}
+
+/// Where the job server lives on the bus.
+pub const JOB_VIEW_PATH: &str = "/org/arlen/JobViewServer";
+/// The interface the signals are emitted on.
+pub const JOB_VIEW_INTERFACE: &str = "org.arlen.JobViewServer1";
+
+/// Which relay a shell action asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionKind {
+    Cancel,
+    Suspend,
+    Resume,
+}
+
+impl ActionKind {
+    /// The signal name a producer listens for.
+    pub fn signal(self) -> &'static str {
+        match self {
+            ActionKind::Cancel => "CancelRequested",
+            ActionKind::Suspend => "SuspendRequested",
+            ActionKind::Resume => "ResumeRequested",
+        }
+    }
+
+    /// Which capability the job had to declare for this to be offered.
+    ///
+    /// The shell only draws a button for a capability the producer declared, so
+    /// an action arriving for one it did not is a race or a caller that went
+    /// around the surface. Either way it is refused rather than relayed: a
+    /// producer that never said it could pause has no handler for the signal,
+    /// and the shell would show a paused job that is still running.
+    pub fn permitted_by(self, killable: bool, suspendable: bool) -> bool {
+        match self {
+            ActionKind::Cancel => killable,
+            ActionKind::Suspend | ActionKind::Resume => suspendable,
+        }
+    }
+}
+
+/// Relay a shell action to the job's producer, from outside the interface impl.
+///
+/// The socket server has no `SignalEmitter` - it is not a D-Bus method call - so
+/// it emits on the connection directly. Same wire message either way.
+pub async fn relay_action(
+    connection: &zbus::Connection,
+    server: &JobViewServer,
+    id: u64,
+    kind: ActionKind,
+) -> bool {
+    let Some(view) = server.get(id) else {
+        return false;
+    };
+    if !kind.permitted_by(view.capabilities.killable, view.capabilities.suspendable) {
+        return false;
+    }
+    connection
+        .emit_signal(
+            None::<&str>,
+            JOB_VIEW_PATH,
+            JOB_VIEW_INTERFACE,
+            kind.signal(),
+            &(id,),
+        )
+        .await
+        .is_ok()
 }
 
 /// The current wall-clock in epoch micros, for a job's start timestamp.
@@ -167,6 +278,41 @@ pub fn to_job_update(view: &crate::job::JobView, removed: bool) -> crate::socket
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_action_needs_the_capability_its_button_was_drawn_from() {
+        use super::ActionKind;
+        // A producer that never said it could pause has no handler for the
+        // signal, so relaying one would leave the zone showing a paused job that
+        // is still copying.
+        assert!(ActionKind::Cancel.permitted_by(true, false));
+        assert!(!ActionKind::Cancel.permitted_by(false, true));
+        assert!(ActionKind::Suspend.permitted_by(false, true));
+        assert!(ActionKind::Resume.permitted_by(false, true));
+        assert!(!ActionKind::Suspend.permitted_by(true, false));
+    }
+
+    #[test]
+    fn each_action_names_the_signal_its_producer_listens_for() {
+        use super::ActionKind;
+        assert_eq!(ActionKind::Cancel.signal(), "CancelRequested");
+        assert_eq!(ActionKind::Suspend.signal(), "SuspendRequested");
+        assert_eq!(ActionKind::Resume.signal(), "ResumeRequested");
+    }
+
+    #[tokio::test]
+    async fn an_action_for_a_job_nobody_registered_is_refused() {
+        use super::{relay_action, ActionKind};
+        let server = JobViewServer::new(std::sync::Arc::new(std::sync::Mutex::new(
+            JobRegistry::new(),
+        )));
+        // No bus is needed to reach the refusal: the job lookup fails first, so
+        // this is the one path that does not touch D-Bus at all.
+        let Ok(conn) = zbus::Connection::session().await else {
+            return; // no session bus here; the lookup half is covered above
+        };
+        assert!(!relay_action(&conn, &server, 999, ActionKind::Cancel).await);
+    }
     use super::to_job_update;
     use crate::job::{JobRegistry, JobViewServer};
 

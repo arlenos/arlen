@@ -151,7 +151,29 @@ message ClientMessage {
         SetDndMode set_dnd = 6;
         GetHistory get_history = 7;
         GetKnownApps get_known_apps = 8;
+        JobAction job_action = 9;
     }
+}
+
+// What the person pressed on a running job (job-progress-surface.md). The daemon
+// does not carry out any of these: it relays the intent to the producer that
+// registered the job, which owns the actual mechanism - a cancel flag on a copy
+// loop, a paused download's byte offset. So this asks, and the job's own next
+// update is what says whether it happened.
+message JobAction {
+    uint64 id = 1;
+    JobActionKind kind = 2;
+}
+
+enum JobActionKind {
+    // Stop it. Whether that leaves a partial result is the producer's to know
+    // and the shell's to label ("Cancel" when it restores, "Stop" when it does
+    // not).
+    JOB_ACTION_CANCEL = 0;
+    // Hold it, for a job that declared itself suspendable.
+    JOB_ACTION_SUSPEND = 1;
+    // Carry on.
+    JOB_ACTION_RESUME = 2;
 }
 
 message ClientHello {
