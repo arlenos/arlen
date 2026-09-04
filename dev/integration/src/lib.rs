@@ -1641,6 +1641,15 @@ mod crate_reachability {
     /// entry read as permission to delete reads that exist nowhere else. A bare
     /// path inherits whatever comment happens to sit above it, so the reason is
     /// a field rather than a convention - unwritable without being written.
+    /// Each reason should say what would end it - the convention the other
+    /// waiting lists took on 4 September, after five notes across this tree
+    /// turned out to describe a state that had already ended.
+    ///
+    /// `daemons/sentinel-detect` left this list that day: `arlen-sentineld` was
+    /// written and consumes it. Worth recording HOW that was found, because it
+    /// was not found here - I ran the reachability test in this file by name and
+    /// not the file's other tests, so this one stayed red for ten hours while I
+    /// worked beside it. A filtered test run is a filtered answer.
     const KNOWN_UNCONSUMED: &[(&str, &str)] = &[
         ("sdk/proc-collect",
          "Superseded, genuinely: `apps/system-monitor/core`'s `procmon` reads the process list, CPU and memory through `system-monitor-mcp`'s sysinfo, which is this crate's whole job."),
@@ -1654,8 +1663,6 @@ mod crate_reachability {
          "Built recently. The .lenv parse and trust model, waiting on the transfer path that presents one."),
         ("contracts/file-change",
          "Built recently, consumer still to come."),
-        ("daemons/sentinel-detect",
-         "The pure detector core for an `org.arlen.Sentinel1` daemon that does not exist yet."),
         ("apps/text-editor/core",
          "The LSP client core, built 19 August: framing, the handshake state machine and the process seam, tested against a real rust-analyzer. The editor's Tauri host does not dial it yet, and that wiring is not a small one - it needs a long-lived session per project in app state, diagnostics pushed to the frontend as events, and a decision about CONFINEMENT that the core deliberately does not make: a language server reads the whole project and, for Rust, runs its build scripts and proc macros, which is arbitrary code from the tree you opened. `arlen-run` is the answer to that shape of problem and wiring it means saying which paths a server may read and whether it may reach the network for dependencies."),
         ("ai/ai-explanation",
