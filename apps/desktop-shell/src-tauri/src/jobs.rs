@@ -150,6 +150,61 @@ pub fn list_jobs(live: tauri::State<'_, LiveJobs>) -> Vec<JobRow> {
     rows
 }
 
+/// Ask the producer of a job to stop, hold or carry on.
+///
+/// NOTHING HERE CARRIES IT OUT, and the store's optimism is built on knowing
+/// that. The daemon relays the intent to whichever producer registered the job -
+/// the file manager's copy loop, a download's byte offset - and the job's own
+/// next update is what says whether it happened. So an `Ok` here means the ask
+/// was sent, never that the copy stopped, and the feed is what corrects the row
+/// if the producer refuses.
+async fn ask_producer(
+    writer: &tauri::State<'_, crate::notifications::client::SocketWriter>,
+    id: &str,
+    kind: notification_proto::proto::JobActionKind,
+) -> Result<(), String> {
+    let id: u64 = id
+        .parse()
+        .map_err(|_| format!("{id} is not a job this shell knows"))?;
+    let msg = notification_proto::proto::ClientMessage {
+        msg: Some(notification_proto::proto::client_message::Msg::JobAction(
+            notification_proto::proto::JobAction {
+                id,
+                kind: kind as i32,
+            },
+        )),
+    };
+    crate::notifications::client::send_command(writer, msg).await
+}
+
+/// Stop a job. The producer decides whether that leaves a partial result; the
+/// zone's label already says which, from the job's own capability flags.
+#[tauri::command]
+pub async fn cancel_job(
+    writer: tauri::State<'_, crate::notifications::client::SocketWriter>,
+    id: String,
+) -> Result<(), String> {
+    ask_producer(&writer, &id, notification_proto::proto::JobActionKind::JobActionCancel).await
+}
+
+/// Hold a suspendable job.
+#[tauri::command]
+pub async fn pause_job(
+    writer: tauri::State<'_, crate::notifications::client::SocketWriter>,
+    id: String,
+) -> Result<(), String> {
+    ask_producer(&writer, &id, notification_proto::proto::JobActionKind::JobActionSuspend).await
+}
+
+/// Carry a held job on.
+#[tauri::command]
+pub async fn resume_job(
+    writer: tauri::State<'_, crate::notifications::client::SocketWriter>,
+    id: String,
+) -> Result<(), String> {
+    ask_producer(&writer, &id, notification_proto::proto::JobActionKind::JobActionResume).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

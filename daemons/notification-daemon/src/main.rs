@@ -141,12 +141,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // The bus handle the socket server relays job actions on. Cloned before
+    // the spawn so the connection outlives this scope with the server.
+    let conn_for_jobs = _conn.clone();
+
     // 5. Start socket server in background.
     let socket_path = SocketServer::default_path();
     let socket_server = SocketServer::new(socket_path);
     let dnd_mode = manager.dnd_mode();
     tokio::spawn(async move {
-        if let Err(e) = socket_server.start(event_rx, event_tx, db.clone(), dnd_mode, job_server).await {
+        if let Err(e) = socket_server
+            .start(event_rx, event_tx, db.clone(), dnd_mode, job_server, Some(conn_for_jobs))
+            .await {
             tracing::error!("socket server error: {e}");
         }
     });

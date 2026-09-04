@@ -121,9 +121,22 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
         "app may notify and close by id",
     ),
     "daemons/notification-daemon/src/dbus/job_view.rs": (
-        {"register", "update", "set_state", "finish", "request_cancel"},
+        {
+            "register",
+            "update",
+            "set_state",
+            "finish",
+            "request_cancel",
+            "request_suspend",
+            "request_resume",
+        },
         "org.arlen.JobViewServer1: a progress surface an app keeps for its own "
-        "job, holding what that app chose to publish about its own work",
+        "job, holding what that app chose to publish about its own work. The "
+        "three request_* relays carry an intent rather than perform it - the "
+        "producer that registered the job decides - and each is refused unless "
+        "that producer declared the matching capability, so an unnamed caller "
+        "can ask for a stop the producer already said it supports and nothing "
+        "more",
     ),
     "daemons/xdg-portal/daemon/src/interfaces/print.rs": (
         {"version"},

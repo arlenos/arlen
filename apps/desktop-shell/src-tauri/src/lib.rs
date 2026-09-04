@@ -391,6 +391,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             jobs::list_jobs,
+            jobs::cancel_job,
+            jobs::pause_job,
+            jobs::resume_job,
             print_dialog::poll_print_request,
             print_dialog::submit_print,
             print_dialog::cancel_print,

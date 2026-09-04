@@ -40,6 +40,10 @@ impl SocketServer {
         db: Arc<Database>,
         dnd_mode: Arc<Mutex<crate::config::DndMode>>,
         jobs: crate::job::JobViewServer,
+        // The session bus, for relaying a job action to its producer. `None` on
+        // a run that could not claim a bus: the socket still serves, and a job
+        // action logs that nothing heard it rather than failing the connection.
+        connection: Option<zbus::Connection>,
     ) -> Result<(), NotifyError> {
         if let Some(parent) = self.path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -156,9 +160,10 @@ impl SocketServer {
             let dnd = dnd_mode.clone();
             let tx = event_tx.clone();
             let job_view = jobs.clone();
+            let conn = connection.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = handle_client(reader, writer, db, dnd, tx, job_view).await {
+                if let Err(e) = handle_client(reader, writer, db, dnd, tx, job_view, conn).await {
                     tracing::debug!("client disconnected: {e}");
                 }
             });
@@ -174,6 +179,7 @@ async fn handle_client(
     dnd_mode: Arc<Mutex<crate::config::DndMode>>,
     event_tx: broadcast::Sender<NotifyEvent>,
     jobs: crate::job::JobViewServer,
+    connection: Option<zbus::Connection>,
 ) -> Result<(), NotifyError> {
     loop {
         // Read from the reader half (does NOT hold the writer lock).
@@ -273,6 +279,66 @@ async fn handle_client(
                 });
                 None
             }
+            proto::client_message::Msg::JobAction(ja) => {
+                // The person pressed Cancel, Pause or Resume on a running job.
+                // Nothing here carries it out: the producer that registered the
+                // job owns the mechanism, so this relays the intent and the
+                // job's own next update is what says whether it happened. A
+                // refused relay is deliberately silent on the wire - the shell
+                // reconciles from the feed, and an "it did not work" that races
+                // the producer's answer is worse than the feed simply not
+                // changing.
+                let kind = match proto::JobActionKind::try_from(ja.kind) {
+                    Ok(proto::JobActionKind::JobActionCancel) => {
+                        crate::dbus::job_view::ActionKind::Cancel
+                    }
+                    Ok(proto::JobActionKind::JobActionSuspend) => {
+                        crate::dbus::job_view::ActionKind::Suspend
+                    }
+                    Ok(proto::JobActionKind::JobActionResume) => {
+                        crate::dbus::job_view::ActionKind::Resume
+                    }
+                    Err(_) => {
+                        tracing::warn!(id = ja.id, kind = ja.kind, "unknown job action; ignored");
+                        continue;
+                    }
+                };
+                match &connection {
+                    Some(conn) => {
+                        let relayed =
+                            crate::dbus::job_view::relay_action(conn, &jobs, ja.id, kind).await;
+                        if !relayed {
+                            tracing::warn!(
+                                id = ja.id,
+                                ?kind,
+                                "job action not relayed: unknown job, or the producer never \
+                                 declared that capability"
+                            );
+                            // PUT THE ROW BACK. The zone removes a cancelled job
+                            // the moment the button is pressed and reconciles
+                            // from the feed, so a refusal that says nothing
+                            // leaves a copy that is still running crossed off
+                            // the list - the false confirmation of a destructive
+                            // action this surface exists to avoid. Re-pushing the
+                            // job's current state is the correction, and it needs
+                            // no new reply path.
+                            if let Some(view) = jobs.get(ja.id) {
+                                let _ = event_tx.send(NotifyEvent::Job(
+                                    crate::dbus::job_view::to_job_update(&view, false),
+                                ));
+                            }
+                        }
+                    }
+                    // No bus means no producer to tell. Saying so rather than
+                    // dropping it silently: the button was pressed and nothing
+                    // heard it.
+                    None => tracing::warn!(
+                        id = ja.id,
+                        "job action arrived with no session bus to relay it on"
+                    ),
+                }
+                None
+            }
             proto::client_message::Msg::GetKnownApps(_) => {
                 let app_names = db.get_known_apps().await.unwrap_or_default();
                 Some(proto::ServerMessage {
@@ -364,7 +430,7 @@ mod tests {
         let server = SocketServer::new(sock.clone());
         let jobs_for_server = jobs.clone();
         tokio::spawn(async move {
-            let _ = server.start(rx, tx, db, dnd, jobs_for_server).await;
+            let _ = server.start(rx, tx, db, dnd, jobs_for_server, None).await;
         });
 
         // Connect once the listener is up (poll, do not race a fixed sleep).
