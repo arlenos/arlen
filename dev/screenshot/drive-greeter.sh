@@ -78,7 +78,11 @@ return `fields=${JSON.stringify(fields)} names=${JSON.stringify(names)} before=$
 JS
 
 run="$(mktemp -d)"
-out=$(env XDG_STATE_HOME="$run/state" XDG_DATA_HOME="$run/data" XDG_RUNTIME_DIR="$run" HOME="$run" \
+# LC_ALL=C so the sentences asserted below are the English ones by decision
+# rather than by whatever this machine is set to. `locale_get` skips C/POSIX and
+# answers "en", which is the catalogue those greps are written against; without
+# this the suite would go red on a German laptop for the right screen.
+out=$(env LC_ALL=C XDG_STATE_HOME="$run/state" XDG_DATA_HOME="$run/data" XDG_RUNTIME_DIR="$run" HOME="$run" \
   SHOOT_INJECT="$probe" "$here/shoot-app.sh" "$app" "$here/out/greeter.png" 2>&1 \
   | sed -n 's/^inject result: //p')
 
@@ -97,12 +101,44 @@ say "the account it offers is a real login on this machine" "$found" \
 
 # THE case. A login screen that cannot reach the login must say so, on itself.
 say "a login it cannot perform is refused out loud" \
-  "$(printf '%s' "$out" | grep -q "login is not reachable" && echo 1 || echo 0)" "$out"
+  "$(printf '%s' "$out" | grep -qE "alerts=\"[^\"]+\"" && echo 1 || echo 0)" "$out"
 
 # And why. "greetd is not running" and "PAM refused you" are the same blank
 # screen to a person and completely different things to do about it.
+#
+# THE CAUSE IS THE SENTENCE, not a parenthetical after it. This asked for a "("
+# until 5 September, and that was asserting the presence of a defect: the old
+# screen carried the command's OWN English prose - "login is not reachable
+# (account list unavailable)" - onto the first screen of the system in every
+# locale, and the parenthesis it matched was part of that leak. `55de08410`
+# replaced it with a token the panel turns into one of five translated
+# sentences, one per cause, so the check is now which sentence came back. With
+# no greetd running that is the login-service one and not the generic
+# not-connected one.
 say "and the refusal names its cause" \
-  "$(printf '%s' "$out" | grep -qE "alerts=\"[^\"]*\(" && echo 1 || echo 0)" "$out"
+  "$(printf '%s' "$out" | grep -q "login service is not reachable" && echo 1 || echo 0)" "$out"
+
+# The regression the above was written against, checked directly rather than
+# implied: the backend's rejection token and its raw error text are for the
+# panel, never for the person. Anything on screen that the catalogue does not
+# define is the mapping being bypassed.
+#
+# THE CATALOGUE IS READ, NOT RESTATED. A list of forbidden words here would only
+# ever catch the leaks somebody thought of - my first cut listed the five tokens
+# and "Error", and the actual historical leak ("login is not reachable (account
+# list unavailable)") walked straight through it, which is how I learnt that the
+# check has to be membership rather than a blocklist. Asking whether the sentence
+# is one the app SHIPS catches every shape of leak including the one that
+# happened, and it follows a reworded sentence instead of going red at it.
+known=$(grep -oE '"g\.[A-Za-z.]+": "[^"]+"' "$root/apps/greeter/src/lib/i18n/messages.ts" \
+  | sed 's/^[^:]*: "//; s/"$//' | sort -u)
+alert=$(printf '%s' "$out" | sed -n 's/.*alerts="\([^"]*\)".*/\1/p')
+in_catalogue=0
+[ -n "$alert" ] && while IFS= read -r line; do
+  [ "$line" = "$alert" ] && in_catalogue=1 && break
+done <<< "$known"
+say "and it is a sentence the app ships, not the backend's own words" \
+  "$in_catalogue" "on screen: [$alert] - not one of the $(printf '%s' "$known" | wc -l) catalogue strings"
 
 rm -rf "$run" "$probe" 2>/dev/null
 [ "$fail" = 0 ] && echo "the login screen says when it cannot log you in, and why"
