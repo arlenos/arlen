@@ -435,12 +435,17 @@ KNOWN: dict[str, dict[str, str]] = {
         # three items nobody has picked up.
     },
     "text-editor": {
-        # FALSE WHEN: the gate registry classifies an edit action AND `executor_live`
-        # is on. Measured 4 Sep and worth writing down rather than re-deriving:
-        # the store models hunks the assistant ALREADY APPLIED on its own, which is
-        # the autonomous half and is exactly what that flag gates. A propose-only
-        # version - every hunk held for confirm - needs neither, and is a different
-        # feature from the one the surface draws rather than a smaller cut of it.
+        # FALSE WHEN: the gate registry classifies an edit action. `executor_live`
+        # gates only HALF of what the surface draws, and I had this wrong an hour
+        # ago: the store shows hunks the assistant already applied on its own,
+        # which is the autonomous half that flag governs - but `ai_edit_accept`
+        # takes a hunk index and applies it, so a proposal whose hunks are all
+        # held for confirm is the SAME flow with the autonomous half off, which is
+        # what the gate does in suggest mode anyway. That is a smaller cut of this
+        # feature rather than a different one, and it is buildable without
+        # flipping anything. What it genuinely needs is the model call, the diff,
+        # and a write path to somebody's open file - the last of which is why it
+        # wants a careful sitting rather than a spare half hour.
         "ai_edit": (
             "proposing an assistant edit (the gated edit path, executor-live)"
         ),
