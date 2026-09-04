@@ -90,6 +90,7 @@ SERVERS = {
     "rcd.sock": "arlen-accountsd",
     "transfer.sock": "arlen-transferd",
     "portal-picker.sock": "xdg-desktop-portal-arlen",
+    "portal-print.sock": "xdg-desktop-portal-arlen",
     "modulesd.sock": "arlen-modulesd",
     "settings-broker.sock": "arlen-settings-broker",
 }
