@@ -59,6 +59,7 @@ name = "arlen-file-browser-core"
 version = "0.1.0"
 dependencies = [
  "arlen-ai-undo-core",
+ "base64",
  "blake3",
  "cap-std",
  "flate2",
@@ -86,6 +87,12 @@ name = "arrayvec"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f02882884d3e1bc524fb12c79f107f6ad0e1cfd498c536ffb494301740995dfe"
+
+[[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bitflags"
