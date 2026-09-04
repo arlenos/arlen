@@ -172,12 +172,30 @@ pub fn folders(root: &std::path::Path) -> Vec<Folder> {
 }
 
 /// How many messages in this folder have not been read.
+///
+/// FILES ONLY, and that is not pedantry. `envelopes` skips anything that is not a
+/// message, so counting directory entries indiscriminately lets the rail show a
+/// number the list cannot account for - a badge saying three over a page showing
+/// two, which is a number nobody can reconcile and worse than no badge. Caught by
+/// the test below rather than by reading: a directory under `new/` was enough.
+///
+/// A regular file that is not a message would still be counted, and closing that
+/// would mean parsing every message in the folder to draw a badge. The rail is a
+/// summary and the list is the truth; this makes them agree on everything cheap
+/// to agree on.
 fn unread_in(dir: &std::path::Path) -> usize {
-    let new = std::fs::read_dir(dir.join("new")).into_iter().flatten().flatten().count();
+    let is_file = |e: &std::fs::DirEntry| e.file_type().map(|t| t.is_file()).unwrap_or(false);
+    let new = std::fs::read_dir(dir.join("new"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(is_file)
+        .count();
     let cur_unseen = std::fs::read_dir(dir.join("cur"))
         .into_iter()
         .flatten()
         .flatten()
+        .filter(is_file)
         .filter(|e| !seen(&e.file_name().to_string_lossy()))
         .count();
     new + cur_unseen
@@ -475,6 +493,25 @@ mod tests {
     fn a_body_of_newlines_becomes_a_readable_line() {
         assert_eq!(snippet_of(Some("one\n\n  two\r\nthree ")), "one two three");
         assert_eq!(snippet_of(None), "");
+    }
+
+    #[test]
+    fn the_rail_never_counts_something_the_list_cannot_show() {
+        // The rail's number and the list's rows must be the same messages. A
+        // directory in `new/` is not a message: counting it makes the badge say
+        // one more than the page can render, and a count nobody can reconcile is
+        // worse than no badge.
+        let root = a_maildir();
+        std::fs::create_dir_all(root.join("new/not-a-message")).unwrap();
+        let inbox = folders(&root).into_iter().next().unwrap();
+        let rows = envelopes(&root, &inbox);
+        let listed_unread = rows.iter().filter(|r| r.unread).count();
+        assert_eq!(
+            inbox.unread, listed_unread,
+            "the rail says {} and the list shows {listed_unread}",
+            inbox.unread
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
