@@ -316,15 +316,25 @@ fn trash_file(path: String) -> Result<TrashedDto, String> {
 /// where a German reader can never see it. The catalogue writes the sentence
 /// now; this says which one.
 ///
-/// `why` and `message` survive because they carry what the layer below said, and
-/// that text is the only thing anybody has for those two cases.
+/// `message` survives because `Io` is the catch-all: it names no cause of its
+/// own, so the system's words are the only thing anybody has. `why` did not
+/// survive - see `NoTrashHere`.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "kebab-case", tag = "problem")]
 enum TrashProblem {
     /// The file is on a different drive from the trash that would take it.
     CrossDevice,
     /// That drive cannot hold a trash at all.
-    NoTrashHere { why: String },
+    ///
+    /// NO `why` ON THE WIRE. It carried `"{path}: {io error}"`, which the page
+    /// then put inside a translated sentence - the German build showing a German
+    /// frame around "/run/media/x/.Trash-1000: Read-only file system (os error
+    /// 30)". The text editor settled this shape three days after this file was
+    /// written (`0ad07b2af`, "name why a save was refused instead of quoting the
+    /// filesystem"): the path is already on screen and the errno is for the log.
+    /// The variant below already says which refusal this is, so the raw text
+    /// added noise and no fact. `Io` keeps its message on purpose - see there.
+    NoTrashHere,
     /// It is not there any more.
     NotFound,
     /// The drive cannot move a file in a way that could be undone.
@@ -342,7 +352,12 @@ impl From<arlen_freedesktop_trash::TrashError> for TrashProblem {
         use arlen_freedesktop_trash::TrashError as T;
         match e {
             T::CrossDevice => Self::CrossDevice,
-            T::NoTrashHere(why) => Self::NoTrashHere { why },
+            T::NoTrashHere(why) => {
+                // The one place every conversion passes through, so the detail
+                // reaches the journal exactly once and the window not at all.
+                log::warn!("trash unavailable on this drive: {why}");
+                Self::NoTrashHere
+            }
             T::NotFound => Self::NotFound,
             T::Unsupported => Self::Unsupported,
             T::NoSlot => Self::NoSlot,

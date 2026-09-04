@@ -23,8 +23,15 @@ describe("trashProblem", () => {
   });
 
   it("keeps the detail on the two cases that carry one", () => {
-    const noTrash = trashProblem(wrapped('{"problem":"no-trash-here","why":"read-only mount"}'));
-    expect(noTrash).toEqual({ key: "v.trash.noTrashHere", detail: "read-only mount" });
+    // The host no longer sends `why`, and this used to feed it a tidy phrase the
+    // host never produced ("read-only mount") - so the test passed while
+    // production put "/path/.Trash-1000: Read-only file system (os error 30)"
+    // inside a translated sentence. It now sends what the host really sent, and
+    // asserts the page is handed nothing to interpolate.
+    const noTrash = trashProblem(
+      wrapped('{"problem":"no-trash-here","why":"/run/media/x/.Trash-1000: Read-only file system (os error 30)"}'),
+    );
+    expect(noTrash).toEqual({ key: "v.trash.noTrashHere", detail: "" });
     const io = trashProblem(wrapped('{"problem":"io","message":"Permission denied"}'));
     expect(io).toEqual({ key: "v.trash.io", detail: "Permission denied" });
   });

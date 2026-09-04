@@ -337,7 +337,7 @@
         p.key === "v.couldNotDelete"
           ? $t("v.couldNotDelete", { reason: p.detail })
           : p.key === "v.trash.noTrashHere"
-            ? $t("v.trash.noTrashHere", { why: p.detail })
+            ? $t("v.trash.noTrashHere")
             : p.key === "v.trash.io"
               ? $t("v.trash.io", { message: p.detail })
               : p.key === "v.trash.crossDevice"
