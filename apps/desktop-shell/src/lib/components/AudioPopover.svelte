@@ -6,6 +6,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Separator } from "@arlen/ui-kit/components/ui/separator/index.js";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import {
     Volume2, VolumeX, Mic, MicOff, ChevronRight,
   } from "lucide-svelte";
@@ -229,7 +230,7 @@
                 <span class="app-icon-letter">{app.name.charAt(0).toUpperCase()}</span>
               {/if}
             </div>
-            <span class="app-name" title={app.name}>{app.name}</span>
+            <span class="app-name"><OverflowLabel text={app.name} /></span>
             <div class="vol-slider-wrap app-slider-wrap">
               <FillSlider
                 value={app.volume}

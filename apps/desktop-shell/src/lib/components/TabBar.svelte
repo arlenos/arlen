@@ -1,5 +1,6 @@
 <script lang="ts">
     import { tabBars, activateTab } from "$lib/stores/tabBars";
+    import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
 </script>
 
 {#each [...$tabBars.values()] as bar (bar.stack_id)}
@@ -24,7 +25,7 @@
                     class:active={tab.index === bar.active}
                     onclick={() => activateTab(bar.stack_id, tab.index)}
                 >
-                    <span class="tab-title" title={tab.title}>{tab.title}</span>
+                    <span class="tab-title"><OverflowLabel text={tab.title} /></span>
                 </button>
             {/each}
         </div>

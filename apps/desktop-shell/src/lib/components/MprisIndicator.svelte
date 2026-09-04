@@ -9,6 +9,7 @@
   /// nothing is registered.
   import { Music, Play, Pause } from "lucide-svelte";
   import { onMount } from "svelte";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { activePopover, togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
   import { nowPlaying, playPause, loadNowPlaying } from "$lib/stores/nowPlaying.js";
 
@@ -22,7 +23,7 @@
   });
 
   const isOpen = $derived($activePopover === "mpris");
-  const tip = $derived($nowPlaying ? `${$nowPlaying.title} · ${$nowPlaying.artist}` : "");
+  const tip = $derived($nowPlaying ? `${$nowPlaying.title}, ${$nowPlaying.artist}` : "");
 </script>
 
 {#if $nowPlaying}
@@ -35,18 +36,27 @@
     role="group"
     aria-label={$t("sh.mpris.nowPlaying")}
   >
-    <button
-      class="mpris-art"
-      title={tip}
-      aria-label={$t("sh.mpris.openPlayer")}
-      onclick={() => togglePopover("mpris")}
-    >
-      {#if n.artUrl}
-        <img src={n.artUrl} alt="" draggable="false" />
-      {:else}
-        <Music size={11} strokeWidth={1.75} />
-      {/if}
-    </button>
+    <!-- The art is the control's name in the bar (what is playing), so that is
+         what its tooltip says; the action it opens is the accessible name. -->
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <button
+            class="mpris-art"
+            aria-label={$t("sh.mpris.openPlayer")}
+            onclick={() => togglePopover("mpris")}
+            {...props}
+          >
+            {#if n.artUrl}
+              <img src={n.artUrl} alt="" draggable="false" />
+            {:else}
+              <Music size={11} strokeWidth={1.75} />
+            {/if}
+          </button>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.TooltipContent side="bottom">{tip}</Tooltip.TooltipContent>
+    </Tooltip.Root>
 
     <button
       class="mpris-play"
