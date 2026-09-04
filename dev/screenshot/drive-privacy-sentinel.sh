@@ -43,7 +43,21 @@ fi
 
 (cd "$root/apps/settings" && npx vite preview --port 1421 --outDir build >/dev/null 2>&1) &
 preview_pid=$!
-sleep 2
+# WAIT FOR IT TO ANSWER, not for two seconds. A fixed sleep here measures the
+# machine's load rather than the server's readiness, and it cost a real cycle on
+# 4 September: the run right after a fresh `npm run build` came up slower than
+# the sleep, the app loaded nothing, and the drive reported "the page could not
+# read the running daemon" - a failure in the page, about the daemon, when the
+# truth was that no page had loaded. A false red that names the wrong component
+# is worse than a slow script.
+for _ in $(seq 1 60); do
+  curl -sS -o /dev/null "http://localhost:1421/" 2>/dev/null && break
+  sleep 0.5
+done
+curl -sS -o /dev/null "http://localhost:1421/" 2>/dev/null || {
+  echo "!! the preview server never came up on 1421; nothing below is about the app" >&2
+  exit 1
+}
 
 cat > "$work/goto.js" <<'JS'
 location.assign("/privacy/physical");
@@ -80,7 +94,11 @@ runtime="$work/run"
 mkdir -p "$runtime"
 XDG_RUNTIME_DIR="$runtime" XDG_CONFIG_HOME="$work/cfg" "$sentineld" >"$work/daemon.log" 2>&1 &
 daemon_pid=$!
-sleep 2
+# Same rule as the preview: wait for the socket rather than for a number.
+for _ in $(seq 1 40); do
+  [ -S "$runtime/arlen/sentinel.sock" ] && break
+  sleep 0.25
+done
 [ -S "$runtime/arlen/sentinel.sock" ] || { echo "!! the sentinel did not bind its socket" >&2; cat "$work/daemon.log" >&2; exit 1; }
 
 echo ">> the privacy page with the sentinel running"
