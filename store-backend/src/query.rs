@@ -673,6 +673,55 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
 mod tests {
 
     #[test]
+    fn the_icon_op_refuses_a_file_outside_the_icon_tree() {
+        // THE DISPATCH, which the cases below do not cover: they drive `read_icon`
+        // directly, so a `Request::Icon` that looked up the wrong field, or the
+        // wrong card, or dropped the answer on the floor would pass all of them.
+        // This goes in at the op.
+        //
+        // WHAT IT DOES NOT PROVE, said plainly because the name used to promise
+        // it: the serving leg. `answer` reads the real `ICON_ROOTS`, so no temp
+        // file can be served through this op, and the "a real file comes back as
+        // bytes" case belongs to `read_icon`'s own test where the roots are a
+        // parameter. What is proved here is that the op resolves a card, reads its
+        // icon field, applies the root rule, and answers `None` rather than a file
+        // outside the tree - the same answer a hostile catalogue path gets.
+        let dir = std::env::temp_dir().join(format!("arlen-icon-op-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let file = dir.join("app.png");
+        std::fs::write(&file, b"pretend png").expect("temp file");
+
+        let card = |id: &str, icon: Option<String>| AppCard {
+            id: ComponentId(id.into()),
+            display: DisplayMeta { name: "App".into(), icon, ..Default::default() },
+            variants: vec![],
+            default_variant: 0,
+            kind: ItemKind::default(),
+        };
+        let catalog = Catalog::new(vec![
+            card("com.example.Outside", Some(file.to_string_lossy().into_owned())),
+            card("com.example.Themed", Some("app-icon".into())),
+            card("com.example.None", None),
+        ]);
+
+        for id in ["com.example.Outside", "com.example.Themed", "com.example.None"] {
+            let got = answer(&catalog, Request::Icon { id: ComponentId(id.into()) });
+            assert!(
+                matches!(got, Response::Icon(None)),
+                "{id} must answer no picture rather than a file outside the icon tree: {got:?}"
+            );
+        }
+
+        // An id the catalogue does not hold is the same answer. A caller cannot
+        // tell "no picture" from "no such app" through this op, and does not need
+        // to - both mean the tile draws its monogram.
+        let unknown = answer(&catalog, Request::Icon { id: ComponentId("nope".into()) });
+        assert!(matches!(unknown, Response::Icon(None)), "{unknown:?}");
+
+        std::fs::remove_dir_all(&dir).expect("the fixture this test made");
+    }
+
+    #[test]
     fn an_icon_outside_the_roots_is_not_read() {
         // The strings here come from metadata the archive publishes. A component
         // naming a file elsewhere gets a monogram, not a read.
