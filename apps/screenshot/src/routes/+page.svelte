@@ -574,6 +574,13 @@
      landmark and the visible surface as content outside one. `display: contents`
      keeps both children exactly where they were in the layout. -->
 <main class="page">
+  <!-- The page's one level-one heading. Every app in this tree had none, so a
+       screen reader's first question - what IS this window - was answered only
+       by the window title, which is not in the document. The app NAME rather
+       than the visible bar title, which says where you are inside the app and
+       changes as you move; hidden, because the bar already shows that and a
+       second visible title would be the same fact twice. -->
+  <h1 class="sr-only">{$t("s.app.title")}</h1>
 
 <!-- The annotate surface stays mounted (its canvas is set up on load); the phase
      only shows it once the user opens the capture from the floating thumbnail. -->

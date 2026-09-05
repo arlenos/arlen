@@ -503,6 +503,15 @@
   {/if}
 {/snippet}
 
+{#snippet appTitle()}
+  <!-- The page's one level-one heading. Every app in this tree had none, so a
+       screen reader's first question - what IS this window - was answered only
+       by the window title, which is not in the document. A snippet rather than
+       six copies: the branches are mutually exclusive, so exactly one renders,
+       and it lives inside the branch's `main` so it is inside the landmark. -->
+  <h1 class="sr-only">{$t("v.app.title")}</h1>
+{/snippet}
+
 <!-- Every branch is the whole page, and they are mutually exclusive - so each is
      `main`, and exactly one main renders. A viewer with no `main` leaves a
      screen-reader user nothing to skip to; the failure states are content too. -->
@@ -510,6 +519,7 @@
   <!-- The chevrons and the arrow keys are the same move. They were drawn but
        unwired, so a viewer that looked navigable did nothing when clicked. -->
   <main class="fill">
+    {@render appTitle()}
     <ImageViewer
       file={loaded.file}
       raster={loaded.raster}
@@ -524,6 +534,7 @@
   </main>
 {:else if loaded?.kind === "audio"}
   <main class="fill">
+    {@render appTitle()}
     <AudioPlayer file={loaded.file} onnext={() => step("next")} onprev={() => step("previous")} />
     {#if detailsOpen}
       <DetailsPanel {facts} onclose={() => (detailsOpen = false)} />
@@ -537,6 +548,7 @@
        the one state where a person most wants that button. Found by opening the
        viewer on a file it cannot read and looking at the result. -->
   <main class="fill err">
+    {@render appTitle()}
     <div class="winctl">
       <WindowButtons showMaximize={false} />
     </div>
@@ -553,6 +565,7 @@
   <!-- Before the demo branches on purpose: in the real shell an empty window is
        an empty window, and the sample below is for the harness and the browser. -->
   <main class="fill err">
+    {@render appTitle()}
     <div class="winctl">
       <WindowButtons showMaximize={false} />
     </div>
@@ -560,10 +573,12 @@
   </main>
 {:else if framed}
   <main class="frame" style="width:{w}px;height:{h}px">
+    {@render appTitle()}
     {@render face(demo)}
   </main>
 {:else}
   <main class="fill">
+    {@render appTitle()}
     {@render face(demo)}
   </main>
 {/if}
