@@ -1,0 +1,22 @@
+<!-- The control for `clipped-by-parent.js`.
+       dev/screenshot/shoot.sh "file://$PWD/dev/screenshot/clipped-by-parent-control.html" \
+         /tmp/x.png dev/screenshot/clipped-by-parent.js 800 400
+     must answer exactly one:
+       ['span.cut: "Cut off by its parent" cut 131px past .hidden']
+-->
+<body style="margin: 0; background: #111; color: #eee; font: 14px system-ui">
+  <!-- The fault: the span fits its own box, and the box sits past the edge of a
+       parent that clips. -->
+  <div class="hidden" style="width: 120px; overflow: hidden; white-space: nowrap; height: 24px">
+    <span class="cut" style="position: relative; left: 120px">Cut off by its parent</span>
+  </div>
+
+  <!-- MUST NOT be reported: a SCROLL parent holds content past its edge on
+       purpose, and the reader can reach it. -->
+  <div style="width: 120px; overflow: auto; white-space: nowrap; height: 24px">
+    <span style="position: relative; left: 120px">Reachable by scrolling</span>
+  </div>
+
+  <!-- MUST NOT be reported: inside its parent, where it belongs. -->
+  <div style="width: 300px; overflow: hidden"><span>Comfortably inside</span></div>
+</body>
