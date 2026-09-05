@@ -32,6 +32,14 @@
 #
 #   dev/screenshot/sweep-render.sh http://localhost:1434 de "/::#tab-timers"
 #
+# THE SELECTORS ARE ALREADY WRITTEN DOWN. `sweep-no-backend.sh`'s SHOTS table
+# lists every app's route plus the click that reaches its other surfaces - the
+# clock's four tabs, the file manager's Recent and Trash, knowledge's Library,
+# Projects and Searches, the shortcuts dialog. Reuse them; rediscovering the
+# selectors per run is how a sweep ends up reading only landing pages, and mail
+# hid a name rendering at ZERO width one click from a list that swept clean
+# twice.
+#
 # Start the app's dev server first, and it must be `vite dev`: the kit's
 # `applyDevLocale` only runs under a dev build, so `vite preview` renders the
 # source language whatever the query says.
