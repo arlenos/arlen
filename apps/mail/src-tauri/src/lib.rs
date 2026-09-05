@@ -407,11 +407,6 @@ fn mail_draft_save(to: String, subject: String, body: String) -> Result<String, 
     arlen_mail_core::maildir::save_draft(&root, &to, &subject, &body).map_err(Into::into)
 }
 
-/// Start the window.
-///
-/// # Panics
-/// When Tauri cannot build the app, which is a broken installation.
-
 /// Why an attachment did not get saved, as a word rather than a sentence.
 ///
 /// Same rule as [`ReadProblem`]: the window owns the wording, this owns the
@@ -501,7 +496,10 @@ fn free_path(folder: &std::path::Path, name: &str) -> PathBuf {
     first
 }
 
-
+/// Start the window.
+///
+/// # Panics
+/// When Tauri cannot build the app, which is a broken installation.
 pub fn run() {
     // `arlen-mail <file>`, or the desktop entry's `%f`. Nothing else is read
     // from argv: an app that takes flags from whatever launched it is an app
