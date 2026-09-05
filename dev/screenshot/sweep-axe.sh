@@ -134,9 +134,9 @@ for entry in "${SURFACES[@]}"; do
   # INSIDE the one session, which is what was wanted all along.
   served=""
   for _ in $(seq 1 3); do
-    served=$(timeout 90 python3 dev/screenshot/render-wide.py \
+    served=$(timeout 240 python3 dev/screenshot/render-wide.py \
       --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
-      --settle 4 --probe "document.title" 2>/dev/null | tail -1)
+      --timeout 180 --settle 4 --probe "document.title" 2>/dev/null | tail -1)
     [ -n "$served" ] && break
   done
   if [ -n "$want" ] && [ "$served" != "$want" ]; then
@@ -155,12 +155,17 @@ for entry in "${SURFACES[@]}"; do
   # than eat the run. The pdf app hung here until the whole sweep was killed at
   # its outer timeout, and what that produced was no tally at all - worse than a
   # bad number, because a run that dies prints nothing to disbelieve.
-  timeout 180 python3 dev/screenshot/render-wide.py \
+  # THE LOAD ALLOWANCE IS THE WHOLE STORY FOR ONE APP. render-wide's default is
+  # 60s and the pdf reader needs more than that on a cold vite server - 142
+  # modules to transform before the load event - so it was refused every time
+  # except the once the server happened to be warm, and the sweep called that
+  # "no result". At 180 it loads and gets judged like everything else.
+  timeout 300 python3 dev/screenshot/render-wide.py \
     --url "http://localhost:$PORT$route" \
-    --out "$out/$app.png" --width "$WIDTH" --axe --settle 3 \
+    --out "$out/$app.png" --width "$WIDTH" --axe --timeout 180 --settle 3 \
     >"$out/$app.axe" 2>&1
   if [ "$?" = 124 ]; then
-    printf '%-16s %s\n' "$app" "REFUSED: the page did not finish an axe run in 180s"
+    printf '%-16s %s\n' "$app" "REFUSED: the page did not finish an axe run in 300s"
     kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
     PORT=$((PORT + 1))
     continue
