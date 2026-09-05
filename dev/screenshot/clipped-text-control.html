@@ -1,0 +1,30 @@
+<!-- The control for `clipped-text.js`, as a file rather than a sentence.
+     Its own header says a probe returning nothing is indistinguishable from a
+     probe that does not work, and until now the fixture proving otherwise lived
+     in a comment. Four boxes, one per answer the probe has to give:
+
+       dev/screenshot/shoot.sh "file://$PWD/dev/screenshot/clipped-text-control.html" \
+         /tmp/x.png dev/screenshot/clipped-text.js 800 400
+
+     must answer exactly:
+
+       ['div.: "Vertrauensstufe verschlagwortet" wide 60<186',
+        'div.: "A line taller than its box" tall 14<19']
+-->
+<body style="margin: 0; background: #111; color: #eee; font: 12px system-ui">
+  <!-- Too narrow: the shape a longer language makes of a column sized for English. -->
+  <div style="width: 60px; overflow: hidden; white-space: nowrap">Vertrauensstufe verschlagwortet</div>
+
+  <!-- Too short: the shape a dense grid makes of a label, and the axis the probe
+       could not see until 5 September. The calendar's week grid was cutting event
+       titles in half while the sweep called the page clean. -->
+  <div style="height: 14px; width: 300px; overflow: hidden; line-height: 19px">A line taller than its box</div>
+
+  <!-- MUST NOT be reported: the screen-reader pattern overflows on both axes by
+       construction, and counting it would put an `sr-only` in every result until
+       somebody stopped reading them. -->
+  <div style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0)">Hidden label</div>
+
+  <!-- MUST NOT be reported: a box holding what it was given. -->
+  <div style="width: 300px">A line that fits fine</div>
+</body>
