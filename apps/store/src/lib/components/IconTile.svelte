@@ -6,12 +6,13 @@
   /// an icon, and only one of those is true.
   ///
   /// `icon://` IS THE LOCAL DELIVERY THIS DOC USED TO CALL A ROUTED SEAM. The
-  /// catalogue's icons are files staged on the machine, and a webview cannot
-  /// open a path, so `apps/store/src-tauri/src/icon_scheme.rs` serves them over
-  /// a scheme of its own and rewrites the path into that URL before a card
-  /// leaves for the frontend. Until the route existed every one of the 2531
-  /// Debian components fell to a monogram. The scheme is `icon://` on Linux and
-  /// macOS, which is the shape tauri gives a custom protocol there.
+  /// catalogue's icons are files staged on the machine and a webview cannot open
+  /// a path, so `apps/store/src-tauri/src/icon_scheme.rs` gives them a scheme.
+  /// The URL names a COMPONENT, not a file: the window has no filesystem grant,
+  /// so the handler forwards the id to the store backend and serves the bytes
+  /// that come back. Until the route existed every one of the 2531 Debian
+  /// components fell to a monogram. The scheme is `icon://` on Linux and macOS,
+  /// which is the shape tauri gives a custom protocol there.
   let {
     icon,
     name,
