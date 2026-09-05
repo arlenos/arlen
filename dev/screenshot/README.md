@@ -136,6 +136,21 @@ Two things that cost a shot each:
     warm the dependency, then shoot. Anything that adds a mock to a harness route
     has this on its first run.
 
+## A picture in `out/` carries no date on its face
+
+`out/` holds every shot any drive ever wrote and nothing prunes it, which is
+right - a photograph of a real-machine sentence taken on 21 August was the
+evidence that settled a question on 5 September, and deleting it would have cost
+that. But on 5 September the directory held **488 pictures, 328 of them older
+than two weeks**, and two of them cost an hour between them: a printers page and
+a Windows-apps page, both photographed in August, both showing sentences that had
+since been fixed. Each read exactly like a fresh finding.
+
+**So a finding from a picture is a finding about the day it was taken.** Check
+`ls -l` on the file and then the source, before it is a finding. The habit costs
+ten seconds; not having it produced two reports of defects that no longer
+existed, and one of those was nearly written up.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the
