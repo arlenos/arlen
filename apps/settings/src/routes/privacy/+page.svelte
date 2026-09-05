@@ -521,11 +521,28 @@
      read as a sentence - what, with whom, until when, how many reads left. */
   .cap-list {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content max-content max-content max-content;
+    /* Same starved-column shape as `.lines` in `PrincipalGrants`, in a second grid
+       on the same page: `minmax(0, 1fr)` against four `max-content` neighbours
+       collapses to NOTHING at 720 - measured, `cap-label 0<55` and
+       `cap-scope 0<174`, so the row showed an audience, an expiry and a Revoke
+       button for a share whose name and scope were both invisible. A floor on the
+       half that says WHAT WAS SHARED, and the audience column shrinks instead. */
+    grid-template-columns: minmax(9rem, 1fr) minmax(0, max-content) max-content max-content max-content;
     align-items: center;
     column-gap: 1rem;
     row-gap: 0.75rem;
     padding: var(--space-row, 0.75rem) 1rem;
+  }
+  /* A FLOOR ONLY CHOOSES WHICH COLUMN STARVES. With the scope floored the audience
+     went to zero instead - "this machine", "laptop, key a1b2…7f" - and on a list
+     about shares that is not a better answer, only a different one. Five columns
+     do not fit this width, so below it the row stops pretending they do and flows
+     into two: what was shared and to whom on one line, when and how many reads on
+     the next, the action last. Nothing is hidden and nothing is a sliver. */
+  @media (max-width: 60rem) {
+    .cap-list {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
   }
   .cap-what {
     display: flex;
@@ -548,7 +565,9 @@
   .cap-who {
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    white-space: nowrap;
+    /* Wraps, so its column can give room back to the scope beside it. */
+    min-width: 0;
+    overflow-wrap: break-word;
   }
   .cap-when {
     font-size: var(--text-xs);

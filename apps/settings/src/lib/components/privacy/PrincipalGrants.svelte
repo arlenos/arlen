@@ -180,11 +180,36 @@
      a clean scannable column; provenance and Remove are their own columns. */
   .lines {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    /* THE OBJECT COLUMN GETS A FLOOR AND THE PROVENANCE YIELDS. It was
+       `minmax(0, 1fr)` between three `max-content` columns, and at 720 those three
+       took what they asked for and left it **12.5px**: measured on the rendered
+       page, `.object` needed 51 and spilled across `.prov`, so "deine Dateien" was
+       painted over "bei der Installation angemeldet". Eight such pairs on the
+       page, overlaps to 123x18px, and in English too at 9px - the layout, not the
+       language.
+       
+       Which column yields is the whole decision. The starved one held WHAT THE APP
+       REACHES; the one that kept its width held where the grant came from. On a
+       page whose job is telling you what can touch your data, the object is the
+       half that has to survive - so it floors at 9rem and the provenance shrinks
+       and wraps instead. Third time today a `minmax(0, 1fr)` gave way to fixed
+       neighbours and the screen kept the less important half. */
+    grid-template-columns: max-content minmax(9rem, 1fr) minmax(5rem, max-content) max-content;
     align-items: baseline;
     column-gap: 0.75rem;
     row-gap: 0.5rem;
     padding-inline-start: calc(28px + 0.625rem);
+  }
+  /* AND BELOW THAT WIDTH THE ROW STOPS INSISTING ON FOUR COLUMNS. Floors stopped
+     the overlap but four columns plus a long verb ("liest und ändert") still ran
+     past the container, so the Remove action was clipped to its first letter by
+     the panel edge - which no probe here catches, because the button fits its own
+     box perfectly and it is the CONTAINER doing the cutting. Two columns: verb and
+     object on one line, provenance and action under them. */
+  @media (max-width: 60rem) {
+    .lines {
+      grid-template-columns: max-content minmax(0, 1fr);
+    }
   }
   /* Headless (the per-app page names the app above): the block sits flush with
      the section inset instead of hanging under an absent avatar. */
@@ -219,7 +244,16 @@
     justify-self: start;
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
-    white-space: nowrap;
+    /* Wraps, so it can give room back to the object beside it. `nowrap` here is
+       what made the column above unshrinkable.
+       
+       `break-word` and a 5rem floor on its column, not `anywhere` and none: the
+       first attempt let it shrink without limit and it came back reading
+       "bei der / Installa / tion / angem / eldet" - four lines broken mid-word,
+       which is not better than the overlap it replaced, only different. A floor
+       wide enough for its longest word lets it break where German breaks. */
+    min-width: 0;
+    overflow-wrap: break-word;
   }
   .dim {
     opacity: 0.6;
