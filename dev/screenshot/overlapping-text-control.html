@@ -9,11 +9,12 @@
 
        ["\"the line beneath it\" over \"Painted over\" (83x17px)"]
 
-     Five cases, and four of them must NOT come back: neighbours that touch, a
-     label with a box behind it, two notices stacked as cards, and a line a
-     scroller cut away. Each of the last three was a false positive this probe
-     actually produced, so each was checked BOTH ways - with the rule that
-     silences it removed, every one of them is reported again.
+     Six cases, and five of them must NOT come back: neighbours that touch, a
+     label with a box behind it, two notices stacked as cards, a marker inside a
+     wrapped span's bounding box, and a line a scroller cut away. Each of the
+     last four was a false positive this probe actually produced, so each was
+     checked BOTH ways - with the rule that silences it removed, every one of
+     them is reported again.
 -->
 <body style="margin: 0; background: #111; color: #eee; font: 14px system-ui">
   <!-- The fault: two texts sharing the same painted area, which is what a starved
@@ -45,6 +46,16 @@
     <div style="position: absolute; top: 10px; left: 20px; width: 260px; background: #2b1d1d; padding: 8px">
       <span>The notice in front</span>
     </div>
+  </div>
+
+  <!-- MUST NOT be reported: a marker sitting in the gap a WRAPPED span leaves at
+       the end of its first line. The span's bounding rect is the union of both
+       lines - a tall box across the whole column - and the marker is inside it
+       while nothing is painted over anything. This is markdown rendered with its
+       own syntax beside the styled text, which the editor does on every bold
+       run. -->
+  <div style="width: 220px; line-height: 21px">
+    This file is a <span style="color: #777">**</span><b>first-class citizen of the graph</b><span style="color: #777">**</span> today.
   </div>
 
   <!-- MUST NOT be reported: a line a scroll container has cut away. Its box still
