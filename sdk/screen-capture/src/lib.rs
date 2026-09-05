@@ -645,7 +645,18 @@ pub fn capture_region(
         .get(output_index)
         .ok_or_else(|| anyhow!("output index {output_index} out of range"))?;
     let (px, py, pw, ph) = logical_to_physical_rect(output, x, y, w, h);
-    capture_output(output_index, include_cursor)?.crop(px, py, pw, ph)
+    // The geometry is read here and the pixels are fetched on another
+    // connection, so the index is carried across a gap. Where the compositor
+    // gave the output a name, the capture is keyed by that instead: a monitor
+    // waking in between renumbers the list, and cropping one screen's rect out
+    // of another screen's picture is a wrong answer that still looks like a
+    // picture. The index remains the fallback for a compositor that sent no
+    // xdg-output name.
+    match output.name.as_deref() {
+        Some(name) => capture_output_by_name(name, include_cursor)?,
+        None => capture_output(output_index, include_cursor)?,
+    }
+    .crop(px, py, pw, ph)
 }
 
 /// Create a capture session for output `output_index` and return the buffer
