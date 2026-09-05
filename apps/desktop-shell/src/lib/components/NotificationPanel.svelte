@@ -83,7 +83,7 @@
             <button
               class="notif-group-header collapsible"
               aria-expanded={expandedGroups.has(appName)}
-              aria-label="Show all {appName} notifications"
+              aria-label={$t("sh.notif.showAllAria", { app: appName })}
               onclick={() => toggleGroup(appName)}
             >
               {@render groupHeaderContent()}

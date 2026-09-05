@@ -610,8 +610,8 @@
           const el = document.getElementById("wp-inline-result");
           const hint = document.getElementById("wp-inline-hint");
           if (wrap) { wrap.style.display = cmd ? "" : "none"; wrap.style.paddingBottom = "8px"; }
-          if (el) el.textContent = cmd || "Type a command...";
-          if (hint) hint.textContent = "Enter: Run / Shift+Enter: Terminal";
+          if (el) el.textContent = cmd || $t("sh.wp.typeCommand");
+          if (hint) hint.textContent = $t("sh.wp.runHint");
           // Hide the empty list.
           const list = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
           if (list) list.style.display = "none";
@@ -627,8 +627,8 @@
           const el = document.getElementById("wp-inline-result");
           const hint = document.getElementById("wp-inline-hint");
           if (wrap) { wrap.style.display = topic ? "" : "none"; wrap.style.paddingBottom = "8px"; }
-          if (el) el.textContent = topic ? `man ${topic}` : "Type a topic...";
-          if (hint) hint.textContent = "Open manual page";
+          if (el) el.textContent = topic ? `man ${topic}` : $t("sh.wp.typeTopic");
+          if (hint) hint.textContent = $t("sh.wp.manualHint");
           const list2 = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
           if (list2) list2.style.display = "none";
           return;

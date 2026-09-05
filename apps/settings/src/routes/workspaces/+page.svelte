@@ -208,8 +208,8 @@
         items={windowRules}
         onremove={removeRule}
         onadd={() => (addRuleOpen = true)}
-        addLabel="Add Rule"
-        emptyMessage="No rules yet. Apps follow the global tiling default."
+        addLabel={$t("s.ws.addRule")}
+        emptyMessage={$t("s.ws.noRules")}
       >
         {#snippet itemSnippet({ item }: { item: WindowRule; index: number })}
           <code class="rule-code">{ruleSummary(item as WindowRule)}</code>

@@ -28,7 +28,7 @@
   <!-- The healthy state stays silent; a status line renders only when the agent
        is off or unreachable. -->
   {#if $askCapabilityLoaded && !enabled}
-    <p class="ask-cap">{capabilitySentence($askCapability)}</p>
+    <p class="ask-cap">{$t(capabilitySentence($askCapability))}</p>
   {/if}
 
   {#if enabled}
