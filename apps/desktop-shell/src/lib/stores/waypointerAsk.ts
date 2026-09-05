@@ -76,9 +76,13 @@ export async function loadAskCapability(): Promise<void> {
 
 /// The status line for the two states that speak (off / unreachable); the
 /// healthy state renders nothing.
+/// Returns a CATALOGUE KEY, not a sentence. Both were written here in English
+/// and rendered straight into the launcher, so a German reader was told about
+/// the agent in English - and no lint could see it, because the string never
+/// passes through `$t` at its render site. One place chooses the language.
 export function capabilitySentence(c: AskCapability | null): string {
-  if (c === null) return "The agent isn't reachable right now.";
-  return "AI is off. The agent won't read or answer anything.";
+  if (c === null) return "sh.wp.agentUnreachable";
+  return "sh.wp.agentOff";
 }
 
 /// Send a prompt (first ask or follow-up). Live: `waypointer_ask` streams the
