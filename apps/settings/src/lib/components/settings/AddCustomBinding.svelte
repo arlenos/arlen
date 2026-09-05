@@ -81,15 +81,23 @@
 </script>
 
 {#if open}
+  <!-- The dialog role belongs to the CARD, not to the sheet of black behind it,
+       and its name has to come from something: this said `role="dialog"` on the
+       backdrop with no name at all, so a screen reader announced an unnamed
+       dialog covering the page. The heading it already shows is the name. Same
+       shape as the kit's own Dialog, which had it right. -->
   <div
     class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    role="dialog"
-    aria-modal="true"
+    role="presentation"
   >
     <div
       class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-custom-title"
+      tabindex="-1"
     >
-      <h2 class="mb-4 text-base font-semibold">{$t("s.bind.addCustom")}</h2>
+      <h2 id="add-custom-title" class="mb-4 text-base font-semibold">{$t("s.bind.addCustom")}</h2>
 
       <div class="mb-4 flex gap-1 rounded-[var(--radius-chip)] bg-muted p-1">
         {#each ["app", "command", "shell"] as const as tab (tab)}
