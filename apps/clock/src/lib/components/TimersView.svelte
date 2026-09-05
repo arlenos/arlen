@@ -182,7 +182,12 @@
   .ti-of {
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    /* 45% of the foreground reads 4.39:1 against this background, and small text
+       needs 4.5. The same 45% is fine two files over on the switched-off alarm
+       time, because that one is 28px and large text is held to 3:1 - so this is
+       the size, not the colour, and 55% is the quiet register the rest of this
+       app already writes. */
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .ti-spacer {
     flex: 1;
