@@ -489,12 +489,15 @@
        as a caution about the process, and this dash is a statement about the
        column. The muted foreground says "no answer" without saying anything about
        the row it sits in. */
-    color: var(--color-fg-primary, #fafafa);
-    opacity: 0.4;
+    /* The secondary token rather than the loud one turned down. Opacity 0.4 over
+       this surface is about 2.9:1, which axe reports as a serious contrast
+       violation - and the whole job of this text is to be READ as "no answer",
+       so it is the last thing that should be hard to read. */
+    color: var(--color-fg-secondary, #a3a3a3);
   }
   .h-total.unmeasured {
-    /* Quieter than a number, because it is the absence of one. */
-    opacity: 0.55;
+    /* Quieter than a number, because it is the absence of one - carried by the
+       italic rather than by fading it further. */
     font-style: italic;
   }
   .h-label {
