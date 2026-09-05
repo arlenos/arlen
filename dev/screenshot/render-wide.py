@@ -133,7 +133,7 @@ class Render:
           return Promise.reject('stub-host: no backend behind this window (' + cmd + ')');
         },
         transformCallback: function (cb) { return cb; },
-        metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
+        metadata: { currentWindow: { label: '__LABEL__' }, currentWebview: { label: '__LABEL__' } },
       };
       window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: function () {} };
     """
@@ -158,7 +158,7 @@ class Render:
         if self.args.host_script:
             return pathlib.Path(self.args.host_script).read_text(encoding="utf-8")
         if self.args.stub_host:
-            return self.STUB_HOST
+            return self.STUB_HOST.replace("__LABEL__", self.args.window_label)
         return None
 
     def on_activate(self, app):
@@ -584,6 +584,15 @@ def main():
     ap.add_argument("--axe", action="store_true",
                     help="run axe-core over the rendered page and print the"
                          " violations; exits non-zero if any are found")
+    # A SURFACE CAN BE GATED ON WHICH WINDOW IT IS. The shell has three - the
+    # bar, the launcher, the permission request - and its layout reads the label
+    # straight off the runtime, defaulting to "main" when there is none. So the
+    # consent card, the one surface in this system where a wrong sentence costs
+    # the most, could not be rendered by this harness at all: the stub host said
+    # "main" and the card mounts nowhere else.
+    ap.add_argument("--window-label", default="main",
+                    help="the Tauri window label the stubbed runtime reports,"
+                         " for a surface that only mounts in one window")
     ap.add_argument("--type", default=None,
                     help="`selector::text` - put text in a field before the shot,"
                          " for copy that only appears once something is searched")
