@@ -70,7 +70,13 @@
     }, 300);
   }
   function tick() {
-    var pane = document.querySelector(".fm-browser, main, .browser");
+    // THE TRIGGER, not the pane around it. This dispatched `contextmenu` on
+    // `main` for weeks, and events bubble UP: `main` is an ANCESTOR of the menu's
+    // trigger, so the trigger never heard it, no menu opened, and the shot this
+    // fixture exists to take showed a plain listing. Measured 6 September - the
+    // page rendered with rows and no menu item anywhere - which is a fixture
+    // documenting a state it does not produce.
+    var pane = document.querySelector("[data-context-menu-trigger], .fm-browser, .browser");
     if (pane) return press(pane);
     if (tries++ < 60) setTimeout(tick, 100);
   }
