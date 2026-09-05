@@ -368,7 +368,13 @@ fn raise_consent() -> Option<std::os::unix::net::UnixStream> {
         "class": "exec_confined",
         "kind": "irreversible",
         "triggered_by_external_content": false,
-        "summary": "Run a shell command in a locked-down sandbox and return its output",
+        // LOWERCASE, and it is grammar rather than style. The shell renders this
+        // as `Allow {app} to {summary}?`, so a capitalised phrase comes out as
+        // "Allow Dogfood to Run a shell command ..." - which is what the 3
+        // September image actually showed on the consent card. The convention the
+        // broker's own callers use is a lowercase infinitive phrase
+        // (`consent-broker/src/control.rs`: "permanently delete 3 files").
+        "summary": "run a shell command in a locked-down sandbox and return its output",
         "scope": "uname -a",
     });
     let bytes = serde_json::to_vec(&body).ok()?;
