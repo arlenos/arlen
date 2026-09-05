@@ -161,7 +161,14 @@
       <!-- The one switch here that refuses rather than reports. The sections
            around it say what a detector noticed; this says what the system will
            not do, and it is enforced by the portal and the compositor rather
-           than by this page. -->
+           than by this page.
+           The row description says the SCOPE, not a state: it used to read
+           "Refuses every capture request, including the screenshot tool", which
+           is what happens when the switch is OFF and was printed under it in
+           both positions - so a machine that was letting apps capture said
+           underneath that it refuses them all. What is true either way is that
+           the switch covers the screenshot tool too, and the position carries
+           the rest. -->
       <Section label={$t("s.sens.screen")} class="span-full">
         <Row
           label={$t("s.sens.screen.row")}
