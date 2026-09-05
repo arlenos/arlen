@@ -51,7 +51,37 @@ export SHOOT_HEIGHT="${5:-800}"
 # furniture, so a caller asking for 1700px gets a screen that can hold it.
 export SHOOT_SCREEN_W=$(( SHOOT_WIDTH + 200 ))
 export SHOOT_SCREEN_H=$(( SHOOT_HEIGHT + 200 ))
-export SHOOT_PORT=4477
+# THE DRIVER PORT IS PER-RUN, because two of these are in flight at once more
+# often than not and a fixed one makes them fight. `xvfb-run -a` already picks a
+# free DISPLAY, so the screen was never the problem - the WebDriver port was.
+#
+# Measured on 6 September: with two sweeps running, the second driver could not
+# bind 4477, so its `shoot` talked to the FIRST run's driver on the first run's
+# screen. Three times that produced an empty answer - twice a control gate
+# refused with "cannot see its own control", once a real route came back as
+# `FAIL ... did not answer clipped-by-parent` mid-sweep. A refusal is the good
+# outcome of a collision and nothing was guaranteeing it: the same crossed wires
+# can just as easily return a probe answer about somebody else's page.
+#
+# Derived from the pid so two runs start apart, then walked up until nothing is
+# listening. `/dev/tcp` rather than `ss`, so this needs no more tools than it
+# already does. `SHOOT_PORT` is still honoured if a caller sets one - which is
+# also how this was checked in both directions: two shoots run at once answer
+# correctly, and the same two pinned to one port with `SHOOT_PORT=4477` both come
+# back empty.
+if [ -z "${SHOOT_PORT:-}" ]; then
+  _port=$(( 4477 + ($$ % 900) ))
+  for _ in $(seq 1 60); do
+    if (exec 3<>"/dev/tcp/127.0.0.1/$_port") 2>/dev/null; then
+      exec 3>&-
+      _port=$(( _port + 1 ))
+    else
+      break
+    fi
+  done
+  SHOOT_PORT="$_port"
+fi
+export SHOOT_PORT
 export SHOOT_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # All inputs travel as environment variables (not string-interpolated into the
@@ -81,7 +111,7 @@ xvfb-run -a --server-args="-screen 0 ${SHOOT_SCREEN_W}x${SHOOT_SCREEN_H}x24" bas
   unset WAYLAND_DISPLAY
   export GDK_BACKEND=x11
   set -euo pipefail
-  WebKitWebDriver --port="$SHOOT_PORT" >/tmp/arlen-wkwd.log 2>&1 &
+  WebKitWebDriver --port="$SHOOT_PORT" >"/tmp/arlen-wkwd-$SHOOT_PORT.log" 2>&1 &
   wd=$!
   trap "kill $wd 2>/dev/null || true" EXIT
   for _ in $(seq 1 25); do
