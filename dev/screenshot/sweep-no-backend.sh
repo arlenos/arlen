@@ -44,6 +44,17 @@ ONLY="${2:-}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SHOTS=(
+  # ADDED 6 SEPTEMBER, after putting this list next to the render table: these
+  # apps were in that one and had no shot here at all, so nobody had looked at
+  # what they SAY with the host refusing. The first two came back wrong - the
+  # calendar blamed a command-line argument for its files not being read, mail
+  # showed one red banner about a message argument over an empty window - and
+  # both are fixed. pdf and screenshot came back right, which is worth a shot
+  # too: a surface that is correct stays correct only if somebody looks.
+  "calendar - calendar-unavailable"
+  "mail - mail-unavailable"
+  "pdf - pdf-unavailable"
+  "screenshot - screenshot-unavailable"
   "clock - clock-unavailable"
   # The alarm editor, which the chrome "+" opens. Both the new-alarm form and
   # the editor for an existing one, and until it was shot it said neither.
@@ -56,6 +67,8 @@ SHOTS=(
   "files - files-recent-unavailable [data-place=recent]"
   "files - files-trash-unavailable [data-place=trash]"
   "greeter - greeter-unavailable"
+  "greeter - greeter-a11y-menu .bar-side.left .trigger"
+  "greeter - greeter-power-menu .bar-side.right .trigger"
   "knowledge - knowledge-unavailable"
   "knowledge - knowledge-projects-unavailable button[data-place=projects]"
   "knowledge - knowledge-library-unavailable button[data-place=library]"
