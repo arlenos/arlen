@@ -12,6 +12,7 @@ const messages: Catalogs = {
   en: {
     "pdf.app.title": "Document",
     "pdf.contents": "Contents",
+    "pdf.pageFlow": "The document's pages",
     "pdf.noContents": "This document carries no table of contents.",
     "pdf.pages": ".input {$count :number}\n.match $count\none {{1 page}}\n*   {{{$count} pages}}",
     "pdf.onePage": "1 page",
@@ -64,6 +65,7 @@ const messages: Catalogs = {
   de: {
     "pdf.app.title": "Dokument",
     "pdf.contents": "Inhalt",
+    "pdf.pageFlow": "Die Seiten des Dokuments",
     "pdf.noContents": "Dieses Dokument hat kein Inhaltsverzeichnis.",
     "pdf.pages": ".input {$count :number}\n.match $count\none {{1 Seite}}\n*   {{{$count} Seiten}}",
     "pdf.onePage": "1 Seite",
