@@ -3,11 +3,17 @@
      same probe, and the only way to tell is to hand it something overlapping.
 
        dev/screenshot/shoot.sh "file://$PWD/dev/screenshot/overlapping-text-control.html" \
-         /tmp/x.png dev/screenshot/overlapping-text.js 800 400
+         /tmp/x.png dev/screenshot/overlapping-text.js 800 460
 
      must answer exactly one pair:
 
        ["\"the line beneath it\" over \"Painted over\" (83x17px)"]
+
+     Five cases, and four of them must NOT come back: neighbours that touch, a
+     label with a box behind it, two notices stacked as cards, and a line a
+     scroller cut away. Each of the last three was a false positive this probe
+     actually produced, so each was checked BOTH ways - with the rule that
+     silences it removed, every one of them is reported again.
 -->
 <body style="margin: 0; background: #111; color: #eee; font: 14px system-ui">
   <!-- The fault: two texts sharing the same painted area, which is what a starved
@@ -26,6 +32,20 @@
   <!-- MUST NOT be reported: a label with a decorative box behind it, which is a
        parent and not a leaf. -->
   <div style="background: #222; padding: 4px 8px; width: 200px">inside a box</div>
+
+  <!-- MUST NOT be reported: two notices in a stack, each on its own filled card,
+       the way a toast deck draws itself. Their boxes overlap almost entirely and
+       nothing is illegible: the front card covers the back one, which is the
+       whole point of the pattern. The shell reported this at three widths before
+       the probe learned to look for an opaque box between two texts. -->
+  <div style="position: relative; height: 70px">
+    <div style="position: absolute; top: 14px; left: 20px; width: 260px; background: #1d2b1d; padding: 8px">
+      <span>The notice behind the front one</span>
+    </div>
+    <div style="position: absolute; top: 10px; left: 20px; width: 260px; background: #2b1d1d; padding: 8px">
+      <span>The notice in front</span>
+    </div>
+  </div>
 
   <!-- MUST NOT be reported: a line a scroll container has cut away. Its box still
        sits where the layout put it, straight through the heading, and nothing of
