@@ -147,6 +147,12 @@
       <p class="note" role="alert">{$t("s.pr.actionFailed")}</p>
     {/if}
 
+    <!-- Each pane says what IT cannot show, not why - the reason is stated once
+         above, and it used to be repeated verbatim in both sections, so a reader
+         with no print service met the same sentence three times on one screen.
+         The pane keeps a line because a reader looking at an empty pane looks at
+         the pane (the rule knowledge settled); what it does not need is the
+         cause a second and third time. -->
     <Section label={$t("s.pr.printers")}>
       {#if $printers.printers.length === 0}
         <p class="empty">{$printers.unavailable ? $t("s.pr.noneUnknown") : $t("s.pr.none")}</p>
