@@ -1,12 +1,16 @@
 //! Command logic for the screenshot app's Tauri backend (screenshot-capture-plan.md).
 //!
-//! The app has no `src-tauri` yet, so its built annotate frontend cannot go live; this
-//! crate holds the app-specific command LOGIC the thin `#[command]` wrappers will call,
+//! This crate holds the app-specific command LOGIC the thin `#[command]` wrappers call,
 //! kept separate so it is unit-tested without the webkit/Wayland runtime. The capture
 //! and clipboard SIDE EFFECTS stay in `src-tauri` (they need the live compositor); this
 //! crate owns the pure transforms - encoding a captured PNG for the webview, saving the
 //! annotated result the webview hands back, and the serializable source-picker DTOs over
 //! `sdk/screen-capture`.
+//!
+//! Written when the app had no `src-tauri` and this logic had nowhere to be called from.
+//! It has one now: `apps/screenshot/src-tauri` deps this crate and its wrappers are the
+//! thin ones this doc predicted. The note is corrected rather than dropped because the
+//! split it describes is still the reason the crate exists.
 
 use std::io;
 use std::path::{Path, PathBuf};
