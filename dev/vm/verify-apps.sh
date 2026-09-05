@@ -47,7 +47,17 @@ for app in "${apps[@]}"; do
     shot="$outdir/$app.png"
     ser="$outdir/$app.serial.log"
     log="$outdir/$app.log"
+    # TWO FRAMES, and the early one is not a nicety. `arlen-screenshot` captures,
+    # saves and closes itself 2.5s later, by design - "a capture tool that stays on
+    # screen is in the way of the thing you took a picture of". So the frame at
+    # WAIT showed a bare desktop and this script still said "booted and launched",
+    # which is true and reads as a failure to open. An app that finishes its job
+    # and leaves has to be photographed while it is there.
+    #
+    # 20s: past the shell coming up and the window mapping, well inside the
+    # screenshot app's own goodbye. Written beside the main shot as `<app>.png.t20.png`.
     if python3 "$here/verify.py" --image "$img" --require-bar --wait "$WAIT" \
+            --shot-at 20 \
             --app "$app" --out "$shot" --serial-out "$ser" >"$log" 2>&1; then
         echo "$app: booted and launched -> $shot"
     else
