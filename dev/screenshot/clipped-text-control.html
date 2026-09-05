@@ -11,7 +11,8 @@
        ['div.: "Vertrauensstufe verschlagwortet" wide-cut 60<186',
         'div.: "A line taller than its box" tall-cut 14<19',
         'div.: "An ellipsis by design" wide-ellipsed 80<117',
-        'div.: "An ellipsis that cannot work" wide-cut 80<157']
+        'div.: "An ellipsis that cannot work" wide-cut 80<157',
+        'div.: "A word wider than its column" wide-overflow 60<165']
 -->
 <body style="margin: 0; background: #111; color: #eee; font: 12px system-ui">
   <!-- Too narrow: the shape a longer language makes of a column sized for English. -->
@@ -34,6 +35,12 @@
        with no ellipsis, and the probe called it "ellipsed" for a month while the
        knowledge timeline rendered "Quarterly report.pd". -->
   <div style="display: inline-flex; width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">An ellipsis that cannot work</div>
+
+  <!-- Reported as `wide-OVERFLOW`: the box is too small for its word and does not
+       clip, so every letter is painted - past the box, into whatever is beside it.
+       Not a cut and not an ellipsis, and calling it either would be a claim about
+       text that is on screen. -->
+  <div style="width: 60px; white-space: nowrap">A word wider than its column</div>
 
   <!-- MUST NOT be reported: the screen-reader pattern overflows on both axes by
        construction, and counting it would put an `sr-only` in every result until

@@ -39,10 +39,10 @@
 //   ['div.: "Vertrauensstufe verschlagwortet" wide-cut 60<186',
 //    'div.: "A line taller than its box" tall-cut 14<19']
 //
-// Five boxes: one too narrow, one too short, one that declares an ellipsis it
-// cannot honour, one screen-reader-hidden and one that fits. The last two must
-// NOT appear. So an empty result means the page is clean, not that the probe is
-// asleep.
+// Six boxes: one too narrow, one too short, one that declares an ellipsis it
+// cannot honour, one that spills without clipping, one screen-reader-hidden and
+// one that fits. The last two must NOT appear. So an empty result means the page
+// is clean, not that the probe is asleep.
 const out = [];
 for (const el of document.querySelectorAll("body *")) {
   const s = getComputedStyle(el);
@@ -81,7 +81,15 @@ for (const el of document.querySelectorAll("body *")) {
   const inlineBox = !/(^|-)(flex|grid)$/.test(s.display);
   const declared =
     inlineBox && s.textOverflow === "ellipsis" && s.whiteSpace.startsWith("nowrap");
-  const kind = declared ? "ellipsed" : "cut";
+  // AND A BOX THAT DOES NOT CLIP LOSES NOTHING. `scrollWidth > clientWidth` on an
+  // element whose own `overflow` is `visible` means the words SPILL, not that they
+  // are gone: the clock's alarm editor gives its labels a 4.5rem column, German
+  // needs 80px for "Bezeichnung", and every letter is on screen because the box
+  // never clipped. Reported all the same - a column too small for its own label is
+  // one longer word away from painting over its neighbour, which is a different
+  // probe's finding - but named for what it is rather than as a cut.
+  const clipsSelf = s.overflowX !== "visible" || s.overflowY !== "visible";
+  const kind = declared ? "ellipsed" : clipsSelf ? "cut" : "overflow";
   // Named per axis rather than merged, because the fixes are different: a wide
   // one wants a floor, an ellipsis or a shorter string, a tall one wants room or
   // fewer lines.
