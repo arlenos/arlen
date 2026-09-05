@@ -56,7 +56,8 @@ require_fresh_frontend "$root/apps/mail/build" "$root/apps/mail/src" || exit 2
 # A maildir with one read and one unread message, and a Sent folder. Written here
 # rather than committed: a fixture mailbox in the tree is a file somebody will
 # one day mistake for a test account.
-mkdir -p "$work/mail/cur" "$work/mail/new" "$work/mail/.Sent/cur" "$work/mail/.Sent/new"
+mkdir -p "$work/mail/cur" "$work/mail/new" "$work/mail/.Sent/cur" "$work/mail/.Sent/new" \
+  "$work/mail/.Archive/cur" "$work/mail/.Archive/new" "$work/mail/.Trash/cur" "$work/mail/.Trash/new"
 # The body runs PAST the 140-character snippet cut on purpose: everything after
 # it can only be on screen if the message was opened, which is what makes the
 # open check below able to fail. See the comment there.
@@ -109,7 +110,11 @@ say "and a second folder's mail is not mixed into the inbox" \
 
 say "and no fixture sender is on a screen reading a real mailbox" \
   "$(printf '%s' "$got" | grep -q '"fixture":false' && echo 1 || echo 0)" "$got"
-say "and a mailbox nothing can write to offers no Compose" \
+# Compose stays absent even though the mailbox now keeps writes, and the two are
+# different questions: a maildir keeps a draft, an archive and a delete, but
+# sending needs an account and Arlen has no account surface, so starting a
+# message from nothing is the one entry that is not offered (`mail-app.md`).
+say "and a mailbox with nowhere to send offers no Compose" \
   "$(printf '%s' "$got" | grep -q '"compose":false' && echo 1 || echo 0)" "$got"
 
 # And that a row opens. `mail_open` is the one that turns an id from the surface
@@ -146,8 +151,9 @@ return JSON.stringify({
   clickable: true,
   // Only the reading pane can carry the tail: the snippet is cut at 140 chars.
   opened: text.includes("the ridge tiles") && !text.includes("Select a message"),
-  // With a message open the header would show Archive and Delete, if the
-  // mailbox could keep either. It cannot, so they are not there.
+  // With a message open the header shows the writes, because a maildir keeps
+  // every one of them: the read mark is a rename, archive is a rename, delete is
+  // a rename or an unlink. They were absent while they were pretences.
   writes: [...document.querySelectorAll("button")].some((b) =>
     /^(Archive|Delete|Reply|Forward)$/.test(b.getAttribute("aria-label") || "")),
   text: text.slice(-300),
@@ -160,8 +166,65 @@ opened=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/open.js" S
 
 say "and a row it listed is a row that opens" \
   "$(printf '%s' "$opened" | grep -q '"opened":true' && echo 1 || echo 0)" "$opened"
-say "and an open message offers no archive, delete, reply or forward it could not keep" \
-  "$(printf '%s' "$opened" | grep -q '"writes":false' && echo 1 || echo 0)" "$opened"
+say "and an open message offers the archive, delete, reply and forward it can keep" \
+  "$(printf '%s' "$opened" | grep -q '"writes":true' && echo 1 || echo 0)" "$opened"
+
+# THE WRITES, AND THE PROOF IS THE DISK. Every check above this reads the window,
+# which is exactly the wrong instrument here: the defect these four commands were
+# built to remove is a surface that reports a write nobody kept. So the probe
+# presses the controls and the assertions afterwards look at the maildir - a
+# message that reads as archived and is still in the inbox is the failure, and no
+# amount of reading the screen would show it.
+cat > "$work/write.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const rowFor = (t) => [...document.querySelectorAll("*")]
+  .filter((e) => e.children.length === 0 && (e.textContent || "").trim() === t)[0];
+const press = (label) => {
+  const b = [...document.querySelectorAll("button")]
+    .find((x) => (x.getAttribute("aria-label") || "") === label);
+  if (b) b.click();
+  return !!b;
+};
+// Open the unread one, which marks it read.
+for (let i = 0; i < 60; i++) { if (rowFor("your statement")) break; await wait(250); }
+const cell = rowFor("your statement");
+if (!cell) return JSON.stringify({ listed: false });
+cell.closest("button, [role=option], [role=row], li, tr").click();
+await wait(1500);
+const archived = press("Archive");
+await wait(1500);
+// Then open the read one and delete it.
+const other = rowFor("the roof survey");
+if (other) other.closest("button, [role=option], [role=row], li, tr").click();
+await wait(1200);
+const deleted = press("Delete");
+await wait(1500);
+return JSON.stringify({ listed: true, archived, deleted });
+JS
+
+wrote=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/write.js" SHOOT_INJECT_SETTLE=6 \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-writes.png" "" 14 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+say "the controls are there to press" \
+  "$(printf '%s' "$wrote" | grep -q '"archived":true' \
+     && printf '%s' "$wrote" | grep -q '"deleted":true' && echo 1 || echo 0)" "$wrote"
+
+# Opening a message marks it read, and a maildir says so in the filename: out of
+# new/ and carrying S. Checked wherever it ended up, since it was archived after.
+seen_name=$(find "$work/mail" -name '1.host*' -printf '%P\n' 2>/dev/null | head -1)
+say "reading a message leaves the read mark on the disk, not just on the screen" \
+  "$(case "$seen_name" in *new/*) echo 0;; *:2,*S*) echo 1;; *) echo 0;; esac)" \
+  "the file is now [$seen_name]"
+
+say "and archive moves the file into the archive folder" \
+  "$(case "$seen_name" in .Archive/*) echo 1;; *) echo 0;; esac)" \
+  "the file is now [$seen_name]"
+
+deleted_name=$(find "$work/mail/.Trash" -name '2.host*' -printf '%P\n' 2>/dev/null | head -1)
+say "and delete moves the file into the trash rather than off the disk" \
+  "$([ -n "$deleted_name" ] && echo 1 || echo 0)" \
+  "the trash holds [$deleted_name]"
 
 # THE case. With no maildir the app must show an unconnected mailbox, not the
 # sample one - three plausible senders are indistinguishable from real mail.
