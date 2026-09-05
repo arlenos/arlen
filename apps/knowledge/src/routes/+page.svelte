@@ -133,6 +133,13 @@
 <SidebarProvider class="h-screen min-h-0 overflow-hidden">
   <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} onsettings={openPrivacySettings} />
   <SidebarInset class="h-svh min-h-0">
+    <!-- The page's one level-one heading. Every app in this tree had none, so a
+         screen reader's first question - what IS this window - was answered only
+         by the window title, which is not in the document. The app NAME rather
+         than the visible bar title, which says where you are inside the app and
+         changes as you move; hidden, because the bar already shows that and a
+         second visible title would be the same fact twice. -->
+    <h1 class="sr-only">{$t("k.app.title")}</h1>
     <!-- The bar carries the place (the files canon); the in-content heading is
          gone - one context, said once. -->
     <KnowledgeHeader placeLabel={$t(labelKeyFor(searchOwnsContent ? "searches" : $path))} />
