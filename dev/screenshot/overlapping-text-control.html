@@ -1,0 +1,29 @@
+<!-- The control for `overlapping-text.js`.
+     A probe that answers `[]` on a clean page and `[]` when it is broken is the
+     same probe, and the only way to tell is to hand it something overlapping.
+
+       dev/screenshot/shoot.sh "file://$PWD/dev/screenshot/overlapping-text-control.html" \
+         /tmp/x.png dev/screenshot/overlapping-text.js 800 400
+
+     must answer exactly one pair:
+
+       ["\"the line beneath it\" over \"Painted over\" (83x17px)"]
+-->
+<body style="margin: 0; background: #111; color: #eee; font: 14px system-ui">
+  <!-- The fault: two texts sharing the same painted area, which is what a starved
+       grid column does to its neighbour. -->
+  <div style="position: relative; height: 60px">
+    <span style="position: absolute; left: 20px; top: 20px">the line beneath it</span>
+    <span style="position: absolute; left: 40px; top: 20px">Painted over</span>
+  </div>
+
+  <!-- MUST NOT be reported: neighbours that merely touch. Adjacent boxes share an
+       edge constantly, and reporting those would bury the real ones. -->
+  <div style="display: flex">
+    <span style="padding-right: 0">left half</span><span>right half</span>
+  </div>
+
+  <!-- MUST NOT be reported: a label with a decorative box behind it, which is a
+       parent and not a leaf. -->
+  <div style="background: #222; padding: 4px 8px; width: 200px">inside a box</div>
+</body>
