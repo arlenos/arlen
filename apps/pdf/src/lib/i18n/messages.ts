@@ -33,8 +33,7 @@ const messages: Catalogs = {
     "pdf.unreadableFile": "{$path} could not be read.",
     "pdf.notAPdf": "This file is not a PDF this reader can read.",
     "pdf.noPages": "This PDF contains no pages.",
-    "pdf.launchUnknown":
-      "The reader could not find out which document it was asked to open, so it opened none.",
+    "pdf.launchUnknown": "The reader could not find out which document it was asked to open.",
     "pdf.locked": "This document is locked with a password. This reader cannot ask for one yet.",
     "pdf.menu.view": "View",
     "pdf.menu.go": "Go",
@@ -87,8 +86,7 @@ const messages: Catalogs = {
     "pdf.unreadableFile": "{$path} konnte nicht gelesen werden.",
     "pdf.notAPdf": "Diese Datei ist kein PDF, das dieser Leser lesen kann.",
     "pdf.noPages": "Dieses PDF enthält keine Seiten.",
-    "pdf.launchUnknown":
-      "Der Leser konnte nicht herausfinden, welches Dokument er öffnen sollte, deshalb hat er keines geöffnet.",
+    "pdf.launchUnknown": "Der Leser konnte nicht herausfinden, welches Dokument er öffnen sollte.",
     "pdf.locked": "Dieses Dokument ist mit einem Passwort gesperrt. Dieser Leser kann noch keins abfragen.",
     "pdf.menu.view": "Ansicht",
     "pdf.menu.go": "Gehe zu",
