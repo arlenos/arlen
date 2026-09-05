@@ -252,6 +252,19 @@ pub enum Request {
         /// The component-id.
         id: ComponentId,
     },
+    /// The icon bytes for an id, for a caller that cannot read the file itself.
+    ///
+    /// BY ID, NEVER BY PATH, and that is the whole point of the op. The window is
+    /// a proxy with no filesystem grant - its profile says so and argues for it -
+    /// so it cannot open `/var/lib/swcatalog/icons/...` even though that is where
+    /// the picture is. Answering a PATH would move the decision about which files
+    /// may be read out of this crate and into whoever composes a URL; answering an
+    /// ID keeps it here, where the catalogue already knows which file belongs to
+    /// which component.
+    Icon {
+        /// The component-id.
+        id: ComponentId,
+    },
     /// The per-variant trust signals for an id.
     TrustSignals {
         /// The component-id.
@@ -376,6 +389,13 @@ pub enum Response {
     Cards(Vec<AppCard>),
     /// A single card, or `None` if the id is unknown.
     Card(Option<AppCard>),
+    /// One component's icon, or `None` when it has none this can serve.
+    ///
+    /// `None` is the ordinary answer, not a fault: a DEP-11 record may name its
+    /// icon as a bare theme name with no file behind it, and the caller draws its
+    /// monogram. A caller cannot tell that apart from "unknown id" and does not
+    /// need to - both mean "no picture".
+    Icon(Option<IconBytes>),
     /// Per-variant trust signals (variant layer + its signals).
     Trust(Vec<(SourceLayer, TrustSignals)>),
     /// The install variants for an id.
@@ -450,6 +470,76 @@ impl Catalog {
 /// Answer a request against the catalog (the read ops purely; `install` validates and
 /// resolves a handoff, it does not perform the install). Unknown ids/variants return
 /// [`Response::Error`], never a panic.
+/// One component's icon, ready to hand to a caller that cannot read files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IconBytes {
+    /// The file's contents.
+    pub bytes: Vec<u8>,
+    /// What to serve it as.
+    pub content_type: String,
+}
+
+/// The directories a catalogue icon may be read from.
+///
+/// `/var/lib` is where the image stages the archive's cache; `/usr/share` is
+/// where a distribution package puts its own. A path outside them is refused
+/// rather than read, because the strings here come out of metadata files the
+/// archive publishes, and a component naming `/etc/shadow` as its icon should get
+/// a monogram rather than a file.
+const ICON_ROOTS: [&str; 2] = ["/var/lib/swcatalog/icons", "/usr/share/swcatalog/icons"];
+
+/// The extensions this will read, with what each is served as.
+const ICON_TYPES: [(&str, &str); 4] = [
+    ("png", "image/png"),
+    ("svg", "image/svg+xml"),
+    ("svgz", "image/svg+xml"),
+    ("jpg", "image/jpeg"),
+];
+
+/// Read a catalogue icon reference, or `None` when it is not one this serves.
+///
+/// The three shapes DEP-11 uses are a remote URL, a bare theme name and an
+/// absolute path; only the third has a file behind it here. A caller that wants
+/// the first already has it on the card.
+fn icon_bytes(icon: Option<&str>) -> Option<IconBytes> {
+    read_icon(icon?, &ICON_ROOTS)
+}
+
+/// The same over an explicit root list, so the refusals are testable without the
+/// image's directories.
+fn read_icon(icon: &str, roots: &[&str]) -> Option<IconBytes> {
+    let path = std::path::Path::new(icon);
+    if !path.is_absolute() {
+        return None;
+    }
+    // Before touching the filesystem: `canonicalize` resolves `..` only for a path
+    // that EXISTS, so a check that leaned on it would pass a traversal whose target
+    // happens to be missing straight through to the read.
+    if path.components().any(|c| c == std::path::Component::ParentDir) {
+        return None;
+    }
+    let kind = icon_type(path)?;
+    if !roots.iter().any(|r| path.starts_with(r)) {
+        return None;
+    }
+    // And again after symlinks, because a link INSIDE the icon tree pointing out of
+    // it passes every check above.
+    let real = std::fs::canonicalize(path).ok()?;
+    if !roots.iter().any(|r| real.starts_with(r)) || icon_type(&real) != Some(kind) {
+        return None;
+    }
+    Some(IconBytes {
+        bytes: std::fs::read(&real).ok()?,
+        content_type: kind.to_string(),
+    })
+}
+
+/// What a path would be served as, or `None` when it is not an image this reads.
+fn icon_type(path: &std::path::Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    ICON_TYPES.iter().find(|(e, _)| *e == ext).map(|(_, t)| *t)
+}
+
 pub fn answer(catalog: &Catalog, request: Request) -> Response {
     match request {
         Request::Search {
@@ -528,6 +618,9 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
             }
         }
         Request::AppDetail { id } => Response::Card(catalog.card(&id).cloned()),
+        Request::Icon { id } => Response::Icon(
+            catalog.card(&id).and_then(|c| icon_bytes(c.display.icon.as_deref())),
+        ),
         Request::TrustSignals { id } => match catalog.card(&id) {
             Some(card) => Response::Trust(
                 card.variants.iter().map(|v| (v.layer, v.trust.clone())).collect(),
@@ -578,6 +671,69 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_icon_outside_the_roots_is_not_read() {
+        // The strings here come from metadata the archive publishes. A component
+        // naming a file elsewhere gets a monogram, not a read.
+        assert_eq!(read_icon("/etc/shadow.png", &["/var/lib/swcatalog/icons"]), None);
+    }
+
+    #[test]
+    fn a_traversal_is_refused_even_when_its_target_is_missing() {
+        // The case a canonicalize-only check would pass through to the read.
+        assert_eq!(
+            read_icon(
+                "/var/lib/swcatalog/icons/../../../etc/shadow.png",
+                &["/var/lib/swcatalog/icons"]
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_theme_name_and_a_url_have_no_file_behind_them() {
+        assert_eq!(read_icon("gimp", &["/var/lib/swcatalog/icons"]), None);
+        assert_eq!(read_icon("https://flathub.org/a.png", &["/var/lib/swcatalog/icons"]), None);
+        assert_eq!(icon_bytes(None), None);
+    }
+
+    #[test]
+    fn a_real_file_under_a_root_is_read_with_its_type() {
+        let dir = std::env::temp_dir().join(format!("arlen-store-icon-{}", std::process::id()));
+        let root = dir.join("icons");
+        std::fs::create_dir_all(&root).expect("temp dirs");
+        let file = root.join("abiword_abiword.png");
+        std::fs::write(&file, b"pretend png").expect("temp file");
+
+        let got = read_icon(
+            file.to_str().expect("utf8 temp path"),
+            &[root.to_str().expect("utf8 temp path")],
+        )
+        .expect("a real file under a root reads");
+        assert_eq!(got.bytes, b"pretend png");
+        assert_eq!(got.content_type, "image/png");
+
+        std::fs::remove_dir_all(&dir).expect("the fixture this test made");
+    }
+
+    #[test]
+    fn a_file_that_is_not_an_image_is_not_read() {
+        let dir = std::env::temp_dir().join(format!("arlen-store-noimg-{}", std::process::id()));
+        let root = dir.join("icons");
+        std::fs::create_dir_all(&root).expect("temp dirs");
+        let file = root.join("notes.txt");
+        std::fs::write(&file, b"secrets").expect("temp file");
+
+        assert_eq!(
+            read_icon(
+                file.to_str().expect("utf8 temp path"),
+                &[root.to_str().expect("utf8 temp path")]
+            ),
+            None
+        );
+        std::fs::remove_dir_all(&dir).expect("the fixture this test made");
+    }
     #[test]
     fn no_source_at_all_is_distinguishable_from_a_furnished_catalog() {
         // The whole reason this type carries counts. A fresh image has none of
