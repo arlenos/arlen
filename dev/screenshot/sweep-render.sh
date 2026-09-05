@@ -5,7 +5,7 @@
 #
 # Render each route in a language and report every way the text came out wrong.
 #
-# THREE PROBES, NOT ONE, and that is why this is no longer `sweep-clipped.sh`.
+# FOUR PROBES, NOT ONE, and that is why this is no longer `sweep-clipped.sh`.
 # On 5 September a header change was verified with the parent-cut probe alone,
 # came back clean, and had put one row of the header on top of another - which
 # the overlap probe would have said in a sentence. The three ask genuinely
@@ -14,6 +14,7 @@
 #   clipped-text.js       an element outgrew its own box, either axis
 #   clipped-by-parent.js  an ancestor that clips cut a child sideways
 #   overlapping-text.js   two elements are painted in the same place
+#   no-focus-ring.js      a control takes keyboard focus and looks no different
 #
 # WHY THIS EXISTS AS A SWEEP. `clipped-text.js` has been here since August and it
 # works; what has never existed is anything that points it at more than the one
@@ -85,14 +86,15 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 shot="$(mktemp /tmp/sweep-render-XXXXXX.png)"
 trap 'rm -f "$shot"' EXIT
 
-probes="clipped-text clipped-by-parent overlapping-text"
+probes="clipped-text clipped-by-parent overlapping-text no-focus-ring"
 
 # THE POSITIVE CONTROLS, and they are not ceremony. A probe that returns nothing
 # is indistinguishable from a probe that is not running, and `clipped-text.js`
 # says in its own header that it returned nothing on three pages before its
 # author checked it. So EACH of the three is handed its own committed fixture
 # first, every run - a box too small for its word, a child cut by a clipping
-# parent, two lines painted in the same place. A probe whose control comes back
+# parent, two lines painted in the same place, a button that lights up for
+# nobody. A probe whose control comes back
 # clean cannot see what it exists to see, and the sweep stops rather than
 # reporting clean routes on its word.
 #
@@ -112,6 +114,7 @@ for probe in $probes; do
     clipped-text) want="Vertrauensstufe" ;;
     clipped-by-parent) want="Cut off by its parent" ;;
     overlapping-text) want="Painted over" ;;
+    no-focus-ring) want="takes focus" ;;
   esac
   [ -n "$want" ] || {
     echo "sweep-render.sh: no control expectation for $probe.js; add its arm above." >&2
@@ -176,5 +179,5 @@ for width in $widths; do
   [ "$clean" = 1 ] && echo "  ok   $spec"
  done
 done
-echo "  --   $checked probe read(s) in $locale across ${widths// /, }px, three probes per view; anything not named here was not looked at"
+echo "  --   $checked probe read(s) in $locale across ${widths// /, }px, four probes per view; anything not named here was not looked at"
 exit "$fail"

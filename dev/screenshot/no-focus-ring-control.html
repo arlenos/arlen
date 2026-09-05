@@ -1,0 +1,109 @@
+<!-- The control for `no-focus-ring.js`, as a file rather than a sentence: a probe
+     that returns nothing is indistinguishable from a probe that does not work.
+
+       dev/screenshot/shoot.sh "file://$PWD/dev/screenshot/no-focus-ring-control.html" \
+         /tmp/x.png dev/screenshot/no-focus-ring.js 800 400
+
+     must answer exactly:
+
+       ['button.silent: "Nothing happens when this takes focus"',
+        'a.silent-link: "A link that does not light up"']
+
+     Every other element here is a ring the probe must NOT report, or a thing it
+     must not look at. Each of the five ring idioms was then checked by deleting
+     its rule and confirming a third line appears - and three of the five did NOT
+     appear on the first try, for the same reason each time: the case was passing
+     on the browser's own ring rather than on the one it claims to test. That is
+     why the reset below is part of every case.
+-->
+<style>
+  body { margin: 0; background: #111; color: #eee; font: 13px system-ui }
+  button, a, input { font: inherit; color: inherit }
+
+  /* EVERY case below first turns the BROWSER's own ring off, and that is not
+     decoration on the fixture - it is the only way the fixture tests anything.
+     WebKit gives a focused button an outline whether you asked or not, so the
+     first cut of this file passed with all four author rings deleted: the UA
+     was drawing them. A control that cannot fail is not a control. */
+  .ringed:focus, .shadowed:focus, .wrap:focus-within, .inner:focus,
+  .pseudo:focus, .slider input:focus { outline: none }
+
+  /* MUST NOT be reported: an outline, the plain idiom. */
+  .ringed:focus-visible { outline: 2px solid #7aa2f7; outline-offset: 2px }
+
+  /* MUST NOT be reported: an inset box-shadow, which is what a control with its
+     own border uses so the ring does not sit outside the row.
+
+     `appearance: none` IS PART OF THE CASE, not tidying. WebKit draws no
+     box-shadow at all on a button still wearing its native appearance - the
+     declaration computes to `none` on a focused button, which this fixture
+     proved by reporting the case as ringless until the line went in. Worth
+     knowing beyond this file: a box-shadow ring on an un-reset control is
+     invisible in the webview these apps actually run in. */
+  .shadowed { appearance: none; -webkit-appearance: none; background: #222; border: 1px solid #444 }
+  .shadowed:focus-visible { box-shadow: inset 0 0 0 2px #7aa2f7 }
+
+  /* MUST NOT be reported: the ring is on the WRAPPER, under `:focus-within`, and
+     the focused element's own computed style does not move by one property.
+     This is the kit's search field, and a probe that read only the element would
+     call it a defect - the false positive that ends a sweep's life. */
+  .wrap:focus-within { outline: 2px solid #7aa2f7 }
+
+  /* MUST NOT be reported: the ring is on a SIBLING. This is the kit's slider -
+     a transparent `input[type=range]` laid over a drawn track - and it is the
+     shape an ancestors-only walk cannot see: the wrapper's own style does not
+     move by one property, the track's border does. Reported every slider in
+     Settings until the walk covered the subtree. */
+  .slider { position: relative; width: 160px; height: 20px; display: inline-block }
+  .slider input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0 }
+  .track { position: absolute; inset: 0; border: 1px solid #444; border-radius: 4px }
+  .slider input:focus { outline: none }
+  .slider:focus-within .track { border-color: #7aa2f7 }
+
+  /* MUST NOT be reported: the ring FADES IN. Every ring in the kit does, because
+     the field transitions its border-color - and a synchronous read right after
+     `focus()` sees the colour it is animating away from, not the one it lands
+     on. This case is why the probe turns transitions off before it looks. */
+  .faded { transition: border-color 150ms ease; border: 1px solid #444; appearance: none; background: #222 }
+  .faded:focus { outline: none }
+  .faded:focus-visible { border-color: #7aa2f7 }
+
+  /* MUST NOT be reported: the ring is drawn by a pseudo-element. */
+  .pseudo { position: relative }
+  .pseudo:focus-visible::after {
+    content: ""; position: absolute; inset: -3px; border: 2px solid #7aa2f7
+  }
+
+  /* MUST be reported: focus is taken and nothing is drawn. The `outline: none`
+     is the whole defect and it is written the way it is always written - as a
+     reset somebody meant to replace and did not. */
+  .silent:focus { outline: none }
+  .silent-link:focus { outline: none }
+</style>
+<body>
+  <button class="ringed">An outline on focus</button>
+  <button class="shadowed">A box-shadow on focus</button>
+  <div class="wrap"><input class="inner" value="A wrapper that lights up" /></div>
+  <button class="pseudo">A ring drawn by ::after</button>
+  <button class="faded">A border that fades in</button>
+  <span class="slider"><input type="range" aria-label="A track that lights up" /><span class="track"></span></span>
+
+  <button class="silent">Nothing happens when this takes focus</button>
+  <a class="silent-link" href="#x">A link that does not light up</a>
+
+  <!-- MUST NOT be reported: it cannot take focus, so it has nothing to show. -->
+  <button class="silent" disabled>Disabled</button>
+
+  <!-- MUST NOT be reported: reachable by script, never by Tab. -->
+  <button class="silent" tabindex="-1">Script-only</button>
+
+  <!-- MUST NOT be reported: the screen-reader pattern takes focus on purpose and
+       has nothing to draw. Counting it would put one in every result. -->
+  <button class="silent" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Skip link</button>
+
+  <!-- MUST NOT be reported: not rendered at all. -->
+  <button class="silent" style="display: none">Hidden</button>
+
+  <!-- MUST NOT be reported: an anchor with no href is not a control. -->
+  <a class="silent-link">Not a link</a>
+</body>
