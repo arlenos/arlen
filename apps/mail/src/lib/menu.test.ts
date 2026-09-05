@@ -31,6 +31,20 @@ describe("the global menu", () => {
     ]);
   });
 
+  it("keeps the writes but drops New message on a mailbox with nowhere to send", () => {
+    // The live shape since 5 September: a maildir keeps a draft, an archive and a
+    // delete, so the Message group is there; sending needs an account and there
+    // is none, so the one entry that starts a message from nothing is not.
+    const groups = appMenuGroups(get(t), true, false);
+    const actions = groups[0].items.map((i) => i.action);
+    expect(actions).not.toContain("message.new");
+    expect(actions).toContain("message.reply");
+    expect(actions).toContain("message.archive");
+    expect(actions).toContain("message.delete");
+    // And no separator is left leading the group where the entry used to be.
+    expect(groups[0].items[0].type).toBe("item");
+  });
+
   it("names an action on every item that is not a separator", () => {
     for (const g of appMenuGroups(get(t))) {
       expect(g.label).not.toMatch(/^ml\./);

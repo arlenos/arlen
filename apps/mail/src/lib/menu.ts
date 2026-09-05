@@ -12,7 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import { derived, writable } from "svelte/store";
 import type { Translate } from "@arlen/ui-kit/i18n";
 import { t } from "$lib/i18n/messages";
-import { mailboxWritable } from "$lib/stores/mailbox";
+import { mailboxWritable, mailboxComposes } from "$lib/stores/mailbox";
 
 const APP_ID = "dev.arlen.mail";
 
@@ -37,14 +37,18 @@ const sep = (): MenuItem => ({ label: "", type: "separator" });
 /// labels without a running app or a shell to publish into. The Message group
 /// is the writes, and it is offered only while the mailbox keeps one; a reader
 /// gets Go and nothing that would undo itself at the next start.
-export function appMenuGroups(t: Translate, writable = true): MenuGroup[] {
+export function appMenuGroups(t: Translate, writable = true, composes = writable): MenuGroup[] {
   const message: MenuGroup[] = writable
     ? [
         {
           label: t("ml.menu.message"),
           items: [
-            item(t("ml.compose"), "message.new", "Ctrl+N"),
-            sep(),
+            // New message only where a message could go somewhere. A maildir
+            // keeps a draft, but sending needs an account and there is none, so
+            // the entry is absent live rather than present and unsendable
+            // (`mail-app.md`). Reply and Forward answer a message in front of
+            // you and stay.
+            ...(composes ? [item(t("ml.compose"), "message.new", "Ctrl+N"), sep()] : []),
             item(t("ml.reply"), "message.reply"),
             item(t("ml.forward"), "message.forward"),
             sep(),
@@ -76,8 +80,14 @@ export const menuAction = writable<string | null>(null);
 /// on a locale switch and when the mailbox settles, so the Message group comes
 /// and goes with what the mailbox can keep.
 export async function initAppMenu(): Promise<void> {
-  derived([t, mailboxWritable], ([tr, writable]) => ({ tr, writable })).subscribe(({ tr, writable }) => {
-    void invoke("plugin:arlen-shell|menu_register", { groups: appMenuGroups(tr, writable) }).catch(() => {
+  derived([t, mailboxWritable, mailboxComposes], ([tr, writable, composes]) => ({
+    tr,
+    writable,
+    composes,
+  })).subscribe(({ tr, writable, composes }) => {
+    void invoke("plugin:arlen-shell|menu_register", {
+      groups: appMenuGroups(tr, writable, composes),
+    }).catch(() => {
       // No shell relay (vite, or the permission seam not landed): absent.
     });
   });

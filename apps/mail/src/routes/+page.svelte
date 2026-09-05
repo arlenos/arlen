@@ -39,12 +39,13 @@
     mailboxState,
     mailboxRoot,
     mailboxWritable,
+    mailboxComposes,
     openedFile,
     loadMailbox,
     openMessage,
     markRead,
     moveMessage,
-    deleteForever,
+    deleteMessage,
     type FolderKind,
     type Message,
   } from "$lib/stores/mailbox";
@@ -83,7 +84,7 @@
     if (!a) return;
     menuAction.set(null);
     if (a.startsWith("message.") && !$mailboxWritable) return;
-    if (a === "message.new") startCompose();
+    if (a === "message.new") newMessage();
     else if (a === "message.reply") reply();
     else if (a === "message.forward") forward();
     else if (a === "message.archive") archiveSelected();
@@ -251,6 +252,15 @@
     else loadRow([...sel][0]);
   }
 
+  /// Starting a message from nothing, which is the one write that is not on
+  /// offer live: a draft persists now, but sending needs an account and Arlen
+  /// has no account surface, so `mail-app.md` rules Compose stays absent rather
+  /// than opening a message with nowhere to go. Reply and Forward are not this.
+  function newMessage(): void {
+    if (!$mailboxComposes) return;
+    startCompose();
+  }
+
   function startCompose(to = "", subject = "", body = ""): void {
     if (!$mailboxWritable) return;
     preset = { to, subject, body };
@@ -294,10 +304,12 @@
   }
   function deleteSelected(): void {
     if (!$mailboxWritable) return;
-    for (const id of folderMembers()) {
-      if (selectedFolder === "trash") deleteForever(id);
-      else moveMessage(id, "trash");
-    }
+    // THE MAILBOX OWNS THE RULE, not this screen. It used to read "if the open
+    // folder is called trash, delete for good, else move there" - true of the
+    // sample, whose folder ids are the rail names, and never of a maildir, whose
+    // trash is `.Trash`. Live it therefore moved a message in the trash to the
+    // trash and reported a delete.
+    for (const id of folderMembers()) void deleteMessage(id);
     if (selected.size > 0) {
       selected = new Set();
       reading = null;
@@ -371,7 +383,7 @@
      sample keeps a draft. A machine with no maildir gets no empty column. -->
 <SidebarProvider class="h-screen min-h-0 overflow-hidden">
   {#if $folders.length > 0 || $mailboxWritable}
-    <FolderRail activeFolder={composing ? null : selectedFolder} onselect={selectFolder} oncompose={() => startCompose()} />
+    <FolderRail activeFolder={composing ? null : selectedFolder} onselect={selectFolder} oncompose={newMessage} />
   {/if}
 
   <SidebarInset class="h-svh min-h-0">
