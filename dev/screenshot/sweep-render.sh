@@ -147,7 +147,19 @@ for width in $widths; do
   path="${spec%%::*}"
   open=""
   [ "$spec" != "$path" ] && open="${spec#*::}"
-  url="$base$path?locale=$locale"
+  # A PATH MAY ALREADY CARRY A QUERY, and gluing `?locale=` onto it made a second
+  # `?` - which the browser reads as part of the first parameter's value, so
+  # `/?demo=image` came back as the DEFAULT demo with the sweep reporting it under
+  # the name of the one it meant to look at. The viewers app reaches its image and
+  # video faces only that way, so this is the difference between sweeping them and
+  # sweeping the audio face three times. Measured both ways on the viewers app:
+  # `/?demo=image?locale=de` renders an empty window and reads its demo as
+  # `image?locale=de`, and the German never arrives either; `&` renders the image
+  # face in German.
+  case "$path" in
+    *\?*) url="$base$path&locale=$locale" ;;
+    *) url="$base$path?locale=$locale" ;;
+  esac
   clean=1
   for probe in $probes; do
     got="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/$probe.js" "$width" 2>&1 \
