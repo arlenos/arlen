@@ -151,6 +151,21 @@ since been fixed. Each read exactly like a fresh finding.
 ten seconds; not having it produced two reports of defects that no longer
 existed, and one of those was nearly written up.
 
+**And a finding from a booted image is a finding about the COMMIT it was built
+from**, which is the half of that rule I did not have written down until it caught
+me. On 5 September a dogfood consent card sat over the middle of every
+app-verification frame. The source has a guard that says it stands aside on
+exactly that boot; the guard looked broken, and I was writing it up. It was
+committed the day after the image was built. The image was 194 commits behind and
+nothing in the run said so.
+
+`dev/vm/verify.py` prints it now, under the stamp: `drift: N commit(s) since, so
+anything fixed in them is NOT in this image` - or that the commit is not in this
+checkout at all, when the build came from a tree this one has since rebased away.
+Read that line before reading the frame. The two rules are the same rule about two
+different artefacts, and the image one is easier to forget because 5 GB of file
+looks like the system rather than like a photograph of it.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the
