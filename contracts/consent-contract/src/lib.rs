@@ -123,6 +123,20 @@ pub struct RequestBody {
     #[serde(default)]
     pub triggered_by_external_content: bool,
     /// The plain-language risk/outcome summary.
+    ///
+    /// A LOWERCASE INFINITIVE PHRASE, because of where it lands: the shell renders
+    /// the question as `Allow {app} to {summary}?`, so "Run a shell command" reads
+    /// as "Allow Dogfood to Run a shell command ...". The form was never written
+    /// down and a caller drifted from it, which the 3 September image showed on the
+    /// card. `consent-broker/src/control.rs` has the shape: "permanently delete 3
+    /// files".
+    ///
+    /// AND IT IS PROSE ON THE WIRE, which is a known limit rather than a detail.
+    /// The shell interpolates this string verbatim and cannot translate it, so on a
+    /// German machine the frame is German and the half that says what is being
+    /// allowed is English. Closing that means sending a token the shell can look
+    /// up rather than a sentence, which is a contract change and not a caller's to
+    /// make; recorded in `coder-reports.md` for the planner.
     pub summary: String,
     /// The concrete scope / target, when there is one.
     #[serde(default)]
