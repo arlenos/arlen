@@ -121,6 +121,7 @@ document.head.appendChild(still);
 
 const SEL = "a[href], area[href], button, input, select, textarea, summary, [tabindex], [contenteditable='true']";
 const out = [];
+let examined = 0;
 const restore = document.activeElement;
 
 for (const el of document.querySelectorAll(SEL)) {
@@ -168,9 +169,18 @@ for (const el of document.querySelectorAll(SEL)) {
   // a browser quirk, so it says nothing rather than guessing.
   if (document.activeElement !== el) continue;
   const after = snap(el);
+  examined++;
   if (before === after) out.push(label(el));
   el.blur();
 }
+
+// AN EMPTY ANSWER OVER NOTHING IS NOT A CLEAN PAGE. A route that renders no
+// focusable control at all comes back `[]` and reads as a pass, which is the
+// same vacuity as a gate reporting "0 app(s) checked" and exiting 0 - three of
+// those were found in `dev/scripts` in September. A page a keyboard cannot enter
+// is a finding in its own right, and a probe that looked at nothing needs to say
+// so rather than be counted as coverage.
+if (examined === 0) out.push("no control on this page takes keyboard focus");
 
 if (restore && restore.focus) restore.focus({ preventScroll: true });
 still.remove();

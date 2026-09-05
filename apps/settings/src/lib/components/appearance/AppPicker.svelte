@@ -201,7 +201,13 @@
   .input-wrap:hover {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
   }
-  .input-wrap.open {
+  /* OPEN AND FOCUSED ARE NOT THE SAME STATE, and only the first was drawn. The
+     input inside sets `outline: none` and the wrapper lit up only once the list
+     was open, so a keyboard arriving on the field saw a row that had not moved.
+     Both states get the same ring, which is also what a person means by "the
+     picker is where I am". */
+  .input-wrap.open,
+  .input-wrap:focus-within {
     border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
   }
