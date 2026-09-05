@@ -265,7 +265,11 @@
   }
   .ln {
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 28%, transparent);
+    /* A line number is text somebody reads and navigates by, so it has to clear
+       the floor: 28% of the foreground is 2.4:1 on every Arlen background, which
+       is under even the large-text one. The secondary token is the quiet
+       readable colour and still sits well below the code beside it. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .code {
     margin: 0;
@@ -318,7 +322,8 @@
   }
   .cf-ln {
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 26%, transparent);
+    /* Same as `.ln`, and 26% is lower still. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .cf-code {
     margin: 0;
