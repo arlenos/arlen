@@ -79,8 +79,18 @@
     border-radius: var(--radius-card, 12px);
     background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
   }
+  /* IT WRAPS, because at 720 this line cannot hold both facts and the one it was
+     dropping is the sender. Measured with a message open: the line is 174px, the
+     date alone is 177 - `dateStyle: long` puts "26. August 2026 um 08:12" on
+     every collapsed row - and `.when` does not shrink, so `.who` (the only
+     flexible item) went to ZERO. The name of whoever wrote the message,
+     entirely gone, with the date whole beside it.
+     
+     Two lines at that width rather than a truncated date or a truncated name:
+     both of these are short strings that mean nothing half-shown. */
   .thread :global(.trigger-line) {
     display: flex;
+    flex-wrap: wrap;
     width: 100%;
     align-items: center;
     gap: 0.6rem;
@@ -93,7 +103,9 @@
   }
   .who {
     flex: 1;
-    min-width: 0;
+    /* A floor, not `min-width: 0`: with zero the name is what the row gives up,
+       and a row that names nobody is not a row. */
+    min-width: 8ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
