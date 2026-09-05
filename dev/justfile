@@ -627,7 +627,8 @@ i18n-lint:
 
 # Render each route in a language and report every way the text came out wrong:
 # an element out of its own box, a child cut by a clipping parent, two elements
-# painted in the same place. Three probes, each gated on its own control first.
+# painted in the same place, a control that takes focus and shows nothing for it.
+# Four probes, each gated on its own control first.
 #
 # THE APP'S DEV SERVER MUST ALREADY BE RUNNING, and it must be `vite dev`: the
 # kit's locale override only applies under a dev build, so `vite preview`
@@ -638,6 +639,21 @@ i18n-lint:
 #   just sweep-render http://localhost:1421 de /privacy /appearance
 sweep-render base locale +paths:
     "{{ROOT}}/dev/screenshot/sweep-render.sh" {{base}} {{locale}} {{paths}}
+
+# The same four probes over EVERY app and every surface worth rendering, starting
+# and stopping each dev server in turn.
+#
+# The difference from `sweep-render` is the list rather than the probes: that one
+# covers whatever routes you type, this one carries the table - including the
+# `::selector` clicks that reach the tabs, sidebars and popovers eleven of the
+# thirteen apps keep their content behind. What is missing from that table is
+# invisible rather than clean, which is why it is written down.
+#
+#   just sweep-render-all          # everything, German
+#   just sweep-render-all en       # everything, English
+#   just sweep-render-all de clock # one app
+sweep-render-all locale="de" app="":
+    "{{ROOT}}/dev/screenshot/sweep-render-all.sh" {{locale}} {{app}}
 
 # Render every app's routes and report any message id that reached the screen.
 #
