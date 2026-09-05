@@ -370,6 +370,10 @@
     text-overflow: ellipsis;
   }
 
+  /* No `text-overflow` here: this is a flex row, so the property does nothing on
+     it - a flex box has items, not inline content. The last child below carries
+     the real ellipsis and always did, so the declaration was a dead line that
+     read like the one doing the work. */
   .search-result-meta {
     display: flex;
     gap: 0.625rem;
@@ -378,7 +382,6 @@
     color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
   .search-result-meta > span:first-child {
     flex-shrink: 0;
