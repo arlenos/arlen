@@ -638,11 +638,8 @@ def window_sides(png, top):
     w, h = im.size
     px = im.load()
     ref = px[int(w * 0.02), int(h * 0.5)]
-    # Below the title bar, so the sample crosses the window body rather than its
-    # rounded corners, which fade into the desktop and would read as no edge.
-    y = min(h - 1, top + 40)
 
-    def edge(rng, forward):
+    def edge_at(y, rng, forward):
         run = 0
         for x in rng:
             if max(abs(a - b) for a, b in zip(px[x, y], ref)) >= EDGE_STEP:
@@ -653,11 +650,34 @@ def window_sides(png, top):
                 run = 0
         return None
 
-    left = edge(range(0, w), True)
-    right = edge(range(w - 1, -1, -1), False)
-    if left is None or right is None or right - left < 100:
+    # SAMPLED IN THE TITLE BAR, and three rows of it, which is the second thing
+    # this function got wrong. The first cut sampled at top+40 - below the bar, in
+    # the window BODY - on the reasoning that the body is a flat expanse. It is,
+    # and on 5 September that expanse measured (30,30,30) against a desktop of
+    # (31,33,34): a step of 4, because a modal dims what is behind it and squeezes
+    # the contrast out of exactly the frames a drive is taken from. The only part
+    # of the window still separable there was the sidebar, so the scan returned the
+    # SIDEBAR's edges, and a click at "64% across the window" landed a third of the
+    # way along it. Another confident wrong answer.
+    #
+    # The title bar is chrome rather than content: it is drawn in the window's own
+    # colour across the full width, and in the same frame it measured 22 against
+    # the desktop's 4. Three rows must agree to within a few pixels, so a band of
+    # text or a button in the bar cannot carry a reading on its own.
+    reads = []
+    for dy in (12, 18, 24):
+        y = min(h - 1, top + dy)
+        left = edge_at(y, range(0, w), True)
+        right = edge_at(y, range(w - 1, -1, -1), False)
+        if left is not None and right is not None and right - left >= 100:
+            reads.append((left, right))
+    if len(reads) < 3:
         return None
-    return (left, right)
+    lefts = [r[0] for r in reads]
+    rights = [r[1] for r in reads]
+    if max(lefts) - min(lefts) > 4 or max(rights) - min(rights) > 4:
+        return None
+    return (min(lefts), max(rights))
 
 
 def frame_change(a, b):

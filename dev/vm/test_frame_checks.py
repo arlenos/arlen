@@ -312,6 +312,25 @@ def main():
         finally:
             _v.EDGE_STEP, _v.EDGE_RUN = step, run
 
+        # A LOW-CONTRAST FRAME MUST REFUSE. A modal dims what is behind it, and on
+        # 5 September that took an app window's body to (30,30,30) against a
+        # desktop of (31,33,34) - a step of 4. The only part still separable was
+        # the sidebar, so the side scan answered the SIDEBAR's edges and a click
+        # meant for a button landed a third of the way along the window.
+        #
+        # There is no reading to be had from such a frame. The point of this case
+        # is that it comes back None, so the caller exits saying so, rather than
+        # returning a rect that is precise and wrong.
+        dim = Image.new("RGB", (W, H), (31, 33, 34))
+        d3 = ImageDraw.Draw(dim)
+        d3.rectangle([0, 0, W, 36], fill=(10, 10, 10))
+        d3.rectangle([214, 131, 1065, 640], fill=(30, 30, 30))   # body, step of 4
+        d3.rectangle([214, 131, 468, 640], fill=(8, 8, 8))       # sidebar, step 26
+        dimmed = save(dim, "dimmed.png", tmp)
+        t_dim = window_top(dimmed)
+        check_is("a dimmed frame yields no window rect rather than the sidebar's",
+                 window_sides(dimmed, t_dim) if t_dim else None, None)
+
         # A frame with no window at all must refuse rather than pick the bar.
         bare = Image.new("RGB", (W, H), DESK)
         ImageDraw.Draw(bare).rectangle([0, 0, W, 36], fill=(10, 10, 10))
