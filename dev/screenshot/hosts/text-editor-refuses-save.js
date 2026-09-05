@@ -2,6 +2,18 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: Konnte nicht speichern
+//
+// AND IT DOES NOT REACH THAT TODAY through `probe-host.sh`. Measured 6
+// September: the page renders, `.cm-content` is present, the synthetic Ctrl+S
+// below fires, and seven seconds later no refusal is anywhere in the page's
+// text. `Mod-s` runs `onsave` unconditionally in `Buffer.svelte`, so the
+// keymap is not the condition - the synthetic KeyboardEvent is not reaching
+// CodeMirror's handler in this webview. The line above is what the state
+// SAYS, kept so the check fails loudly rather than the fixture passing on a
+// page that never refused anything; `shoot.sh`'s SHOOT_DRIVE path is the one
+// that has driven this gesture, and it cannot install a host.
+//
 // A runtime where the document OPENS and the save is refused - a read-only file,
 // the ordinary way a save fails. Neither preview can reach it: with no runtime
 // there is no save to refuse, and with --stub-host the open fails first, so the

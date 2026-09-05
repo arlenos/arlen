@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: Die Datei wurde nicht geschrieben
+//
 // A runtime where the message OPENS and saving its attachment is refused - a
 // full downloads folder, the ordinary way that write fails. Neither preview
 // reaches it: with no runtime there is no message to open, and with

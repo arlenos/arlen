@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: Diese Suche ist nicht gelaufen
+//
 // A runtime where the terminal comes up and the history search is refused - the
 // state a person meets when the history store is unreachable. --stub-host alone
 // would do it, but the palette has to be OPENED (Ctrl+R) for the line to render,

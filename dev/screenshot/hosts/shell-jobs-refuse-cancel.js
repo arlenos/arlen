@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: ließ sich nicht abbrechen
+//
 // A runtime where the Activity zone LISTS a job and refuses to cancel it. The
 // zone's own `if (tauriAvailable)` guard means a refusal cannot be reached with
 // no runtime, and --stub-host loses the list, so this is the only way to see the

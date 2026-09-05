@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: Die Farbe wurde nicht gespeichert
+//
 // A runtime where the calendars LOAD and recolouring one is refused - a
 // read-only calendar directory, the ordinary way that write fails. Neither
 // preview reaches it: with no runtime the sidebar has fixture calendars and no
