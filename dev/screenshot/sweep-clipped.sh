@@ -70,6 +70,14 @@ case "$proof" in
     ;;
 esac
 
+# WHAT IT LOOKED AT, said out loud at the end. On its second run this reported
+# "ok /" for the clock and the file manager and that reads like "the app is
+# clean" - it means "the landing page is". Both are single-route apps whose real
+# surfaces (the clock's four tabs, the file manager's Trash and Recent) live
+# behind clicks, so walking routes finds one page and the coverage line has to
+# say so rather than let a tidy list imply the rest.
+checked=0
+
 fail=0
 for path in "$@"; do
   url="$base$path?locale=$locale"
@@ -77,6 +85,7 @@ for path in "$@"; do
     | sed -n 's/^inject result: //p')"
   case "$got" in
     "["*"]")
+      checked=$((checked + 1))
       if [ "$got" = "[]" ]; then
         echo "  ok   $path"
       else
@@ -95,4 +104,5 @@ for path in "$@"; do
       ;;
   esac
 done
+echo "  --   $checked route(s) read in $locale; views behind a tab or a sidebar are not among them"
 exit "$fail"
