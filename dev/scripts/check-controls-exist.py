@@ -15,6 +15,17 @@ all of them, and this is what keeps it true - the property is easy to hold and
 easy to lose, since the moment to skip the control is exactly the moment a new
 check feels obviously right.
 
+AND IT WILL NOT LEARN TO, which is worth writing down because the idea is
+obvious. On 6 September I asked whether every control here actually has a FAILING
+case - a control with only passing cases proves nothing - and tried to answer it
+mechanically twice. Both heuristics were wrong: the first looked for `code === 1`
+and flagged 26 controls, the second broadened it and flagged 5, and reading those
+showed all of them assert failure in their own idiom (`r.status === 1`,
+`rc === 1`, `expected 1`, or a predicate helper returning "YES" that the control
+negates). The population is sound; the SPELLINGS are not uniform, and a gate over
+them would report correct controls and be switched off within a week - the same
+reason `check-inert-ellipsis` parses rules instead of grepping.
+
 WHAT THIS CANNOT SAY, and it is most of what matters: whether the control drives
 a real fault. A file named `test-check-x` that asserts nothing passes here. That
 is a person's judgement, and the three vacuous ones this week were all caught by
