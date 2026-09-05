@@ -5,13 +5,17 @@
 /// an example on the surface, because a mock that reads as real state is a lie
 /// with good typography.
 ///
-/// WRITING IS NOT LIVE. Archive, delete, drafts and the read mark are local
-/// mutations that the fixture keeps and a maildir does not - a file that was
-/// "archived" is back in the inbox at the next start. So the surface offers the
-/// writes only while the mailbox is the sample (`mailboxWritable`), and live it
-/// is a reader until `mail_move`/`mail_delete`/`mail_draft_save`/`mail_mark_seen`
-/// exist. The read mark is the one exception: the dot clears on reading, as in
-/// every client, and the flag write is the seam that makes it stick.
+/// WRITING IS LIVE SINCE 5 SEPTEMBER, and it is four file operations rather
+/// than a protocol: `mail_mark_seen` renames out of `new/` with the `S` flag,
+/// `mail_move` moves between folder directories (archive is that with one
+/// argument), `mail_delete` unlinks or moves to trash, `mail_draft_save` writes
+/// into `.Drafts`. Before them the surface offered these controls only over the
+/// sample, because a message "archived" into a store and back in the inbox at
+/// the next start is worse than a control that is not there.
+///
+/// SENDING is the one that stays absent, and not for want of plumbing: it needs
+/// an account, and Arlen has no account surface anywhere. `mail-app.md` rules
+/// Compose stays away rather than sit there refusing.
 import { derived, get, writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
