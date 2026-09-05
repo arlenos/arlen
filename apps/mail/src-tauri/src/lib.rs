@@ -235,7 +235,7 @@ fn mail_folders() -> Vec<FolderDto> {
 #[tauri::command]
 fn mail_list(folder_id: String) -> Vec<EnvelopeDto> {
     let Some(root) = maildir_root() else { return Vec::new() };
-    let rel = if folder_id == "inbox" { String::new() } else { folder_id.clone() };
+    let rel = folder_rel(&folder_id);
     // Resolved on its own rather than found in the full listing: the surface asks
     // for one folder's rows at a time, so listing every folder here counted the
     // unread in all of them to learn the name of one.
@@ -307,6 +307,104 @@ fn mail_read(path: String) -> Result<MessageDto, ReadProblem> {
         }),
         path,
     })
+}
+
+/// Why a write to the mailbox did not happen, as a word rather than a sentence.
+///
+/// Same rule as [`ReadProblem`]: the window owns the wording, this owns the
+/// cause. `why` survives only on the filesystem case, where its own words are
+/// the detail there is.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "kebab-case", tag = "problem")]
+enum WriteProblem {
+    NoMailbox,
+    NoSuchMessage,
+    NoSuchFolder,
+    NotWritten { why: String },
+}
+
+impl From<arlen_mail_core::maildir::WriteProblem> for WriteProblem {
+    fn from(p: arlen_mail_core::maildir::WriteProblem) -> Self {
+        use arlen_mail_core::maildir::WriteProblem as Core;
+        match p {
+            Core::NoSuchMessage => Self::NoSuchMessage,
+            Core::NoSuchFolder => Self::NoSuchFolder,
+            Core::Io(why) => Self::NotWritten { why },
+        }
+    }
+}
+
+/// The mailbox to write into, or the reason there is none.
+fn writable_root() -> Result<PathBuf, WriteProblem> {
+    let root = maildir_root().ok_or(WriteProblem::NoMailbox)?;
+    arlen_mail_core::maildir::is_maildir(&root)
+        .then_some(root)
+        .ok_or(WriteProblem::NoMailbox)
+}
+
+/// The folder id the surface uses, as the maildir's own relative path.
+///
+/// The rail calls the inbox `inbox` because a folder whose id is the empty
+/// string is a row nothing can key on; the maildir calls it the root. One place
+/// to translate, shared by the list read and every write.
+fn folder_rel(folder_id: &str) -> String {
+    if folder_id == "inbox" { String::new() } else { folder_id.to_string() }
+}
+
+/// Mark a message read, and answer with where it now is.
+///
+/// THE ID CHANGES, which is why this answers with one. A maildir message's name
+/// carries its flags, so reading it renames the file: a surface that kept the
+/// old id would be holding a path that no longer exists, and its next open would
+/// report the message missing.
+///
+/// # Errors
+/// When there is no mailbox, the id names nothing, or the rename was refused.
+#[tauri::command]
+fn mail_mark_seen(id: String) -> Result<String, WriteProblem> {
+    let root = writable_root()?;
+    arlen_mail_core::maildir::mark_seen(&root, &id).map_err(Into::into)
+}
+
+/// Move a message to another folder, and answer with where it now is.
+///
+/// Archive is this with one argument, which is why there is no `mail_archive`:
+/// a command per rail would be four commands that differ by a string.
+///
+/// # Errors
+/// When there is no mailbox, the id names nothing, the folder is not one of this
+/// mailbox's, or the rename was refused.
+#[tauri::command]
+fn mail_move(id: String, folder_id: String) -> Result<String, WriteProblem> {
+    let root = writable_root()?;
+    arlen_mail_core::maildir::move_to(&root, &id, &folder_rel(&folder_id)).map_err(Into::into)
+}
+
+/// Delete a message. `Some(id)` is the trash it went to, `None` that it is gone.
+///
+/// The distinction reaches the surface because the two are different things to
+/// tell somebody: one is undoable by opening a folder, the other is not.
+///
+/// # Errors
+/// When there is no mailbox, the id names nothing, or the removal was refused.
+#[tauri::command]
+fn mail_delete(id: String) -> Result<Option<String>, WriteProblem> {
+    let root = writable_root()?;
+    arlen_mail_core::maildir::delete(&root, &id).map_err(Into::into)
+}
+
+/// Write a draft, and answer with where it landed.
+///
+/// NOT A SEND, and there is no send here to pair it with: sending needs an
+/// account and Arlen has no account surface, so `mail-app.md` rules Compose stays
+/// absent while these writes come back. This is the half that is only files.
+///
+/// # Errors
+/// When there is no mailbox, or the draft could not be written.
+#[tauri::command]
+fn mail_draft_save(to: String, subject: String, body: String) -> Result<String, WriteProblem> {
+    let root = writable_root()?;
+    arlen_mail_core::maildir::save_draft(&root, &to, &subject, &body).map_err(Into::into)
 }
 
 /// Start the window.
@@ -421,7 +519,11 @@ pub fn run() {
             mail_folders,
             mail_store,
             mail_list,
-            mail_open
+            mail_open,
+            mail_mark_seen,
+            mail_move,
+            mail_delete,
+            mail_draft_save
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-mail");
