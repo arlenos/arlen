@@ -214,7 +214,7 @@
               <span class="se-type">{typeLabel(r.type)}</span>
               <span class="se-title">{r.title}</span>
               <span class="se-sub">
-                {r.sub}{#if r.project}<span class="se-proj">{r.project}</span>{/if}
+                <span class="se-sub-text">{r.sub}</span>{#if r.project}<span class="se-proj">{r.project}</span>{/if}
               </span>
               <span class="se-time">{dayName(r.at)}{#if r.at}, {clock(r.at, $locale)}{/if}</span>
             </button>
@@ -238,7 +238,7 @@
               <span class="se-type saved"><Bookmark size={11} strokeWidth={2} /></span>
               <span class="se-title">{s.name}</span>
               <span class="se-sub">
-                {#if s.query}"{s.query}"{/if}
+                {#if s.query}<span class="se-sub-text">"{s.query}"</span>{/if}
                 {#if s.facets.project}<span class="se-proj">{s.facets.project}</span>{/if}
                 {#if s.facets.type}<span class="se-proj">{typeLabel(s.facets.type)}</span>{/if}
               </span>
@@ -452,6 +452,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* THE TEXT IS ITS OWN ELEMENT, the same fix the timeline needed on the same
+     day. `text-overflow` applies to a box whose INLINE content overflows; this
+     is `inline-flex`, so its children are flex items and the declaration did
+     nothing - the words were cut mid-glyph and the chip beside them was pushed
+     past the edge and clipped ("Arlen OS" cut 30px sideways, measured at 720).
+     A chip drawn as a fragment says less than no chip at all. */
   .se-sub {
     display: inline-flex;
     align-items: baseline;
@@ -460,10 +466,16 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     overflow: hidden;
+    white-space: nowrap;
+  }
+  .se-sub-text {
+    min-width: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .se-proj {
+    flex-shrink: 0;
     padding: 0.0625rem 0.375rem;
     border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--color-fg-primary) 7%, transparent);

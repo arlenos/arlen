@@ -52,14 +52,24 @@
      controls are the accessible buttons inside it, so the static-interaction
      lint is a false positive here. Same treatment as the files layout. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- A floor under the place name and a header that can grow, the same fix the
+     calendar, the reader and mail needed for the same reason: a `truncate` with
+     nothing under it does not truncate when the row runs out, it collapses. Here
+     the search field takes a fixed share beside it, so at 720 "Suchen" was two
+     pixels short of itself and "Bibliothek" five. `min-h-10` with no `h-10`
+     above it lets the browser say when a second row is due; a breakpoint would
+     be a guess about how long a place is called in the next language. -->
 <header
-  class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+  class="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-2"
   onpointerdown={startDrag}
   ondblclick={toggleMax}
 >
   <SidebarTrigger class="-ml-1" />
-  <Separator orientation="vertical" class="me-1 h-4" />
-  <span class="select-none truncate text-sm font-medium text-foreground">{placeLabel}</span>
+  <!-- `h-4!`: the kit sets `data-[orientation=vertical]:h-full`, an attribute
+       selector a plain `h-4` cannot outrank, and a full-height rule in a header
+       that wraps is a percentage of a height still being computed. -->
+  <Separator orientation="vertical" class="me-1 h-4!" />
+  <span class="min-w-[10ch] select-none truncate text-sm font-medium text-foreground">{placeLabel}</span>
   <span class="flex-1"></span>
   <!-- The one search entry (Tim's placement call): typing hands the content
        area to the search surface; Esc returns to the place. -->
