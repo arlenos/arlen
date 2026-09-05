@@ -1,10 +1,17 @@
 <script lang="ts">
   /// The installed-apps list (per-app-settings-plan.md): one calm row per app,
-  /// leading to its page of declared settings + access. Today the list is
-  /// honestly derived from the apps the grant ledger knows (there is no
-  /// `settings_apps_list` bridge yet; name, version and publisher would come
-  /// from the shell's app_index - flagged as a seam). The assistant principals
-  /// stay on the privacy page; this list is about apps.
+  /// leading to its page of declared settings + access.
+  ///
+  /// THE ROWS ARE THE INSTALLED APPS, and until 5 September they were the grant
+  /// ledger, which is a different set. `settings_apps_list` had been implemented
+  /// and registered for a while and nothing called it; the note here still said
+  /// there was no bridge yet. An app that ships a settings schema and holds no
+  /// grant has settings all the same, and a page nobody can reach looks exactly
+  /// like an app that has none. A grant is a property of a row now, not the
+  /// reason one exists. `mergeAppRows` keeps granted-but-not-installed rows too,
+  /// so the fix takes nothing away.
+  ///
+  /// The assistant principals stay on the privacy page; this list is about apps.
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { ChevronRight } from "lucide-svelte";
@@ -12,12 +19,28 @@
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { grants, grantsLoaded, grantsMocked, grantsError, byApp, loadGrants } from "$lib/stores/grants";
+  import {
+    installed,
+    installedLoaded,
+    installedError,
+    loadInstalledApps,
+    mergeAppRows,
+  } from "$lib/stores/installedApps";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import { t, locale } from "$lib/i18n/messages";
 
-  onMount(loadGrants);
+  onMount(() => {
+    void loadGrants();
+    void loadInstalledApps();
+  });
 
-  const apps = $derived(byApp($t, $locale, $grants).filter((p) => !p.assistant));
+  const granted = $derived(byApp($t, $locale, $grants).filter((p) => !p.assistant));
+  const apps = $derived(mergeAppRows($installed, granted, new Intl.Collator($locale)));
+  const ready = $derived($grantsLoaded && $installedLoaded);
+  /// Both reads failing is the only case that can say nothing at all. One of the
+  /// two failing still leaves a real list, so the page shows it rather than
+  /// refusing over a source the reader was not asking about.
+  const bothFailed = $derived($grantsError && $installedError);
 </script>
 
 <Page title={$t("s.apps.title")} description={$t("s.apps.desc")}>
@@ -26,19 +49,27 @@
       <p class="note span-full">{$t("s.apps.sample")}</p>
     {/if}
 
-    {#if !$grantsLoaded && apps.length === 0}
+    <!-- The installed read failed while the ledger answered. The list below is
+         real and SHORT: it holds only the apps that hold a grant, which is the
+         set this page stopped being. Without this line a partial list is
+         indistinguishable from a complete one. -->
+    {#if $installedError && !bothFailed}
+      <p class="note span-full">{$t("s.apps.partial")}</p>
+    {/if}
+
+    {#if !ready && apps.length === 0}
       <!-- The read is quick, but a blank page reads as broken; one quiet line. -->
       <Section class="span-full">
         <p class="note pad">{$t("s.apps.loading")}</p>
       </Section>
-    {:else if $grantsError}
-      <!-- The read failed. Not the same as an empty machine: saying "no app has
+    {:else if bothFailed}
+      <!-- Both reads failed. Not the same as an empty machine: saying "no app has
            access" when we could not ask is the one sentence this page must never
            get wrong. -->
       <Section class="span-full">
         <p class="note pad">{$t("s.apps.unavailable")}</p>
       </Section>
-    {:else if $grantsLoaded && apps.length === 0}
+    {:else if ready && apps.length === 0}
       <Section class="span-full">
         <p class="note pad">{$t("s.apps.empty")}</p>
       </Section>
