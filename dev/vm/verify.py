@@ -190,6 +190,67 @@ def qmp_click(f, px, py, w, h):
         {"type": "btn", "data": {"down": False, "button": "left"}}])
 
 
+def qmp_drag(f, px0, py0, px1, py1, w, h, steps=12):
+    """Press at (px0, py0), move to (px1, py1) while held, release.
+
+    THE GESTURE THIS HARNESS COULD NOT MAKE. `qmp_click` sends a down and an up at
+    one point, so everything that only happens while a button is held - moving a
+    window by its titlebar, a resize edge, a drag-and-drop, a text selection - was
+    unreachable, and the questions about them were being answered by reading source
+    instead of by pressing.
+
+    The intermediate moves are not decoration. A compositor starts an interactive
+    move on the motion that follows the press, not on the press, so a down-then-up
+    with nothing between reads as a click no matter how far apart the two points
+    are. Twelve steps with a beat between them is a slow human drag; slow is the
+    right end to err on, since a drag that is too fast to be seen looks exactly
+    like a drag that did nothing.
+    """
+    def at(px, py):
+        return [
+            {"type": "abs", "data": {"axis": "x",
+                                     "value": max(0, min(0x7fff, round(px * 0x7fff / w)))}},
+            {"type": "abs", "data": {"axis": "y",
+                                     "value": max(0, min(0x7fff, round(py * 0x7fff / h)))}}]
+
+    qmp(f, "input-send-event", events=at(px0, py0))
+    time.sleep(0.4)
+    qmp(f, "input-send-event", events=at(px0, py0) + [
+        {"type": "btn", "data": {"down": True, "button": "left"}}])
+    time.sleep(0.2)
+    for i in range(1, steps + 1):
+        qmp(f, "input-send-event", events=at(px0 + (px1 - px0) * i / steps,
+                                            py0 + (py1 - py0) * i / steps))
+        time.sleep(0.06)
+    time.sleep(0.2)
+    qmp(f, "input-send-event", events=at(px1, py1) + [
+        {"type": "btn", "data": {"down": False, "button": "left"}}])
+
+
+def qmp_double_click(f, px, py, w, h, gap=0.12):
+    """Two presses at one point inside the double-click interval.
+
+    Also absent until now, and the click loop says why: it sleeps 1.5s between
+    clicks, which is well past any double-click interval, so two `--click`s at the
+    same point are two single clicks. Anything bound to a double press - maximize
+    on a titlebar, open from a file list - had no way in.
+    """
+    ev = [
+        {"type": "abs", "data": {"axis": "x",
+                                 "value": max(0, min(0x7fff, round(px * 0x7fff / w)))}},
+        {"type": "abs", "data": {"axis": "y",
+                                 "value": max(0, min(0x7fff, round(py * 0x7fff / h)))}}]
+    qmp(f, "input-send-event", events=ev)
+    time.sleep(0.4)
+    for _ in range(2):
+        qmp(f, "input-send-event", events=ev + [
+            {"type": "btn", "data": {"down": True, "button": "left"}}])
+        time.sleep(0.05)
+        qmp(f, "input-send-event", events=ev + [
+            {"type": "btn", "data": {"down": False, "button": "left"}}])
+        time.sleep(gap)
+
+
 def capture(f, path, x_display=None):
     """Write the guest's current frame to `path`.
 
@@ -846,6 +907,18 @@ def main():
                          "empty is empty because the read found nothing or because it "
                          "ran before the data existed - clicking away and back "
                          "re-mounts the view without rebuilding the image")
+    ap.add_argument("--drag", action="append", default=None, metavar="X0,Y0:X1,Y1",
+                    help="press at the first 1280x800 point, move to the second while "
+                         "held, release (repeatable). For anything that only happens "
+                         "under a held button: moving a window by its titlebar, a "
+                         "resize edge, a drag-and-drop. Runs with the --click block "
+                         "and shares its after-shot")
+    ap.add_argument("--double-click", dest="double_click", action="append", default=None,
+                    metavar="X,Y",
+                    help="two presses at one 1280x800 point inside the double-click "
+                         "interval. Two --click at the same point are two SINGLE "
+                         "clicks - the click loop sleeps 1.5s between them - so this "
+                         "is the only way to reach a double-press binding")
     ap.add_argument("--click-in-window", dest="click_in_window", action="append",
                     default=None, metavar="X,DY",
                     help="click X (screen) at DY BELOW the app window's top edge, "
@@ -1216,7 +1289,7 @@ def main():
         uncovered_frame = None
         bar_gate_only = args.require_bar and not (
             args.app or args.press_super or args.deny_consent or args.approve_consent
-            or args.click or args.click_in_window
+            or args.click or args.click_in_window or args.drag or args.double_click
         )
         if bar_gate_only:
             deadline = time.monotonic() + args.wait
@@ -1451,7 +1524,7 @@ def main():
         # click that lands on a dialog nobody meant to answer is the same failure
         # as the blind approve click that once dismissed the screenshot app's
         # thumbnail. Resolving the card first means the clicks land on the app.
-        if args.click or args.click_in_window:
+        if args.click or args.click_in_window or args.drag or args.double_click:
             # Coordinates are given against the 1280x800 layout and scaled to the
             # real frame, like the consent click below.
             from PIL import Image
@@ -1484,6 +1557,17 @@ def main():
             for spec in args.click or []:
                 cx, cy = (int(v) for v in spec.split(","))
                 qmp_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
+                time.sleep(1.5)
+            for spec in args.double_click or []:
+                cx, cy = (int(v) for v in spec.split(","))
+                qmp_double_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
+                time.sleep(1.5)
+            for spec in args.drag or []:
+                start, end = spec.split(":")
+                x0, y0 = (int(v) for v in start.split(","))
+                x1, y1 = (int(v) for v in end.split(","))
+                qmp_drag(f, round(fw * x0 / 1280), round(fh * y0 / 800),
+                         round(fw * x1 / 1280), round(fh * y1 / 800), fw, fh)
                 time.sleep(1.5)
             if args.click_in_window:
                 top = window_top(preclick)
