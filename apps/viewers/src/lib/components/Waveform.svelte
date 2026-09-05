@@ -176,6 +176,16 @@
     height: 100%;
     outline: none;
   }
+  /* THE ARROW KEYS SEEK HERE, and until now nothing said so. This is a slider
+     with a tabindex and a keydown handler, and `outline: none` above took away
+     the only sign that it had focus - so a keyboard could scrub the track while
+     the screen showed the same picture it always shows. The ring is inset
+     because the waveform fills its box to the edge; an offset one would be
+     clipped by the player around it. */
+  .wave:focus-visible {
+    outline: 2px solid var(--color-accent, var(--foreground));
+    outline-offset: -2px;
+  }
   canvas {
     display: block;
     width: 100%;
