@@ -114,7 +114,7 @@ say "the rail and the list come from the maildir on disk" \
   "$(printf '%s' "$got" | grep -q "your statement" && echo 1 || echo 0)" "$got"
 
 say "and a second folder's mail is not mixed into the inbox" \
-  "$(printf '%s' "$got" | grep -q "sent thing" && echo 0 || echo 1)" "$got"
+  "$(case "$got" in ""|REFUSED:*) echo 0;; *) printf '%s' "$got" | grep -q "sent thing" && echo 0 || echo 1;; esac)" "$got"
 
 say "and no fixture sender is on a screen reading a real mailbox" \
   "$(printf '%s' "$got" | grep -q '"fixture":false' && echo 1 || echo 0)" "$got"

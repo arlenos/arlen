@@ -232,7 +232,7 @@ say "launched with no message, it names the place it looked for mail" \
 
 # And the word that sent the reader nowhere is gone, in both languages.
 say "and does not offer an account this machine has no way to connect" \
-  "$(printf '%s' "$bare" | grep -qiE "account|konto" && echo 0 || echo 1)" "$bare"
+  "$(case "$bare" in ""|REFUSED:*) echo 0;; *) printf '%s' "$bare" | grep -qiE "account|konto" && echo 0 || echo 1;; esac)" "$bare"
 
 [ "$fail" = 0 ] && echo "the window says what the message is doing, including the half it will not show, and an empty one says where to get a message"
 exit "$fail"

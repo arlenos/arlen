@@ -100,14 +100,14 @@ say "a query behind > is offered as something to run" \
   "$(printf '%s' "$cmd" | grep -q '"typed":true' \
      && printf '%s' "$cmd" | grep -qE "Run|Ausf" && echo 1 || echo 0)" "$cmd"
 say "and it is not offered to a search engine" \
-  "$(printf '%s' "$cmd" | grep -qiE "duckduckgo|google" && echo 0 || echo 1)" "$cmd"
+  "$(case "$cmd" in ""|REFUSED:*) echo 0;; *) printf '%s' "$cmd" | grep -qiE "duckduckgo|google" && echo 0 || echo 1;; esac)" "$cmd"
 
 web=$(typed '"? weather"' "$here/out/launcher-web.png")
 say "and a query behind ? goes to a search engine, which it names" \
   "$(printf '%s' "$web" | grep -q '"typed":true' \
      && printf '%s' "$web" | grep -qi "duckduckgo" && echo 1 || echo 0)" "$web"
 say "and is not offered to a shell" \
-  "$(printf '%s' "$web" | grep -qE "Shift\+Enter: Terminal" && echo 0 || echo 1)" "$web"
+  "$(case "$web" in ""|REFUSED:*) echo 0;; *) printf '%s' "$web" | grep -qE "Shift\+Enter: Terminal" && echo 0 || echo 1;; esac)" "$web"
 
 # THE TWO EMPTIES, and telling them apart is the point. Under vite every provider
 # rejects, so the launcher's empty line always reads as the refused one - which is
