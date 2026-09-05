@@ -1071,6 +1071,50 @@ def main():
     if os.path.exists(stamp):
         for line in open(stamp).read().splitlines():
             print(f"  {line}", flush=True)
+        # And HOW FAR BEHIND that commit is, which the stamp cannot say because it
+        # was written before the commits that followed existed.
+        #
+        # This is not tidiness. On 5 September I watched a dogfood consent card sit
+        # over the middle of an app-verification frame, went to the source, found a
+        # guard that explicitly says it stands aside on exactly that boot, and was
+        # about to file the guard as broken. It is not broken: it was committed the
+        # day AFTER this image was built. The image was carrying code from before
+        # the fix, and nothing on screen or in the run said so.
+        #
+        # A picture is a finding about the day it was taken; an image is a finding
+        # about the COMMIT it was built from. The second half was left to whoever
+        # remembered to check, so it is printed here, with the two names most worth
+        # having: how many commits of drift, and whether the tree you are reading
+        # even contains that commit any more.
+        built_at = next(
+            (l.split(":", 1)[1].strip() for l in open(stamp).read().splitlines()
+             if l.startswith("commit:")),
+            None,
+        )
+        if built_at:
+            try:
+                import subprocess as _sp
+                here = os.path.dirname(os.path.abspath(__file__))
+                def _git(*a):
+                    return _sp.run(["git", *a], cwd=here, capture_output=True,
+                                   text=True, timeout=10)
+                known = _git("cat-file", "-e", f"{built_at}^{{commit}}")
+                if known.returncode != 0:
+                    print("  drift: that commit is not in this checkout, so how far "
+                          "behind the image is cannot be said here", flush=True)
+                else:
+                    behind = _git("rev-list", "--count", f"{built_at}..HEAD")
+                    n = behind.stdout.strip()
+                    if behind.returncode == 0 and n.isdigit():
+                        if n == "0":
+                            print("  drift: none, the image is this commit", flush=True)
+                        else:
+                            print(f"  drift: {n} commit(s) since, so anything fixed in "
+                                  f"them is NOT in this image", flush=True)
+            except Exception:
+                # A missing git, a shallow clone, a timeout. The run is about the
+                # image, not about this line, so it says nothing rather than failing.
+                pass
     if not os.path.exists(image):
         sys.exit(f"image not found: {image} (run dev/mkosi/build-image.sh first)")
 
