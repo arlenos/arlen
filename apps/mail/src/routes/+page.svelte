@@ -486,7 +486,18 @@
           {#key preset}
             <ComposeView presetTo={preset.to} presetSubject={preset.subject} presetBody={preset.body} ondone={composeDone} />
           {/key}
-        {:else if failure}
+        <!-- THE MAILBOX'S OWN ACCOUNT COMES FIRST. This branch sat above the
+             centre note, so when the host was down the window said "could not
+             find out which message it was asked to open" - a sentence about a
+             command-line argument - while the fact was that the mailbox could
+             not be read at all, which the centre note below says properly.
+             Photographed with a refusing host on 6 September: one red banner and
+             an otherwise empty window, naming the wrong thing.
+
+             So the launch failure speaks only when the mailbox is fine, which is
+             the case it is actually about: a message was passed in and could not
+             be resolved. -->
+        {:else if failure && $mailboxState !== "unreadable" && $mailboxState !== "absent"}
           <div class="pane-note" role="alert"><Notice tone="error" text={failureText} /></div>
         {:else if fileOpen && $openedFile}
           <MessageView message={$openedFile} />
