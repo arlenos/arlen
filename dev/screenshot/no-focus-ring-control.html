@@ -7,7 +7,9 @@
      must answer exactly:
 
        ['button.silent: "Nothing happens when this takes focus"',
-        'a.silent-link: "A link that does not light up"']
+        'a.silent-link: "A link that does not light up"',
+        '1 control(s) not measured: a scripted focus does not match
+         :focus-visible on them, which is where their ring would be']
 
      Every other element here is a ring the probe must NOT report, or a thing it
      must not look at. Each of the five ring idioms was then checked by deleting
@@ -77,6 +79,9 @@
   /* MUST be reported: focus is taken and nothing is drawn. The `outline: none`
      is the whole defect and it is written the way it is always written - as a
      reset somebody meant to replace and did not. */
+  .timed:focus { outline: none }
+  .timed:focus-visible { outline: 2px solid #7aa2f7 }
+
   .silent:focus { outline: none }
   .silent-link:focus { outline: none }
 </style>
@@ -87,6 +92,13 @@
   <button class="pseudo">A ring drawn by ::after</button>
   <button class="faded">A border that fades in</button>
   <span class="slider"><input type="range" aria-label="A track that lights up" /><span class="track"></span></span>
+
+  <!-- MUST be reported as NOT MEASURED, not as a defect: WebKit refuses to match
+       `:focus-visible` on a scripted focus of a time field, though it matches on
+       the text input, button, range and colour swatch above. Its ring is fine
+       and the probe cannot see it, which is a sentence the probe has to be able
+       to say. -->
+  <input class="timed" type="time" value="07:00" aria-label="A time with a ring" />
 
   <button class="silent">Nothing happens when this takes focus</button>
   <a class="silent-link" href="#x">A link that does not light up</a>

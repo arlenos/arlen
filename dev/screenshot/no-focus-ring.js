@@ -122,6 +122,7 @@ document.head.appendChild(still);
 const SEL = "a[href], area[href], button, input, select, textarea, summary, [tabindex], [contenteditable='true']";
 const out = [];
 let examined = 0;
+let unmeasured = 0;
 const restore = document.activeElement;
 
 for (const el of document.querySelectorAll(SEL)) {
@@ -168,6 +169,21 @@ for (const el of document.querySelectorAll(SEL)) {
   // It refused focus - a different defect, and not one this probe can tell from
   // a browser quirk, so it says nothing rather than guessing.
   if (document.activeElement !== el) continue;
+  // SOME CONTROLS NEVER MATCH `:focus-visible` UNDER A SCRIPTED FOCUS, and most
+  // rings in this tree are written against it. WebKit's heuristic lets a
+  // programmatic focus count as keyboard-visible for text fields, buttons,
+  // ranges and colour swatches - measured, all four - but NOT for
+  // `input[type=time]`, which it does not treat as a text entry. So the kit's
+  // time field came back as ringless when its ring is correct. There is no way
+  // to arm the heuristic from script, so these are counted and named rather than
+  // guessed at in either direction. (The first reading of this blamed the
+  // sweep's `--open` click, which a no-click fixture disproved: the time field
+  // fails on its own and the four others pass right beside it.)
+  if (!el.matches(":focus-visible")) {
+    unmeasured++;
+    el.blur();
+    continue;
+  }
   const after = snap(el);
   examined++;
   if (before === after) out.push(label(el));
@@ -180,7 +196,15 @@ for (const el of document.querySelectorAll(SEL)) {
 // those were found in `dev/scripts` in September. A page a keyboard cannot enter
 // is a finding in its own right, and a probe that looked at nothing needs to say
 // so rather than be counted as coverage.
-if (examined === 0) out.push("no control on this page takes keyboard focus");
+if (examined === 0 && unmeasured === 0) {
+  out.push("no control on this page takes keyboard focus");
+}
+if (unmeasured > 0) {
+  out.push(
+    unmeasured + " control(s) not measured: a scripted focus does not match " +
+    ":focus-visible on them, which is where their ring would be"
+  );
+}
 
 if (restore && restore.focus) restore.focus({ preventScroll: true });
 still.remove();
