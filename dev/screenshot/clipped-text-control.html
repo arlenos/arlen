@@ -8,8 +8,9 @@
 
      must answer exactly:
 
-       ['div.: "Vertrauensstufe verschlagwortet" wide 60<186',
-        'div.: "A line taller than its box" tall 14<19']
+       ['div.: "Vertrauensstufe verschlagwortet" wide-cut 60<186',
+        'div.: "A line taller than its box" tall-cut 14<19',
+        'div.: "An ellipsis by design" wide-ellipsed 80<117']
 -->
 <body style="margin: 0; background: #111; color: #eee; font: 12px system-ui">
   <!-- Too narrow: the shape a longer language makes of a column sized for English. -->
@@ -19,6 +20,11 @@
        could not see until 5 September. The calendar's week grid was cutting event
        titles in half while the sweep called the page clean. -->
   <div style="height: 14px; width: 300px; overflow: hidden; line-height: 19px">A line taller than its box</div>
+
+  <!-- Reported as `wide-ellipsed`: a design that says out loud what it does when
+       the line runs out. Still a hit, because an ellipsis withholds words too -
+       but a different one from a label nobody knew would overflow. -->
+  <div style="width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">An ellipsis by design</div>
 
   <!-- MUST NOT be reported: the screen-reader pattern overflows on both axes by
        construction, and counting it would put an `sr-only` in every result until
