@@ -100,11 +100,23 @@ probes="clipped-text clipped-by-parent overlapping-text"
 # here would mean editing this file whenever a fixture gains a case, and the
 # fixtures own their exact answers in their own headers.
 for probe in $probes; do
+  # CLEARED FIRST, and then required to be non-empty. Both halves matter and the
+  # second one is not hypothetical: an empty expectation makes `*"$want"*` match
+  # every answer including `[]`, so the control passes on a blind probe - which
+  # is the exact vacuity three gates in `dev/scripts` were caught with in
+  # September ("0 app(s) checked" also exits 0). Without the clear, a probe added
+  # to `$probes` with no arm below would silently inherit the previous one's
+  # word and be gated against the wrong fixture, which is worse than either.
+  want=""
   case "$probe" in
     clipped-text) want="Vertrauensstufe" ;;
     clipped-by-parent) want="Cut off by its parent" ;;
     overlapping-text) want="Painted over" ;;
   esac
+  [ -n "$want" ] || {
+    echo "sweep-render.sh: no control expectation for $probe.js; add its arm above." >&2
+    exit 2
+  }
   proof="$("$here/shoot.sh" "file://$here/$probe-control.html" "$shot" "$here/$probe.js" 2>&1 \
     | sed -n 's/^inject result: //p')"
   case "$proof" in
