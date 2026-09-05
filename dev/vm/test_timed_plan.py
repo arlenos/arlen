@@ -97,6 +97,25 @@ check(
     qmp(accepted, "screendump", filename="/tmp/x.png") == {"return": {}},
 )
 
+# ── the parser must build at all ────────────────────────────────────────────
+#
+# Nothing checked this, and on 5 September it broke: a help string gained the
+# example `50%,300`, argparse read the `%` as a format specifier, and EVERY
+# invocation died in `_check_help` before parsing a single argument. The driver
+# was unusable and the only sign was a traceback from inside argparse.
+#
+# Building the parser is the whole check. It touches every `add_argument` in the
+# file, so any future help string with a stray `%` fails here instead of on a boot.
+import subprocess as _sp  # noqa: E402
+from pathlib import Path as _P  # noqa: E402
+
+_r = _sp.run(
+    [sys.executable, str(_P(__file__).resolve().parent / "verify.py"), "--help"],
+    capture_output=True, text=True, timeout=60,
+)
+check("the argument parser builds, so --help runs at all", _r.returncode == 0)
+check("and it lists the gestures", "--drag" in _r.stdout and "--double-click" in _r.stdout)
+
 print()
 if failures:
     print(f"{len(failures)} failure(s)")
