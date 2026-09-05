@@ -10,6 +10,7 @@
 use anyhow::{anyhow, Context, Result};
 use arlen_screen_capture::{
     capture_output, capture_output_by_name, capture_region, capture_support, capture_window,
+    capture_window_by_id,
     list_outputs, list_windows, write_png, CapturedImage, COPY_MANAGER_INTERFACE,
     OUTPUT_SOURCE_MANAGER_INTERFACE, TOPLEVEL_SOURCE_MANAGER_INTERFACE,
 };
@@ -23,7 +24,7 @@ fn main() -> Result<()> {
     //   arlen-screenshot --shot [file]       capture output 0
     //   arlen-screenshot -o NAME [file]      capture the named output
     //   arlen-screenshot -g X,Y,W,H [file]   capture a region (logical coords)
-    //   arlen-screenshot --window N [file]   capture window N
+    //   arlen-screenshot --window N [file]   capture window N (or its identifier)
     //   arlen-screenshot <file>              capture output 0 to a PNG
     let raw: Vec<String> = std::env::args().skip(1).collect();
     // `-c` / `--cursor` (anywhere) paints the pointer onto the capture;
@@ -61,9 +62,13 @@ fn main() -> Result<()> {
         }
         Some("--list-windows") => {
             for w in list_windows()? {
+                // The identifier is printed because it is the half of this line
+                // that survives another window opening; the index is the
+                // convenient half.
                 println!(
-                    "window {}: [{}] {}",
+                    "window {} ({}): [{}] {}",
                     w.index,
+                    w.identifier.as_deref().unwrap_or("no identifier"),
                     w.app_id.as_deref().unwrap_or("?"),
                     w.title.as_deref().unwrap_or("?")
                 );
@@ -101,12 +106,18 @@ fn main() -> Result<()> {
             return Ok(());
         }
         Some("--window") => {
-            let index: usize = args
+            let which = args
                 .get(1)
-                .ok_or_else(|| anyhow!("--window needs an index (see --list-windows)"))?
-                .parse()
-                .map_err(|e| anyhow!("bad window index: {e}"))?;
-            let image = capture_window(index, cursor)?;
+                .ok_or_else(|| anyhow!("--window needs an index or identifier (see --list-windows)"))?;
+            // A number is a position in the last listing, anything else is the
+            // compositor's identifier. Both are offered because they answer
+            // different questions: an index is what a person types, an
+            // identifier is what a program passes when the two calls are not
+            // the same call.
+            let image = match which.parse::<usize>() {
+                Ok(index) => capture_window(index, cursor)?,
+                Err(_) => capture_window_by_id(which, cursor)?,
+            };
             let path = match args.get(2) {
                 Some(p) => p.clone(),
                 None => default_out()?,

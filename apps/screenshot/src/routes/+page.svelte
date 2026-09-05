@@ -372,7 +372,13 @@
   async function pickSource(value: string) {
     const [kind, idx] = value.split(":");
     const n = Number(idx);
-    const shot = kind === "window" ? await captureWindow(n) : await captureOutput(n);
+    // The identifier travels with the index, because the list and the capture
+    // are separate Wayland connections and a window opening in between moves
+    // the index onto somebody else's window.
+    const shot =
+      kind === "window"
+        ? await captureWindow(n, windows.find((w) => w.index === n)?.identifier ?? null)
+        : await captureOutput(n);
     if (shot.kind !== "image") {
       // A source that will not capture is reported where the picture would be,
       // not swallowed: a picker that silently keeps the old image is one that

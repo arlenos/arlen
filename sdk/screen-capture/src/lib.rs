@@ -218,6 +218,10 @@ struct WindowBinding {
     handle: ExtForeignToplevelHandleV1,
     title: Option<String>,
     app_id: Option<String>,
+    /// The protocol's own stable name for this toplevel. Kept because it is
+    /// the ONE thing about a window that means the same in another process:
+    /// an index is this enumeration's, and a title changes while you read it.
+    identifier: Option<String>,
 }
 
 /// A capturable window for the caller to choose from.
@@ -229,6 +233,12 @@ pub struct WindowInfo {
     pub title: Option<String>,
     /// The window's app id, when the compositor sent one.
     pub app_id: Option<String>,
+    /// The compositor's stable identifier for this toplevel
+    /// (`ext_foreign_toplevel_handle_v1::identifier`). The desktop shell keys
+    /// its own window list by the same string, so this is what a source
+    /// PICKED in one process can be CAPTURED by in another - which an index
+    /// into this call's enumeration cannot be.
+    pub identifier: Option<String>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for CaptureState {
@@ -409,6 +419,7 @@ impl Dispatch<ExtForeignToplevelListV1, ()> for CaptureState {
                 handle: toplevel,
                 title: None,
                 app_id: None,
+                identifier: None,
             });
         }
     }
@@ -433,6 +444,9 @@ impl Dispatch<ExtForeignToplevelHandleV1, ()> for CaptureState {
         match event {
             ext_foreign_toplevel_handle_v1::Event::Title { title } => w.title = Some(title),
             ext_foreign_toplevel_handle_v1::Event::AppId { app_id } => w.app_id = Some(app_id),
+            ext_foreign_toplevel_handle_v1::Event::Identifier { identifier } => {
+                w.identifier = Some(identifier)
+            }
             _ => {}
         }
     }
@@ -461,6 +475,7 @@ pub fn list_windows() -> Result<Vec<WindowInfo>> {
             index,
             title: w.title.clone(),
             app_id: w.app_id.clone(),
+            identifier: w.identifier.clone(),
         })
         .collect())
 }
@@ -923,6 +938,35 @@ fn capture_from_source(
 /// as a source, then the shared capture flow. The captured buffer is the window's
 /// current size (some compositors may omit decorations, per the protocol).
 pub fn capture_window(window_index: usize, include_cursor: bool) -> Result<CapturedImage> {
+    capture_window_selected(&WindowChoice::Index(window_index), include_cursor)
+}
+
+/// Capture the window the compositor calls `identifier`
+/// (`ext_foreign_toplevel_handle_v1::identifier`).
+///
+/// THE CROSS-PROCESS FORM, and the reason it exists: a source picker runs in
+/// the shell and the capture runs here, so whatever the picker returns has to
+/// mean the same thing in both. An index does not - it is a position in one
+/// call's enumeration, and a window opening between the pick and the capture
+/// shifts it onto somebody else's window. The identifier is the protocol's own
+/// answer to that, and the shell already keys its window list by it.
+///
+/// Refuses when no live toplevel carries the identifier, rather than falling
+/// back to a neighbour: a screenshot of the wrong window is worse than none.
+pub fn capture_window_by_id(identifier: &str, include_cursor: bool) -> Result<CapturedImage> {
+    capture_window_selected(&WindowChoice::Identifier(identifier.to_string()), include_cursor)
+}
+
+/// How a caller names the window it wants.
+enum WindowChoice {
+    Index(usize),
+    Identifier(String),
+}
+
+fn capture_window_selected(
+    choice: &WindowChoice,
+    include_cursor: bool,
+) -> Result<CapturedImage> {
     let conn = Connection::connect_to_env().context("connect to the Wayland compositor")?;
     let (globals, mut queue) =
         registry_queue_init::<CaptureState>(&conn).context("initialise the Wayland registry")?;
@@ -943,17 +987,28 @@ pub fn capture_window(window_index: usize, include_cursor: bool) -> Result<Captu
     queue.roundtrip(&mut state).context("roundtrip for the toplevel set")?;
     queue.roundtrip(&mut state).context("roundtrip for toplevel metadata")?;
 
-    let handle = state
-        .windows
-        .get(window_index)
-        .ok_or_else(|| {
-            anyhow!(
-                "window index {window_index} out of range ({} windows)",
-                state.windows.len()
-            )
-        })?
-        .handle
-        .clone();
+    let handle = match choice {
+        WindowChoice::Index(i) => state
+            .windows
+            .get(*i)
+            .ok_or_else(|| {
+                anyhow!("window index {i} out of range ({} windows)", state.windows.len())
+            })?
+            .handle
+            .clone(),
+        WindowChoice::Identifier(id) => state
+            .windows
+            .iter()
+            .find(|w| w.identifier.as_deref() == Some(id.as_str()))
+            .ok_or_else(|| {
+                anyhow!(
+                    "no window with identifier {id} ({} window(s) open)",
+                    state.windows.len()
+                )
+            })?
+            .handle
+            .clone(),
+    };
     let source = window_source_manager.create_source(&handle, &qh, ());
     capture_from_source(
         &mut queue,
