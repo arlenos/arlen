@@ -449,6 +449,8 @@ jobs:
           node dev/scripts/test-check-profile-keys.mjs
           python3 dev/scripts/check-refusal-language.py
           node dev/scripts/test-check-refusal-language.mjs
+          python3 dev/scripts/check-copy-characters.py
+          node dev/scripts/test-check-copy-characters.mjs
           python3 dev/scripts/check-untranslated-render.py
           node dev/scripts/test-check-untranslated-render.mjs
           python3 dev/scripts/check-dbus-members-exist.py
