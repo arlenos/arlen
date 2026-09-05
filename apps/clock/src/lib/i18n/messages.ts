@@ -19,7 +19,7 @@ const messages: Catalogs = {
     "c.menu.addCity": "Add city",
     "c.menu.view": "View",
     "c.sample": "Example state - no clock service is running.",
-    "c.unavailable": "Cannot read your saved clock data right now, so nothing on this tab is shown.",
+    "c.unavailable": "Cannot read your saved clock data right now.",
     "c.notRunning": "The clock service is not running, so your alarms and timers are not being kept.",
     "c.actionFailed": "That did not reach the clock service, so nothing was set.",
 
@@ -98,7 +98,7 @@ const messages: Catalogs = {
     "c.menu.addCity": "Stadt hinzufügen",
     "c.menu.view": "Ansicht",
     "c.sample": "Beispielzustand - es läuft kein Uhr-Dienst.",
-    "c.unavailable": "Deine gespeicherten Uhr-Daten k\u00f6nnen gerade nicht gelesen werden, daher wird auf diesem Tab nichts angezeigt.",
+    "c.unavailable": "Deine gespeicherten Uhr-Daten k\u00f6nnen gerade nicht gelesen werden.",
     "c.notRunning": "Der Uhr-Dienst l\u00e4uft nicht, deine Wecker und Timer werden also nicht gef\u00fchrt.",
     "c.actionFailed": "Das hat den Uhrendienst nicht erreicht, es wurde nichts gestellt.",
 
