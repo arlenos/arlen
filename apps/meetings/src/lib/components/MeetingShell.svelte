@@ -66,4 +66,26 @@
     flex: 0 0 24rem;
     min-height: 0;
   }
+  /* THEY STACK WHERE THEY CANNOT SIT SIDE BY SIDE, and what forced this is the
+     worst starved column measured today. The rail is `flex: 0 0 24rem` - 384px
+     that never shrink - beside a content column that does. At 720, with the app
+     sidebar taking its share, the body is about 470: the rail kept all 384 and
+     the person's OWN NOTES were left 22px, rendering one word per line down a
+     ribbon ("why / build / our / own / editor:") and further down single
+     letters stacked vertically.
+     
+     Below 60rem the transcript goes under the notes instead. It is the
+     verification source and the notes are the thing being verified, so if only
+     one can be full width it is not the rail; and stacked, both keep their own
+     scroll rather than one being reduced to a column of letters. */
+  @media (max-width: 60rem) {
+    .shell-body.with-rail {
+      flex-direction: column;
+    }
+    .shell-body.with-rail > :global(aside) {
+      flex: 1 1 40%;
+      border-inline-start: none;
+      border-top: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    }
+  }
 </style>
