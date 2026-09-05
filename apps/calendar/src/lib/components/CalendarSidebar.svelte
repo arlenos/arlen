@@ -195,7 +195,4 @@
     line-height: 1.4;
     color: color-mix(in srgb, currentColor 55%, transparent);
   }
-  .side-note.bad {
-    color: var(--color-warning, #eab308);
-  }
 </style>
