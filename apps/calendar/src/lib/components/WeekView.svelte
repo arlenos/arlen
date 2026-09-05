@@ -516,11 +516,26 @@
     white-space: nowrap;
     font-size: var(--text-xs, 12px);
     font-weight: 500;
+    /* A LINE THAT FITS THE SHORTEST BLOCK. The block floors at 20px - fifteen
+       minutes at this zoom - and its padding takes 6 of that, so a title has 14px
+       to live in. At the inherited line-height a 12px font asks for 19 and the
+       word is cut across the middle: measured at 1920 on 5 September, five
+       "Standup" titles and one "Call with New York" reading `tall 14<19`.
+       Raising the floor instead would draw a quarter-hour event taller than a
+       quarter hour, which trades a readable label for a grid that lies about
+       time. */
+    line-height: 1.15;
   }
   .b-time {
     font-size: var(--text-2xs, 10px);
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
     font-variant-numeric: tabular-nums;
+    /* Tight for the same reason as the title above, and it is the line that was
+       taking the room. A 45-minute block is 36px with 30px inside it; at the
+       inherited line-height this 10px font claimed 18 of those, the title was
+       squeezed to 11 against the 14 it needed, and "Call with New York" was cut
+       across the middle while its own time sat whole underneath. */
+    line-height: 1.15;
   }
   .resize-handle {
     position: absolute;
