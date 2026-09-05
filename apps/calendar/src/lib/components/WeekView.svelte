@@ -80,10 +80,23 @@
   });
 
   /// Which date a clientX falls into, from the grid's own geometry.
+  ///
+  /// THE GUTTER IS READ, NOT ASSUMED. It was `3.5 * 16` here while the stylesheet
+  /// held the same number twice more, and widening the column for the German
+  /// all-day label would have left this arithmetic pointing at the old edge - so a
+  /// click would have landed on the wrong day, silently, in the one app whose job
+  /// is being right about when things are. Asking the element removes the third
+  /// copy: whatever `--gutter` says is what the grid actually drew.
   function dateAtX(clientX: number): string {
     if (!gridEl) return days[0];
     const rect = gridEl.getBoundingClientRect();
-    const gutter = 3.5 * 16;
+    const declared = getComputedStyle(gridEl).getPropertyValue("--gutter").trim();
+    // `getPropertyValue` gives the authored value ("5.25rem"), not pixels, so the
+    // rem has to be resolved against the root font size rather than guessed at 16.
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const gutter = declared.endsWith("rem")
+      ? parseFloat(declared) * rem
+      : parseFloat(declared) || 3.5 * rem;
     const colW = (rect.width - gutter) / days.length;
     const i = Math.floor((clientX - rect.left - gutter) / colW);
     return days[Math.max(0, Math.min(days.length - 1, i))];
@@ -353,6 +366,19 @@
 
 <style>
   .week {
+    /* THE GUTTER HAS TO HOLD ITS OWN LABEL IN EVERY LANGUAGE IT SHIPS, and at
+       3.5rem it did not. English is "ALL DAY", which wraps on its space and fits
+       in two lines; German is "Ganztägig", one word, measured at 82px against the
+       56 it was given - cut at 720, at 1280 and at 1920 alike, because a fixed
+       gutter does not care how wide the window is. Reducing the label's padding to
+       zero still leaves it 10px short, so there was no fix inside the old width.
+
+       5.25rem is what the German word needs. It was three separate literals
+       before - two grids here and the hit-testing arithmetic in `dateAtX` - which
+       is a drift waiting to happen, and nearly did: widening only the CSS would
+       have sent a click to the wrong day. One property now, and the script reads
+       it. */
+    --gutter: 5.25rem;
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -361,7 +387,7 @@
   .head-row,
   .allday-row {
     display: grid;
-    grid-template-columns: 3.5rem repeat(var(--cols), minmax(0, 1fr));
+    grid-template-columns: var(--gutter) repeat(var(--cols), minmax(0, 1fr));
     border-bottom: 1px solid var(--color-border-default, #262626);
   }
   .day-head {
@@ -427,7 +453,7 @@
   .grid {
     position: relative;
     display: grid;
-    grid-template-columns: 3.5rem repeat(var(--cols), minmax(0, 1fr));
+    grid-template-columns: var(--gutter) repeat(var(--cols), minmax(0, 1fr));
   }
   .hours {
     position: relative;

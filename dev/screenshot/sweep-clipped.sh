@@ -53,7 +53,14 @@ locale="${2:?give a locale, e.g. de}"
 # truncates to a single glyph because the view switcher takes the row. A window
 # is resizable, so a clean line means clean AT THAT WIDTH and the sweep has to
 # say which.
-width="${SWEEP_WIDTH:-1280}"
+#
+# THREE WIDTHS BY DEFAULT, since a sweep that has to be run three times to learn
+# that gets run once. 720 is a window dragged narrow, 1280 the shape most of these
+# open at, 1920 a monitor - and all three have now produced a finding the other two
+# missed: the collapsed date title at 720, the clean baseline at 1280, the event
+# labels cut by their own blocks at 1920. `SWEEP_WIDTH` still overrides, with one
+# width or several: `SWEEP_WIDTH="800 1440"`.
+widths="${SWEEP_WIDTH:-720 1280 1920}"
 shift 2
 [ "$#" -gt 0 ] || { echo "give at least one path" >&2; exit 2; }
 
@@ -92,7 +99,9 @@ esac
 checked=0
 
 fail=0
-for spec in "$@"; do
+for width in $widths; do
+ echo "  ==   at ${width}px"
+ for spec in "$@"; do
   path="${spec%%::*}"
   open=""
   [ "$spec" != "$path" ] && open="${spec#*::}"
@@ -119,6 +128,7 @@ for spec in "$@"; do
       fail=1
       ;;
   esac
+ done
 done
-echo "  --   $checked view(s) read in $locale at ${width}px; anything not named here was not looked at"
+echo "  --   $checked view(s) read in $locale across ${widths// /, }px; anything not named here was not looked at"
 exit "$fail"
