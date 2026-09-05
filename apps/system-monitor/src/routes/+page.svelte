@@ -73,8 +73,16 @@
     return stopProcessPolling;
   });
 
-  // Window chrome: explicit startDragging (data-tauri-drag-region is
-  // unreliable on Wayland in Tauri v2), guarded so vite still renders.
+  // Window chrome: explicit startDragging rather than `data-tauri-drag-region`,
+  // and the attribute is not so much unreliable as NARROW: Tauri's injected handler
+  // (tauri 2.10.3 `window/scripts/drag.js`) delegates on `document` and tests
+  // `e.target.getAttribute(...)` - the exact element under the pointer, walking no
+  // ancestors. A press on any child, a label, an icon, the gap inside a nested flex
+  // box, is not a press on the drag region, so a header built from nested boxes
+  // drags only on the slivers of itself that show through. `isInteractive` below
+  // uses `closest`, which DOES walk, so this path drags from anywhere in the header
+  // except the controls.
+  // Guarded so vite still renders.
   function isInteractive(e: Event): boolean {
     const target = e.target as HTMLElement | null;
     return !!target?.closest("button, a, input, [role='button']");

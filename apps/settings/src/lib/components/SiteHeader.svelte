@@ -2,8 +2,15 @@
   /// Top bar: sidebar trigger + breadcrumbs + window controls.
   ///
   /// Window drag is wired via an explicit pointerdown handler calling
-  /// `startDragging()` rather than `data-tauri-drag-region`, because
-  /// the attribute-based path is unreliable on Wayland in Tauri v2.
+  /// `startDragging()` rather than `data-tauri-drag-region`.
+  ///
+  /// The attribute is not so much unreliable as NARROW. Tauri's injected handler
+  /// (tauri 2.10.3 `window/scripts/drag.js`) delegates on `document` and tests
+  /// `e.target.getAttribute(...)`, the exact element under the pointer, walking no
+  /// ancestors - so a press on any child, a label, an icon, the gap inside a nested
+  /// flex box, is not a press on the drag region. A header built from nested boxes
+  /// drags only on the slivers of itself that show through. The handler here uses
+  /// `closest`, which DOES walk, so it drags from anywhere except the controls.
   import { breadcrumbs } from "$lib/stores/navigation";
   import { t } from "$lib/i18n/messages";
   import { SidebarTrigger } from "@arlen/ui-kit/components/ui/sidebar";
