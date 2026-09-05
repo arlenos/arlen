@@ -28,11 +28,7 @@
 // reads. That does leave a real gap: a scrollable container with no visible way to
 // scroll hides text too, and telling those apart needs more than geometry.
 const out = [];
-const clipper = (el) => {
-  const s = getComputedStyle(el);
-  return s.overflowX === "hidden" || s.overflowX === "clip" ||
-         s.overflowY === "hidden" || s.overflowY === "clip";
-};
+const clips = (v) => v === "hidden" || v === "clip";
 for (const el of document.querySelectorAll("body *")) {
   if (el.children.length) continue;
   const t = (el.textContent || "").trim();
@@ -42,14 +38,26 @@ for (const el of document.querySelectorAll("body *")) {
   const r = el.getBoundingClientRect();
   if (r.width <= 1 || r.height <= 1) continue;
   for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-    if (!clipper(p)) continue;
+    const ps = getComputedStyle(p);
     const pr = p.getBoundingClientRect();
-    // How far the text sticks out of the box that will cut it. A pixel or two is
-    // a rounded corner or a subpixel edge; a cut somebody notices is wider.
-    const past = Math.max(pr.left - r.left, r.right - pr.right, pr.top - r.top, r.bottom - pr.bottom);
+    // PER AXIS, because a box clips per axis. The first cut of this took the max
+    // of all four sides against any clipping parent, so every element below the
+    // fold of a vertically-clipped container read as cut - which on the privacy
+    // page was most of the page, and a probe that reports most of the page reports
+    // nothing. An element is only cut on the axis its ancestor actually clips.
+    // SIDEWAYS ONLY, and the vertical axis is left alone deliberately. Content
+    // below the fold of a clipped wrapper is the ordinary case - some ancestor
+    // scrolls and the reader reaches it - so counting it reported most of the
+    // privacy page. Telling an unreachable vertical cut from a scrollable one
+    // needs to know which ancestor scrolls and whether it can, which is more than
+    // geometry, so this answers the question it can: text pushed out the SIDE of a
+    // box that will not give it back.
+    const past = clips(ps.overflowX)
+      ? Math.max(pr.left - r.left, r.right - pr.right)
+      : 0;
     if (past > 3) {
       const cls = (p.className || "").toString().split(" ")[0] || p.tagName.toLowerCase();
-      out.push(`${el.tagName.toLowerCase()}.${(el.className || "").toString().split(" ")[0]}: "${t.slice(0, 30)}" cut ${Math.round(past)}px past .${cls}`);
+      out.push(`${el.tagName.toLowerCase()}.${(el.className || "").toString().split(" ")[0]}: "${t.slice(0, 30)}" cut ${Math.round(past)}px sideways by .${cls}`);
       break;
     }
   }
