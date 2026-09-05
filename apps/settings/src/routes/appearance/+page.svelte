@@ -315,6 +315,15 @@
     opacity: 0;
   }
 
+  /* The swatch IS the control and the input inside it is invisible, so focus
+     lands on something with nothing to show. A keyboard reaching this picker saw
+     no sign of it at all; `:focus-within` puts the ring on the thing a person
+     can see. Same treatment, same reason, wherever this pattern is written. */
+  .cf-swatch:focus-within {
+    outline: 2px solid var(--color-accent, var(--foreground));
+    outline-offset: 2px;
+  }
+
   .cust-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
