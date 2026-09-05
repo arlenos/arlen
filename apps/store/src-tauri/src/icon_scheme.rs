@@ -244,6 +244,30 @@ mod tests {
     }
 
     #[test]
+    fn a_url_this_emits_resolves_back_to_the_file_it_came_from() {
+        // THE JOINT, and the only place a bug in this module can hide. `paintable`
+        // writes the URL and `resolve` reads it, and each is correct on its own
+        // terms; what matters is that the second accepts what the first produces,
+        // over a REAL file, with canonicalisation and the extension check live.
+        // A percent-encoding disagreement or a root written one way here and
+        // another there would pass every test above and serve nothing.
+        let dir = std::env::temp_dir().join(format!("arlen-icon-{}", std::process::id()));
+        let root = dir.join("icons");
+        let sub = root.join("debian-trixie-main/64x64");
+        std::fs::create_dir_all(&sub).expect("temp dirs");
+        let file = sub.join("gnome chess+.png");
+        std::fs::write(&file, b"not really a png").expect("temp file");
+
+        let roots = [root.to_str().expect("utf8 temp path")];
+        let url = paintable(Some(file.to_string_lossy().into_owned()), &roots)
+            .expect("a real file under a root is paintable");
+        let back = resolve(&url, &roots).expect("the url this module emitted must resolve");
+        assert_eq!(back, std::fs::canonicalize(&file).expect("canonicalize"));
+
+        std::fs::remove_dir_all(&dir).expect("the fixture this test made");
+    }
+
+    #[test]
     fn a_bare_theme_name_paints_no_picture() {
         // The third icon shape DEP-11 uses. There is no file to point at, so the
         // tile takes its monogram rather than a URL that would 404.
