@@ -592,6 +592,81 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_id_that_would_leave_the_maildir_moves_nothing() {
+        // A rename is where a traversal would actually cost something, since it
+        // MOVES a file rather than showing one, and nothing asserted the write
+        // path refuses one.
+        //
+        // WHAT THIS PINS, measured rather than assumed: no single guard is
+        // load-bearing here. I disabled each in turn - `safe_id`, the
+        // canonicalised containment check in `message_path`, and the id-shape
+        // rule in `split_id` that the middle segment be `new` or `cur` - and
+        // each of these ids is still refused with the other two standing. So
+        // this test does not go red for a weakened gate; it goes red for a
+        // rewrite that stops going through them altogether, which is the
+        // plausible way a write path loses its guards.
+        let root = a_maildir();
+        let outside = root.parent().unwrap().join(format!("escape-{}", std::process::id()));
+        std::fs::write(&outside, b"not mail").unwrap();
+        let escapes = [
+            "../escape",
+            "cur/../../escape",
+            "/etc/passwd",
+            "cur//1.host",
+            "cur/./1.host",
+        ];
+        for bad in escapes {
+            assert_eq!(mark_seen(&root, bad), Err(WriteProblem::NoSuchMessage), "{bad}");
+            assert_eq!(move_to(&root, bad, ".Sent"), Err(WriteProblem::NoSuchMessage), "{bad}");
+            assert_eq!(delete(&root, bad), Err(WriteProblem::NoSuchMessage), "{bad}");
+        }
+        assert!(outside.exists(), "a refused write must not have touched the file outside");
+        std::fs::remove_file(&outside).ok();
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_move_into_the_folder_it_is_already_in_changes_nothing() {
+        let root = a_maildir();
+        let same = move_to(&root, ".Sent/cur/4.host:2,S", ".Sent").unwrap();
+        assert_eq!(same, ".Sent/cur/4.host:2,S");
+        assert!(root.join(".Sent/cur/4.host:2,S").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_write_to_a_message_that_is_not_there_is_refused_rather_than_created() {
+        let root = a_maildir();
+        assert_eq!(mark_seen(&root, "cur/nope.host"), Err(WriteProblem::NoSuchMessage));
+        assert_eq!(delete(&root, "cur/nope.host"), Err(WriteProblem::NoSuchMessage));
+        assert!(!root.join("cur/nope.host").exists(), "nothing may be created by a failed write");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_second_draft_lands_beside_the_first_rather_than_over_it() {
+        // The folder-creating path is tested; this is the ordinary one, where
+        // `.Drafts` already exists and the unique name has to actually be unique.
+        let root = a_maildir();
+        let one = save_draft(&root, "a@example.org", "One", "first").unwrap();
+        let two = save_draft(&root, "b@example.org", "Two", "second").unwrap();
+        assert_ne!(one, two);
+        assert!(root.join(&one).exists() && root.join(&two).exists());
+        assert_eq!(std::fs::read_dir(root.join(".Drafts/cur")).unwrap().count(), 2);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reading_a_message_keeps_the_flags_it_already_had() {
+        let root = a_maildir();
+        // `3.host:2,R` is replied-to and unread; reading it must not lose the R.
+        let moved = mark_seen(&root, "cur/3.host:2,R").unwrap();
+        assert_eq!(moved, "cur/3.host:2,RS");
+        assert!(root.join("cur/3.host:2,RS").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn reading_a_message_moves_it_into_cur_and_flags_it() {
         let root = a_maildir();
         let moved = mark_seen(&root, "new/1.host").unwrap();
