@@ -247,6 +247,7 @@ jobs:
           python3 dev/scripts/check-invoke-shape.py
           node dev/scripts/test-check-invoke-shape.mjs
           python3 dev/scripts/check-invoke-exists.py
+          node dev/scripts/test-check-invoke-exists.mjs
           python3 dev/scripts/check-optimistic-write.py
           python3 dev/scripts/check-granted-and-used.py
           python3 dev/scripts/check-window-grants.py
