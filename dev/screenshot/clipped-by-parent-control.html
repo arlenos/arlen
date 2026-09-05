@@ -3,6 +3,12 @@
          /tmp/x.png dev/screenshot/clipped-by-parent.js 800 400
      must answer exactly one:
        ['span.cut: "Cut off by its parent" cut 131px sideways by .hidden']
+
+     Four cases; three must NOT come back - a scroll parent, a scroller inside a
+     clipping card, and a span that fits. The middle one is the case that needed
+     a rule: with the stop-at-the-first-scroller line removed it comes back as
+     "cut 230px sideways by .div", so it is proving something. The other two are
+     silenced by the `clips()` filter itself and would pass either way.
 -->
 <body style="margin: 0; background: #111; color: #eee; font: 14px system-ui">
   <!-- The fault: the span fits its own box, and the box sits past the edge of a
@@ -15,6 +21,15 @@
        purpose, and the reader can reach it. -->
   <div style="width: 120px; overflow: auto; white-space: nowrap; height: 24px">
     <span style="position: relative; left: 120px">Reachable by scrolling</span>
+  </div>
+
+  <!-- MUST NOT be reported: a scroller INSIDE a clipping card, which is the shape
+       every code block in the tree has - `overflow: hidden` for the rounded
+       corners, a `<pre>` that scrolls inside it. The probe used to climb past the
+       scroller and blame the card, so the text editor reported four tokens "cut
+       by .code-block" that were one drag away. -->
+  <div style="width: 140px; overflow: hidden; border-radius: 8px; background: #1a1a1a">
+    <pre style="margin: 0; overflow-x: auto; white-space: pre"><span class="tok">a line far wider than the card that holds it</span></pre>
   </div>
 
   <!-- MUST NOT be reported: inside its parent, where it belongs. -->

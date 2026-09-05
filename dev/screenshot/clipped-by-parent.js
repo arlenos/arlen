@@ -29,6 +29,14 @@
 // scroll hides text too, and telling those apart needs more than geometry.
 const out = [];
 const clips = (v) => v === "hidden" || v === "clip";
+// AND THE WALK STOPS AT THE FIRST SCROLLER. The rule above was right and the loop
+// did not obey it: it climbed past a scrollable ancestor to whatever clipped
+// higher up and blamed that. The text editor's code blocks are the case - a
+// `<pre>` with `overflow-x: auto` (client 311, scroll 637, so it really does
+// scroll) inside a card with `overflow: hidden` for its rounded corners. Every
+// token past the fold was reported "cut by .code-block", and all of them are one
+// drag away. Content outside a scroller is scrolled, not cut.
+const scrolls = (v) => v === "auto" || v === "scroll";
 for (const el of document.querySelectorAll("body *")) {
   if (el.children.length) continue;
   const t = (el.textContent || "").trim();
@@ -52,9 +60,9 @@ for (const el of document.querySelectorAll("body *")) {
     // needs to know which ancestor scrolls and whether it can, which is more than
     // geometry, so this answers the question it can: text pushed out the SIDE of a
     // box that will not give it back.
-    const past = clips(ps.overflowX)
-      ? Math.max(pr.left - r.left, r.right - pr.right)
-      : 0;
+    const outside = Math.max(pr.left - r.left, r.right - pr.right);
+    if (scrolls(ps.overflowX) && outside > 3) break;
+    const past = clips(ps.overflowX) ? outside : 0;
     if (past > 3) {
       const cls = (p.className || "").toString().split(" ")[0] || p.tagName.toLowerCase();
       out.push(`${el.tagName.toLowerCase()}.${(el.className || "").toString().split(" ")[0]}: "${t.slice(0, 30)}" cut ${Math.round(past)}px sideways by .${cls}`);
