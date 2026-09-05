@@ -36,8 +36,8 @@
 //   dev/screenshot/shoot.sh "file://$PWD/dev/screenshot/clipped-text-control.html" \
 //     /tmp/x.png dev/screenshot/clipped-text.js 800 400
 //
-//   ['div.: "Vertrauensstufe verschlagwortet" wide 60<186',
-//    'div.: "A line taller than its box" tall 14<19']
+//   ['div.: "Vertrauensstufe verschlagwortet" wide-cut 60<186',
+//    'div.: "A line taller than its box" tall-cut 14<19']
 //
 // Four boxes: one too narrow, one too short, one screen-reader-hidden and one
 // that fits. The last two must NOT appear. So an empty result means the page is
@@ -61,14 +61,24 @@ for (const el of document.querySelectorAll("body *")) {
   if (!t) continue;
   const cls = (el.className || "").toString().split(" ")[0];
   const where = `${el.tagName.toLowerCase()}.${cls}: "${t.slice(0, 40)}"`;
+  // DECLARED TRUNCATION IS NOT THE SAME AS A CUT, and the probe could not tell
+  // them apart. A link-card description with `text-overflow: ellipsis` and
+  // `white-space: nowrap` is a design saying "this line ends in a … when it runs
+  // out"; a label without them is a design that did not know it would run out.
+  // Both lose text and only the second is a surprise, so they are LABELLED rather
+  // than merged - and neither is dropped, because an ellipsis still withholds
+  // words unless something else offers them, which is a judgement for a reader
+  // and not for this.
+  const declared = s.textOverflow === "ellipsis" && s.whiteSpace.startsWith("nowrap");
+  const kind = declared ? "ellipsed" : "cut";
   // Named per axis rather than merged, because the fixes are different: a wide
   // one wants a floor, an ellipsis or a shorter string, a tall one wants room or
   // fewer lines.
   if (el.scrollWidth > el.clientWidth + 1) {
-    out.push(`${where} wide ${el.clientWidth}<${el.scrollWidth}`);
+    out.push(`${where} wide-${kind} ${el.clientWidth}<${el.scrollWidth}`);
   }
   if (el.scrollHeight > el.clientHeight + 1) {
-    out.push(`${where} tall ${el.clientHeight}<${el.scrollHeight}`);
+    out.push(`${where} tall-${kind} ${el.clientHeight}<${el.scrollHeight}`);
   }
 }
 return out.slice(0, 12);
