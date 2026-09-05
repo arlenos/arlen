@@ -337,7 +337,7 @@
                 <span class="tl-icon"><Icon size={14} strokeWidth={1.75} /></span>
                 <span class="tl-verb">{$t(item.event.verb)}</span>
                 <span class="tl-object">
-                  {item.event.object}
+                  <span class="tl-object-text">{item.event.object}</span>
                   {#if item.event.project}<span class="tl-chip">{item.event.project}</span>{/if}
                 </span>
                 <span class="tl-source">{item.event.source}</span>
@@ -365,7 +365,7 @@
                       <button type="button" class="tl-row nested" onclick={() => onselect(e)}>
                         <span class="tl-icon"><Icon size={14} strokeWidth={1.75} /></span>
                         <span class="tl-verb">{$t(e.verb)}</span>
-                        <span class="tl-object">{e.object}</span>
+                        <span class="tl-object"><span class="tl-object-text">{e.object}</span></span>
                         <span class="tl-source">{e.source}</span>
                         <span class="tl-time">{clock(e.at, $locale)}</span>
                       </button>
@@ -547,6 +547,19 @@
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
+  /* THE TEXT IS ITS OWN ELEMENT, and that is the whole fix. `text-overflow`
+     applies to a box whose INLINE CONTENT overflows; this is `inline-flex`, so
+     its children are flex items and the property did nothing at all. Rendered
+     at 720 the rows read "Quarterly report.pd" and "3 files to Thesis" - cut
+     mid-glyph with no ellipsis, so a filename lost its extension and looked
+     like a filename. Moving the words into a child that IS a text box gives
+     them the ellipsis the declaration always claimed.
+     
+     And the chip survives it. A `flex-shrink: 0` chip beside an anonymous text
+     item is pushed off the end when the column is short: measured, "Thesis" cut
+     110px sideways, and what was drawn was half a chip background with three
+     letters in it. The text shrinks now because it can go below its own
+     min-content, so the project a file belongs to stays whole. */
   .tl-object {
     display: inline-flex;
     align-items: baseline;
@@ -555,6 +568,11 @@
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--color-fg-primary);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .tl-object-text {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
