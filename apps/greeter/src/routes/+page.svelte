@@ -88,6 +88,13 @@
 <GreeterBackground image={wallpaper} highContrast={$a11y.highContrast} />
 
 <main class="greeter" class:hc={$a11y.highContrast}>
+  <!-- The page's one level-one heading. Every app in this tree had none, so a
+       screen reader's first question - what IS this window - was answered only
+       by the window title, which is not in the document. The app NAME rather
+       than the visible bar title, which says where you are inside the app and
+       changes as you move; hidden, because the bar already shows that and a
+       second visible title would be the same fact twice. -->
+  <h1 class="sr-only">{$t("g.app.title")}</h1>
   <div class="top">
     <Clock />
   </div>
