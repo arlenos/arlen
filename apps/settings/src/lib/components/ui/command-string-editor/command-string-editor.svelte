@@ -51,15 +51,22 @@
   /// the error message to show inline. We accept bare strings too
   /// because legacy user configs may rely on them — the compositor
   /// dispatches them as raw `/bin/sh -c` for backward compat.
+  ///
+  /// THE THREE SENTENCES ARE CATALOGUE KEYS, not literals. They were written in
+  /// English here and rendered straight into the page, so the System Actions
+  /// editor answered a German reader in English - the born-translatable shape,
+  /// on a surface nothing was looking at because the string never passes through
+  /// `$t` at its render site. Found by scanning for an error-shaped value
+  /// rendered with no translated sentence around it, 6 September.
   function validate(s: string): string | null {
     const trimmed = s.trim();
-    if (trimmed.length === 0) return "Empty command";
+    if (trimmed.length === 0) return $t("s.cmdEditor.empty");
     if (trimmed.startsWith("shell:")) {
       const event = trimmed.slice("shell:".length).trim();
-      if (event.length === 0) return "shell: needs an event name";
+      if (event.length === 0) return $t("s.cmdEditor.needEvent");
     } else if (trimmed.startsWith("spawn:")) {
       const cmd = trimmed.slice("spawn:".length).trim();
-      if (cmd.length === 0) return "spawn: needs a command";
+      if (cmd.length === 0) return $t("s.cmdEditor.needCommand");
     }
     return null;
   }
