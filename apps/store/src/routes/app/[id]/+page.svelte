@@ -17,7 +17,7 @@
   import {
     apps,
     catalogMocked,
-    loadCatalog,
+    appDetail,
     trustFor,
     observedFor,
     installApp,
@@ -28,6 +28,7 @@
     type LayerSignals,
     type ObservedStatus,
     type SourceLayer,
+    type StoreCard,
     type StoreVariant,
     type Tier,
   } from "$lib/stores/catalog";
@@ -39,7 +40,19 @@
   const pending = $derived($pendingUpdates.some((u) => u.id === id));
   const removal = $derived(id ? $uninstallStatus[id] : undefined);
   let confirmUninstall = $state(false);
-  const app = $derived($apps.find((a) => a.id === id) ?? null);
+  // ONE APP, READ BY ID. This was `$apps.find(...)` over a catalogue fetched by
+  // `loadCatalog()` - `store_search` with an empty query - so opening one app
+  // pulled every component on the machine across the IPC boundary and then
+  // discarded all but one. `store_app_detail` was implemented and registered for
+  // that and nothing called it.
+  //
+  // The list store is still consulted FIRST, and not as a fallback: arriving
+  // from the catalogue page means the entry is already in hand, so the page
+  // paints immediately and the detail read refines it. Arriving by URL or reload
+  // has no list, and then the id read is the only source.
+  let detail = $state<StoreCard | null>(null);
+  let detailRead = $state(false);
+  const app = $derived(detail ?? $apps.find((a) => a.id === id) ?? null);
 
   // The chosen install variant; the capability panel below follows it, so
   // "install the least-privilege variant" is a real, visible choice (§9.1).
@@ -50,9 +63,23 @@
   let trust = $state<LayerSignals>([]);
   let observed = $state<ObservedStatus | null>(null);
 
-  onMount(async () => {
+  onMount(() => {
     void loadUpdates();
-    await loadCatalog();
+  });
+
+  // Re-read whenever the route id changes, so navigating between two app pages
+  // does not leave the first one's card on screen.
+  $effect(() => {
+    const want = id;
+    if (!want) return;
+    detailRead = false;
+    void appDetail(want).then((card) => {
+      // A late answer for an app the reader has already navigated away from
+      // must not overwrite the current one.
+      if (want !== id) return;
+      detail = card;
+      detailRead = true;
+    });
   });
 
   // Load the per-app reads once the catalogue entry is there.
@@ -292,8 +319,14 @@
         <div class="group-label">{$t("st.about")}</div>
         <p class="desc">{app.description}</p>
       {/if}
-    {:else}
+    {:else if detailRead}
       <p class="quiet">{$t("st.notFound")}</p>
+    {:else}
+      <!-- The read is still out. Saying "not in the catalogue" here would be a
+           claim about the catalogue made before anyone asked it - and with the
+           per-id read this is now a real moment on a cold open, where before the
+           whole catalogue arrived at once. -->
+      <p class="quiet">{$t("st.reading")}</p>
     {/if}
   </div>
 </main>
