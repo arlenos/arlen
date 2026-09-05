@@ -14,7 +14,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Archive, Inbox, Send, SquarePen, Trash2, Plus } from "@lucide/svelte";
   import { t } from "$lib/i18n/messages";
-  import { folders, envelopes, mailboxWritable, type FolderKind } from "$lib/stores/mailbox";
+  import { folders, envelopes, mailboxWritable, mailboxComposes, type FolderKind } from "$lib/stores/mailbox";
 
   let {
     activeFolder,
@@ -57,9 +57,10 @@
          stays the rail's uniform 32px box - an earlier pass shrank only the
          first box to 28px and it read as broken, smaller and shifted against
          its siblings. -->
-    <!-- Compose only while the mailbox keeps a draft; live there is nothing
-         that would, so the row is not there rather than there and lying. -->
-    {#if $mailboxWritable}
+    <!-- Compose only where a message could go somewhere. A maildir keeps a
+         draft now, but sending needs an account and there is none, so the row is
+         absent live rather than there and lying (`mail-app.md`). -->
+    {#if $mailboxComposes}
       <SidebarGroup class="pt-1.5">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -73,7 +74,7 @@
     {/if}
 
     {#if $folders.length > 0}
-      <SidebarGroup class={$mailboxWritable ? "pt-0" : "pt-1.5"}>
+      <SidebarGroup class={$mailboxComposes ? "pt-0" : "pt-1.5"}>
         <SidebarMenu>
           {#each $folders as f (f.id)}
             {@const Icon = ICONS[f.kind]}

@@ -335,9 +335,20 @@ export const mailboxState = writable<MailboxState>("loading");
 export const mailboxRoot = writable<string | null>(null);
 /// True while the mailbox is the FIXTURE - the surface says so.
 export const mailboxMocked = derived(mailboxState, ($s) => $s === "sample");
-/// Whether the writes (compose, archive, delete) are on offer: only the sample
-/// keeps them, so live they are not shown rather than shown and undone.
-export const mailboxWritable = derived(mailboxState, ($s) => $s === "sample");
+/// Whether the mailbox can KEEP a write - archive, delete, the read mark, a
+/// draft. The sample keeps them in memory; a maildir keeps them on disk, since
+/// 5 September, because each of those four is a rename or a file
+/// (`mail_mark_seen`, `mail_move`, `mail_delete`, `mail_draft_save`). It was
+/// sample-only while they were pretences: a message "archived" into a store and
+/// back in the inbox at the next start is worse than a control that is not there.
+export const mailboxWritable = derived(mailboxState, ($s) => $s === "sample" || $s === "live");
+/// Whether STARTING a message is on offer, which is a different question and has
+/// a different answer. Writing a draft works on a maildir; sending needs an
+/// account and Arlen has no account surface anywhere, so `mail-app.md` rules
+/// Compose stays absent live and no line explains the absence. Reply and Forward
+/// are not this: they answer a message that is in front of you, and they land in
+/// the same drafts folder the ruling names.
+export const mailboxComposes = derived(mailboxState, ($s) => $s === "sample");
 /// The inbox unread count, derived so the rail never counts by hand.
 export const unreadCount = derived(envelopes, ($e) => $e.filter((x) => x.unread && x.folderId === "inbox").length);
 
@@ -410,25 +421,96 @@ export async function openMessage(id: string): Promise<Message | null> {
   }
 }
 
-/// Selecting a message marks it read; local until the backend owns flags.
-export function markRead(id: string): void {
+/// The folder a caller named, by its id or by its kind.
+///
+/// The two coincide on the fixture and never live: the sample's ids ARE the
+/// kinds (`archive`, `trash`), a maildir's are its directory names (`.Archive`).
+/// A surface that says "archive this" means the rail, not a path, so the store
+/// resolves it and the page keeps saying what it means.
+function folderNamed(target: string): Folder | undefined {
+  const all = get(folders);
+  return all.find((f) => f.id === target) ?? all.find((f) => f.kind === target);
+}
+
+/// Mark a message read.
+///
+/// THE ID CHANGES LIVE, because a maildir message's flags are in its filename.
+/// The row carries the new one, or the write did not happen and the row is left
+/// exactly as it was - a dot cleared over a failed rename is the optimistic
+/// write this tree has a gate against, and here it would mean a message the
+/// person believes they have read coming back unread at the next start.
+export async function markRead(id: string): Promise<void> {
+  if (get(mailboxState) === "live") {
+    let next: string;
+    try {
+      next = await invoke<string>("mail_mark_seen", { id });
+    } catch {
+      return;
+    }
+    envelopes.update((all) => all.map((e) => (e.id === id ? { ...e, id: next, unread: false } : e)));
+    return;
+  }
   envelopes.update((all) => all.map((e) => (e.id === id ? { ...e, unread: false } : e)));
 }
 
-/// Move a message to another folder (archive, trash). Local on the fixture;
-/// rides `mail_move` when it exists.
-export function moveMessage(id: string, folderId: string): void {
-  envelopes.update((all) => all.map((e) => (e.id === id ? { ...e, folderId, unread: false } : e)));
+/// Move a message to another folder, named by rail or by id.
+///
+/// Nothing moves on the surface until the mailbox says it moved.
+export async function moveMessage(id: string, target: string): Promise<void> {
+  if (get(mailboxState) === "live") {
+    const dest = folderNamed(target);
+    if (!dest) return;
+    let next: string;
+    try {
+      next = await invoke<string>("mail_move", { id, folderId: dest.id });
+    } catch {
+      return;
+    }
+    envelopes.update((all) =>
+      all.map((e) => (e.id === id ? { ...e, id: next, folderId: dest.id } : e)),
+    );
+    return;
+  }
+  envelopes.update((all) => all.map((e) => (e.id === id ? { ...e, folderId: target, unread: false } : e)));
 }
 
-/// Delete from the trash: the row is gone for good. Everywhere else deleting
-/// MOVES to trash (undo by moving back), which is the reversible default.
-export function deleteForever(id: string): void {
-  envelopes.update((all) => all.filter((e) => e.id !== id));
+/// Delete a message, by the mailbox's own rule: to the trash if there is one and
+/// it is not already there, off the disk if not.
+///
+/// THE POLICY IS HERE RATHER THAN ON THE SURFACE, which used to decide it by
+/// comparing the open folder against the string "trash" - true of the sample,
+/// never of a maildir, whose trash is called `.Trash`. Live that comparison
+/// failed every time and a delete from the trash quietly moved the message to
+/// where it already was.
+export async function deleteMessage(id: string): Promise<void> {
+  if (get(mailboxState) === "live") {
+    let landed: string | null;
+    try {
+      landed = await invoke<string | null>("mail_delete", { id });
+    } catch {
+      return;
+    }
+    if (landed === null) {
+      envelopes.update((all) => all.filter((e) => e.id !== id));
+      return;
+    }
+    const trash = get(folders).find((f) => f.kind === "trash");
+    const next = landed;
+    envelopes.update((all) =>
+      all.map((e) => (e.id === id ? { ...e, id: next, folderId: trash?.id ?? e.folderId } : e)),
+    );
+    return;
+  }
+  const here = get(envelopes).find((e) => e.id === id);
+  if (here && folderNamed(here.folderId)?.kind === "trash") {
+    envelopes.update((all) => all.filter((e) => e.id !== id));
+    return;
+  }
+  await moveMessage(id, "trash");
 }
 
 /// A draft saved from compose: prepended to Drafts so the flow completes.
-export function saveDraft(to: string, subject: string, body: string): string {
+export function saveDraftLocal(to: string, subject: string, body: string): string {
   const id = `draft-${Date.now()}`;
   const env: Envelope = {
     id,
@@ -451,6 +533,30 @@ export function saveDraft(to: string, subject: string, body: string): string {
   });
   envelopes.update((all) => [env, ...all]);
   return id;
+}
+
+/// Save a draft, and answer with where it went.
+///
+/// Live it is a file in the mailbox's drafts folder, written by `mail_draft_save`
+/// - which CREATES that folder if the maildir had none, the one place these
+/// writes make a directory, because a draft has nowhere else to be. The mailbox
+/// is re-read afterwards rather than a row invented here: the folder may not have
+/// been in the rail a moment ago, and the id is the file's name.
+///
+/// A FAILED SAVE ANSWERS NULL and adds nothing, so the composer can say the
+/// draft is not kept rather than close over a message that went nowhere.
+export async function saveDraft(to: string, subject: string, body: string): Promise<string | null> {
+  if (get(mailboxState) === "live") {
+    let id: string;
+    try {
+      id = await invoke<string>("mail_draft_save", { to, subject, body });
+    } catch {
+      return null;
+    }
+    await loadMailbox();
+    return id;
+  }
+  return saveDraftLocal(to, subject, body);
 }
 
 /// Whether the sender is a person this machine already knows. The intended

@@ -36,9 +36,11 @@
   // which is not the same as the control being honest: a reader presses the verb,
   // not the paragraph. When sending exists, the label and this function change
   // together, and nothing else has to.
-  function saveToDrafts(): void {
-    const id = saveDraft(to, subject, body);
-    ondone(id);
+  async function saveToDrafts(): Promise<void> {
+    // A draft that did not get written closes over nothing: `ondone(null)` is
+    // the same route Discard takes, so the composer does not report a message
+    // kept in a folder it never reached.
+    ondone(await saveDraft(to, subject, body));
   }
 </script>
 
