@@ -183,6 +183,16 @@ pub struct WindowDto {
     pub title: Option<String>,
     /// The window's app id, when advertised.
     pub app_id: Option<String>,
+    /// The compositor's stable identifier for the toplevel.
+    ///
+    /// WHY IT IS HERE and the index is not enough: the picker lists windows on
+    /// one Wayland connection and the capture opens another, so the index is a
+    /// position in a set that can change in between. A window opening while the
+    /// menu is open shifts every index below it, and the tool then photographs
+    /// a different window than the one that was picked - silently, since a
+    /// picture always comes back. The identifier means the same thing in both
+    /// calls.
+    pub identifier: Option<String>,
 }
 
 impl From<&WindowInfo> for WindowDto {
@@ -191,6 +201,7 @@ impl From<&WindowInfo> for WindowDto {
             index: w.index,
             title: w.title.clone(),
             app_id: w.app_id.clone(),
+            identifier: w.identifier.clone(),
         }
     }
 }
@@ -373,8 +384,17 @@ mod tests {
             index: 3,
             title: Some("Editor".into()),
             app_id: Some("org.arlen.Editor".into()),
+            identifier: Some("toplevel-91".into()),
         }];
         let wd = window_dtos(&windows);
-        assert_eq!(wd, vec![WindowDto { index: 3, title: Some("Editor".into()), app_id: Some("org.arlen.Editor".into()) }]);
+        assert_eq!(
+            wd,
+            vec![WindowDto {
+                index: 3,
+                title: Some("Editor".into()),
+                app_id: Some("org.arlen.Editor".into()),
+                identifier: Some("toplevel-91".into()),
+            }]
+        );
     }
 }

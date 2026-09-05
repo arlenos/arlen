@@ -49,9 +49,24 @@ fn capture_output(index: usize, include_cursor: bool) -> Result<String, String> 
 }
 
 /// Capture a single window and return it as a PNG data URL.
+///
+/// TAKES THE IDENTIFIER WHEN THERE IS ONE, and the index only as a fallback.
+/// The list and the capture are two Wayland connections, so an index is a
+/// position in a set that may have changed between them - a window opening
+/// while the picker is open moves every index below it, and the tool then
+/// photographs a window nobody chose while still handing back a picture. The
+/// identifier is the compositor's own stable name and survives the gap.
 #[tauri::command]
-fn capture_window(index: usize, include_cursor: bool) -> Result<String, String> {
-    let img = capture::capture_window(index, include_cursor).map_err(|e| e.to_string())?;
+fn capture_window(
+    index: usize,
+    identifier: Option<String>,
+    include_cursor: bool,
+) -> Result<String, String> {
+    let img = match identifier.as_deref().filter(|s| !s.is_empty()) {
+        Some(id) => capture::capture_window_by_id(id, include_cursor),
+        None => capture::capture_window(index, include_cursor),
+    }
+    .map_err(|e| e.to_string())?;
     Ok(capture_to_data_url(&img))
 }
 

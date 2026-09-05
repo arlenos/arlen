@@ -44,7 +44,7 @@ export type Capture =
 export type Output = { index: number; name: string | null; width: number; height: number };
 
 /// One toplevel window the compositor offers.
-export type Window = { index: number; title: string | null; app_id: string | null };
+export type Window = { index: number; title: string | null; app_id: string | null; identifier: string | null };
 
 /// What this machine can be asked to photograph.
 ///
@@ -60,11 +60,15 @@ export async function captureSources(): Promise<{ outputs: Output[]; windows: Wi
   return { outputs, windows };
 }
 
-/// Capture one window by the index `list_windows` gave it.
-export async function captureWindow(index: number): Promise<Capture> {
+/// Capture one window.
+///
+/// The identifier goes with the index because the list and the capture are two
+/// separate Wayland connections: an index can point at a different window by
+/// the time it is used, and the identifier cannot.
+export async function captureWindow(index: number, identifier: string | null = null): Promise<Capture> {
   if (!isTauri()) return { kind: "hostless" };
   try {
-    return { kind: "image", dataUrl: await invoke<string>("capture_window", { index, includeCursor: false }) };
+    return { kind: "image", dataUrl: await invoke<string>("capture_window", { index, identifier, includeCursor: false }) };
   } catch (e) {
     console.warn("screenshot: capture_window refused", e);
     return { kind: "unavailable", why: "refused" };
