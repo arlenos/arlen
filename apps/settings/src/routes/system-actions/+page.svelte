@@ -161,6 +161,25 @@
     max-width: 100%;
   }
 
+  /* NARROWER WHEN THE ROW CANNOT HOLD BOTH, because `max-width: 100%` does not
+     save it: the kit's control slot is `flex-shrink: 0`, so a 360px editor
+     keeps 360px whatever is left. Measured at 720 - the row is 372 wide, the
+     editor takes 360, and the label is left with ZERO. Not truncated: the
+     action's own name is gone entirely, beside the command it runs, on six rows
+     of this page ("Lauter", "Ton stummschalten", "Mikrofon stummschalten" and
+     three more), and the description under them too.
+
+     180 rather than something cleverer because the trade is one-sided. The
+     command string already ellipses at every width - it is longer than any
+     column here - while the name is short and is the only thing that says which
+     action the row is. A shorter editor loses the tail of something already
+     cut; a zero-width label loses the whole of something that fitted. */
+  @media (max-width: 56rem) {
+    .editor-wrap {
+      width: 180px;
+    }
+  }
+
   .header-actions {
     display: flex;
     align-items: center;
