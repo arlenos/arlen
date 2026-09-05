@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: Der Anmeldedienst ist nicht erreichbar
+//
 // A runtime where the login screen comes up with real profiles and the sign-in is
 // refused with the token the host now returns. --stub-host alone loses the
 // profile list, so there is nobody to sign in as and the refusal never renders.

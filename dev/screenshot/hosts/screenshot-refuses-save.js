@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: Dieser Screenshot wurde nicht gespeichert
+//
 // A runtime where the capture SUCCEEDS and writing it to disk is refused - a
 // full screenshots directory, the ordinary way a save fails. Neither preview
 // reaches it: with no runtime there is nothing to save, and with --stub-host the

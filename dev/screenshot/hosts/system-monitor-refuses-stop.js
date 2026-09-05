@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: Dieser Prozess ließ sich nicht beenden
+//
 // A runtime for the task manager where the list is REAL and the action is
 // refused - the state neither --stub-host nor a bare vite preview can reach, and
 // the one an ordinary person meets: End process on something they do not own.

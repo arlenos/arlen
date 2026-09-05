@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
+// EXPECT: Das Dateisystem hat sich geweigert
+//
 // A runtime where the folder LISTS and the operation is refused - the state a
 // person meets when they press Delete on something they may not touch. Neither
 // preview reaches it: with no runtime there is no backend to refuse, and with
