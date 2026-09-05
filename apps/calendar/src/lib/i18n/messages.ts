@@ -114,8 +114,8 @@ const messages: Catalogs = {
     // failures used to reach the window as English sentences with no catalogue
     // around them at all.
     "cal.failed.launch": "This window could not find out which file it was asked to open.",
-    "cal.failed.noHome": "This session has no home directory, so there is no calendar folder to read.",
-    "cal.failed.unreadable": "Your calendar folder could not be read, so nothing is shown: {$why}",
+    "cal.failed.noHome": "This session has no home directory.",
+    "cal.failed.unreadable": "Your calendar folder could not be read: {$why}",
     "cal.failed.other": "Your calendar files could not be read. The detail is in the log.",
     "cal.keep.notAFile": "That is not a file, so there is nothing to keep.",
     "cal.keep.noHome": "This session has no home directory, so there is nowhere to keep it.",
@@ -237,8 +237,8 @@ const messages: Catalogs = {
     "cal.unreadable": "{$count} deiner Kalenderdateien konnten nicht gelesen werden, die Termine darin fehlen also.",
     "cal.serviceDown": "Der Kalenderdienst läuft nicht, deshalb werden keine Erinnerungen gestellt.",
     "cal.failed.launch": "Dieses Fenster konnte nicht herausfinden, welche Datei es öffnen sollte.",
-    "cal.failed.noHome": "Diese Sitzung hat kein Home-Verzeichnis, es gibt also keinen Kalenderordner zu lesen.",
-    "cal.failed.unreadable": "Dein Kalenderordner konnte nicht gelesen werden, deshalb wird nichts gezeigt: {$why}",
+    "cal.failed.noHome": "Diese Sitzung hat kein Home-Verzeichnis.",
+    "cal.failed.unreadable": "Dein Kalenderordner konnte nicht gelesen werden: {$why}",
     "cal.failed.other": "Deine Kalenderdateien konnten nicht gelesen werden. Die Einzelheiten stehen im Protokoll.",
     "cal.keep.notAFile": "Das ist keine Datei, es gibt also nichts zu behalten.",
     "cal.keep.noHome": "Diese Sitzung hat kein Home-Verzeichnis, es gibt also keinen Ort dafür.",
