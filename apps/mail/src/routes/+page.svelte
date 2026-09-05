@@ -396,16 +396,28 @@
          actual controls are the accessible buttons inside it, so the
          static-interaction lint is a false positive here. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- A floor under the title and a header that can grow, for the reason the
+         calendar's and the reader's headers got them: a `truncate` with nothing
+         under it does not truncate when the row runs out, it collapses to
+         nothing. Here the row fills up when a message is selected - reply,
+         forward, archive, delete arrive at once - and the subject is the only
+         thing on the line that says which message they would act on. The
+         browser decides when a second row is needed; a breakpoint would be a
+         guess about how long a subject is. -->
     <header
       onpointerdown={startDrag}
       ondblclick={toggleMax}
-      class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+      class="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-2"
     >
       {#if $folders.length > 0 || $mailboxWritable}
         <SidebarTrigger class="-ml-1" />
-        <Separator orientation="vertical" class="me-1 h-4" />
+        <!-- `h-4!`: the kit sets `data-[orientation=vertical]:h-full`, an
+             attribute selector a plain `h-4` cannot outrank, and a full-height
+             rule in a header that wraps is a percentage of a height still being
+             computed from the lines. -->
+        <Separator orientation="vertical" class="me-1 h-4!" />
       {/if}
-      <span class="select-none truncate text-sm font-medium text-foreground">{barTitle}</span>
+      <span class="min-w-[10ch] select-none truncate text-sm font-medium text-foreground">{barTitle}</span>
       <div class="flex-1"></div>
       {#if showSingleActions}
         <IconAction label={$t("ml.reply")} size="control" onclick={reply}>
