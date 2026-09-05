@@ -372,7 +372,13 @@
             {:else if kept.problem.problem === "no-home"}{$t("cal.keep.noHome")}
             {:else if kept.problem.problem === "cannot-make-dir"}{$t("cal.keep.cannotMakeDir", { why: kept.problem.why })}
             {:else if kept.problem.problem === "already-kept"}{$t("cal.keep.alreadyKept", { name: kept.problem.name })}
-            {:else}{$t("cal.keep.copyFailed", { why: kept.problem.why })}{/if}
+            {:else if kept.problem.problem === "copy-failed"}{$t("cal.keep.copyFailed", { why: kept.problem.why })}
+            <!-- The else used to BE the copy-failed sentence, which was right for
+                 exactly as long as copy-failed stayed the only unhandled reason:
+                 the next variant added to the host would have been reported as a
+                 failed copy, confidently and wrongly. Naming it leaves the else
+                 free to say what it actually knows. -->
+            {:else}{$t("cal.keep.otherReason")}{/if}
           </p>
         {/if}
 
