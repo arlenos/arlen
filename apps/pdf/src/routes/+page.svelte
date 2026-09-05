@@ -297,16 +297,28 @@
            its actual controls are the accessible buttons inside it, so the
            static-interaction lint is a false positive here. -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <!-- It wraps, and the title has a floor. Measured at 720: the document's
+           name got 19px against 75 of content - "sample.pdf" rendered as a
+           glyph and a half - while the zoom, fit and page controls beside it
+           each kept every pixel they asked for. A `truncate` with nothing under
+           it does not truncate, it disappears. `min-h-10` with no `h-10` above
+           it lets the browser decide when a second row is needed rather than a
+           breakpoint guessing, which is the same fix and the same reasoning as
+           the calendar header. -->
       <header
         onpointerdown={startDrag}
         ondblclick={toggleMax}
-        class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+        class="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-2"
       >
         {#if $doc}
           <SidebarTrigger class="-ml-1" />
-          <Separator orientation="vertical" class="me-1 h-4" />
+          <!-- `h-4!`: the kit's separator sets `data-[orientation=vertical]:h-full`,
+               an attribute selector, so a plain `h-4` never applies - and a
+               full-height rule inside a header that can wrap is a percentage of
+               a height still being computed. -->
+          <Separator orientation="vertical" class="me-1 h-4!" />
         {/if}
-        <span class="select-none truncate text-sm font-medium text-foreground">{title ?? $t("pdf.app.title")}</span>
+        <span class="min-w-[10ch] select-none truncate text-sm font-medium text-foreground">{title ?? $t("pdf.app.title")}</span>
         {#if $doc}
           <IconAction label={$t("pdf.prevPage")} size="control" onclick={() => step(-1)}>
             <ChevronLeft size={15} strokeWidth={1.75} />
