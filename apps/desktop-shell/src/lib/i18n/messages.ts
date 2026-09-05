@@ -292,7 +292,7 @@ const messages: Catalogs = {
     "sh.share.wants": "{$app} wants to share your screen",
     "sh.share.choose": "Choose what to share. Only what you pick is sent.",
     "sh.share.mocked": "Example screens and windows - not the real ones on this machine.",
-    "sh.share.unavailable": "Nothing is offering what can be shared, so there is nothing to pick.",
+    "sh.share.unavailable": "Nothing is offering what can be shared.",
     "sh.share.failed": "Sharing did not start, so nothing is being sent. Try again or decline.",
     "sh.jobs.unavailable": "Nothing is reporting jobs, so none are shown.",
     "sh.jobs.hideItems": "Hide items",
@@ -319,7 +319,7 @@ const messages: Catalogs = {
     // The clipboard's two destructive actions. Both used to fail into a console
     // line, which on a privacy surface means the entry stays visible and nobody
     // is told why.
-    "sh.clip.notDeleted": "That entry could not be removed, so it is still in your clipboard history.",
+    "sh.clip.notDeleted": "That entry could not be removed.",
     "sh.clip.notCleared": "Your clipboard history could not be cleared, so it is still there.",
     "sh.job.notPaused": "That job could not be paused, so it is still running.",
     "sh.job.notResumed": "That job could not be resumed, so it is still paused.",
@@ -885,7 +885,7 @@ const messages: Catalogs = {
     "sh.print.mocked": "Beispieldrucker \u2013 nicht die tats\u00e4chlichen dieses Rechners.",
     "sh.print.unavailable": "Die Drucker dieses Rechners k\u00f6nnen gerade nicht gelesen werden.",
     "sh.print.submitFailed": "Der Druckauftrag wurde nicht abgeschickt, es wurde nichts gedruckt.",
-    "sh.share.unavailable": "Nichts bietet an, was geteilt werden kann, es gibt also nichts zu w\u00e4hlen.",
+    "sh.share.unavailable": "Nichts bietet an, was geteilt werden kann.",
     "sh.share.failed": "Die Freigabe hat nicht begonnen, es wird nichts gesendet. Erneut versuchen oder ablehnen.",
     "sh.jobs.unavailable": "Nichts meldet Aufgaben, daher wird keine angezeigt.",
     "sh.jobs.hideItems": "Elemente ausblenden",
@@ -993,7 +993,7 @@ const messages: Catalogs = {
     "sh.job.retry": "Erneut versuchen",
     "sh.job.cancel": "Abbrechen",
     "sh.job.notCancelled": "Dieser Auftrag ließ sich nicht abbrechen, er läuft also weiter.",
-    "sh.clip.notDeleted": "Dieser Eintrag ließ sich nicht entfernen, er steht also weiter in deinem Zwischenablage-Verlauf.",
+    "sh.clip.notDeleted": "Dieser Eintrag ließ sich nicht entfernen.",
     "sh.clip.notCleared": "Dein Zwischenablage-Verlauf ließ sich nicht leeren, er ist also noch da.",
     "sh.job.notPaused": "Dieser Auftrag ließ sich nicht anhalten, er läuft also weiter.",
     "sh.job.notResumed": "Dieser Auftrag ließ sich nicht fortsetzen, er ist also weiterhin angehalten.",
