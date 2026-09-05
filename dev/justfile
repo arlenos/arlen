@@ -625,6 +625,20 @@ go-live-rehearsal:
 i18n-lint:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv
 
+# Render each route in a language and report every way the text came out wrong:
+# an element out of its own box, a child cut by a clipping parent, two elements
+# painted in the same place. Three probes, each gated on its own control first.
+#
+# THE APP'S DEV SERVER MUST ALREADY BE RUNNING, and it must be `vite dev`: the
+# kit's locale override only applies under a dev build, so `vite preview`
+# renders the source language whatever the query says. Widths default to
+# 720/1280/1920 - a window dragged narrow, the shape most apps open at, and a
+# monitor - and each has produced a finding the other two missed.
+#
+#   just sweep-render http://localhost:1421 de /privacy /appearance
+sweep-render base locale +paths:
+    "{{ROOT}}/dev/screenshot/sweep-render.sh" {{base}} {{locale}} {{paths}}
+
 # Render every app's routes and report any message id that reached the screen.
 #
 # Each app's dev server is started, scanned and stopped in turn (several share a
