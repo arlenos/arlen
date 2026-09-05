@@ -319,7 +319,14 @@
     >
       <SidebarTrigger class="-ml-1" />
       <Separator orientation="vertical" class="me-1 h-4" />
-      <span class="select-none truncate text-sm font-medium text-foreground">{barTitle}</span>
+      <!-- A floor under the date, because it had none: measured at 720px the span
+           was 0 wide against 141 of content - not truncated, annihilated, while
+           the five-option view switcher beside it kept every pixel it asked for.
+           A window is resizable, so that is a state somebody reaches by dragging
+           an edge, and what they lose is the answer to which week they are
+           looking at. With a floor it ellipses like a title should and the
+           switcher gives up the room. -->
+      <span class="min-w-[10ch] select-none truncate text-sm font-medium text-foreground">{barTitle}</span>
       {#if !launched && view !== "agenda"}
         <IconAction label={$t("cal.prev")} size="control" onclick={() => step(-1)}>
           <ChevronLeft size={15} strokeWidth={1.75} />
