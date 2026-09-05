@@ -393,7 +393,7 @@
     font-size: var(--text-2xs, 10px);
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
   }
   .allday-cell {
     display: flex;
@@ -437,7 +437,7 @@
     right: 0.5rem;
     translate: 0 -50%;
     font-size: var(--text-2xs, 10px);
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
     font-variant-numeric: tabular-nums;
   }
   .day-col {

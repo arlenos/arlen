@@ -110,7 +110,7 @@
     flex-shrink: 0;
   }
   .d-line.quiet {
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
   }
   .d-actions {
     display: flex;

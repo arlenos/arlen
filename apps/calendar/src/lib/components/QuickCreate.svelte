@@ -148,7 +148,7 @@
     border-bottom-color: var(--color-accent, #6366f1);
   }
   .qc-title::placeholder {
-    color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
     font-weight: 500;
   }
   .qc-when {
