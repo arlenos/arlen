@@ -151,6 +151,27 @@ mod tests {
         assert_eq!(s.monitors[2].resolution, "");
     }
 
+    /// The picker reads `appLabel`, not `app_label`, and a rename is the one
+    /// kind of mistake that compiles, passes every Rust test, and hands the
+    /// surface an undefined. Pinned as JSON rather than as a struct.
+    #[test]
+    fn the_wire_names_are_the_ones_the_picker_reads() {
+        let s = sources_from(
+            vec![output("DP-1", Some("Dell U2720Q"), Some((3840, 2160)))],
+            &[window("1", "org.gnome.Calculator", "Calculator")],
+        );
+        let v: serde_json::Value = serde_json::to_value(&s).unwrap();
+        let m = &v["monitors"][0];
+        assert_eq!(m["id"], "DP-1");
+        assert_eq!(m["name"], "Dell U2720Q");
+        assert_eq!(m["resolution"], "3840 x 2160");
+        let w = &v["windows"][0];
+        assert_eq!(w["id"], "1");
+        assert_eq!(w["appLabel"], "org.gnome.Calculator");
+        assert_eq!(w["title"], "Calculator");
+        assert!(w.get("app_label").is_none(), "the snake_case name must not reach the surface");
+    }
+
     #[test]
     fn a_window_with_nothing_to_call_it_is_not_offered() {
         let s = sources_from(
