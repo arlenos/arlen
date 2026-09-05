@@ -467,6 +467,14 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     text-overflow: ellipsis;
     max-width: 40ch;
   }
+  /* The cap is right for a status and wrong for a refusal, so the refusal lifts
+     it and wraps instead. It keeps the ellipsis machinery off rather than
+     widening the cap, because no number is wide enough for every language. */
+  .savestate:has(.ss-bad) {
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+  }
   .ss-dirty {
     color: color-mix(in srgb, var(--color-fg-primary, #fafafa) 55%, transparent);
   }
@@ -476,11 +484,19 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   .ss-bad {
     color: var(--color-error, #ef4444);
   }
+  /* `min-height` and wrap, for the one state on this bar that is a sentence.
+     Everything else it shows is two words - "Gespeichert", "Nicht gespeichert" -
+     and a refusal is not: "Konnte nicht speichern: diese Datei oder ihr Ordner
+     ließ sich nicht beschreiben." Measured under the refuse-save fixture, the
+     bar rendered "Konnte nicht speichern: diese Da…" at 720, 1280 AND 1920,
+     because a 40ch cap does not care how wide the window is. What was cut is the
+     CAUSE - the half a refusal exists to give. */
   .titlebar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.6rem;
-    height: 2.5rem;
+    min-height: 2.5rem;
     padding: 0 1rem;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     flex-shrink: 0;
