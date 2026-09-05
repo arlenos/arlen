@@ -315,6 +315,54 @@ say "the keyboard reaches the same writes, and e archives the anchored row" \
   "$(case "$keyed_name" in .Archive/*) echo 1;; *) echo 0;; esac)" \
   "the file is now [$keyed_name] - $keyed"
 
+# A WRITE THE MAILBOX REFUSES. Every check above is about a write that lands;
+# this is the other half, and it is the one the whole feature exists to get
+# right: a surface that reports an archive nobody kept is exactly the pretence
+# these commands replaced. The archive folder is made unwritable, so the rename
+# fails for a reason the app cannot fix, and the demand is that NOTHING moves -
+# not the file, and not the row.
+chmod 500 "$work/mail/.Archive/cur"
+cat > "$work/refused.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const rowFor = (t) => [...document.querySelectorAll("*")]
+  .filter((e) => e.children.length === 0 && (e.textContent || "").trim() === t)[0];
+for (let i = 0; i < 60; i++) { if (rowFor("the gutter quote")) break; await wait(250); }
+const cell = rowFor("the gutter quote");
+if (!cell) return JSON.stringify({ listed: false });
+cell.closest("button, [role=option], [role=row], li, tr").click();
+await wait(1500);
+const b = [...document.querySelectorAll("button")]
+  .find((x) => (x.getAttribute("aria-label") || "") === "Archive");
+if (!b) return JSON.stringify({ listed: true, pressed: false });
+b.click();
+await wait(2500);
+// Is the message still where it was, as far as the window is concerned?
+return JSON.stringify({
+  listed: true,
+  pressed: true,
+  stillListed: !!rowFor("the gutter quote"),
+});
+JS
+
+refused=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/refused.js" SHOOT_INJECT_SETTLE=6 \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-refused-write.png" "" 14 2>&1 \
+  | sed -n 's/^inject result: //p')
+chmod 700 "$work/mail/.Archive/cur"
+
+refused_name=$(find "$work/mail" -name '4.host*' -printf '%P\n' 2>/dev/null | head -1)
+# PRESSED FIRST. Both demands below are satisfied by a run where the control was
+# never found - nothing moves if nothing was clicked - so the press is asserted
+# on its own rather than assumed by the two checks that rest on it.
+say "the refused case actually got as far as pressing Archive" \
+  "$(printf '%s' "$refused" | grep -q '"pressed":true' && echo 1 || echo 0)" "$refused"
+
+say "a write the mailbox refuses leaves the message where it was" \
+  "$(case "$refused_name" in .Archive/*) echo 0;; "") echo 0;; *) echo 1;; esac)" \
+  "the file is now [$refused_name]"
+
+say "and the list does not show it as archived" \
+  "$(printf '%s' "$refused" | grep -q '"stillListed":true' && echo 1 || echo 0)" "$refused"
+
 say "and the draft on disk carries what was typed and the subject replied to" \
   "$([ -n "$draft_file" ] && grep -q "the ladder did not reach" "$draft_file" \
      && grep -q "^Subject: Re: the gutter quote" "$draft_file" && echo 1 || echo 0)" \
