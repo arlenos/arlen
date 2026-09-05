@@ -32,6 +32,8 @@ ONLY="${2:-}"
 # hour - and with a fixed base the second run refuses on every single app with
 # "port 6100 is held by an earlier one". Correct, loud and useless. Derived from
 # the pid, in blocks of 40 so one run's fifteen ports cannot walk into another's.
+# Checked: two full sweeps started together both answer, where before the second
+# refused on every app in its list.
 PORT=$(( 6100 + ($$ % 60) * 40 ))
 
 # `<app> <spec>|<spec>|...`, where a spec is a route optionally followed by
