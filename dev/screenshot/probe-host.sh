@@ -31,6 +31,11 @@ base="${2:?give a base URL}"
 probe="${3:?give a probe file}"
 width="${4:-720}"
 locale="${5:-de}"
+# SOME REFUSALS ARE TOASTS AND TOASTS EXPIRE. The shell's job refusal is gone from
+# the page a few seconds after it appears, so a fixed four-second settle read a
+# surface that HAD refused and no longer said so - which reads exactly like a
+# fixture that never got there. `PROBE_HOST_SETTLE` shortens the wait for those.
+settle="${PROBE_HOST_SETTLE:-4}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 script="$here/hosts/$host.js"
@@ -55,8 +60,12 @@ cat > "$state" <<'JS'
 return document.body.innerText.replace(/\s+/g, " ");
 JS
 
+# STDOUT ONLY. Merging stderr put a MESA driver warning on the last line one run
+# in ten, so the state check compared the page against "MESA-EGL: warning: Ensure
+# your X server supports DRI3" and refused a surface that was fine. A probe's
+# answer is on stdout; the noise is not this check's business.
 seen="$("$here/headless.sh" --url "$base/?locale=$locale" --out "$shot" --width "$width" \
-  --settle 4 --host-script "$script" --probe-file "$state" 2>&1 | tail -1)"
+  --settle "$settle" --host-script "$script" --probe-file "$state" 2>/dev/null | tail -1)"
 case "$seen" in
   *"$want"*) ;;
   *)
@@ -68,4 +77,4 @@ case "$seen" in
 esac
 
 "$here/headless.sh" --url "$base/?locale=$locale" --out "$shot" --width "$width" \
-  --settle 4 --host-script "$script" --probe-file "$probe" 2>&1 | tail -1
+  --settle "$settle" --host-script "$script" --probe-file "$probe" 2>/dev/null | tail -1
