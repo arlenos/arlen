@@ -46,6 +46,12 @@
   }
 </script>
 
+<!-- `data-tauri-drag-region={false}` is an OPT-OUT and it is spelled exactly the
+     way tauri reads it: svelte stringifies the `false` and the injected handler
+     (2.10.3 `window/scripts/drag.js`) tests `attr !== 'false'`. Without it a press
+     on the toolbar's own padding would start a window drag instead of doing
+     nothing, on the X11 fallback path where the shell window is a real toplevel
+     and dragging works - see the note in `TopBar.svelte`. -->
 {#if $focusedToolbar.kind === "quick-actions" && $focusedToolbar.actions.length > 0}
   <div class="toolbar-quick-actions" data-tauri-drag-region={false}>
     {#each $focusedToolbar.actions as action (action.action)}
