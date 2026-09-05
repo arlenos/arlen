@@ -259,6 +259,7 @@ jobs:
           python3 dev/scripts/check-setup-runtime.py
           python3 dev/scripts/check-dev-prefix-admission.py
           python3 dev/scripts/check-fixture-on-failure.py
+          node dev/scripts/test-check-fixture-on-failure.mjs
           python3 dev/scripts/check-app-profiles.py
           python3 dev/scripts/check-profile-catalogue.py
           python3 dev/scripts/check-profile-principals.py
