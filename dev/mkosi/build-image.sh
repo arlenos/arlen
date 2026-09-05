@@ -72,6 +72,34 @@ fi
 # All three directions are asserted by `dev/scripts/test-build-image-trap.mjs`,
 # which was shown to fail against the delete-on-any-failure version before being
 # trusted.
+# A KILLED BUILD LEAVES THE LAST GOOD IMAGE UNDER THE WRONG NAME, and the trap
+# below cannot help: an EXIT trap does not run on SIGKILL, which is how a build
+# dies when the machine runs out of memory. On 5 September that is exactly what
+# had happened - `arlen.raw` absent, `arlen.raw.prev` sitting beside it from two
+# days earlier, and the state reads as "you have no image" while a perfectly good
+# one is on the disk.
+#
+# The recovery is unambiguous because `.prev` exists only between the rename below
+# and the cleanup at the end of a successful run. So finding one HERE means a
+# previous run died in between without running its trap, and moving it back is
+# precisely what that trap would have done.
+#
+# Only the unambiguous case is recovered. If `arlen.raw` is also present the
+# previous run got as far as writing an output, and that output may be whole or
+# may be a fragment mkosi was killed in the middle of - which cannot be told apart
+# from here. That one is reported and left alone rather than guessed at.
+if [ -f "$here/arlen.raw.prev" ]; then
+    if [ -f "$here/arlen.raw" ]; then
+        echo ">> note: a previous run left $here/arlen.raw.prev beside an existing" >&2
+        echo "   arlen.raw. One of them is the last good image and this script cannot" >&2
+        echo "   tell which, so both are left as they are." >&2
+    else
+        mv "$here/arlen.raw.prev" "$here/arlen.raw"
+        echo ">> recovered $here/arlen.raw from .prev: a previous build was killed" >&2
+        echo "   before its trap could put it back." >&2
+    fi
+fi
+
 writing_image=""
 prev_image=""
 trap 'status=$?; if [ $status -ne 0 ]; then [ -z "$writing_image" ] || { rm -f "$here/arlen.raw"; echo ">> build failed; removed the partial $here/arlen.raw" >&2; }; [ -z "$prev_image" ] || { mv "$here/arlen.raw.prev" "$here/arlen.raw"; echo ">> restored the previous image" >&2; }; fi; exit $status' EXIT

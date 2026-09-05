@@ -74,6 +74,29 @@ function runWith(tail) {
 
 const COMPLETE = "a complete image from an earlier run";
 
+// The recovery cases need a DIFFERENT starting state - `.prev` present, and
+// `arlen.raw` there or not - so they set the directory up themselves rather than
+// inheriting `runWith`'s "one complete image, no .prev".
+function runFrom(files, tail) {
+  const dir = mint("arlen-recover-");
+  for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
+  writeFileSync(join(dir, "build-image.sh"), `${header}\n${tail}\n`, { mode: 0o755 });
+  const r = spawnSync("sh", [join(dir, "build-image.sh")], { encoding: "utf8" });
+  const raw = existsSync(join(dir, "arlen.raw"))
+    ? readFileSync(join(dir, "arlen.raw"), "utf8")
+    : null;
+  const prev = existsSync(join(dir, "arlen.raw.prev"))
+    ? readFileSync(join(dir, "arlen.raw.prev"), "utf8")
+    : null;
+  cleanup(dir);
+  return { raw, prev, err: r.stderr ?? "", code: r.status ?? 1 };
+}
+
+function check2(name, ok, detail) {
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures.push({ name, ...detail });
+}
+
 function check(name, tail, expect) {
   const r = runWith(tail);
   const ok = expect(r);
@@ -140,6 +163,33 @@ check(
 
 // The status has to survive the trap, or a failed build reports success to
 // whoever called it and the next step runs on an image that is not there.
+// ── recovery from a build that was KILLED, where no trap ran ────────────────
+//
+// An EXIT trap does not run on SIGKILL, so an out-of-memory kill leaves the last
+// good image parked under `.prev` for good. That is not hypothetical: it is the
+// state this repository was in on 5 September, and it reads as "no image".
+{
+  const r = runFrom({ "arlen.raw.prev": COMPLETE }, "true");
+  check2("an orphaned .prev with no image is moved back", r.raw === COMPLETE && r.prev === null, r);
+  check2("and the run says it did so", r.err.includes("recovered"), r);
+}
+{
+  // Ambiguous: the previous run wrote an output before it died, and whether that
+  // output is whole cannot be told from here. Both are left alone.
+  const r = runFrom({ "arlen.raw.prev": COMPLETE, "arlen.raw": "possibly partial" }, "true");
+  check2(
+    "an orphaned .prev beside an image touches neither",
+    r.raw === "possibly partial" && r.prev === COMPLETE,
+    r,
+  );
+  check2("and says it cannot tell which is good", r.err.includes("cannot"), r);
+}
+{
+  // The ordinary case must not have grown a message.
+  const r = runFrom({ "arlen.raw": COMPLETE }, "true");
+  check2("a normal run with no .prev says nothing about recovery", !r.err.includes("recovered"), r);
+}
+
 check(
   "the build's exit status is passed through unchanged",
   "writing_image=1\nexit 3",
