@@ -33,6 +33,26 @@ use tauri::http::{Request as HttpRequest, Response as HttpResponse, StatusCode};
 /// the archive's cache; `/usr/share` is where a distribution package puts its own.
 const ICON_ROOTS: [&str; 2] = ["/var/lib/swcatalog/icons", "/usr/share/swcatalog/icons"];
 
+/// The roots this build will serve from.
+///
+/// A DEBUG-ONLY OVERRIDE, and the gate is the point. Both real roots need root to
+/// write, so without this the route could not be driven anywhere except on the
+/// image - which is how a seam gets built, committed and never once seen to work.
+/// A release build ignores the variable entirely and pins the two roots, the same
+/// shape `permission-helper`'s `base_dir` uses for the same reason: an override
+/// that survives into release is a way to point a reader at any file on the disk.
+fn roots() -> Vec<String> {
+    #[cfg(debug_assertions)]
+    if let Some(dirs) = std::env::var_os("ARLEN_ICON_ROOTS") {
+        let dirs = dirs.to_string_lossy().to_string();
+        let list: Vec<String> = dirs.split(':').filter(|d| !d.is_empty()).map(str::to_owned).collect();
+        if !list.is_empty() {
+            return list;
+        }
+    }
+    ICON_ROOTS.iter().map(|r| (*r).to_string()).collect()
+}
+
 /// The extensions this will serve, with the content type each is answered as.
 const TYPES: [(&str, &str); 4] = [
     ("png", "image/png"),
@@ -122,14 +142,27 @@ pub fn paintable(icon: Option<String>, roots: &[&str]) -> Option<String> {
 /// Applied where a card leaves for the frontend rather than inside
 /// `store-backend`, because the scheme belongs to this window: the daemon serves
 /// other clients and a path is the right thing for it to say.
-pub fn repaint(mut card: StoreCard) -> StoreCard {
-    card.icon = paintable(card.icon.take(), &ICON_ROOTS);
-    card
+pub fn repaint(card: StoreCard) -> StoreCard {
+    let owned = roots();
+    let roots: Vec<&str> = owned.iter().map(String::as_str).collect();
+    repaint_with(card, &roots)
 }
 
 /// The same for a list, which is the catalogue read.
+///
+/// The roots are resolved ONCE here rather than per card. The catalogue read
+/// returns every component on the machine - 2531 on the image - and `roots()`
+/// reads an environment variable, so per-card would be 2531 of them for one list.
 pub fn repaint_all(cards: Vec<StoreCard>) -> Vec<StoreCard> {
-    cards.into_iter().map(repaint).collect()
+    let owned = roots();
+    let roots: Vec<&str> = owned.iter().map(String::as_str).collect();
+    cards.into_iter().map(|c| repaint_with(c, &roots)).collect()
+}
+
+/// One card against an explicit root list.
+fn repaint_with(mut card: StoreCard, roots: &[&str]) -> StoreCard {
+    card.icon = paintable(card.icon.take(), roots);
+    card
 }
 
 /// Answer one `icon://` request.
@@ -140,7 +173,9 @@ pub fn handle(request: &HttpRequest<Vec<u8>>) -> HttpResponse<Vec<u8>> {
             .body(Vec::new())
             .expect("a bodyless response always builds")
     };
-    let Some(path) = resolve(&request.uri().to_string(), &ICON_ROOTS) else {
+    let owned = roots();
+    let roots: Vec<&str> = owned.iter().map(String::as_str).collect();
+    let Some(path) = resolve(&request.uri().to_string(), &roots) else {
         return refused(StatusCode::FORBIDDEN);
     };
     let Some(kind) = content_type(&path) else {
@@ -218,6 +253,26 @@ mod tests {
     #[test]
     fn a_local_path_somewhere_else_paints_no_picture() {
         assert_eq!(paintable(Some("/home/tim/secret.png".to_string()), &ROOTS), None);
+    }
+
+    #[test]
+    fn the_roots_are_the_real_ones_unless_a_debug_build_is_told_otherwise() {
+        // Without the variable it is the two real directories, in both build
+        // profiles. That half is the one that matters in a shipped app.
+        std::env::remove_var("ARLEN_ICON_ROOTS");
+        assert_eq!(roots(), vec![ICON_ROOTS[0].to_string(), ICON_ROOTS[1].to_string()]);
+
+        // With it, a debug build follows it, which is what lets the route be
+        // driven anywhere but the image. Tests are a debug build, so this arm is
+        // live here and compiled out of a release one.
+        std::env::set_var("ARLEN_ICON_ROOTS", "/tmp/a:/tmp/b");
+        assert_eq!(roots(), vec!["/tmp/a".to_string(), "/tmp/b".to_string()]);
+
+        // An empty value is not a root list; it must not widen to "everywhere"
+        // or narrow to nothing.
+        std::env::set_var("ARLEN_ICON_ROOTS", "");
+        assert_eq!(roots(), vec![ICON_ROOTS[0].to_string(), ICON_ROOTS[1].to_string()]);
+        std::env::remove_var("ARLEN_ICON_ROOTS");
     }
 
     #[test]
