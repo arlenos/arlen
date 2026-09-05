@@ -43,6 +43,16 @@ export type FolderKind = "inbox" | "sent" | "drafts" | "archive" | "trash";
 export interface Folder {
   id: string;
   kind: FolderKind;
+  /// How many of this folder's messages are unread, as the host counted them.
+  ///
+  /// NOTHING RENDERS THIS TODAY and it is deliberately kept. The rail derives
+  /// its badge from the loaded envelopes instead, which is what makes the count
+  /// drop the moment a message is read rather than at the next load. That works
+  /// because `loadMailbox` reads every folder's rows; the day this app stops
+  /// doing that - and `envelopes`' own comment says a synced account would -
+  /// the rail needs a number for a folder whose rows are not in memory, and
+  /// this is that number. Cheap to keep: `folders` counts filenames, where
+  /// listing a folder reads every message in it.
   unread: number;
 }
 
