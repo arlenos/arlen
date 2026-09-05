@@ -166,6 +166,41 @@ Read that line before reading the frame. The two rules are the same rule about t
 different artefacts, and the image one is easier to forget because 5 GB of file
 looks like the system rather than like a photograph of it.
 
+## Asking a rendered page what went wrong with it
+
+Three probes, run as the `inject.js` argument above. They ask different questions
+and a layout change can pass any two, which is how a header fix on 5 September
+was verified with one of them and shipped drawing its second row over the
+calendar:
+
+| probe | asks |
+|---|---|
+| `clipped-text.js` | did an element outgrow its own box, either axis |
+| `clipped-by-parent.js` | did an ancestor that clips cut a child sideways |
+| `overlapping-text.js` | are two elements painted in the same place |
+
+Each has a `<name>-control.html` beside it holding the fault it looks for AND the
+near-misses it must not report. Run the control when you doubt a clean answer -
+`[]` from a working probe and `[]` from a broken one are the same string, and all
+three of these have returned the second at some point.
+
+`sweep-render.sh` (or `just sweep-render <base> <locale> <path…>`) runs all three
+over a list of routes at 720/1280/1920, gating each on its own control first and
+refusing to sweep if any of them goes blind. A path may carry a CSS selector after
+`::` for a surface behind a click. **The dev server must already be running and it
+must be `vite dev`** - `vite preview` renders the source language whatever
+`?locale=` says.
+
+Three things the probes learned the hard way, all of them by somebody opening the
+PNG after the numbers said something alarming:
+
+- a **layout box is not a painted one** - a scroll container's clipped-away child
+  keeps its rect exactly where the layout put it;
+- **a card in front is not an overprint** - a stacked deck of notices overlaps
+  almost entirely and hides nothing;
+- **`text-overflow: ellipsis` does nothing on a flex or grid box**, so a
+  declaration that reads like a design decision can be a hard cut mid-glyph.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the
