@@ -42,9 +42,22 @@ fn list_windows() -> Result<Vec<WindowDto>, String> {
 }
 
 /// Capture a whole output and return it as a PNG data URL for the annotate canvas.
+///
+/// TAKES THE CONNECTOR WHEN THERE IS ONE, for the reason the window path takes
+/// the identifier: listing and capturing are two Wayland connections, so an
+/// index is a position in a set that a monitor waking or sleeping reorders.
+/// Rarer than a window opening, and the same wrong picture when it happens.
 #[tauri::command]
-fn capture_output(index: usize, include_cursor: bool) -> Result<String, String> {
-    let img = capture::capture_output(index, include_cursor).map_err(|e| e.to_string())?;
+fn capture_output(
+    index: usize,
+    name: Option<String>,
+    include_cursor: bool,
+) -> Result<String, String> {
+    let img = match name.as_deref().filter(|s| !s.is_empty()) {
+        Some(connector) => capture::capture_output_by_name(connector, include_cursor),
+        None => capture::capture_output(index, include_cursor),
+    }
+    .map_err(|e| e.to_string())?;
     Ok(capture_to_data_url(&img))
 }
 

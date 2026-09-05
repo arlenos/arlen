@@ -378,7 +378,7 @@
     const shot =
       kind === "window"
         ? await captureWindow(n, windows.find((w) => w.index === n)?.identifier ?? null)
-        : await captureOutput(n);
+        : await captureOutput(n, outputs.find((o) => o.index === n)?.name ?? null);
     if (shot.kind !== "image") {
       // A source that will not capture is reported where the picture would be,
       // not swallowed: a picker that silently keeps the old image is one that

@@ -75,11 +75,14 @@ export async function captureWindow(index: number, identifier: string | null = n
   }
 }
 
-/// Capture one output by the index `list_outputs` gave it.
-export async function captureOutput(index: number): Promise<Capture> {
+/// Capture one output.
+///
+/// The connector name goes with the index for the same reason the window's
+/// identifier does: the list and the capture are two Wayland connections.
+export async function captureOutput(index: number, name: string | null = null): Promise<Capture> {
   if (!isTauri()) return { kind: "hostless" };
   try {
-    return { kind: "image", dataUrl: await invoke<string>("capture_output", { index, includeCursor: false }) };
+    return { kind: "image", dataUrl: await invoke<string>("capture_output", { index, name, includeCursor: false }) };
   } catch (e) {
     console.warn("screenshot: capture_output refused", e);
     return { kind: "unavailable", why: "refused" };
