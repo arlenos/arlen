@@ -137,7 +137,12 @@
          gone - one context, said once. -->
     <KnowledgeHeader placeLabel={$t(labelKeyFor(searchOwnsContent ? "searches" : $path))} />
     <div class="kn-body">
-    <main class="kn-main">
+    <!-- A div, not a second `main`. `SidebarInset` already renders one, so this
+         was a main inside a main: axe reports it three ways at once (nested,
+         duplicated, and two landmarks a reader cannot tell apart) and a screen
+         reader offers two "main" destinations of which one is the whole window.
+         One document, one main. -->
+    <div class="kn-main">
     {#if settingsOpenFailed}
       <!-- The capability browser lives in Settings; if it would not start, say
            so rather than leaving the click looking like there is no such page. -->
@@ -173,7 +178,7 @@
         />
       </div>
     {/if}
-  </main>
+  </div>
 
     {#if selectedProject}
       <KnowledgeDetail project={selectedProject} onclose={() => (selectedProject = null)} />
