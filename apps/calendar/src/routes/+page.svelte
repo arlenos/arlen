@@ -107,6 +107,10 @@
     | { problem: "unreadable"; why: string }
     | { problem: "other" };
   let failure = $state<Failure | null>(null);
+  /// The launch argument was not readable. Kept apart from `failure` because it
+  /// is a different question from whether the calendars read, and the read's
+  /// answer is the one that decides what the window can show.
+  let launchFailed = $state(false);
 
   /// The file the app was opened on, when it was opened on one. Read once: it
   /// is an argument, not a setting, and it cannot change while the window lives.
@@ -196,8 +200,13 @@
         // same fix: `launch_file` cannot reject on a real machine, so what
         // reaches here is the runtime's own words about itself.
         console.warn("calendar: the window could not learn what to open", e);
-        failure = { problem: "launch" };
-        return;
+        // AND IT DOES NOT STOP THE READ. This used to `return`, so a window that
+        // could not learn its argument never asked for the calendars either -
+        // and with the host down, which is when `launch_file` actually rejects,
+        // the whole app came up as one line about a file argument over a black
+        // week. Two different questions: what was I asked to open, and can I
+        // read your calendars. Photographed with a refusing host on 6 September.
+        launchFailed = true;
       }
       await read();
     })();
@@ -396,6 +405,9 @@
     </header>
 
     <div class="content">
+      {#if launchFailed && !failure}
+        <p class="note bad" role="alert">{$t("cal.failed.launch")}</p>
+      {/if}
       {#if failure}
         <p class="note bad" role="alert">
           {#if failure.problem === "launch"}{$t("cal.failed.launch")}
