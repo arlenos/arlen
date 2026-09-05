@@ -236,6 +236,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* IT WRAPS WHEN THE ROW IS NARROW, because the half that gets cut is the half
+     worth reading. "Kuratiert und geprüft, über das Rezept X" puts the recipe
+     name last, so at 720 - measured, 218px of column against 309px of line -
+     the row says an app was vetted and never says by what. Two lines under an
+     app name in a list is ordinary; a subline that always stops one word before
+     its subject is not. */
+  @media (max-width: 56rem) {
+    .win-tier {
+      white-space: normal;
+      overflow-wrap: break-word;
+    }
+  }
   /* The one line on this page that asks for something: a shade louder than
      a tier, still not an alarm. */
   .win-tier.pending {
