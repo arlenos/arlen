@@ -989,7 +989,7 @@ def main():
                     default=None, metavar="X,DY",
                     help="click X at DY BELOW the app window's top edge, found in "
                          "the pre-click frame. X is a screen coordinate, or a "
-                         "PERCENTAGE across the window (`50%,300`) - the window's "
+                         "PERCENTAGE across the window (`50%%,300`) - the window's "
                          "width changes between boots too, and a button two thirds "
                          "along it stays two thirds along it. Use this for anything "
                          "inside a window: the placement moves between boots and "
