@@ -39,9 +39,10 @@
 //   ['div.: "Vertrauensstufe verschlagwortet" wide-cut 60<186',
 //    'div.: "A line taller than its box" tall-cut 14<19']
 //
-// Four boxes: one too narrow, one too short, one screen-reader-hidden and one
-// that fits. The last two must NOT appear. So an empty result means the page is
-// clean, not that the probe is asleep.
+// Five boxes: one too narrow, one too short, one that declares an ellipsis it
+// cannot honour, one screen-reader-hidden and one that fits. The last two must
+// NOT appear. So an empty result means the page is clean, not that the probe is
+// asleep.
 const out = [];
 for (const el of document.querySelectorAll("body *")) {
   const s = getComputedStyle(el);
@@ -69,7 +70,17 @@ for (const el of document.querySelectorAll("body *")) {
   // than merged - and neither is dropped, because an ellipsis still withholds
   // words unless something else offers them, which is a judgement for a reader
   // and not for this.
-  const declared = s.textOverflow === "ellipsis" && s.whiteSpace.startsWith("nowrap");
+  //
+  // AND THE DECLARATION HAS TO BE ABLE TO WORK. `text-overflow` applies to a box
+  // whose INLINE content overflows; a flex or grid container has items, not
+  // inline content, so the property is inert there and the words are cut
+  // mid-glyph with no ellipsis at all. The knowledge timeline was reported
+  // "wide-ellipsed" for a month while it rendered "Quarterly report.pd" - a
+  // filename that lost its extension and still looked like a filename. So this
+  // reads the display too, and a flex or grid box is a cut whatever it declares.
+  const inlineBox = !/(^|-)(flex|grid)$/.test(s.display);
+  const declared =
+    inlineBox && s.textOverflow === "ellipsis" && s.whiteSpace.startsWith("nowrap");
   const kind = declared ? "ellipsed" : "cut";
   // Named per axis rather than merged, because the fixes are different: a wide
   // one wants a floor, an ellipsis or a shorter string, a tall one wants room or
