@@ -16,6 +16,13 @@
 #
 #   dev/screenshot/sweep-clipped.sh http://localhost:1454 de / /settings
 #
+# A path may carry a CSS selector after `::`, which is clicked before the probe
+# runs. That is not a nicety: eleven of the thirteen apps have ONE route and keep
+# their content behind tabs and sidebars, so route-walking alone reads a landing
+# page and calls the app clean.
+#
+#   dev/screenshot/sweep-clipped.sh http://localhost:1434 de "/::#tab-timers"
+#
 # Start the app's dev server first, and it must be `vite dev`: the kit's
 # `applyDevLocale` only runs under a dev build, so `vite preview` renders the
 # source language whatever the query says.
@@ -79,17 +86,20 @@ esac
 checked=0
 
 fail=0
-for path in "$@"; do
+for spec in "$@"; do
+  path="${spec%%::*}"
+  open=""
+  [ "$spec" != "$path" ] && open="${spec#*::}"
   url="$base$path?locale=$locale"
-  got="$("$here/shoot.sh" "$url" "$shot" "$here/clipped-text.js" 2>&1 \
+  got="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/clipped-text.js" 2>&1 \
     | sed -n 's/^inject result: //p')"
   case "$got" in
     "["*"]")
       checked=$((checked + 1))
       if [ "$got" = "[]" ]; then
-        echo "  ok   $path"
+        echo "  ok   $spec"
       else
-        echo "  clip $path"
+        echo "  clip $spec"
         # Printed, not counted. Some of these are a scroll container the probe
         # cannot tell from a cut, and a number would hide which.
         printf '       %s\n' "$got"
@@ -99,10 +109,10 @@ for path in "$@"; do
     *)
       # A route that did not render is not a clean route, which is the false
       # green this family of checks keeps finding its way back into.
-      echo "  FAIL $path did not answer: $got"
+      echo "  FAIL $spec did not answer: $got"
       fail=1
       ;;
   esac
 done
-echo "  --   $checked route(s) read in $locale; views behind a tab or a sidebar are not among them"
+echo "  --   $checked view(s) read in $locale; anything not named here was not looked at"
 exit "$fail"
