@@ -494,6 +494,12 @@
     display: flex;
     flex-direction: column;
     scroll-margin-top: 0.25rem;
+    /* THE CONTAINER IS THE DAY, NOT THE ROW, and that is not a detail: a
+       container query styles a container's DESCENDANTS and never the container
+       itself, so with it on `.tl-row` the template rule below was inert and only
+       the source disappeared - which made the object narrower rather than wider.
+       A day section is the row's parent and the same width. */
+    container: tlrow / inline-size;
   }
   .tl-day-head {
     margin: 0.9rem 0 0.25rem;
@@ -590,6 +596,33 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     white-space: nowrap;
+  }
+  /* THREE OF THE FIVE COLUMNS REFUSE TO SHRINK and the object is the one that
+     pays. The verb is a fixed 6.75rem (it has to hold the longest verb in every
+     locale, see above), the source takes its content and the time is 5.5rem - so
+     at 720 the row is 419px, those three plus the gaps take 286, and what the
+     event is ABOUT gets 45. Measured in English: `ran car…`, `edited ch…`,
+     `tagged 3 fil…` while `Terminal`, `Text editor` and `9:41 AM` stood whole
+     beside them. The row's whole job is what happened to what.
+
+     So below 34rem the source goes. It is the most droppable of the five: which
+     app did it is provenance detail the row opens on click, where the verb, the
+     object and the time are the sentence itself. That returns 66px and the
+     object text goes from 45 to about 111. At 1280 the row is 989px and keeps
+     everything - measured, not assumed. */
+  @container tlrow (max-width: 34rem) {
+    .tl-source {
+      display: none;
+    }
+    /* AND THE TEMPLATE LOSES ITS COLUMN, which the first cut forgot. Hiding a
+       grid item does not remove its column: the time slid left into the source's
+       `max-content` track, the 5.5rem track stayed reserved and empty, and the
+       object came out SMALLER than before - 96px against 101. The same defect
+       as the saved search holding a column open for a clock it has not got, one
+       file over, introduced by the fix for its own sibling. */
+    .tl-row {
+      grid-template-columns: max-content max-content minmax(0, 1fr) 5.5rem;
+    }
   }
   .tl-time {
     justify-self: end;
