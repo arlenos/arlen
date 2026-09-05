@@ -281,7 +281,7 @@ class Render:
         report it produces is a bug that does not exist, and the fix for it lands
         in an app that was already correct.
         """
-        if self.args.probe:
+        if self.args.probe or self.args.probe_file:
             self.run_probe()
         elif self.args.axe:
             self.run_axe()
@@ -302,7 +302,18 @@ class Render:
         Deliberately narrow in what it returns, not in what it may ask: the value
         is stringified, so a probe reports a finding rather than driving the page.
         """
-        js = f"String((() => {{ return ({self.args.probe}); }})())"
+        # A FILE IS A BODY, an inline argument is an expression. The three render
+        # probes are multi-statement scripts ending in `return`, so passing one
+        # through --probe fails with "Unexpected keyword 'const'" - which is how
+        # the failure surfaces went unprobed until 6 September: `shoot.sh` can
+        # run them but cannot install a host, and this can install a host but
+        # could not run them. Wrapped rather than evaluated, so the same file
+        # works both ways.
+        if self.args.probe_file:
+            body = pathlib.Path(self.args.probe_file).read_text(encoding="utf-8")
+            js = "String((() => {\n" + body + "\n})())"
+        else:
+            js = f"String((() => {{ return ({self.args.probe}); }})())"
         self.view.evaluate_javascript(js, -1, None, None, None, self.on_probe)
 
     def on_probe(self, view, result):
@@ -565,6 +576,11 @@ def main():
     ap.add_argument("--probe", default=None,
                     help="evaluate one JS expression against the rendered page and"
                          " print its value; writes no image")
+    ap.add_argument("--probe-file", default=None,
+                    help="run a JS FILE (a body ending in `return`) against the"
+                         " rendered page and print its value; the form the"
+                         " dev/screenshot probes are written in, and the one that"
+                         " works alongside --host-script")
     ap.add_argument("--axe", action="store_true",
                     help="run axe-core over the rendered page and print the"
                          " violations; exits non-zero if any are found")
