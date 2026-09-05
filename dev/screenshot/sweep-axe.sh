@@ -127,13 +127,17 @@ for entry in "${SURFACES[@]}"; do
   #
   # So it is asked several times, and the two cases are told apart: NO title is a
   # page that has not come up, a DIFFERENT title is genuinely another app.
+  # ONE launch with time, rather than several without it. The first cut retried
+  # the probe twelve times, and each retry is a whole browser and X server: for
+  # an app whose title is slow or absent that is minutes of nothing, and it took
+  # the pdf surface six of them before the run was killed. `--settle` waits
+  # INSIDE the one session, which is what was wanted all along.
   served=""
-  for _ in $(seq 1 12); do
-    served=$(python3 dev/screenshot/render-wide.py \
+  for _ in $(seq 1 3); do
+    served=$(timeout 90 python3 dev/screenshot/render-wide.py \
       --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
-      --probe "document.title" 2>/dev/null | tail -1)
+      --settle 4 --probe "document.title" 2>/dev/null | tail -1)
     [ -n "$served" ] && break
-    sleep 2
   done
   if [ -n "$want" ] && [ "$served" != "$want" ]; then
     if [ -z "$served" ]; then
@@ -147,14 +151,35 @@ for entry in "${SURFACES[@]}"; do
     continue
   fi
 
-  python3 dev/screenshot/render-wide.py \
+  # BOUNDED, because a surface that never answers must be reported as one rather
+  # than eat the run. The pdf app hung here until the whole sweep was killed at
+  # its outer timeout, and what that produced was no tally at all - worse than a
+  # bad number, because a run that dies prints nothing to disbelieve.
+  timeout 180 python3 dev/screenshot/render-wide.py \
     --url "http://localhost:$PORT$route" \
     --out "$out/$app.png" --width "$WIDTH" --axe --settle 3 \
     >"$out/$app.axe" 2>&1
+  if [ "$?" = 124 ]; then
+    printf '%-16s %s\n' "$app" "REFUSED: the page did not finish an axe run in 180s"
+    kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
+    PORT=$((PORT + 1))
+    continue
+  fi
+  # NO RESULT IS NOT NO VIOLATIONS. This printed "axe: no result" and counted the
+  # surface as swept and clean; run by hand the same page answered with three,
+  # one of them serious. So a missing verdict is a refusal now, and it prints
+  # what the run actually said rather than leaving somebody to guess.
+  if ! grep -qE '^axe:' "$out/$app.axe"; then
+    printf '%-16s %s\n' "$app" "REFUSED: axe returned no verdict"
+    tail -3 "$out/$app.axe" | sed 's/^/                 /'
+    kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
+    PORT=$((PORT + 1))
+    continue
+  fi
   n=$(grep -cE '^  [a-z-]+ \(' "$out/$app.axe" || true)
   total=$((total + n))
   swept=$((swept + 1))
-  printf '%-16s %s\n' "$app" "$(grep -E '^axe:' "$out/$app.axe" || echo 'axe: no result')"
+  printf '%-16s %s\n' "$app" "$(grep -E '^axe:' "$out/$app.axe")"
   grep -E '^  [a-z-]+ \(' "$out/$app.axe" | sed 's/^/                 /' || true
 
   kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
