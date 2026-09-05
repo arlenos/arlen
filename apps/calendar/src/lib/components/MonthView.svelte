@@ -258,6 +258,7 @@
     gap: 2px;
     min-height: 0;
     overflow: hidden;
+    container: monthcell / inline-size;
   }
   .pill {
     display: flex;
@@ -293,6 +294,19 @@
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-primary) 65%, transparent);
+  }
+  /* IN A NARROW MONTH THE NAME IS WHAT THE PILL IS FOR. The time refuses to
+     shrink, so in a 55px cell - measured at 720 in German - it took the whole
+     pill and every event read `09:00 S`, `14:00 P`, `08:15 D`. Five pills in a
+     row saying the same minute and one letter each is a grid that tells you
+     nothing at a glance, which is the one thing a month view is for.
+     Below six rem the time goes and the name stays whole; at 1280 the cell is
+     135px and both fit, so nothing changes there. Dropping it beats shrinking
+     it: a time cut to `09:` is a worse answer than no time. */
+  @container monthcell (max-width: 6rem) {
+    .p-time {
+      display: none;
+    }
   }
   .p-title {
     overflow: hidden;
