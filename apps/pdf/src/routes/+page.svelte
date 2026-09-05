@@ -67,6 +67,30 @@
   });
   const shownPercent = $derived(Math.round((scale / PT_TO_PX) * 100));
 
+  // A MEASURED PAGE MUST NOT CHASE THE SCALE IT WAS MEASURED AT. The raster
+  // comes back `round(pt * scale)` pixels wide, so `width / scale` lands a
+  // fraction off the page's real point width - and `scale` above is derived FROM
+  // that width, so the two chase each other. At 272 of the 1701 window widths
+  // between 300 and 2000 they never settle: the scale flips between two values
+  // forever, and every flip refetches and repaints every page. That is not a
+  // slow render, it is a spin, and it holds the whole webview for as long as the
+  // window stays that wide.
+  //
+  // Found because the pdf app hung the screenshot harness - no load event in
+  // three minutes and a web process that would not exit - while `?text` and a
+  // stubbed host, the two paths that paint no page, came up in seconds. So the
+  // app has been dropping out of every render sweep, and the same spin runs in
+  // the product at one window width in six.
+  //
+  // Half a point and a fifth of a percent of deadband settle every width in that
+  // range. Nothing real moves by less: a page whose width genuinely changed
+  // changed by points, not by the rounding of one raster.
+  function metrics(r: number, w: number): void {
+    if (Math.abs(r - ratio) >= 0.002) ratio = r;
+    if (Math.abs(w - ptWidth) >= 0.5) ptWidth = w;
+  }
+
+
   function zoom(delta: number): void {
     const now = shownPercent;
     const next =
@@ -267,7 +291,7 @@
         <Notice tone="caution" class="flow-note" text={$t("pdf.textFace")} />
       {/if}
       {#each Array.from({ length: $doc.pages }, (_, i) => i + 1) as page (page)}
-        <PageCanvas {page} {scale} {ratio} {ptWidth} {query} onmetrics={(r, w) => ((ratio = r), (ptWidth = w))} />
+        <PageCanvas {page} {scale} {ratio} {ptWidth} {query} onmetrics={metrics} />
       {/each}
     </div>
     <div class="overlay" class:shown={overlayShown}>
@@ -400,7 +424,7 @@
               <Notice tone="caution" class="flow-note" text={$t("pdf.textFace")} />
             {/if}
             {#each Array.from({ length: $doc.pages }, (_, i) => i + 1) as page (page)}
-              <PageCanvas {page} {scale} {ratio} {ptWidth} {query} onmetrics={(r, w) => ((ratio = r), (ptWidth = w))} />
+              <PageCanvas {page} {scale} {ratio} {ptWidth} {query} onmetrics={metrics} />
             {/each}
           </div>
         {/if}
