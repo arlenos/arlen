@@ -13,6 +13,7 @@
 //! network" would ship one language.
 
 
+mod icon_scheme;
 mod url;
 
 use std::collections::BTreeSet;
@@ -75,7 +76,9 @@ async fn store_search(
     })
     .await?
     {
-        Response::Cards(cards) => Ok(store_cards(&cards, &installed_ids().await)),
+        Response::Cards(cards) => Ok(icon_scheme::repaint_all(
+            store_cards(&cards, &installed_ids().await),
+        )),
         Response::Error(e) => Err(e),
         other => Err(format!("unexpected store response: {other:?}")),
     }
@@ -86,7 +89,10 @@ async fn store_search(
 #[tauri::command]
 async fn store_app_detail(id: String) -> Result<Option<StoreCard>, String> {
     match ask(Request::AppDetail { id: ComponentId(id) }).await? {
-        Response::Card(Some(card)) => Ok(Some(store_card(&card, &installed_ids().await))),
+        Response::Card(Some(card)) => Ok(Some(icon_scheme::repaint(store_card(
+            &card,
+            &installed_ids().await,
+        )))),
         Response::Card(None) => Ok(None),
         Response::Error(e) => Err(e),
         other => Err(format!("unexpected store response: {other:?}")),
@@ -415,6 +421,10 @@ pub fn run() {
             store_sources,
             frontend_log,
         ])
+        // The catalogue's icons are files on this machine and a webview cannot
+        // open a path, so they are served over a scheme of their own. See
+        // `icon_scheme` for what it will and will not serve.
+        .register_uri_scheme_protocol("icon", |_app, request| icon_scheme::handle(&request))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
