@@ -55,6 +55,40 @@ const clipped = (el) => {
 };
 // Leaf text nodes whose painted boxes intersect. Text over text is invisible to a
 // clipping probe: both elements fit their own boxes perfectly.
+// AND A CARD IN FRONT IS NOT AN OVERPRINT. A toast stack draws the deck: the
+// rear notice keeps its box exactly where the front one is, and every pixel of
+// it is behind an opaque card. Nothing is illegible, and the shell reported it
+// at all three widths as "The focus mode you had" over "Could not read your
+// Qu" - 305x21px, the whole line, and a picture of it shows one readable notice
+// with a sliver of the next below.
+//
+// The rule that separates it from the real thing: TWO TEXTS ONLY OVERPRINT IF
+// NOTHING OPAQUE SITS BETWEEN THEM. On the privacy page the scope and the
+// provenance were bare spans in one grid, with no painted box between either of
+// them and their common ancestor, so they interleaved on the page's own
+// background. In a stack each notice sits on its own filled card, and the card
+// is what the reader sees.
+const opaqueBetween = (el, stop) => {
+  for (let p = el; p && p !== stop; p = p.parentElement) {
+    const s = getComputedStyle(p);
+    if (s.backgroundImage !== "none") return true;
+    const m = s.backgroundColor.match(/rgba?\(([^)]+)\)/);
+    if (!m) continue;
+    const parts = m[1].split(",").map((v) => parseFloat(v));
+    // Three components means `rgb(...)`, which is opaque; four carries the
+    // alpha. Half is the line: a wash over a neighbour still lets it through,
+    // a card does not.
+    const alpha = parts.length < 4 ? 1 : parts[3];
+    if (alpha > 0.5) return true;
+  }
+  return false;
+};
+const commonAncestor = (a, b) => {
+  const seen = new Set();
+  for (let p = a; p; p = p.parentElement) seen.add(p);
+  for (let p = b; p; p = p.parentElement) if (seen.has(p)) return p;
+  return null;
+};
 const leaves = [];
 for (const el of document.querySelectorAll("body *")) {
   if (el.children.length) continue;
@@ -72,6 +106,8 @@ for (let i = 0; i < leaves.length; i++) {
     const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left);
     const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
     if (ox > 3 && oy > 3) {
+      const stop = commonAncestor(leaves[i].el, leaves[j].el);
+      if (opaqueBetween(leaves[i].el, stop) || opaqueBetween(leaves[j].el, stop)) continue;
       out.push(
         `"${leaves[i].el.textContent.trim().slice(0, 22)}" over "${leaves[j].el.textContent.trim().slice(0, 22)}" (${Math.round(ox)}x${Math.round(oy)}px)`,
       );
