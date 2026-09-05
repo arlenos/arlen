@@ -243,7 +243,14 @@
   }
   .al-grid {
     display: grid;
-    grid-template-columns: 4.5rem minmax(0, 1fr);
+    /* 4.5rem is a FLOOR now rather than the width. It was a measurement of
+       English - "Time", "Label", "Repeat" - and German needs 80px for
+       "Bezeichnung" and 78 for "Wiederholen" against the 72 it was given. The
+       column does not clip, so nothing was lost: the words ran into the gap and
+       ended flush against the field beside them, one longer word away from
+       painting over it. `max-content` lets the column be as wide as its own
+       longest label in whatever language is on. */
+    grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr);
     align-items: center;
     gap: 0.6rem 0.75rem;
   }
