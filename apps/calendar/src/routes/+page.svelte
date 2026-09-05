@@ -311,20 +311,28 @@
     <!-- The header is a drag surface (a non-keyboard pointer interaction); its
          actual controls are the accessible buttons inside it, so the
          static-interaction lint is a false positive here. -->
-    <!-- It wraps below `md`, because at 720 this row cannot hold all of
-         itself. Measured with the parent-cut probe: the view switcher runs out
-         of the window and "Agenda" is cut off by 98px in English, 104 in
-         German - so Day and Agenda cannot be reached at all, on a switcher
-         whose whole job is reaching them. Giving the date a floor took 90px
-         the switcher had been using, which turned a marginal cut into a
-         decisive one; the floor is right and one row was the wrong shape for
-         the width. Two rows below `md`, one above, so the header grows instead
-         of the row lying about what fits. -->
+    <!-- It wraps, because this row cannot always hold all of itself. Measured
+         with the parent-cut probe: at 720 the view switcher runs out of the
+         window and "Agenda" is cut off by 98px in English, 104 in German - so
+         Day and Agenda cannot be reached at all, on a switcher whose whole job
+         is reaching them. Giving the date a floor took 90px the switcher had
+         been using, which turned a marginal cut into a decisive one; the floor
+         is right and one row was the wrong shape for the width.
+
+         NO BREAKPOINT, and the first version of this had one. `md:flex-nowrap`
+         put the switch at 768 by guess, and measuring it found the pills wrap
+         inside their own pills from 768 all the way to 1040 in English and 1060
+         in German - a 290px band where the row was told to stay one line and
+         grew out of the header instead. `min-h-10` with no `h-10` above it lets
+         the browser answer: one line while one line fits, at 40px exactly as
+         before, two when it does not, in any language and whether or not the
+         sidebar is open. A width where a translation needs the second row is
+         not a number I can know in advance. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <header
       onpointerdown={startDrag}
       ondblclick={toggleMax}
-      class="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-2 md:h-10 md:flex-nowrap"
+      class="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-2"
     >
       <SidebarTrigger class="-ml-1" />
       <!-- `h-4!` and not `h-4`, which is what every app in the tree writes and
