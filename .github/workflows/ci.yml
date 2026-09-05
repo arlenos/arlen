@@ -462,6 +462,8 @@ jobs:
           node dev/scripts/test-check-copy-characters.mjs
           python3 dev/scripts/check-untranslated-render.py
           node dev/scripts/test-check-untranslated-render.mjs
+          python3 dev/scripts/check-inert-ellipsis.py
+          node dev/scripts/test-check-inert-ellipsis.mjs
           python3 dev/scripts/check-dbus-members-exist.py
           node dev/scripts/test-check-dbus-members-exist.mjs
           python3 dev/scripts/check-mime-claims-decodable.py

@@ -421,7 +421,7 @@
         <span class="cd-hold-fill" aria-hidden="true"></span>
         <span class="cd-hold-label">
           <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
-          {holdLabel(p)}
+          <span class="cd-hold-text">{holdLabel(p)}</span>
         </span>
       </button>
     {:else if standingElsewhere}
@@ -618,11 +618,21 @@
     width: 100%;
     transition: width 1.2s linear;
   }
+  /* The words are their own element: this box is `inline-flex`, so the
+     `text-overflow` below could not act on them - a flex box has items, not
+     inline content. The label of a hold-to-confirm button is the sentence saying
+     what the hold DOES, and it was one long translation away from being cut
+     mid-glyph with no ellipsis. */
   .cd-hold-label {
     position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .cd-hold-text {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

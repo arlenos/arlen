@@ -54,7 +54,8 @@
     <span class="cd-req-text">
       <span class="cd-req-name">{requesterName}</span>
       <span class="cd-req-id">
-        {#if attested}<ShieldCheck size={11} strokeWidth={2} aria-hidden="true" />{/if}{requesterId}
+        {#if attested}<ShieldCheck size={11} strokeWidth={2} aria-hidden="true" />{/if}<span
+          class="cd-req-id-text">{requesterId}</span>
       </span>
     </span>
   </div>
@@ -115,6 +116,12 @@
     font-weight: 600;
     color: var(--foreground);
   }
+  /* The id is its own element because THIS one is `inline-flex`, and
+     `text-overflow` does nothing on a flex box - it wants inline content, and a
+     flex box has items. The recipe below reads complete and could not run: a
+     long requester id was cut mid-glyph with no ellipsis, on the card whose
+     entire question is WHO is asking. The shield sits beside it as a sibling and
+     keeps its size; the id shrinks and ellipses like an id should. */
   .cd-req-id {
     display: inline-flex;
     align-items: center;
@@ -122,6 +129,11 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .cd-req-id-text {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
