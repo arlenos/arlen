@@ -418,6 +418,30 @@ export async function loadCatalog(): Promise<void> {
   }
 }
 
+/// One app, read by id. Live: `store_app_detail`.
+///
+/// WHY THIS EXISTS. The app page used to call `loadCatalog()` - `store_search`
+/// with an empty query, the WHOLE catalogue - and then pick its one entry out of
+/// the result. On an image staging 2531 AppStream components that is the entire
+/// list crossing the IPC boundary every time somebody taps an app, and the page
+/// could only ever show fields the LIST query happened to return, which is the
+/// reason a detail command was written in the first place.
+///
+/// `null` means the catalogue has no such component, which the page must render
+/// as its own state - distinct from a read that failed, which falls to the
+/// fixture and raises `catalogMocked` the way `loadCatalog` does, so the sample
+/// banner is on screen wherever sample data is.
+export async function appDetail(id: string): Promise<StoreCard | null> {
+  try {
+    const card = await invoke<StoreCard | null>("store_app_detail", { id });
+    catalogMocked.set(false);
+    return card;
+  } catch {
+    catalogMocked.set(true);
+    return FIXTURE.find((a) => a.id === id) ?? null;
+  }
+}
+
 /// The per-layer trust signals for one app. Live: `store_trust_signals`.
 export async function trustFor(id: string): Promise<LayerSignals> {
   try {
