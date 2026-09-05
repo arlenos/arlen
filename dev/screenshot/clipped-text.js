@@ -30,16 +30,32 @@
 //
 // CONTROL, because a probe that returns nothing is indistinguishable from a
 // probe that does not work - and mine returned nothing on three pages before I
-// checked it. Against a data: URL with a 60px box holding a long German word it
-// answers:
+// checked it. It is a FILE now rather than a sentence here, since a fixture
+// described in a comment is one nobody runs:
 //
-//   ['div.: "Vertrauensstufe verschlagwortet" 60<246']
+//   dev/screenshot/shoot.sh "file://$PWD/dev/screenshot/clipped-text-control.html" \
+//     /tmp/x.png dev/screenshot/clipped-text.js 800 400
 //
-// So an empty result means the page is clean, not that the probe is asleep.
+//   ['div.: "Vertrauensstufe verschlagwortet" wide 60<186',
+//    'div.: "A line taller than its box" tall 14<19']
+//
+// Four boxes: one too narrow, one too short, one screen-reader-hidden and one
+// that fits. The last two must NOT appear. So an empty result means the page is
+// clean, not that the probe is asleep.
 const out = [];
 for (const el of document.querySelectorAll("body *")) {
   const s = getComputedStyle(el);
   if (s.display === "none" || s.visibility === "hidden") continue;
+  // A VISUALLY-HIDDEN LABEL IS NOT A CLIPPED ONE. The screen-reader pattern is a
+  // 1x1 box with `overflow: hidden` and `clip: rect(0,0,0,0)`, so it overflows by
+  // construction - on both axes, which is how adding the vertical check turned
+  // every `sr-only` in the tree into a finding. Settings reported `div. "Settings"
+  // wide 1<62, tall 1<24` the moment the second axis went in, and that element is
+  // doing exactly what it should.
+  //
+  // Recognised by shape rather than class name, since `.sr-only` is one spelling
+  // of it: a box no larger than a pixel each way is not showing anybody anything.
+  if (el.clientWidth <= 1 && el.clientHeight <= 1) continue;
   if (el.children.length > 0) continue;
   const t = (el.textContent || "").trim();
   if (!t) continue;
