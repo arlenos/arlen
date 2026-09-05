@@ -244,7 +244,13 @@
   .when {
     flex-shrink: 0;
     font-size: var(--text-2xs, 11px);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    /* The secondary token rather than a percentage of the primary one. At 45%
+       over the row this is about 3.4:1, which axe reports as a serious contrast
+       violation six times over - once per row - and 11px is the smallest text on
+       the surface, so it is the worst place to save a shade. The token is what
+       the rest of this app already uses for text that is quieter than the
+       subject and still meant to be read. */
+    color: var(--color-fg-secondary, #a3a3a3);
     font-variant-numeric: tabular-nums;
   }
   .subject-line {
