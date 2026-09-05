@@ -1,10 +1,17 @@
 <script lang="ts">
   /// The one place that decides how an icon reference is painted. The wire
-  /// sends a URL, a local path or a bare theme name; only a URL loads in the
-  /// webview today (local icon delivery is a routed seam), and the fixture
-  /// paints CSS gradients. Anything unpaintable falls back to a monogram
-  /// rather than a blank tile - a blank square reads as a rendering bug, a
-  /// letter reads as an app without an icon, and only one of those is true.
+  /// sends a URL or a bare theme name, and the fixture paints CSS gradients.
+  /// Anything unpaintable falls back to a monogram rather than a blank tile -
+  /// a blank square reads as a rendering bug, a letter reads as an app without
+  /// an icon, and only one of those is true.
+  ///
+  /// `icon://` IS THE LOCAL DELIVERY THIS DOC USED TO CALL A ROUTED SEAM. The
+  /// catalogue's icons are files staged on the machine, and a webview cannot
+  /// open a path, so `apps/store/src-tauri/src/icon_scheme.rs` serves them over
+  /// a scheme of its own and rewrites the path into that URL before a card
+  /// leaves for the frontend. Until the route existed every one of the 2531
+  /// Debian components fell to a monogram. The scheme is `icon://` on Linux and
+  /// macOS, which is the shape tauri gives a custom protocol there.
   let {
     icon,
     name,
@@ -15,7 +22,7 @@
   const mode = $derived(
     icon?.startsWith("linear-gradient(")
       ? "css"
-      : icon && /^https?:\/\//.test(icon) && !broken
+      : icon && /^(https?|icon):\/\//.test(icon) && !broken
         ? "img"
         : "monogram",
   );

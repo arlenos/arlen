@@ -17,6 +17,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-arlen-portal = { path = "../../../sdk/tauri-plugin-portal" }
 serde = { version = "1", features = ["derive"] }
+# Decoding the path out of an `icon://` request, and encoding one into it. Already
+# in the lockfile as a tauri dependency; named here because this crate uses it
+# directly. `tauri::Url` covers the parsing half, so no `url` dependency is added.
+percent-encoding = "2"
 serde_json = "1"
 log = "0.4"
 env_logger = "0.11"

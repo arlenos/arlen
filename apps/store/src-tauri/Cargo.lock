@@ -156,6 +156,7 @@ dependencies = [
  "arlen-store-backend",
  "env_logger",
  "log",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tauri",
