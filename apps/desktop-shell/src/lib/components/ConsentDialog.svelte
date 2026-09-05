@@ -115,6 +115,9 @@
   // node that is already invisible on screen is removed - so a missing repaint on
   // removal costs nothing.
   let view = $state<PendingView | null>(null);
+  // The request `consent_ready` has already been sent for, so a card that stays
+  // up across many store publishes arms once rather than once per poll.
+  let armedFor: number | null = null;
   // Clear the surface when the card changes. Note what this is NOT for: the
   // after-answer residue it was first written for does not exist. Re-driven on
   // the image on 10 August with the pointer masked out of the check, answering
@@ -148,13 +151,28 @@
       //
       // No timer behind it. A card that never gets here leaves its request
       // unanswered, and an unanswered request is the safe end of this.
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          void invoke("consent_ready").catch((e) => {
-            say(`consent_ready failed, the card cannot be answered: ${e}`, "error");
-          });
-        }),
-      );
+      //
+      // ONCE PER REQUEST, not once per run of this effect. The effect wakes every
+      // time the store publishes, which is every poll, so a card sitting up for a
+      // minute armed sixty times: measured in a VM journal on 5 September,
+      // `consent_window::arm` 120 times for 2 cards. Arming is idempotent, so
+      // nothing was wrong - it just wrote sixty lines per card into the one log
+      // somebody reads when a consent went wrong, and re-set the input region and
+      // keyboard mode under a surface already taking input.
+      if (armedFor !== pending.id) {
+        armedFor = pending.id;
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            void invoke("consent_ready").catch((e) => {
+              // Cleared so the next publish tries again: a card that failed to
+              // arm cannot be answered, and one failed attempt is not a reason to
+              // stop trying while it is still on screen.
+              armedFor = null;
+              say(`consent_ready failed, the card cannot be answered: ${e}`, "error");
+            });
+          }),
+        );
+      }
       return;
     }
     if (view === null) return;
