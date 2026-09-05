@@ -33,8 +33,15 @@
 // how I learned it was not mine. So each rect is first intersected with every
 // ancestor that clips (`overflow` other than `visible`); an element clipped to
 // nothing is not on screen and is dropped before any comparison.
-const clipped = (el) => {
-  const r = el.getBoundingClientRect();
+// ONE RECT PER LINE, and this is the fourth thing this probe learned about the
+// difference between a box and a painting. An inline element that WRAPS has a
+// bounding rect covering the union of its lines - a tall rectangle running the
+// full column width, most of which it does not paint. The text editor renders
+// markdown with its syntax beside the styled text ("**first-class citizen**"),
+// the bold span wraps across two lines, and every marker sitting in the gap at
+// the end of line one was reported as painted over it. `getClientRects()` gives
+// the line boxes themselves, which is what is actually drawn.
+const clipRect = (r, el) => {
   let box = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
   for (let p = el.parentElement; p; p = p.parentElement) {
     const s = getComputedStyle(p);
@@ -52,6 +59,11 @@ const clipped = (el) => {
   box.width = box.right - box.left;
   box.height = box.bottom - box.top;
   return box;
+};
+const paintedBoxes = (el) => {
+  const rects = [...el.getClientRects()];
+  const from = rects.length ? rects : [el.getBoundingClientRect()];
+  return from.map((r) => clipRect(r, el)).filter((b) => b.width > 4 && b.height > 4);
 };
 // Leaf text nodes whose painted boxes intersect. Text over text is invisible to a
 // clipping probe: both elements fit their own boxes perfectly.
@@ -95,16 +107,24 @@ for (const el of document.querySelectorAll("body *")) {
   if (!(el.textContent || "").trim()) continue;
   const s = getComputedStyle(el);
   if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") continue;
-  const box = clipped(el);
-  if (box.width > 4 && box.height > 4) leaves.push({ el, box });
+  const boxes = paintedBoxes(el);
+  if (boxes.length) leaves.push({ el, boxes });
 }
 const out = [];
 for (let i = 0; i < leaves.length; i++) {
   for (let j = i + 1; j < leaves.length; j++) {
-    const a = leaves[i].box;
-    const b = leaves[j].box;
-    const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-    const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    let ox = 0;
+    let oy = 0;
+    for (const a of leaves[i].boxes) {
+      for (const b of leaves[j].boxes) {
+        const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (x > 3 && y > 3 && x * y > ox * oy) {
+          ox = x;
+          oy = y;
+        }
+      }
+    }
     if (ox > 3 && oy > 3) {
       const stop = commonAncestor(leaves[i].el, leaves[j].el);
       if (opaqueBetween(leaves[i].el, stop) || opaqueBetween(leaves[j].el, stop)) continue;
