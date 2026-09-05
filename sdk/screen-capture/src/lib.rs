@@ -611,17 +611,21 @@ impl CapturedImage {
 /// Capture the output whose connector name matches `name` (e.g. `eDP-1`), as
 /// listed by [`list_outputs`]. Errors if no output has that name.
 pub fn capture_output_by_name(name: &str, include_cursor: bool) -> Result<CapturedImage> {
-    let outputs = list_outputs()?;
-    let index = outputs
-        .iter()
-        .position(|o| o.name.as_deref() == Some(name))
-        .ok_or_else(|| {
-            anyhow!(
-                "no output named {name:?} (have {:?})",
-                outputs.iter().filter_map(|o| o.name.as_deref()).collect::<Vec<_>>()
-            )
-        })?;
-    capture_output(index, include_cursor)
+    capture_output_selected(&OutputChoice::Name(name.to_string()), include_cursor)
+}
+
+/// How a caller names the output it wants.
+///
+/// THE NAME IS RESOLVED INSIDE THE CAPTURE'S OWN CONNECTION, and it used not to
+/// be: this helper listed the outputs on one connection, took the position of
+/// the match, and handed that number to a capture that opened another. A
+/// monitor waking between the two moves every index below it, so the by-name
+/// call - the one written to be safe against exactly that - photographed a
+/// different screen than the one it was given. One connection, no index on the
+/// wire between them.
+enum OutputChoice {
+    Index(usize),
+    Name(String),
 }
 
 /// Capture a rectangular region of output `output_index`. The region is given in
@@ -815,6 +819,10 @@ fn alloc_shm_buffer(
 /// frame (`Options::PaintCursors`). Fails if the output is absent, the compositor
 /// offers no format we can convert, or the frame copy fails.
 pub fn capture_output(output_index: usize, include_cursor: bool) -> Result<CapturedImage> {
+    capture_output_selected(&OutputChoice::Index(output_index), include_cursor)
+}
+
+fn capture_output_selected(choice: &OutputChoice, include_cursor: bool) -> Result<CapturedImage> {
     let conn = Connection::connect_to_env().context("connect to the Wayland compositor")?;
     let (globals, mut queue) =
         registry_queue_init::<CaptureState>(&conn).context("initialise the Wayland registry")?;
@@ -828,17 +836,32 @@ pub fn capture_output(output_index: usize, include_cursor: bool) -> Result<Captu
         .ok_or_else(|| anyhow!("the compositor advertises no wl_shm"))?;
     queue.roundtrip(&mut state).context("initial roundtrip")?;
 
-    let output = state
-        .outputs
-        .get(output_index)
-        .ok_or_else(|| {
-            anyhow!(
-                "output index {output_index} out of range ({} outputs)",
-                state.outputs.len()
-            )
-        })?
-        .output
-        .clone();
+    let output = match choice {
+        OutputChoice::Index(i) => state
+            .outputs
+            .get(*i)
+            .ok_or_else(|| {
+                anyhow!("output index {i} out of range ({} outputs)", state.outputs.len())
+            })?
+            .output
+            .clone(),
+        OutputChoice::Name(name) => state
+            .outputs
+            .iter()
+            .find(|o| o.name.as_deref() == Some(name.as_str()))
+            .ok_or_else(|| {
+                anyhow!(
+                    "no output named {name:?} (have {:?})",
+                    state
+                        .outputs
+                        .iter()
+                        .filter_map(|o| o.name.as_deref())
+                        .collect::<Vec<_>>()
+                )
+            })?
+            .output
+            .clone(),
+    };
 
     let source = source_manager.create_source(&output, &qh, ());
     capture_from_source(
