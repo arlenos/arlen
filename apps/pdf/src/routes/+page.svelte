@@ -353,8 +353,22 @@
             <p class="center-note">{$t("pdf.nothingOpen")}</p>
           </div>
         {:else}
+          <!-- A scrolling region that nothing can focus is a document a keyboard
+               cannot read: axe reports it `scrollable-region-focusable`, and what
+               it means here is that arrow keys and Page Down reach the pages only
+               after a mouse has clicked into them. Focusable, and named, so it is
+               also somewhere a reader can be sent rather than an unlabelled box.
+
+               The svelte rule below reads a tabindex on a div as a mistake,
+               which is the usual case and not this one: a scroll container has
+               to be focusable to be scrollable without a mouse. Same suppression
+               the text editor's canvas carries, for the same reason. -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
             class="pages"
+            role="region"
+            tabindex="0"
+            aria-label={$t("pdf.pageFlow")}
             bind:this={scroller}
             bind:clientWidth={viewportW}
             bind:clientHeight={viewportH}
