@@ -3,9 +3,16 @@
   /// meeting list lives in the rail with Start a meeting pinned on top, the
   /// inset header names the open surface once and carries the window controls.
   /// The window runs with `decorations: false`, so the header is also the drag
-  /// region - an explicit `startDragging()` pointerdown (the
-  /// `data-tauri-drag-region` attribute is unreliable on Wayland in Tauri v2),
-  /// guarded so vite still renders.
+  /// region - an explicit `startDragging()` pointerdown rather than the
+  /// `data-tauri-drag-region` attribute, guarded so vite still renders.
+  ///
+  /// The attribute is not so much unreliable as NARROW. Tauri's injected handler
+  /// (tauri 2.10.3 `window/scripts/drag.js`) delegates on `document` and tests
+  /// `e.target.getAttribute(...)`, the exact element under the pointer, walking no
+  /// ancestors - so a press on any child, a label, an icon, the gap inside a nested
+  /// flex box, is not a press on the drag region. A header built from nested boxes
+  /// drags only on the slivers of itself that show through. The handler here uses
+  /// `closest`, which DOES walk, so it drags from anywhere except the controls.
   import "../app.css";
   import { onMount } from "svelte";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
