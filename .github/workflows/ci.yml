@@ -375,6 +375,8 @@ jobs:
           python3 dev/scripts/check-subscribe-scope.py
           node dev/scripts/test-check-subscribe-scope.mjs
           python3 dev/scripts/check-message-keys.py
+          python3 dev/scripts/check-locale-parity.py
+          node dev/scripts/test-check-locale-parity.mjs
           python3 dev/scripts/check-counted-messages.py
           node dev/scripts/test-check-message-keys.mjs
           node dev/scripts/test-check-counted-messages.mjs
