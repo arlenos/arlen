@@ -72,6 +72,9 @@ printf 'From: me@example.org\nSubject: sent thing\nDate: Mon, 1 Jan 2024 08:00:0
 # probes have emptied the inbox, and a reply needs something to reply to.
 printf 'From: gutters@example.org\nSubject: the gutter quote\nDate: Thu, 4 Jan 2024 11:00:00 +0000\n\nQuote attached.\n' \
   > "$work/mail/cur/4.host:2,S"
+# And a fourth, for the keyboard probe, by the same rule.
+printf 'From: fences@example.org\nSubject: the fence estimate\nDate: Fri, 5 Jan 2024 12:00:00 +0000\n\nEstimate attached.\n' \
+  > "$work/mail/cur/5.host:2,S"
 
 echo "mail mailbox:"
 start_preview "$root/apps/mail" 1454 || exit 1
@@ -281,6 +284,36 @@ say "reply opens a composer on a mailbox that cannot send" \
 draft_file=$(find "$work/mail" -path '*Drafts*' -name '*:2,*' -print -quit 2>/dev/null)
 say "and saving the reply writes a draft into a drafts folder it had to make" \
   "$([ -n "$draft_file" ] && echo 1 || echo 0)" "the drafts folder holds [$draft_file]"
+
+# THE KEYBOARD, which reaches the same writes down a different path: its own
+# handler, its own gate (typing in the search box must stay typing) and its own
+# idea of which row is meant (the list's anchor, not the header's selection). A
+# fault in any of those is invisible from the button path, and `e` is the one the
+# ruling names.
+cat > "$work/key.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const rowFor = (t) => [...document.querySelectorAll("*")]
+  .filter((e) => e.children.length === 0 && (e.textContent || "").trim() === t)[0];
+for (let i = 0; i < 60; i++) { if (rowFor("the fence estimate")) break; await wait(250); }
+const cell = rowFor("the fence estimate");
+if (!cell) return JSON.stringify({ listed: false });
+const row = cell.closest("button, [role=option], [role=row], li, tr");
+row.click();
+await wait(1500);
+row.focus();
+row.dispatchEvent(new KeyboardEvent("keydown", { key: "e", bubbles: true }));
+await wait(2000);
+return JSON.stringify({ listed: true, text: document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 160) });
+JS
+
+keyed=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/key.js" SHOOT_INJECT_SETTLE=6 \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-keyboard.png" "" 14 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+keyed_name=$(find "$work/mail" -name '5.host*' -printf '%P\n' 2>/dev/null | head -1)
+say "the keyboard reaches the same writes, and e archives the anchored row" \
+  "$(case "$keyed_name" in .Archive/*) echo 1;; *) echo 0;; esac)" \
+  "the file is now [$keyed_name] - $keyed"
 
 say "and the draft on disk carries what was typed and the subject replied to" \
   "$([ -n "$draft_file" ] && grep -q "the ladder did not reach" "$draft_file" \
