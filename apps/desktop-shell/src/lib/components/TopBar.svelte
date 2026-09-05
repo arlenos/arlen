@@ -253,6 +253,25 @@
   fixed because the topbar height is fixed (h-9 ≈ 36px); min-width
   keeps icon-only applets the same square 28×28 hit-target.
 -->
+<!-- ABOUT `data-tauri-drag-region` HERE, because it looks like dead weight and is
+     not. Driven on the image, 5 September: pressing this bar and dragging moves
+     nothing, and it cannot - the shell window is a wlr-layer-shell surface
+     anchored to four edges with an exclusive zone, and `zwlr_layer_surface_v1`
+     has no move request at all. A panel's position is the compositor's.
+
+     What keeps it is the fallback. `layer_shell::init` returns early when the
+     toplevel is missing or will not downcast, and the window then stays an
+     ordinary GTK toplevel - which is what happens under X11, since that backend
+     does not advertise `zwlr_layer_shell_v1` to gtk-layer-shell. On that path the
+     bar IS a movable window and this attribute is the only thing that moves it.
+
+     So it is a brace for the degraded case, not decoration for the shipped one.
+     Tauri's handler (2.10.3 `window/scripts/drag.js`) delegates on `document` and
+     reads `e.target`, walking no ancestors, which is why it is repeated on the
+     boxes below rather than inherited from here. The RIGHT box deliberately does
+     not carry it: dragging is a courtesy on a surface that cannot move, and the
+     right third is where the indicators live, so a press there should reach them
+     rather than start a gesture that goes nowhere. -->
 <div
   class="flex items-center justify-between h-9 w-full px-2 gap-4 relative select-none shrink-0 shell-surface"
   style="background: var(--background); z-index: 95;"
