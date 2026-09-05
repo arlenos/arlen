@@ -48,14 +48,30 @@
   // inside the buffer. So the press goes to the editor's own contenteditable,
   // which is what CodeMirror listens on.
   var tries = 0;
-  function tick() {
+  function press() {
     var cm = document.querySelector(".cm-content");
-    if (cm) {
-      cm.focus();
-      cm.dispatchEvent(new KeyboardEvent("keydown", {
-        key: "s", code: "KeyS", keyCode: 83, which: 83,
-        ctrlKey: true, bubbles: true, cancelable: true,
-      }));
+    cm.focus();
+    cm.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "s", code: "KeyS", keyCode: 83, which: 83,
+      ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+  }
+  function tick() {
+    var line = document.querySelector(".cm-line");
+    if (line) {
+      // TYPE FIRST, and the comment above has said so since this was written
+      // while the code did not do it. `save()` returns on its first line when
+      // `draft === null`, and `draft` is null until the buffer changes - so
+      // every Ctrl+S here landed on a clean document and returned before it
+      // could be refused. The fixture rendered a document and no refusal for
+      // as long as it existed, which is what `// EXPECT:` now catches.
+      //
+      // A text node rather than a synthetic `input`: CodeMirror watches its own
+      // content with a MutationObserver, so an edit to the DOM is an edit to the
+      // document, and that is the one gesture a script can make that the editor
+      // reads the same way as a keystroke.
+      line.appendChild(document.createTextNode(" x"));
+      setTimeout(press, 300);
       return;
     }
     if (tries++ < 60) setTimeout(tick, 100);
