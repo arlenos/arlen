@@ -189,7 +189,7 @@
     font-size: var(--text-2xs, 11px);
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
   }
   .cells {
     display: grid;
@@ -205,7 +205,11 @@
     border-bottom: 1px solid var(--color-border-subtle, #1f1f1f);
     text-align: center;
     font-size: var(--text-2xs, 11px);
-    color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
+    /* The secondary token, not a fraction of the primary one: at 35% over the
+       grid this is the serious contrast violation axe reports twenty-nine times,
+       once per week label in the month and the mini month. Secondary is still
+       quieter than a day number, so the hierarchy the grid needs survives. */
+    color: var(--color-fg-secondary, #a3a3a3);
     font-variant-numeric: tabular-nums;
   }
   .cell {
@@ -223,7 +227,7 @@
     background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
   }
   .cell.other .num {
-    color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
   }
   .cell.drop {
     background: color-mix(in srgb, var(--color-accent, #6366f1) 8%, transparent);

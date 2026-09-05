@@ -427,7 +427,7 @@
     color: var(--color-fg-primary, #fafafa);
   }
   .title::placeholder {
-    color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
     font-weight: 500;
   }
   .title:focus-visible {
@@ -443,7 +443,7 @@
     font-size: var(--text-xs, 12px);
   }
   .p-label {
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
   }
   .p-chip {
     padding: 0.1rem 0.45rem;
@@ -507,7 +507,7 @@
     gap: 0.4rem;
   }
   .dash {
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
   }
   .repeat-col,
   .remind-col {

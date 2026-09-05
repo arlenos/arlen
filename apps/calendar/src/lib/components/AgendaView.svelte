@@ -171,6 +171,6 @@
   }
   .bell {
     display: inline-flex;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
   }
 </style>

@@ -118,7 +118,7 @@
   .mini-dow {
     text-align: center;
     font-size: var(--text-2xs, 10px);
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: var(--color-fg-secondary, #a3a3a3);
     padding-bottom: 2px;
   }
   .mini-wk {
@@ -126,7 +126,9 @@
     align-items: center;
     justify-content: center;
     font-size: 9px;
-    color: color-mix(in srgb, var(--color-fg-primary) 30%, transparent);
+    /* Same reason as the month grid's, and more so: nine pixels is the smallest
+       text in the app. */
+    color: var(--color-fg-secondary, #a3a3a3);
     font-variant-numeric: tabular-nums;
   }
   .mini-day {
@@ -144,7 +146,12 @@
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
   }
   .mini-day.other {
-    color: color-mix(in srgb, var(--color-fg-primary) 30%, transparent);
+    /* A day outside the shown month is quieter, not unreadable: these are real
+       days somebody can click to walk into that month, and at 30% they were the
+       contrast violation left once the week labels were fixed - a second fault
+       standing behind the first. Secondary is still below the 80% an in-month
+       day carries, so the month being shown still reads as the foreground. */
+    color: var(--color-fg-secondary, #a3a3a3);
   }
   .mini-day.focus {
     background: color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
