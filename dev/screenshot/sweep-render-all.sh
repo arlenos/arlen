@@ -29,29 +29,35 @@ LOCALE="${1:-de}"
 ONLY="${2:-}"
 PORT=6100
 
-# `<app> <spec> [spec...]`, where a spec is a route optionally followed by
+# `<app> <spec>|<spec>|...`, where a spec is a route optionally followed by
 # `::selector` - the thing to click before the probes run.
+#
+# PIPE-SEPARATED, not space-separated, and that is not decoration: a CSS selector
+# may contain a space. `.bar-side.left .trigger` split into two arguments the
+# first time the greeter's two menus went in the table, and the sweep reported
+# `FAIL "/::.bar-side.right did not answer` four times - loud, which is right,
+# and still four wasted readings.
 #
 # NOT HERE, deliberately: `harness` and `store` are arlen-ui's live surfaces, and
 # a shared sweep that goes red on another lane's work is a sweep somebody turns
 # off. `desktop-shell` is here because its three windows are the surfaces a person
 # sees most.
 SURFACES=(
-  "calendar / /::.seg-pill:nth-of-type(2) /::.seg-pill:nth-of-type(3) /::.seg-pill:nth-of-type(4) /::.seg-pill:nth-of-type(5) /::#cal-new-event"
-  "clock / /::#chrome-add /::#tab-timers /::#tab-focus /::#tab-stopwatch /::#tab-world"
-  "desktop-shell / /consent /waypointer"
-  "files / /::[data-place=recent] /::[data-place=trash]"
-  "greeter /"
-  "knowledge / /::button[data-place=projects] /::button[data-place=library] /::button[data-place=searches]"
-  "mail / /::.row /::#folder-sent /::#folder-drafts /::#folder-archive /::#folder-trash"
-  "meetings / /capture /meeting/abc"
+  "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event"
+  "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
+  "desktop-shell /|/consent|/waypointer"
+  "files /|/::[data-place=recent]|/::[data-place=trash]"
+  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger"
+  "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
+  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
+  "meetings /|/capture|/meeting/abc"
   "pdf /"
   "screenshot /"
-  "settings / /keyboard/shortcuts /keyboard/shortcuts::[data-action=add-custom] /keyboard/shortcuts::[data-action=reset-all]"
-  "system-monitor / /::#tab-performance"
-  "terminal / /::#terminal-history-open /::#terminal-new-session"
-  "text-editor / /::.trigger"
-  "viewers / /?demo=image /?demo=video"
+  "settings /|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]"
+  "system-monitor /|/::#tab-performance"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session"
+  "text-editor /|/::.trigger"
+  "viewers /|/?demo=image|/?demo=video"
 )
 
 # An app name that matches nothing sweeps nothing and would otherwise print a
@@ -76,6 +82,7 @@ swept=0
 fail=0
 for entry in "${SURFACES[@]}"; do
   read -r app specs <<<"$entry"
+  IFS='|' read -r -a spec_list <<<"$specs"
   [ -n "$ONLY" ] && [ "$ONLY" != "$app" ] && continue
 
   # `setsid` so the whole tree gets its own process group: killing the `npm run
@@ -111,8 +118,7 @@ for entry in "${SURFACES[@]}"; do
   fi
 
   echo "== $app"
-  # shellcheck disable=SC2086
-  "$(dirname "${BASH_SOURCE[0]}")/sweep-render.sh" "http://localhost:$PORT" "$LOCALE" $specs || fail=1
+  "$(dirname "${BASH_SOURCE[0]}")/sweep-render.sh" "http://localhost:$PORT" "$LOCALE" "${spec_list[@]}" || fail=1
   swept=$((swept + 1))
 
   kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
