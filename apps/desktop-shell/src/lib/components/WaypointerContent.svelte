@@ -98,7 +98,7 @@
 
   /// The card itself, which is the element that shrinks - and, measurably, the
   /// one holding most of the stale paint.
-  let cardEl: HTMLDivElement | undefined = $state();
+  let cardEl: HTMLElement | undefined = $state();
 
   // Repaint the backdrop whenever the query changes, because the webview will not.
   //
@@ -864,7 +864,14 @@
 <div class="wp-backdrop" bind:this={backdropEl} onclick={close}>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="wp-card shell-surface" bind:this={cardEl} onclick={(e) => e.stopPropagation()}>
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- A `main`, not a div: this card is the whole content of the launcher window,
+       and until now nothing in that window was inside a landmark at all. The
+       heading names the window for a screen reader landing in it - hidden,
+       because the search field it opens on already says what this is. -->
+  <main class="wp-card shell-surface" bind:this={cardEl} onclick={(e) => e.stopPropagation()}>
+    <h1 class="sr-only">{$t("sh.app.title.waypointer")}</h1>
     <Command class="wp-root" shouldFilter={false} bind:value={commandValue}>
       <!-- The Ask-mode marker: a quiet chip riding the input line, exactly where
            the user types (stronger than a frame, which reads as mere focus). -->
@@ -1311,7 +1318,7 @@
         </div>
       {/if}
     </Command>
-  </div>
+  </main>
 </div>
 
 <style>
