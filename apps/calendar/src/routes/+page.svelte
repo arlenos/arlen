@@ -311,14 +311,34 @@
     <!-- The header is a drag surface (a non-keyboard pointer interaction); its
          actual controls are the accessible buttons inside it, so the
          static-interaction lint is a false positive here. -->
+    <!-- It wraps below `md`, because at 720 this row cannot hold all of
+         itself. Measured with the parent-cut probe: the view switcher runs out
+         of the window and "Agenda" is cut off by 98px in English, 104 in
+         German - so Day and Agenda cannot be reached at all, on a switcher
+         whose whole job is reaching them. Giving the date a floor took 90px
+         the switcher had been using, which turned a marginal cut into a
+         decisive one; the floor is right and one row was the wrong shape for
+         the width. Two rows below `md`, one above, so the header grows instead
+         of the row lying about what fits. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <header
       onpointerdown={startDrag}
       ondblclick={toggleMax}
-      class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
+      class="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-2 md:h-10 md:flex-nowrap"
     >
       <SidebarTrigger class="-ml-1" />
-      <Separator orientation="vertical" class="me-1 h-4" />
+      <!-- `h-4!` and not `h-4`, which is what every app in the tree writes and
+           none of them gets: the kit's separator carries
+           `data-[orientation=vertical]:h-full`, an attribute selector, so it
+           outranks a plain `h-4` and the line has always been the height of the
+           whole header. That was invisible while the header was a fixed `h-10`.
+           It stops being invisible the moment the header wraps: `h-full` is a
+           percentage of a height that is still being computed from the lines,
+           the first line inflates to the finished two-line height, and the
+           second line is laid out below the header's own bottom edge - drawn
+           over the weekday row and the 07:00 label, measured. A fixed 16 has no
+           such loop. -->
+      <Separator orientation="vertical" class="me-1 h-4!" />
       <!-- A floor under the date, because it had none: measured at 720px the span
            was 0 wide against 141 of content - not truncated, annihilated, while
            the five-option view switcher beside it kept every pixel it asked for.
