@@ -13,8 +13,7 @@ const messages: Catalogs = {
     // Two named causes rather than whatever the layer below said. `other` stays
     // for a failure the command cannot name, which today means the host itself
     // is absent - a state a person never meets.
-    "ml.failed.launch":
-      "This window could not find out which message it was asked to open, so it opened none.",
+    "ml.failed.launch": "This window could not find out which message it was asked to open.",
     "ml.failed.unreadable": "That file could not be read: {$why}",
     "ml.failed.notAMessage": "That file is not a message. A message file usually ends in .eml.",
     "ml.failed.other": "That message could not be read. The detail is in the log.",
@@ -115,8 +114,7 @@ const messages: Catalogs = {
   de: {
     "ml.app.title": "E-Mail",
     "ml.nothingOpen": "Keine Nachricht geöffnet. Öffne eine aus Dateien, oder übergib eine auf der Kommandozeile.",
-    "ml.failed.launch":
-      "Dieses Fenster konnte nicht herausfinden, welche Nachricht es öffnen sollte, deshalb hat es keine geöffnet.",
+    "ml.failed.launch": "Dieses Fenster konnte nicht herausfinden, welche Nachricht es öffnen sollte.",
     "ml.failed.unreadable": "Diese Datei konnte nicht gelesen werden: {$why}",
     "ml.failed.notAMessage": "Diese Datei ist keine Nachricht. Eine Nachrichtendatei endet meist auf .eml.",
     "ml.failed.other": "Diese Nachricht war nicht lesbar. Die Einzelheiten stehen im Protokoll.",
