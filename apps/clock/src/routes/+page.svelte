@@ -101,30 +101,35 @@
     {/each}
   </nav>
 
-  {#if $clockMocked}
-    <p class="sample">{$t("c.sample")}</p>
-  {:else if $clockAbsent}
-    <!-- Not a failure: nobody started the service. Naming it is what lets a
-         person do something about it, where "cannot be read" only worries them. -->
-    <p class="sample">{$t("c.notRunning")}</p>
-  {:else if $clockUnavailable}
-    <!-- This line sits above the tab switch, so it shows on WHICHEVER tab is
-         open. It used to say "Cannot read your alarms and timers", which is a
-         true sentence in the wrong place: on Stopwatch it described a feature the
-         person was not looking at, over a pane that was empty for a reason it
-         never gave. Every tab here reads the same daemon state - the stopwatch is
-         persisted too, which is why its view is gated on it - so one sentence can
-         cover them all, as long as it names what is actually missing rather than
-         one tab's worth of it. -->
-    <p class="sample">{$t("c.unavailable")}</p>
-  {/if}
-  <!-- The alarm or timer below is back to what the daemon holds, because what
-       was asked for never got there. -->
-  {#if $clockActionFailed}
-    <p class="sample" role="alert">{$t("c.actionFailed")}</p>
-  {/if}
-
   <main class="body">
+    <!-- The state sentences live INSIDE the content region, above the tab
+         switch. They used to sit between the nav and the main, which is outside
+         every landmark: axe reports it `region`, and what it means is that a
+         reader moving by landmark passes over the one line explaining why the
+         pane below is empty. Above the switch is still where they belong - that
+         is what makes them show on whichever tab is open. -->
+    {#if $clockMocked}
+      <p class="sample">{$t("c.sample")}</p>
+    {:else if $clockAbsent}
+      <!-- Not a failure: nobody started the service. Naming it is what lets a
+           person do something about it, where "cannot be read" only worries them. -->
+      <p class="sample">{$t("c.notRunning")}</p>
+    {:else if $clockUnavailable}
+      <!-- This line sits above the tab switch, so it shows on WHICHEVER tab is
+           open. It used to say "Cannot read your alarms and timers", which is a
+           true sentence in the wrong place: on Stopwatch it described a feature the
+           person was not looking at, over a pane that was empty for a reason it
+           never gave. Every tab here reads the same daemon state - the stopwatch is
+           persisted too, which is why its view is gated on it - so one sentence can
+           cover them all, as long as it names what is actually missing rather than
+           one tab's worth of it. -->
+      <p class="sample">{$t("c.unavailable")}</p>
+    {/if}
+    <!-- The alarm or timer below is back to what the daemon holds, because what
+         was asked for never got there. -->
+    {#if $clockActionFailed}
+      <p class="sample" role="alert">{$t("c.actionFailed")}</p>
+    {/if}
     {#if tab === "alarms"}
       <AlarmsView />
     {:else if tab === "timers"}
