@@ -56,6 +56,15 @@ trap 'rm -f "$shot" "$state"' EXIT
 # The page's own words, not a selector: a refusal renders in a different element
 # in nearly every app (a `[role=alert]`, an `.outcome`, a toast), and a selector
 # list goes stale the way the gesture did. `innerText` is what a person reads.
+#
+# AND `innerText` RATHER THAN `textContent` IS LOAD-BEARING, so do not "fix" it.
+# `innerText` omits what is not rendered; `textContent` returns it. That one
+# difference is what caught the jobs fixture: it was clicking a Cancel button
+# inside a closed popover, the refusal rendered at `visibility: hidden`, and
+# `textContent` would have found the sentence and passed the fixture on a screen
+# nobody could see. It is also why the eight other fixtures need no
+# visible-only guard of their own - a fixture that drives hidden UI produces a
+# hidden refusal, and this check goes red on it.
 cat > "$state" <<'JS'
 return document.body.innerText.replace(/\s+/g, " ");
 JS
