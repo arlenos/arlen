@@ -29,6 +29,15 @@ WIDTH="${1:-1280}"
 ONLY="${2:-}"
 PORT=5310
 
+# THE LIST IS THE COVERAGE, so what is missing from it is invisible rather than
+# clean. On 5 September a sweep of the mail app reported "0 violations" and had
+# swept nothing at all: mail was not here, the app filter matched no entry, and
+# the tally printed a clean line for an empty run. Mail, calendar and pdf added
+# the same day.
+#
+# `harness` and `store` are deliberately absent: they are arlen-ui's live work,
+# and a shared sweep that goes red on another lane's surface is a sweep somebody
+# turns off. `trash-rm` is not an app.
 SURFACES=(
   "files -"
   "terminal -"
@@ -41,13 +50,35 @@ SURFACES=(
   "viewers -"
   "screenshot -"
   "greeter -"
+  "mail -"
+  "calendar -"
+  "pdf -"
   "desktop-shell /waypointer"
 )
+
+# An app name that matches nothing sweeps nothing and, before this, still printed
+# a clean tally - the exact false green the three comments below guard the rest of
+# this file against. Refuse instead.
+if [ -n "$ONLY" ]; then
+  known=0
+  for entry in "${SURFACES[@]}"; do
+    read -r a _ <<<"$entry"
+    [ "$a" = "$ONLY" ] && known=1
+  done
+  if [ "$known" = 0 ]; then
+    echo "sweep-axe.sh: no surface named '$ONLY'. It would sweep nothing and report clean." >&2
+    printf '  known:' >&2
+    for entry in "${SURFACES[@]}"; do read -r a _ <<<"$entry"; printf ' %s' "$a" >&2; done
+    echo >&2
+    exit 2
+  fi
+fi
 
 out=$(mktemp -d)
 trap 'rm -rf "$out"; kill -- "-${server:-0}" 2>/dev/null' EXIT
 
 total=0
+swept=0
 for entry in "${SURFACES[@]}"; do
   read -r app route <<<"$entry"
   [ -n "$ONLY" ] && [ "$ONLY" != "$app" ] && continue
@@ -87,11 +118,30 @@ for entry in "${SURFACES[@]}"; do
   want=$(grep -hoE '"[a-z]+\.app\.title": "[^"]+"' \
            "apps/$app/src/lib/i18n/"messages*.ts 2>/dev/null \
          | head -1 | sed 's/.*: "\(.*\)"/\1/')
-  served=$(python3 dev/screenshot/render-wide.py \
-    --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
-    --probe "document.title" 2>/dev/null | tail -1)
+  # THE TITLE IS SET BY THE APP, so it arrives after hydration and not when the
+  # server first answers. `curl -sf /` succeeds as soon as vite serves the shell,
+  # which for a heavy app is seconds before its script has run - so a single
+  # probe here read an empty title and the sweep refused the surface as somebody
+  # else's server. Files dropped out of every run that way while the tally
+  # printed a number, which is the same false-clean this file guards elsewhere.
+  #
+  # So it is asked several times, and the two cases are told apart: NO title is a
+  # page that has not come up, a DIFFERENT title is genuinely another app.
+  served=""
+  for _ in $(seq 1 12); do
+    served=$(python3 dev/screenshot/render-wide.py \
+      --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
+      --probe "document.title" 2>/dev/null | tail -1)
+    [ -n "$served" ] && break
+    sleep 2
+  done
   if [ -n "$want" ] && [ "$served" != "$want" ]; then
-    printf '%-16s %s\n' "$app" "REFUSED: port $PORT served \"$served\", not \"$want\" - another server holds it"
+    if [ -z "$served" ]; then
+      why="the page never reported a title, so it did not come up"
+    else
+      why="port $PORT served \"$served\", not \"$want\" - another server holds it"
+    fi
+    printf '%-16s %s\n' "$app" "REFUSED: $why"
     kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
     PORT=$((PORT + 1))
     continue
@@ -103,6 +153,7 @@ for entry in "${SURFACES[@]}"; do
     >"$out/$app.axe" 2>&1
   n=$(grep -cE '^  [a-z-]+ \(' "$out/$app.axe" || true)
   total=$((total + n))
+  swept=$((swept + 1))
   printf '%-16s %s\n' "$app" "$(grep -E '^axe:' "$out/$app.axe" || echo 'axe: no result')"
   grep -E '^  [a-z-]+ \(' "$out/$app.axe" | sed 's/^/                 /' || true
 
@@ -111,4 +162,7 @@ for entry in "${SURFACES[@]}"; do
 done
 
 echo
-echo "$total violation(s) across the surfaces swept at ${WIDTH}px"
+# The count of surfaces is part of the result, not a detail: "0 violations" over
+# no surfaces and "0 violations" over fifteen are the same sentence and opposite
+# facts.
+echo "$total violation(s) across $swept surface(s) at ${WIDTH}px"
