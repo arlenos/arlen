@@ -234,7 +234,7 @@
       {:else}
         <div class="se-results">
           {#each $savedSearches as s (s.id)}
-            <button type="button" class="se-row" onclick={() => runSaved(s)}>
+            <button type="button" class="se-row se-row-saved" onclick={() => runSaved(s)}>
               <span class="se-type saved"><Bookmark size={11} strokeWidth={2} /></span>
               <span class="se-title">{s.name}</span>
               <span class="se-sub">
@@ -242,7 +242,6 @@
                 {#if s.facets.project}<span class="se-proj">{s.facets.project}</span>{/if}
                 {#if s.facets.type}<span class="se-proj">{typeLabel(s.facets.type)}</span>{/if}
               </span>
-              <span class="se-time"></span>
             </button>
           {/each}
         </div>
@@ -425,6 +424,15 @@
     background: transparent;
     text-align: start;
   }
+  /* A SAVED SEARCH HAS NO TIME, and it was holding the column open for one
+     anyway: the row rendered an empty `se-time` span, so 7.5rem of every saved
+     row was reserved for nothing while its own name was cut at fourteen
+     characters. Measured at 720 in German - "Touched by cargo build" came out as
+     "Touched by c…" with a hand's width of blank to its right. Three columns
+     here, and the name and the query get what the clock was keeping. */
+  .se-row-saved {
+    grid-template-columns: 4.5rem minmax(0, 1.2fr) minmax(0, 1fr);
+  }
   .se-row:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
   }
@@ -468,14 +476,27 @@
     overflow: hidden;
     white-space: nowrap;
   }
+  /* THE QUERY IS THE SEARCH, so it is the half the row keeps. Measured at 720 in
+     German: the sub column was 86px and the project chip took 63 of them, leaving
+     the query seventeen - about two glyphs and an ellipsis. A saved search called
+     "Touched by cargo build" then showed its project in full and its query as
+     `"c…`, which is the starved-column shape again with the wrong half surviving.
+     Six characters is the floor; below that the line says nothing. */
   .se-sub-text {
-    min-width: 0;
+    min-width: 6ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* AND THE CHIP GIVES WAY WITH AN ELLIPSIS RATHER THAN A CUT. It used to refuse
+     to shrink at all, which is why it could take the query's room; letting it
+     shrink without this would make it the fragment the note above warns about.
+     An ellipsed chip is a chip that says it ran out. */
   .se-proj {
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     padding: 0.0625rem 0.375rem;
     border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--color-fg-primary) 7%, transparent);
