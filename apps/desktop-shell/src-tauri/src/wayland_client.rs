@@ -408,7 +408,22 @@ impl AppData {
                 let info = self.output_state.info(&o)?;
                 let connector = info.name?;
                 let (x, y) = info.logical_position?;
-                Some(OutputGeometry { x, y, connector })
+                // The CURRENT mode, not the first one listed: a monitor
+                // advertises every mode it can do and the picker has to say
+                // which one it is doing.
+                let size = info
+                    .modes
+                    .iter()
+                    .find(|m| m.current)
+                    .map(|m| m.dimensions)
+                    .or(info.logical_size);
+                Some(OutputGeometry {
+                    x,
+                    y,
+                    connector,
+                    description: info.description.clone(),
+                    size,
+                })
             })
             .collect();
         log::debug!(

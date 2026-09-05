@@ -515,7 +515,6 @@ BUILD_DIRS = {"target", "node_modules", "mkosi.builddir", ".git", ".svelte-kit",
 # unattributed entry is not a pass, it is a triage item that has been seen.
 DEAD_INVOKES: dict[str, str] = {
     # capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet - coder, target build
-    "list_capture_sources": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     "start_screencast": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     "cancel_screencast": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     "capture_status": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
