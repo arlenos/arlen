@@ -217,7 +217,11 @@
   /// them marks them read.
   function loadRow(id: string): void {
     const mem = grouped.members.get(id) ?? [];
-    for (const e of mem) markRead(e.id);
+    // THE MARK FOLLOWS THE OPEN, and the order is load-bearing since the mark
+    // became real. A maildir keeps the read flag in the filename, so marking
+    // renames the file - and marking first raced the open, which then asked for
+    // a path that had just stopped existing and reported that the message did
+    // not open. It is also the honest order: a message is read once it has been.
     void Promise.all(mem.map((e) => openMessage(e.id))).then((list) => {
       if (!(selected.size === 1 && selected.has(id))) return;
       const messages = list.filter((m): m is Message => m !== null);
@@ -231,6 +235,7 @@
       }
       readFailed = false;
       reading = { subject: mem[0].subject, messages };
+      for (const e of mem) void markRead(e.id);
     });
   }
 
