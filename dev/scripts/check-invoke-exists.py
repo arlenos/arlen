@@ -399,12 +399,18 @@ KNOWN: dict[str, dict[str, str]] = {
         # DNS-SD listener, which is a subsystem rather than a command.
     },
     "desktop-shell": {
-        # The whole capture group waits on ONE missing piece rather than five.
+        # The capture group waits on ONE missing piece rather than four.
         # The ScreenCast portal backend exists (sessions, source-type and cursor
         # negotiation, a content-free audit of every share step); its own header
         # says what is left is "the PipeWire producer that makes `Start` return
         # real node ids". Until that producer exists there is nothing for these
-        # shell commands to hand back, so they are one job, not five.
+        # shell commands to hand back, so they are one job, not four.
+        #
+        # `list_capture_sources` came OFF this list on 5 September, and the way it
+        # got on is worth keeping: it was grouped with the other four because they
+        # share a plan section, not because it shares their blocker. Naming what
+        # each one waits on separately is what showed it waited on nothing - the
+        # shell already tracks the outputs and the toplevels for its own bars.
         # FALSE WHEN: a PipeWire producer exists and the portal's `Start` returns
         # real node ids - at which point `arlen.portal` can list ScreenCast in its
         # `Interfaces` line, which is the single check for whether this is still
@@ -413,10 +419,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "start_screencast": "starting a screencast (PipeWire producer)",
         "stop_capture": "stopping a capture (PipeWire producer)",
         "capture_status": "the capture indicator (PipeWire producer)",
-        "list_capture_sources": (
-            "the capture source picker - also needs the compositor to enumerate "
-            "monitors and toplevels for it"
-        ),
         # Dictation needs a speech engine, which this system does not have and has
         # not decided to have. Listed so it is not mistaken for plumbing.
         # FALSE WHEN: a speech engine is provisioned on the image - a binary or

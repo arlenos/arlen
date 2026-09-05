@@ -11,6 +11,7 @@ mod printers;
 mod app_state;
 mod audio;
 mod capability;
+mod capture_sources;
 mod battery;
 mod clipboard_history;
 mod clipboard_ipc;
@@ -554,6 +555,7 @@ pub fn run() {
             wayland_client::activate_window,
             wayland_client::window_move_to_workspace,
             wayland_client::get_windows,
+            capture_sources::list_capture_sources,
             wayland_client::get_workspaces,
             minimized_windows::get_minimized_windows,
             minimized_windows::restore_window,

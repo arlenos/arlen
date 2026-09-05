@@ -52,6 +52,13 @@ pub struct OutputGeometry {
     pub x: i32,
     pub y: i32,
     pub connector: String,
+    /// What the monitor calls itself (`Dell Inc. DELL U2720Q`), when
+    /// xdg-output gave one. A connector name is what the machine calls
+    /// the port; a person picking a screen to share reads the other.
+    pub description: Option<String>,
+    /// The current mode in pixels, for the same reason: `3840 x 2160`
+    /// is how somebody tells two monitors apart in a list.
+    pub size: Option<(i32, i32)>,
 }
 
 /// Tauri-managed shared cache. Single mutex; both producer
@@ -68,6 +75,11 @@ impl OutputConnectorTable {
     }
     pub fn update(&self, table: Vec<OutputGeometry>) {
         *self.inner.lock().unwrap() = table;
+    }
+    /// Every known output. The capture source picker reads this rather
+    /// than the compositor, because the shell already keeps it current.
+    pub fn snapshot(&self) -> Vec<OutputGeometry> {
+        self.inner.lock().unwrap().clone()
     }
     /// Resolve a `(x, y)` GDK monitor origin to a single connector
     /// name. Returns `None` when zero or MORE THAN ONE outputs
