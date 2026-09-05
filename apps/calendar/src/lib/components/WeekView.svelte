@@ -516,6 +516,7 @@
     flex-direction: column;
     gap: 1px;
     overflow: hidden;
+    container: calblock / inline-size;
     padding: 3px 6px;
     border: none;
     border-inline-start: 2px solid var(--cal, var(--color-accent, #6366f1));
@@ -556,12 +557,36 @@
     font-size: var(--text-2xs, 10px);
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
     font-variant-numeric: tabular-nums;
+    /* CONTAINED, because it was not. The title beside it has clipped since it was
+       written and this line had nothing at all, so in a narrow column it painted
+       straight out of its block into the next one: measured at 720 with the event
+       form open, `14:00-17:30` needed 40px in a box of 34 and the surplus landed
+       on the neighbouring event. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     /* Tight for the same reason as the title above, and it is the line that was
        taking the room. A 45-minute block is 36px with 30px inside it; at the
        inherited line-height this 10px font claimed 18 of those, the title was
        squeezed to 11 against the 14 it needed, and "Call with New York" was cut
        across the middle while its own time sat whole underneath. */
     line-height: 1.15;
+  }
+  /* AND BELOW THE WIDTH IT NEEDS, THE TIME GOES. Overlapping events split an
+     already-narrow column three ways: at 720 with the form open the blocks were
+     22 to 48px against the 40 this line wants, so the name was down to eight
+     pixels while the time ate the rest and still did not fit. The block already
+     says when it is by WHERE IT SITS - that is what a week grid is - so the name
+     is the half worth keeping.
+
+     3rem is the floor, and it is measured rather than picked: the query reads the
+     CONTENT box, so a 62px block asks as 56 and a 3.5rem floor took the time off
+     it at 1280 - one width above where the trouble is. At 3rem the 720 blocks (48
+     and 22) lose it and the 1280 ones (62 and 128) keep it. */
+  @container calblock (max-width: 3rem) {
+    .b-time {
+      display: none;
+    }
   }
   .resize-handle {
     position: absolute;
