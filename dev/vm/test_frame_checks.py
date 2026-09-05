@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover - the message matters more than the trac
     )
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from verify import consent_dialog_state, top_bar_state  # noqa: E402
+from verify import consent_dialog_state, top_bar_state, window_sides, window_top  # noqa: E402
 
 W, H = 1280, 800
 
@@ -122,6 +122,16 @@ def save(img, name, tmp):
 
 
 FAILURES = []
+
+
+def check_is(name, got, want):
+    """A plain equality check, for the geometry helpers that return a value rather
+    than a (verdict, why) pair."""
+    if got == want:
+        print(f"  ok   {name}: {got}")
+    else:
+        FAILURES.append(name)
+        print(f"  FAIL {name}: got {got!r}, want {want!r}")
 
 
 def check(name, got, want):
@@ -265,6 +275,48 @@ def main():
         # not that the shell failed to render, which would condemn a working build.
         check_bar("a bar the colour of the desktop under it is inconclusive",
                   top_bar_state(save(flat, "camouflaged.png", tmp))[0], "inconclusive")
+
+        # ── the window edges, and the fault they had until 5 September ──────
+        #
+        # `window_top` used a 25-point threshold over 4 rows. Measured on a real
+        # boot frame, this desktop is (19,20,21) and a window body is (5,5,5): a
+        # step of 14, which never cleared it. What did clear it was the amber top
+        # border of a consent card, and the function answered with the modal's
+        # position and no sign of trouble - so every `--click-in-window` would have
+        # measured from the wrong edge.
+        #
+        # Drawn to those exact colours, because the numbers are the whole point.
+        DESK, BODY, ACCENT = (19, 20, 21), (5, 5, 5), (255, 193, 7)
+        shot = Image.new("RGB", (W, H), DESK)
+        d2 = ImageDraw.Draw(shot)
+        d2.rectangle([0, 0, W, 36], fill=(10, 10, 10))          # the shell bar
+        d2.rectangle([214, 131, 1065, 640], fill=BODY)          # the app window
+        d2.rectangle([416, 271, 863, 275], fill=ACCENT)         # a modal's border
+        path = save(shot, "window-edges.png", tmp)
+
+        check_is("the window edge is found despite a 14-point step", window_top(path), 131)
+        check_is("and not the modal's accent line two hundred pixels lower",
+              window_top(path) != 271, True)
+        check_is("the sides come back with it", window_sides(path, window_top(path)),
+              (214, 1065))
+
+        # The reverted fault: with the old numbers the same frame answers the
+        # modal. Asserted rather than described, so the fix cannot quietly regress
+        # to a threshold that looks reasonable and misses this step.
+        import verify as _v
+        step, run = _v.EDGE_STEP, _v.EDGE_RUN
+        try:
+            _v.EDGE_STEP, _v.EDGE_RUN = 25, 4
+            check_is("with the old threshold it answers the modal instead",
+                  window_top(path), 271)
+        finally:
+            _v.EDGE_STEP, _v.EDGE_RUN = step, run
+
+        # A frame with no window at all must refuse rather than pick the bar.
+        bare = Image.new("RGB", (W, H), DESK)
+        ImageDraw.Draw(bare).rectangle([0, 0, W, 36], fill=(10, 10, 10))
+        check_is("a desktop with no window returns nothing to measure from",
+              window_top(save(bare, "no-window.png", tmp)), None)
 
     if FAILURES:
         print(f"\n{len(FAILURES)} check(s) failed: {', '.join(FAILURES)}")

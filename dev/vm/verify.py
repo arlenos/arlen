@@ -557,6 +557,12 @@ def consent_dialog_state(before_png, after_png, pointer_at=None):
             f"(spread {card_after} vs desktop {desk_after})")
 
 
+# How far a pixel must be from the desktop colour to count as an edge, and how
+# many in a row. See `window_top` for what each was before and what that cost.
+EDGE_STEP = 8
+EDGE_RUN = 24
+
+
 def window_top(png):
     """The y of the app window's top edge in FRAME pixels, or None.
 
@@ -569,8 +575,21 @@ def window_top(png):
 
     This finds the edge instead. The desktop under an app is one flat colour, so
     a column down the middle of the screen leaves it exactly once: at the top of
-    the window. Four rows in a row must differ, which steps over the soft shadow
-    and over a stray pointer pixel.
+    the window.
+
+    THE TWO NUMBERS BELOW WERE BOTH WRONG UNTIL 5 SEPTEMBER, and the way they were
+    wrong is worth keeping. The threshold was 25 and the run was 4 rows. Measured
+    on a real frame, this desktop is `(19, 20, 21)` and an app window's body is
+    `(5, 5, 5)`: a difference of 14, so **the window edge never cleared the
+    threshold at all**. What did clear it was the amber top border of a consent
+    card, four rows of it, two hundred pixels lower - so the function returned 271
+    with no sign of trouble, and `--click-in-window` would have measured every
+    click from the top of a modal. A confident wrong answer, not a refusal.
+
+    So: 8, which the 14-point step clears and flat-colour noise does not, and a run
+    of 24 rows, which an app window is always taller than and a border or an accent
+    line never is. Both are checked by `test_frame_checks.py` against real frames
+    where the answer is known independently.
 
     Returns None rather than a guess when the column never leaves the desktop -
     no window, or a window that fills the screen - and the caller refuses.
@@ -585,13 +604,60 @@ def window_top(png):
     col = int(w * 0.5)
     run = 0
     for y in range(int(h * 0.06), h):
-        if max(abs(a - b) for a, b in zip(px[col, y], ref)) > 25:
+        if max(abs(a - b) for a, b in zip(px[col, y], ref)) >= EDGE_STEP:
             run += 1
-            if run >= 4:
-                return y - 3
+            if run >= EDGE_RUN:
+                return y - run + 1
         else:
             run = 0
     return None
+
+
+def window_sides(png, top):
+    """The x of the app window's left and right edges in FRAME pixels, or None.
+
+    THE OTHER HALF OF `window_top`, and it exists because the lesson that function
+    records was only ever applied to one axis. On 5 September a click aimed at a
+    button measured off one boot's frame landed on a modal three hundred pixels
+    away, because the window came up 118 pixels WIDER that time. `window_top` says
+    it plainly - "a coordinate measured off one screenshot is only good for the
+    screenshot it came from" - and then the x in `--click-in-window` stayed
+    absolute, so half the bet was still being placed.
+
+    Same method turned ninety degrees: a row across the frame, a little below the
+    window's top edge, leaves the desktop colour exactly twice. Four columns in a
+    row must differ, which steps over the shadow and a stray pointer pixel.
+
+    Returns None rather than a guess when the row never leaves the desktop, or
+    leaves it and never comes back (a window running to the screen edge), and the
+    caller refuses instead of clicking somewhere plausible.
+    """
+    from PIL import Image
+
+    im = Image.open(png).convert("RGB")
+    w, h = im.size
+    px = im.load()
+    ref = px[int(w * 0.02), int(h * 0.5)]
+    # Below the title bar, so the sample crosses the window body rather than its
+    # rounded corners, which fade into the desktop and would read as no edge.
+    y = min(h - 1, top + 40)
+
+    def edge(rng, forward):
+        run = 0
+        for x in rng:
+            if max(abs(a - b) for a, b in zip(px[x, y], ref)) >= EDGE_STEP:
+                run += 1
+                if run >= EDGE_RUN:
+                    return x - run + 1 if forward else x + run - 1
+            else:
+                run = 0
+        return None
+
+    left = edge(range(0, w), True)
+    right = edge(range(w - 1, -1, -1), False)
+    if left is None or right is None or right - left < 100:
+        return None
+    return (left, right)
 
 
 def frame_change(a, b):
@@ -921,8 +987,11 @@ def main():
                          "is the only way to reach a double-press binding")
     ap.add_argument("--click-in-window", dest="click_in_window", action="append",
                     default=None, metavar="X,DY",
-                    help="click X (screen) at DY BELOW the app window's top edge, "
-                         "found in the pre-click frame. Use this for anything "
+                    help="click X at DY BELOW the app window's top edge, found in "
+                         "the pre-click frame. X is a screen coordinate, or a "
+                         "PERCENTAGE across the window (`50%,300`) - the window's "
+                         "width changes between boots too, and a button two thirds "
+                         "along it stays two thirds along it. Use this for anything "
                          "inside a window: the placement moves between boots and "
                          "a fixed --click lands on the wrong row when it does.")
     ap.add_argument("--key", action="append", default=None, metavar="NAME",
@@ -1619,10 +1688,27 @@ def main():
                     sys.exit("--click-in-window: no window edge in the pre-click "
                              "frame, so there was nothing to measure from and "
                              "nothing was clicked (see %s)" % preclick)
-                print(f"window top at y={top} in the frame; clicks measured from there")
+                sides = window_sides(preclick, top)
+                if sides:
+                    print(f"window at x={sides[0]}..{sides[1]}, top y={top} in the frame")
+                else:
+                    print(f"window top at y={top} in the frame; no side edges found, "
+                          f"so a percentage x cannot be resolved")
                 for spec in args.click_in_window:
-                    cx, dy = (int(v) for v in spec.split(","))
-                    qmp_click(f, round(fw * cx / 1280), top + round(fh * dy / 800), fw, fh)
+                    xs, dy = spec.split(",")
+                    if xs.endswith("%"):
+                        # A percentage is measured across the WINDOW, which is the
+                        # point: the window's width changes between boots and a
+                        # button two thirds along it stays two thirds along it.
+                        if not sides:
+                            sys.exit("--click-in-window: %s wants the window's side "
+                                     "edges and the pre-click frame has none, so "
+                                     "nothing was clicked (see %s)" % (spec, preclick))
+                        frac = float(xs[:-1]) / 100.0
+                        x = round(sides[0] + (sides[1] - sides[0]) * frac)
+                    else:
+                        x = round(fw * int(xs) / 1280)
+                    qmp_click(f, x, top + round(fh * int(dy) / 800), fw, fh)
                     time.sleep(1.5)
             # Keys AFTER the clicks, because the pair is how a person opens a
             # thing: one click puts the selection on it and Enter opens it. A
