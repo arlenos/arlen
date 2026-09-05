@@ -424,7 +424,15 @@ pub fn run() {
         // The catalogue's icons are files on this machine and a webview cannot
         // open a path, so they are served over a scheme of their own. See
         // `icon_scheme` for what it will and will not serve.
-        .register_uri_scheme_protocol("icon", |_app, request| icon_scheme::handle(&request))
+        // The catalogue's icons are files this window may not read - its profile
+        // has no filesystem grant and argues for that - so the handler forwards
+        // an id to the backend and serves what comes back. Asynchronous because
+        // that forward is a socket round trip.
+        .register_asynchronous_uri_scheme_protocol("icon", |_app, request, responder| {
+            tauri::async_runtime::spawn(async move {
+                responder.respond(icon_scheme::handle(request).await);
+            });
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -30,7 +30,7 @@ pub use client::{request as store_request, request_default, ClientError};
 pub use collections::{load_collections, parse_collections, Collection, CollectionError};
 pub use query::{
     answer, outdated, privilege_cost, sort_least_privilege, CapabilityFacet, Catalog,
-    CatalogSources,
+    CatalogSources, IconBytes,
     InstalledVersion, ObservedStatus, PendingUpdate, Request, Response, SortOrder,
 };
 pub use view::{store_card, store_cards, StoreCard, Tier};
