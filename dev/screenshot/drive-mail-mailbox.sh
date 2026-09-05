@@ -67,6 +67,11 @@ printf 'From: bank@example.com\nSubject: your statement\nDate: Wed, 3 Jan 2024 0
   > "$work/mail/new/1.host"
 printf 'From: me@example.org\nSubject: sent thing\nDate: Mon, 1 Jan 2024 08:00:00 +0000\n\nSent body.\n' \
   > "$work/mail/.Sent/cur/3.host:2,S"
+# A third one, for the draft probe. It has its own because the probes run in
+# order against ONE mailbox: by the time that one runs, the archive and delete
+# probes have emptied the inbox, and a reply needs something to reply to.
+printf 'From: gutters@example.org\nSubject: the gutter quote\nDate: Thu, 4 Jan 2024 11:00:00 +0000\n\nQuote attached.\n' \
+  > "$work/mail/cur/4.host:2,S"
 
 echo "mail mailbox:"
 start_preview "$root/apps/mail" 1454 || exit 1
@@ -225,6 +230,62 @@ deleted_name=$(find "$work/mail/.Trash" -name '2.host*' -printf '%P\n' 2>/dev/nu
 say "and delete moves the file into the trash rather than off the disk" \
   "$([ -n "$deleted_name" ] && echo 1 || echo 0)" \
   "the trash holds [$deleted_name]"
+
+# THE FOURTH WRITE, and the only way to reach it live. Compose is absent on a
+# mailbox with nowhere to send, so nothing starts a message from nothing - but
+# Reply answers one that is in front of you, and what it opens saves to Drafts.
+# The mailbox has no drafts folder, which is the interesting half: `mail_draft_save`
+# makes one, the single place these writes create a directory, because a draft has
+# nowhere else to be.
+cat > "$work/draft.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const rowFor = (t) => [...document.querySelectorAll("*")]
+  .filter((e) => e.children.length === 0 && (e.textContent || "").trim() === t)[0];
+for (let i = 0; i < 60; i++) { if (rowFor("the gutter quote")) break; await wait(250); }
+const cell = rowFor("the gutter quote");
+if (!cell) return JSON.stringify({ listed: false });
+cell.closest("button, [role=option], [role=row], li, tr").click();
+await wait(1800);
+const reply = [...document.querySelectorAll("button")]
+  .find((b) => (b.getAttribute("aria-label") || "") === "Reply");
+if (!reply) return JSON.stringify({ listed: true, replied: false });
+reply.click();
+await wait(1200);
+const body = document.querySelector("#compose-body");
+const save = document.querySelector("#compose-save-draft");
+if (!body || !save) return JSON.stringify({ listed: true, replied: true, composer: false });
+// Through the DOM setter so Svelte's binding sees it, the way the kit's own
+// tests drive an input.
+const set = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")
+  || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+set.set.call(body, "the ladder did not reach");
+body.dispatchEvent(new Event("input", { bubbles: true }));
+await wait(400);
+save.click();
+await wait(2000);
+return JSON.stringify({
+  listed: true,
+  replied: true,
+  composer: true,
+  text: document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 200),
+});
+JS
+
+drafted=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/draft.js" SHOOT_INJECT_SETTLE=6 \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-draft.png" "" 14 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+say "reply opens a composer on a mailbox that cannot send" \
+  "$(printf '%s' "$drafted" | grep -q '"composer":true' && echo 1 || echo 0)" "$drafted"
+
+draft_file=$(find "$work/mail" -path '*Drafts*' -name '*:2,*' -print -quit 2>/dev/null)
+say "and saving the reply writes a draft into a drafts folder it had to make" \
+  "$([ -n "$draft_file" ] && echo 1 || echo 0)" "the drafts folder holds [$draft_file]"
+
+say "and the draft on disk carries what was typed and the subject replied to" \
+  "$([ -n "$draft_file" ] && grep -q "the ladder did not reach" "$draft_file" \
+     && grep -q "^Subject: Re: the gutter quote" "$draft_file" && echo 1 || echo 0)" \
+  "$([ -n "$draft_file" ] && head -6 "$draft_file" | tr '\n' '|')"
 
 # THE case. With no maildir the app must show an unconnected mailbox, not the
 # sample one - three plausible senders are indistinguishable from real mail.
