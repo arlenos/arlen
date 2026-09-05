@@ -97,6 +97,25 @@ for entry in "${SURFACES[@]}"; do
     sleep 1
     if curl -sf -o /dev/null "http://localhost:$PORT$route"; then ready=1; break; fi
   done
+  # A SERVER THAT DIED IS NOT A PAGE THAT DID NOT COME UP, and the difference
+  # is what the reader does next. `--strictPort` makes vite EXIT when the port
+  # is taken, and a server left behind by a killed run answers `curl` and the
+  # title probe perfectly well - so the sweep goes on to measure somebody else's
+  # app under this app's name. On 5 September a killed run left the pdf server
+  # on 5310; the next three sweeps each refused with "the page never reported a
+  # title", which is true of the pdf page under this harness and says nothing
+  # at all about terminal. Name the actual cause.
+  if ! kill -0 "$server" 2>/dev/null; then
+    printf '%-16s %s\n' "$app" "REFUSED: this run's dev server exited - port $PORT is held by an earlier one"
+    # The one line worth showing is the bind error, not the three frames of
+    # node stack that follow it.
+    grep -m1 -E 'EADDRINUSE|already in use' "$out/$app.log" \
+      | sed 's/^ *//; s/^/                 /' \
+      || tail -1 "$out/$app.log" | sed 's/^/                 /'
+    PORT=$((PORT + 1))
+    continue
+  fi
+
   if [ -z "$ready" ]; then
     printf '%-16s %s\n' "$app" "SKIPPED: the dev server never answered"
     kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
