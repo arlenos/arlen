@@ -36,22 +36,32 @@ import re
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+# A root may be given, so a control can run this over a fixture instead of over
+# the tree. Written after the invoke gate's control edited a real catalogue in
+# place to test itself: `.githooks/pre-commit` says at its top that "the gates run
+# concurrently", so a control that mutates tracked files is visible to every
+# neighbour for as long as it takes, and three unrelated checks went red.
+ROOT = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[2]
 
 M_DASH = "—"
 SEPARATOR = re.compile(r"\s·\s")
 
 
 def catalogues() -> list[pathlib.Path]:
-    """Every app message catalogue this repository tracks, kit excluded."""
-    out = subprocess.run(
-        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.split()
-    return [
-        ROOT / f
-        for f in out
-        if "/i18n/messages" in f and f.endswith(".ts") and not f.startswith("sdk/ui-kit/")
-    ]
+    """Every app message catalogue under ROOT, kit excluded.
+
+    Asks git when ROOT is a repository, so an untracked scratch file cannot fail a
+    run; walks the directory when it is not, which is the case for a fixture tree.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout.split()
+        found = [ROOT / f for f in out if "/i18n/messages" in f and f.endswith(".ts")]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        found = [p for p in ROOT.rglob("*/i18n/messages*.ts")]
+    kit = ROOT / "sdk" / "ui-kit"
+    return sorted(p for p in found if kit not in p.parents)
 
 
 def findings(path: pathlib.Path) -> list[str]:
