@@ -308,6 +308,17 @@
   />
 
   <SidebarInset class="h-svh min-h-0">
+    <!-- THE PAGE'S ONE LEVEL-ONE HEADING, and it is not decoration: axe reports
+         `page-has-heading-one` against this app, and against every other app in
+         the tree - none of them has an `h1` at all. A screen reader's first
+         question about a window is what it is, and the answer was in the window
+         title, which is not in the document.
+         
+         The app NAME rather than the visible bar title: that title is the date
+         range being looked at and changes on every arrow press, which is a poor
+         thing to call the document. Hidden, because the bar already says where
+         you are and a second visible title would be the same fact twice. -->
+    <h1 class="sr-only">{$t("cal.app.title")}</h1>
     <!-- The header is a drag surface (a non-keyboard pointer interaction); its
          actual controls are the accessible buttons inside it, so the
          static-interaction lint is a false positive here. -->
