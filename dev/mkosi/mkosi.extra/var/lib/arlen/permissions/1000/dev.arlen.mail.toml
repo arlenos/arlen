@@ -10,18 +10,25 @@
 #                  double-clicked. This is the same shape as the viewers app,
 #                  which opens whatever it is handed.
 #
-# ONE WRITE, and it arrived on 24 August: `mail_save_attachment` puts a part of a
-# message into the downloads folder, which is under home and so already inside
-# the grant above. Named here because this comment used to say the window had
-# never written a byte, and a profile that describes an app that no longer exists
-# is worse than one that grants too much - the next reader trusts it.
+# THE WRITES, and they are all under home. `mail_save_attachment` (24 August)
+# puts a part of a message into the downloads folder. The mailbox writes
+# (5 September) rename and unlink inside the maildir and create one file in its
+# drafts folder: `mail_mark_seen`, `mail_move`, `mail_delete`, `mail_draft_save`.
+# The maildir is `$HOME/Maildir`, so every one of them is already inside the
+# grant above and none of them widens it.
 #
-# Still NO reply, NO draft store and NO "keep this message". Those want a write
-# grant decided against the feature, not this one widened by habit.
+# NAMED HERE RATHER THAN LEFT TO THE NEXT READER. This paragraph said "still NO
+# reply, NO draft store" until the morning those landed, which is the failure the
+# rule below warns about: a profile describing an app that no longer exists is
+# worse than one granting too much, because the next reader trusts it.
 #
-# The save itself is the narrow shape: the command takes an INDEX and never the
-# sender's filename, so nothing a message carries can steer where the byte lands
-# (`apps/mail/src-tauri/src/lib.rs`, and the rule at `Attachment::name`).
+# The saves are the narrow shape. The attachment command takes an INDEX and never
+# the sender's filename; the mailbox commands take an id that goes through two
+# gates before it is a path - charset and traversal on what was typed, then a
+# canonicalised containment check on what the filesystem resolved - so nothing a
+# message carries can steer where a byte lands or which file moves
+# (`apps/mail/src-tauri/src/lib.rs`, `maildir::message_path`, and the rule at
+# `Attachment::name`).
 #
 # NO network, and it is the interesting one. This app deliberately does not
 # render the HTML part, precisely because `mail-app.md` section 3 finds that mail
