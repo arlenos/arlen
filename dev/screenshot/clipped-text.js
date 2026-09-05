@@ -20,6 +20,14 @@
 // It reports LEAF elements only. A container legitimately scrolls its children,
 // so counting it would bury the real hits under every scroll region on the page.
 //
+// BOTH AXES, since 5 September. It measured width alone for its first month, on
+// the reasoning that a long word running past a fixed column is what a second
+// language does. That is one of two shapes: the calendar's week grid at 1920
+// renders "Standup" and "Call with New York" cut off at the BOTTOM of their
+// blocks, because a fifteen-minute event is shorter than its own label, and the
+// horizontal sweep called that page clean. A label cut across the middle reads
+// exactly as unreadable whichever direction the box ran out in.
+//
 // CONTROL, because a probe that returns nothing is indistinguishable from a
 // probe that does not work - and mine returned nothing on three pages before I
 // checked it. Against a data: URL with a 60px box holding a long German word it
@@ -35,9 +43,16 @@ for (const el of document.querySelectorAll("body *")) {
   if (el.children.length > 0) continue;
   const t = (el.textContent || "").trim();
   if (!t) continue;
+  const cls = (el.className || "").toString().split(" ")[0];
+  const where = `${el.tagName.toLowerCase()}.${cls}: "${t.slice(0, 40)}"`;
+  // Named per axis rather than merged, because the fixes are different: a wide
+  // one wants a floor, an ellipsis or a shorter string, a tall one wants room or
+  // fewer lines.
   if (el.scrollWidth > el.clientWidth + 1) {
-    const cls = (el.className || "").toString().split(" ")[0];
-    out.push(`${el.tagName.toLowerCase()}.${cls}: "${t.slice(0, 40)}" ${el.clientWidth}<${el.scrollWidth}`);
+    out.push(`${where} wide ${el.clientWidth}<${el.scrollWidth}`);
+  }
+  if (el.scrollHeight > el.clientHeight + 1) {
+    out.push(`${where} tall ${el.clientHeight}<${el.scrollHeight}`);
   }
 }
 return out.slice(0, 12);
