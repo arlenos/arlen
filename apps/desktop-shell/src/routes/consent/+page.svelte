@@ -14,6 +14,7 @@
   /// exclusive, the way the waypointer does.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { t } from "$lib/i18n/messages";
 
   /// Reports what this window actually paints, because guessing cost three image
   /// rebuilds. With the card up the frame is 11.4% non-black and the desktop is
@@ -43,3 +44,12 @@
     return () => clearTimeout(t);
   });
 </script>
+
+<!-- The window's name and its one landmark. The card itself is a dialog mounted by
+     the layout and carries its own name; this is what the window says when there
+     is no request up, which is the state it starts in. Hidden, because when the
+     card is up it is the only thing on screen. -->
+<main>
+  <h1 class="sr-only">{$t("sh.app.title.consent")}</h1>
+</main>
+

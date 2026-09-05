@@ -272,11 +272,27 @@
      not carry it: dragging is a courtesy on a surface that cannot move, and the
      right third is where the indicators live, so a press there should reach them
      rather than start a gesture that goes nowhere. -->
-<div
+<!-- A `header`, not a div, so the bar is a landmark. Everything in it - the app
+     menu, the workspace pills, every indicator - sat outside any landmark until
+     now, which is the one thing a screen reader uses to jump between the parts of
+     a window. `banner` is what this is: the strip that is the same on every screen
+     and says where you are.
+
+     NB the window still reports `landmark-one-main`, and that is left alone on
+     purpose. Its whole content is this bar plus transient overlays; there is no
+     "main" distinct from the banner, and wrapping the bar in a `main` to satisfy
+     a rule would put a name on a thing that does not exist. -->
+<header
   class="flex items-center justify-between h-9 w-full px-2 gap-4 relative select-none shrink-0 shell-surface"
   style="background: var(--background); z-index: 95;"
   data-tauri-drag-region
 >
+  <!-- The window's one level-one heading, inside the banner so it is in a
+       landmark rather than loose above one. Hidden: the bar IS the bar, and a
+       second visible title would be the same fact twice. Every app in the tree
+       gained one of these today and the shell's windows had none. -->
+  <h1 class="sr-only">{$t("sh.app.title")}</h1>
+
   <!-- LEFT: App menu + toolbar -->
   <div class="flex items-center gap-2 flex-1 min-w-0" data-tauri-drag-region>
     <GlobalMenuBar />
@@ -404,7 +420,7 @@
       {/if}
     </div>
   </div>
-</div>
+</header>
 
 <!-- Popovers (rendered outside the bar, positioned fixed). Only
      the primary bar mounts these — they'd otherwise pile up
