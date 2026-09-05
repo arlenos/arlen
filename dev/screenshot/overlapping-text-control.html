@@ -26,4 +26,15 @@
   <!-- MUST NOT be reported: a label with a decorative box behind it, which is a
        parent and not a leaf. -->
   <div style="background: #222; padding: 4px 8px; width: 200px">inside a box</div>
+
+  <!-- MUST NOT be reported: a line a scroll container has cut away. Its box still
+       sits where the layout put it, straight through the heading, and nothing of
+       it is painted. This is the calendar's hour labels, which cost me a morning
+       on 5 September before the probe learned to intersect with its clippers. -->
+  <div style="position: relative; height: 40px">
+    <span style="position: absolute; left: 20px; top: 10px">a heading in the clear</span>
+  </div>
+  <div style="height: 20px; overflow: hidden">
+    <span style="position: relative; left: 20px; top: -32px">cut away by the scroller</span>
+  </div>
 </body>

@@ -22,26 +22,58 @@
 // Leaves only, and boxes over 4px each way, so a decorative sliver behind a label
 // is not reported. The 3px tolerance is there because adjacent boxes routinely
 // share an edge; a real overprint is tens of pixels.
+//
+// IT COMPARES WHAT IS PAINTED, not what the layout box claims, and the difference
+// is the whole reliability of this probe. A scroll container clips its children:
+// the calendar's hour labels for the hours you have scrolled past still have boxes
+// where they always were, well above the container, geometrically inside the app
+// header. Comparing raw rects reported the header title "over" 06:00 on 5
+// September and sent me looking for a layout bug in a calendar that was drawing
+// correctly - twice, on the committed tree and on my own change, which is also
+// how I learned it was not mine. So each rect is first intersected with every
+// ancestor that clips (`overflow` other than `visible`); an element clipped to
+// nothing is not on screen and is dropped before any comparison.
+const clipped = (el) => {
+  const r = el.getBoundingClientRect();
+  let box = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const s = getComputedStyle(p);
+    if (s.overflowX === "visible" && s.overflowY === "visible") continue;
+    const c = p.getBoundingClientRect();
+    if (s.overflowX !== "visible") {
+      box.left = Math.max(box.left, c.left);
+      box.right = Math.min(box.right, c.right);
+    }
+    if (s.overflowY !== "visible") {
+      box.top = Math.max(box.top, c.top);
+      box.bottom = Math.min(box.bottom, c.bottom);
+    }
+  }
+  box.width = box.right - box.left;
+  box.height = box.bottom - box.top;
+  return box;
+};
 // Leaf text nodes whose painted boxes intersect. Text over text is invisible to a
 // clipping probe: both elements fit their own boxes perfectly.
-const leaves = [...document.querySelectorAll("body *")].filter((el) => {
-  if (el.children.length) return false;
-  if (!(el.textContent || "").trim()) return false;
+const leaves = [];
+for (const el of document.querySelectorAll("body *")) {
+  if (el.children.length) continue;
+  if (!(el.textContent || "").trim()) continue;
   const s = getComputedStyle(el);
-  if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") return false;
-  const r = el.getBoundingClientRect();
-  return r.width > 4 && r.height > 4;
-});
+  if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") continue;
+  const box = clipped(el);
+  if (box.width > 4 && box.height > 4) leaves.push({ el, box });
+}
 const out = [];
 for (let i = 0; i < leaves.length; i++) {
   for (let j = i + 1; j < leaves.length; j++) {
-    const a = leaves[i].getBoundingClientRect();
-    const b = leaves[j].getBoundingClientRect();
+    const a = leaves[i].box;
+    const b = leaves[j].box;
     const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left);
     const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
     if (ox > 3 && oy > 3) {
       out.push(
-        `"${leaves[i].textContent.trim().slice(0, 22)}" over "${leaves[j].textContent.trim().slice(0, 22)}" (${Math.round(ox)}x${Math.round(oy)}px)`,
+        `"${leaves[i].el.textContent.trim().slice(0, 22)}" over "${leaves[j].el.textContent.trim().slice(0, 22)}" (${Math.round(ox)}x${Math.round(oy)}px)`,
       );
     }
   }
