@@ -4,11 +4,18 @@
 /// capture your screen - so it carries the consent framing (who is asking, deny
 /// first-class, only what you pick is sent).
 ///
-/// Mock-vs-live: fixture-backed. The portal ScreenCast backend (CreateSession ->
-/// SelectSources -> Start, the PipeWire stream, the restore_token/persist wiring),
-/// `list_capture_sources` (live monitors + windows), `start_screencast`, and the
-/// portal-event -> `current` feed are coder seams; under vite the store serves a
-/// fixture so the surface renders.
+/// Mock-vs-live: `list_capture_sources` IS LIVE since 5 September - the shell
+/// already tracks the outputs and the toplevels for its own bars, so naming what
+/// could be shared never needed the stream. What remains a seam is everything
+/// that would actually share it: the portal ScreenCast backend (CreateSession ->
+/// SelectSources -> Start, the PipeWire stream, the restore_token/persist
+/// wiring), `start_screencast`, and the portal-event -> `current` feed. Under
+/// vite the store serves a fixture so the surface renders.
+///
+/// The window ids in the list are the compositor's own
+/// `ext_foreign_toplevel_handle_v1::identifier`, which is what
+/// `arlen_screen_capture::capture_window_by_id` binds - so a source picked here
+/// names the same window there.
 
 import { writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
