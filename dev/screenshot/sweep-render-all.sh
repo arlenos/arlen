@@ -17,6 +17,12 @@
 #   dev/screenshot/sweep-render-all.sh en         # everything, English
 #   dev/screenshot/sweep-render-all.sh de calendar  # one app
 #
+# THE TWELVE SETTINGS PAGES IN THE MIDDLE came from comparing this table with
+# `sweep-no-backend.sh`'s SHOTS list on 6 September. Each of them had a
+# no-backend shot - so its unavailable-state copy was photographed - and had
+# never been through a render probe. Two lists, two properties, and the gap
+# between them was invisible while nobody put them side by side.
+#
 # THE SELECTORS COST REAL WORK TO FIND and that is half the value here. Eleven of
 # the thirteen apps keep their content behind tabs, sidebars and popovers, so a
 # route walk reads landing pages - and a landing page is the one surface somebody
@@ -60,7 +66,7 @@ SURFACES=(
   "meetings /|/capture|/meeting/abc"
   "pdf /"
   "screenshot /"
-  "settings /|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]"
+  "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]"
   "system-monitor /|/::#tab-performance"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session"
   "text-editor /|/::.trigger"
