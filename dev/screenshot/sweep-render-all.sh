@@ -27,7 +27,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 LOCALE="${1:-de}"
 ONLY="${2:-}"
-PORT=6100
+# THE BASE PORT IS PER-RUN for the same reason `shoot.sh`'s driver port is: two
+# of these are worth running at once - a full pass is fifteen apps and most of an
+# hour - and with a fixed base the second run refuses on every single app with
+# "port 6100 is held by an earlier one". Correct, loud and useless. Derived from
+# the pid, in blocks of 40 so one run's fifteen ports cannot walk into another's.
+PORT=$(( 6100 + ($$ % 60) * 40 ))
 
 # `<app> <spec>|<spec>|...`, where a spec is a route optionally followed by
 # `::selector` - the thing to click before the probes run.
