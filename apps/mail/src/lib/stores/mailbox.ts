@@ -48,7 +48,17 @@ export interface Folder {
 
 /// One list row: enough to pick a message, never the message itself.
 export interface Envelope {
+  /// What the surface calls this message, and it does not change while the
+  /// window is open. THIS IS NOT THE FILE. A maildir keeps a message's flags in
+  /// its filename, so reading one renames it - and an id that changes under the
+  /// selection holding it is not an id: the first cut updated the row in place
+  /// and the toolbar vanished the moment somebody clicked a message, because the
+  /// selected set still held the name the file had a second ago.
   id: string;
+  /// Where the message is in the mailbox right now, when that has come apart
+  /// from what it is called. Absent until the first write moves it, so a row
+  /// that has not been touched carries one name and not two.
+  place?: string;
   folderId: string;
   from: string;
   subject: string;
@@ -395,6 +405,8 @@ export async function loadMailbox(): Promise<void> {
   const lists = await Promise.all(
     f.map(async (x) => {
       try {
+        // The id a row arrives with IS its maildir path; `place` only appears
+        // once a write moves the file out from under it.
         return await invoke<Envelope[]>("mail_list", { folderId: x.id });
       } catch {
         // One folder that would not list is an empty folder, not a dead mailbox.
@@ -415,7 +427,7 @@ export async function loadMailbox(): Promise<void> {
 /// there is no host to have asked.
 export async function openMessage(id: string): Promise<Message | null> {
   try {
-    return await invoke<Message>("mail_open", { id });
+    return await invoke<Message>("mail_open", { id: placeOf(id) ?? id });
   } catch {
     return tauriAvailable ? null : (FIXTURE_MESSAGES[id] ?? null);
   }
@@ -427,6 +439,12 @@ export async function openMessage(id: string): Promise<Message | null> {
 /// kinds (`archive`, `trash`), a maildir's are its directory names (`.Archive`).
 /// A surface that says "archive this" means the rail, not a path, so the store
 /// resolves it and the page keeps saying what it means.
+/// Where the message a surface calls `id` currently is.
+function placeOf(id: string): string | undefined {
+  const row = get(envelopes).find((e) => e.id === id);
+  return row && (row.place ?? row.id);
+}
+
 function folderNamed(target: string): Folder | undefined {
   const all = get(folders);
   return all.find((f) => f.id === target) ?? all.find((f) => f.kind === target);
@@ -441,13 +459,17 @@ function folderNamed(target: string): Folder | undefined {
 /// person believes they have read coming back unread at the next start.
 export async function markRead(id: string): Promise<void> {
   if (get(mailboxState) === "live") {
+    const at = placeOf(id);
+    if (!at) return;
     let next: string;
     try {
-      next = await invoke<string>("mail_mark_seen", { id });
+      next = await invoke<string>("mail_mark_seen", { id: at });
     } catch {
       return;
     }
-    envelopes.update((all) => all.map((e) => (e.id === id ? { ...e, id: next, unread: false } : e)));
+    envelopes.update((all) =>
+      all.map((e) => (e.id === id ? { ...e, place: next, unread: false } : e)),
+    );
     return;
   }
   envelopes.update((all) => all.map((e) => (e.id === id ? { ...e, unread: false } : e)));
@@ -459,15 +481,16 @@ export async function markRead(id: string): Promise<void> {
 export async function moveMessage(id: string, target: string): Promise<void> {
   if (get(mailboxState) === "live") {
     const dest = folderNamed(target);
-    if (!dest) return;
+    const at = placeOf(id);
+    if (!dest || !at) return;
     let next: string;
     try {
-      next = await invoke<string>("mail_move", { id, folderId: dest.id });
+      next = await invoke<string>("mail_move", { id: at, folderId: dest.id });
     } catch {
       return;
     }
     envelopes.update((all) =>
-      all.map((e) => (e.id === id ? { ...e, id: next, folderId: dest.id } : e)),
+      all.map((e) => (e.id === id ? { ...e, place: next, folderId: dest.id } : e)),
     );
     return;
   }
@@ -484,9 +507,11 @@ export async function moveMessage(id: string, target: string): Promise<void> {
 /// where it already was.
 export async function deleteMessage(id: string): Promise<void> {
   if (get(mailboxState) === "live") {
+    const at = placeOf(id);
+    if (!at) return;
     let landed: string | null;
     try {
-      landed = await invoke<string | null>("mail_delete", { id });
+      landed = await invoke<string | null>("mail_delete", { id: at });
     } catch {
       return;
     }
@@ -497,7 +522,7 @@ export async function deleteMessage(id: string): Promise<void> {
     const trash = get(folders).find((f) => f.kind === "trash");
     const next = landed;
     envelopes.update((all) =>
-      all.map((e) => (e.id === id ? { ...e, id: next, folderId: trash?.id ?? e.folderId } : e)),
+      all.map((e) => (e.id === id ? { ...e, place: next, folderId: trash?.id ?? e.folderId } : e)),
     );
     return;
   }
