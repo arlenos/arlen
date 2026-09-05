@@ -48,6 +48,12 @@ case "$base" in
     ;;
 esac
 locale="${2:?give a locale, e.g. de}"
+# WIDTH IS PART OF THE QUESTION, not a detail. This swept every app at 1280 and
+# reported them clean, which was true and narrow: at 720 the calendar's title
+# truncates to a single glyph because the view switcher takes the row. A window
+# is resizable, so a clean line means clean AT THAT WIDTH and the sweep has to
+# say which.
+width="${SWEEP_WIDTH:-1280}"
 shift 2
 [ "$#" -gt 0 ] || { echo "give at least one path" >&2; exit 2; }
 
@@ -91,7 +97,7 @@ for spec in "$@"; do
   open=""
   [ "$spec" != "$path" ] && open="${spec#*::}"
   url="$base$path?locale=$locale"
-  got="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/clipped-text.js" 2>&1 \
+  got="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/clipped-text.js" "$width" 2>&1 \
     | sed -n 's/^inject result: //p')"
   case "$got" in
     "["*"]")
@@ -114,5 +120,5 @@ for spec in "$@"; do
       ;;
   esac
 done
-echo "  --   $checked view(s) read in $locale; anything not named here was not looked at"
+echo "  --   $checked view(s) read in $locale at ${width}px; anything not named here was not looked at"
 exit "$fail"
