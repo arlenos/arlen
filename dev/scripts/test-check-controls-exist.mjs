@@ -27,13 +27,18 @@ function check(name, ok, detail) {
   else { console.log(`  FAIL ${name}`); if (detail) console.log(`       ${detail}`); failed++; }
 }
 
-/// A fixture `dev/scripts` holding exactly the files named.
+/// A fixture tree holding exactly the files named. A name may carry a directory
+/// (`screenshot/x.js`); bare names land in `dev/scripts`.
 function gateOver(files) {
   const dir = mint("arlen-controls-exist-");
   try {
     const scripts = path.join(dir, "dev", "scripts");
     mkdirSync(scripts, { recursive: true });
-    for (const f of files) writeFileSync(path.join(scripts, f), "// probe\n", "utf8");
+    mkdirSync(path.join(dir, "dev", "screenshot"), { recursive: true });
+    for (const f of files) {
+      const at = f.includes("/") ? path.join(dir, "dev", f) : path.join(scripts, f);
+      writeFileSync(at, "// probe\n", "utf8");
+    }
     try {
       return { code: 0, out: execFileSync("python3", [gate, dir], { encoding: "utf8" }) };
     } catch (e) {
@@ -84,6 +89,32 @@ console.log("controls exist:");
   // A control may be either suffix; neither is preferred and both must satisfy it.
   const r = gateOver(["check-thing.sh", "test-check-thing.py"]);
   check("a python control satisfies a shell check", r.code === 0, r.out.trim().split("\n").pop());
+}
+
+{
+  // THE RENDER PROBES, added 6 September. They live in `dev/screenshot` and their
+  // control is a fixture PAGE beside them rather than a script, so the gate has
+  // to know a second shape - and a probe answering `[]` because it is broken is
+  // the exact failure this gate is for.
+  const r = gateOver(["screenshot/clipped-text.js", "screenshot/clipped-text-control.html"]);
+  check("a probe with its control page passes", r.code === 0, r.out.trim().split("\n").pop());
+  check("and the gate actually saw the probe", r.out.includes("1 check(s)"),
+        r.out.trim().split("\n").pop());
+}
+
+{
+  const r = gateOver(["screenshot/overlapping-text.js"]);
+  check("a probe with no control page is caught", r.code === 1, r.out.trim().split("\n")[0]);
+  check("and the finding names the page to write",
+        r.out.includes("overlapping-text-control.html"), r.out.trim().split("\n")[0]);
+}
+
+{
+  // A probe is NOT satisfied by the script-shaped control, and a check is not
+  // satisfied by a page: the two families do not borrow each other's proof.
+  const r = gateOver(["screenshot/x.js", "test-x.mjs"]);
+  check("a script control does not stand in for a probe's page", r.code === 1,
+        r.out.trim().split("\n")[0]);
 }
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }

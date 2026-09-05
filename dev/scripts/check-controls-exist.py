@@ -27,11 +27,20 @@ import sys
 
 ROOT = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "dev" / "scripts"
+# THE RENDER PROBES COUNT TOO, and they were outside this until 6 September. Each
+# of the three answers a question about a rendered page - a box outgrown, a child
+# cut by a clipping parent, two texts in one place - and each has exactly the
+# failure this gate exists for: `[]` on a clean page and `[]` when the probe is
+# broken are the same answer. All three have a fixture beside them; nothing held
+# that a fourth would.
+PROBES = ROOT / "dev" / "screenshot"
 
 
 def controls_for(check: pathlib.Path) -> list[pathlib.Path]:
     """The control files that would belong to a check, whether or not they exist."""
     stem = check.stem
+    if check.parent == PROBES:
+        return [PROBES / f"{stem}-control.html"]
     return [SCRIPTS / f"test-{stem}.mjs", SCRIPTS / f"test-{stem}.py"]
 
 
@@ -44,8 +53,19 @@ def main() -> int:
         p for p in SCRIPTS.iterdir()
         if p.name.startswith("check-") and p.suffix in {".py", ".sh", ".mjs"}
     )
+    if PROBES.is_dir():
+        checks += sorted(p for p in PROBES.iterdir() if p.suffix == ".js")
     missing = [c for c in checks if not any(p.exists() for p in controls_for(c))]
     for c in missing:
+        if c.parent == PROBES:
+            print(
+                f"{c.name} has no control. Write `{c.stem}-control.html` beside it: a "
+                f"page carrying the fault this probe looks for, plus the near-misses it "
+                f"must NOT report, and put the expected answer in its header. Check both "
+                f"ways - remove the rule that silences a near-miss and the fixture has to "
+                f"report it again, or the case is proving nothing."
+            )
+            continue
         print(
             f"{c.name} has no control. Write `test-{c.stem}.mjs` beside it: put the "
             f"fault in, run the check, require it to fail naming the fault, then take "
