@@ -83,9 +83,10 @@
     return active?.provider === m.provider && active?.model === m.model;
   }
 
-  // Context window in a compact form: 8000 -> "8k ctx", 128000 -> "128k ctx".
-  function ctxLabel(n: number): string {
-    return n >= 1000 ? `${Math.floor(n / 1000)}k ctx` : `${n} ctx`;
+  // Context window as a compact number: 8000 -> "8k", 128000 -> "128k". The
+  // word beside it is the catalogue's.
+  function ctxSize(n: number): string {
+    return n >= 1000 ? `${Math.floor(n / 1000)}k` : `${n}`;
   }
 </script>
 
@@ -123,8 +124,12 @@
           <CommandGroup>
             {#if multi}
               {@const isLocal = group.models[0]?.kind === "local"}
+              <!-- Where the question goes, which is what a person choosing needs
+                   to know: this machine, or the named provider. -->
               <div class="mp-group">
-                {group.provider}, {isLocal ? "local, no egress" : "cloud, egress audited"}
+                {isLocal
+                  ? $t("h.model.local", { provider: group.provider })
+                  : $t("h.model.cloud", { provider: group.provider })}
               </div>
             {/if}
             {#each group.models as m (m.provider + "/" + m.model)}
@@ -136,9 +141,9 @@
                 {@render logo(m.provider)}
                 <span class="mp-name">{m.model}</span>
                 {#if !m.available}
-                  <span class="mp-note">unavailable</span>
+                  <span class="mp-note">{$t("h.model.unavailable")}</span>
                 {:else}
-                  <span class="mp-ctx">{ctxLabel(m.contextWindow)}</span>
+                  <span class="mp-ctx">{$t("h.model.context", { size: ctxSize(m.contextWindow) })}</span>
                 {/if}
                 <span class="mp-checkslot">
                   {#if isActive(m)}
