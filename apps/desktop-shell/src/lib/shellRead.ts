@@ -44,8 +44,9 @@ export async function shellRead<T>(command: string, tag: string): Promise<T | nu
     const message = String(e);
     if (said.get(tag) === message) return null;
     said.set(tag, message);
-    invoke("log_frontend", {
-      message: `[${tag}] ${command} could not be read: ${message}`,
+    invoke("frontend_log", {
+      level: "warn",
+      msg: `[${tag}] ${command} could not be read: ${message}`,
     }).catch(() => {
       // The line did not get written, so do not remember having written it: the
       // next poll tries again rather than staying quiet about a failure nobody

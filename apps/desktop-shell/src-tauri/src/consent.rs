@@ -56,13 +56,21 @@ pub async fn consent_resolve(id: u64, outcome: ConsentOutcome) -> Result<bool, S
 /// shell, which needs it most, did not.
 ///
 /// NAMES THE SURFACE, because this shell runs several webviews - the bar, the
-/// launcher, the consent dialog - and they share one `+layout.svelte`. Its
-/// sibling `log_frontend` in `lib.rs` learned that on 21 August and says so at
-/// length: an unlabelled line "cannot be attributed to a surface", and the
-/// ambiguity was load-bearing for a wrong conclusion. The lesson landed on the
-/// `println!` one and not on this one - which is the one that reaches the
-/// journal, where a boot is actually read back afterwards. The window is
-/// injected by Tauri, so no caller changes.
+/// launcher, the consent dialog - and they share one `+layout.svelte`, so an
+/// unlabelled line cannot be attributed to any of them. On 21 August a line
+/// about a swallowed pointer press could have come from any of the three and
+/// the ambiguity was load-bearing for a wrong conclusion. The window is injected
+/// by Tauri, so no caller changes.
+///
+/// THIS IS NOW THE ONLY ONE. Until 6 September the shell also registered
+/// `log_frontend(message)` in `lib.rs` - the same job, the name reversed, one
+/// argument instead of two, and `println!` where this uses `log::`. Nine callers
+/// used that one and three used this one, and the two were interchangeable in
+/// every way except the one that matters: writing `msg` for the command that
+/// wanted `message` fails to deserialize, so the command is never called and the
+/// line added to diagnose something is itself what goes missing. That happened
+/// here the same evening. Its nine callers moved onto this one, which the rest
+/// of the tree also uses, and it is gone.
 ///
 /// The same command in `apps/files` and `apps/harness` stays unlabelled and
 /// should: each of those is one window, so the label would name the only thing

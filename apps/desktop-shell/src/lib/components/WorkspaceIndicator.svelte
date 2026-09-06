@@ -131,8 +131,9 @@
 
   function onCardMenuOpenChange(open: boolean): void {
     contextMenuOpen = open;
-    invoke("log_frontend", {
-      message:
+    invoke("frontend_log", {
+      level: "info",
+      msg:
         `[overlay] contextMenu open=${open} hoverInside=${hoverInsideRoot} ` +
         `overlayVisible=${overlayVisible}`,
     }).catch(() => {});
@@ -173,8 +174,9 @@
     //     catches the case where the menu is transitioning open.
     // Any one of these returning true keeps the overlay open.
     if (contextMenuOpen || anyContextMenuMounted()) {
-      invoke("log_frontend", {
-        message: `[overlay] scheduleClose blocked (ctxOpen=${contextMenuOpen} domMenu=${anyContextMenuMounted()})`,
+      invoke("frontend_log", {
+        level: "info",
+        msg: `[overlay] scheduleClose blocked (ctxOpen=${contextMenuOpen} domMenu=${anyContextMenuMounted()})`,
       }).catch(() => {});
       return;
     }
@@ -217,8 +219,9 @@
     hoverInsideRoot = false;
     const related = e.relatedTarget;
     const intoMenu = isInsideContextMenu(related);
-    invoke("log_frontend", {
-      message:
+    invoke("frontend_log", {
+      level: "info",
+      msg:
         `[overlay] ws-root mouseleave intoMenu=${intoMenu} ` +
         `ctxOpen=${contextMenuOpen} domMenu=${anyContextMenuMounted()} ` +
         `related=${related instanceof Element ? related.tagName : String(related)}`,

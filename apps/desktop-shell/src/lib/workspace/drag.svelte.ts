@@ -277,8 +277,9 @@ export function createDragEngine(deps: DragEngineDeps) {
       // tracing log (console.debug never makes it out of WebKitGTK
       // reliably, so the previous debug lines were invisible in
       // diagnostic sessions).
-      invoke("log_frontend", {
-        message: `[overlay] right-click card=${windowId} selectionSize=${snap.length}`,
+      invoke("frontend_log", {
+        level: "info",
+        msg: `[overlay] right-click card=${windowId} selectionSize=${snap.length}`,
       }).catch(() => {});
       return;
     }
@@ -309,8 +310,9 @@ export function createDragEngine(deps: DragEngineDeps) {
       targets = [windowId];
     }
 
-    invoke("log_frontend", {
-      message:
+    invoke("frontend_log", {
+      level: "info",
+      msg:
         `[overlay] pointerdown card=${windowId} button=${e.button} ` +
         `ctrl=${e.ctrlKey} meta=${e.metaKey} multiKey=${multiKey} ` +
         `wasSelected=${wasSelected} selSize=${snap.length} targets=${targets.length}`,
@@ -413,8 +415,9 @@ export function createDragEngine(deps: DragEngineDeps) {
       // - Plain click: clear selection, activate/restore, close overlay
       if (captured.ctrlOnDown) {
         toggleSelection(captured.windowId);
-        invoke("log_frontend", {
-          message: `[overlay] toggleSelection card=${captured.windowId}`,
+        invoke("frontend_log", {
+          level: "info",
+          msg: `[overlay] toggleSelection card=${captured.windowId}`,
         }).catch(() => {});
         return;
       }
