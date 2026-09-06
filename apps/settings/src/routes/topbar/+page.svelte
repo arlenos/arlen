@@ -91,6 +91,13 @@
         {$t("s.topbar.readFailed")}
       </div>
     {/if}
+    <!-- A refused SAVE, which is not the line above. This path deliberately
+         keeps the arrangement you dragged rather than snapping it back, so the
+         screen and the bar now disagree - and the second sentence is the half
+         no arrangement of rows can show, since the bar is another window. -->
+    {#if $topbar.writeFailed}
+      <div class="span-full tb-error">{$t("s.topbar.notSaved")}</div>
+    {/if}
   </SectionGrid>
 </Page>
 

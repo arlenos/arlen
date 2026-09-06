@@ -33,9 +33,19 @@ export interface TopbarItem {
 interface TopbarState {
   items: TopbarItem[];
   error: string | null;
+  /// True when the last SAVE was refused, kept apart from `error`.
+  ///
+  /// One field held both until 6 September, and the page renders `error` as
+  /// "Can't read the topbar arrangement right now. Changes are paused." After a
+  /// failed WRITE that is three wrong things at once: the read worked and the
+  /// items are on screen, changes are not paused because this path deliberately
+  /// keeps the local arrangement, and it names reading when writing is what
+  /// failed. Meanwhile the one fact that mattered - your drag is on screen and
+  /// the bar still has the old order - was the thing not said.
+  writeFailed: boolean;
 }
 
-export const topbar = writable<TopbarState>({ items: [], error: null });
+export const topbar = writable<TopbarState>({ items: [], error: null, writeFailed: false });
 
 /// The shown items, in order - what the live bar (and the preview) renders.
 export const shownItems = derived(topbar, ($t) => $t.items.filter((i) => i.shown));
@@ -45,15 +55,16 @@ export const shownItems = derived(topbar, ($t) => $t.items.filter((i) => i.shown
 export async function load(): Promise<void> {
   try {
     const items = await invoke<TopbarItem[]>("topbar_items");
-    topbar.set({ items, error: null });
-  } catch (e) {
-    topbar.update((s) => ({ ...s, error: String(e) }));
+    topbar.update((s) => ({ ...s, items, error: null }));
+  } catch {
+    topbar.update((s) => ({ ...s, writeFailed: true }));
   }
 }
 
 /// Persist the order + visibility to `topbar.toml`. Best-effort: a write error
 /// surfaces but does not roll back the local arrangement.
 async function persist(items: TopbarItem[]): Promise<void> {
+  topbar.update((s) => ({ ...s, writeFailed: false }));
   try {
     await invoke("config_set", {
       file: "topbar",
@@ -65,8 +76,8 @@ async function persist(items: TopbarItem[]): Promise<void> {
       key: "visible",
       value: Object.fromEntries(items.map((i) => [i.id, i.shown])),
     });
-  } catch (e) {
-    topbar.update((s) => ({ ...s, error: String(e) }));
+  } catch {
+    topbar.update((s) => ({ ...s, writeFailed: true }));
   }
 }
 
