@@ -91,9 +91,17 @@
             <span class="li-source-origin">{$t("k.li.origin", { source: src.source, n: src.entries.length })}</span>
           </h2>
           {#each src.entries as e (e.id)}
-            <button type="button" class="li-row" onclick={() => onselect(e)}>
+            <!-- WHEN THERE IS NO SUB-LINE THE TITLE TAKES ITS COLUMN. The grid
+                 reserved a third of the row for a second line whether or not the
+                 type declared one, so an entry with no sub had its title cut
+                 while empty space sat beside it - and the entries with no sub are
+                 exactly the ones shown by their IDENTIFIER, which is the string a
+                 person may need to read back. Found by the render sweep at 720px:
+                 `scans/2026-08-14-001.tiff` ellipsed at 171 of 179 pixels, eight
+                 short, next to a third of the row holding nothing. -->
+            <button type="button" class="li-row" class:li-wide={!e.sub} onclick={() => onselect(e)}>
               <span class="li-title">{e.title}</span>
-              <span class="li-sub">{e.sub ?? ""}</span>
+              {#if e.sub}<span class="li-sub">{e.sub}</span>{/if}
               <span class="li-time">{e.added === null ? "" : dayName(e.added)}</span>
             </button>
           {/each}
@@ -173,6 +181,11 @@
     border-radius: var(--radius-chip, 4px);
     background: transparent;
     text-align: start;
+  }
+  /* No sub-line: the title spans both flexible columns, the time column stays
+     where it is so rows still line up. */
+  .li-row.li-wide {
+    grid-template-columns: minmax(0, 1fr) 5rem;
   }
   .li-row:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
