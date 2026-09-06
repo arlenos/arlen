@@ -47,6 +47,24 @@ export async function initTheme(): Promise<void> {
     themeVars.set(css);
   } catch (e) {
     themeError.set(e instanceof Error ? e.message : String(e));
+    // AND into the host log, because `themeError` is read by nothing. A shell
+    // that could not fetch its theme still paints - with whatever is compiled
+    // into the stylesheet - so this failure has no pixels of its own: the bar
+    // comes up in a theme that is not the one you chose and looks like a
+    // decision. There is nowhere in a 36px bar to put a sentence about it and a
+    // toast at boot for a colour fallback is noise, so it gets the same channel
+    // every other unattended read in this shell gets.
+    // `message`, not `msg`, and no level - the command takes one string and
+    // prefixes the window label itself. `check-invoke-shape` refused the first
+    // cut of this line, which would have thrown on argument deserialization and
+    // logged nothing at all: a diagnostic line that cannot be written is the
+    // same silence it was added to break.
+    void invoke("log_frontend", {
+      message: `[theme] the shell could not read its theme: ${e instanceof Error ? e.message : String(e)}`,
+    }).catch(() => {
+      // Nothing to do if the log itself cannot be written; the store still holds
+      // the reason for anyone who later renders it.
+    });
   }
 
   themeLoading.set(false);
