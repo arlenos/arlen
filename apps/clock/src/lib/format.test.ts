@@ -10,40 +10,51 @@
 /// changing one does not quietly take the other with it.
 
 import { describe, expect, it } from "vitest";
-import { fmtDuration, fmtStopwatch, fmtDays } from "./format";
+import { decimalMark, fmtDuration, fmtStopwatch, fmtDays } from "./format";
 
 describe("fmtStopwatch", () => {
   it("never shows a second that has not elapsed", () => {
     // The regression, at the boundaries that used to be wrong.
-    expect(fmtStopwatch(499)).toBe("00:00.49");
-    expect(fmtStopwatch(500)).toBe("00:00.50");
-    expect(fmtStopwatch(999)).toBe("00:00.99");
-    expect(fmtStopwatch(1000)).toBe("00:01.00");
-    expect(fmtStopwatch(1500)).toBe("00:01.50");
+    expect(fmtStopwatch(499, "en")).toBe("00:00.49");
+    expect(fmtStopwatch(500, "en")).toBe("00:00.50");
+    expect(fmtStopwatch(999, "en")).toBe("00:00.99");
+    expect(fmtStopwatch(1000, "en")).toBe("00:01.00");
+    expect(fmtStopwatch(1500, "en")).toBe("00:01.50");
   });
 
   it("crosses a minute without going backwards", () => {
     // 59999 used to read 01:00.99 and 60000 read 01:00.00, so the display fell
     // by almost a second while the clock ran forward.
-    expect(fmtStopwatch(59_999)).toBe("00:59.99");
-    expect(fmtStopwatch(60_000)).toBe("01:00.00");
+    expect(fmtStopwatch(59_999, "en")).toBe("00:59.99");
+    expect(fmtStopwatch(60_000, "en")).toBe("01:00.00");
   });
 
   it("runs monotonically over a stretch that spans the old fault", () => {
     let previous = "";
     for (let ms = 0; ms <= 61_000; ms += 10) {
-      const now = fmtStopwatch(ms);
+      const now = fmtStopwatch(ms, "en");
       expect(now >= previous, `${ms}ms gave ${now} after ${previous}`).toBe(true);
       previous = now;
     }
   });
 
   it("prepends hours once they are reached", () => {
-    expect(fmtStopwatch(3_600_000)).toBe("1:00:00.00");
+    expect(fmtStopwatch(3_600_000, "en")).toBe("1:00:00.00");
   });
 
   it("clamps a negative reading rather than rendering a minus", () => {
-    expect(fmtStopwatch(-1)).toBe("00:00.00");
+    expect(fmtStopwatch(-1, "en")).toBe("00:00.00");
+  });
+
+  /// A stopwatch is written "00:00,00" in German, and the mark used to be typed
+  /// into the template - invisible to a catalogue pass, and read off the rendered
+  /// German app on 6 September. It is asked of `Intl` now, so this asserts the
+  /// two languages disagree rather than asserting a table nobody maintains.
+  it("takes its decimal mark from the locale", () => {
+    expect(fmtStopwatch(1500, "de")).toBe("00:01,50");
+    expect(fmtStopwatch(1500, "en")).toBe("00:01.50");
+    expect(decimalMark("de")).toBe(",");
+    expect(decimalMark("en")).toBe(".");
   });
 });
 

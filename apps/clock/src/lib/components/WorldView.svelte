@@ -8,6 +8,7 @@
   import { addSignal } from "$lib/stores/ui";
   import { zoneTime, zoneOffsetHours, zoneDayShift } from "$lib/format";
   import { t, locale } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
 
   let query = $state("");
   let searchRef = $state<HTMLInputElement | null>(null);
@@ -47,7 +48,13 @@
     const h = zoneOffsetHours(zone, now);
     const shift = zoneDayShift(zone, now);
     const day = shift === 0 ? $t("c.wo.today") : shift > 0 ? $t("c.wo.tomorrow") : $t("c.wo.yesterday");
-    const hours = Math.abs(h) % 1 === 0 ? String(Math.abs(h)) : Math.abs(h).toFixed(1);
+    // `toFixed` writes a decimal POINT in every language, so a half-hour zone -
+    // India, Newfoundland, the Chatham Islands - read "+5.5 h" to a German
+    // reader. Whole offsets stay integers, which need no formatting at all.
+    const hours =
+      Math.abs(h) % 1 === 0
+        ? String(Math.abs(h))
+        : formatDecimal(Math.abs(h), 1, $locale);
     return $t("c.wo.offset", { sign: h >= 0 ? "+" : "-", hours, day });
   }
 </script>

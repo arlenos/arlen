@@ -3,8 +3,8 @@
   /// window only renders. Laps list quiet, newest on top, with deltas.
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { clock, tick, stopwatchStart, stopwatchPause, stopwatchLap, stopwatchReset, stopwatchTotal } from "$lib/stores/clock";
-  import { fmtDuration, fmtStopwatch } from "$lib/format";
-  import { t } from "$lib/i18n/messages";
+  import { fmtDuration, fmtStopwatch, decimalMark } from "$lib/format";
+  import { t, locale } from "$lib/i18n/messages";
 </script>
 
 <div class="sw">
@@ -13,7 +13,7 @@
     {@const total = stopwatchTotal(swx, $tick)}
     {@const cs = String(Math.floor((Math.max(0, total) % 1000) / 10)).padStart(2, "0")}
     <span class="sw-total" class:idle={!swx.running && total === 0}>
-      {fmtDuration(total)}<span class="sw-cs">.{cs}</span>
+      {fmtDuration(total)}<span class="sw-cs">{decimalMark($locale)}{cs}</span>
     </span>
     <!-- Equal twins that relabel in place and never move (rule 4): the left
          slot is Lap/Reset, the right slot Start/Stop. -->
@@ -45,8 +45,8 @@
           {@const prev = n > 1 ? swx.laps[n - 2] : 0}
           <div class="sw-lap">
             <span class="sw-lap-n">{$t("c.sw.lapN", { n })}</span>
-            <span class="sw-lap-delta">+{fmtStopwatch(lap - prev)}</span>
-            <span class="sw-lap-total">{fmtStopwatch(lap)}</span>
+            <span class="sw-lap-delta">+{fmtStopwatch(lap - prev, $locale)}</span>
+            <span class="sw-lap-total">{fmtStopwatch(lap, $locale)}</span>
           </div>
         {/each}
       </div>
