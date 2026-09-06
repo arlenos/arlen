@@ -200,9 +200,15 @@
       id="window-rules"
     >
       {#snippet control()}
-        <span class="rule-count">
-          {$t("s.ws.ruleCount", { count: windowRules.length })}
-        </span>
+        <!-- Not a count when the read failed: "0 rules" under a banner saying the
+             values below are defaults is a claim about the person's own config
+             that nobody could check. Same correction as the focus page's app
+             count. -->
+        {#if !$compositor.error}
+          <span class="rule-count">
+            {$t("s.ws.ruleCount", { count: windowRules.length })}
+          </span>
+        {/if}
       {/snippet}
     </Row>
     <div class="rules-list">
@@ -211,7 +217,7 @@
         onremove={removeRule}
         onadd={() => (addRuleOpen = true)}
         addLabel={$t("s.ws.addRule")}
-        emptyMessage={$t("s.ws.noRules")}
+        emptyMessage={$compositor.error ? $t("s.ws.noRulesUnread") : $t("s.ws.noRules")}
       >
         {#snippet itemSnippet({ item }: { item: WindowRule; index: number })}
           <code class="rule-code">{ruleSummary(item as WindowRule)}</code>

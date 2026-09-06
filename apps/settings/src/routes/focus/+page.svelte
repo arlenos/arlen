@@ -119,9 +119,16 @@
       id="focus-suppressed-apps"
     >
       {#snippet control()}
-        <span class="meta-count">
-          {$t("s.focus.appCount", { count: suppressedApps.length })}
-        </span>
+        <!-- A COUNT OF A LIST NOBODY COULD READ IS NOT ZERO. With the settings
+             unreadable this said "0 apps" beside a banner explaining that the
+             values below are defaults - a number about the person's own
+             configuration, produced by a read that failed. Nothing is the honest
+             answer; the banner above already says why. -->
+        {#if !$shell.error}
+          <span class="meta-count">
+            {$t("s.focus.appCount", { count: suppressedApps.length })}
+          </span>
+        {/if}
       {/snippet}
     </Row>
     <div class="picker-list">
@@ -137,7 +144,7 @@
         onremove={removeSuppressedApp}
         onadd={() => picker?.focus()}
         addLabel={$t("s.focus.addApp")}
-        emptyMessage={$t("s.focus.noApps")}
+        emptyMessage={$shell.error ? $t("s.focus.noAppsUnread") : $t("s.focus.noApps")}
       >
         {#snippet itemSnippet({ item }: { item: string; index: number })}
           <span class="app-row">
