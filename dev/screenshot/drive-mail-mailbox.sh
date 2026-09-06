@@ -234,6 +234,96 @@ say "and delete moves the file into the trash rather than off the disk" \
   "$([ -n "$deleted_name" ] && echo 1 || echo 0)" \
   "the trash holds [$deleted_name]"
 
+# THE TRASH HAS TWO SIDES. A delete is silent because a message in the trash can
+# be put back (design-system.md 6.2, Tier 1); and the delete FROM the trash is
+# the one act this app cannot undo, so it asks, naming the message (Tier 3).
+# Both are asserted against the disk, the way every write above is: the row can
+# say what it likes, the file is what moved.
+cat > "$work/putback.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const rowFor = (t) => [...document.querySelectorAll("*")]
+  .filter((e) => e.children.length === 0 && (e.textContent || "").trim() === t)[0];
+const press = (label) => {
+  const b = [...document.querySelectorAll("button")]
+    .find((x) => (x.getAttribute("aria-label") || "") === label);
+  if (b) b.click();
+  return !!b;
+};
+for (let i = 0; i < 60; i++) { if (document.getElementById("folder-.Trash")) break; await wait(250); }
+const trash = document.getElementById("folder-.Trash");
+if (!trash) return JSON.stringify({ trashRail: false });
+trash.click();
+await wait(1200);
+const cell = rowFor("the roof survey");
+if (!cell) return JSON.stringify({ trashRail: true, listed: false });
+cell.closest("button, [role=option], [role=row], li, tr").click();
+await wait(1500);
+const putBack = press("Put back");
+await wait(1500);
+return JSON.stringify({ trashRail: true, listed: true, putBack });
+JS
+
+putback=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/putback.js" SHOOT_INJECT_SETTLE=6 \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-put-back.png" "" 14 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+say "in the trash the header offers Put back, and it was pressed" \
+  "$(printf '%s' "$putback" | grep -q '"putBack":true' && echo 1 || echo 0)" "$putback"
+back_name=$(find "$work/mail/cur" "$work/mail/new" -name '2.host*' -printf '%P\n' 2>/dev/null | head -1)
+say "and put back moves the file out of the trash into the inbox" \
+  "$([ -n "$back_name" ] && echo 1 || echo 0)" "the inbox holds [$back_name]"
+
+cat > "$work/forever.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const rowFor = (t) => [...document.querySelectorAll("*")]
+  .filter((e) => e.children.length === 0 && (e.textContent || "").trim() === t)[0];
+const press = (label) => {
+  const b = [...document.querySelectorAll("button")]
+    .find((x) => (x.getAttribute("aria-label") || "") === label);
+  if (b) b.click();
+  return !!b;
+};
+// Into the trash again, silently.
+for (let i = 0; i < 60; i++) { if (rowFor("the roof survey")) break; await wait(250); }
+const cell = rowFor("the roof survey");
+if (!cell) return JSON.stringify({ listed: false });
+cell.closest("button, [role=option], [role=row], li, tr").click();
+await wait(1500);
+if (!press("Delete")) return JSON.stringify({ listed: true, firstDelete: false });
+await wait(1500);
+const askedEarly = !!document.querySelector("[role=alertdialog], [role=dialog]");
+// Then from the trash, which asks.
+document.getElementById("folder-.Trash")?.click();
+await wait(1200);
+const again = rowFor("the roof survey");
+if (!again) return JSON.stringify({ listed: true, firstDelete: true, askedEarly, inTrash: false });
+again.closest("button, [role=option], [role=row], li, tr").click();
+await wait(1500);
+press("Delete");
+await wait(1200);
+const dialog = document.querySelector("[role=alertdialog], [role=dialog]");
+const asked = !!dialog;
+const title = dialog ? (dialog.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160) : "";
+const confirm = dialog
+  ? [...dialog.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Delete for good")
+  : null;
+if (confirm) confirm.click();
+await wait(2000);
+return JSON.stringify({ listed: true, firstDelete: true, askedEarly, inTrash: true, asked, confirmed: !!confirm, title });
+JS
+
+forever=$(SHOOT_APP_ENV="ARLEN_MAILDIR=$work/mail" SHOOT_INJECT="$work/forever.js" SHOOT_INJECT_SETTLE=6 \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-delete-forever.png" "" 14 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+say "a delete outside the trash asks nothing" \
+  "$(printf '%s' "$forever" | grep -q '"askedEarly":false' && echo 1 || echo 0)" "$forever"
+say "a delete from the trash asks first, naming the message" \
+  "$(printf '%s' "$forever" | grep -q '"asked":true' && printf '%s' "$forever" | grep -q 'the roof survey' && echo 1 || echo 0)" "$forever"
+gone=$(find "$work/mail" -name '2.host*' 2>/dev/null | head -1)
+say "and confirming removes the file from the disk" \
+  "$(printf '%s' "$forever" | grep -q '"confirmed":true' && [ -z "$gone" ] && echo 1 || echo 0)" "still on disk: [$gone]"
+
 # THE FOURTH WRITE, and the only way to reach it live. Compose is absent on a
 # mailbox with nowhere to send, so nothing starts a message from nothing - but
 # Reply answers one that is in front of you, and what it opens saves to Drafts.
@@ -266,10 +356,16 @@ body.dispatchEvent(new Event("input", { bubbles: true }));
 await wait(400);
 save.click();
 await wait(2000);
+// THE WINDOW, not only the disk: after the save the draft is the open message,
+// so the typed line is on screen. It was not, on 6 September - the folder was
+// selected by the sample's name and a maildir's is ".Drafts", so the window
+// showed an empty folder and "did not open" over a draft that was on the disk.
+const landed = document.body.innerText.includes("the ladder did not reach");
 return JSON.stringify({
   listed: true,
   replied: true,
   composer: true,
+  landed,
   text: document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 200),
 });
 JS
@@ -284,6 +380,8 @@ say "reply opens a composer on a mailbox that cannot send" \
 draft_file=$(find "$work/mail" -path '*Drafts*' -name '*:2,*' -print -quit 2>/dev/null)
 say "and saving the reply writes a draft into a drafts folder it had to make" \
   "$([ -n "$draft_file" ] && echo 1 || echo 0)" "the drafts folder holds [$draft_file]"
+say "and the window opens the draft it just wrote" \
+  "$(printf '%s' "$drafted" | grep -q '"landed":true' && echo 1 || echo 0)" "$drafted"
 
 # THE KEYBOARD, which reaches the same writes down a different path: its own
 # handler, its own gate (typing in the search box must stay typing) and its own
