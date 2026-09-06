@@ -13,6 +13,7 @@ mod dbus;
 mod event_emit;
 mod flatpak;
 mod install;
+mod job_view;
 mod jobs;
 mod lock;
 mod module_permissions;

@@ -288,6 +288,12 @@ pub async fn run_worker(queue: std::sync::Arc<JobQueue>, conn: Connection) {
         queue.update_progress(&job_id, 5, "starting");
         emit_progress(&conn, &job_id, 5, "starting").await;
 
+        // The Activity/Jobs row, best-effort: registered before the work and
+        // finished after it, so an install is visible WHILE it runs rather than
+        // only as a notification once it is over. An unreachable job server means
+        // no row and changes nothing else.
+        let view = crate::job_view::InstallJob::start(&crate::job_view::title_for(&job.kind)).await;
+
         let result = match job.kind {
             JobKind::InstallPackage { ref path } => {
                 run_install_package(&queue, &conn, &job_id, path).await
@@ -329,6 +335,12 @@ pub async fn run_worker(queue: std::sync::Arc<JobQueue>, conn: Connection) {
             .await
         {
             tracing::debug!("install audit submit failed: {e}");
+        }
+
+        // Before the local bookkeeping, because the row is what somebody is
+        // looking at: it says done or names the failure, then comes off the list.
+        if let Some(view) = view {
+            view.finish(&result).await;
         }
 
         match result {

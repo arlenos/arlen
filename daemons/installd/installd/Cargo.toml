@@ -20,6 +20,10 @@ arlen-forage-capabilities = { path = "../../../forage/capabilities" }
 # structural record (the action, the source and the outcome, never a filesystem
 # path) to arlen-auditd, so software-changing actions land in the ledger.
 audit-proto = { path = "../../../contracts/audit-proto" }
+# The job/progress surface (job-progress-surface.md): installd is its second
+# producer, so an install shows a live row rather than only a notification when
+# it is over. Best-effort - see `job_view.rs`.
+notification-proto = { path = "../../../contracts/notification-proto", features = ["client"] }
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tracing = "0.1"
