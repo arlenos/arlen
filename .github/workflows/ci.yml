@@ -486,6 +486,8 @@ jobs:
           node dev/scripts/test-check-inert-ellipsis.mjs
           python3 dev/scripts/check-dialog-named.py
           node dev/scripts/test-check-dialog-named.mjs
+          python3 dev/scripts/check-child-props-order.py
+          node dev/scripts/test-check-child-props-order.mjs
           python3 dev/scripts/check-dbus-members-exist.py
           node dev/scripts/test-check-dbus-members-exist.mjs
           python3 dev/scripts/check-dbus-call-arity.py
