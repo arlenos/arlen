@@ -231,8 +231,16 @@ def named_literals(text: str, mod) -> dict[str, set[str]]:
 
 def answered_keys(text: str, after: int, mod) -> set[str] | None:
     """The keys of the object this branch resolves, or None if it is not literal."""
+    # Bounded by the NEXT branch, not by a character count. A branch that
+    # REJECTS - which is the one every refusal fixture is built around - has no
+    # answer of its own, and a plain look-ahead found the `Promise.resolve` of
+    # the branch below it and measured that against this command's struct. The
+    # arithmetic gave it away again: three of five fields present with five
+    # named missing cannot be true of one answer.
+    nxt = text.find("cmd ===", after)
+    limit = nxt if nxt > 0 else len(text)
     resolve = text.find("Promise.resolve", after)
-    if resolve < 0 or resolve - after > 500:
+    if resolve < 0 or resolve > limit or resolve - after > 500:
         return None
     # The brace must BE the resolved value, reached over nothing but whitespace
     # and at most one `[`. Searching for the next `{` instead found the body of
