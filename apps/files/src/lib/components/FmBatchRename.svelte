@@ -72,7 +72,7 @@
         <Input bind:value={replace} placeholder={$t("f.rename.replacePlaceholder")} />
       </div>
       <label class="br-toggle">
-        <Switch bind:value={ignoreCase} />
+        <Switch ariaLabel={$t("f.rename.ignoreCase")} bind:value={ignoreCase} />
         <span>{$t("f.rename.ignoreCase")}</span>
       </label>
     </div>
@@ -91,7 +91,7 @@
         />
       </div>
       <label class="br-toggle br-toggle-end">
-        <Switch bind:value={numberingOn} />
+        <Switch ariaLabel={$t("f.rename.addNumbering")} bind:value={numberingOn} />
         <span>{$t("f.rename.addNumbering")}</span>
       </label>
     </div>

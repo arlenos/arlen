@@ -7,9 +7,14 @@
   let {
     checked,
     onchange,
+    label,
   }: {
     checked: boolean;
     onchange: (value: boolean) => void;
+    /// What this toggle governs, for a reader who cannot see the row it sits in.
+    /// Required rather than optional: a switch with no name is announced as
+    /// "switch", and this one sits in a list of them.
+    label: string;
   } = $props();
 </script>
 
@@ -18,5 +23,5 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div onclick={(e) => e.stopPropagation()}>
-  <Switch value={checked} {onchange} size="sm" />
+  <Switch ariaLabel={label} value={checked} {onchange} size="sm" />
 </div>
