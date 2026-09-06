@@ -127,3 +127,50 @@ case "$full" in
   *) echo "ok: a frame with content is not called flat" ;;
 esac
 rm -f /tmp/render-wide-flat.png /tmp/render-wide-full.png
+
+# --- require-text, both directions ----------------------------------------
+#
+# The check that stops a clean answer coming from a page that never reached its
+# state. axe reports an empty page as clean in the same words it uses for a
+# surface that passed, so a host script whose request never arrives would read as
+# a pass - which is the failure this whole harness is built against, one level in.
+#
+# Both directions matter and the second is the one that would rot: a check that
+# refuses everything is as useless as one that refuses nothing.
+
+want() {  # $1 = page, $2 = required text
+  xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+    env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
+      openbox >/dev/null 2>&1 &
+      ob=$!
+      sleep 1.5
+      python3 dev/screenshot/render-wide.py --url "$1" --out /tmp/render-wide-want.png \
+        --width 800 --settle 1 --require-text "$2"
+      rc=$?
+      kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null
+      exit $rc
+    ' _ "$1" "$2" 2>&1
+}
+
+rm -f /tmp/render-wide-want.png
+missing=$(want 'data:text/html,<body><p>nothing to see' 'Zulassen?' || true)
+case "$missing" in
+  *"does not say"*) echo "ok: a page that does not say it is refused" ;;
+  *) echo "FAIL: a page missing the required text was accepted (${missing@Q})." >&2
+     exit 1 ;;
+esac
+if [ -e /tmp/render-wide-want.png ]; then
+  echo "FAIL: a refused run still wrote a shot, which is the thing that gets" >&2
+  echo "mistaken later for a render of what was asked for." >&2
+  exit 1
+fi
+echo "ok: and it leaves no shot behind"
+
+present=$(want 'data:text/html,<body><p>Zulassen?' 'Zulassen?' || true)
+case "$present" in
+  *"does not say"*) echo "FAIL: a page that DOES say it was refused, so the check" >&2
+     echo "cries wolf and gets turned off." >&2
+     exit 1 ;;
+  *) echo "ok: a page that says it passes" ;;
+esac
+rm -f /tmp/render-wide-want.png

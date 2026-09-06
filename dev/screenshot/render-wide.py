@@ -47,6 +47,13 @@ Usage, under a display:
 `--require-width` refuses BEFORE capturing, so a run that could not reach desktop
 width leaves nothing behind to be mistaken later for a render of what it was
 asked for.
+
+`--require-text` is the same idea about CONTENT, and it exists because a clean
+answer from a page that never reached its state is the worst thing this harness
+can produce. The consent card is the case: it mounts only once a broker has handed
+it a request, so a page where that failed is empty - and axe reports an empty page
+as clean, in the same words it uses for a surface that passed. With the text the
+run says so instead.
 """
 import argparse
 import json
@@ -100,6 +107,9 @@ class Render:
 
     def __init__(self, args):
         self.axe_failures = 0
+        # `finish` is re-entered from the text check's callback, so it has to know
+        # the check already ran or the two would call each other forever.
+        self.text_checked = False
         self.args = args
         self.status = 1
         self.app = Gtk.Application(application_id="dev.arlen.render-wide")
@@ -264,6 +274,30 @@ class Render:
             return
         self.finish()
 
+    def require_text(self):
+        """Refuse unless the rendered page actually says what was asked for.
+
+        `innerText` rather than `textContent`, for the reason `probe-host.sh`
+        records: `innerText` omits what is not rendered, so a sentence sitting in
+        a hidden popover cannot satisfy a check about what is on screen.
+        """
+        self.view.evaluate_javascript(
+            "document.body.innerText.replace(/\\s+/g, ' ')",
+            -1, None, None, None, self.on_require_text)
+
+    def on_require_text(self, view, result):
+        try:
+            seen = view.evaluate_javascript_finish(result).to_string()
+        except Exception as e:  # noqa: BLE001
+            self.fail(f"could not read the page's text: {e}", 11)
+            return
+        if self.args.require_text not in seen:
+            self.fail(f"refusing: the page does not say {self.args.require_text!r},"
+                      f" so it did not reach the state this run is about."
+                      f" It reads: {seen[:200]!r}", 11)
+            return
+        self.finish()
+
     def finish(self):
         """The last step, whatever the run was for: probe, or audit, or shoot.
 
@@ -281,6 +315,11 @@ class Render:
         report it produces is a bug that does not exist, and the fix for it lands
         in an app that was already correct.
         """
+        if self.args.require_text and not self.text_checked:
+            # Once: `finish` is re-entered from the check's own callback.
+            self.text_checked = True
+            self.require_text()
+            return False
         if self.args.probe or self.args.probe_file:
             self.run_probe()
         elif self.args.axe:
@@ -598,6 +637,10 @@ def main():
                          " for copy that only appears once something is searched")
     ap.add_argument("--require-width", type=int, default=None,
                     help="refuse, before capturing, if the viewport is narrower")
+    ap.add_argument("--require-text", default=None,
+                    help="refuse, before capturing or auditing, unless the rendered"
+                         " page says this - so a clean answer cannot come from a"
+                         " page that never reached its state")
     return Render(ap.parse_args()).run()
 
 
