@@ -2,16 +2,28 @@
 /// long-running background work - file operations, package installs, model
 /// downloads, transfers - shown as a dedicated zone at the top of the notifications
 /// popover. A job is live, progressing, and cancelable; a notification is a past
-/// event. Closes the acute gap that the file manager reports no progress today.
+/// event.
 ///
 /// Mock-vs-live: live under a host, fixture under vite. `list_jobs`, `cancel_job`,
-/// `pause_job` and `resume_job` are registered and the `notification:job` feed is
-/// listened to below - this header said none of that was built while the load
-/// function forty lines down already called it live, which is the worse half of
-/// being out of date: the file disagreed with itself. What the JobView server does
-/// NOT have yet is the producers reporting progress into it, so a real session
-/// lists what there is and that is usually nothing. The
-/// shell owns the threshold/min-dwell visibility (a job shows once it passes ~1.5s).
+/// `pause_job` and `resume_job` are registered, the `notification:job` feed is
+/// listened to below, `org.arlen.JobViewServer1` is served by the notification
+/// daemon, and the FILE MANAGER reports into it - the gap this surface was built
+/// for is closed.
+///
+/// TWICE WRONG IN ONE MORNING, so both halves are written down. This header first
+/// said none of the commands were built, while the load function forty lines down
+/// already called them live - a file disagreeing with itself, which teaches a
+/// reader to trust whichever half they meet first. Correcting it, I then wrote
+/// that no producer reported into the server, and did not check: the file manager
+/// has since `apps/files/src-tauri/src/jobs.rs`, called from its copy path. A
+/// correction made without measuring is a new stale note with a fresh date on it.
+///
+/// What is genuinely absent, measured by grepping for the interface name: forage,
+/// the model manager and installd register nothing, so a package install or a
+/// model download still shows no row.
+///
+/// The shell owns the threshold/min-dwell visibility (a job shows once it passes
+/// ~1.5s).
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
