@@ -441,7 +441,16 @@
         {/if}
 
         {#if launched || view === "agenda"}
-          <div class="scroll-list">
+          <!-- A scrolling box a keyboard cannot reach is a list a keyboard
+               cannot read: the agenda's rows are not focusable, so without a tab
+               stop here the only way to scroll it is a mouse. `tabindex=0` with
+               a name is what axe asks for and what a reader needs. -->
+          <!-- The two rules disagree here and axe is the one about the reader:
+               svelte's lint says a non-interactive element should not take a tab
+               stop, axe says a scrollable region must have one. The kit's file
+               browser resolves it the same way. -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <div class="scroll-list" tabindex="0" role="region" aria-label={$t("cal.agenda")}>
             <AgendaView agenda={visibleAgenda as Agenda} />
           </div>
         {:else if view === "week"}
