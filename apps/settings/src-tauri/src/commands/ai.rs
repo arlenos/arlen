@@ -685,7 +685,9 @@ async fn register_download_job(
     // Indeterminate until the first byte-total arrives; killable (a cancel flag
     // exists), not suspendable (pause/resume of the HTTP stream is a follow-up).
     let id = proxy
-        .register("settings", title, "bytes", 0, false, true, false, egress_host)
+        // No item list: a model download is one file, and the zone's expansion
+        // exists for an operation with several.
+        .register("settings", title, "bytes", 0, false, true, false, egress_host, &[])
         .await
         .ok()?;
     Some((proxy, id))
