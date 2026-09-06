@@ -161,6 +161,44 @@ pub struct PrepItem {
     pub score: f64,
 }
 
+/// One item in a Library section, as served by [`UnixGraphClient::library`].
+///
+/// Mirrors the daemon's projection (`daemons/knowledge/src/library.rs`). The
+/// title is already resolved there - the declared title field, or the entry's own
+/// external key when the type declared none or the row's is empty - so a consumer
+/// never has to know the fallback rule, and cannot get it wrong.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LibraryEntry {
+    /// The graph node id.
+    pub id: String,
+    /// What to show, resolved.
+    pub title: String,
+    /// The declared sub-line, absent when the type declared none.
+    pub sub: Option<String>,
+    /// When this machine last wrote the row, in seconds since the epoch. **Not
+    /// when the item was made** - no bridge declares that today, so a surface
+    /// showing this says "added", never "published".
+    pub added: Option<i64>,
+}
+
+/// One Library section: one declared type from one source, as served by
+/// [`UnixGraphClient::library`].
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LibrarySection {
+    /// The namespace the type belongs to - the origin tag a per-source revoke
+    /// severs.
+    pub source: String,
+    /// The fully qualified type.
+    #[serde(rename = "type")]
+    pub qualified_type: String,
+    /// The declared display name, or the qualified type when none was declared.
+    pub label: String,
+    /// One of the closed display set: notes, documents, messages, media, other.
+    pub class: String,
+    /// The entries, most recently written first.
+    pub entries: Vec<LibraryEntry>,
+}
+
 /// One capability grant in the Living Capability Graph browse surface, as served
 /// by [`UnixGraphClient::access_grants`]. Mirrors the daemon's projection: the
 /// declared ceiling (faithful scope JSON), the queryable type `reach`, and the
@@ -626,6 +664,29 @@ impl UnixGraphClient {
         }
         serde_json::from_slice::<Vec<GrantView>>(&bytes)
             .map_err(|e| QueryError::InvalidQuery(format!("malformed access_grants response: {e}")))
+    }
+
+    /// Read the Library: every bridged type that has rows, with the display
+    /// identity its own schema declared (`bridge-architecture.md`).
+    ///
+    /// A leading `0x11` byte selects the op and takes no request body - the
+    /// sections are what the registry and the graph hold, and there is nothing for
+    /// a caller to name. The daemon gates it to system-anchored callers (an
+    /// aggregate across every bridge's namespace is wider than a ThirdParty app's
+    /// per-label read scope) and leaves out any type with no rows, so a machine
+    /// with no bridges gets an empty vector.
+    ///
+    /// **An empty vector and an error are different answers.** Nothing bridged yet
+    /// is a fact; a graph nobody could reach is a failure, and the daemon probes
+    /// before it reads so this call does not report the second as the first.
+    pub async fn library(&self) -> Result<Vec<LibrarySection>, QueryError> {
+        let body = [0x11u8];
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        serde_json::from_slice::<Vec<LibrarySection>>(&bytes)
+            .map_err(|e| QueryError::InvalidQuery(format!("malformed library response: {e}")))
     }
 
     /// Read the token-free code-graph analysis (CG-R5) via the read socket's
@@ -1998,6 +2059,46 @@ mod tests {
         assert_eq!(grants[0].app_id, "com.x");
         assert!(grants[0].live);
         assert_eq!(grants[0].reach, vec!["File".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn library_sends_the_prefix_and_parses_the_sections() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-library-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req, vec![0x11], "library is a bare 0x11 prefix");
+
+            let resp = br#"[{"source":"md.obsidian","type":"md.obsidian.Note","label":"Notes","class":"notes","entries":[{"id":"md.obsidian.Note:a.md","title":"Deep work","sub":null,"added":1788343200}]}]"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let sections = client.library().await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let sections = sections.unwrap();
+        assert_eq!(sections.len(), 1);
+        // `type` on the wire, `qualified_type` in Rust - the rename is the half a
+        // mirror gets wrong silently.
+        assert_eq!(sections[0].qualified_type, "md.obsidian.Note");
+        assert_eq!(sections[0].label, "Notes");
+        assert_eq!(sections[0].class, "notes");
+        assert_eq!(sections[0].entries[0].title, "Deep work");
+        assert_eq!(sections[0].entries[0].sub, None);
     }
 
     #[tokio::test]
