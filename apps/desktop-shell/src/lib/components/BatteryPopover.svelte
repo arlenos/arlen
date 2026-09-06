@@ -90,7 +90,7 @@
   ];
 </script>
 
-<ShellPopover id="battery" width={240} right={50} bodyPadding="12px" bodyGap="8px">
+<ShellPopover id="battery" label={$t("sh.bat.title")} width={240} right={50} bodyPadding="12px" bodyGap="8px">
   {#snippet header()}
     <PopoverHeader icon={Battery} title={$t("sh.bat.title")} />
   {/snippet}

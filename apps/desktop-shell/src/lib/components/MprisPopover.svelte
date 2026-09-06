@@ -35,7 +35,7 @@
   }
 </script>
 
-<ShellPopover id="mpris" width={304} right={120} bodyPadding="0" bodyGap="0">
+<ShellPopover id="mpris" label={$t("sh.mpris.nowPlaying")} width={304} right={120} bodyPadding="0" bodyGap="0">
   {#snippet header()}
     <PopoverHeader icon={Music} title={activeApp} onSettings={() => togglePopover("audio")} />
   {/snippet}

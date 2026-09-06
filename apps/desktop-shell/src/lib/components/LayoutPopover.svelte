@@ -121,7 +121,7 @@
   }
 </script>
 
-<ShellPopover id="layout" width={260} right={50} bodyPadding="12px" bodyGap="10px">
+<ShellPopover id="layout" label={$t("sh.layout.title")} width={260} right={50} bodyPadding="12px" bodyGap="10px">
   {#snippet header()}
     <PopoverHeader icon={LayoutPanelLeft} title={$t("sh.layout.title")} />
   {/snippet}

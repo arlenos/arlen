@@ -67,7 +67,7 @@
   }
 </script>
 
-<ShellPopover id="tray" width={260} right={140}>
+<ShellPopover id="tray" label={$t("sh.tray.title")} width={260} right={140}>
   {#snippet header()}
     <PopoverHeader icon={Layers} title={$t("sh.tray.title")} />
   {/snippet}

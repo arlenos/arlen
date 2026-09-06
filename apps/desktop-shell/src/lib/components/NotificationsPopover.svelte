@@ -11,6 +11,7 @@
   /// `keepMounted`: NotificationPanel keeps its grouped-by-app
   /// subscriptions alive across opens, so opening the panel doesn't
   /// re-fetch history.
+  import { t } from "$lib/i18n/messages";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import ActivityJobsZone from "$lib/components/ActivityJobsZone.svelte";
   import NotificationPanel from "$lib/components/NotificationPanel.svelte";
@@ -18,6 +19,7 @@
 
 <ShellPopover
   id="notifications"
+  label={$t("sh.notif.title")}
   width={380}
   right={8}
   maxHeight="calc(100vh - 56px)"

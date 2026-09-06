@@ -128,7 +128,7 @@
   }
 </script>
 
-<ShellPopover id="audio" width={280} right={80} bodyPadding="12px" bodyGap="8px">
+<ShellPopover id="audio" label={$t("sh.audio.title")} width={280} right={80} bodyPadding="12px" bodyGap="8px">
   {#snippet header()}
     <PopoverHeader icon={Volume2} title={$t("sh.audio.title")} toggled={!dndOn} onToggle={toggleDnd} />
   {/snippet}

@@ -259,7 +259,7 @@
   </ContextMenu.Root>
 {/snippet}
 
-<ShellPopover id="network" width={280} right={110} bodyPadding="12px" bodyGap="6px">
+<ShellPopover id="network" label={$t("sh.net.title")} width={280} right={110} bodyPadding="12px" bodyGap="6px">
   {#snippet header()}
     <!-- No switch when the radio state is unknown: a toggle renders a POSITION,
          so offering one is a claim we cannot make. The banner below says why. -->

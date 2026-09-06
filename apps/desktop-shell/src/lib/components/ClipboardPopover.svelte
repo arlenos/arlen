@@ -96,7 +96,7 @@
   }
 </script>
 
-<ShellPopover id="clipboard" width={400} right={16} bodyPadding="0px" bodyGap="0px">
+<ShellPopover id="clipboard" label={$t("sh.clip.title")} width={400} right={16} bodyPadding="0px" bodyGap="0px">
   {#snippet header()}
     <PopoverHeader icon={Clipboard} title={$t("sh.clip.title")} />
   {/snippet}
