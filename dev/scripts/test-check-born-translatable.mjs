@@ -103,6 +103,45 @@ console.log("check-born-translatable:");
 }
 
 {
+  // THE FIELD FORM. A catalogue of rows is written with a `:`, not an `=`, so the
+  // assignment matcher never saw it - which is how two Settings rows carried an
+  // English sentence into a German page while the `label` beside them was a key.
+  const root = tree({
+    "apps/thing/src/lib/rows.ts":
+      'export const ROWS = [\n  { key: "a", label: "s.row.a", description: "Written to disk as you type." },\n];\n',
+  });
+  const r = run(root);
+  r.code === 1 && r.out.includes("Written to disk")
+    ? ok("a prose description field is caught")
+    : bad("a prose description field is caught", r.out);
+  cleanup(root);
+}
+
+{
+  // A key in the same position is not prose and must stay quiet, or the form
+  // would fire on every catalogue-driven row in the tree.
+  const root = tree({
+    "apps/thing/src/lib/rows.ts":
+      'export const ROWS = [\n  { key: "a", label: "s.row.a", description: "s.row.aDesc" },\n];\n',
+  });
+  const r = run(root);
+  r.code === 0 ? ok("a key in a description field passes") : bad("a key in a description field passes", r.out);
+  cleanup(root);
+}
+
+{
+  // A file may declare its data foreign, and five in the tree already do: the
+  // strings are a third party's own words arriving as data.
+  const root = tree({
+    "apps/thing/src/lib/fixture.ts":
+      '/// i18n-foreign: the fixture holds correspondents\' own words.\nexport const M = [\n  { subject: "The hall is free on Thursday." },\n  { label: "Re: review notes", description: "Bringing the printouts, someone else brings coffee." },\n];\n',
+  });
+  const r = run(root);
+  r.code === 0 ? ok("a file marked i18n-foreign is skipped") : bad("a file marked i18n-foreign is skipped", r.out);
+  cleanup(root);
+}
+
+{
   // An identifier is not a sentence, however long.
   const root = tree({
     "apps/thing/src/lib/F.svelte":

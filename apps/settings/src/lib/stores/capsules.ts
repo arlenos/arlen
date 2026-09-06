@@ -12,6 +12,8 @@
 /// restorable and it cannot un-send a copy the recipient already holds - so there is
 /// no undo, and the copy never says a share "becomes unreadable".
 
+/// i18n-foreign: the fixture's capsule labels and scopes name what a person
+/// shared, which the daemon returns verbatim.
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
