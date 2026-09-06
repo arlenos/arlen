@@ -100,11 +100,18 @@
     {#snippet content()}
       <div class="notes">
         <span class="sec-label">{$t("mt.yourNotes")}</span>
+        <!-- The placeholder is a claim about a recording, so it may only be made
+             while there IS one. With capture refused it sat two inches under
+             "Nothing is being captured" and promised that the AI would fill the
+             rest in from it. Same branch the Stop button was moved into, one
+             element over - which is where this app's last two defects were. -->
         <Textarea
           bind:ref={notesEl}
           bind:value={$liveNotes}
           rows={8}
-          placeholder={$t("mt.notes.placeholder")}
+          placeholder={$captureUnavailable || $stopFailed
+            ? $t("mt.notes.placeholder.noCapture")
+            : $t("mt.notes.placeholder")}
           aria-label={$t("mt.yourNotes")}
         />
       </div>
