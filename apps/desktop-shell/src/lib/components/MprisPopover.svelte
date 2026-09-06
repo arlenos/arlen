@@ -11,6 +11,7 @@
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
+  import { alsoRun } from "$lib/childProps.js";
   import { togglePopover } from "$lib/stores/activePopover.js";
   import {
     nowPlaying,
@@ -98,8 +99,11 @@
                     class="np-player"
                     class:paused={p.status !== "playing"}
                     aria-label={p.app}
-                    onclick={() => pinPlayer(p.id)}
                     {...props}
+                    onclick={(e) => {
+                      alsoRun(props.onclick, e);
+                      pinPlayer(p.id);
+                    }}
                   >
                     <span class="np-player-icon">
                       {#if p.icon}
