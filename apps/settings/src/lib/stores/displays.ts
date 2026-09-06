@@ -200,12 +200,6 @@ export function monitorToConfig(m: Monitor): MonitorConfig {
   };
 }
 
-/// Format `MonitorMode` as `2560 × 1440 @ 60.00 Hz`.
-export function formatMode(mode: MonitorMode): string {
-  const hz = (mode.refreshMhz / 1000).toFixed(2);
-  return `${mode.width} × ${mode.height} @ ${hz} Hz`;
-}
-
 /// Group modes by resolution so the resolution dropdown shows each
 /// (width, height) exactly once and the refresh-rate dropdown
 /// derives its options from the selected resolution.
