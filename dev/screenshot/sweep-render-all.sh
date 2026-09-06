@@ -58,7 +58,11 @@ PORT=$(( 6100 + ($$ % 60) * 40 ))
 SURFACES=(
   "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event"
   "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
-  "desktop-shell /|/consent|/waypointer"
+  # The two panels open from the bar and this row carried no click, so the two
+  # surfaces a person opens most often on this window had never been through a
+  # render probe either. Same gap as the axe table, found the same way: by
+  # putting the two lists side by side.
+  "desktop-shell /|/consent|/waypointer|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]"
   "files /|/::[data-place=recent]|/::[data-place=trash]"
   "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
