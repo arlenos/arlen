@@ -26,6 +26,17 @@
 
   let query = $state("");
   let inputRef = $state<HTMLInputElement | null>(null);
+
+  /// Put the caret in the picker from outside it.
+  ///
+  /// The focus page has a second add affordance below its list - the kit's
+  /// `AddRemoveList` always draws one and cannot be told not to - and until now
+  /// that button was passed an empty label and a no-op handler, so it rendered as
+  /// a plus with no name that did nothing when pressed. It sends people here now,
+  /// which is where adding an app actually happens.
+  export function focus() {
+    inputRef?.focus();
+  }
   let menuRef = $state<HTMLDivElement | null>(null);
   let triggerRef = $state<HTMLDivElement | null>(null);
   let open = $state(false);
