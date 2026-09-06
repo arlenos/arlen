@@ -94,12 +94,12 @@
 {#if $current}
   {@const req = $current}
   <Dialog.Root open={true} onOpenChange={(o) => { if (!o) cancelPrint(); }}>
-    <Dialog.Content class="max-w-2xl p-0">
+    <Dialog.Content class="max-w-2xl p-0" aria-labelledby="sh-print-title">
       <div class="pd">
         <header class="pd-head">
           <PrinterIcon size={18} strokeWidth={2} aria-hidden="true" />
           <div class="pd-head-text">
-            <h2 class="pd-title">{$t("sh.print.title")}</h2>
+            <h2 class="pd-title" id="sh-print-title">{$t("sh.print.title")}</h2>
             <p class="pd-sub">{$t("sh.print.subtitle", { doc: req.title, app: req.appName })}</p>
           </div>
         </header>

@@ -34,10 +34,10 @@
 {#if $current}
   {@const req = $current}
   <Dialog.Root open={true} onOpenChange={(o) => { if (!o) cancel(); }}>
-    <Dialog.Content>
+    <Dialog.Content aria-labelledby="sh-share-title">
       <div class="sp">
         <header class="sp-head">
-          <h2 class="sp-title">{$t("sh.share.wants", { app: req.requesterLabel })}</h2>
+          <h2 class="sp-title" id="sh-share-title">{$t("sh.share.wants", { app: req.requesterLabel })}</h2>
           <p class="sp-sub">{$t("sh.share.choose")}</p>
         </header>
 

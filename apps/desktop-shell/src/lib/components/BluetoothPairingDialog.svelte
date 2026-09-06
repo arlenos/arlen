@@ -243,13 +243,17 @@
       if (!v) onCancel();
     }}
   >
-    <Dialog.Content>
+    <!-- Named after the request, like the consent card next door: an unnamed
+         dialog is announced as "dialog", and this one asks whether to trust a
+         device. -->
+    <Dialog.Content aria-labelledby="sh-pair-title">
       <ConsentCard
         requesterName={request.deviceName}
         requesterId={request.deviceAddress}
         attested={false}
         tone="caution"
         title={titleFor(request)}
+        titleId="sh-pair-title"
         {body}
         {footer}
       />

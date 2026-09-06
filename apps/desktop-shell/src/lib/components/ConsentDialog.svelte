@@ -458,13 +458,18 @@
     <!-- The marker the teardown self-check below looks for. The card renders into
          a portal on document.body, outside this component's subtree, so there is
          no other way to ask whether it actually went away. -->
-    <Dialog.Content class="arlen-consent-card">
+    <!-- Named after the question it asks. A dialog with no accessible name is
+         announced as an unnamed dialog, and this one is the surface where a
+         person grants or refuses authority - axe reported it `serious` on all
+         three classes the first time this window was rendered. -->
+    <Dialog.Content class="arlen-consent-card" aria-labelledby="sh-consent-title">
       <ConsentCard
         requesterName={friendly(p.requester)}
         requesterId={p.requester}
         {tone}
         title={$t("sh.consent.ask", { app: friendly(p.requester), what: p.summary })}
         big={p.tier === "high_stakes"}
+        titleId="sh-consent-title"
         {body}
         {footer}
       />

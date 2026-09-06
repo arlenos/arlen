@@ -133,9 +133,13 @@
 </script>
 
 {#if open}
-  <div class="backdrop" role="dialog" aria-modal="true">
+  <!-- Named after its own heading. A modal that says `role="dialog"` and nothing
+       else is announced as an unnamed dialog, and this one is the last thing
+       between a person and a display change they cannot see well enough to
+       cancel. -->
+  <div class="backdrop" role="dialog" aria-modal="true" aria-labelledby="revert-title">
     <div class="modal">
-      <h2>{$t("s.revert.keep")}</h2>
+      <h2 id="revert-title">{$t("s.revert.keep")}</h2>
       <p class="body">
         {#if pendingRevertId}
           {$t("s.revert.reverting")}

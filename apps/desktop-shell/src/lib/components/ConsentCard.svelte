@@ -18,6 +18,7 @@
     attested = true,
     title,
     big = false,
+    titleId,
     body,
     footer,
   }: {
@@ -35,6 +36,11 @@
     title: string;
     /// A heavier title for high-stakes requests.
     big?: boolean;
+    /// The id put on the title element, so the dialog wrapping this card can
+    /// name itself with `aria-labelledby`. Without it the card's question is on
+    /// screen and the dialog is anonymous to a screen reader - which is what
+    /// axe found on every consent class on 6 September.
+    titleId?: string;
     /// The request-specific body: scope, preview, targets, a passkey, a note.
     body?: Snippet;
     /// The decision affordances: the deny/allow/confirm buttons for this class.
@@ -60,7 +66,7 @@
     </span>
   </div>
 
-  <h2 class="cd-title" class:big>{title}</h2>
+  <h2 class="cd-title" class:big id={titleId}>{title}</h2>
 
   {@render body?.()}
 

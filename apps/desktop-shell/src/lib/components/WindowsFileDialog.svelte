@@ -61,13 +61,13 @@
       if (!open) cancel();
     }}
   >
-    <Dialog.Content>
+    <Dialog.Content aria-labelledby="sh-wf-title">
       <div class="wf">
         <!-- Identity once: the title carries the name; the tags carry what a
              sentence would otherwise repeat. -->
         <div class="wf-head">
           <span class="wf-avatar">{p.appName.charAt(0)}</span>
-          <h2 class="wf-title">{$t("sh.wf.open", { app: p.appName })}</h2>
+          <h2 class="wf-title" id="sh-wf-title">{$t("sh.wf.open", { app: p.appName })}</h2>
         </div>
         <div class="wf-tags">
           <span class="wf-tag">{$t("sh.wf.windowsApp")}</span>
