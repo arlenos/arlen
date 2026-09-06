@@ -22,6 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 import { t } from "$lib/i18n/messages";
+import { localeReady } from "$lib/localeReady";
 
 /**
  * Invoke `command`, and on refusal raise `failureKey` as a toast.
@@ -92,6 +93,11 @@ export function raiseRefusal(key: string, params?: Record<string, string>): void
         message: key,
       });
     } catch {
+      // Same wait as the bridge, and for the same reason: this branch runs when
+      // there is no host to carry the event, which is every vite render - the
+      // one place the language question is answered by a query string that a
+      // startup failure can beat.
+      await localeReady;
       toast.error(get(t)(key, params));
     }
   })();

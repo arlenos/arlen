@@ -15,6 +15,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "svelte-sonner";
 import { get } from "svelte/store";
 import { t } from "$lib/i18n/messages";
+import { localeReady } from "$lib/localeReady";
 
 interface ToastPayload {
   kind: "success" | "info" | "warning" | "error";
@@ -32,7 +33,13 @@ interface ToastPayload {
 export function initToastBridge(): () => void {
   let unlisten: UnlistenFn | null = null;
 
-  listen<ToastPayload>("arlen://toast", ({ payload }) => {
+  listen<ToastPayload>("arlen://toast", async ({ payload }) => {
+    // Wait for the language before wording it. The bridge freezes a string, so
+    // reading the catalog a moment too early does not correct itself the way
+    // markup does - a boot-time refusal would keep the source language for as
+    // long as it is on screen. After startup this is an already-settled promise,
+    // so it costs a microtask.
+    await localeReady;
     const write = get(t);
     // A key the catalog does not carry renders as the id, which is legible and
     // greppable; falling back to the backend's own `message` would put the
