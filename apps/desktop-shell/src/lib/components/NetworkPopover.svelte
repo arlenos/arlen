@@ -304,7 +304,7 @@
                and the names Ethernet / WiFi / VPN, which read the same in any
                language. Only the punctuation is composed here. -->
           <span class="net-status-detail">
-            {#if status.signal_strength != null}{status.signal_strength}%, {/if}{status.connection_type === "ethernet" ? "Ethernet" : "WiFi"}{#if status.vpn_active}, VPN{/if}
+            {#if status.signal_strength != null}{$t("sh.pct", { n: status.signal_strength })}, {/if}{status.connection_type === "ethernet" ? "Ethernet" : "WiFi"}{#if status.vpn_active}, VPN{/if}
           </span>
         </div>
       </div>

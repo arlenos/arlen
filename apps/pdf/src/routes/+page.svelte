@@ -364,7 +364,7 @@
           <IconAction label={$t("pdf.zoomOut")} size="control" onclick={() => zoom(-1)}>
             <Minus size={15} strokeWidth={1.75} />
           </IconAction>
-          <button type="button" class="zoom-pct" onclick={actualSize}>{shownPercent}%</button>
+          <button type="button" class="zoom-pct" onclick={actualSize}>{$t("pdf.pct", { n: shownPercent })}</button>
           <IconAction label={$t("pdf.zoomIn")} size="control" onclick={() => zoom(1)}>
             <Plus size={15} strokeWidth={1.75} />
           </IconAction>

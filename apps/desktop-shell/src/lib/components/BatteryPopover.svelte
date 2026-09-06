@@ -97,7 +97,7 @@
 
   {#if status}
     <div class="bat-status">
-      <span class="bat-pct">{status.percentage}%</span>
+      <span class="bat-pct">{$t("sh.pct", { n: status.percentage })}</span>
       <span class="bat-detail">
         {#if status.charging}
           <Zap size={12} strokeWidth={2} />{status.time_remaining_minutes

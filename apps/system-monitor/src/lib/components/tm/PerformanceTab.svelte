@@ -23,10 +23,10 @@
       // to subtract from, and printing the 0 the host returns would state that
       // the machine is idle when nobody has measured it yet.
       case "cpu":
-        return s.ratesReady ? `${n(s.cpuPct)}%` : "\u2014";
+        return s.ratesReady ? $t("tm.pct", { n: n(s.cpuPct) }) : "\u2014";
       // Memory is a level, so it is real from the first tick.
       case "memory":
-        return `${n(s.memPct)}%`;
+        return $t("tm.pct", { n: n(s.memPct) });
       // Three states, and the tab already had words for all three: a dash while
       // the second tick lands, `notMeasured` where the counter file does not
       // exist at all, and the figure otherwise. The middle one used to read

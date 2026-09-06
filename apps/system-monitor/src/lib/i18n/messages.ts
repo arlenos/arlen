@@ -14,6 +14,11 @@ const PROCESS_COUNT_DE = ".input {$count :number}\n.match $count\none {{{$count}
 const messages: Catalogs = {
   en: {
     "tm.app.title": "Task manager",
+    // A percentage, with the space its language wants: German writes "62 %" with
+    // a no-break space, English writes "62%" tight. Markup that glues the sign
+    // to the number bypasses the catalogue, which is how this stayed wrong here
+    // after the catalogue strings were fixed on 8 September.
+    "tm.pct": "{$n}%",
     "tm.dp.pid": "PID {$pid}",
     "tm.dp.close": "Close",
     "tm.dp.forceQuit": "Force Quit",
@@ -142,6 +147,7 @@ const messages: Catalogs = {
     "tm.menu.forceQuit": "Force quit",
   },
   de: {
+    "tm.pct": "{$n}\u00a0%",
     "tm.app.title": "Task-Manager",
 
     "tm.dp.pid": "PID {$pid}",
