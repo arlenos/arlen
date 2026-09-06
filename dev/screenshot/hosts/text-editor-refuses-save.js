@@ -4,15 +4,17 @@
 //
 // EXPECT: Konnte nicht speichern
 //
-// AND IT DOES NOT REACH THAT TODAY through `probe-host.sh`. Measured 6
-// September: the page renders, `.cm-content` is present, the synthetic Ctrl+S
-// below fires, and seven seconds later no refusal is anywhere in the page's
-// text. `Mod-s` runs `onsave` unconditionally in `Buffer.svelte`, so the
-// keymap is not the condition - the synthetic KeyboardEvent is not reaching
-// CodeMirror's handler in this webview. The line above is what the state
-// SAYS, kept so the check fails loudly rather than the fixture passing on a
-// page that never refused anything; `shoot.sh`'s SHOOT_DRIVE path is the one
-// that has driven this gesture, and it cannot install a host.
+// IT REACHES IT NOW. This block used to say the opposite at length - that the
+// synthetic Ctrl+S never got to CodeMirror's handler in this webview and that no
+// refusal appeared seven seconds later, measured 6 September - and it was kept as
+// a deliberate loud failure. Re-measured 7 September through the same
+// `probe-host.sh`: the page reads "Konnte nicht speichern: diese Datei oder ihr
+// Ordner ließ sich nicht beschreiben." and the probe exits 0.
+//
+// What changed is not recorded here because I do not know it, and guessing would
+// put a second wrong sentence where the first one was. What IS worth keeping is
+// why the old one survived a day: a comment that describes a state which has
+// since ended reads exactly like a verdict about today.
 //
 // A runtime where the document OPENS and the save is refused - a read-only file,
 // the ordinary way a save fails. Neither preview can reach it: with no runtime
