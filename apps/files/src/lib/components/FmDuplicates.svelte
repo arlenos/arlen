@@ -267,7 +267,17 @@
   .row:hover {
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
   }
-  .row.marked {
+  /* THE FADE STOPS AT THE MARK, and that is the whole point of it. A marked row
+     recedes because it is on its way out - but the mark is the word saying so
+     ("Trash"), and a parent opacity cannot be undone by a child. Faded with the
+     row, `.mark.trash` composited to #9b3b3b on #0f0f0f and measured 2.81:1
+     against a floor of 4.5: the label naming which files get deleted was the
+     least readable thing on a surface about deleting files. Unfaded it is 5.64,
+     and no row opacity clears the floor at all (0.85 is still 4.34), so the fade
+     had to come off it rather than be softened.
+     Same shape as the quick-settings project tile earlier today: a wrapper fade
+     dimming the very words that explain the state it marks. */
+  .row.marked > :not(.mark) {
     opacity: 0.62;
   }
 
