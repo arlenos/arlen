@@ -137,5 +137,29 @@ console.log("the gate catches a surface closing on a discarded answer, and passe
   ok("a brace inside a string does not move the boundary", code === 0);
 }
 
+// 8. Honest: a window-control button, where closing IS the action. The PDF
+//    reader's `winClose` is this shape, and an earlier cut of the gate matched it
+//    against itself because only the `.catch(...)` text was removed rather than
+//    the whole statement holding it.
+{
+  const { code } = run(`<script>
+  function winClose() {
+    getCurrentWindow().close().catch(() => {});
+  }
+</script>`);
+  ok("a close that IS the discarded call does not match itself", code === 0);
+}
+
+// 9. And the same file must still be caught when a second statement closes.
+{
+  const { code } = run(`<script>
+  function save() {
+    getCurrentWindow().close().catch(() => {});
+    closePopover();
+  }
+</script>`);
+  ok("but a real close in another statement still is", code === 1);
+}
+
 console.log(failed === 0 ? "\nboth directions hold" : `\n${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
