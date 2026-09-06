@@ -40,11 +40,38 @@
 # earlier cut killed its own caller. Picking one is a decision about whose port
 # 1421 is, and it belongs to whoever owns that call - not to a tidy-up.
 
+# Serve $1's SOURCE on port $2 with `vite dev`. Sets PREVIEW_PGID like its
+# sibling, and `stop_preview` stops either.
+#
+# WHY A DEV SERVER NEEDS ITS OWN ENTRY POINT. A preview serves a production
+# build, where `import.meta.env.DEV` is false - so the kit's `applyDevLocale` is
+# compiled out and `?locale=de` does nothing. Every host fixture and every render
+# sweep depends on that query, so they all need `vite dev`, and until now each
+# one started it by hand. `drive-launcher.sh` did, with half the discipline: it
+# killed `$!`, which is npx, while the node npx spawned kept the port. That is
+# the leak this file's header describes, still alive in a sibling.
+#
+# It cost me a tick on 7 September. A dev server left on 6421 by a much earlier
+# run answered a `curl` I believed was my own `vite preview` - which had quietly
+# taken the next free port - so two renders came back in German from a server I
+# had not started and did not know about. Everything I saw was true and none of
+# it was what I thought I was looking at.
+start_dev() {
+    _pv_mode=dev
+    _start_vite "$1" "$2"
+}
+
 # Serve $1's `build/` on port $2. Sets PREVIEW_PGID in the CALLER's shell.
 #
 # Not echoed and not captured in `$( )`: that subshell is where the last pid went
 # to die (see lib/bus.sh, same day, same mistake).
 start_preview() {
+    _pv_mode=preview
+    _start_vite "$1" "$2"
+}
+
+# The shared body. `preview` serves `build/`; `dev` serves the source.
+_start_vite() {
     _pv_app="$1"
     # Kept for stop_preview, which verifies THIS port went quiet.
     _pv_port="$2"
@@ -53,14 +80,19 @@ start_preview() {
         echo "   start it. Refusing rather than testing whatever it is: a leftover" >&2
         echo "   preview serves a frontend from whenever it was built, and every" >&2
         echo "   assertion after this would be about that page instead of yours." >&2
-        echo "   ps -eo pid,args | grep '[v]ite preview'  - then kill it." >&2
+        echo "   ps -eo pid,args | grep '[v]ite'  - then kill it." >&2
         return 1
     fi
     # `setsid` makes the server a process-group leader, so ONE kill takes npx and
     # the node it spawns. Without it the group is this script's and killing it
     # would take the drive down with the server.
-    ( cd "$_pv_app" && exec setsid npx vite preview --port "$_pv_port" --strictPort \
-        --outDir build >/dev/null 2>&1 ) &
+    if [ "$_pv_mode" = dev ]; then
+        ( cd "$_pv_app" && exec setsid npx vite dev --port "$_pv_port" --strictPort \
+            >/dev/null 2>&1 ) &
+    else
+        ( cd "$_pv_app" && exec setsid npx vite preview --port "$_pv_port" --strictPort \
+            --outDir build >/dev/null 2>&1 ) &
+    fi
     _pv_wrapper=$!
     # The group id is the setsid child's, which is NOT $! - that is the subshell
     # wrapping it. So it is found by what it is listening for.
@@ -90,7 +122,7 @@ start_preview() {
     return 0
 }
 
-# Stop the preview started by [start_preview], group and all.
+# Stop the server started by [start_preview] or [start_dev], group and all.
 stop_preview() {
     [ -n "${PREVIEW_PGID:-}" ] || return 0
     # Belt and braces on the same rule: never signal our own group, whatever is
