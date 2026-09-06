@@ -9,6 +9,8 @@
 /// and the reminder daemon pick it up with no further wiring. Until it exists
 /// a live press answers with an honest refusal; the fixture applies locally so
 /// the whole flow drives.
+/// i18n-foreign: the fixture agenda's event titles are a stand-in for what a
+/// real calendar file holds, not this app's own copy.
 import { derived, writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";

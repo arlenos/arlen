@@ -17,6 +17,8 @@
 /// `arlen_screen_capture::capture_window_by_id` binds - so a source picked here
 /// names the same window there.
 
+/// i18n-foreign: the fixture's window and screen titles are other apps' own
+/// words, which is what the live list returns too.
 import { writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";

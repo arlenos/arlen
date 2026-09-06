@@ -1,4 +1,8 @@
 <script lang="ts">
+  // i18n-foreign: the fixtures below stand in for what the backend returns -
+  // a file's own name, a photo's title, and the provenance lines, whose
+  // labels the info panel renders verbatim from the read.
+
   /// Headless render harness for FmInfoPanel. UI-AFFORDANCE verification ONLY,
   /// NOT a behaviour claim. Mocks the daemon over Tauri IPC (only when no Tauri
   /// runtime is present, so it can never hijack the real app) and renders the

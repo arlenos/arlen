@@ -7,6 +7,8 @@
 /// live; the ASR capture stream, notes persistence (`meeting_save_notes`), speaker
 /// relabel (`meeting_relabel_speaker`) and item updates (`meeting_update_item`) are
 /// coder seams - under vite the fixture stands in and edits apply locally.
+/// i18n-foreign: the fixture's meeting titles, notes and transcript lines are
+/// what was said in the room, not this app's copy.
 import { writable, get } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";

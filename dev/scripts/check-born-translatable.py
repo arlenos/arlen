@@ -74,11 +74,27 @@ ATTRS = (
 )
 ATTR = re.compile(r'\b(?:' + "|".join(map(re.escape, ATTRS)) + r')="((?:[^"\\]|\\.){8,})"')
 RETURN = re.compile(r'\breturn\s+"((?:[^"\\]|\\.){8,})"')
-NAME = r"\w*(?:error|message|msg|reason|hint|note|label|title|text|placeholder|summary|caption)\w*"
+NAME = r"\w*(?:error|message|msg|reason|hint|note|label|title|text|placeholder|summary|caption|description|desc)\w*"
 ASSIGN = re.compile(r"\b(?:" + NAME + r')\s*=\s*"((?:[^"\\]|\\.){8,})"', re.I)
+#: THE SAME NAMES AS AN OBJECT FIELD, which `ASSIGN` cannot see: it wants an `=`,
+#: and a catalogue of rows is written with a `:`. That is how the two brightness
+#: rows in Settings carried an English sentence into a German page - `label` next
+#: to them was a catalogue key, `description` was prose, and nothing looked at the
+#: difference. A key is not prose (one word, no capital), so the entries that hold
+#: keys stay quiet.
+FIELD = re.compile(r"\b(?:" + NAME + r')\s*:\s*"((?:[^"\\]|\\.){8,})"', re.I)
 
 #: `$props()` destructuring, whose defaults are the kit's and not this check's.
 PROPS = re.compile(r"let\s*\{.*?\}\s*(?::[^=]*)?=\s*\$props\(\)", re.S)
+
+#: A FILE MAY DECLARE ITS DATA FOREIGN. `// i18n-foreign` is already written above
+#: five fixtures in this tree, each with the reason: the strings are a third
+#: party's own words - another app's setting labels, a paper's title, a mail
+#: subject - arriving as data. Translating them would make the fixture lie about
+#: what a real bridge returns. The marker is a claim the author makes about the
+#: file, and it reads as one; a file that carries it is skipped, so putting it on
+#: a file that holds real copy is a thing a reviewer can see and argue with.
+FOREIGN = re.compile(r"^\s*(?:/{2,}|\*|<!--)\s*i18n-foreign\b", re.M)
 
 LETTER = re.compile(r"[A-Za-zÀ-ɏ]")
 
@@ -93,6 +109,19 @@ KNOWN: dict[str, tuple[int, str]] = {
     "apps/viewers/src/routes/+page.svelte": (1, "the `internal-error` pin at :103, suppressed by the guard it tests"),
     # The kit's accessibility demo page. Its content is the demo.
     "sdk/ui-kit/src/lib/components/a11y-kitchen.svelte": (3, "the kit's demo page; the strings are the demo"),
+    # THE FIELD FORM (`name: "..."`) reached these when it was added, and every one
+    # of them is arlen-ui's to answer. Listed rather than silenced: a new sentence
+    # in any of these files still raises the count and goes red.
+    "apps/harness/src/lib/stores/conversation.ts": (5, "arlen-ui's; a fixture conversation, and theirs to mark"),
+    "apps/harness/src/routes/_gatetest/+page.svelte": (2, "arlen-ui's; the gate demo's sample proposals"),
+    "apps/harness/src/routes/_rendertest/+page.svelte": (2, "arlen-ui's; the render demo's chart titles"),
+    "apps/store/src/lib/stores/catalog.ts": (15, "arlen-ui's app; a fixture catalogue of other people's software"),
+    "sdk/ui-kit/src/routes/_i18n/+page.svelte": (1, "the kit's i18n demo route; the string is the demo"),
+    # Real copy, and it is read on arlen-ui's Models page - the three tier notes
+    # ("Snappy on your machine, lighter answers.") come from this store and are
+    # rendered verbatim. Translating them means changing what their page calls,
+    # so it lands with them rather than across the lane line.
+    "apps/settings/src/lib/stores/models.ts": (7, "feeds arlen-ui's models page; the tier notes are theirs to route"),
     # A real one, and arlen-ui's: the saturation pad's accessible name.
     "sdk/ui-kit/src/lib/components/ui/color-picker/ColorPicker.svelte": (1, "arlen-ui's; the pad's aria-label at :186"),
 }
@@ -115,6 +144,8 @@ def prose(value: str) -> bool:
 
 def scan(path: Path) -> list[tuple[int, str]]:
     text = path.read_text(encoding="utf-8")
+    if FOREIGN.search(text):
+        return []
     skip = [m.span() for m in PROPS.finditer(text)]
     found: list[tuple[int, str]] = []
     offset = 0
@@ -126,7 +157,7 @@ def scan(path: Path) -> list[tuple[int, str]]:
         if any(a <= start < b for a, b in skip):
             continue
         seen: set[str] = set()
-        for match in (*ATTR.finditer(line), *RETURN.finditer(line), *ASSIGN.finditer(line)):
+        for match in (*ATTR.finditer(line), *RETURN.finditer(line), *ASSIGN.finditer(line), *FIELD.finditer(line)):
             value = match.group(1)
             if value in seen or not prose(value):
                 continue

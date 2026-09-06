@@ -16,6 +16,8 @@
 /// SENDING is the one that stays absent, and not for want of plumbing: it needs
 /// an account, and Arlen has no account surface anywhere. `mail-app.md` rules
 /// Compose stays away rather than sit there refusing.
+/// i18n-foreign: the fixture's subjects and bodies are correspondents' words,
+/// which is what a maildir holds.
 import { derived, get, writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
