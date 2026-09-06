@@ -267,18 +267,20 @@
   .row:hover {
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
   }
-  /* THE FADE STOPS AT THE MARK, and that is the whole point of it. A marked row
-     recedes because it is on its way out - but the mark is the word saying so
-     ("Trash"), and a parent opacity cannot be undone by a child. Faded with the
-     row, `.mark.trash` composited to #9b3b3b on #0f0f0f and measured 2.81:1
-     against a floor of 4.5: the label naming which files get deleted was the
-     least readable thing on a surface about deleting files. Unfaded it is 5.64,
-     and no row opacity clears the floor at all (0.85 is still 4.34), so the fade
-     had to come off it rather than be softened.
-     Same shape as the quick-settings project tile earlier today: a wrapper fade
-     dimming the very words that explain the state it marks. */
-  .row.marked > :not(.mark) {
-    opacity: 0.62;
+  /* NO OPACITY ON A MARKED ROW, and the second attempt is why. A marked row
+     should read as on its way out, and `opacity: 0.62` did that by dimming every
+     word in it - including "Trash" itself, which measured 2.81:1 against a floor
+     of 4.5. Exempting the mark fixed that one label and left the rest: `.dir` at
+     3.56. And no opacity value rescues it, because two of these columns are
+     ALREADY quiet on purpose (`.dir` at the secondary token, `.mod` at 55% of the
+     foreground), so a row fade quietens what was quietened once already - `.mod`
+     is still short at 0.85.
+     A tint does the same job without touching a single letter: the row reads as
+     marked, and every word in it stays as legible as it was. The third instance
+     today of one lesson - a wrapper fade dims the very words that explain the
+     state it marks. */
+  .row.marked {
+    background: color-mix(in srgb, var(--color-error) 8%, transparent);
   }
 
   .mark {
