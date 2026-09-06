@@ -306,6 +306,12 @@
       {/if}
     </Section>
 
+    <!-- The button here was permanently disabled with a description saying the
+         Knowledge app "is not built yet". It has been built for weeks - it ships
+         on the image with its own desktop entry - so the sentence was false on
+         screen and the control could never do anything. Settings has no way to
+         launch another app (no shell IPC, no spawn), so the row now says where
+         the app is instead of offering a door that does not open. -->
     <Section label={$t("s.know.app")}>
       <Row
         label={$t("s.know.browse")}
@@ -313,10 +319,7 @@
         id="kg-app-link"
       >
         {#snippet control()}
-          <Button variant="outline" size="sm" disabled>
-            <Brain size={14} />
-            {$t("s.know.openApp")}
-          </Button>
+          <Brain size={16} class="kg-app-icon" />
         {/snippet}
       </Row>
     </Section>
@@ -348,5 +351,10 @@
   }
   :global(.kg-warn-icon) {
     color: var(--color-warning);
+  }
+  /* A row-end mark, not a control: the same ink as a row description, so it reads
+     as part of the sentence rather than as something to press. */
+  :global(.kg-app-icon) {
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>
