@@ -831,9 +831,15 @@ const messages: Catalogs = {
     "sh.qs.keyboard": "Tastatur",
     "sh.qs.navigateTiles": "Kacheln durchgehen",
     "sh.qs.activate": "Ausl\u00f6sen",
-    "sh.qs.layoutUnreadable": "Deine Quick-Settings-Anordnung konnte nicht gelesen werden, daher werden die Standardkacheln gezeigt.",
-    "sh.qs.layoutMalformedKept": "Deine Quick-Settings-Datei ist fehlerhaft. Es wird die letzte gute Fassung gezeigt. Repariere oder setze sie in den Einstellungen zur\u00fcck.",
-    "sh.qs.layoutMalformedDefaults": "Deine Quick-Settings-Datei ist fehlerhaft. Es werden die Standardkacheln gezeigt. Repariere oder setze sie in den Einstellungen zur\u00fcck.",
+    // "Schnelleinstellungen", not "Quick-Settings". Everywhere else the German
+    // shell calls this panel by its German name - the bar's tooltip, the pointer
+    // into Settings, and the Settings app itself all say Schnelleinstellungen -
+    // and only these three sentences used the English product name. Read off the
+    // rendered panel on 6 September: the surface and the sentence about it were
+    // calling it two things, the same shape as the layout applet's tooltip.
+    "sh.qs.layoutUnreadable": "Die Anordnung deiner Schnelleinstellungen konnte nicht gelesen werden, daher werden die Standardkacheln gezeigt.",
+    "sh.qs.layoutMalformedKept": "Die Datei deiner Schnelleinstellungen ist fehlerhaft. Es wird die letzte gute Fassung gezeigt. Repariere oder setze sie in den Einstellungen zur\u00fcck.",
+    "sh.qs.layoutMalformedDefaults": "Die Datei deiner Schnelleinstellungen ist fehlerhaft. Es werden die Standardkacheln gezeigt. Repariere oder setze sie in den Einstellungen zur\u00fcck.",
     "sh.qs.nextFocusable": "N\u00e4chstes Element",
     "sh.qs.toggleHelp": "Diese Hilfe ein-/ausblenden",
     "sh.qs.closePanel": "Panel schlie\u00dfen",
