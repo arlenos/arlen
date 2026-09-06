@@ -47,7 +47,12 @@ What it does NOT cover:
 
   * a rejection discarded some other way - `catch (e) {}` around an await, or a
     promise nobody awaits at all. Both are the same defect; this matches the one
-    shape the tree actually writes
+    shape the tree actually writes.
+    MEASURED 6 Sep rather than assumed: an empty catch beside a close returns ONE
+    hit and it is honest (the PDF reader's window-Close button, where closing is
+    the action), and an invoke with no handler beside a close returns none. So
+    widening to either would today add a false positive and find nothing. Re-run
+    the two scans before widening; the shapes are worth catching if they appear
   * whether the message the fix adds is the RIGHT message, or is rendered
   * a close two calls away - the helper-plus-caller pair below reaches one hop,
     not a chain
