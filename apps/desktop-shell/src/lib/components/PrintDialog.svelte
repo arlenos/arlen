@@ -255,12 +255,19 @@
   .pd-sheet.mono {
     color: color-mix(in srgb, var(--paper-ink) 35%, var(--paper));
   }
+  /* 65% ink, not 55%. This label sits on the PAPER, which is white, and the ink
+     token is #1a1a1a rather than black - so a 55% mix lands on #818181 and
+     measures 3.89:1 against the 4.5 that 12px needs. 60% would be 4.57, close
+     enough to the floor that a rounding difference decides it; 65% is 5.40.
+     It only became visible once `_printtest` had a ground of its own: while the
+     whole page was white on white, axe reported the outermost failure and this
+     one sat behind it. */
   .pd-sheet-label {
     font-size: var(--text-2xs);
     font-weight: 500;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--paper-ink) 55%, var(--paper));
+    color: color-mix(in srgb, var(--paper-ink) 65%, var(--paper));
   }
   .pd-pager {
     display: inline-flex;
