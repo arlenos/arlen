@@ -51,6 +51,12 @@
      expanded it still carries the one tab. With two or more it collapses to the
      icon dot-rail instead, so you can switch sessions without expanding. -->
 <Sidebar collapsible={$sessions.length > 1 ? "icon" : "offcanvas"}>
+  <!-- The whole rail is the landmark, not just the session list: the kit's
+       sidebar is divs down to the primitive, and the header's label and the
+       footer's history row sit outside the content region, so a nav around the
+       middle alone left them in nothing. It carries the inner box's own column
+       layout so wrapping changes no pixel. -->
+  <nav class="ts-rail" aria-label={$t("term.nav.aria")}>
   <SidebarHeader class="h-10 flex-row items-center justify-between py-0">
     <span
       class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
@@ -156,11 +162,19 @@
       <span class="ts-footer-hint">{$t("term.sidebar.historyHint")}</span>
     </button>
   </SidebarFooter>
+  </nav>
 
   <SidebarRail />
 </Sidebar>
 
 <style>
+  .ts-rail {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
   /* The nav register (the same square the Settings sidebar gives its
      collapsed search): 32px box, 14px glyph. */
   .ts-new-btn {
