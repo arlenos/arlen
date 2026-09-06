@@ -48,6 +48,15 @@ pub struct JobRow {
     /// app nobody looked up would be worse.
     pub app_label: String,
     pub fraction: f64,
+    /// Whether a total is known, so the zone can tell a bar from a spinner.
+    ///
+    /// THE FLAG WAS BEING DROPPED HERE while the comment below claimed the zone
+    /// drew an indeterminate bar from it. It never reached the zone at all, so
+    /// every job with no counted total - an install, a forage build, a download
+    /// before its first byte-total - rendered as a determinate bar sitting at
+    /// zero, which reads as work that is not moving. The bar was honest about the
+    /// number and dishonest about what the number meant.
+    pub determinate: bool,
     pub state: String,
     pub metrics: Vec<JobMetric>,
     pub killable: bool,
@@ -110,6 +119,7 @@ pub fn row_from_update(
         app_id: app_id.to_string(),
         app_label: app_id.to_string(),
         fraction,
+        determinate,
         state: state_token(state),
         // A job that does not know its total yet reports no metric at all. The
         // alternative - "84 of 0 files" - is a sentence about a total nobody has
@@ -300,6 +310,21 @@ mod tests {
     fn a_stalled_job_says_why() {
         let r = row(1, "impeded", 10);
         assert_eq!(r.error.as_deref(), Some("The disk is full"));
+    }
+
+    #[test]
+    fn whether_a_total_is_known_reaches_the_zone() {
+        // The flag was computed here and then dropped, so the zone drew a
+        // determinate bar for every uncounted job and it sat at zero. The metric
+        // list already said the same thing by being empty, but the zone should
+        // not have to infer one fact from the absence of another.
+        let counted =
+            row_from_update(1, "a", "t", "running", "", "files", 1, true, 2, 0.5, false, false, 1, "", Vec::new());
+        assert!(counted.determinate);
+        let uncounted =
+            row_from_update(1, "a", "t", "running", "", "items", 0, false, 0, 0.0, false, false, 1, "", Vec::new());
+        assert!(!uncounted.determinate);
+        assert!(uncounted.metrics.is_empty());
     }
 
     #[test]

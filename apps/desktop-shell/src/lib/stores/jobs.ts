@@ -63,7 +63,14 @@ export interface Job {
   appId: string;
   appLabel: string;
   /// A monotonic 0..1 fraction (never backwards), kept separate from the ETA.
+  ///
+  /// Only meaningful when `determinate`. A job nobody has counted reports a
+  /// fraction of zero, and drawing that as a bar says the work is stuck.
   fraction: number;
+  /// Whether a total is known. False for an install, a build, or a download
+  /// before its first byte-total arrives - all of which are ordinary states and
+  /// none of which is a stalled job.
+  determinate: boolean;
   state: JobState;
   metrics: JobMetric[];
   /// A coarse ETA ("about 3 minutes"), never false hh:mm:ss precision.
@@ -103,6 +110,7 @@ const MOCK_JOBS: Job[] = [
     appId: "org.arlen.files",
     appLabel: "Files",
     fraction: 0.35,
+    determinate: true,
     state: "running",
     metrics: [
       { processed: 84, total: 240, unit: "files" },
@@ -126,12 +134,31 @@ const MOCK_JOBS: Job[] = [
     appId: "org.arlen.assistant",
     appLabel: "Assistant",
     fraction: 0.22,
+    determinate: true,
     state: "running",
     metrics: [{ processed: 1300, total: 5900, unit: "MB" }],
     etaText: "about 6 minutes",
     killable: true,
     suspendable: true,
     egressHost: "huggingface.co",
+  },
+  {
+    // The indeterminate case, which had no fixture until 7 September and so was
+    // never looked at: installd, forage and a download before its first
+    // byte-total all report like this. No metrics, and a fraction of zero that
+    // means "nobody counted", not "nothing happened".
+    id: "install",
+    items: [],
+    startedAt: 2500000,
+    title: "Installing notes-1.2",
+    appId: "arlen-installd",
+    appLabel: "arlen-installd",
+    fraction: 0,
+    determinate: false,
+    state: "running",
+    metrics: [],
+    killable: false,
+    suspendable: false,
   },
   {
     id: "transfer",
@@ -141,6 +168,7 @@ const MOCK_JOBS: Job[] = [
     appId: "org.arlen.files",
     appLabel: "Files",
     fraction: 0.5,
+    determinate: true,
     state: "paused",
     metrics: [{ processed: 5, total: 12, unit: "files" }],
     killable: true,
@@ -154,6 +182,7 @@ const MOCK_JOBS: Job[] = [
     appId: "org.arlen.media",
     appLabel: "Media",
     fraction: 0.8,
+    determinate: true,
     state: "error_recoverable",
     metrics: [{ processed: 48, total: 60, unit: "seconds" }],
     error: "Ran out of disk space. Free some room and retry.",
@@ -168,6 +197,7 @@ const MOCK_JOBS: Job[] = [
     appId: "org.arlen.files",
     appLabel: "Files",
     fraction: 1,
+    determinate: true,
     state: "done",
     metrics: [{ processed: 18, total: 18, unit: "files" }],
     killable: false,

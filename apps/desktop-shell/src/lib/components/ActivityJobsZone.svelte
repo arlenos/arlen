@@ -39,6 +39,19 @@
   function avatarLetter(label: string) {
     return label.charAt(0).toUpperCase();
   }
+
+  /// The unit in the reader's language.
+  ///
+  /// The contract's units are a CLOSED set - bytes, files, directories, items -
+  /// so they are OUR vocabulary and not the producer's prose: a German session
+  /// was reading "84 von 240 files", which is the interface speaking English in
+  /// the middle of its own sentence. Anything outside the set is passed through
+  /// as written, because a producer that sends its own unit knows something we
+  /// do not and inventing a translation for it would be a guess.
+  function unitWord(unit: string, translate: (k: string) => string): string {
+    const known = ["bytes", "files", "directories", "items"];
+    return known.includes(unit) ? translate(`sh.job.unit.${unit}`) : unit;
+  }
 </script>
 
 {#if ordered.length > 0}
@@ -81,11 +94,24 @@
         {#if j.state === "done"}
           <div class="job-doneline"><Check size={13} strokeWidth={2} /> {$t("sh.job.done")}</div>
         {:else}
-          <Progress value={j.fraction * 100} />
+          <!-- A BAR ONLY WHEN SOMETHING WAS COUNTED. An install, a build, or a
+               download before its first byte-total reports no total at all, and
+               a determinate bar drawn from their fraction of zero says the work
+               is stuck - to a reader and, through `aria-valuenow`, to a screen
+               reader. The honest answer is to say it is running and not draw a
+               measurement nobody made. A moving indeterminate bar would be
+               better still and belongs in the kit's `Progress`, which is
+               documented as determinate-only. -->
+          {#if j.determinate}
+            <Progress value={j.fraction * 100} />
+          {/if}
           <div class="job-meta">
             <span class="job-metrics">
+              {#if !j.determinate && j.state === "running"}
+                <span>{$t("sh.job.working")}</span>
+              {/if}
               {#each j.metrics as m (m.unit)}
-                <span>{$t("sh.job.metric", { processed: m.processed, total: m.total, unit: m.unit })}</span>
+                <span>{$t("sh.job.metric", { processed: m.processed, total: m.total, unit: unitWord(m.unit, $t) })}</span>
               {/each}
             </span>
             {#if j.state === "running" && j.etaText}
