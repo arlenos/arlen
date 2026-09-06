@@ -30,6 +30,23 @@
   });
 </script>
 
-{#if ready}
-  <TopbarPanel />
-{/if}
+<!-- `main`, because a look-mock is a document a person reads - the same call
+     made for the shell's four on 6 September, and the opposite of the one made
+     for the shell's own bar, which is chrome and has no main content to name. -->
+<main>
+  <h1 class="sr-only">Top bar settings panel</h1>
+  {#if ready}
+    <TopbarPanel />
+  {/if}
+</main>
+
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+</style>
