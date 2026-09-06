@@ -61,11 +61,12 @@
   // Which window this document is, read straight off the Tauri host object: the
   // label is the only thing needed and this needs no import and no throwing path.
   // Absent host (vite) reads as the main window, so every surface still renders for
-  // the screenshot loop.
+  // the screenshot loop. The consent window is photographed through a host script
+  // that answers (`dev/screenshot/hosts/shell-consent-request.js`), because the card
+  // refuses to draw until `set_consent_input_region` takes - no runtime, no card.
   const windowLabel =
     (globalThis as Record<string, any>).__TAURI_INTERNALS__?.metadata?.currentWindow
       ?.label ?? "main";
-  const isMainWindow = windowLabel === "main";
   /// The consent card renders here and nowhere else. It moved out of the bar
   /// because a layer surface is only granted keyboard focus when it maps, so the
   /// bar's runtime switch to exclusive interactivity never produced focus and
