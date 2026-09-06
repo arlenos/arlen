@@ -559,12 +559,16 @@
     font-weight: 600;
     color: var(--foreground);
   }
+  /* WRAPS RATHER THAN ELLIPSES, and on this page that is the whole point. The
+     scope is the line that says WHAT was shared - "the Atlas project and its
+     files" - and the render sweep caught it cut at every width, 158 of 174px even
+     at 1920, because the content column is capped and five columns take the rest.
+     A second line costs a row 16px; an ellipsis costs the reader the answer. */
   .cap-scope {
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
+    overflow-wrap: break-word;
   }
   .cap-who {
     font-size: var(--text-xs);

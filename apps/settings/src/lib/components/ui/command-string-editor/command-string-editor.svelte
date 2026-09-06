@@ -170,9 +170,13 @@
     color: var(--foreground);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border-radius: var(--radius-chip);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* WRAPS RATHER THAN ELLIPSES. The value here IS the setting - the command a
+       key press runs - and five of the seventeen system actions were cut at every
+       width, `spawn:wpctl set-volume @DEFAULT_AUDIO_SI…`. A `title` covers a
+       mouse and nothing else. `pre-wrap` keeps the command's own spacing, and
+       `anywhere` lets a long flag break rather than push the row wide. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .actions {
