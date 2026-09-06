@@ -12,12 +12,18 @@
   });
 </script>
 
-<div class="hint">Print dialog look-mock. The dialog opens over this page.</div>
+<main class="hint">Print dialog look-mock. The dialog opens over this page.</main>
 
 <style>
+  /* A ground and a legible hint. This page had neither, so its one line sat at
+     1.01:1 on the browser's white default - the same shape as `_toasttest`, found
+     the same way, and painted on the element rather than on `body` for the same
+     reason: the shell's body is transparent on purpose. */
   .hint {
+    min-height: 100vh;
+    background: var(--color-bg-shell, #0a0a0a);
     padding: 2rem;
     font-size: 0.8rem;
-    color: color-mix(in srgb, var(--foreground, #fff) 40%, transparent);
+    color: color-mix(in srgb, var(--foreground, #fff) 55%, transparent);
   }
 </style>

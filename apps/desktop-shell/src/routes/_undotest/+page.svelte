@@ -46,6 +46,9 @@
   .strip-label {
     margin-inline-end: auto;
     font-size: 11px;
-    color: color-mix(in srgb, #ffffff 35%, transparent);
+    /* 55%, not 35%: at 11px over this page's ground that was 3.23:1 against a
+       floor of 4.5. Same fade-the-quiet-thing reflex as the three panels
+       fixed today, in the look-mock rather than the surface. */
+    color: color-mix(in srgb, #ffffff 55%, transparent);
   }
 </style>
