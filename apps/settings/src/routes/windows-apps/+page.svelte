@@ -260,7 +260,7 @@
   }
   .chev {
     display: inline-flex;
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .win-installed {
     font-size: var(--text-xs);

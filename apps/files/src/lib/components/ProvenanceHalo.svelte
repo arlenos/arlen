@@ -131,7 +131,7 @@
     padding-top: 0.15rem;
     font-size: var(--text-2xs);
     line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   }
   .ph-loading {

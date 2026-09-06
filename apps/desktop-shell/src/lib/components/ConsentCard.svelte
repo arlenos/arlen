@@ -128,7 +128,7 @@
     gap: 0.25rem;
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     overflow: hidden;
     white-space: nowrap;
   }

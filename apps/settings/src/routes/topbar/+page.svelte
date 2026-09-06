@@ -125,7 +125,7 @@
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .tb-pv-overflow {
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   .tb-row {
@@ -148,7 +148,7 @@
     height: 1.75rem;
     border: none;
     background: transparent;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     cursor: grab;
     touch-action: none;
   }

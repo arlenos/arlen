@@ -92,11 +92,11 @@
   }
   .profile.selected {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    border-color: color-mix(in srgb, var(--foreground) 12%, transparent);
+    border-color: var(--color-fg-secondary, #a1a1aa);
   }
   .profile:focus-visible {
     outline: none;
-    border-color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    border-color: var(--color-fg-secondary, #a1a1aa);
   }
   .name {
     font-size: calc(0.875rem * var(--greeter-scale, 1));

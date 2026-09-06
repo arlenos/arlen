@@ -165,7 +165,7 @@
   }
   .fam-sub-icon {
     display: inline-flex;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .fam-sub-label {
     font-size: var(--text-2xs);
@@ -245,7 +245,7 @@
   .prov {
     justify-self: start;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     /* Wraps, so it can give room back to the object beside it. `nowrap` here is
        what made the column above unshrinkable.
        
@@ -298,7 +298,7 @@
     flex-shrink: 0;
     padding: 0.125rem 0.25rem;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 32%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     white-space: nowrap;
   }
 
@@ -311,7 +311,7 @@
     border: none;
     border-radius: var(--radius-chip, 4px);
     background: transparent;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     transition:
       color var(--duration-micro, 100ms) var(--ease-out, ease),
       transform var(--duration-micro, 100ms) var(--ease-out, ease);

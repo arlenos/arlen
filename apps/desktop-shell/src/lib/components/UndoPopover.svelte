@@ -140,7 +140,7 @@
     justify-self: end;
     font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     white-space: nowrap;
   }
   .undo-act {

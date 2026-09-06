@@ -102,7 +102,7 @@
   }
   .kb-row:hover {
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+    border-color: var(--color-fg-secondary, #a1a1aa);
   }
   .kb-row.conflict {
     background: color-mix(in srgb, var(--color-error) 12%, transparent);

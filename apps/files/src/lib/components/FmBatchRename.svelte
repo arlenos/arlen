@@ -230,7 +230,7 @@
   }
   .br-arrow {
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .br-new {
     flex: 1;
@@ -241,7 +241,7 @@
     white-space: nowrap;
   }
   .br-new.is-unchanged {
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .br-row.is-conflict .br-new {
     color: var(--color-error, #c96a6a);

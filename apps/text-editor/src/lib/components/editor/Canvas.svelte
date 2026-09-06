@@ -204,7 +204,7 @@
   }
 
   :global(.md-mark) {
-    color: color-mix(in srgb, var(--color-fg-primary) 28%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   :global(.md-strong) {
     font-weight: 700;

@@ -446,7 +446,7 @@
     color: var(--color-fg-secondary, #a1a1aa);
   }
   .secret-state.unset {
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   .raw {

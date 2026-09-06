@@ -160,7 +160,7 @@
      quiet border shift, the register the rest of the chrome uses. */
   .search-bar :global(input:focus-visible) {
     box-shadow: none;
-    border-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    border-color: var(--color-fg-secondary, #a1a1aa);
   }
 
   .sb-close {
