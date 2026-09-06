@@ -15,6 +15,7 @@
 
   import { onMount } from "svelte";
   import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
+  import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import {
@@ -132,6 +133,7 @@
   description={$t("s.know.desc")}
 >
   <ConfigUnavailable error={$graph.error} />
+  <ConfigWriteFailed failed={$graph.writeFailed} />
   <SectionGrid>
     <Section label={$t("s.know.status")}>
       {#if error}
