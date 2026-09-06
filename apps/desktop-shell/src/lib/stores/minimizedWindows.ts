@@ -16,6 +16,7 @@
 
 import { derived, writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { shellAction } from "$lib/shellAction";
 import { windows, type WindowInfo } from "./windows.js";
 
 /// Shape returned by the `get_minimized_windows` Tauri command.
@@ -97,11 +98,12 @@ export async function loadMinimizedWindows(): Promise<void> {
 
 /// Restore a minimized window on its current workspace.
 export async function restoreWindow(windowId: string): Promise<void> {
-    try {
-        await invoke("restore_window", { windowId });
-    } catch (e) {
-        console.warn("[minimizedWindows] restore failed:", e);
-    }
+    // `console.warn` was the same as saying nothing. WebKitGTK does not reliably
+    // put console output anywhere a diagnostic session can read, which is why the
+    // rest of this shell logs through the host - so a restore that was refused
+    // reached neither the person pressing it nor the boot log. The overlay closes
+    // on the press, so the only evidence was a window that did not appear.
+    await shellAction("restore_window", { windowId }, "sh.toast.windowNotRaised");
 }
 
 /// Move-and-restore: move the minimized window to `workspaceId`,
@@ -111,11 +113,11 @@ export async function restoreWindowToWorkspace(
     windowId: string,
     workspaceId: string,
 ): Promise<void> {
-    try {
-        await invoke("restore_window_to_workspace", { windowId, workspaceId });
-    } catch (e) {
-        console.warn("[minimizedWindows] restore-to-workspace failed:", e);
-    }
+    await shellAction(
+        "restore_window_to_workspace",
+        { windowId, workspaceId },
+        "sh.toast.windowNotRaised",
+    );
 }
 
 /// Convenience re-export for components that want the count of

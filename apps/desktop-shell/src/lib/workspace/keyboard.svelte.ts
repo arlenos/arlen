@@ -17,7 +17,7 @@
 /// for the user, the next iteration moves the keyboard-grab into
 /// the compositor side.
 
-import { invoke } from "@tauri-apps/api/core";
+import { shellAction } from "$lib/shellAction";
 import { get } from "svelte/store";
 import { windows } from "$lib/stores/windows.js";
 import type { WindowInfo } from "$lib/stores/windows.js";
@@ -182,7 +182,7 @@ export function createKeyboardNav(deps: KeyboardNavDeps) {
     if (win?.minimized) {
       restoreWindow(id);
     } else {
-      invoke("activate_window", { id }).catch(() => {});
+      void shellAction("activate_window", { id }, "sh.toast.windowNotRaised");
     }
     closeOverlayKeyboard();
   }
