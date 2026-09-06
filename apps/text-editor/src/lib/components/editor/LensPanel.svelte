@@ -53,6 +53,9 @@
   <section class="sec">
     <h2 class="sec-title">
       {$t("te.lens.provenance")}
+      {#if $lens.provenanceMocked && !$lens.mocked}
+        <span class="sec-sample">{$t("te.lens.sampleSection")}</span>
+      {/if}
       <!-- These two sections cannot answer as-of: their edges carry no stamps, so
            they show the present even while the project section shows the past.
            Saying so beats letting the panel read as one consistent moment.

@@ -68,6 +68,13 @@ interface LensState {
   project: ProjectContext | null;
   /// The RELATED section alone is still a sample; see `loadLens`.
   relatedMocked: boolean;
+  /// True while the PROVENANCE section is the sample rather than this file's own.
+  ///
+  /// Its sibling for backlinks has existed since the panel learned to be honest
+  /// per section; this one did not, because provenance could not fail on its own
+  /// - it took the whole panel with it. Now that it can, the section has to be
+  /// able to say so.
+  provenanceMocked: boolean;
   mocked: boolean;
 }
 
@@ -105,6 +112,7 @@ export const lens = writable<LensState>({
   ...FIXTURE,
   mocked: true,
   relatedMocked: true,
+  provenanceMocked: true,
   projectUnrecorded: false,
   asOfActive: false,
 });
@@ -122,7 +130,21 @@ export async function loadLens(ref: string, asOf: number | null = null): Promise
     // Asked SEPARATELY so one absent answer cannot cost the other. Failing the
     // whole load is what used to drop the entire panel to its fixture, including
     // the part that was real.
-    const provenance = await invoke<ProvenanceStep[]>("provenance_of", { ref });
+    // IN ITS OWN TRY, like the two below it. The comment above says each is
+    // asked separately so one absent answer cannot cost the others, and this one
+    // was the exception: it sat bare inside the outer try, so a refused
+    // provenance read threw past `related_of` and `project_of` before they were
+    // ever attempted and dropped the WHOLE panel to the fixture - the exact
+    // failure that paragraph describes as fixed. Found by logging which commands
+    // the surface asks that the fixture never answers.
+    let provenance = FIXTURE.provenance;
+    let provenanceMocked = true;
+    try {
+      provenance = await invoke<ProvenanceStep[]>("provenance_of", { ref });
+      provenanceMocked = false;
+    } catch {
+      // Keep the labelled sample for this section only.
+    }
     // Backlinks, asked separately for the same reason as the project: one absent
     // answer must not cost the others.
     let related = FIXTURE.related;
@@ -162,6 +184,7 @@ export async function loadLens(ref: string, asOf: number | null = null): Promise
     // caption existed to prevent.
     lens.set({
       provenance,
+      provenanceMocked,
       related,
       project,
       projectUnrecorded,
@@ -181,6 +204,7 @@ export async function loadLens(ref: string, asOf: number | null = null): Promise
       ...FIXTURE,
       mocked: true,
       relatedMocked: true,
+      provenanceMocked: true,
       projectUnrecorded: false,
       asOfActive: asOf !== null,
     });
