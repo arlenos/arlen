@@ -37,10 +37,16 @@
   // not the paragraph. When sending exists, the label and this function change
   // together, and nothing else has to.
   async function saveToDrafts(): Promise<void> {
-    // A draft that did not get written closes over nothing: `ondone(null)` is
-    // the same route Discard takes, so the composer does not report a message
-    // kept in a folder it never reached.
-    ondone(await saveDraft(to, subject, body));
+    // A draft that did not get written must not be reported as kept - that was
+    // the whole point of routing it through `ondone(null)`, and it is right. What
+    // it also did was take DISCARD's route: the composer closed and the text went
+    // with it. Discarding is a choice somebody made; a refused write is not, and
+    // this is the one control in the app where the thing lost is what they typed.
+    //
+    // So a failure now keeps the composer open with the text in it, and the
+    // store's `writeFailed` carries the sentence. Only a real id closes.
+    const id = await saveDraft(to, subject, body);
+    if (id !== null) ondone(id);
   }
 </script>
 

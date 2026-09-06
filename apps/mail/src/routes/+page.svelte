@@ -509,7 +509,11 @@
           <div class="pane-note" role="alert">
             <Notice
               tone="error"
-              text={$writeFailed === "delete" ? $t("ml.err.notDeleted") : $t("ml.err.notMoved")}
+              text={$writeFailed === "delete"
+                ? $t("ml.err.notDeleted")
+                : $writeFailed === "draft"
+                  ? $t("ml.err.notDrafted")
+                  : $t("ml.err.notMoved")}
             />
           </div>
         {/if}
