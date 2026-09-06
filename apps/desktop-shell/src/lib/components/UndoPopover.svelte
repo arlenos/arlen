@@ -38,7 +38,7 @@
   }
 </script>
 
-<ShellPopover id="undo" width={380} right={116} bodyPadding="12px" bodyGap="8px">
+<ShellPopover id="undo" label={$t("sh.undo.title")} width={380} right={116} bodyPadding="12px" bodyGap="8px">
   {#snippet header()}
     <PopoverHeader icon={Undo2} title="{$t("sh.undo.title")}" />
   {/snippet}

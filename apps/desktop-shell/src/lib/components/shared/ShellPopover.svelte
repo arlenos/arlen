@@ -25,6 +25,7 @@
 
   let {
     id,
+    label,
     width,
     right,
     maxHeight,
@@ -36,6 +37,12 @@
   }: {
     /// The `activePopover` id this surface answers to.
     id: PopoverType;
+    /// What this surface is called, in the reader's language. It is the panel's
+    /// accessible name, and it is required rather than optional because without
+    /// one the panel is not a landmark at all: every row inside it then counts as
+    /// content belonging to no region, which is what axe reported 25 times over
+    /// the notifications panel the first time any sweep opened it.
+    label: string;
     /// Panel width in px.
     width: number;
     /// Anchor offset from the screen's right edge in px. Hand-tuned
@@ -68,10 +75,24 @@
 {/if}
 
 {#if keepMounted || open}
+  <!-- The handler here is not an interaction: it stops a click INSIDE the panel
+       from reaching the backdrop, which would close it. There is nothing to
+       reach by keyboard because there is nothing to activate.
+       The rule changed name when the panel became a region - a `region` is a
+       non-interactive element where a bare `div` was a static one - so both
+       spellings are silenced rather than the old one alone. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- A NAMED REGION, not a dialog. These panels do not trap focus, do not take
+       the keyboard and leave the bar usable behind them, so claiming `dialog`
+       would promise semantics the surface does not honour. `region` with a name
+       is the true statement: a named part of the page, which is what a reader
+       jumping by landmark is looking for. -->
   <div
     class="pop-panel shell-popover"
+    role="region"
+    aria-label={label}
     class:pop-panel-lazy={!keepMounted}
     class:pop-panel-pinned={keepMounted}
     class:pop-panel-visible={keepMounted && open}

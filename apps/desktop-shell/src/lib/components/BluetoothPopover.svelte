@@ -272,7 +272,7 @@
   </ContextMenu.Root>
 {/snippet}
 
-<ShellPopover id="bluetooth" width={280} right={80} bodyPadding="12px" bodyGap="6px">
+<ShellPopover id="bluetooth" label={$t("sh.bt.title")} width={280} right={80} bodyPadding="12px" bodyGap="6px">
   {#snippet header()}
     <!-- No switch until the state has been READ. `btState` null means the read
          did not answer, and a toggle draws a position - so leaving it on put a
