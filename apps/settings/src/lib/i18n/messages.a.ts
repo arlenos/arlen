@@ -203,7 +203,7 @@ export const a: Catalogs = {
     "s.snd.title": "Sound",
     "s.snd.desc": "Which cues the system plays, and how loud. Change a cue and it overrides just that value, on top of the theme.",
     "s.snd.mocked": "Showing example values. Your sound settings appear here once the sound service is connected.",
-    "s.snd.unavailable": "Cannot read the sound settings right now, so none are shown.",
+    "s.snd.unavailable": "Cannot read the sound settings right now.",
     "s.snd.writeFailed": "That did not reach the sound service, so nothing about your sounds changed.",
     "s.snd.volume": "Volume",
     "s.snd.volumeHint": "How loud the cues play",
@@ -802,7 +802,7 @@ export const a: Catalogs = {
     "s.bright.empty": "No backlight-controllable display detected. External monitors (HDMI / DisplayPort) typically don't expose software brightness; use the monitor's hardware buttons instead.",
     // "None detected" is a measurement; this is what to say when the measurement
     // did not happen.
-    "s.bright.unavailable": "Cannot read your displays right now, so brightness is not shown.",
+    "s.bright.unavailable": "Cannot read your displays right now.",
     "s.bright.display": "Display",
     "s.bright.display.desc": "Pick which panel the slider controls.",
     "s.bright.device.aria": "Brightness device",
@@ -845,7 +845,7 @@ export const a: Catalogs = {
     // Distinct from the line above: that one says you have none, this one says
     // we could not ask. Inviting a save while the list is unreadable is how a
     // person ends up with a duplicate of a layout they already had.
-    "s.profile.unavailable": "Cannot read your saved layouts right now, so none are shown.",
+    "s.profile.unavailable": "Cannot read your saved layouts right now.",
     "s.profile.active": "Active",
     "s.profile.apply": "Apply",
     "s.profile.alreadyActive": "This layout is already active",
@@ -1053,7 +1053,7 @@ export const a: Catalogs = {
     "s.snd.title": "Klang",
     "s.snd.desc": "Welche Klänge das System spielt und wie laut. Was du änderst, überschreibt genau diesen Wert über dem Thema.",
     "s.snd.mocked": "Beispielwerte werden gezeigt. Deine Klangeinstellungen erscheinen hier, sobald der Klangdienst verbunden ist.",
-    "s.snd.unavailable": "Die Klangeinstellungen können gerade nicht gelesen werden, daher wird keine angezeigt.",
+    "s.snd.unavailable": "Die Klangeinstellungen können gerade nicht gelesen werden.",
     "s.snd.writeFailed": "Das hat den Klangdienst nicht erreicht, an deinen Klängen hat sich nichts geändert.",
     "s.snd.volume": "Lautstärke",
     "s.snd.volumeHint": "Wie laut die Klänge abgespielt werden",
@@ -1644,7 +1644,7 @@ export const a: Catalogs = {
     "s.display.applyError": "Dieses Layout konnte nicht angewendet werden. Es wurde nichts geändert.",
     "s.bright.title": "Helligkeit",
     "s.bright.empty": "Kein per Software steuerbares Display erkannt. Externe Monitore (HDMI / DisplayPort) bieten meist keine Software-Helligkeit; nutze stattdessen die Hardware-Tasten des Monitors.",
-    "s.bright.unavailable": "Deine Displays sind gerade nicht lesbar, deshalb wird keine Helligkeit angezeigt.",
+    "s.bright.unavailable": "Deine Displays sind gerade nicht lesbar.",
     "s.bright.display": "Display",
     "s.bright.display.desc": "Wähle, welches Panel der Regler steuert.",
     "s.bright.device.aria": "Helligkeits-Gerät",
@@ -1684,7 +1684,7 @@ export const a: Catalogs = {
 "s.revert.keep": "Diese Display-Änderungen behalten?",
     "s.monitor.noDisplays": "Keine Displays erkannt. Läufst du unter einem Wayland-Compositor, der {$proto} implementiert?",
     "s.profile.empty": "Noch keine gespeicherten Layouts. Speichere deine aktuelle Anordnung unten, damit sie beim erneuten Anschließen derselben Monitore automatisch wiederhergestellt wird.",
-    "s.profile.unavailable": "Deine gespeicherten Anordnungen sind gerade nicht lesbar, deshalb wird keine angezeigt.",
+    "s.profile.unavailable": "Deine gespeicherten Anordnungen sind gerade nicht lesbar.",
     "s.profile.active": "Aktiv",
     "s.profile.apply": "Anwenden",
     "s.profile.alreadyActive": "Dieses Layout ist bereits aktiv",

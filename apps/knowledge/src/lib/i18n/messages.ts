@@ -27,7 +27,7 @@ const messages: Catalogs = {
     // the other says this search did not run. A failed read used to show the
     // first, with invented rows under it.
     "k.se.unavailable": "That search did not run.",
-    "k.browse.unavailable": "Cannot read your graph right now, so nothing is listed here.",
+    "k.browse.unavailable": "Cannot read your graph right now.",
     // The kit's FileBrowser defaults to English and to the word "folder".
     // Neither is right here: these places are the graph answering, and the
     // default reached every locale because nothing overrode it.
@@ -58,7 +58,7 @@ const messages: Catalogs = {
     "k.tl.noService": "The knowledge service is not running, so nothing is being recorded.",
     "k.tl.unavailable": "Cannot read your timeline right now.",
     "k.empty.projects": "No projects detected yet.",
-    "k.projects.unavailable": "Cannot read your projects right now, so nothing is listed.",
+    "k.projects.unavailable": "Cannot read your projects right now.",
     // A column INSIDE a project, which is a different sentence from the one above
     // it: the root's "No projects detected yet." was being shown for a project's
     // members, where it is about the wrong thing and false besides - the projects
@@ -66,7 +66,7 @@ const messages: Catalogs = {
     "k.projects.noMembers": "Nothing is recorded as part of this project yet.",
     "k.projects.membersUnavailable": "This system cannot read what belongs to a project.",
     "k.empty.searches": "No saved searches yet.",
-    "k.searches.unavailable": "Cannot read your saved searches right now, so none are shown.",
+    "k.searches.unavailable": "Cannot read your saved searches right now.",
     "k.empty.library": "No sources bridged in yet.",
     "k.detail.title": "Details",
     "k.detail.none": "Select something to see its details.",
@@ -155,7 +155,7 @@ const messages: Catalogs = {
     "k.title": "Wissen",
     "k.sample": "Beispieldaten - noch nicht dein echter Graph.",
     "k.se.unavailable": "Diese Suche ist nicht gelaufen.",
-    "k.browse.unavailable": "Dein Graph kann gerade nicht gelesen werden, daher steht hier nichts.",
+    "k.browse.unavailable": "Dein Graph kann gerade nicht gelesen werden.",
     "k.fb.errorTitle": "Kann nicht angezeigt werden",
     "k.fb.hintUnknown": "Beim Lesen deines Graphen ist etwas schiefgegangen.",
     "k.fb.browserLabel": "Graph-Browser",
@@ -181,11 +181,11 @@ const messages: Catalogs = {
     "k.tl.noService": "Der Wissensdienst läuft nicht, es wird also nichts aufgezeichnet.",
     "k.tl.unavailable": "Deine Chronik kann gerade nicht gelesen werden.",
     "k.empty.projects": "Noch keine Projekte erkannt.",
-    "k.projects.unavailable": "Deine Projekte k\u00f6nnen gerade nicht gelesen werden, daher steht hier nichts.",
+    "k.projects.unavailable": "Deine Projekte k\u00f6nnen gerade nicht gelesen werden.",
     "k.projects.noMembers": "Zu diesem Projekt ist noch nichts erfasst.",
     "k.projects.membersUnavailable": "Dieses System kann nicht lesen, was zu einem Projekt gehört.",
     "k.empty.searches": "Noch keine gespeicherten Suchen.",
-    "k.searches.unavailable": "Deine gespeicherten Suchen sind gerade nicht lesbar, deshalb wird keine angezeigt.",
+    "k.searches.unavailable": "Deine gespeicherten Suchen sind gerade nicht lesbar.",
     "k.empty.library": "Noch keine Quellen eingebunden.",
     "k.detail.title": "Details",
     "k.detail.none": "Wähle etwas, um die Details zu sehen.",
