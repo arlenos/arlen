@@ -137,7 +137,7 @@
     gap: 0.4rem;
     margin-top: 0.7rem;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .vh-dot {
     width: 0.45rem;

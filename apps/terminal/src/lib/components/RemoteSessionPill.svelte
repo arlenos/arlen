@@ -90,7 +90,7 @@
     color: var(--color-success);
   }
   :global(.rsp-caret) {
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* The scope popover: flat, plain text - the verbose detail off the header. */
@@ -125,7 +125,7 @@
     gap: 0.35rem;
   }
   .rsp-key {
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .rsp-note {
     margin-top: 0.15rem;

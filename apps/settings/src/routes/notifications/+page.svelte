@@ -848,7 +848,7 @@
   }
   .chip.muted {
     background: color-mix(in srgb, var(--foreground) 12%, transparent);
-    border-color: color-mix(in srgb, var(--foreground) 18%, transparent);
+    border-color: var(--color-fg-secondary, #a1a1aa);
   }
   .chip.muted:hover {
     background: color-mix(in srgb, var(--foreground) 18%, transparent);

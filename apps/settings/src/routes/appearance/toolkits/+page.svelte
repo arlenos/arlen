@@ -149,7 +149,7 @@
   .tk-prereq {
     margin: 0.25rem 0 0;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* The per-toolkit override disclosure. */

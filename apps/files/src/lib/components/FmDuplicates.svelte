@@ -325,7 +325,7 @@
   .dir {
     min-width: 0;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 38%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

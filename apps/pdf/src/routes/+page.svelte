@@ -493,7 +493,7 @@
     align-items: center;
     gap: 0.5rem;
     margin: auto;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .empty .center-note {
     margin: 0;

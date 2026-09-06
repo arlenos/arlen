@@ -594,7 +594,7 @@
     color: var(--color-fg-primary);
   }
   .picon.glyph {
-    color: color-mix(in srgb, var(--color-fg-primary) 38%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .picon.dot::before {
     content: "";

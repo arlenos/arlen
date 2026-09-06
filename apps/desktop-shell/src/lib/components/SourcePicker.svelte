@@ -154,7 +154,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* Screens: preview cards in a responsive row. The preview is a neutral block

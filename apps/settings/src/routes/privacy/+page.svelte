@@ -401,7 +401,7 @@
     flex-shrink: 0;
     padding: 0.125rem 0.25rem;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 32%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     white-space: nowrap;
   }
 
@@ -446,7 +446,7 @@
   .reacher-prov {
     justify-self: end;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 42%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     white-space: nowrap;
   }
   .who {
@@ -586,7 +586,7 @@
     font-variant-numeric: tabular-nums;
   }
   .cap-reads.dim {
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   .note {

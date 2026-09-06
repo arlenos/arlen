@@ -208,7 +208,7 @@
     width: 1.1rem;
     padding-inline-start: 0.35rem;
     user-select: none;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .rc {
     padding-inline-end: 0.5rem;
@@ -269,6 +269,6 @@
     margin: 1.25rem 0 0;
     font-size: var(--text-2xs);
     line-height: 1.5;
-    color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>

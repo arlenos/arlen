@@ -649,7 +649,7 @@
     align-items: center;
     justify-content: center;
     flex: 1;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .note {
     margin: 0;

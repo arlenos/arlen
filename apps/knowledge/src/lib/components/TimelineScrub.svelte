@@ -147,7 +147,7 @@
     user-select: none;
   }
   .grip.dragging {
-    border-color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
+    border-color: var(--color-fg-secondary, #a1a1aa);
   }
   .grip-label {
     font-size: var(--text-2xs);

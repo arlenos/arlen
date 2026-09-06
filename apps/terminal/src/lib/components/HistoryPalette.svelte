@@ -238,7 +238,7 @@
   .hp-in {
     align-self: center;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .hp-chips :global(.hp-chip[data-state="on"]) {
     background: color-mix(in srgb, var(--color-accent, var(--primary)) 15%, transparent);
