@@ -276,10 +276,20 @@
     font-size: var(--text-2xs);
     color: var(--color-fg-secondary, #a1a1aa);
   }
+  /* THE ERROR COLOUR, LIFTED, and the arithmetic is worth keeping because it
+     surprised me. `--color-error` on the card ground measures 4.76:1, over the
+     4.5 small text needs - so this rule read as fine. But the row above carries
+     `background: color-mix(var(--foreground) 4%, transparent)`, which lifts the
+     ground it actually sits on to #202020, and there the same red is 4.32:1.
+     axe composites the whole stack and caught it; hand arithmetic against the
+     card colour did not, twice.
+     85% toward the foreground clears at 5.08 and still reads as the error
+     colour. This is the sentence a person needs most on this surface - it is why
+     a job stopped. */
   .job-error {
     font-size: var(--text-2xs);
     line-height: 1.4;
-    color: var(--color-error);
+    color: color-mix(in srgb, var(--color-error) 85%, var(--foreground));
   }
   .job-doneline {
     display: inline-flex;
