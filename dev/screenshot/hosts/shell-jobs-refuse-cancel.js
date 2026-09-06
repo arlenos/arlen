@@ -16,6 +16,11 @@
       appId: "org.arlen.files",
       appLabel: "Dateien",
       fraction: 0.35,
+      // A counted job, so the zone draws the bar. The flag landed on 7 September
+      // and this fixture went red the same hour, which is the check working: a
+      // job that does not carry it renders as an uncounted one and the picture
+      // would have quietly lost its progress bar.
+      determinate: true,
       state: "running",
       metrics: [{ processed: 84, total: 240, unit: "Dateien" }],
       killable: true,
