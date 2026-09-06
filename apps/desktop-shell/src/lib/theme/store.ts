@@ -59,8 +59,9 @@ export async function initTheme(): Promise<void> {
     // cut of this line, which would have thrown on argument deserialization and
     // logged nothing at all: a diagnostic line that cannot be written is the
     // same silence it was added to break.
-    void invoke("log_frontend", {
-      message: `[theme] the shell could not read its theme: ${e instanceof Error ? e.message : String(e)}`,
+    void invoke("frontend_log", {
+           level: "warn",
+      msg: `[theme] the shell could not read its theme: ${e instanceof Error ? e.message : String(e)}`,
     }).catch(() => {
       // Nothing to do if the log itself cannot be written; the store still holds
       // the reason for anyone who later renders it.

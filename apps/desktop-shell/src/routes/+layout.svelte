@@ -214,8 +214,9 @@
           covering = ` COVERS THE SCREEN slot=${slot || "none"} class=${cls.slice(0, 70)}`;
         }
       }
-      invoke("log_frontend", {
-        message: `[input] first pointerdown at ${Math.round(e.clientX)},${Math.round(e.clientY)} on ${path.join(" < ") || "nothing"}${covering}`,
+      invoke("frontend_log", {
+        level: "info",
+        msg: `[input] first pointerdown at ${Math.round(e.clientX)},${Math.round(e.clientY)} on ${path.join(" < ") || "nothing"}${covering}`,
       }).catch(() => {});
     };
     window.addEventListener("pointerdown", firstPointer, { capture: true });
