@@ -107,8 +107,18 @@
     border: 1px solid var(--color-border);
     transition: border-color var(--duration-fast) var(--ease-out);
   }
+  /* Focus is a RING, not a border colour, and the reason is the rule below it.
+     `.field.error` sets `border-color` too and is declared later at the same
+     specificity, so while the field is red - which is exactly when somebody is
+     about to retype - focusing it changed nothing at all. The entry itself sets
+     `outline: none`, so there was no UA ring underneath to fall back on either;
+     the two icon buttons beside it keep theirs, which is why they were fine and
+     this was not. Found by the focus-ring probe on the first screen a person
+     meets, at 1280 in German. A shadow is a channel of its own, so an error
+     colour cannot take focus away again. */
   .field:focus-within {
     border-color: color-mix(in srgb, var(--foreground) 30%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 55%, transparent);
   }
   .field.error {
     border-color: var(--color-error);
