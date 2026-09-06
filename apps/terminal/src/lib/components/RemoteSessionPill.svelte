@@ -84,7 +84,7 @@
     color: var(--foreground);
   }
   .rsp-status {
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .rsp-status.ok {
     color: var(--color-success);
@@ -131,7 +131,7 @@
     margin-top: 0.15rem;
     font-size: var(--text-2xs);
     line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .rsp-revoke {
     display: inline-flex;

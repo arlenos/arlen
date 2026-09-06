@@ -426,7 +426,7 @@
   .data-count {
     margin-inline-start: auto;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* By-data: an aligned grid of the apps that reach this data. Avatar, who,
@@ -575,7 +575,7 @@
   }
   .cap-when {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     white-space: nowrap;
   }
   .cap-reads {

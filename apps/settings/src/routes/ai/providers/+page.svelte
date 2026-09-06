@@ -358,7 +358,7 @@
     margin: 0;
     padding-inline-start: 2.375rem;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .pctl {
     display: inline-flex;

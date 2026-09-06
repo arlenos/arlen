@@ -256,7 +256,7 @@
   .dp-pid {
     font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .dp-quit {
     flex-shrink: 0;
@@ -276,7 +276,7 @@
     padding: 0.2rem;
     border: none;
     background: transparent;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .dp-close:hover {
     color: var(--color-fg-primary);
@@ -346,7 +346,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .acc-chips {
     display: flex;
@@ -405,6 +405,6 @@
   .empty {
     margin: 0;
     font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>

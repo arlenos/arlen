@@ -169,7 +169,7 @@
   }
   .tb-row.dimmed .tb-name,
   .tb-row.dimmed .tb-icon {
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .tb-tag {
     padding: 0.05rem 0.35rem;
@@ -186,7 +186,7 @@
   }
   .tb-state {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     font-variant-numeric: tabular-nums;
   }
   .tb-error {

@@ -228,7 +228,7 @@
   .menu-head {
     padding: 0.35rem 0.55rem 0.4rem;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

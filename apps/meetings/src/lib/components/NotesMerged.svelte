@@ -188,7 +188,7 @@
   .grounded-note {
     margin: 0.5rem 0 0;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .edit-actions {
     display: flex;

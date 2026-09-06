@@ -600,7 +600,7 @@
   }
   .prov-label {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .prov-value {
     color: var(--foreground);
@@ -638,7 +638,7 @@
   }
   .asof-key {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     white-space: nowrap;
   }
   .note {
@@ -647,7 +647,7 @@
   }
   .empty {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* A clickable Related row: a quiet hoverable row, not a web link. */

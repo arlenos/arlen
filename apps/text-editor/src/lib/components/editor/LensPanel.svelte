@@ -179,7 +179,7 @@
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .sec-title {
     margin: 0 0 0.7rem;

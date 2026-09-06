@@ -111,7 +111,7 @@
   .none {
     margin: 0;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .item {
     display: flex;
@@ -134,7 +134,7 @@
     text-underline-offset: 3px;
   }
   .item-text.done {
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     text-decoration: line-through;
   }
   /* The owner draft: a quiet chip; unset shows the invitation, never a guess. */

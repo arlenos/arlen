@@ -136,7 +136,7 @@
     font-size: calc(0.875rem * var(--greeter-scale, 1));
   }
   .entry::placeholder {
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* Topbar-register icon buttons: quiet, flat, the input radius. The submit

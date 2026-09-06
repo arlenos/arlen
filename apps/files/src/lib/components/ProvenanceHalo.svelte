@@ -137,6 +137,6 @@
   .ph-loading {
     margin: 0;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>

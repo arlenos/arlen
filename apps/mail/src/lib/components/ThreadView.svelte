@@ -123,7 +123,7 @@
   }
   .thread :global(.chev) {
     flex-shrink: 0;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     transition: rotate var(--duration-fast, 150ms) ease;
   }
   .thread :global([data-state="open"]) :global(.chev) {

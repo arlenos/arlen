@@ -185,7 +185,7 @@
   }
   .jobs-count {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   .job {
@@ -274,7 +274,7 @@
   }
   .job-egress {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .job-error {
     font-size: var(--text-2xs);
