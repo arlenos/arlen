@@ -124,6 +124,7 @@ const messages: Catalogs = {
     // "README" anywhere, so the old caption was refuted by its own result list.
     "k.se.byName": "Matching by name, path and what they link to",
     "k.se.save": "Save this search",
+    "k.se.saveFailed": "Not saved.",
     "k.se.saveConfirm": "Save",
     "k.se.saveNamePlaceholder": "Name this search",
     "k.se.saved": "Saved searches",
@@ -237,6 +238,7 @@ const messages: Catalogs = {
     "k.se.type.session": "Sitzung",
     "k.se.byName": "Treffer nach Name, Pfad und Verknüpftem",
     "k.se.save": "Diese Suche speichern",
+    "k.se.saveFailed": "Nicht gespeichert.",
     "k.se.saveConfirm": "Speichern",
     "k.se.saveNamePlaceholder": "Suche benennen",
     "k.se.saved": "Gespeicherte Suchen",

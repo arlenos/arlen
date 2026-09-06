@@ -211,23 +211,37 @@ export async function loadSavedSearches(): Promise<void> {
 
 /// Keep the current query as a place. Live: `knowledge_search_save` (seam);
 /// the optimistic add stands under vite.
-export async function saveSearch(name: string): Promise<void> {
+/// True when the last save of a search was refused.
+///
+/// The store already put the optimistic row back on a failure, and its reason
+/// holds - a search that was not saved is gone at the next start and the person
+/// will go looking for it, so better absent now than absent later. What it did
+/// not do is SAY anything, and the caller cleared the name field and closed the
+/// naming row either way, so the whole gesture came back as if it had never
+/// happened.
+export const saveFailed = writable(false);
+
+export async function saveSearch(name: string): Promise<boolean> {
   const s: SavedSearch = {
     id: `s-${Math.random().toString(36).slice(2, 8)}`,
     name,
     query: get(query),
     facets: { ...get(facets) },
   };
+  saveFailed.set(false);
   savedSearches.update((l) => [s, ...l]);
   try {
     // The command returns the list as written, so the place shows what is on
     // disk rather than what this window hoped was on disk.
     savedSearches.set(await invoke<SavedSearch[]>("knowledge_search_save", { search: s }));
+    return true;
   } catch {
-    if (!tauriAvailable) return; // no host, so no backend to ask
+    if (!tauriAvailable) return true; // no host, so no backend to ask
     // A saved search that was not saved is gone at the next start, and the user
     // will look for it. Better it is not there now than not there later.
     savedSearches.update((l) => l.filter((x) => x.id !== s.id));
+    saveFailed.set(true);
+    return false;
   }
 }
 

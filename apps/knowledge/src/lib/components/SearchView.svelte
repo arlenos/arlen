@@ -15,6 +15,7 @@
     savedSearches,
     savedUnavailable,
     saveSearch,
+    saveFailed,
     runSaved,
     projectChoices,
     projectChoicesUnavailable,
@@ -63,7 +64,11 @@
   async function confirmSave(): Promise<void> {
     const name = saveName.trim() || $query.trim();
     if (!name) return;
-    await saveSearch(name);
+    // Keep the row and the typed name when the save was refused. It used to
+    // close and clear either way, so a failed save looked exactly like a
+    // successful one that had simply tidied itself up - the new entry appeared
+    // and vanished, the field emptied, and nothing said why.
+    if (!(await saveSearch(name))) return;
     saving = false;
     saveName = "";
   }
@@ -190,6 +195,9 @@
             }}
           />
           <button type="button" class="se-save" onclick={confirmSave}>{$t("k.se.saveConfirm")}</button>
+          {#if $saveFailed}
+            <span class="se-save-failed" role="alert">{$t("k.se.saveFailed")}</span>
+          {/if}
         {:else}
           <button type="button" class="se-save" onclick={() => (saving = true)}>
             <Bookmark size={12} strokeWidth={2} />
@@ -362,6 +370,10 @@
   .se-matchline {
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  }
+  .se-save-failed {
+    font-size: 0.75rem;
+    color: var(--color-error);
   }
   .se-save {
     display: inline-flex;
