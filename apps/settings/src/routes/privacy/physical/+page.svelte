@@ -308,7 +308,10 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    /* The secondary token, not a 45% fade: axe measures that at about 3:1 over
+       this surface, and these labels are what tells you which group of switches
+       you are looking at. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* The exposure posture readout: one prose line per surface; the line that

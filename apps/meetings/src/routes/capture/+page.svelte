@@ -192,7 +192,12 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    /* The secondary token rather than a percentage of the foreground. A 45%
+       fade over this surface measures about 3:1, which axe reports serious, and
+       these are labels naming what a block of text IS - the reader needs them
+       more than the text they head, not less. Same correction the mail list's
+       timestamps took. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .tp-off {
     display: flex;

@@ -264,6 +264,8 @@
   }
   .win-installed {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    /* The secondary token, not a 45% fade - about 3:1 here, and this line is
+       what says whether the runtime is installed at all. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>

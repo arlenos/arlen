@@ -384,7 +384,11 @@
     padding: 0.125rem 0.25rem;
     font-size: var(--text-xs);
     font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    /* The secondary token rather than a percentage of the foreground. A 45%
+       fade over this surface measures about 3:1 and axe reports it serious -
+       and this is a control, so it is worse than quiet text: 21 of them on the
+       privacy page, each one the only way to take a permission back. */
+    color: var(--color-fg-secondary, #a1a1aa);
     transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .remove:hover {
