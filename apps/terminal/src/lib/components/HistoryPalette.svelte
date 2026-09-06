@@ -279,6 +279,11 @@
     padding: 6px 12px;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    /* The secondary token, not a percentage of the foreground. At 35% over the
+       palette this is about 3:1 and axe reports it serious, twice - once per
+       hint - and these two lines are the only place the palette says what Enter
+       and Escape do. The mail list learnt the same thing on its timestamps: a
+       fade is where a shade gets saved, and it is the wrong place. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>
