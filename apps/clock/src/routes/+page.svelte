@@ -80,10 +80,19 @@
     <span class="app-title">{$t("c.title")}</span>
     <span class="titlebar-spacer"></span>
     {#if tab === "alarms" || tab === "world"}
+      <!-- OFF WHEN THERE IS NOWHERE TO PUT IT. Both an alarm and a city are
+           written through the clock service, so with the service unreachable this
+           opened a form whose Save could not land - the page said "cannot read
+           your saved clock data" and the plus went on inviting you to type into
+           it. Same shape as the meetings app offering to stop a recording it had
+           just said never started. The title says why rather than leaving a dead
+           button. -->
       <button
         type="button"
         class="add-btn"
         id="chrome-add"
+        disabled={$clockUnavailable || $clockAbsent}
+        title={$clockUnavailable || $clockAbsent ? $t("c.addOff") : undefined}
         aria-label={tab === "alarms" ? $t("c.al.add") : $t("c.wo.search")}
         onclick={requestAdd}
       >
@@ -195,9 +204,16 @@
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
   }
-  .add-btn:hover {
+  .add-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
     color: var(--color-fg-primary);
+  }
+  /* Dimmed rather than hidden: a control that disappears takes its explanation
+     with it, and this one has a title saying why it is off. A disabled control
+     is exempt from the contrast floor, which is the one place a fade is right. */
+  .add-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
   /* The GNOME-Clocks grammar: the view switcher sits centered under the
      title, the surfaces below center their columns. */
