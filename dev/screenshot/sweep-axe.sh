@@ -38,22 +38,35 @@ PORT=5310
 # `harness` and `store` are deliberately absent: they are arlen-ui's live work,
 # and a shared sweep that goes red on another lane's surface is a sweep somebody
 # turns off. `trash-rm` is not an app.
+#
+# ONE LANDING PAGE PER APP WAS NOT COVERAGE EITHER, which is the same lesson one
+# level in. Until 7 September every entry here was a single route, so eleven of
+# these apps had their tabs, dialogs and secondary views measured by nothing at
+# all - the clock's four other tabs, knowledge's Library and Projects, the file
+# manager's Recent and Trash, settings' fifteen pages. The render sweep has
+# reached those surfaces for weeks through `sweep-render-all.sh`, and that table
+# is where these specs come from: same routes, same clicks, so the two sweeps
+# look at the same tree and a surface missing from one is missing from both.
+#
+# PIPE-SEPARATED, not space-separated, and for the reason its twin records: a CSS
+# selector may contain a space, and `.bar-side.left .trigger` split into two
+# arguments the first time it was written that way.
 SURFACES=(
-  "files -"
-  "terminal -"
-  "settings -"
-  "meetings -"
-  "clock -"
-  "knowledge -"
-  "system-monitor -"
-  "text-editor -"
-  "viewers -"
-  "screenshot -"
-  "greeter -"
-  "mail -"
-  "calendar -"
-  "pdf -"
-  "desktop-shell /waypointer"
+  "files /|/::[data-place=recent]|/::[data-place=trash]"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session"
+  "settings /|/accessibility|/appearance/quicksettings|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts"
+  "meetings /|/capture|/meeting/abc"
+  "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
+  "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
+  "system-monitor /|/::#tab-performance"
+  "text-editor /|/::.trigger"
+  "viewers /|/?demo=image|/?demo=video"
+  "screenshot /"
+  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger"
+  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
+  "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event"
+  "pdf /"
+  "desktop-shell /waypointer|/|/consent"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
@@ -83,9 +96,15 @@ trap 'rm -rf "$out"; [ -n "${server:-}" ] && kill -- "-$server" 2>/dev/null; tru
 total=0
 swept=0
 for entry in "${SURFACES[@]}"; do
-  read -r app route <<<"$entry"
+  read -r app specs <<<"$entry"
   [ -n "$ONLY" ] && [ "$ONLY" != "$app" ] && continue
-  [ "$route" = "-" ] && route="/"
+  # `-` was the old spelling for "the landing page" and is kept so a one-route
+  # entry can still be written that way.
+  [ "$specs" = "-" ] && specs="/"
+  IFS='|' read -r -a spec_list <<<"$specs"
+  # The server comes up once per app; the readiness and title probes below are
+  # about the SERVER, so they use the first route and the rest ride on it.
+  route="${spec_list[0]%%::*}"
 
   # `setsid` so the whole tree gets its own process group: killing the `npm run
   # dev` wrapper leaves the vite child listening, and the next app then shoots
@@ -192,32 +211,48 @@ for entry in "${SURFACES[@]}"; do
   # modules to transform before the load event - so it was refused every time
   # except the once the server happened to be warm, and the sweep called that
   # "no result". At 180 it loads and gets judged like everything else.
-  timeout 300 dev/screenshot/headless.sh \
-    --url "http://localhost:$PORT$route" \
-    --out "$out/$app.png" --width "$WIDTH" --axe --timeout 180 --settle 3 \
-    >"$out/$app.axe" 2>&1
-  if [ "$?" = 124 ]; then
-    printf '%-16s %s\n' "$app" "REFUSED: the page did not finish an axe run in 300s"
-    kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
-    PORT=$((PORT + 1))
-    continue
-  fi
-  # NO RESULT IS NOT NO VIOLATIONS. This printed "axe: no result" and counted the
-  # surface as swept and clean; run by hand the same page answered with three,
-  # one of them serious. So a missing verdict is a refusal now, and it prints
-  # what the run actually said rather than leaving somebody to guess.
-  if ! grep -qE '^axe:' "$out/$app.axe"; then
-    printf '%-16s %s\n' "$app" "REFUSED: axe returned no verdict"
-    tail -3 "$out/$app.axe" | sed 's/^/                 /'
-    kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
-    PORT=$((PORT + 1))
-    continue
-  fi
-  n=$(grep -cE '^  [a-z-]+ \(' "$out/$app.axe" || true)
-  total=$((total + n))
-  swept=$((swept + 1))
-  printf '%-16s %s\n' "$app" "$(grep -E '^axe:' "$out/$app.axe")"
-  grep -E '^  [a-z-]+ \(' "$out/$app.axe" | sed 's/^/                 /' || true
+  # ONE RUN PER SURFACE. A click is a separate page as far as axe is concerned -
+  # a dialog that opens over the landing page has its own labels, its own focus
+  # order and its own contrast - so each spec gets its own browser, its own shot
+  # and its own verdict file, named for the surface rather than the app.
+  for spec in "${spec_list[@]}"; do
+    sroute="${spec%%::*}"
+    sclick=""
+    case "$spec" in *::*) sclick="${spec#*::}" ;; esac
+    # A file name a person can find again: the app, then the spec with the
+    # characters a path cannot carry folded to dashes.
+    slug=$(printf '%s' "$spec" | tr -c 'A-Za-z0-9._-' '-')
+    base="$out/$app$([ "$spec" = "/" ] && echo "" || echo "-$slug")"
+    if [ -n "$sclick" ]; then
+      timeout 300 dev/screenshot/headless.sh \
+        --url "http://localhost:$PORT$sroute" --open "$sclick" \
+        --out "$base.png" --width "$WIDTH" --axe --timeout 180 --settle 3 \
+        >"$base.axe" 2>&1
+    else
+      timeout 300 dev/screenshot/headless.sh \
+        --url "http://localhost:$PORT$sroute" \
+        --out "$base.png" --width "$WIDTH" --axe --timeout 180 --settle 3 \
+        >"$base.axe" 2>&1
+    fi
+    if [ "$?" = 124 ]; then
+      printf '%-16s %s\n' "$app" "REFUSED $spec: the page did not finish an axe run in 300s"
+      continue
+    fi
+    # NO RESULT IS NOT NO VIOLATIONS. This printed "axe: no result" and counted the
+    # surface as swept and clean; run by hand the same page answered with three,
+    # one of them serious. So a missing verdict is a refusal now, and it prints
+    # what the run actually said rather than leaving somebody to guess.
+    if ! grep -qE '^axe:' "$base.axe"; then
+      printf '%-16s %s\n' "$app" "REFUSED $spec: axe returned no verdict"
+      tail -3 "$base.axe" | sed 's/^/                 /'
+      continue
+    fi
+    n=$(grep -cE '^  [a-z-]+ \(' "$base.axe" || true)
+    total=$((total + n))
+    swept=$((swept + 1))
+    printf '%-16s %-28s %s\n' "$app" "$spec" "$(grep -E '^axe:' "$base.axe")"
+    grep -E '^  [a-z-]+ \(' "$base.axe" | sed 's/^/                 /' || true
+  done
 
   kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
   PORT=$((PORT + 1))
