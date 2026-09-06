@@ -39,17 +39,29 @@
   });
 </script>
 
-<div class="wallpaper">
+  <!-- `main` + a heading, like `_toasttest` beside it. A look-mock is a
+       document a person reads, so the landmark and the level-one heading are
+       real here - unlike the shell's own bar, where a `main` would be a
+       landmark over nothing. Added when these routes first went into the axe
+       table on 6 September and reported the absence. -->
+<main class="wallpaper">
   <div class="topbar">
     <span class="tb-spacer"></span>
     <MprisIndicator />
   </div>
+  <h1 class="mock-title">Now playing applet</h1>
   <p class="hint">Click an album-art thumb to open the mini-player.</p>
-</div>
+</main>
 
 <MprisPopover />
 
 <style>
+  .mock-title {
+    margin: 1.5rem 0 0.25rem 1rem;
+    color: var(--foreground);
+    font-size: 1rem;
+    font-weight: 600;
+  }
   /* The shell tokens the applet reads, in case this dev route renders outside
      the themed shell root. */
   .wallpaper {

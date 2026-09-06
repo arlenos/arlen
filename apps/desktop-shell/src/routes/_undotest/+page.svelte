@@ -19,13 +19,18 @@
   });
 </script>
 
-<div class="stage">
+  <!-- `main` + a heading, like `_toasttest` beside it. A look-mock is a
+       document a person reads, so the landmark and the level-one heading are
+       real here - unlike the shell's own bar, where a `main` would be a
+       landmark over nothing. Added when these routes first went into the axe
+       table on 6 September and reported the absence. -->
+<main class="stage">
   <div class="strip">
     <span class="strip-label">topbar strip</span>
     <UndoIndicator />
   </div>
   <UndoPopover />
-</div>
+</main>
 
 <style>
   .stage {
