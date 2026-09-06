@@ -94,6 +94,13 @@ trap 'rm -f "$shot"' EXIT
 
 probes="clipped-text clipped-by-parent overlapping-text no-focus-ring"
 
+# Whether this run carries a host spec, decided before the controls so they can
+# guard the runner that will actually be used.
+has_host=""
+for spec in "$@"; do
+  case "$spec" in *@@*) has_host=1 ;; esac
+done
+
 # THE POSITIVE CONTROLS, and they are not ceremony. A probe that returns nothing
 # is indistinguishable from a probe that is not running, and `clipped-text.js`
 # says in its own header that it returned nothing on three pages before its
@@ -136,6 +143,40 @@ for probe in $probes; do
       exit 2
       ;;
   esac
+  # AND THROUGH THE OTHER RUNNER, when this run has a host spec in it. A host row
+  # cannot go through `shoot.sh` at all, so its probes run under `render-wide.py`
+  # - a second path with its own stringification, which the controls above do not
+  # touch. The first version of that path answered `"[]"` for two of the four
+  # probes, a quoted string the sweep reads as no answer; had it answered `[]` by
+  # accident instead, every host row would have read clean forever. So each probe
+  # is handed the same control again through the runner that will actually carry
+  # it.
+  if [ -n "$has_host" ]; then
+    proof="$("$here/headless.sh" --url "file://$here/$probe-control.html" \
+      --out "$shot" --probe-file "$here/$probe.js" 2>/dev/null | tail -n 1)"
+    # BOTH HALVES: the control's own word, AND the `[...]` shape the loop below
+    # reads. Checking the word alone let a broken stringification through - the
+    # array probes came back as a comma-joined string that still contained
+    # "Vertrauensstufe", so the control passed and every host route then answered
+    # nothing. Loud rather than clean, but the control is supposed to be the loud
+    # part.
+    case "$proof" in
+      "["*"]") ;;
+      *)
+        echo "sweep-render.sh: $probe.js does not answer in the [...] shape through headless.sh;" >&2
+        echo "  every host row would report as unanswered. it said: $proof" >&2
+        exit 2
+        ;;
+    esac
+    case "$proof" in
+      *"$want"*) ;;
+      *)
+        echo "sweep-render.sh: $probe.js cannot see its own control through headless.sh;" >&2
+        echo "  every host row would read clean. the control answered: $proof" >&2
+        exit 2
+        ;;
+    esac
+  fi
 done
 
 # WHAT IT LOOKED AT, said out loud at the end. On its second run this reported
@@ -150,6 +191,23 @@ fail=0
 for width in $widths; do
  echo "  ==   at ${width}px"
  for spec in "$@"; do
+  # A SPEC MAY NAME A HOST, `route[::selector]@@<file in hosts/>`, and four
+  # surfaces need one to exist at all: no sound server, no battery, no tray
+  # client, no player, so the applet is not in the DOM and the click has nothing
+  # to hit. `shoot.sh` drives WebKitWebDriver, which cannot run a script BEFORE
+  # the page's own - so a host has to come from `render-wide.py`, which installs
+  # one as a document-start user script. Those four rows sat in the table for a
+  # day printing "did not answer" four times each, because the `@@` fell into the
+  # click selector and matched no element. Loud, and still unmeasured.
+  #
+  # A HOST ROW PINS ITS OWN LOCALE in the path and keeps it: the browser reads
+  # the FIRST value of a repeated parameter, so the `&locale=` appended below
+  # loses. That is right for these four - their fixtures speak one language, and
+  # the panel's German is the picture worth having whichever way the sweep runs.
+  host=""
+  case "$spec" in
+    *@@*) host="${spec##*@@}"; spec="${spec%@@*}" ;;
+  esac
   path="${spec%%::*}"
   open=""
   [ "$spec" != "$path" ] && open="${spec#*::}"
@@ -168,8 +226,26 @@ for width in $widths; do
   esac
   clean=1
   for probe in $probes; do
-    got="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/$probe.js" "$width" 2>&1 \
-      | sed -n 's/^inject result: //p')"
+    if [ -n "$host" ]; then
+      hostfile="$here/hosts/$host.js"
+      if [ ! -f "$hostfile" ]; then
+        echo "  FAIL $spec names no host: $hostfile is not there"
+        fail=1
+        clean=0
+        continue
+      fi
+      hostargs=(--url "$url" --out "$shot" --width "$width"
+                --host-script "$hostfile" --probe-file "$here/$probe.js")
+      [ -n "$open" ] && hostargs+=(--open "$open")
+      # The probe's answer is the LAST line of stdout; the viewport line precedes
+      # it and everything else the run says goes to stderr. A refusal therefore
+      # leaves the viewport line here, which is not `[...]` and is reported as a
+      # route that did not answer - the loud shape, not a clean one.
+      got="$("$here/headless.sh" "${hostargs[@]}" 2>/dev/null | tail -n 1)"
+    else
+      got="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/$probe.js" "$width" 2>&1 \
+        | sed -n 's/^inject result: //p')"
+    fi
     case "$got" in
       "["*"]")
         checked=$((checked + 1))
@@ -178,7 +254,7 @@ for width in $widths; do
           # Named by probe, because the three mean different things: an
           # ellipsis is often correct, a parent cut is a control somebody
           # cannot reach, an overlap is never right.
-          echo "  $probe  $spec"
+          echo "  $probe  $spec${host:+@@$host}"
           # Printed, not counted. Some of these are a scroll container the
           # probe cannot tell from a cut, and a number would hide which.
           printf '       %s\n' "$got"
@@ -189,12 +265,12 @@ for width in $widths; do
         # A route that did not render is not a clean route, which is the false
         # green this family of checks keeps finding its way back into.
         clean=0
-        echo "  FAIL $spec did not answer $probe: $got"
+        echo "  FAIL $spec${host:+@@$host} did not answer $probe: $got"
         fail=1
         ;;
     esac
   done
-  [ "$clean" = 1 ] && echo "  ok   $spec"
+  [ "$clean" = 1 ] && echo "  ok   $spec${host:+@@$host}"
  done
 done
 echo "  --   $checked probe read(s) in $locale across ${widths// /, }px, four probes per view; anything not named here was not looked at"
