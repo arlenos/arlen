@@ -12,6 +12,7 @@
   import { shellAction } from "$lib/shellAction";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
+  import { alsoRun } from "$lib/childProps.js";
   import { openPopover } from "$lib/stores/activePopover.js";
 
   interface AudioStatus {
@@ -106,11 +107,12 @@
               type="button"
               class="audio-tile-icon-btn"
               aria-label={$t("sh.tile.muteHint")}
+              {...props}
               onclick={(e) => {
                 e.stopPropagation();
+                alsoRun(props.onclick, e);
                 toggleMute();
               }}
-              {...props}
             >
               {#if status.muted || status.volume === 0}
                 <VolumeX size={16} strokeWidth={1.75} />

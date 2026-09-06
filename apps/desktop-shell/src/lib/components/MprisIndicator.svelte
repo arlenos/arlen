@@ -10,6 +10,7 @@
   import { Music, Play, Pause } from "lucide-svelte";
   import { onMount } from "svelte";
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
+  import { alsoRun } from "$lib/childProps.js";
   import { activePopover, togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
   import { nowPlaying, playPause, loadNowPlaying } from "$lib/stores/nowPlaying.js";
 
@@ -44,8 +45,11 @@
           <button
             class="mpris-art"
             aria-label={$t("sh.mpris.openPlayer")}
-            onclick={() => togglePopover("mpris")}
             {...props}
+            onclick={(e) => {
+              alsoRun(props.onclick, e);
+              togglePopover("mpris");
+            }}
           >
             {#if n.artUrl}
               <img src={n.artUrl} alt="" draggable="false" />
