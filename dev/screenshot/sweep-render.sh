@@ -45,10 +45,11 @@
 # `applyDevLocale` only runs under a dev build, so `vite preview` renders the
 # source language whatever the query says.
 #
-# `sweep-app.sh <app> <locale> <path...>` does that part - the app's own dev port,
-# started and stopped around the run. Prefer it. A server started by hand for a
-# render is one nobody stops, and it then answers the NEXT run's readiness check:
-# six were still listening on invented ports the morning after a night of these.
+# `sweep-render-all.sh <locale> [app]` does that part, and it also holds the table
+# of which routes and clicks reach each app's other surfaces - which is the half
+# worth having. Prefer it over starting a server by hand for a one-off: a server
+# started by hand is one nobody stops, and it then answers the NEXT run's
+# readiness check.
 #
 # Exits non-zero if any route clipped. A CLIP IS A FINDING, NOT A VERDICT, and
 # the first run says why: mail's list came back with five, every one of them the
