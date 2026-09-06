@@ -30,10 +30,15 @@ app="$root/apps/desktop-shell"
 port=1420
 fail=0
 work="$(mktemp -d)"
-server=""
+# shellcheck source=dev/screenshot/lib/preview.sh
+. "$here/lib/preview.sh"
 
 cleanup() {
-  [ -n "$server" ] && kill "$server" 2>/dev/null
+  # Was `kill $server`, which is npx - and the node npx spawns is what holds the
+  # port, so a run left a dev server listening for the next one to mistake for
+  # its own. The helper kills the process GROUP and then checks the port went
+  # quiet, which is the whole reason it exists.
+  stop_preview
   rm -rf "$work"
   return 0
 }
@@ -43,20 +48,16 @@ say() {
   if [ "$2" = 1 ]; then echo "  ok   $1"; else echo "  FAIL $1"; echo "       $3"; fail=1; fi
 }
 
-# Refuse a port somebody else is serving rather than photograph their page - the
-# lesson the preview helper and the axe sweep both learnt the hard way.
-if curl -sf -o /dev/null --max-time 2 "http://localhost:$port/" 2>/dev/null; then
-  echo "something is already serving $port; stop it first" >&2
-  exit 2
-fi
-( cd "$app" && exec npx vite dev --port "$port" --strictPort ) >"$work/vite.log" 2>&1 &
-server=$!
+# The helper refuses a port it did not start, for the reason its header gives:
+# a leftover server serves a frontend from whenever it was built, and every
+# assertion after that is about somebody else's page.
+start_dev "$app" "$port" || exit 2
 up=0
 for _ in $(seq 1 40); do
   sleep 1
   [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://localhost:$port/waypointer" 2>/dev/null)" = "200" ] && { up=1; break; }
 done
-[ "$up" = 1 ] || { echo "the shell never served $port; see $work/vite.log" >&2; exit 1; }
+[ "$up" = 1 ] || { echo "the shell never served $port" >&2; exit 1; }
 
 echo "launcher:"
 
