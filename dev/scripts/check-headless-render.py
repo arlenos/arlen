@@ -64,8 +64,17 @@ def code_lines(text: str) -> list[str]:
     return out
 
 
-def offenders(root: Path) -> list[tuple[str, int]]:
+def offenders(root: Path) -> tuple[list[tuple[str, int]], int, int]:
+    """The bare calls, plus how many files were read and how many name the renderer.
+
+    The counts are returned because the summary prints them: a run that examined
+    nothing and a run that examined forty both said "ok" until this did, and this
+    tree has already been bitten by a check reporting a clean tally over an empty
+    set.
+    """
     found: list[tuple[str, int]] = []
+    read = 0
+    naming = 0
     for path in sorted(root.rglob("*")):
         if path.name == RENDERER or not path.is_file():
             continue
@@ -77,8 +86,10 @@ def offenders(root: Path) -> list[tuple[str, int]]:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        read += 1
         if RENDERER not in text:
             continue
+        naming += 1
         lines = code_lines(text)
         calls = [ln for ln in lines if RENDERER in ln]
         if not calls:
@@ -91,13 +102,16 @@ def offenders(root: Path) -> list[tuple[str, int]]:
         for i, line in enumerate(text.splitlines(), 1):
             if RENDERER in line and line.strip() and not line.strip().startswith("#"):
                 found.append((str(path.relative_to(root)), i))
-    return found
+    return found, read, naming
 
 
 def main() -> int:
-    bad = offenders(ROOT / "dev")
+    bad, read, naming = offenders(ROOT / "dev")
     if not bad:
-        print("check-headless-render.py    ok")
+        print(
+            f"{read} script(s) under dev/ read, {naming} of them invoke the renderer, "
+            "each through headless.sh or its own Xvfb"
+        )
         return 0
     print("A render runs on whoever's screen is attached:")
     for rel, line in bad:
