@@ -230,7 +230,7 @@
       background var(--duration-fast, 150ms) var(--ease-out, ease);
   }
   .theme-card:hover {
-    border-color: var(--color-fg-secondary, #a1a1aa);
+    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
   }
   .theme-card.active {

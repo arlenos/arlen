@@ -117,7 +117,7 @@
      meets, at 1280 in German. A shadow is a channel of its own, so an error
      colour cannot take focus away again. */
   .field:focus-within {
-    border-color: var(--color-fg-secondary, #a1a1aa);
+    border-color: color-mix(in srgb, var(--foreground) 30%, transparent);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 55%, transparent);
   }
   .field.error {
