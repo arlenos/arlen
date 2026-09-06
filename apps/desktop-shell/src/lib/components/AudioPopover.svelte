@@ -163,7 +163,7 @@
         oninput={(v) => setVolume(v)}
       />
     </div>
-    <span class="vol-value">{volume}%</span>
+    <span class="vol-value">{$t("sh.pct", { n: volume })}</span>
   </div>
 
   <PopoverSelect
@@ -199,7 +199,7 @@
           oninput={(v) => setInputVol(v)}
         />
       </div>
-      <span class="vol-value">{inputVolume}%</span>
+      <span class="vol-value">{$t("sh.pct", { n: inputVolume })}</span>
     </div>
 
     <PopoverSelect
@@ -242,7 +242,7 @@
                 oninput={(v) => setAppVol(app.id, v)}
               />
             </div>
-            <span class="vol-value">{app.volume}%</span>
+            <span class="vol-value">{$t("sh.pct", { n: app.volume })}</span>
           </div>
         {/each}
       </div>

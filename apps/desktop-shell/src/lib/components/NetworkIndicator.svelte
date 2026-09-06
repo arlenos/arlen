@@ -115,7 +115,7 @@
     }
     let text = `WiFi: ${status.name ?? $t("sh.net.connected")}`;
     if (status.signal_strength != null) {
-      text += ` (${status.signal_strength}%)`;
+      text += ` (${$t("sh.pct", { n: status.signal_strength })})`;
     }
     if (status.vpn_active) {
       text += " (VPN)";

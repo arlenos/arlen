@@ -94,7 +94,7 @@
         : primaryDevice
           ? primaryDevice.name +
             (primaryDevice.battery_percentage != null
-              ? ` (${primaryDevice.battery_percentage}%)`
+              ? ` (${$t("sh.pct", { n: primaryDevice.battery_percentage })})`
               : "")
           : $t("sh.bt.tip.plain"),
   );

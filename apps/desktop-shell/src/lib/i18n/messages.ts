@@ -38,6 +38,13 @@ const messages: Catalogs = {
     "sh.bat.performance": "Performance",
     // Network popover
     "sh.net.title": "Network",
+    // A percentage, with the space its language wants. German writes "62 %"
+    // with a no-break space and English writes "62%" tight; that is a
+    // convention rather than a taste, and the six catalogue strings that
+    // already carry it were fixed on 8 September. This key exists because the
+    // markup could not reach them: a dozen surfaces glue the sign to the
+    // number in the template, where no catalogue pass can see it.
+    "sh.pct": "{$n}%",
     "sh.net.signalAria": "Signal strength {$percent}%",
     "sh.popover.notOpened": "That panel could not be opened.",
     "sh.focus.errActivate": "Focus mode did not start.",
@@ -748,6 +755,7 @@ const messages: Catalogs = {
     "sh.popover.toggleNamed": "{$name} ein- oder ausschalten",
     "sh.bat.performance": "Leistung",
     "sh.net.title": "Netzwerk",
+    "sh.pct": "{$n}\u00a0%",
     "sh.net.signalAria": "Signalstärke {$percent}\u00a0%",
     "sh.popover.notOpened": "Das Panel ließ sich nicht öffnen.",
     "sh.focus.errActivate": "Der Fokusmodus wurde nicht aktiviert.",

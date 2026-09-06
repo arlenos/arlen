@@ -39,8 +39,11 @@
         }
     }
 
+    // A function rather than a const string, so `$t` is read when the markup calls
+    // it and the label follows a locale switch. `check-i18n-reactivity` names this
+    // shape as the correct one.
     function formatLevel(level: number): string {
-        return `${Math.round(level * 100)}%`;
+        return $t("sh.pct", { n: Math.round(level * 100) });
     }
 </script>
 
@@ -68,7 +71,7 @@
                 aria-expanded={incrementOpen}
                 onclick={() => { incrementOpen = !incrementOpen; movementOpen = false; }}
             >
-                {$zoom.increment}%
+                {$t("sh.pct", { n: $zoom.increment })}
             </button>
             {#if incrementOpen}
                 <div class="zoom-popover">
@@ -78,7 +81,7 @@
                             class:active={val === $zoom.increment}
                             onclick={() => { zoomSetIncrement(val); incrementOpen = false; }}
                         >
-                            {val}%
+                            {$t("sh.pct", { n: val })}
                         </button>
                     {/each}
                 </div>

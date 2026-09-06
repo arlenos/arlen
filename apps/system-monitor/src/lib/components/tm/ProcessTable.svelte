@@ -224,7 +224,7 @@
   // know, and it is already this file's convention: `rate()` renders a zero rate
   // as blank rather than as a nought.
   const totalCpu = $derived(
-    list.length && $ratesReady ? `${formatDecimal(totals.cpu, 0, $locale)}%` : "",
+    list.length && $ratesReady ? $t("tm.pct", { n: formatDecimal(totals.cpu, 0, $locale) }) : "",
   );
   const totalMem = $derived(list.length ? mem(totals.memMB) : "");
   // No `|| "0"`. It was there, and it undid the rule three lines above it: `rate()`
@@ -400,7 +400,7 @@
                nobody has measured yet, and at a 10s refresh that sentence is on
                screen for ten seconds. -->
           <div class="cell num" role="gridcell" style="--heat: {$ratesReady ? dispHeat(p) : 0}"
-            >{$ratesReady ? `${formatDecimal(dispCpu(p), 1, $locale)}%` : "-"}</div>
+            >{$ratesReady ? $t("tm.pct", { n: formatDecimal(dispCpu(p), 1, $locale) }) : "-"}</div>
           <div class="cell num" role="gridcell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
           <div class="cell num muted" role="gridcell">{$ratesReady ? rate(p.diskKBs) : "-"}</div>
           <!-- Not a zero. Per-process network is not in /proc - it needs eBPF or

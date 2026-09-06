@@ -234,7 +234,7 @@
                     dev.paired}
                 >
                   <BatteryMedium size={12} strokeWidth={1.5} class="bt-battery-icon" />
-                  {dev.battery_percentage}%
+                  {$t("sh.pct", { n: dev.battery_percentage })}
                 </span>
               {/if}
             </span>

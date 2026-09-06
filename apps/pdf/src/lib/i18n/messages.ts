@@ -11,6 +11,11 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "pdf.app.title": "Document",
+    // A percentage, with the space its language wants: German writes "62 %" with
+    // a no-break space, English writes "62%" tight. Markup that glues the sign
+    // to the number bypasses the catalogue, which is how this stayed wrong here
+    // after the catalogue strings were fixed on 8 September.
+    "pdf.pct": "{$n}%",
     "pdf.contents": "Contents",
     "pdf.pageFlow": "The document's pages",
     "pdf.noContents": "This document carries no table of contents.",
@@ -62,6 +67,7 @@ const messages: Catalogs = {
     "pdf.pageTextInstead": "This page could not be drawn.",
   },
   de: {
+    "pdf.pct": "{$n}\u00a0%",
     "pdf.app.title": "Dokument",
     "pdf.contents": "Inhalt",
     "pdf.pageFlow": "Die Seiten des Dokuments",
