@@ -489,26 +489,51 @@ export async function markRead(id: string): Promise<void> {
   envelopes.update((all) => all.map((e) => (e.id === id ? { ...e, unread: false } : e)));
 }
 
+/// The write a person asked for that did not happen, or null.
+///
+/// The two header actions were correct on the axis this tree has a gate for -
+/// nothing moves on the surface until the mailbox says it moved, so a failed
+/// archive never claims to have archived. What was missing is the other half.
+/// The message simply stays where it was, which is the truth and is also exactly
+/// what a mis-click looks like, so the only thing left to do is press again and
+/// watch nothing happen a second time.
+///
+/// One clause each: the row is still on screen, so the state needs no sentence.
+export const writeFailed = writable<"move" | "delete" | null>(null);
+
 /// Move a message to another folder, named by rail or by id.
 ///
-/// Nothing moves on the surface until the mailbox says it moved.
-export async function moveMessage(id: string, target: string): Promise<void> {
+/// Nothing moves on the surface until the mailbox says it moved, and the caller
+/// is told which it was. The verdict is not decoration: the header actions used
+/// to fire this and clear the selection in the same breath, so a refused archive
+/// emptied the reading pane and took the Archive button with it - the message
+/// stayed in the list, correctly, and there was no longer any control to press
+/// it again with.
+export async function moveMessage(id: string, target: string): Promise<boolean> {
   if (get(mailboxState) === "live") {
     const dest = folderNamed(target);
     const at = placeOf(id);
-    if (!dest || !at) return;
+    // Unresolvable is a refusal too, from where the person stands: they pressed
+    // Archive and the message stayed. Which of the two reasons it was is a
+    // question for a log, not for them.
+    if (!dest || !at) {
+      writeFailed.set("move");
+      return false;
+    }
     let next: string;
     try {
       next = await invoke<string>("mail_move", { id: at, folderId: dest.id });
     } catch {
-      return;
+      writeFailed.set("move");
+      return false;
     }
     envelopes.update((all) =>
       all.map((e) => (e.id === id ? { ...e, place: next, folderId: dest.id } : e)),
     );
-    return;
+    return true;
   }
   envelopes.update((all) => all.map((e) => (e.id === id ? { ...e, folderId: target, unread: false } : e)));
+  return true;
 }
 
 /// Delete a message, by the mailbox's own rule: to the trash if there is one and
@@ -519,33 +544,37 @@ export async function moveMessage(id: string, target: string): Promise<void> {
 /// never of a maildir, whose trash is called `.Trash`. Live that comparison
 /// failed every time and a delete from the trash quietly moved the message to
 /// where it already was.
-export async function deleteMessage(id: string): Promise<void> {
+export async function deleteMessage(id: string): Promise<boolean> {
   if (get(mailboxState) === "live") {
     const at = placeOf(id);
-    if (!at) return;
+    if (!at) {
+      writeFailed.set("delete");
+      return false;
+    }
     let landed: string | null;
     try {
       landed = await invoke<string | null>("mail_delete", { id: at });
     } catch {
-      return;
+      writeFailed.set("delete");
+      return false;
     }
     if (landed === null) {
       envelopes.update((all) => all.filter((e) => e.id !== id));
-      return;
+      return true;
     }
     const trash = get(folders).find((f) => f.kind === "trash");
     const next = landed;
     envelopes.update((all) =>
       all.map((e) => (e.id === id ? { ...e, place: next, folderId: trash?.id ?? e.folderId } : e)),
     );
-    return;
+    return true;
   }
   const here = get(envelopes).find((e) => e.id === id);
   if (here && folderNamed(here.folderId)?.kind === "trash") {
     envelopes.update((all) => all.filter((e) => e.id !== id));
-    return;
+    return true;
   }
-  await moveMessage(id, "trash");
+  return await moveMessage(id, "trash");
 }
 
 /// A draft saved from compose: prepended to Drafts so the flow completes.

@@ -39,6 +39,7 @@
     mailboxState,
     mailboxRoot,
     mailboxWritable,
+    writeFailed,
     mailboxComposes,
     openedFile,
     loadMailbox,
@@ -205,6 +206,7 @@
   const rows = $derived(grouped.rows);
 
   function selectFolder(id: string): void {
+    writeFailed.set(null);
     selectedFolder = id;
     if (!fileOpen) {
       selected = new Set();
@@ -241,6 +243,10 @@
 
   /// A plain click or a keyboard step: single-select and read.
   function openOne(id: string): void {
+    // Moving on clears the last write's refusal. It is a notice about a press,
+    // not a property of the mailbox, so leaving it up over the NEXT message
+    // would attach it to one it was never about.
+    writeFailed.set(null);
     selected = new Set([id]);
     fileOpen = false;
     composing = false;
@@ -250,6 +256,7 @@
   /// Ctrl/shift selection from the list: several rows arm the bulk actions,
   /// and the reading pane steps back to the count.
   function selectionChanged(sel: Set<string>): void {
+    writeFailed.set(null);
     selected = sel;
     fileOpen = false;
     composing = false;
@@ -299,22 +306,33 @@
       for (const e of grouped.members.get(id) ?? []) if (e.folderId === selectedFolder) out.push(e.id);
     return out;
   }
-  function archiveSelected(): void {
+  async function archiveSelected(): Promise<void> {
     if (!$mailboxWritable) return;
-    for (const id of folderMembers()) moveMessage(id, "archive");
+    writeFailed.set(null);
+    // AWAIT, and keep the selection when any of them did not land. Firing and
+    // clearing in the same breath emptied the reading pane over a refused
+    // archive: the message was still in the list, which is the truth, but the
+    // Archive button had gone with the selection and there was nothing left to
+    // press again. Only visible once the refusal had a sentence.
+    let all = true;
+    for (const id of folderMembers()) all = (await moveMessage(id, "archive")) && all;
+    if (!all) return;
     if (selected.size > 0) {
       selected = new Set();
       reading = null;
     }
   }
-  function deleteSelected(): void {
+  async function deleteSelected(): Promise<void> {
     if (!$mailboxWritable) return;
     // THE MAILBOX OWNS THE RULE, not this screen. It used to read "if the open
     // folder is called trash, delete for good, else move there" - true of the
     // sample, whose folder ids are the rail names, and never of a maildir, whose
     // trash is `.Trash`. Live it therefore moved a message in the trash to the
     // trash and reported a delete.
-    for (const id of folderMembers()) void deleteMessage(id);
+    writeFailed.set(null);
+    let all = true;
+    for (const id of folderMembers()) all = (await deleteMessage(id)) && all;
+    if (!all) return;
     if (selected.size > 0) {
       selected = new Set();
       reading = null;
@@ -482,6 +500,19 @@
       {/if}
 
       <div class="pane">
+        <!-- A write that did not happen, above whatever the pane is showing
+             rather than instead of it. The message is still on screen and that is
+             the state; this is the non-event, which no arrangement of rows can
+             say by itself. Same treatment as the other pane notes; where it
+             finally sits is arlen-ui's call. -->
+        {#if $writeFailed}
+          <div class="pane-note" role="alert">
+            <Notice
+              tone="error"
+              text={$writeFailed === "delete" ? $t("ml.err.notDeleted") : $t("ml.err.notMoved")}
+            />
+          </div>
+        {/if}
         {#if composing}
           {#key preset}
             <ComposeView presetTo={preset.to} presetSubject={preset.subject} presetBody={preset.body} ondone={composeDone} />
