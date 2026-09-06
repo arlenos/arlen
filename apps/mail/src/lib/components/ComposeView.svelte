@@ -70,7 +70,6 @@
     placeholder={$t("ml.compose.body")}
     aria-label={$t("ml.compose.body")}
   />
-  <p class="cant-send">{$t("ml.compose.cantSend")}</p>
   <div class="actions">
     <Button id="compose-save-draft" onclick={saveToDrafts}>{$t("ml.compose.saveToDrafts")}</Button>
     <Button variant="ghost" id="compose-discard" onclick={() => ondone(null)}>{$t("ml.compose.discard")}</Button>
@@ -103,11 +102,6 @@
   .k {
     font-size: var(--text-sm, 13px);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-  }
-  .cant-send {
-    margin: 0;
-    font-size: var(--text-xs, 12px);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .actions {
     display: flex;

@@ -13,7 +13,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { Mail, Reply, Forward, Archive, Trash2, FileText } from "@lucide/svelte";
+  import { Mail, Reply, Forward, Archive, Trash2, FileText, Undo2 } from "@lucide/svelte";
   import { t } from "$lib/i18n/messages";
   import { initAppMenu, menuAction } from "$lib/menu";
   import { displayName, threadKey } from "$lib/wording";
@@ -26,6 +26,7 @@
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import FolderRail from "$lib/components/FolderRail.svelte";
   import MessageList from "$lib/components/MessageList.svelte";
   import MessageView from "$lib/components/MessageView.svelte";
@@ -282,7 +283,11 @@
   function composeDone(draftId: string | null): void {
     composing = false;
     if (draftId) {
-      selectedFolder = "drafts";
+      // BY KIND, not by the word: the sample's drafts folder is called "drafts",
+      // a maildir's is ".Drafts". Selecting the word live showed an empty folder
+      // and "did not open" over a draft that was on the disk (mail-draft.png,
+      // 6 September).
+      selectedFolder = $folders.find((f) => f.kind === "drafts")?.id ?? selectedFolder;
       openOne(draftId);
     }
   }
@@ -322,8 +327,55 @@
       reading = null;
     }
   }
+  /// Put a message in the trash back where it came from, which is the other
+  /// half of a trash (design-system.md 6.2, Tier 1): the delete was silent
+  /// because this exists.
+  async function putBackSelected(): Promise<void> {
+    if (!$mailboxWritable) return;
+    writeFailed.set(null);
+    let all = true;
+    for (const id of folderMembers()) all = (await moveMessage(id, "inbox")) && all;
+    if (!all) return;
+    if (selected.size > 0) {
+      selected = new Set();
+      reading = null;
+    }
+  }
+
+  /// The delete that removes the file, waiting for its word. Set from the
+  /// trash folder only; everywhere else a delete moves to the trash and says
+  /// nothing (6.2, Tier 1). Here it is the one irreversible act this app has,
+  /// so it asks, naming the message and the consequence (Tier 3).
+  let forever = $state<{ ids: string[]; subject: string } | null>(null);
+  const forevertitle = $derived.by(() => {
+    if (!forever) return "";
+    if (forever.ids.length === 1) {
+      return $t("ml.deleteForever.title", { subject: forever.subject || $t("ml.noSubject") });
+    }
+    return $t("ml.deleteForever.titleN", { n: forever.ids.length });
+  });
+
+  async function deleteForever(): Promise<void> {
+    const ask = forever;
+    forever = null;
+    if (!ask) return;
+    writeFailed.set(null);
+    let all = true;
+    for (const id of ask.ids) all = (await deleteMessage(id)) && all;
+    if (!all) return;
+    selected = new Set();
+    reading = null;
+  }
+
   async function deleteSelected(): Promise<void> {
     if (!$mailboxWritable) return;
+    if (inTrash) {
+      const ids = folderMembers();
+      if (ids.length === 0) return;
+      const first = $envelopes.find((e) => e.id === ids[0]);
+      forever = { ids, subject: first?.subject ?? "" };
+      return;
+    }
     // THE MAILBOX OWNS THE RULE, not this screen. It used to read "if the open
     // folder is called trash, delete for good, else move there" - true of the
     // sample, whose folder ids are the rail names, and never of a maildir, whose
@@ -357,6 +409,10 @@
     const kind = $folders.find((f) => f.id === selectedFolder)?.kind;
     return kind ? $t(FOLDER_NAMES[kind]) : $t("ml.app.title");
   });
+
+  /// Whether the open folder is the trash, where Archive gives way to Put back
+  /// and Delete stops being silent.
+  const inTrash = $derived($folders.find((f) => f.id === selectedFolder)?.kind === "trash");
 
   /// One message read: everything. Several: only the actions that make sense
   /// for a pile (archive, delete) - a bulk Reply would be a lie. None while
@@ -453,9 +509,15 @@
         </IconAction>
       {/if}
       {#if showSingleActions || showBulkActions}
-        <IconAction label={$t("ml.archive")} size="control" onclick={archiveSelected}>
-          <Archive size={15} strokeWidth={1.75} />
-        </IconAction>
+        {#if inTrash}
+          <IconAction label={$t("ml.putBack")} size="control" onclick={putBackSelected}>
+            <Undo2 size={15} strokeWidth={1.75} />
+          </IconAction>
+        {:else}
+          <IconAction label={$t("ml.archive")} size="control" onclick={archiveSelected}>
+            <Archive size={15} strokeWidth={1.75} />
+          </IconAction>
+        {/if}
         <IconAction label={$t("ml.delete")} size="control" onclick={deleteSelected}>
           <Trash2 size={15} strokeWidth={1.75} />
         </IconAction>
@@ -491,6 +553,7 @@
           <MessageList
             {rows}
             {selected}
+            folderKind={$folders.find((f) => f.id === selectedFolder)?.kind ?? null}
             onchange={selectionChanged}
             onopen={openOne}
             onarchive={archiveSelected}
@@ -571,6 +634,16 @@
     </div>
   </SidebarInset>
 </SidebarProvider>
+
+<ConfirmDialog
+  open={forever !== null}
+  title={forevertitle}
+  message={$t("ml.deleteForever.body")}
+  confirmLabel={$t("ml.deleteForever.confirm")}
+  variant="destructive"
+  onConfirm={deleteForever}
+  onCancel={() => (forever = null)}
+/>
 
 <style>
   .body-row {

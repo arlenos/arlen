@@ -382,7 +382,9 @@ export const unreadCount = derived(envelopes, ($e) => $e.filter((x) => x.unread 
 /// than an empty mailbox for the seconds it takes. The catch answers with the
 /// fixture under vite and an unreadable mailbox on a host.
 export async function loadMailbox(): Promise<void> {
-  mailboxState.set("loading");
+  // A re-read of a live mailbox (after a draft was written, say) keeps the rail
+  // and the list standing; only the first read shows the reading state.
+  if (get(mailboxState) !== "live") mailboxState.set("loading");
   let f: Folder[];
   try {
     f = await invoke<Folder[]>("mail_folders");
