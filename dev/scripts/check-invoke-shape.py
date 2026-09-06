@@ -292,6 +292,15 @@ def frontend_files(base: Path):
 
 IMPORTED_INVOKERS: dict[str, int] = {
     "shellAction": 0,
+    # The read half, added 6 September when the capture badge moved onto it. The
+    # comment above promised the next helper would be one line and it was, but
+    # the entry was missing for longer than that: `shellRead` has carried the
+    # recording badge, the tray and the layout indicator since August, so every
+    # command those poll has read as invoked by nobody this whole time. The
+    # capture badge is only what made it visible, because `capture_status` is
+    # carried as known-missing and an uninvoked known-missing entry is a hard
+    # failure rather than a line in the informational list.
+    "shellRead": 0,
 }
 
 

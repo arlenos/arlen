@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { initTheme } from "$lib/theme";
-  import { initArlenLocale } from "@arlen/ui-kit/i18n";
+  import { applyDevLocale, initArlenLocale } from "@arlen/ui-kit/i18n";
+  import { markLocaleReady } from "$lib/localeReady";
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import "../app.css";
 
@@ -227,11 +228,20 @@
     // string: the bridge words it from the catalog at the moment the event
     // arrives, so a startup failure raised before the catalog is in hand is
     // worded in English and stays English for its whole life on screen. The
-    // focus-mode restore in `initProjects` is exactly such a failure. This does
-    // not make the race impossible - the read is async and nothing here awaits
-    // it - but it starts the local config read before the first init that can
-    // fail, which is what decides it in practice.
-    void initArlenLocale();
+    // focus-mode restore in `initProjects` is exactly such a failure.
+    //
+    // Ordering alone did not settle it, and this comment used to claim it did.
+    // A render of the bar at `?locale=de` came back with a German clock, a
+    // German dictation badge and that refusal in English: `initArlenLocale`
+    // awaits two dynamic imports before it sets the store, so the window is
+    // wide enough for an init that fails at once. `applyDevLocale` is exported
+    // for exactly this - to adopt the language WITHOUT waiting on a host - so a
+    // dev render now has it before anything can fail.
+    applyDevLocale();
+    // And on a real desktop, where the dev hook is inert and the read is IPC,
+    // the wording waits instead: `localeReady` settles either way and the toast
+    // path holds its words until it does.
+    void initArlenLocale().finally(markLocaleReady);
 
     const disposers: Array<() => void> = [
       // First, so a failure in any init below is logged rather than swallowed.

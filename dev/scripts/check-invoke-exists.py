@@ -279,11 +279,24 @@ WRAPPER = re.compile(r"(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)", re.S)
 # shape is here so the next helper is one line rather than a rediscovery.
 IMPORTED_INVOKERS: dict[str, int] = {
     "shellAction": 0,
+    # The read half, added 6 September when the capture badge moved onto it. The
+    # comment above promised the next helper would be one line and it was, but
+    # the entry was missing for longer than that: `shellRead` has carried the
+    # recording badge, the tray and the layout indicator since August, so every
+    # command those poll has read as invoked by nobody this whole time. The
+    # capture badge is only what made it visible, because `capture_status` is
+    # carried as known-missing and an uninvoked known-missing entry is a hard
+    # failure rather than a line in the informational list.
+    "shellRead": 0,
 }
 
 # The same literal-first-argument shape as `INVOKE`, for those helpers.
+# The optional type argument is why this is not just the name and a paren.
+# `shellRead<CaptureStatus>("capture_status", "capture")` is the ordinary way to
+# call the read helper - it is generic in what it returns - and without it this
+# matched the untyped calls only, which is a gate that sees some of its callers.
 IMPORTED_INVOKE = re.compile(
-    r"\b(?:%s)\s*\(\s*[\"'`]([A-Za-z_][A-Za-z0-9_]*)[\"'`]"
+    r"\b(?:%s)(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\s*\(\s*[\"'`]([A-Za-z_][A-Za-z0-9_]*)[\"'`]"
     % "|".join(re.escape(n) for n in IMPORTED_INVOKERS)
 )
 
