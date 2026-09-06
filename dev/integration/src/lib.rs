@@ -1386,8 +1386,14 @@ mod module_reachability {
     /// Each is real, each compiles, each has passing unit tests, and none of them
     /// runs. They are listed rather than fixed because the fix is a design call:
     /// knowledge's `lifecycle` and `backup` need someone to decide when an
-    /// uninstall or an export reaches the graph, and `sentinel-detect` is the pure
-    /// detector core for a `org.arlen.Sentinel1` daemon that does not exist yet.
+    /// uninstall or an export reaches the graph, and `sentinel-detect` holds the
+    /// pure detectors `arlen-sentineld` does not run yet.
+    ///
+    /// That last clause used to say the `org.arlen.Sentinel1` daemon did not
+    /// exist. It has since 4 September, and the entries further down this file
+    /// say so - so the file contradicted itself, which is worse than being wrong
+    /// in one place: a reader who finds the older sentence first has no reason to
+    /// keep looking.
     ///
     /// The point of the list is that it cannot grow silently. Removing an entry
     /// once it is wired up is the expected direction of travel.
@@ -1416,9 +1422,8 @@ mod module_reachability {
         //                           nothing yet asks this to bind them.
         //   integration-packages/manifest  IP-R5's manifest, parsed by nothing
         //                           until the installer path reaches it.
-        //   sentinel-detect/tracker the finder-tag classifier for a
-        //                           `org.arlen.Sentinel1` daemon that does not
-        //                           exist, like its siblings below.
+        //   sentinel-detect/tracker the finder-tag classifier `arlen-sentineld`
+        //                           does not run yet, like its siblings below.
         //
         // FALSE WHEN `arlen-sentineld` grows the detector that reads each one.
         // The `sentinel-detect` entries come off as their daemon reaches them, and

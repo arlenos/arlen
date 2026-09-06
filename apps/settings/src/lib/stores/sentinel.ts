@@ -190,11 +190,12 @@ export async function fixPosture(surface: string): Promise<void> {
   } catch {
     // The fixture stays under the DEV gate. Outside it, this catch used to write
     // "Bluetooth is no longer discoverable." into the posture line whatever the
-    // command did - and `sentinel_fix_posture` has no daemon behind it, so in a
-    // real session the fix ALWAYS failed and the page ALWAYS said it had worked.
-    // A protection page claiming a machine is secured when nothing was done is
-    // the one lie on this surface that costs more than showing nothing, which is
-    // what the flag below already says about the detector switches.
+    // command did - and back then `sentinel_fix_posture` had no daemon behind it,
+    // so in a real session the fix ALWAYS failed and the page ALWAYS said it had
+    // worked. `arlen-sentineld` answers it now, which changes when this catch
+    // runs and not what it must do: a protection page claiming a machine is
+    // secured when nothing was done is the one lie on this surface that costs
+    // more than showing nothing, and a daemon that is present can still refuse.
     if (tauriAvailable) {
       sentinelChangeFailed.set(true);
       return;
