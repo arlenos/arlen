@@ -418,6 +418,8 @@ jobs:
           node dev/scripts/test-fixture-helper.mjs
           python3 dev/scripts/check-fixture-deletes.py
           node dev/scripts/test-check-fixture-deletes.mjs
+          python3 dev/scripts/check-controls-do-not-write-the-tree.py
+          node dev/scripts/test-check-controls-do-not-write-the-tree.mjs
           python3 dev/scripts/check-fixture-answers-whole.py
           node dev/scripts/test-check-fixture-answers-whole.mjs
           python3 dev/scripts/check-listener-started.py
