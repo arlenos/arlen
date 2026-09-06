@@ -26,7 +26,7 @@ const messages: Catalogs = {
     // Distinct from the sample line above: one says the graph is not there yet,
     // the other says this search did not run. A failed read used to show the
     // first, with invented rows under it.
-    "k.se.unavailable": "That search did not run, so nothing is shown. Nothing was searched.",
+    "k.se.unavailable": "That search did not run.",
     "k.browse.unavailable": "Cannot read your graph right now, so nothing is listed here.",
     // The kit's FileBrowser defaults to English and to the word "folder".
     // Neither is right here: these places are the graph answering, and the
@@ -56,7 +56,7 @@ const messages: Catalogs = {
     "k.caps.opens": "Opens in Settings",
     "k.empty.timeline": "Nothing recorded here yet.",
     "k.tl.noService": "The knowledge service is not running, so nothing is being recorded.",
-    "k.tl.unavailable": "Cannot read your timeline right now, so nothing is shown.",
+    "k.tl.unavailable": "Cannot read your timeline right now.",
     "k.empty.projects": "No projects detected yet.",
     "k.projects.unavailable": "Cannot read your projects right now, so nothing is listed.",
     // A column INSIDE a project, which is a different sentence from the one above
@@ -154,7 +154,7 @@ const messages: Catalogs = {
     "k.menu.deleteAll": "Alles Aufgezeichnete löschen…",
     "k.title": "Wissen",
     "k.sample": "Beispieldaten - noch nicht dein echter Graph.",
-    "k.se.unavailable": "Diese Suche ist nicht gelaufen, deshalb wird nichts gezeigt. Es wurde nichts durchsucht.",
+    "k.se.unavailable": "Diese Suche ist nicht gelaufen.",
     "k.browse.unavailable": "Dein Graph kann gerade nicht gelesen werden, daher steht hier nichts.",
     "k.fb.errorTitle": "Kann nicht angezeigt werden",
     "k.fb.hintUnknown": "Beim Lesen deines Graphen ist etwas schiefgegangen.",
@@ -179,7 +179,7 @@ const messages: Catalogs = {
     "k.caps.opens": "Öffnet in Einstellungen",
     "k.empty.timeline": "Hier ist noch nichts aufgezeichnet.",
     "k.tl.noService": "Der Wissensdienst läuft nicht, es wird also nichts aufgezeichnet.",
-    "k.tl.unavailable": "Deine Chronik kann gerade nicht gelesen werden, daher wird nichts angezeigt.",
+    "k.tl.unavailable": "Deine Chronik kann gerade nicht gelesen werden.",
     "k.empty.projects": "Noch keine Projekte erkannt.",
     "k.projects.unavailable": "Deine Projekte k\u00f6nnen gerade nicht gelesen werden, daher steht hier nichts.",
     "k.projects.noMembers": "Zu diesem Projekt ist noch nichts erfasst.",
