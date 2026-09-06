@@ -172,7 +172,9 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    /* Same correction as the Remove below: a 45% fade on an uppercase 2xs label
+       is about 3:1. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* Sentence lines as an aligned grid, indented under the label past the 28px
@@ -278,7 +280,12 @@
     padding: 0.125rem 0.25rem;
     font-size: var(--text-xs);
     font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    /* The secondary token, not a 45% fade. THIS is the Remove the privacy page
+       actually renders - the page has a `.remove` of its own and I corrected
+       that one first, matching on the class name instead of checking which file
+       put the element there. Twenty-one of them, each the only way to take a
+       permission back. */
+    color: var(--color-fg-secondary, #a1a1aa);
     transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .remove:hover {
