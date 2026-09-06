@@ -162,7 +162,17 @@
           description={$t("s.wa.installAppDesc")}
         >
           {#snippet control()}
-            <Button variant={empty ? "default" : "outline"} size="sm" onclick={install}>
+            <!-- OFF WHILE THE LIST COULD NOT BE READ. Installing goes through the
+                 same service that just failed to answer, and this one costs more
+                 than a refused click: the person picks an installer out of a file
+                 dialog first and learns afterwards that nothing could be done
+                 with it. The notice at the top of the page says why. -->
+            <Button
+              variant={empty ? "default" : "outline"}
+              size="sm"
+              disabled={$winApps.unavailable}
+              onclick={install}
+            >
               {$t("s.wa.chooseInstaller")}
             </Button>
           {/snippet}
