@@ -602,9 +602,23 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    max-width: 15rem;
-    height: var(--height-control-prominent, 36px);
-    padding: 0 0.625rem;
+    /* Was 15rem, which is a measurement of the English label. The German one
+       ("Zum Löschen gedrückt halten", plus the trash glyph) needs about 252px
+       and was cut to "Zum Löschen gedrückt h..." on the card - read off the
+       rendered surface on 6 September, the first time this window was
+       photographed at all. Capped at the row instead, which the footer now
+       wraps. */
+    max-width: 100%;
+    /* Grows rather than truncates. Every cap tried here cut the wrong half: the
+       plain German label lost "halten", and with a filename in it ("Zum Löschen
+       von <name> gedrückt halten") the ellipsis landed inside the name and took
+       the instruction with it, because German puts the verb last. There is no
+       cap that is right in every language, so this control does not have one -
+       it is the sentence saying how to answer an irreversible delete, and the
+       card is a modal with room. The file is named in the list above as well, so
+       a long name costs height here and loses nothing. */
+    min-height: var(--height-control-prominent, 36px);
+    padding: 0.375rem 0.625rem;
     border: 1px solid color-mix(in srgb, var(--color-error) 45%, transparent);
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
@@ -623,24 +637,20 @@
     width: 100%;
     transition: width 1.2s linear;
   }
-  /* The words are their own element: this box is `inline-flex`, so the
-     `text-overflow` below could not act on them - a flex box has items, not
-     inline content. The label of a hold-to-confirm button is the sentence saying
-     what the hold DOES, and it was one long translation away from being cut
-     mid-glyph with no ellipsis. */
+  /* The words are their own element so a wrapped label centres as a block with
+     the glyph beside it, rather than the glyph joining the text flow. */
   .cd-hold-label {
     position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
-    overflow: hidden;
-    white-space: nowrap;
   }
   .cd-hold-text {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    text-align: center;
+    /* A filename has no spaces to break at, so without this an unbreakable name
+       would push the button past the card instead of wrapping inside it. */
+    overflow-wrap: anywhere;
   }
 
   @media (prefers-reduced-motion: reduce) {

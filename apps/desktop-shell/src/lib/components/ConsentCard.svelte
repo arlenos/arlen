@@ -156,8 +156,15 @@
     font-size: var(--text-lg);
   }
 
+  /* Wraps, because a decision affordance is the last thing that may be cut to
+     fit. The destructive confirm carries the sentence saying HOW to answer it
+     ("Zum Löschen gedrückt halten"), and on the rendered German card that
+     sentence hit its own cap and ellipsed to "gedrückt h..." - the verb that
+     tells you to hold was the part that went. A row that wraps costs one line
+     of height; a truncated instruction costs the answer. */
   .cd-foot {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
     margin-top: 0.25rem;
