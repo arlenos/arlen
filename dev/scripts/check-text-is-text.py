@@ -72,11 +72,19 @@ def tracked(root: Path) -> list[Path]:
     return [p for p in root.rglob("*") if p.is_file()]
 
 
-def offenders(root: Path) -> list[tuple[str, int]]:
+def offenders(root: Path) -> tuple[list[tuple[str, int]], int]:
+    """The offenders, and how many source files were read to find them.
+
+    The count is printed for the reason every other check here prints one: a
+    clean line over nothing and a clean line over four thousand files read the
+    same, and only one of them is coverage.
+    """
     found = []
+    read = 0
     for path in tracked(root):
         if path.suffix not in SOURCE or not path.is_file():
             continue
+        read += 1
         try:
             data = path.read_bytes()
         except OSError:
@@ -88,15 +96,17 @@ def offenders(root: Path) -> list[tuple[str, int]]:
             continue
         line = data[: data.index(b"\0")].count(b"\n") + 1
         found.append((rel, line))
-    return sorted(found)
+    return sorted(found), read
 
 
 def main() -> int:
-    bad = offenders(ROOT)
+    bad, read = offenders(ROOT)
     if not bad:
         # The count is part of the result: a clean run over a tree that carries
         # two known files says something different from a clean run over none.
-        print(f"check-text-is-text.py       ok, {len(ALLOWED)} known and named")
+        print(
+            f"{read} source file(s) read for a NUL byte, {len(ALLOWED)} known and named"
+        )
         return 0
     print("A source file carries a NUL byte, so grep answers nothing for it:")
     for rel, line in bad:
