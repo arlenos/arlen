@@ -29,12 +29,16 @@
     onpick,
     oncreate,
     onresult,
+    canCreate = true,
   }: {
     focus: string;
     /// The file the app was opened on; the service note is suppressed then.
     launched: string | null;
     onpick: (date: string) => void;
     oncreate: () => void;
+    /// False while the store could not be read. An event is written back to the
+    /// same files, so offering the form then is offering a Save that cannot land.
+    canCreate?: boolean;
     /// A search hit was chosen: jump the views to it.
     onresult: (e: AgendaEvent) => void;
   } = $props();
@@ -66,7 +70,19 @@
     <SidebarGroup>
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton id="cal-new-event" onclick={oncreate}>
+          <!-- OFF WHEN THE STORE COULD NOT BE READ. This used to go on offering
+               the form, and an event is written back into the very files that
+               just failed to open. Dimmed rather than hidden, because a control
+               that vanishes takes its explanation with it - and the explanation
+               is already on screen: the page states the read failure in a line
+               beside this rail. No title here on purpose; the kit disables
+               pointer events on a disabled menu button, so a tooltip would never
+               be shown to anybody. -->
+          <SidebarMenuButton
+            id="cal-new-event"
+            onclick={oncreate}
+            disabled={!canCreate}
+          >
             <Plus strokeWidth={2} />
             <span>{$t("cal.newEvent")}</span>
           </SidebarMenuButton>

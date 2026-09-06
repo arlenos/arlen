@@ -308,6 +308,7 @@
   <CalendarSidebar
     {focus}
     {launched}
+    canCreate={!failure}
     onpick={(d) => (focus = d)}
     oncreate={() => (creating = true)}
     onresult={(e) => {
