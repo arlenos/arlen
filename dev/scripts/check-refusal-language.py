@@ -135,7 +135,18 @@ ACKNOWLEDGED = {
     # 549 until 5 Sep, when the app's level-one heading went in above it as a
     # snippet plus one render call per branch. Re-read: the guard is still
     # `readsAsInternal` and it still falls to `v.couldNotOpenUnknown`.
-    "apps/viewers/src/routes/+page.svelte:561": (
+    # 561 until 7 Sep, when the sentence gained a NAMED variant - the window in
+    # this branch holds nothing else, so it says which file it is about - and
+    # there are two of them now, one each side of a `{#if failedName}`. Re-read
+    # a third time: the same `readsAsInternal` guard covers both arms, and an
+    # internal-looking error still falls to the unknown-reason wording. The
+    # brittleness is doing its job: this is the third edit above these lines and
+    # the third forced re-read, which is the whole argument for keying on a line.
+    "apps/viewers/src/routes/+page.svelte:574": (
+        "guarded by `readsAsInternal`: an internal-looking error falls to "
+        "`v.couldNotOpenNamedUnknown`. The named arm of the same sentence"
+    ),
+    "apps/viewers/src/routes/+page.svelte:578": (
         "guarded by `readsAsInternal`: an internal-looking error falls to "
         "`v.couldNotOpenUnknown`. The third copy of that predicate, which is the "
         "argument for its home being the kit"

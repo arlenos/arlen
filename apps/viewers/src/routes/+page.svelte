@@ -51,6 +51,15 @@
   // keeps the mock/demo path (no Tauri runtime, or no file argument).
   let loaded = $state<Loaded | null>(null);
   let loadError = $state<string | null>(null);
+
+  /// The file the failed open was about, when it is known.
+  ///
+  /// This branch replaces the WHOLE view, so the window afterwards holds one
+  /// sentence and two window buttons - and "this file" names nothing in a viewer
+  /// that walks a folder with the arrow keys. Photographed on 7 September: a
+  /// black window, one line, and no way to tell which of three pictures had just
+  /// refused to open.
+  let failedName = $state<string | null>(null);
   // Opened by the real shell with no file to show. Distinct from the demo path
   // below, and the distinction is the whole point: without it this window falls
   // back to the mock and a shipped viewer shows a track called "Nightswim" with
@@ -246,9 +255,11 @@
         };
       } else {
         loadError = `unsupported media kind: ${kind}`;
+        failedName = name;
       }
     } catch (e) {
       loadError = String(e);
+      failedName = name;
     }
   }
 
@@ -424,6 +435,7 @@
     lastDeleted = null;
     noFile = false;
     loadError = null;
+    failedName = null;
     actionError = null;
     currentPath = d.original;
     await openFile(d.original);
@@ -556,9 +568,15 @@
          so somebody who cannot see it has no other signal that the open did not
          take - the window simply stops showing anything. -->
     <p role="alert">
-      {readsAsInternal(loadError)
-        ? $t("v.couldNotOpenUnknown")
-        : $t("v.couldNotOpen", { reason: loadError })}
+      {#if failedName}
+        {readsAsInternal(loadError)
+          ? $t("v.couldNotOpenNamedUnknown", { name: failedName })
+          : $t("v.couldNotOpenNamed", { name: failedName, reason: loadError })}
+      {:else}
+        {readsAsInternal(loadError)
+          ? $t("v.couldNotOpenUnknown")
+          : $t("v.couldNotOpen", { reason: loadError })}
+      {/if}
     </p>
   </main>
 {:else if noFile}
