@@ -149,18 +149,6 @@
           {/each}
         </div>
         <CommandList class="hp-list">
-          {#if $historyLoaded && $historyResults.length === 0}
-            <div class="hp-empty" role={$historyUnavailable ? "alert" : undefined}>
-              <!-- Three states, not two. A search that did not RUN produces the
-                   same empty list as one that ran and matched nothing, and both
-                   sentences below are claims about the person's own history. -->
-              {$historyUnavailable
-                ? $t("term.hist.unavailable")
-                : historyFiltered
-                  ? $t("term.hist.empty.filtered")
-                  : $t("term.hist.empty.default")}
-            </div>
-          {/if}
           {#each $historyResults as b (b.id)}
             <CommandItem value={b.id} onSelect={() => pick(b)}>
               <span class="hp-cmd">{b.command}</span>
@@ -173,6 +161,27 @@
             </CommandItem>
           {/each}
         </CommandList>
+        <!-- OUTSIDE the list, and that is the whole point: `CommandList` carries
+             `role="listbox"`, which may contain options and nothing else, so a
+             plain div in there made axe report `aria-required-children` as
+             critical - and with no backend the empty message is the ONLY child,
+             which is the state a headless render always sees. `CommandEmpty`
+             cannot be used here for the reason the waypointer records: under
+             `shouldFilter={false}` bits-ui always reports zero internal matches.
+             The list has no min-height, so this sits exactly where it used to.
+
+             Three states, not two. A search that did not RUN produces the same
+             empty list as one that ran and matched nothing, and both sentences
+             are claims about the person's own history. -->
+        {#if $historyLoaded && $historyResults.length === 0}
+          <div class="hp-empty" role={$historyUnavailable ? "alert" : undefined}>
+            {$historyUnavailable
+              ? $t("term.hist.unavailable")
+              : historyFiltered
+                ? $t("term.hist.empty.filtered")
+                : $t("term.hist.empty.default")}
+          </div>
+        {/if}
         <div class="hp-foot">
           <span>{$t("term.hist.enterHint")}</span>
           <span>{$t("term.escCloses")}</span>
