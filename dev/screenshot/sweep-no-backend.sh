@@ -110,6 +110,15 @@ SHOTS=(
   "settings appearance/wallpaper settings-appearance-wallpaper-unavailable"
   "settings appearance/quicksettings settings-quicksettings-unavailable"
   "settings windows-apps settings-windows-apps-unavailable"
+  # THE SHELL WAS NOT IN THIS LIST, which is the omission that matters most: the
+  # render sweep's own table says desktop-shell belongs there "because its three
+  # windows are the surfaces a person sees most", and this sweep - the one about
+  # what a surface SAYS when its backend refuses - did not photograph any of them.
+  # The shell talks to more daemons than any app here, so it has more chances than
+  # any app here to offer something it cannot do.
+  "desktop-shell - shell-unavailable"
+  "desktop-shell consent shell-consent-unavailable"
+  "desktop-shell waypointer shell-waypointer-unavailable"
   "system-monitor - system-monitor-unavailable"
   "system-monitor - system-monitor-performance-unavailable #tab-performance"
   "terminal - terminal-unavailable"
