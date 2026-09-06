@@ -70,7 +70,16 @@ SURFACES=(
   "meetings /|/capture|/meeting/abc"
   "pdf /"
   "screenshot /"
-  "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/_topbartest"
+  # THE OTHER NINETEEN, and they were missing for the reason this header keeps
+  # naming: the list IS the coverage. Settings has 38 route pages and this row
+  # held 17, so more of the app went unprobed than probed - every Appearance
+  # sub-page but two, Display, Notifications, Language, About, Topbar, Apps,
+  # Extensions, Mouse, Touchpad. Found by diffing the routes on disk against
+  # this table rather than by reading it, the same way its twin was.
+  #
+  # `ai/models` stays out (arlen-ui's live work) and the `[id]` routes need a
+  # parameter only a running backend can supply.
+  "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/_topbartest|/about|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/apps|/display|/extensions|/language|/mouse|/notifications|/topbar|/touchpad"
   "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest"
   "text-editor /|/::.trigger"
