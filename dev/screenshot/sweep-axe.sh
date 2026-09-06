@@ -72,7 +72,18 @@ PORT=5310
 SURFACES=(
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest"
-  "settings /|/accessibility|/appearance/quicksettings|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/_topbartest"
+  # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
+  # this header keeps naming: the list IS the coverage. Settings has 38 route
+  # pages and this row held 14, so more of that app was unmeasured than
+  # measured - every Appearance sub-page, Display, Notifications, Language,
+  # About, Topbar, Apps, Extensions, Mouse, Touchpad. Found by diffing the
+  # routes on disk against this table rather than by reading it.
+  #
+  # `ai/models` and `ai/models/get` stay out: they are arlen-ui's live work,
+  # and a shared sweep that goes red on another lane's surface is one somebody
+  # turns off. The `[id]` routes need a parameter that only a running backend
+  # can supply, so they are not reachable from a route walk at all.
+  "settings /|/about|/accessibility|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/quicksettings|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/appearance/wallpaper|/apps|/display|/extensions|/focus|/keyboard|/knowledge|/language|/mouse|/notifications|/printers|/privacy|/privacy/physical|/system-actions|/topbar|/touchpad|/windows-apps|/workspaces|/keyboard/shortcuts|/_topbartest"
   "meetings /|/capture|/meeting/abc"
   "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
