@@ -9,6 +9,8 @@ import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { raiseRefusal } from "$lib/shellAction";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { tauriAvailable } from "$lib/tauri";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -180,6 +182,22 @@ let projectsTeardown: (() => void) | null = null;
 
 /** Initialize stores and event listeners. Call once from +layout.svelte.
  *  Returns a disposer that removes all 5 listeners. Idempotent. */
+/// Whether this is the bar bound to the primary monitor.
+///
+/// The same test `TopBar` uses, and for the same reason: the only window
+/// labelled `main` is the primary bar. In a plain browser there is no webview to
+/// ask - asking throws - so the mock counts as the main one, which keeps the
+/// dev render showing what a person would see.
+function isMainWindow(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!tauriAvailable) return true;
+  try {
+    return getCurrentWebviewWindow().label === "main";
+  } catch {
+    return true;
+  }
+}
+
 export function initProjects(): () => void {
   if (projectsStarted && projectsTeardown) return projectsTeardown;
   projectsStarted = true;
@@ -199,7 +217,15 @@ export function initProjects(): () => void {
       // silently lost - and with it the notification suppression that went with
       // it. Nothing on screen is WRONG afterwards, which is why it needs saying:
       // there is no other sign it happened.
-      raiseRefusal("sh.focus.errRestore");
+      //
+      // SAID ONCE, BY THE MAIN BAR. Every shell window runs this layout - the
+      // primary bar, one `topbar-N` per extra monitor, the waypointer, a consent
+      // window - so on a machine where the read fails, the same sentence was
+      // raised once per window: in the bar, again the first time Super was
+      // pressed, again on each secondary monitor. One failure is one event, and
+      // announcing it per window turns a fact into nagging. The READ stays in
+      // every window, because each one uses the focus state it returns.
+      if (isMainWindow()) raiseRefusal("sh.focus.errRestore");
     });
 
   const pending: Promise<UnlistenFn>[] = [
