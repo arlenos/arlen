@@ -195,8 +195,14 @@ say "an encrypted message says it is encrypted" \
 say "and does not offer its envelope as files somebody sent" \
   "$(case "$sealed" in ""|REFUSED:*) echo 0;; *) printf '%s' "$sealed" | grep -q "carries 2 files" && echo 0 || echo 1;; esac)" "$sealed"
 
+# `no plain-text part`, which is what `ml.noText` actually says. It read `no text
+# part` and matched nothing, so this guard could not have fired: had the window
+# started calling an encrypted message textless, the case would have gone on
+# passing. A negative assertion that cannot find its own string is the check
+# switching itself off, and it does it quietly - the opposite failure to a stale
+# positive, which at least goes red and gets looked at.
 say "and does not report itself as a message with no text" \
-  "$(case "$sealed" in ""|REFUSED:*) echo 0;; *) printf '%s' "$sealed" | grep -q "no text part" && echo 0 || echo 1;; esac)" "$sealed"
+  "$(case "$sealed" in ""|REFUSED:*) echo 0;; *) printf '%s' "$sealed" | grep -qi "no plain-text part" && echo 0 || echo 1;; esac)" "$sealed"
 
 amb=$(SHOOT_APP_ARGS="$fix/ambiguous.eml" SHOOT_INJECT="$fix/probe.js" \
   "$here/shoot-app.sh" "$app" "$here/out/mail-ambiguous.png" 2>&1 | sed -n 's/^inject result: //p')
