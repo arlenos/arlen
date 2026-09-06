@@ -38,6 +38,10 @@
   }
 
   let knownApps = $state<string[]>([]);
+  // The list below draws an add button this page does not need - the kit's
+  // component always does - so the button sends focus here instead of being a
+  // second, nameless way to do nothing.
+  let picker = $state<AppPicker | null>(null);
 
   onMount(async () => {
     shell.load();
@@ -122,6 +126,7 @@
     </Row>
     <div class="picker-list">
       <AppPicker
+        bind:this={picker}
         {knownApps}
         excluded={suppressedApps}
         placeholder={$t("s.focus.addApp")}
@@ -130,12 +135,8 @@
       <AddRemoveList
         items={suppressedApps}
         onremove={removeSuppressedApp}
-        onadd={() => {
-          // No-op: the picker above is the add affordance for
-          // this list. AddRemoveList still requires onadd, so
-          // the button is hidden via empty addLabel.
-        }}
-        addLabel=""
+        onadd={() => picker?.focus()}
+        addLabel={$t("s.focus.addApp")}
         emptyMessage={$t("s.focus.noApps")}
       >
         {#snippet itemSnippet({ item }: { item: string; index: number })}
