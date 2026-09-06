@@ -240,7 +240,11 @@
     padding: 0;
   }
   .input::placeholder {
-    color: color-mix(in srgb, var(--foreground) 38%, transparent);
+    /* The token, which is what the calendar's two placeholders already use. I
+       spared this one in the sweep on the theory that a brighter placeholder
+       makes an empty field look filled - then found the tree had already
+       decided the other way, twice, and 38% measures 3.4:1. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   .chev {
