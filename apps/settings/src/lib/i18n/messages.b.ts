@@ -642,6 +642,7 @@ export const b: Catalogs = {
     "s.qs.saveFailedPlain": "Save failed: the settings service did not answer.",
     "s.qs.resetFailed": "Reset failed: {$error}",
     "s.qs.resetFailedPlain": "Reset failed: the settings service did not answer.",
+    "s.qs.resetDone": "Quick Settings layout restored to defaults.",
     // "the editor is empty" was contradicted by the screen: with no layout the
     // editor still draws the CATALOGUE tiles, so a person reads a sentence
     // saying there is nothing here above eight named tiles. What is true and
@@ -1668,6 +1669,7 @@ export const b: Catalogs = {
     "s.qs.saveFailedPlain": "Speichern fehlgeschlagen: der Einstellungsdienst hat nicht geantwortet.",
     "s.qs.resetFailed": "Zurücksetzen fehlgeschlagen: {$error}",
     "s.qs.resetFailedPlain": "Zurücksetzen fehlgeschlagen: der Einstellungsdienst hat nicht geantwortet.",
+    "s.qs.resetDone": "Die Schnelleinstellungen stehen wieder auf den Standardwerten.",
     "s.qs.layoutUnreadable": "Deine Quick-Settings-Anordnung konnte nicht gelesen werden, deshalb siehst du die Standardkacheln, die sich nicht ändern lassen.",
     "s.qs.layoutMalformedKept": "Deine Quick-Settings-Datei ist fehlerhaft. Der Editor ist schreibgesch\u00fctzt und zeigt den zuletzt gespeicherten Stand. Repariere die Datei oder setze sie zur\u00fcck.",
     "s.qs.layoutMalformedDefaults": "Deine Quick-Settings-Datei ist fehlerhaft. Der Editor ist schreibgesch\u00fctzt. Repariere die Datei oder setze sie zur\u00fcck.",
