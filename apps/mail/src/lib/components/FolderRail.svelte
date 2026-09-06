@@ -52,6 +52,11 @@
 
 <Sidebar collapsible="icon">
   <SidebarContent>
+    <!-- The nav landmark for the rail: the kit's sidebar is divs down to the
+         primitive, so without this compose and the folder list are content in no
+         region. axe's own region rule stays quiet about a list of buttons, so this
+         one was found by a DOM probe rather than by the sweep. -->
+    <nav aria-label={$t("ml.nav.aria")}>
     <!-- The first group keeps a 6px top inset so its row clears the
          window edge by the same gap as the header-bar icons; the row itself
          stays the rail's uniform 32px box - an earlier pass shrank only the
@@ -98,6 +103,7 @@
         </SidebarMenu>
       </SidebarGroup>
     {/if}
+    </nav>
   </SidebarContent>
   <SidebarRail />
 </Sidebar>
