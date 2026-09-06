@@ -499,7 +499,7 @@ export async function markRead(id: string): Promise<void> {
 /// watch nothing happen a second time.
 ///
 /// One clause each: the row is still on screen, so the state needs no sentence.
-export const writeFailed = writable<"move" | "delete" | null>(null);
+export const writeFailed = writable<"move" | "delete" | "draft" | null>(null);
 
 /// Move a message to another folder, named by rail or by id.
 ///
@@ -614,11 +614,15 @@ export function saveDraftLocal(to: string, subject: string, body: string): strin
 /// A FAILED SAVE ANSWERS NULL and adds nothing, so the composer can say the
 /// draft is not kept rather than close over a message that went nowhere.
 export async function saveDraft(to: string, subject: string, body: string): Promise<string | null> {
+  writeFailed.set(null);
   if (get(mailboxState) === "live") {
     let id: string;
     try {
       id = await invoke<string>("mail_draft_save", { to, subject, body });
     } catch {
+      // The surface has to be able to tell this from a Discard, because the two
+      // took the same route and only one of them is a choice the person made.
+      writeFailed.set("draft");
       return null;
     }
     await loadMailbox();
