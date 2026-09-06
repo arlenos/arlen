@@ -31,6 +31,10 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export SHOOT_FRONTEND_SERVED=1
 # shellcheck source=dev/screenshot/lib/fresh.sh
 . "$root/dev/screenshot/lib/fresh.sh"
+# shellcheck source=dev/screenshot/lib/wait.sh
+. "$root/dev/screenshot/lib/wait.sh"
+# shellcheck source=dev/screenshot/lib/preview.sh
+. "$root/dev/screenshot/lib/preview.sh"
 out="$root/dev/screenshot/out"
 work=/tmp/arlen-drive-kg
 app="$root/target/debug/arlen-knowledge-app"
@@ -57,16 +61,9 @@ for b in "$app" "$root/target/debug/event-bus" "$root/target/debug/arlen-graph-d
     esac
 done
 
-# The app is a Tauri binary; a debug build loads its devUrl, so something has to
-# serve that port or every probe reads a connection-refused page.
-# And that what it serves is current: `build/` is written by a command nobody
-# is forced to run, so a preview can serve a page the tree left behind.
+# What the preview below will serve has to be current: `build/` is written by a
+# command nobody is forced to run, so it can hold a page the tree left behind.
 require_fresh_frontend "$root/apps/knowledge/build" "$root/apps/knowledge/src" || exit 2
-if ! curl -sf -o /dev/null http://localhost:1436/; then
-    echo "nothing is serving http://localhost:1436, so the app would load an error page." >&2
-    echo "  (cd $root/apps/knowledge && npx vite build && npx vite preview --port 1436)" >&2
-    exit 2
-fi
 
 rm -rf "$work"
 mkdir -p "$work"/{run/arlen,state/timeline,config/arlen,data}
@@ -76,8 +73,21 @@ export ARLEN_RUNTIME_DIR="$work/run" XDG_RUNTIME_DIR="$work/run" \
        XDG_STATE_HOME="$work/state" ARLEN_DB_PATH="$work/state/events.db" \
        ARLEN_GRAPH_PATH="$work/state/graph" ARLEN_TIMELINE_MOUNT="$work/state/timeline"
 
-cleanup() { [ -n "${bus_pid:-}" ] && kill "$bus_pid" 2>/dev/null; [ -n "${kg_pid:-}" ] && kill "$kg_pid" 2>/dev/null; }
+cleanup() {
+    stop_preview
+    [ -n "${bus_pid:-}" ] && kill "$bus_pid" 2>/dev/null
+    [ -n "${kg_pid:-}" ] && kill "$kg_pid" 2>/dev/null
+    return 0
+}
 trap cleanup EXIT
+
+# The app is a Tauri binary and a debug build loads its devUrl, so this drive
+# serves that port itself rather than telling the reader to start one by hand.
+# A reader-started preview is a server nobody in this script can account for:
+# `curl` cannot say who answered, so an old one left on the port passes the
+# readiness check and every page below is then a page from whenever it was built.
+start_preview "$root/apps/knowledge" 1436 || exit 2
+wait_for_http "http://localhost:1436/" || exit 2
 
 "$root/target/debug/event-bus" > "$work/bus.log" 2>&1 &
 bus_pid=$!
