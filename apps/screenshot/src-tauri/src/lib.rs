@@ -139,10 +139,20 @@ fn copy_png(png_base64: String) -> Result<(), String> {
 }
 
 /// A frontend log line surfaced on the app's stdout (the webview has no DevTools in
+/// The argument is `msg` rather than `message`, and that is not a preference:
+/// `frontend_log` is registered in ten components and carried THREE argument
+/// shapes, so a logging line copied from one app to another failed to
+/// deserialize and the command was never called - the line added to diagnose
+/// something was itself the thing that went missing. Six of the ten already
+/// agreed on `(level, msg)`, so that is the one they all use.
 /// the Arlen shell, so this is how the UI reports diagnostics).
 #[tauri::command]
-fn frontend_log(message: String) {
-    log::info!("[screenshot-frontend] {message}");
+fn frontend_log(level: String, msg: String) {
+    match level.as_str() {
+        "error" => log::error!("[screenshot-frontend] {msg}"),
+        "warn" => log::warn!("[screenshot-frontend] {msg}"),
+        _ => log::info!("[screenshot-frontend] {msg}"),
+    }
 }
 
 /// The current local time as `YYYYMMDD-HHMMSS`, the stamp `sdk::default_filename`

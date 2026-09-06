@@ -249,6 +249,8 @@ jobs:
           node dev/scripts/test-check-toast-is-named.mjs
           node dev/scripts/check-i18n-reactivity.mjs
           python3 dev/scripts/check-invoke-shape.py
+          python3 dev/scripts/check-command-shapes-agree.py
+          node dev/scripts/test-check-command-shapes-agree.mjs
           node dev/scripts/test-check-invoke-shape.mjs
           python3 dev/scripts/check-invoke-exists.py
           node dev/scripts/test-check-invoke-exists.mjs

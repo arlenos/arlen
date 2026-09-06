@@ -118,7 +118,7 @@ export async function copyPng(pngBase64: string): Promise<void> {
 /// Surface a diagnostic on the app's stdout (the webview has no DevTools in the
 /// Arlen shell). A no-op outside Tauri.
 export function frontendLog(message: string): void {
-  if (isTauri()) void invoke("frontend_log", { message }).catch(() => {});
+  if (isTauri()) void invoke("frontend_log", { level: "info", msg: message }).catch(() => {});
 }
 
 /// The base64 body of a canvas PNG (drops the `data:image/png;base64,` prefix the
