@@ -212,7 +212,17 @@ impl Progress {
 pub struct JobView {
     /// Stable id for the job's lifetime (assigned by the server on register).
     pub id: u64,
-    /// The producing app's attested identity.
+    /// The producing app's id, **as the producer says it is**.
+    ///
+    /// NOT ATTESTED, whatever this line used to claim. The register method takes
+    /// the id as an argument and nothing checks it against the sending
+    /// connection, so any process on the session bus can post a row that names
+    /// another app - and the shell renders it as the row's label. The machinery
+    /// to attest it exists one daemon over (installd resolves its caller through
+    /// `GetConnectionUnixProcessID` and the identity resolver), but turning it on
+    /// here is a policy question rather than a patch: forage resolves to
+    /// `UnknownBinary` at every plausible path today, so attestation without an
+    /// answer for an unrecognised producer would silently drop its rows.
     pub app_id: String,
     /// The human title ("Copying 240 photos to USB").
     pub title: String,
@@ -276,11 +286,36 @@ pub const MAX_JOBS_PER_APP: usize = 16;
 /// bytes, so a truncation cannot split a multi-byte character.
 pub const MAX_JOB_TITLE: usize = 200;
 
+/// The longest state message kept, in characters.
+///
+/// Longer than a title because this is a sentence about what went wrong and may
+/// legitimately be two, and truncated for the same reason a title is: the row
+/// still says something, where a refused message would leave a failed job with
+/// no explanation at all.
+pub const MAX_JOB_MESSAGE: usize = 300;
+
+/// The longest single entry name kept, in characters.
+///
+/// The list was capped at [`MAX_JOB_ITEMS`] entries and each entry was
+/// unbounded, so a hundred names could still be a hundred megabytes. A path
+/// longer than this is longer than any filesystem will give one.
+pub const MAX_JOB_ITEM_NAME: usize = 256;
+
 /// The fields a producer supplies to register a new job. The registry assigns
 /// the stable `id` and starts it in [`JobState::Running`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewJob {
-    /// The producing app's attested identity.
+    /// The producing app's id, **as the producer says it is**.
+    ///
+    /// NOT ATTESTED, whatever this line used to claim. The register method takes
+    /// the id as an argument and nothing checks it against the sending
+    /// connection, so any process on the session bus can post a row that names
+    /// another app - and the shell renders it as the row's label. The machinery
+    /// to attest it exists one daemon over (installd resolves its caller through
+    /// `GetConnectionUnixProcessID` and the identity resolver), but turning it on
+    /// here is a policy question rather than a patch: forage resolves to
+    /// `UnknownBinary` at every plausible path today, so attestation without an
+    /// answer for an unrecognised producer would silently drop its rows.
     pub app_id: String,
     /// The human title.
     pub title: String,
@@ -348,7 +383,12 @@ impl JobRegistry {
                 egress_host: spec.egress_host,
                 // Truncated here rather than at the caller, so every producer
                 // gets the same bound whatever it sends.
-                items: spec.items.into_iter().take(MAX_JOB_ITEMS).collect(),
+                items: spec
+                    .items
+                    .into_iter()
+                    .take(MAX_JOB_ITEMS)
+                    .map(|name| name.chars().take(MAX_JOB_ITEM_NAME).collect())
+                    .collect(),
             },
         );
         Some(id)
@@ -379,7 +419,8 @@ impl JobRegistry {
         match self.jobs.get_mut(&id) {
             Some(job) => {
                 job.state = state;
-                job.state_message = message;
+                job.state_message =
+                    message.map(|m| m.chars().take(MAX_JOB_MESSAGE).collect::<String>());
                 true
             }
             None => false,
@@ -754,6 +795,28 @@ mod ceiling_tests {
         let title = &r.get(id).expect("present").title;
         assert_eq!(title.chars().count(), MAX_JOB_TITLE);
         assert!(title.chars().all(|c| c == 'ü'));
+    }
+
+    /// The two strings a producer can make enormous are cut, not refused.
+    ///
+    /// A failed job's message is the only thing the row has to say; refusing it
+    /// would leave the failure silent, which is the defect this whole strand was
+    /// built to remove. The entry names were the sharper gap: the LIST was capped
+    /// at a hundred and each name was not, so a hundred entries could still be a
+    /// hundred megabytes.
+    #[test]
+    fn an_enormous_message_or_entry_name_is_cut_rather_than_refused() {
+        let mut r = JobRegistry::new();
+        let mut long = spec("files", "Copying");
+        long.items = vec!["x".repeat(MAX_JOB_ITEM_NAME * 4), "short".into()];
+        let id = r.register(long).expect("registered");
+        let items = &r.get(id).expect("present").items;
+        assert_eq!(items[0].chars().count(), MAX_JOB_ITEM_NAME);
+        assert_eq!(items[1], "short");
+
+        assert!(r.set_state(id, JobState::ErrorFatal, Some("e".repeat(MAX_JOB_MESSAGE * 5))));
+        let msg = r.get(id).expect("present").state_message.as_ref().expect("kept");
+        assert_eq!(msg.chars().count(), MAX_JOB_MESSAGE);
     }
 
     /// The wire adapter answers 0 for a refusal, which every producer can ignore
