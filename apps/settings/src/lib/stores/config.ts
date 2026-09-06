@@ -25,6 +25,20 @@ export interface ConfigState<T> {
   defaults: T | null;
   loading: boolean;
   error: string | null;
+  /// True when the LAST WRITE was refused, kept apart from `error` and from the
+  /// rollback that follows it.
+  ///
+  /// It used to be neither. `setValue`'s catch put the reason in `error` and then
+  /// called `load()` to roll back - and `load()` begins by setting `error: null`,
+  /// so the write failure was erased one line later by the very thing meant to
+  /// recover from it. What a person saw was a switch they had just moved sliding
+  /// back on its own with nothing said anywhere, on every control in this app
+  /// that goes through this store.
+  ///
+  /// And had it survived, it would have said the wrong thing: `error` is rendered
+  /// as "your configuration could not be read", which after a successful rollback
+  /// is false twice over - the read worked, and it is the write that did not.
+  writeFailed: boolean;
   /// True when there is no Tauri host to ask at all - a browser tab, a
   /// screenshot run, `vite dev`. NOT an error: nothing failed, there is simply
   /// nobody to answer. Kept apart from `error` because a page that renders "could
@@ -47,6 +61,7 @@ export function createConfigStore<T>(file: ConfigFile): ConfigStore<T> {
   const inner = writable<ConfigState<T>>({
     data: null,
     defaults: null,
+    writeFailed: false,
     loading: false,
     error: null,
     hostless: false,
@@ -62,20 +77,24 @@ export function createConfigStore<T>(file: ConfigFile): ConfigStore<T> {
       inner.update((s) => ({ ...s, loading: false, error: null, hostless: true }));
       return;
     }
+    // `writeFailed` is deliberately NOT cleared here: this runs as the rollback
+    // for a refused write, and clearing it is what erased the only record that
+    // anything had gone wrong.
     inner.update((s) => ({ ...s, loading: true, error: null, hostless: false }));
     try {
       const [data, defaults] = await Promise.all([
         invoke<T>("config_get", { file, key: null }),
         invoke<T>("config_get_default", { file, key: null }),
       ]);
-      inner.set({
+      inner.update((s) => ({
+        ...s,
         data,
         defaults,
         loading: false,
         error: null,
         hostless: false,
         lastSaved: new Date(),
-      });
+      }));
     } catch (e) {
       inner.update((s) => ({
         ...s,
@@ -86,6 +105,7 @@ export function createConfigStore<T>(file: ConfigFile): ConfigStore<T> {
   }
 
   async function setValue(key: string, value: unknown): Promise<void> {
+    inner.update((s) => ({ ...s, writeFailed: false }));
     // Optimistic update.
     inner.update((s) => {
       if (!s.data) return s;
@@ -95,10 +115,10 @@ export function createConfigStore<T>(file: ConfigFile): ConfigStore<T> {
     });
     try {
       await invoke("config_set", { file, key, value });
-      inner.update((s) => ({ ...s, lastSaved: new Date(), error: null }));
-    } catch (e) {
-      inner.update((s) => ({ ...s, error: String(e) }));
+      inner.update((s) => ({ ...s, lastSaved: new Date(), error: null, writeFailed: false }));
+    } catch {
       await load(); // Rollback by re-reading disk.
+      inner.update((s) => ({ ...s, writeFailed: true }));
     }
   }
 

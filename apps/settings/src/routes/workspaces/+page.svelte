@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
   import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
+  import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   /// Workspaces & Tiling settings page (Sprint B).
   ///
   /// Configures `compositor.toml [workspaces]` and `[layout]` via
@@ -107,6 +108,7 @@
   description={$t("s.ws.desc")}
 >
   <ConfigUnavailable error={$compositor.error} />
+  <ConfigWriteFailed failed={$compositor.writeFailed} />
   <SectionGrid>
     <Section label={$t("s.ws.layout")}>
     <Row
