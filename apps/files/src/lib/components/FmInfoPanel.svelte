@@ -255,7 +255,10 @@
   );
 </script>
 
-<aside class="panel" aria-label={$t("f.info.aria")}>
+<!-- The landmark names the file it is about, not just "Info": with the panel
+     open a reader hears which item they are reading details for, and two panels
+     side by side (the render-test route mounts four) are told apart. -->
+<aside class="panel" aria-label={$t("f.info.ariaFor", { name })}>
   <header class="ident" class:has-preview={thumb}>
     <button class="close" aria-label={$t("f.info.close")} onclick={() => onclose?.()}>
       <X size={14} strokeWidth={2} />
