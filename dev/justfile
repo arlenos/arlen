@@ -655,6 +655,23 @@ sweep-render base locale +paths:
 sweep-render-all locale="de" app="":
     "{{ROOT}}/dev/screenshot/sweep-render-all.sh" {{locale}} {{app}}
 
+# axe over every app and every surface worth rendering, one browser per surface.
+#
+# The sibling of `sweep-render-all` and it carries the same table of routes and
+# `::selector` clicks, for the same reason: until 7 September this measured ONE
+# landing page per app, so eleven apps had their tabs, dialogs and second routes
+# checked by nothing at all. Widening it to 55 surfaces found six real defects in
+# an evening, including a button with no name and a consent-dialog label at 3.9:1.
+#
+# One width, because contrast and names do not change with it; `sweep-render-all`
+# is the one that has to be run at three.
+#
+#   just sweep-axe                 # everything at 1280
+#   just sweep-axe 1920            # everything, wider
+#   just sweep-axe 1280 terminal   # one app
+sweep-axe width="1280" app="":
+    "{{ROOT}}/dev/screenshot/sweep-axe.sh" {{width}} {{app}}
+
 # Render every app's routes and report any message id that reached the screen.
 #
 # Each app's dev server is started, scanned and stopped in turn (several share a
