@@ -395,7 +395,16 @@ class Render:
             " axe.run(document, {resultTypes:['violations']}).then("
             "  r => { window.__axe = JSON.stringify(r.violations.map(v => ({id: v.id,"
             "    impact: v.impact, help: v.help, n: v.nodes.length,"
-            "    first: v.nodes[0] && v.nodes[0].target.join(' ')}))); },"
+            "    first: v.nodes[0] && v.nodes[0].target.join(' '),"
+            # THE NUMBERS, for the one rule whose finding is a measurement.
+            # Twice on 6 September a contrast reading was disputed by hand
+            # arithmetic that turned out to be measuring a different ground:
+            # axe composites the whole stack, a probe that stops at the first
+            # opaque ancestor does not. Carrying axe's own foreground,
+            # background and ratio ends that argument in the output rather
+            # than in a second render.
+            "    data: (v.nodes[0] && v.nodes[0].any && v.nodes[0].any[0] &&"
+            "           v.nodes[0].any[0].data) || null}))); },"
             "  e => { window.__axeErr = String(e); });"
             # The evaluation's own value must not be the promise: WebKit cannot
             # marshal one, and the whole script is one expression list, so the
@@ -446,6 +455,12 @@ class Render:
             print(f"axe: {len(found)} violation(s)")
             for v in found:
                 print(f"  {v['id']} ({v['impact']}): {v['help']} [{v['n']}x] -> {v.get('first')}")
+                d = v.get("data") or {}
+                if "contrastRatio" in d:
+                    print(f"      {d.get('fgColor')} on {d.get('bgColor')}"
+                          f" is {d.get('contrastRatio')}:1, needs"
+                          f" {d.get('expectedContrastRatio')}"
+                          f" ({d.get('fontSize')}, {d.get('fontWeight')})")
         self.axe_failures = len(found)
         self.snapshot()
 

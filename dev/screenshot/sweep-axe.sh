@@ -95,12 +95,20 @@ SURFACES=(
   # reach: the first two clicks added found a line at 3.05:1, a tile fading its own
   # status under the floor, and twenty-five rows in no landmark.
   #
+  # AND THE SEVEN `_*test` ROUTES, which were written FOR this loop and were in no
+  # table. Each one exists because its surface cannot be reached under vite any
+  # other way - `_printtest`'s own header says it is there "so the surface can be
+  # viewed + audited", and nothing had ever audited it. Three of them are the only
+  # route to their surface at all (the print dialog, the toast stack, the MPRIS
+  # applet); the other four show a populated panel where the click path above
+  # shows an empty one, which is a different picture of the same component.
+  #
   # SEVEN OF THE TEN APPLETS. Four of them do not render on a plain fixture at all
   # - no sound server, no battery, no tray client, no player - so a click spec for
   # them refuses every run, which is why they went unmeasured. `battery` is the
   # first one bought back with a host that answers, the way the consent specs are;
   # `audio`, `tray` and `mpris` are the same shape and still owed one.
-  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel"
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
