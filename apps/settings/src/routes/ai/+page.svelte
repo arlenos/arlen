@@ -26,6 +26,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t } from "$lib/i18n/messages";
   import { ai } from "$lib/stores/ai";
+  import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
 
   interface AiStatus {
     daemonRunning: boolean;
@@ -262,6 +263,7 @@
   title={$t("s.ai.title")}
   description={$t("s.ai.desc")}
 >
+  <ConfigWriteFailed failed={$ai.writeFailed} />
   <SectionGrid>
     <Section label={$t("s.ai.assistant")}>
       <Row

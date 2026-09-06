@@ -37,6 +37,7 @@
     type AppOverride,
   } from "$lib/stores/notifications";
   import { shell, type ToastPosition, type ToastAnimation } from "$lib/stores/shell";
+  import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
 
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -297,6 +298,7 @@
   title={$t("s.notif.title")}
   description={$t("s.notif.desc")}
 >
+  <ConfigWriteFailed failed={$notifications.writeFailed || $shell.writeFailed} />
   <SectionGrid>
   <div class="span-full notif-column">
 
