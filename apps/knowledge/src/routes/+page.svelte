@@ -57,7 +57,7 @@
       name: e.title,
       kind: "file",
       size: null,
-      modified_unix: e.at,
+      modified_unix: e.added,
       is_hidden: false,
       readonly: true,
       symlink_target: null,

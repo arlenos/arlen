@@ -116,9 +116,12 @@ console.log("invoke-exists:");
 
 {
   // The inventory is what makes this gate usable: without it every gated seam
-  // would be a permanent red and the check would be switched off. `knowledge_library`
-  // is carried with a recorded reason, FOR THE KNOWLEDGE APP.
-  const r = gateOver(["knowledge_library"], [], "knowledge");
+  // would be a permanent red and the check would be switched off.
+  // `mail_sender_person` is carried with a recorded reason, FOR THE MAIL APP.
+  // (It was `knowledge_library` until that one landed - a control keyed on a real
+  // inventory entry has to move when the entry does, which is the price of not
+  // testing the gate against a name nobody carries.)
+  const r = gateOver(["mail_sender_person"], [], "mail");
   check("a command carried as known-missing does not fail the run", r.code === 0,
         r.out.trim().split("\n")[0]);
 }
@@ -127,7 +130,7 @@ console.log("invoke-exists:");
   // And the half worth having: the excuse is scoped to the app that owns the
   // surface, so the same name elsewhere is still a finding. I assumed the
   // inventory was global when writing this and the gate corrected me.
-  const r = gateOver(["knowledge_library"], [], "clock");
+  const r = gateOver(["mail_sender_person"], [], "clock");
   check("but the same name from another app still is one", r.code === 1,
         r.out.trim().split("\n")[0]);
 }

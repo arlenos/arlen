@@ -559,14 +559,12 @@ DEAD_INVOKES: dict[str, str] = {
     # the Windows-app (bottles) surface; no backend in the tree - needs a decision on whether this ships before the surface is finished
     "set_bottle_config": "the Windows-app (bottles) surface; no backend in the tree",
     # the wallpaper surface against wallpaperd; the daemon exists, these commands do not - coder
-    # apps/knowledge has NO src-tauri at all: it is a SvelteKit frontend calling
-    # into a host that does not exist, which is why 14 commands are dead rather
-    # than 14 commands being unwritten. The daemon-side read ops all exist and the
-    # os-sdk has clients for them, so the missing piece is the app's Rust side -
-    # or a decision that this app is hosted some other way. Needs a decision
-    "knowledge_library": (
-        "the Knowledge app. Its Rust side exists; papers, books, notes and mail are bridge-ingested entities that are not graph nodes yet, so there is nothing to read"
-    ),
+    # `knowledge_library` was here until 7 September under a comment claiming
+    # apps/knowledge has no src-tauri at all. It has had one for weeks, and the
+    # entry's own text had already been corrected to say so while the comment
+    # above it went on describing the old world - which is how a reader ends up
+    # trusting the wrong half. The read exists now (`0x11`, bridge-architecture's
+    # display contract) and the command is registered.
     # the store's update actions against installd - arlen-ui's surface, coder owes the commands
     # apps/text-editor is the same shape as apps/knowledge: a frontend with no
     # src-tauri, so these three have nowhere to live yet - needs the same decision
