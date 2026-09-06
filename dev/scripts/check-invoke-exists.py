@@ -356,21 +356,12 @@ KNOWN: dict[str, dict[str, str]] = {
     # The lesson for the entries below: a reason that names another component's
     # constraint should say how it was checked, because the next reader cannot
     # tell a measurement from an assumption.
-    "knowledge": {
-        # FALSE WHEN: a bridge runs on a booted image and writes entity rows - the
-        # Obsidian one exists as an EXAMPLE with no image step and no unit, so
-        # today the read would return four empty sections on every machine.
-        # `knowledge-app.md` decision 8 sequences it exactly this way.
-        "knowledge_library": (
-            "the library view. The two schema decisions this entry used to name - "
-            "how a namespace maps onto a section, and which field is the title - "
-            "were settled on 9 August (bridge-architecture.md) and the declaration "
-            "landed with them: a type carries a display name, a class from a closed "
-            "set and its title field, and a type declaring none renders under "
-            "`other` by its identifier. What is left is the read op and the "
-            "section shape the surface parses"
-        ),
-    },
+    # `knowledge_library` was here until 7 September, waiting on two schema
+    # decisions - how a namespace maps onto a section, and which field is the
+    # title. Both were settled on 9 August (bridge-architecture.md) and the entry
+    # went on saying they were open for a month, which is the worst place for a
+    # stale reason: a gate's own prose reads as a measurement. The type declares
+    # its display identity now, `0x11` reads it and the command is registered.
     "settings": {
         # ONE Windows-app entry is left of the seven that stood here, and the note
         # that explained them has to be read with its date. It said the page came

@@ -148,11 +148,11 @@ check(
 check(
   "an inventory entry whose command now exists is reported",
   tree({
-    "apps/knowledge/package.json": "{}",
-    "apps/knowledge/src/lib/x.ts": 'await invoke("knowledge_library");\n',
-    "apps/knowledge/src-tauri/src/lib.rs": HOST.replace(/open_thing/g, "knowledge_library"),
+    "apps/mail/package.json": "{}",
+    "apps/mail/src/lib/x.ts": 'await invoke("mail_sender_person");\n',
+    "apps/mail/src-tauri/src/lib.rs": HOST.replace(/open_thing/g, "mail_sender_person"),
   }),
-  (code, out) => code !== 0 && out.includes("knowledge_library") && out.includes("now registers it"),
+  (code, out) => code !== 0 && out.includes("mail_sender_person") && out.includes("now registers it"),
 );
 
 check(
@@ -160,9 +160,9 @@ check(
   // Carried, still missing, still invoked: the ordinary state of the inventory,
   // which must not fail the check or the count would be unusable.
   tree({
-    "apps/knowledge/package.json": "{}",
-    "apps/knowledge/src/lib/x.ts": 'await invoke("knowledge_library");\n',
-    "apps/knowledge/src-tauri/src/lib.rs": "// no host commands here\n",
+    "apps/mail/package.json": "{}",
+    "apps/mail/src/lib/x.ts": 'await invoke("mail_sender_person");\n',
+    "apps/mail/src-tauri/src/lib.rs": "// no host commands here\n",
   }),
   (code) => code === 0,
 );

@@ -1,16 +1,21 @@
 <script lang="ts">
   /// The Library (decision 7 / §3b): the bridged knowledge content in one
-  /// list, one section per source. The section head carries the class label
-  /// and, quietly, the origin tag with its count (comma-separated, never a
-  /// middot) - the same origin a per-source revoke would sever. Rows reuse
-  /// the search anatomy: emphasized title, quiet sub, time in a FIXED column
-  /// so nothing drifts between rows.
+  /// list, one section per declared type. The head carries the name the TYPE
+  /// declared and, quietly, the source with its count (comma-separated, never a
+  /// middot) - the same origin a per-source revoke would sever. Rows reuse the
+  /// search anatomy: emphasized title, quiet sub, time in a FIXED column so
+  /// nothing drifts between rows.
+  ///
+  /// Every display class renders as this same list today. The set is closed so
+  /// that laying media out differently later is a change here rather than a
+  /// guess about a type nobody has seen; until that exists, one layout for all
+  /// five is the honest state and the class only fixes the section order.
   import { onMount } from "svelte";
   import {
     sources,
     libraryMocked,
     libraryUnavailable,
-    libraryNotBuilt,
+    libraryNoService,
     loadLibrary,
     type LibraryEntry,
   } from "$lib/stores/library";
@@ -61,23 +66,27 @@
 
   <div class="li-scroll">
     {#if $sources && $sources.length === 0}
-      <p class="li-empty">{$libraryNotBuilt
-          ? $t("k.library.notBuilt")
+      <p class="li-empty">{$libraryNoService
+          ? $t("k.li.noService")
           : $libraryUnavailable
             ? $t("k.library.unavailable")
             : $t("k.empty.library")}</p>
     {:else if $sources}
-      {#each $sources as src (src.key)}
+      {#each $sources as src (src.type)}
         <section class="li-source">
           <h2 class="li-source-head">
-            <span class="li-source-label">{$t(`k.li.${src.key}`)}</span>
-            <span class="li-source-origin">{$t("k.li.origin", { bridge: src.bridge, n: src.entries.length })}</span>
+            <!-- The type's own declared name, not a translated one: it is
+                 declared by whoever defined the type, which for a bridge is
+                 another repository. A type that declared none reads as its
+                 qualified identifier, which is plain and true. -->
+            <span class="li-source-label">{src.label}</span>
+            <span class="li-source-origin">{$t("k.li.origin", { source: src.source, n: src.entries.length })}</span>
           </h2>
           {#each src.entries as e (e.id)}
             <button type="button" class="li-row" onclick={() => onselect(e)}>
               <span class="li-title">{e.title}</span>
-              <span class="li-sub">{e.sub}</span>
-              <span class="li-time">{dayName(e.at)}</span>
+              <span class="li-sub">{e.sub ?? ""}</span>
+              <span class="li-time">{e.added === null ? "" : dayName(e.added)}</span>
             </button>
           {/each}
         </section>
