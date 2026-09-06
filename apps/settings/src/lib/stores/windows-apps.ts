@@ -18,6 +18,7 @@
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
+import { formatDecimal } from "@arlen/ui-kit/i18n";
 
 /// How well-supported the app is - stated honestly.
 export type CompatTier = "curated" | "best-effort";
@@ -415,6 +416,15 @@ export async function clearCaches(id: string): Promise<void> {
 }
 
 /// A byte count as the short size people read, "340 MB" not "356515840".
+///
+/// THE NUMBER IS THE READER'S. `toFixed` writes a decimal POINT whatever language
+/// the app is in, so a German machine read "1.5 GB" for a size it would write
+/// "1,5 GB" - the same defect the mail app had when it printed a date as
+/// `2026-08-19T09:00:00Z`. `formatDecimal` is the kit's helper and takes the
+/// active locale.
+///
+/// The space before the unit is a no-break one: a size is one quantity and
+/// wrapping it across two lines makes it read as two.
 export function formatSize(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let v = bytes;
@@ -424,7 +434,7 @@ export function formatSize(bytes: number): string {
     u += 1;
   }
   const digits = u === 0 ? 0 : v < 10 ? 1 : 0;
-  return `${v.toFixed(digits)} ${units[u]}`;
+  return `${formatDecimal(v, digits)}\u00a0${units[u]}`;
 }
 
 /// The last bottle this window forgot, and whether its files went to the trash
