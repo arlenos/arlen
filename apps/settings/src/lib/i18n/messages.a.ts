@@ -1641,7 +1641,7 @@ export const a: Catalogs = {
     "s.cmdEditor.needCommand": "spawn: braucht einen Befehl.",
     "s.type.systemDefault": "Systemstandard",
     "s.type.systemMono": "Systemschrift (fest)",
-    "s.display.refreshHz": ".input {$rate :number minimumFractionDigits=2}\n{{{$rate} Hz}}",
+    "s.display.refreshHz": ".input {$rate :number minimumFractionDigits=2}\n{{{$rate}\u00a0Hz}}",
     "s.display.apply": "Anwenden",
     "s.display.applyError": "Dieses Layout konnte nicht angewendet werden. Es wurde nichts geändert.",
     "s.bright.title": "Helligkeit",

@@ -162,7 +162,7 @@ const messages: Catalogs = {
     "c.wo.today": "heute",
     "c.wo.tomorrow": "morgen",
     "c.wo.yesterday": "gestern",
-    "c.wo.offset": "{$sign}{$hours} h, {$day}",
+    "c.wo.offset": "{$sign}{$hours}\u00a0h, {$day}",
   },
 };
 

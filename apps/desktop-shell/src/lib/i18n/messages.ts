@@ -1067,7 +1067,7 @@ const messages: Catalogs = {
     "sh.layout.tile": "Gekachelt",
     "sh.layout.single": "Einzeln",
     "sh.layout.gaps": "L\u00fccken",
-    "sh.layout.gapValue": "{$px} px",
+    "sh.layout.gapValue": "{$px}\u00a0px",
     "sh.layout.smartGaps": "Kluge L\u00fccken",
     "sh.layout.titleBars": "Titelleisten",
 
