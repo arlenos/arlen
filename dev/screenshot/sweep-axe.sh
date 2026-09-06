@@ -95,12 +95,12 @@ SURFACES=(
   # reach: the first two clicks added found a line at 3.05:1, a tile fading its own
   # status under the floor, and twenty-five rows in no landmark.
   #
-  # SIX OF THE TEN APPLETS, and the missing four are named rather than left to look
-  # like an oversight. `audio`, `battery`, `tray` and `mpris` do not render on this
-  # fixture at all - no sound server, no battery, no tray client, no player - so a
-  # click spec for them would refuse every run and be deleted within a week. They
-  # need a host that answers, the way the consent specs above do.
-  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]"
+  # SEVEN OF THE TEN APPLETS. Four of them do not render on a plain fixture at all
+  # - no sound server, no battery, no tray client, no player - so a click spec for
+  # them refuses every run, which is why they went unmeasured. `battery` is the
+  # first one bought back with a host that answers, the way the consent specs are;
+  # `audio`, `tray` and `mpris` are the same shape and still owed one.
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
