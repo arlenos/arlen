@@ -30,6 +30,7 @@ mod drift;
 mod lcg;
 mod meeting;
 mod lifecycle;
+mod library;
 mod links;
 mod migration;
 mod permission;
