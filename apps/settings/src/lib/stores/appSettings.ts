@@ -284,7 +284,7 @@ function getValue(key: string): unknown {
 }
 
 /// Identity and provenance metadata for one app: version, publisher and the
-/// store entry. Live: `settings_app_meta` (a seam - not in src-tauri yet);
+/// store entry. Live: `settings_app_meta`, which is registered in src-tauri;
 /// under vite the fixture stands in for the demo app only.
 export interface AppMeta {
   version: string | null;
@@ -321,8 +321,8 @@ export async function loadAppMeta(appId: string): Promise<void> {
 
 /// The general facts about one app (per-app-settings-plan.md §4.6): what it
 /// opens, its storage footprint and the default-app roles it holds. Live:
-/// `settings_app_general` + `settings_app_clear_cache` (seams); fixture under
-/// vite for the demo app.
+/// `settings_app_general` + `settings_app_clear_cache`, both registered;
+/// fixture under vite for the demo app.
 export interface AppGeneral {
   /// File types and link kinds the app registered handlers for.
   opens: string[];

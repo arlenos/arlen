@@ -82,7 +82,8 @@ const MOCK_CAPSULES: Capsule[] = [
   },
 ];
 
-/// The active capsules the list shows (fixture until `list_capsules` lands).
+/// The active capsules the list shows. `list_capsules` is registered, so this
+/// is the graph's answer under a host; the fixture is the vite path only.
 export const capsules = writable<Capsule[]>([]);
 export const capsulesLoaded = writable(false);
 /// A transient error surfaced if a revoke did not reach the daemon.

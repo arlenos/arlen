@@ -8,7 +8,7 @@
 /// **One answer per ask**: each run dies with its reply, so a follow-up does not
 /// remember the previous turn; the session id is this pane's thread, not a
 /// server-side one. `ai_capability` and the harness session entry
-/// (`open_harness_session`) are still coder seams. Under vite/DEV a fixture
+/// (`open_harness_session`) are both registered now. Under vite/DEV a fixture
 /// streams a canned answer so the pane is drivable; live without a reachable
 /// engine the pane says the agent is unreachable.
 import { get, writable } from "svelte/store";

@@ -4,10 +4,13 @@
 /// popover. A job is live, progressing, and cancelable; a notification is a past
 /// event. Closes the acute gap that the file manager reports no progress today.
 ///
-/// Mock-vs-live: fixture-backed. The JobView feed (the notification-daemon extended
-/// into a KDE-JobViewV3-mirror job server + the producers reporting progress) is a
-/// coder seam; the `list_jobs` query + cancel/pause/resume commands + the event feed
-/// are not built. Under vite the store serves a fixture set so the zone renders. The
+/// Mock-vs-live: live under a host, fixture under vite. `list_jobs`, `cancel_job`,
+/// `pause_job` and `resume_job` are registered and the `notification:job` feed is
+/// listened to below - this header said none of that was built while the load
+/// function forty lines down already called it live, which is the worse half of
+/// being out of date: the file disagreed with itself. What the JobView server does
+/// NOT have yet is the producers reporting progress into it, so a real session
+/// lists what there is and that is usually nothing. The
 /// shell owns the threshold/min-dwell visibility (a job shows once it passes ~1.5s).
 
 import { writable } from "svelte/store";
