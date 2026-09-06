@@ -56,7 +56,7 @@ const messages: Catalogs = {
     "term.hist.empty.default": "Commands you run land here.",
     // Neither of the two above may stand for a search that did not run: both are
     // statements about the person's own history.
-    "term.hist.unavailable": "That search did not run. Your history was not read.",
+    "term.hist.unavailable": "That search did not run.",
     "term.hp.exitCode": "exit {$code}",
     "term.of.fromOutput": "from the output",
     "term.sb.tableLens": "table",
@@ -145,7 +145,7 @@ const messages: Catalogs = {
     "term.hist.onlyInProject": "Nur Befehle in {$name}",
     "term.hist.empty.filtered": "Keine passenden Befehle.",
     "term.hist.empty.default": "Befehle, die du ausführst, landen hier.",
-    "term.hist.unavailable": "Diese Suche ist nicht gelaufen. Dein Verlauf wurde nicht gelesen.",
+    "term.hist.unavailable": "Diese Suche ist nicht gelaufen.",
     "term.hp.exitCode": "Code {$code}",
     "term.of.fromOutput": "aus der Ausgabe",
     "term.sb.tableLens": "Tabelle",
