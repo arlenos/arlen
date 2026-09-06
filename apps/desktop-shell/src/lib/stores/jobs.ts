@@ -262,24 +262,66 @@ export async function pollJobs(): Promise<void> {
 /// it both ways - so a job cannot read one way in the list and another as it
 /// updates.
 ///
-/// A job arrives with `removed` when it finished or was cancelled, and it leaves
-/// the feed at that point: the transient "done" receipt is the zone's to show,
-/// and a store that kept finished rows would make the list a history rather than
-/// a picture of what is running.
+/// How long a finished row stays readable before it goes.
+///
+/// **WITHOUT THIS, NO JOB EVER SHOWED HOW IT ENDED.** Every producer says how it
+/// went and then takes the row off in the same breath - `set_state("done")` or
+/// `set_state("error-fatal", why)` followed immediately by `finish` - and the two
+/// arrive microseconds apart. The store dropped the row on the second, so the
+/// "done" receipt this file's own comment called the zone's to show was on screen
+/// for no frames at all, and the message on a FAILED install or copy was never
+/// read by anybody. The failure line is the one that matters most and it was the
+/// one nobody saw.
+///
+/// Eight seconds: long enough to read a sentence somebody was not waiting for,
+/// short enough that the zone stays a picture of what is happening. It is a
+/// receipt, not a record - the durable half is the notification the producer also
+/// sends, which is where a failure belongs if the person was looking elsewhere.
+const RECEIPT_DWELL_MS = 8000;
+
+/// A job arrives with `removed` when it finished or was cancelled. The row is
+/// KEPT for [`RECEIPT_DWELL_MS`] carrying its final state, then dropped: a store
+/// that kept finished rows forever would make the list a history rather than a
+/// picture of what is running, and one that dropped them instantly - which is
+/// what this did - throws away the only thing a finished job has to say.
 export async function watchJobs(): Promise<UnlistenFn | null> {
   if (!tauriAvailable) return null;
-  return listen<{ job: Job; removed: boolean }>("notification:job", (event) => {
-    const { job, removed } = event.payload;
+  const dwelling = new Map<string, ReturnType<typeof setTimeout>>();
+  const place = (job: Job): void => {
     jobs.update((list) => {
       const rest = list.filter((j) => j.id !== job.id);
       // Oldest first, the same order `list_jobs` returns, so the snapshot and
       // the feed cannot disagree about where a row sits. A row that moves as its
       // progress changes is a row nobody can click.
-      return removed
-        ? rest
-        : [...rest, job].sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id));
+      return [...rest, job].sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id));
     });
+  };
+  const unlisten = await listen<{ job: Job; removed: boolean }>("notification:job", (event) => {
+    const { job, removed } = event.payload;
+    // A row that is already counting down and updates again keeps ONE timer:
+    // a producer that finishes twice must not leave a row behind for good.
+    const running = dwelling.get(job.id);
+    if (running) clearTimeout(running);
+    place(job);
+    if (removed) {
+      dwelling.set(
+        job.id,
+        setTimeout(() => {
+          dwelling.delete(job.id);
+          jobs.update((list) => list.filter((j) => j.id !== job.id));
+        }, RECEIPT_DWELL_MS),
+      );
+    } else {
+      dwelling.delete(job.id);
+    }
   });
+  // The timers go with the listener. A pending one firing after the shell has
+  // stopped watching would edit a store nothing is rendering from.
+  return () => {
+    for (const t of dwelling.values()) clearTimeout(t);
+    dwelling.clear();
+    unlisten();
+  };
 }
 
 /// Drive one job action optimistically, then reconcile with the daemon.
