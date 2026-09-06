@@ -78,8 +78,16 @@
             <!-- The type's own declared name, not a translated one: it is
                  declared by whoever defined the type, which for a bridge is
                  another repository. A type that declared none reads as its
-                 qualified identifier, which is plain and true. -->
-            <span class="li-source-label">{src.label}</span>
+                 qualified identifier, which is plain and true.
+                 THE IDENTIFIER IS NOT UPPERCASED. The head's letter-spaced caps
+                 suit a category word; an identifier is a string somebody may
+                 need to type back, and `md.obsidian.Note` shown as
+                 `MD.OBSIDIAN.NOTE` is no longer the thing it names. The label
+                 equalling the type IS the daemon's fallback, read back rather
+                 than guessed at. -->
+            <span class="li-source-label" class:li-verbatim={src.label === src.type}
+              >{src.label}</span
+            >
             <span class="li-source-origin">{$t("k.li.origin", { source: src.source, n: src.entries.length })}</span>
           </h2>
           {#each src.entries as e (e.id)}
@@ -141,6 +149,11 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  }
+  /* An identifier standing in for a name that was never declared. */
+  .li-source-label.li-verbatim {
+    letter-spacing: 0;
+    text-transform: none;
   }
   .li-source-origin {
     font-size: var(--text-2xs);

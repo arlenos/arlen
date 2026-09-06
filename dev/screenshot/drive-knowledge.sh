@@ -164,11 +164,13 @@ say "projects says it has none rather than failing or inventing one" \
   "$(case "$got" in ""|REFUSED:*) echo 0;; *) printf '%s' "$got" | grep -qiE "could not|cannot|failed" && echo 0 || echo 1;; esac)" "$got"
 
 got=$(page Library knowledge-library.png)
-# `knowledge_library` has no host yet - it is on the known-missing list, waiting on
-# a schema decision. So the page must say the library is not BUILT, not that the
-# read failed: "cannot read right now" promises a retry that will never work.
-say "the library says it is not built rather than that a read failed" \
-  "$(printf '%s' "$got" | grep -qi "not built yet" && echo 1 || echo 0)" "$got"
+# The read exists now (`0x11`, 7 September), so the "not built yet" sentence this
+# case used to assert is gone with the branch that showed it. What a real graph
+# with no bridges holds is nothing, and the honest answer is the empty state - NOT
+# a failure, and NOT an invented section. A read that broke would say "cannot read
+# right now" here, and that is the thing this case now watches for.
+say "the library says it has nothing bridged rather than that a read failed" \
+  "$(case "$got" in ""|REFUSED:*) echo 0;; *) printf '%s' "$got" | grep -qiE "could not|cannot|failed|not running" && echo 0 || echo 1;; esac)" "$got"
 
 got=$(page Searches knowledge-searches.png)
 say "the searches page answers without claiming a read failed" \
