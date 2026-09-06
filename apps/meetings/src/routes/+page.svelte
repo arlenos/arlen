@@ -16,9 +16,14 @@
 
 <div class="home" dir={$dir}>
   <div class="home-center">
-    {#if $meetingsMocked}
-      <p class="sample">{$t("mt.sample.list")}</p>
-    {:else if $meetingsUnavailable}
+    <!-- NO sample caveat here, and the rail's own comment is the argument: the
+         example rows are beside the list, "and a reader scanning them has no
+         reason to look at the pane that says pick one". This pane carried a
+         second copy of that sentence anyway, so the screen said it twice - the
+         shape knowledge's Library was fixed for in August. The read-failure line
+         below stays: that one IS about this pane, which is where somebody looks
+         when the list is empty. -->
+    {#if $meetingsUnavailable}
       <p class="sample">
         {$t(meetingsFailureKey($meetingsFailure))}
       </p>
