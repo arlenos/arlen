@@ -707,8 +707,10 @@ i18n-baseline:
 # What it holds: `--probe` reads the page AFTER `--open` clicked (it did not, for
 # weeks); `--stub-host` really installs a runtime and a plain run really has none,
 # which is the difference between rendering the browser preview and rendering the
-# failure a person meets; and a single-colour frame says so rather than passing as
-# a picture of an app that draws nothing.
+# failure a person meets; a single-colour frame says so rather than passing as
+# a picture of an app that draws nothing; and `--require-text` refuses a page that
+# never reached its state, which is what stops an empty render from reading as a
+# clean axe result.
 #   just screenshot-selfcheck
 screenshot-selfcheck:
     bash "{{justfile_directory()}}/screenshot/test-render-wide.sh"
