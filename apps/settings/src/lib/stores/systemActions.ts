@@ -24,7 +24,7 @@ export interface SystemActionDef {
   key: string;
   /// User-facing label for the Settings row.
   label: string;
-  /// Optional one-line description for the row.
+  /// Optional one-line description for the row, as a catalogue key.
   description?: string;
   category: SystemActionCategory;
   /// Built-in default command. Mirrors `default_system_actions()`
@@ -65,16 +65,14 @@ export const SYSTEM_ACTIONS: SystemActionDef[] = [
   {
     key: "BrightnessUp",
     label: "s.sysact.BrightnessUp",
-    description:
-      "Routed through the shell so the gamma-corrected step worker handles it.",
+    description: "s.sysact.brightnessRouted",
     category: "Brightness",
     default: "shell:brightness_up",
   },
   {
     key: "BrightnessDown",
     label: "s.sysact.BrightnessDown",
-    description:
-      "Routed through the shell so the gamma-corrected step worker handles it.",
+    description: "s.sysact.brightnessRouted",
     category: "Brightness",
     default: "shell:brightness_down",
   },

@@ -108,7 +108,7 @@
       {#each actionsByCategory(category) as action (action.key)}
         <Row
           label={$t(action.label)}
-          description={action.description}
+          description={action.description ? $t(action.description) : undefined}
           id={`action-${action.key}`}
         >
           {#snippet control()}
