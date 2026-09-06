@@ -85,7 +85,13 @@ export async function loadInstalledApps(): Promise<void> {
 export function mergeAppRows(
   rows: AppRow[],
   granted: GrantedPrincipal[],
-  collator?: Intl.Collator,
+  /// REQUIRED, and it used to default to `new Intl.Collator()`. A bare collator
+  /// sorts by the ENVIRONMENT's locale, not the app's - so this list's order was
+  /// decided by whatever the process happened to be started with, and the tests,
+  /// which passed none, asserted an order that depends on the machine running
+  /// them. Sorting names is a language decision; the caller is the only one that
+  /// knows which language, so it has to say.
+  collator: Intl.Collator,
 ): ListedApp[] {
   const out = new Map<string, ListedApp>();
   for (const r of rows) {
@@ -111,6 +117,5 @@ export function mergeAppRows(
     }
   }
   const list = [...out.values()];
-  const cmp = collator ?? new Intl.Collator();
-  return list.sort((a, b) => cmp.compare(a.label, b.label));
+  return list.sort((a, b) => collator.compare(a.label, b.label));
 }
