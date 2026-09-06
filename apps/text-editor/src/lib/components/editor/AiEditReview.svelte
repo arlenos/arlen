@@ -130,7 +130,7 @@
     padding: 0.2rem;
     border: none;
     background: transparent;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .close:hover {
     color: var(--color-fg-primary);

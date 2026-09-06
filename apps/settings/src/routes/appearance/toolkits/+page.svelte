@@ -139,7 +139,7 @@
   }
   .tk-always {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .tk-note {
     margin: 0.375rem 0 0;
@@ -234,6 +234,6 @@
   .ovr-note {
     margin: 0.5rem 0 0;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>

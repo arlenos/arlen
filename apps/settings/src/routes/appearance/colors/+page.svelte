@@ -195,7 +195,7 @@
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     padding-inline-start: 0.125rem;
   }
   .preview-col {

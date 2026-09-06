@@ -144,7 +144,7 @@
   }
   .utt-time {
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .utt-speaker {
     border: none;

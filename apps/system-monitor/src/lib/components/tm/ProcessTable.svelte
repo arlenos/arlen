@@ -566,7 +566,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .twist :global(svg) {
     transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
@@ -654,6 +654,6 @@
      tone, distinct from the amber camera/mic. */
   .kg-glyph {
     display: inline-flex;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 </style>

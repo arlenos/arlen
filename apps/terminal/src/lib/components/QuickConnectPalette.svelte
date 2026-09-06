@@ -219,7 +219,7 @@
     padding: 2px;
     border: none;
     background: transparent;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     border-radius: var(--radius-chip);
   }
   .qc-promote:hover {

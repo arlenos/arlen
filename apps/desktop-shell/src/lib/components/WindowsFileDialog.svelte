@@ -243,7 +243,7 @@
   .wf-access-note {
     margin: 0.125rem 0 0;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   /* First-run runtime fetch: a quiet progress step, the same dialog. */

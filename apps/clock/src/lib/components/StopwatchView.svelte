@@ -76,7 +76,7 @@
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
   }
   .sw-total.idle {
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   /* The twins span the column together, half each - same width discipline
      as every tile below them. */
@@ -117,7 +117,7 @@
   .sw-lap-delta {
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .sw-lap-total {
     justify-self: end;

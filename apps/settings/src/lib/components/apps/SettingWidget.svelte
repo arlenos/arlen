@@ -362,7 +362,7 @@
     padding: 0.125rem 0.25rem;
     font-size: var(--text-xs);
     font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
     transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .reset:hover {
@@ -429,7 +429,7 @@
     font-size: var(--text-2xs);
   }
   .keybind-unset {
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
 
   .secret-edit {
@@ -443,7 +443,7 @@
   }
   .unknown-type {
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .secret-state.unset {
     color: color-mix(in srgb, var(--foreground) 40%, transparent);

@@ -206,7 +206,7 @@
     color: var(--color-fg-primary);
   }
   .off .al-time {
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .al-text {
     display: flex;

@@ -215,7 +215,7 @@
     border: none;
     border-radius: var(--radius-button, 6px);
     background: transparent;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .wo-remove:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);

@@ -151,7 +151,7 @@
     margin: 0;
     padding: 0 8px 8px;
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .search-bar :global(input) {
     flex: 1;

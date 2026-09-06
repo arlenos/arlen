@@ -626,7 +626,7 @@
     font-size: var(--text-2xs, 11px);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .of-subject {
     overflow: hidden;
