@@ -356,6 +356,9 @@ const messages: Catalogs = {
     // Battery popover
     "sh.dur.hm": "{$h}h {$m}min",
     "sh.dur.m": "{$m}min",
+    "sh.bt.tip.plain": "Bluetooth",
+    "sh.bt.tip.off": "Bluetooth: off",
+    "sh.bt.tip.unknown": "Bluetooth: not known",
     "sh.bat.tip.plain": "Battery",
     "sh.bat.tip.level": "Battery: {$pct}%",
     "sh.bat.tip.untilFull": "Battery: {$pct}%, {$time} until full",
@@ -1045,6 +1048,9 @@ const messages: Catalogs = {
 
     "sh.dur.hm": "{$h} Std. {$m} Min.",
     "sh.dur.m": "{$m} Min.",
+    "sh.bt.tip.plain": "Bluetooth",
+    "sh.bt.tip.off": "Bluetooth: aus",
+    "sh.bt.tip.unknown": "Bluetooth: nicht bekannt",
     "sh.bat.tip.plain": "Akku",
     "sh.bat.tip.level": "Akku: {$pct}\u00a0%",
     "sh.bat.tip.untilFull": "Akku: {$pct}\u00a0%, in {$time} voll",
