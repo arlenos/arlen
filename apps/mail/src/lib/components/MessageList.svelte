@@ -6,17 +6,21 @@
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { t, locale } from "$lib/i18n/messages";
-  import type { Envelope } from "$lib/stores/mailbox";
+  import type { Envelope, FolderKind } from "$lib/stores/mailbox";
 
   let {
     rows,
     selected,
+    folderKind = null,
     onchange,
     onopen,
     onarchive,
     ondelete,
   }: {
     rows: (Envelope & { count?: number })[];
+    /// The kind of the folder these rows come from. A draft has no sender, and
+    /// in the drafts folder that is not worth a row saying so.
+    folderKind?: FolderKind | null;
     /// The selected message ids; one id means the reading pane shows it.
     selected: Set<string>;
     onchange: (sel: Set<string>) => void;
@@ -139,7 +143,9 @@
         <span class="dot" class:unread={e.unread} aria-hidden="true"></span>
         <span class="row-body">
           <span class="row-top">
-            <span class="from" class:strong={e.unread}>{e.from || $t("ml.noSender")}</span>
+            <span class="from" class:strong={e.unread}
+              >{e.from || (folderKind === "drafts" ? $t("ml.draftRow") : $t("ml.noSender"))}</span
+            >
             {#if e.dateMs > 0}
               <span class="when">{listDate(e.dateMs, $locale)}</span>
             {/if}

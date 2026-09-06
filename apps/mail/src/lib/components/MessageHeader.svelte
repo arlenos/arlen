@@ -14,6 +14,10 @@
 
   const name = $derived(message.from ? displayName(message.from) : "");
   const letter = $derived((name.trim()[0] ?? "?").toUpperCase());
+  /// A message with recipients and no sender is a draft of yours (a maildir
+  /// draft carries no From): the sender line has nothing to say, so it is not
+  /// there, and the recipients stand alone.
+  const draft = $derived(!message.from && message.to.length > 0);
 
   /// The graph's name for this sender, when the machine knows one. Reading the
   /// Knowledge Graph is the intended `mail_sender_person` seam; nothing here
@@ -30,19 +34,23 @@
 <header class="head">
   <h2 class="subject">{message.subject ?? "-"}</h2>
   <div class="from-line">
-    <!-- The kit avatar, on the radius system - never a hand-rolled circle. -->
-    <Avatar class="size-9" aria-hidden="true">
-      <AvatarFallback>{letter}</AvatarFallback>
-    </Avatar>
+    {#if !draft}
+      <!-- The kit avatar, on the radius system - never a hand-rolled circle. -->
+      <Avatar class="size-9" aria-hidden="true">
+        <AvatarFallback>{letter}</AvatarFallback>
+      </Avatar>
+    {/if}
     <div class="who">
-      <p class="from">
-        {#if message.from}
-          {message.from}
-          <span class="caveat">({$t("ml.unsigned")})</span>
-        {:else}
-          {$t("ml.noSender")}
-        {/if}
-      </p>
+      {#if !draft}
+        <p class="from">
+          {#if message.from}
+            {message.from}
+            <span class="caveat">({$t("ml.unsigned")})</span>
+          {:else}
+            {$t("ml.noSender")}
+          {/if}
+        </p>
+      {/if}
       {#if known}
         <p class="known">
           <UserRound size={12} strokeWidth={1.75} aria-hidden="true" />
