@@ -358,6 +358,7 @@ export const a: Catalogs = {
     // Search
     "s.search.placeholder": "Search settings...",
     "s.search.aria": "Search settings",
+    "s.nav.aria": "Settings sections",
     "s.header.breadcrumb": "Breadcrumb",
     "s.header.appName": "Settings",
     // Shared
@@ -1206,6 +1207,7 @@ export const a: Catalogs = {
     "s.section.apps": "Apps & Module",
     "s.search.placeholder": "Einstellungen suchen…",
     "s.search.aria": "Einstellungen suchen",
+    "s.nav.aria": "Einstellungsbereiche",
     "s.header.breadcrumb": "Breadcrumb",
     "s.header.appName": "Einstellungen",
     "s.err.readPaused": "Diese Einstellungen können gerade nicht gelesen werden. Änderungen sind pausiert.",
