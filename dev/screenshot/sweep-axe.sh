@@ -61,6 +61,14 @@ PORT=5310
 # `serious`: the dialog had no accessible name at all. A surface that needs a
 # runtime to exist was, until now, a surface this file could only pretend to
 # cover.
+#
+# THE CONSENT SPECS PIN A LOCALE, and that is not decoration. A host declares
+# what its state SAYS, in one sentence, and the sentence is in a language - so a
+# spec that leaves the locale to the default is asking the check to hold in two
+# languages at once. The first run of these three refused for exactly that: the
+# page read "Allow Notes to read your notes and their tags?" against an EXPECT of
+# "Zulassen?". The check was right and the spec was wrong, which is the good way
+# round.
 SURFACES=(
   "files /|/::[data-place=recent]|/::[data-place=trash]"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session"
@@ -79,7 +87,13 @@ SURFACES=(
   # The three request shapes worth their own reading: a standard grant, the
   # permanent delete with its hold-to-confirm, and the external send with a
   # preview of what would leave the machine.
-  "desktop-shell /waypointer|/|/consent|/consent?consent=1@@shell-consent-request|/consent?consent=3@@shell-consent-request|/consent?consent=4@@shell-consent-request"
+  #
+  # THE TWO PANELS ARE HERE BECAUSE THEY WERE NOWHERE. Quick Settings and the
+  # notification list open from the bar, and this row carried no click at all - so
+  # the two surfaces a person opens most often on this window had never been
+  # measured. They are also where the panel-only markup lives, which is exactly
+  # the kind that a landing-page walk cannot reach.
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
