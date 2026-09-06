@@ -374,7 +374,7 @@
       await load();
       banner = {
         kind: "info",
-        message: "Quick Settings layout restored to defaults.",
+        message: $t("s.qs.resetDone"),
       };
     } catch (e) {
       banner = {
