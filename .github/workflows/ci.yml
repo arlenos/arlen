@@ -490,6 +490,8 @@ jobs:
           node dev/scripts/test-check-child-props-order.mjs
           python3 dev/scripts/check-message-placeholders.py
           node dev/scripts/test-check-message-placeholders.mjs
+          python3 dev/scripts/check-rail-landmark.py
+          node dev/scripts/test-check-rail-landmark.mjs
           python3 dev/scripts/check-dbus-members-exist.py
           node dev/scripts/test-check-dbus-members-exist.mjs
           python3 dev/scripts/check-dbus-call-arity.py
