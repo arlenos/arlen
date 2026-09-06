@@ -662,7 +662,14 @@
 
     <div class="swatches">
       {#each swatches as s (s.token)}
-        <button class="swatch" class:active={color === s.hex} style={`background:${s.hex}`} aria-label={$t("s.swatch", { name: s.token.replace("--color-", "") })} onclick={() => (color = s.hex)}></button>
+        <!-- The name is a CATALOGUE entry keyed on the token, not the token with
+             its prefix stripped. That read "Farbe error" and "Farbe fg-inverse"
+             out loud, which names nothing a person choosing a pen colour is
+             looking for. The three semantic ones are red, yellow and green in
+             every theme; the two neutrals are named for their role, because
+             which of them is light and which is dark swaps with the theme and a
+             colour word would be wrong half the time. -->
+        <button class="swatch" class:active={color === s.hex} style={`background:${s.hex}`} aria-label={$t("s.swatch", { name: $t(`s.swatch.${s.token.replace("--color-", "")}`) })} onclick={() => (color = s.hex)}></button>
       {/each}
     </div>
 
@@ -867,6 +874,14 @@
   .swatch.active {
     outline: 2px solid var(--color-accent);
     outline-offset: 1px;
+  }
+  /* Focus gets its OWN channel, because selection already took the outline. The
+     selected swatch could not show focus at all: an explicit `outline` also
+     suppresses the UA ring, so tabbing onto the one that is already chosen
+     changed nothing on screen. Found by the focus-ring probe once it stopped
+     mistaking an autofocused control for a ringless one. */
+  .swatch:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-bg-app), 0 0 0 4px var(--color-fg-primary);
   }
   .size-bar {
     display: block;
