@@ -171,7 +171,10 @@
   });
 </script>
 
-<div style="background:#0a0a0a;padding:8px;min-height:100vh;">
+<!-- `main`, because a look-mock is a document a person reads - the same call
+     made for the shell's four on 6 September, and the opposite of the one made
+     for the shell's own bar, which is chrome and has no main content to name. -->
+<main style="background:#0a0a0a;padding:8px;min-height:100vh;">
   <GridRegion {cells} />
   {#if paletteReady}
     <HistoryPalette />
@@ -183,4 +186,4 @@
       <StreamEmpty kind="none" onretry={() => newSession()} />
     </div>
   {/if}
-</div>
+</main>

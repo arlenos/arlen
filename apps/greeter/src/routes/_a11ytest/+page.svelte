@@ -36,11 +36,15 @@
   });
 </script>
 
-<div class="harness">
+<!-- `main`, because a look-mock is a document a person reads - the same call
+     made for the shell's four on 6 September, and the opposite of the one made
+     for the shell's own bar, which is chrome and has no main content to name. -->
+<main class="harness">
+  <h1>Accessibility menu</h1>
   {#if ready}
     <A11yMenu />
   {/if}
-</div>
+</main>
 
 <style>
   /* The corner popover opens UPWARD from its trigger, so the trigger has to sit
