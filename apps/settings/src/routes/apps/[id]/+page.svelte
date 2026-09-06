@@ -8,6 +8,7 @@
   /// never an invented panel.
   import { onMount } from "svelte";
   import { page } from "$app/stores";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -63,10 +64,13 @@
   // Version and publisher share one quiet identity line; either may be absent.
   const metaLine = $derived([$appMeta?.version, $appMeta?.publisher].filter(Boolean).join(", "));
 
+  // The number is the reader's: `toFixed` writes a decimal POINT in every
+  // language, so this said "1.5 GB" to somebody whose machine writes "1,5 GB".
+  // The space before the unit is a no-break one - a size is one quantity.
   function fmtBytes(n: number): string {
-    if (n < 1_000_000) return `${Math.max(1, Math.round(n / 1_000))} kB`;
-    if (n < 1_000_000_000) return `${Math.round(n / 1_000_000)} MB`;
-    return `${(n / 1_000_000_000).toFixed(1)} GB`;
+    if (n < 1_000_000) return `${formatDecimal(Math.max(1, Math.round(n / 1_000)))}\u00a0kB`;
+    if (n < 1_000_000_000) return `${formatDecimal(Math.round(n / 1_000_000))}\u00a0MB`;
+    return `${formatDecimal(n / 1_000_000_000, 1)}\u00a0GB`;
   }
 
   // The per-line remove, same confirm as the privacy browser; the full
