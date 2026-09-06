@@ -110,17 +110,24 @@ SURFACES=(
   # applet); the other four show a populated panel where the click path above
   # shows an empty one, which is a different picture of the same component.
   #
-  # EIGHT OF THE TEN APPLETS. Four of them do not render on a plain fixture at all
-  # - no sound server, no battery, no tray client, no player - so a click spec for
-  # them refuses every run, which is why they went unmeasured. `battery` and
-  # `audio` are bought back with hosts that answer, the way the consent specs are;
-  # `tray` and `mpris` are the same shape and still owed one.
+  # ALL TEN APPLETS. Four of them do not render on a plain fixture at all - no
+  # sound server, no battery, no tray client, no player - so a click spec for them
+  # refused every run, which is why they went unmeasured for as long as this table
+  # has existed. All four are bought back with hosts that answer, the way the
+  # consent specs are.
   #
   # AN APPLET HOST OWES TWO READS, which the audio one found out by refusing: the
   # APPLET and its PANEL ask different commands (`get_audio_status` against
   # `get_audio_full_state`), so answering only the panel's leaves the applet
   # hidden and the click with nothing to hit.
-  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest"
+  #
+  # THE MPRIS SPEC CLICKS `.mpris-art`, not a `data-applet-id`, because the
+  # now-playing indicator does not use the kit's `Applet` - it renders its own
+  # grouped art-plus-transport pair, so it carries no such attribute. Writing the
+  # spec is what found the reason that panel had never been seen: the art button
+  # spread the tooltip trigger's props AFTER its own `onclick`, so bits-ui's
+  # close handler replaced the toggle and the click did nothing at all.
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
