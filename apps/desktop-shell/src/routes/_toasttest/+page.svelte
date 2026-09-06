@@ -66,7 +66,18 @@
 </main>
 
 <style>
+  /* A GROUND OF ITS OWN, because this page never had one. `--foreground` is
+     near-white and the browser's default page is white, so the heading and the
+     prose here measured 1.04:1 - invisible, on the page whose whole job is to be
+     looked at. Found by putting this route into the axe table on 6 September; it
+     had never been in one.
+     Painted on `main` rather than `body`: the shell's body is deliberately
+     TRANSPARENT (it is a layer surface over the desktop), so a dev route that
+     sets `body` is fighting a rule that is right, and loses. `_undotest` had
+     already worked this out - it paints its own stage. */
   main {
+    min-height: 100vh;
+    background: var(--color-bg-shell, #0a0a0a);
     padding: 2rem;
     color: var(--foreground);
     font-size: 0.9rem;
