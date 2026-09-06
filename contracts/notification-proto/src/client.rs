@@ -20,7 +20,7 @@
 //! let jobs = JobViewServerProxy::new(conn).await?;
 //! // Register a determinate 200-file copy the shell may cancel.
 //! let id = jobs
-//!     .register("files", "Copy 200 files", "files", 200, true, true, false, "")
+//!     .register("files", "Copy 200 files", "files", 200, true, true, false, "", &[])
 //!     .await?;
 //! jobs.update(id, 50, 200, true).await?; // 50 of 200 done
 //! jobs.finish(id).await?;
@@ -45,6 +45,19 @@ use zbus::proxy;
 )]
 pub trait JobViewServer {
     /// Register a job and return its stable id (unique for the daemon's life).
+    ///
+    /// `items` are the things the job will work through, in order, so the zone can
+    /// expand its bar into their names; the daemon caps the list and the count
+    /// stays whatever `total` said. Pass an empty slice for a job with nothing to
+    /// list - a build, a single download.
+    ///
+    /// **THIS ARGUMENT WAS MISSING HERE FOR AS LONG AS THE SERVER HAD IT.** The
+    /// server grew `items`; this proxy did not, and zbus matches a method by name
+    /// AND signature, so every `register` through this trait was answered with an
+    /// error. Both callers ignore the result - correctly, since a job report must
+    /// never break the work it reports on - so forage's builds and the model
+    /// downloads reported nothing at all and nothing said so. A stale proxy fails
+    /// exactly where a best-effort contract cannot see it.
     #[allow(clippy::too_many_arguments)]
     async fn register(
         &self,
@@ -56,6 +69,7 @@ pub trait JobViewServer {
         killable: bool,
         suspendable: bool,
         egress_host: &str,
+        items: &[&str],
     ) -> zbus::Result<u64>;
 
     /// Advance a job's processed amount (and optionally its total).

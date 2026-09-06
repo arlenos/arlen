@@ -61,7 +61,7 @@ impl BuildJob {
         // total=0/determinate=false -> indeterminate; not killable/suspendable
         // (a cancel-back path is a later slice); no egress line at this layer.
         let id = proxy
-            .register("forage", title, "items", 0, false, false, false, "")
+            .register("forage", title, "items", 0, false, false, false, "", &[])
             .await
             .ok()?;
         Some(BuildJob { proxy, id })
