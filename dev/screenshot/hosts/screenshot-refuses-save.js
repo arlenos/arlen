@@ -28,7 +28,14 @@
       // photographed - a finding against the app that was really a hole in the
       // stub. Worth the line of comment: the picture looked like a defect.
       if (cmd === "capture_available") return Promise.resolve(true);
-      if (cmd === "list_outputs") return Promise.resolve([{ name: "eDP-1", width: 2, height: 2 }]);
+      // `index` is not decoration: the surface keys its source dropdown on it
+      // (`screen:${o.index}`) and matches the chosen source back with
+      // `outputs.find((o) => o.index === n)`. Without it the option carried
+      // `screen:undefined` while its LABEL read "eDP-1", so the picture looked
+      // right and the value behind it was not.
+      if (cmd === "list_outputs") {
+        return Promise.resolve([{ index: 0, name: "eDP-1", width: 2, height: 2 }]);
+      }
       if (cmd === "list_windows") return Promise.resolve([]);
       if (cmd === "capture_output" || cmd === "capture_window") {
         return Promise.resolve("data:image/png;base64," + PNG);
