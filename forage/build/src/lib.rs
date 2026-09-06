@@ -91,6 +91,13 @@ pub enum BuildError {
     /// A build step workdir was absolute or escaped the source root.
     #[error("build step workdir `{0}` must be relative and within the source tree")]
     InvalidWorkdir(String),
+    /// The caller asked for the build to stop, and it was.
+    ///
+    /// Distinct from a failure on purpose: a cancelled build produced no package
+    /// and that is the outcome somebody asked for, so a caller reports it as a
+    /// stop rather than as something that went wrong.
+    #[error("build cancelled")]
+    Cancelled,
     /// A command exited non-zero or could not be spawned.
     #[error("command `{tool}` failed: {reason}")]
     CommandFailed {
@@ -362,7 +369,24 @@ pub fn execute_plan(
 pub struct BuildLimits {
     /// Maximum wall-clock time for one command; `None` is unbounded.
     pub wall_clock: Option<std::time::Duration>,
+    /// A flag the caller flips to stop the build.
+    ///
+    /// `None` is the ordinary case and costs nothing: without it the runner
+    /// waits on the child rather than polling. With it, the wait becomes a poll
+    /// in short slices, and a raised flag kills the command's whole process
+    /// group - the same reaping the wall-clock timeout does, for the same
+    /// reason, since a build's descendants are what actually hold the CPU.
+    ///
+    /// **A CANCEL THAT CANNOT STOP ANYTHING MUST NOT BE OFFERED.** The job
+    /// surface asks a producer to declare whether its work is killable, and
+    /// forage answered no while there was no way to interrupt a build. This is
+    /// what changes that answer; the flag is the mechanism the declaration
+    /// stands on.
+    pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
+
+/// How long the runner waits on the child between cancel checks.
+const CANCEL_POLL: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// The reproducible build umask. `022` masks group and other write bits, so a
 /// file the build creates with a permissive request lands at a fixed mode
@@ -445,40 +469,54 @@ fn run_command(
         reason: format!("spawn: {e}"),
     })?;
 
-    let status = match limits.wall_clock {
-        None => child.wait().map_err(|e| BuildError::CommandFailed {
+    let status = match (limits.wall_clock, limits.cancel.as_ref()) {
+        // Neither bound: wait on the child. No polling, no wakeups, and the
+        // behaviour every existing caller already has.
+        (None, None) => child.wait().map_err(|e| BuildError::CommandFailed {
             tool: tool.to_string(),
             reason: format!("wait: {e}"),
         })?,
-        Some(dur) => {
+        (deadline, cancel) => {
             use wait_timeout::ChildExt;
-            let waited = match child.wait_timeout(dur) {
-                Ok(w) => w,
-                Err(e) => {
-                    // A wait failure leaves the build running; kill it rather
-                    // than leak a process before surfacing the error.
+            let started = std::time::Instant::now();
+            loop {
+                if cancel.is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed)) {
+                    // Same reaping as the timeout below, and for the same
+                    // reason: the direct child is unreaped here, which pins its
+                    // pid and group against reuse, so `kill(-pid)` cannot land
+                    // on somebody else's group.
                     kill_process_group(&child);
                     let _ = child.wait();
-                    return Err(BuildError::CommandFailed {
-                        tool: tool.to_string(),
-                        reason: format!("wait: {e}"),
-                    });
+                    return Err(BuildError::Cancelled);
                 }
-            };
-            match waited {
-                Some(status) => status,
-                None => {
-                    // The build has not exited, so `Child` still holds its
-                    // unreaped slot; that pins both the pid and the process
-                    // group id against reuse until the `child.wait()` below, so
-                    // `kill(-pid)` cannot land on an unrelated recycled group.
-                    kill_process_group(&child);
-                    // Reap the now-killed direct child so it is not left a zombie.
-                    let _ = child.wait();
-                    return Err(BuildError::CommandFailed {
-                        tool: tool.to_string(),
-                        reason: format!("wall-clock timeout after {}s", dur.as_secs()),
-                    });
+                let left = deadline.map(|d| d.saturating_sub(started.elapsed()));
+                if let (Some(d), Some(rest)) = (deadline, left) {
+                    if rest.is_zero() {
+                        kill_process_group(&child);
+                        let _ = child.wait();
+                        return Err(BuildError::CommandFailed {
+                            tool: tool.to_string(),
+                            reason: format!("wall-clock timeout after {}s", d.as_secs()),
+                        });
+                    }
+                }
+                // Short enough that a cancel is acted on while somebody is still
+                // looking at the button, long enough that a half-hour build is
+                // not thousands of wakeups a minute.
+                let slice = left.map_or(CANCEL_POLL, |rest| rest.min(CANCEL_POLL));
+                match child.wait_timeout(slice) {
+                    Ok(Some(status)) => break status,
+                    Ok(None) => continue,
+                    Err(e) => {
+                        // A wait failure leaves the build running; kill it rather
+                        // than leak a process before surfacing the error.
+                        kill_process_group(&child);
+                        let _ = child.wait();
+                        return Err(BuildError::CommandFailed {
+                            tool: tool.to_string(),
+                            reason: format!("wait: {e}"),
+                        });
+                    }
                 }
             }
         }
@@ -963,6 +1001,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let runner = ProcessRunner::with_limits(BuildLimits {
             wall_clock: Some(Duration::from_millis(300)),
+            ..Default::default()
         });
         let plan = BuildPlan {
             commands: vec![BuildCommand {
@@ -1010,6 +1049,7 @@ mod tests {
         };
         let runner = ProcessRunner::with_limits(BuildLimits {
             wall_clock: Some(Duration::from_millis(300)),
+            ..Default::default()
         });
         let _ = execute_plan(&plan, &runner, dir.path());
         // Give any unreaped descendant well over its sleep to (wrongly) fire.
@@ -1023,6 +1063,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let runner = ProcessRunner::with_limits(BuildLimits {
             wall_clock: Some(std::time::Duration::from_secs(30)),
+            ..Default::default()
         });
         let plan = BuildPlan {
             commands: vec![BuildCommand {
@@ -1034,5 +1075,79 @@ mod tests {
         };
         // A fast command under a generous limit succeeds normally.
         execute_plan(&plan, &runner, dir.path()).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod cancel_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    /// A raised flag stops a command that would otherwise run for a minute, and
+    /// says it was cancelled rather than that something failed.
+    #[test]
+    fn a_raised_flag_stops_a_running_command() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let raiser = Arc::clone(&flag);
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            raiser.store(true, Ordering::Relaxed);
+        });
+
+        let runner = ProcessRunner::with_limits(BuildLimits {
+            wall_clock: None,
+            cancel: Some(flag),
+        });
+        let dir = tempfile::tempdir().expect("temp dir");
+        let cmd = BuildCommand {
+            tool: "sleep".into(),
+            args: vec!["60".into()],
+            env: Default::default(),
+            workdir: None,
+        };
+        let started = std::time::Instant::now();
+        let r = runner.run(&cmd, dir.path());
+        assert!(matches!(r, Err(BuildError::Cancelled)), "{r:?}");
+        // It stopped when the flag went up, not when `sleep` would have ended.
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    /// A flag that stays down changes nothing: the command runs to its own end
+    /// and the poll is invisible.
+    #[test]
+    fn a_flag_that_is_never_raised_leaves_a_command_alone() {
+        let runner = ProcessRunner::with_limits(BuildLimits {
+            wall_clock: None,
+            cancel: Some(Arc::new(AtomicBool::new(false))),
+        });
+        let dir = tempfile::tempdir().expect("temp dir");
+        let cmd = BuildCommand {
+            tool: "true".into(),
+            args: vec![],
+            env: Default::default(),
+            workdir: None,
+        };
+        assert!(runner.run(&cmd, dir.path()).is_ok());
+    }
+
+    /// A flag raised BEFORE the command is spawned still stops it, rather than
+    /// letting one more step through because nothing had started polling yet.
+    #[test]
+    fn a_flag_already_up_stops_the_next_command_too() {
+        let runner = ProcessRunner::with_limits(BuildLimits {
+            wall_clock: None,
+            cancel: Some(Arc::new(AtomicBool::new(true))),
+        });
+        let dir = tempfile::tempdir().expect("temp dir");
+        let cmd = BuildCommand {
+            tool: "sleep".into(),
+            args: vec!["30".into()],
+            env: Default::default(),
+            workdir: None,
+        };
+        let started = std::time::Instant::now();
+        assert!(matches!(runner.run(&cmd, dir.path()), Err(BuildError::Cancelled)));
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 }

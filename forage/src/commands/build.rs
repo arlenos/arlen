@@ -45,38 +45,84 @@ fn store_root() -> PathBuf {
 /// be absent (a headless CI run or no desktop session), and a report failure
 /// must never affect the build, so every call swallows its error. The job is
 /// indeterminate - a build's true progress is not a clean count - so the shell
-/// draws an activity spinner with the title, not a filled bar.
+/// shows the title and says it is running, and draws no bar - there is nothing
+/// measured to draw one from. Not a spinner: the kit's `Progress` is
+/// determinate-only, so an indeterminate row is a title and a word until that
+/// changes, which is honest if plainer than this comment used to claim.
 struct BuildJob {
     proxy: notification_proto::client::JobViewServerProxy<'static>,
     id: u64,
 }
 
+/// The flag a build watches, and the one the shell's Cancel raises.
+type CancelFlag = std::sync::Arc<std::sync::atomic::AtomicBool>;
+
 impl BuildJob {
     /// Register the build job, or `None` when the job server is unreachable.
-    async fn start(title: &str) -> Option<BuildJob> {
+    ///
+    /// KILLABLE, now that a raised flag actually stops the build: the runner
+    /// polls it between short waits and kills the command's whole process group.
+    /// It answered `false` for as long as there was no way to interrupt a build,
+    /// which was the right answer then - a Cancel button that stops nothing is
+    /// the promise this surface exists not to make.
+    ///
+    /// Not suspendable: pausing a build means holding an unbounded wait inside a
+    /// sandbox with the source tree open, and nothing resumes it cleanly.
+    async fn start(title: &str, cancel: CancelFlag) -> Option<BuildJob> {
         let conn = zbus::Connection::session().await.ok()?;
         let proxy = notification_proto::client::JobViewServerProxy::new(&conn)
             .await
             .ok()?;
-        // total=0/determinate=false -> indeterminate; not killable/suspendable
-        // (a cancel-back path is a later slice); no egress line at this layer.
+        // total=0/determinate=false -> indeterminate; no egress line at this layer.
         let id = proxy
-            .register("forage", title, "items", 0, false, false, false, "", &[])
+            .register("forage", title, "items", 0, false, true, false, "", &[])
             .await
             .ok()?;
+
+        // Every producer receives every CancelRequested, so this acts only on
+        // its own id. Best-effort like the rest: no stream means no cancel from
+        // the shell, and the build runs as it did before.
+        if let Ok(mut stream) = proxy.receive_cancel_requested().await {
+            tokio::spawn(async move {
+                use futures_util::StreamExt;
+                while let Some(signal) = stream.next().await {
+                    if let Ok(args) = signal.args() {
+                        if *args.id() == id {
+                            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                            return;
+                        }
+                    }
+                }
+            });
+        }
         Some(BuildJob { proxy, id })
     }
 
-    /// Terminate the job: `done` on success, `error-fatal` otherwise, then prune.
-    async fn finish(self, success: bool) {
-        let (state, message) = if success {
-            ("done", "")
-        } else {
-            ("error-fatal", "build failed")
+    /// Terminate the job and say how it ended.
+    ///
+    /// A STOPPED BUILD IS `done`, NOT AN ERROR - the convention the file manager
+    /// set for a cancelled copy: the person asked for it, so the row says what
+    /// became of the work rather than reporting a failure they caused on purpose.
+    async fn finish(self, outcome: Outcome) {
+        let (state, message) = match outcome {
+            Outcome::Built => ("done", ""),
+            Outcome::Stopped => ("done", "The build was stopped. Nothing was packaged."),
+            Outcome::Failed => ("error-fatal", "build failed"),
         };
         let _ = self.proxy.set_state(self.id, state, message).await;
         let _ = self.proxy.finish(self.id).await;
     }
+}
+
+/// How a build ended, kept apart from `Result` because a stop is not a failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Outcome {
+    /// A package was produced.
+    Built,
+    /// Somebody asked it to stop, and it did.
+    Stopped,
+    /// It went wrong.
+    Failed,
 }
 
 /// A human title for the build job, derived from the recipe's directory (the
@@ -105,13 +151,27 @@ pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
         exit(1);
     };
     // Report the build as one composite job to the shell (best-effort).
-    let job = BuildJob::start(&build_title(&recipe_path)).await;
-    let result = build_recipe_at(&recipe_path, unsafe_no_sandbox).await;
+    let cancel: CancelFlag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let job = BuildJob::start(&build_title(&recipe_path), std::sync::Arc::clone(&cancel)).await;
+    let result = build_recipe_at(&recipe_path, unsafe_no_sandbox, Some(cancel.clone())).await;
+    let stopped = cancel.load(std::sync::atomic::Ordering::Relaxed);
     if let Some(job) = job {
-        job.finish(result.is_ok()).await;
+        job.finish(match (&result, stopped) {
+            (Ok(_), _) => Outcome::Built,
+            (Err(()), true) => Outcome::Stopped,
+            (Err(()), false) => Outcome::Failed,
+        })
+        .await;
     }
     let lunpkg = match result {
         Ok(p) => p,
+        // A stop is not a failure, and the exit code says so: somebody asked for
+        // it. The shell's row already said what became of the work; this is the
+        // same sentence for whoever ran the command in a terminal.
+        Err(()) if stopped => {
+            println!("{} the build was stopped", "cancelled".yellow().bold());
+            exit(0)
+        }
         Err(()) => exit(1),
     };
     println!("{} {}", "built".green().bold(), lunpkg.display());
@@ -126,7 +186,11 @@ pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
 /// platform. Prints diagnostics and returns `Err(())` on any failure. Shared by
 /// `forage build` and the `git+URL` install path, which always builds confined
 /// because the remote recipe is untrusted.
-pub async fn build_recipe_at(recipe_path: &Path, unsafe_no_sandbox: bool) -> Result<PathBuf, ()> {
+pub async fn build_recipe_at(
+    recipe_path: &Path,
+    unsafe_no_sandbox: bool,
+    cancel: Option<CancelFlag>,
+) -> Result<PathBuf, ()> {
     let content = match std::fs::read_to_string(recipe_path) {
         Ok(c) => c,
         Err(e) => {
@@ -197,10 +261,18 @@ pub async fn build_recipe_at(recipe_path: &Path, unsafe_no_sandbox: bool) -> Res
             "{} building unconfined on the host; only safe for a recipe you trust.",
             "warning:".yellow().bold()
         );
-        Box::new(ProcessRunner::default())
+        Box::new(ProcessRunner::with_limits(arlen_forage_build::BuildLimits {
+            cancel: cancel.clone(),
+            ..Default::default()
+        }))
     } else {
         match cfg.require_base_platform() {
-            Ok(base) => Box::new(ConfinedStepRunner::new(base)),
+            Ok(base) => Box::new(ConfinedStepRunner::new(base).with_limits(
+                arlen_forage_build::BuildLimits {
+                    cancel: cancel.clone(),
+                    ..Default::default()
+                },
+            )),
             Err(e) => {
                 eprintln!("{} {e}", "error:".red().bold());
                 eprintln!("  (or pass --unsafe-no-sandbox to build on the host for local testing)");
