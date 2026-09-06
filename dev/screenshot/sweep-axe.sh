@@ -131,6 +131,16 @@ for entry in "${SURFACES[@]}"; do
   # and `--strictPort` only stops the NEW vite - so a whole row of this table
   # was once the previous app's page under this app's name.
   #
+  # THROUGH `headless.sh`, NEVER `render-wide.py` DIRECTLY. Both renders below
+  # used to call the renderer straight, which inherits whatever DISPLAY and
+  # WAYLAND_DISPLAY the caller has - so an accessibility sweep of fifteen apps
+  # opened fifteen real windows on the developer's screen, one after another,
+  # and measured them under a live window manager rather than the fixed one this
+  # tree screenshots against. `headless.sh` is the single place that owns that
+  # recipe (an Xvfb at a real size, the host session cut off, a window manager so
+  # `fullscreen()` is granted), and its own header records the run in August that
+  # drew on somebody's session for exactly this reason.
+
   # The expected title is DERIVED from the app's own catalogue rather than kept
   # in a table here: `<prefix>.app.title` is the key every app carries for its
   # window, so the sweep reads what the app says its name is. A first version
@@ -156,7 +166,7 @@ for entry in "${SURFACES[@]}"; do
   # INSIDE the one session, which is what was wanted all along.
   served=""
   for _ in $(seq 1 3); do
-    served=$(timeout 240 python3 dev/screenshot/render-wide.py \
+    served=$(timeout 240 dev/screenshot/headless.sh \
       --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
       --timeout 180 --settle 4 --probe "document.title" 2>/dev/null | tail -1)
     [ -n "$served" ] && break
@@ -182,7 +192,7 @@ for entry in "${SURFACES[@]}"; do
   # modules to transform before the load event - so it was refused every time
   # except the once the server happened to be warm, and the sweep called that
   # "no result". At 180 it loads and gets judged like everything else.
-  timeout 300 python3 dev/screenshot/render-wide.py \
+  timeout 300 dev/screenshot/headless.sh \
     --url "http://localhost:$PORT$route" \
     --out "$out/$app.png" --width "$WIDTH" --axe --timeout 180 --settle 3 \
     >"$out/$app.axe" 2>&1
