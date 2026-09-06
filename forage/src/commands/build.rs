@@ -310,7 +310,17 @@ pub async fn build_recipe_at(
     {
         Ok(outcome) => Ok(outcome.lunpkg),
         Err(e) => {
-            eprintln!("{} {e}", "error:".red().bold());
+            // A STOP IS NOT AN ERROR AND MUST NOT BE ANNOUNCED AS ONE. The
+            // pipeline reports a cancel through the same `Err` as a real
+            // failure, so without this the run printed a red
+            // `error: build: build cancelled` and then, one line later,
+            // `cancelled the build was stopped` - two sentences disagreeing
+            // about what had just happened, the second one right. The caller
+            // owns the sentence for a stop; this branch is for things that went
+            // wrong.
+            if !cancel.is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed)) {
+                eprintln!("{} {e}", "error:".red().bold());
+            }
             Err(())
         }
     }
