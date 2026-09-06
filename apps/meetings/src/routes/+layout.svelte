@@ -143,6 +143,11 @@
          usable strip. Same reasoning as the harness chat history. -->
     <Sidebar>
       <SidebarContent>
+        <!-- The nav landmark for the rail: the kit's sidebar is divs down to the
+             primitive, so without this the start button, the sample notice and the
+             meeting list are content in no region. Named, because an unnamed
+             landmark is one a reader cannot choose between. -->
+        <nav aria-label={$t("mt.nav.aria")}>
         <!-- The first group keeps a 6px top inset so its row clears the
          window edge by the same gap as the header-bar icons; the row itself
          stays the rail's uniform 32px box - an earlier pass shrank only the
@@ -210,6 +215,7 @@
             <p class="px-2 py-2 text-xs leading-relaxed text-sidebar-foreground/55">{$t("mt.emptyShort")}</p>
           {/if}
         </SidebarGroup>
+        </nav>
       </SidebarContent>
       <SidebarRail />
     </Sidebar>

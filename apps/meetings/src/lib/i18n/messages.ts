@@ -10,6 +10,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "mt.app.title": "Meetings",
+    "mt.nav.aria": "Meetings",
     "mt.title": "Meetings",
     "mt.start": "Start a meeting",
     "mt.newMeeting": "New meeting",
@@ -59,6 +60,7 @@ const messages: Catalogs = {
   },
   de: {
     "mt.app.title": "Besprechungen",
+    "mt.nav.aria": "Besprechungen",
 
     "mt.title": "Besprechungen",
     "mt.start": "Besprechung starten",
