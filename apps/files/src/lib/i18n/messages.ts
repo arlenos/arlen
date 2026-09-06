@@ -239,6 +239,7 @@ const messages: Catalogs = {
     "f.time.30days": "Last 30 days",
 
     // Info panel
+    "f.info.ariaFor": "Info: {$name}",
     "f.info.aria": "Info",
     "f.info.close": "Close info",
     "f.info.modified": "Modified",
@@ -259,10 +260,10 @@ const messages: Catalogs = {
     // reads as the app failing, and the usual cause is a file still open on it.
     "f.places.pinFailed": "That folder could not be pinned",
     "f.places.unpinFailed": "That place could not be unpinned",
-    "f.places.mountRefused": "The system refused to mount {place}",
-    "f.places.mountedNowhere": "{place} was mounted, but no location appeared for it",
-    "f.places.ejectAria": "Eject {place}",
-    "f.places.ejectRefused": "{place} is still in use, so it was not ejected",
+    "f.places.mountRefused": "The system refused to mount {$place}",
+    "f.places.mountedNowhere": "{$place} was mounted, but no location appeared for it",
+    "f.places.ejectAria": "Eject {$place}",
+    "f.places.ejectRefused": "{$place} is still in use, so it was not ejected",
     "f.prov.incomplete": "Part of this history could not be read, so steps may be missing",
     "f.facet.unavailable": "These options are not available on this system",
     "f.facet.denied": "Files is not allowed to read these options",
@@ -306,6 +307,7 @@ const messages: Catalogs = {
     "f.sidebar.searches": "Searches",
     "f.sidebar.recent": "Recent",
     "f.sidebar.trash": "Trash",
+    "f.sidebar.aria": "Places",
     // "none are listed" was read as a claim about the sidebar, and Recent and
     // Trash are listed directly under it - they need no backend, which is the
     // whole reason this line exists. Scoped to the places themselves.
@@ -322,7 +324,7 @@ const messages: Catalogs = {
     "f.dup.none": "No duplicates in {$scope}",
     "f.dup.noneHint": "Every file here is one of a kind.",
     "f.dup.failed": "Could not scan for duplicates",
-    "f.dup.failedHint": "{scope} was not scanned, so nothing here says whether it holds duplicates.",
+    "f.dup.failedHint": "{$scope} was not scanned, so nothing here says whether it holds duplicates.",
     "f.dup.title": "Duplicates in {$scope}",
     "f.dup.groups": P("count", "{$count} group", "{$count} groups"),
     "f.dup.reclaimable": "{$size} reclaimable",
@@ -597,6 +599,7 @@ const messages: Catalogs = {
     "f.time.7days": "Letzte 7 Tage",
     "f.time.30days": "Letzte 30 Tage",
 
+    "f.info.ariaFor": "Info: {$name}",
     "f.info.aria": "Info",
     "f.info.close": "Info schließen",
     "f.info.modified": "Geändert",
@@ -608,10 +611,10 @@ const messages: Catalogs = {
     "f.info.relatedNone": "Keine",
     "f.places.pinFailed": "Der Ordner konnte nicht angeheftet werden",
     "f.places.unpinFailed": "Der Ort konnte nicht gelöst werden",
-    "f.places.mountRefused": "Das System hat das Einhängen von {place} verweigert",
-    "f.places.mountedNowhere": "{place} wurde eingehängt, aber es ist kein Ort dafür aufgetaucht",
-    "f.places.ejectAria": "{place} auswerfen",
-    "f.places.ejectRefused": "{place} ist noch in Benutzung und wurde nicht ausgeworfen",
+    "f.places.mountRefused": "Das System hat das Einhängen von {$place} verweigert",
+    "f.places.mountedNowhere": "{$place} wurde eingehängt, aber es ist kein Ort dafür aufgetaucht",
+    "f.places.ejectAria": "{$place} auswerfen",
+    "f.places.ejectRefused": "{$place} ist noch in Benutzung und wurde nicht ausgeworfen",
     "f.prov.incomplete": "Ein Teil dieser Historie konnte nicht gelesen werden, es fehlen womöglich Schritte",
     "f.facet.unavailable": "Diese Optionen sind auf diesem System nicht verfügbar",
     "f.facet.denied": "Files darf diese Optionen nicht lesen",
@@ -653,6 +656,7 @@ const messages: Catalogs = {
     "f.sidebar.searches": "Suchen",
     "f.sidebar.recent": "Zuletzt",
     "f.sidebar.trash": "Papierkorb",
+    "f.sidebar.aria": "Orte",
     "f.sidebar.placesUnavailable": "Deine Orte konnten nicht gelesen werden.",
     "f.sidebar.foldersUnsaved": "Nicht gespeichert. Nach einem Neustart sind sie weg.",
 
@@ -664,7 +668,7 @@ const messages: Catalogs = {
     "f.dup.none": "Keine Duplikate in {$scope}",
     "f.dup.noneHint": "Jede Datei hier ist einzigartig.",
     "f.dup.failed": "Suche nach Duplikaten nicht m\u00f6glich",
-    "f.dup.failedHint": "{scope} wurde nicht durchsucht, hier steht also nichts dar\u00fcber, ob es Duplikate gibt.",
+    "f.dup.failedHint": "{$scope} wurde nicht durchsucht, hier steht also nichts dar\u00fcber, ob es Duplikate gibt.",
     "f.dup.title": "Duplikate in {$scope}",
     "f.dup.groups": P("count", "{$count} Gruppe", "{$count} Gruppen"),
     "f.dup.reclaimable": "{$size} freigebbar",

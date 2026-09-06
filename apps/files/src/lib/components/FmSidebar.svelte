@@ -86,6 +86,11 @@
   <!-- With no header band the places start the rail; the first group's own
        pt-1 (PlacesSidebar) puts its top row on the header-bar line. -->
   <SidebarContent class="fm-sidebar-scroll">
+    <!-- The kit's sidebar is divs down to the primitive, so without this the
+         whole rail - places, the failed-read line, Recent and Trash - is content
+         in no landmark, which a reader cannot jump to. Named, because an unnamed
+         landmark is one nobody can choose. -->
+    <nav aria-label={$t("f.sidebar.aria")}>
     <PlacesSidebar
       groups={$placeGroups}
       {activePath}
@@ -175,6 +180,7 @@
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarGroup>
+    </nav>
   </SidebarContent>
 
   <SidebarRail />
