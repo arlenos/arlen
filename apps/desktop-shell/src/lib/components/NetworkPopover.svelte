@@ -409,7 +409,14 @@
   .net-status-name { font-size: var(--text-sm); font-weight: 500; }
   .net-status-detail { font-size: var(--text-2xs); opacity: 0.5; }
 
-  .net-loading { padding: 20px; text-align: center; opacity: 0.4; font-size: var(--text-xs); }
+  /* 0.5, not 0.4 and not 0.3. Both of these are the only sentence on the panel
+     while they show, and both were faded because there is nothing to show yet -
+     which made the line explaining the emptiness the hardest thing on the surface
+     to read. Over the panel's ground (#0a0a0a) 0.3 measures 2.44:1 and 0.4 is
+     3.66; small text needs 4.5 and 0.5 is 5.15. axe caught `.net-empty` the first
+     time any sweep opened this panel; `.net-loading` is its sibling one branch
+     away, in a state the sweep did not happen to render. */
+  .net-loading { padding: 20px; text-align: center; opacity: 0.5; font-size: var(--text-xs); }
 
   .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-2xs); opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .net-refresh { width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; padding: 0; }
@@ -433,7 +440,7 @@
   .net-item-info :global(span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.net-check) { color: var(--color-success); flex-shrink: 0; }
   .net-item-meta { display: flex; align-items: center; gap: 6px; opacity: 0.5; flex-shrink: 0; }
-  .net-empty { padding: 20px; text-align: center; opacity: 0.3; font-size: var(--text-xs); }
+  .net-empty { padding: 20px; text-align: center; opacity: 0.5; font-size: var(--text-xs); }
 
   :global(.ctx-label) { opacity: 0.5; font-size: var(--text-2xs); min-width: 48px; text-transform: uppercase; letter-spacing: 0.03em; }
   :global(.ctx-value) { font-size: var(--text-2xs); font-family: monospace; }
