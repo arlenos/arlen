@@ -27,10 +27,22 @@ export function fmtDuration(ms: number): string {
 ///
 /// Flooring to the second before formatting keeps `fmtDuration` doing the one
 /// thing it does for everything else.
-export function fmtStopwatch(ms: number): string {
+export function fmtStopwatch(ms: number, locale: string): string {
   const safe = Math.max(0, ms);
   const cs = Math.floor((safe % 1000) / 10);
-  return `${fmtDuration(Math.floor(safe / 1000) * 1000)}.${String(cs).padStart(2, "0")}`;
+  return `${fmtDuration(Math.floor(safe / 1000) * 1000)}${decimalMark(locale)}${String(cs).padStart(2, "0")}`;
+}
+
+/// The character this language puts between a whole number and its fraction.
+///
+/// A hardcoded "." here read "00:00.00" in German, where a stopwatch is written
+/// "00:00,00" - the same class as the percent sign glued to a number, and the
+/// same reason it survived: a separator typed into a template is invisible to a
+/// catalogue pass. Asked of `Intl` rather than kept as a table, so a locale
+/// nobody has thought about yet answers for itself.
+export function decimalMark(locale: string): string {
+  const parts = new Intl.NumberFormat(locale).formatToParts(1.1);
+  return parts.find((p) => p.type === "decimal")?.value ?? ".";
 }
 
 /// A short relative form for "rings in": "in 7 h 12 min", "in 3 min".
