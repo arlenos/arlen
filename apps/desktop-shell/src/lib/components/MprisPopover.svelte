@@ -178,7 +178,9 @@
   }
   .np-album {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
+    /* 45% read 4.35:1 on the shell ground, just under the 4.5 floor for text
+       this size. 50% clears it and still sits a step below the artist line. */
+    color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -220,8 +222,12 @@
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
     color: var(--color-fg-shell);
   }
+  /* Paused reads as a step down in ink, not a fade of the whole chip: the
+     0.55 opacity took the 75% label to 3.82:1, under the floor, which is the
+     same way the quick-settings project tile lost its status line. 55% is
+     visibly dimmer than the playing chip and clears 4.5:1. */
   .np-player.paused {
-    opacity: 0.55;
+    color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
   }
   .np-player-icon {
     display: inline-flex;
