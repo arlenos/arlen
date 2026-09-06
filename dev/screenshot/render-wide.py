@@ -348,9 +348,23 @@ class Render:
         # run them but cannot install a host, and this can install a host but
         # could not run them. Wrapped rather than evaluated, so the same file
         # works both ways.
+        #
+        # A FILE'S ANSWER IS JSON, an inline expression's is a string. The render
+        # probes return an ARRAY of findings, and `String([])` is the empty string
+        # - indistinguishable from a probe that did not run, which is the false
+        # green this whole family exists to refuse. `shoot.sh` prints those same
+        # probes as `[...]` and `sweep-render.sh` reads that shape, so a file is
+        # serialised the way the sweep already understands.
+        #
+        # A STRING IS PASSED THROUGH rather than encoded, because the four probes
+        # are not written the same way: two return an array, two return the JSON
+        # text themselves. Encoding both gave `"[]"` for the second pair - a quoted
+        # string the sweep reads as no answer at all, which cost two of the four
+        # probes on every host row the first time this ran.
         if self.args.probe_file:
             body = pathlib.Path(self.args.probe_file).read_text(encoding="utf-8")
-            js = "String((() => {\n" + body + "\n})())"
+            js = ("(v => typeof v === 'string' ? v : JSON.stringify(v))"
+                  "((() => {\n" + body + "\n})())")
         else:
             js = f"String((() => {{ return ({self.args.probe}); }})())"
         self.view.evaluate_javascript(js, -1, None, None, None, self.on_probe)
