@@ -123,11 +123,16 @@ export function createConfigStore<T>(file: ConfigFile): ConfigStore<T> {
   }
 
   async function reset(key?: string): Promise<void> {
+    inner.update((s) => ({ ...s, writeFailed: false }));
     try {
       await invoke("config_reset", { file, key: key ?? null });
       await load();
-    } catch (e) {
-      inner.update((s) => ({ ...s, error: String(e) }));
+    } catch {
+      // A refused reset is a refused WRITE, and it was left on `error` when its
+      // sibling `setValue` was moved off it - so pressing "put this back" and
+      // being refused still said the settings could not be read. The same defect
+      // one method down, missed by the fix for it an hour earlier.
+      inner.update((s) => ({ ...s, writeFailed: true }));
     }
   }
 
