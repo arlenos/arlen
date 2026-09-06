@@ -404,6 +404,7 @@ const messages: Catalogs = {
     // matching anything anyone can look up.
     "sh.toast.assistantDidNotOpen": "The assistant did not open. {$why}",
     "sh.toast.commandDidNotRun": "The command did not run. {$why}",
+    "sh.toast.launcherClosed": "The launcher did not open.",
     "sh.toast.appEntryMalformed": "{$app} did not start: its launcher entry is malformed.",
     "sh.toast.appEntryNoProgram": "{$app} did not start: its launcher entry names no program to run.",
     "sh.toast.anAppEntryNoProgram": "An application did not start: its launcher entry names no program to run.",
@@ -1070,6 +1071,7 @@ const messages: Catalogs = {
     "sh.wp.grp.applications": "Programme",
     "sh.toast.assistantDidNotOpen": "Der Assistent hat nicht geöffnet. {$why}",
     "sh.toast.commandDidNotRun": "Der Befehl ist nicht gelaufen. {$why}",
+    "sh.toast.launcherClosed": "Der Starter ging nicht auf.",
     "sh.toast.appEntryMalformed": "{$app} ist nicht gestartet: der Starteintrag ist fehlerhaft.",
     "sh.toast.appEntryNoProgram": "{$app} ist nicht gestartet: der Starteintrag nennt kein Programm.",
     "sh.toast.anAppEntryNoProgram": "Eine Anwendung ist nicht gestartet: ihr Starteintrag nennt kein Programm.",
