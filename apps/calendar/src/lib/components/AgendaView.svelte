@@ -80,7 +80,11 @@
                    other views says when. Drawn only when the backend carries
                    reminders, never as "none". -->
               {#if e.alarms && e.alarms.length > 0}
-                <span class="bell" aria-label={$t("cal.form.reminders")}>
+                <!-- `role="img"`, because a bare span may not carry an
+                     aria-label: the attribute is prohibited on a generic role and
+                     a screen reader is free to drop it, so the mark announced as
+                     nothing at all. Seven of these on one agenda. -->
+                <span class="bell" role="img" aria-label={$t("cal.form.reminders")}>
                   <Bell size={12} strokeWidth={2} />
                 </span>
               {/if}
