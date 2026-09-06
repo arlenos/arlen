@@ -51,6 +51,16 @@ PORT=5310
 # PIPE-SEPARATED, not space-separated, and for the reason its twin records: a CSS
 # selector may contain a space, and `.bar-side.left .trigger` split into two
 # arguments the first time it was written that way.
+#
+# A SPEC MAY NAME A HOST, `route@@<file in hosts/>`, and one surface needed it
+# badly enough to be worth the syntax. The consent card mounts only on the window
+# labelled `consent`, and only once the broker has handed it a request and the
+# shell has granted the surface an input region - so a route walk renders an empty
+# window, which is what this sweep saw for as long as `/consent` has been in the
+# table. It was measured by hand on 6 September for the first time and was
+# `serious`: the dialog had no accessible name at all. A surface that needs a
+# runtime to exist was, until now, a surface this file could only pretend to
+# cover.
 SURFACES=(
   "files /|/::[data-place=recent]|/::[data-place=trash]"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session"
@@ -66,7 +76,10 @@ SURFACES=(
   "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
   "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event"
   "pdf /"
-  "desktop-shell /waypointer|/|/consent"
+  # The three request shapes worth their own reading: a standard grant, the
+  # permanent delete with its hold-to-confirm, and the external send with a
+  # preview of what would leave the machine.
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1@@shell-consent-request|/consent?consent=3@@shell-consent-request|/consent?consent=4@@shell-consent-request"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
@@ -216,21 +229,55 @@ for entry in "${SURFACES[@]}"; do
   # order and its own contrast - so each spec gets its own browser, its own shot
   # and its own verdict file, named for the surface rather than the app.
   for spec in "${spec_list[@]}"; do
-    sroute="${spec%%::*}"
+    # The host comes off first: it is the outermost part of a spec, and a CSS
+    # selector may contain almost anything, so peeling it last would make the
+    # click's own text able to end the spec.
+    shost=""
+    sbody="$spec"
+    case "$spec" in *@@*) shost="${spec##*@@}"; sbody="${spec%@@*}" ;; esac
+    sroute="${sbody%%::*}"
     sclick=""
-    case "$spec" in *::*) sclick="${spec#*::}" ;; esac
+    case "$sbody" in *::*) sclick="${sbody#*::}" ;; esac
+    # AN ARRAY, not a string. The EXPECT line below is a sentence - "Das
+    # Dateisystem hat sich geweigert" - and an unquoted string expansion would
+    # hand each of its words to the renderer as a separate argument.
+    hostargs=()
+    if [ -n "$shost" ]; then
+      hostfile="dev/screenshot/hosts/$shost.js"
+      # A missing host file is a spec that names something that is not there, and
+      # the render would silently take the no-runtime path instead - a clean axe
+      # answer about a page the table did not ask for.
+      if [ ! -f "$hostfile" ]; then
+        printf '%-16s %s\n' "$app" "REFUSED: $spec names $hostfile, which does not exist"
+        fail=1
+        continue
+      fi
+      # THE HOST'S OWN CLAIM, CHECKED. A page that never reached its state is
+      # empty, and axe reports an empty page as clean in exactly the words it
+      # uses for a surface that passed - the false green this whole file is
+      # written against, one level in. Every host declares what its state SAYS in
+      # an `// EXPECT:` line for `probe-host.sh`; the same line is the guard here,
+      # inside the one render rather than a second one.
+      want=$(sed -n 's|^// EXPECT: *||p' "$hostfile" | head -1)
+      if [ -z "$want" ]; then
+        printf '%-16s %s\n' "$app" "REFUSED: $hostfile declares no '// EXPECT:' line"
+        fail=1
+        continue
+      fi
+      hostargs=(--host-script "$hostfile" --require-text "$want")
+    fi
     # A file name a person can find again: the app, then the spec with the
     # characters a path cannot carry folded to dashes.
     slug=$(printf '%s' "$spec" | tr -c 'A-Za-z0-9._-' '-')
     base="$out/$app$([ "$spec" = "/" ] && echo "" || echo "-$slug")"
     if [ -n "$sclick" ]; then
       timeout 300 dev/screenshot/headless.sh \
-        --url "http://localhost:$PORT$sroute" --open "$sclick" \
+        --url "http://localhost:$PORT$sroute" --open "$sclick" "${hostargs[@]}" \
         --out "$base.png" --width "$WIDTH" --axe --timeout 180 --settle 3 \
         >"$base.axe" 2>&1
     else
       timeout 300 dev/screenshot/headless.sh \
-        --url "http://localhost:$PORT$sroute" \
+        --url "http://localhost:$PORT$sroute" "${hostargs[@]}" \
         --out "$base.png" --width "$WIDTH" --axe --timeout 180 --settle 3 \
         >"$base.axe" 2>&1
     fi
