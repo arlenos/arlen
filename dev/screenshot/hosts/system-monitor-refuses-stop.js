@@ -17,9 +17,9 @@
 // this also checks that the page can turn that word into one.
 (function () {
   var ROWS = [
-    { id: 4211, name: "chrome", group: "app", status: "running", cpu: 24.5, memMB: 1840, diskKBs: 12, netKBs: 340 },
+    { id: 4211, name: "chrome", group: "app", critical: false, status: "running", cpu: 24.5, memMB: 1840, diskKBs: 12, netKBs: 340 },
     { id: 1, name: "systemd", group: "system", status: "running", cpu: 0.2, memMB: 12, diskKBs: 0, netKBs: 0, critical: true },
-    { id: 812, name: "arlen-graph-daemon", group: "background", status: "running", cpu: 1.1, memMB: 96, diskKBs: 3, netKBs: 1 },
+    { id: 812, name: "arlen-graph-daemon", group: "background", critical: false, status: "running", cpu: 1.1, memMB: 96, diskKBs: 3, netKBs: 1 },
   ];
 
   window.__TAURI_INTERNALS__ = {

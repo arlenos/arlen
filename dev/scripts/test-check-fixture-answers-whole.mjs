@@ -50,14 +50,17 @@ console.log("the gate catches a fixture that answers less than the shape it prom
 
 ok("the tree as it stands passes", run().code === 0);
 
-// The mail instance: a Message with the seven fields the picture needed.
+// The mail instance: a Message with the seven fields the picture needed. `to` is
+// the field to remove, not `refusal` - the first cut of this control took the
+// optional one and stopped catching anything the moment the check learned that
+// `Option` fields are not required.
 withPartial(
   "mail-refuses-archive.js",
-  "          refusal: null,",
-  "          zz_removed: null,",
+  '          to: ["you@example.org"],',
+  "          zz_removed: [],",
   ({ code, out }) => {
     ok("a Message missing a field is caught", code === 1);
-    ok("and the finding names the command and the field", out.includes("mail_open") && out.includes("refusal"));
+    ok("and the finding names the command and the field", out.includes("mail_open") && out.includes("to"));
   },
 );
 
