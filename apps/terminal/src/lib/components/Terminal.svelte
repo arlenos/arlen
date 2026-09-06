@@ -17,6 +17,7 @@
     terminalDrainOutput,
     terminalInput,
     terminalResize,
+    terminalInjectBlock,
     terminalSaveOutput,
     terminalConfigGet,
   } from "$lib/contract";
@@ -361,14 +362,17 @@
 
   // ── Block right-click menu actions (item 6) ──────────────────────────────
   // The kit ContextMenu look is arlen-ui's (BlockContextMenu.svelte); these wire
-  // its handlers from the hovered block's validated record + the xterm buffer. No
-  // new backend: copy/select/replay/saveOutput are all local and wired below. The
-  // one AI entry, `ask` ("Ask the agent about this block"), stays UNwired (so its
-  // menu item renders disabled, desktop convention): it needs the harness to expose
-  // an "inject scoped context" receiver (a launch/attach entry that takes the block
-  // as a capability-scoped @-mention, pull-only, no silent KG write), which is a
-  // cross-app contract on the harness surface and does not exist yet. Wire `ask`
-  // here once that receiver lands. (Explain was dropped, terminal.md §4.11.)
+  // its handlers from the hovered block's validated record + the xterm buffer.
+  // copy/select/replay/saveOutput are local; `ask` crosses to the assistant.
+  //
+  // `ask` was left UNWIRED - and so rendered disabled - on the grounds that the
+  // harness had no "inject scoped context" receiver. It has had one since 27
+  // August: the terminal writes a 0600 one-shot payload and launches
+  // `arlen-harness --inject <path>`, and the harness reads that arg on launch.
+  // Both halves were built and the note that kept the entry dead was not. That is
+  // the cost of a reason written as a description - it goes on being read as a
+  // verdict after the thing it describes has ended. (Explain was dropped,
+  // terminal.md §4.11.)
   function copyText(text: string): void {
     void navigator.clipboard?.writeText(text).catch(() => {});
   }
@@ -413,6 +417,24 @@
       if (term && menuBlock && !menuBlock.promptMarker.isDisposed) {
         term.selectLines(menuBlock.promptMarker.line, menuBlock.endLine);
       }
+    },
+    ask: () => {
+      // The payload IS the grant: the person chose this block, it goes over as a
+      // scoped @-mention, and the harness reads it advisorily. Pull-only, no
+      // silent graph write.
+      if (!menuBlock) return;
+      void terminalInjectBlock(menuBlock.command ?? "", blockOutput(menuBlock)).catch(
+        (e: unknown) => {
+          // Two different facts, and only one of them is worth trying again. The
+          // backend answers with a marker so the sentence can be translated here;
+          // an unrecognised error is the second case, since a machine that HAS the
+          // assistant is the ordinary one.
+          const key = String(e).includes("harness-not-installed")
+            ? "term.askNoAssistant"
+            : "term.askFailed";
+          term?.write(`\r\n\x1b[31m${get(messages)(key)}\x1b[0m\r\n`);
+        },
+      );
     },
     saveOutput: () => {
       // First cut: write to a timestamped file (~/Downloads, else $HOME). A

@@ -769,6 +769,13 @@ fn inject_dir() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".cache").join("arlen").join("inject"))
 }
 
+/// The marker for a machine with no assistant installed. A token rather than a
+/// sentence: the wording belongs to the surface, where it is translated.
+pub const HARNESS_ABSENT: &str = "harness-not-installed";
+
+/// The marker for an assistant that is installed and did not start.
+pub const HARNESS_LAUNCH_FAILED: &str = "harness-launch-failed";
+
 /// Hand a finished block to the harness as a capability-scoped `@`-mention: write
 /// the command + output to a one-shot scoped payload (created 0600, under the
 /// per-user runtime dir) and launch/focus `arlen-harness --inject <path>`. The
@@ -804,15 +811,19 @@ fn terminal_inject_block(command: String, output: String) -> Result<(), String> 
         .arg(&path)
         .spawn()
         .map_err(|e| {
-            // The harness ships on the image as of 27 August, so this is now the
-            // answer for a machine that does not have it rather than for ours.
-            // Kept because it is still the right sentence, and because the errno
-            // would send somebody looking for a file that is not the point.
+            // TOKENS, NOT SENTENCES. These two used to be English prose returned
+            // straight to the surface, which the German build could not replace -
+            // the same mistake the knowledge app's `NOT_RUNNING` marker exists to
+            // avoid. The cause still travels, because the two are different facts:
+            // a machine without the assistant will never open it, and a spawn that
+            // failed for another reason may work on the next try. The errno stays
+            // in the log, where it helps, rather than in front of a reader looking
+            // for a file that is not the point.
+            log::warn!("the assistant could not be launched: {e}");
             if e.kind() == std::io::ErrorKind::NotFound {
-                "the assistant is not installed on this machine, so this cannot be sent to it"
-                    .to_string()
+                HARNESS_ABSENT.to_string()
             } else {
-                format!("the assistant could not be opened: {e}")
+                HARNESS_LAUNCH_FAILED.to_string()
             }
         })?;
     Ok(())
@@ -952,5 +963,21 @@ mod tests {
         // A hand-edited absurd value is clamped on read, never breaking the UI.
         std::fs::write(&path, "font_size = 9999.0").unwrap();
         assert_eq!(load_config(&path).font_size, 72.0);
+    }
+}
+
+#[cfg(test)]
+mod inject_marker_tests {
+    use super::{HARNESS_ABSENT, HARNESS_LAUNCH_FAILED};
+
+    /// Both markers have to survive being carried through a `String` error and out
+    /// to the surface, which matches on them to pick its sentence. A rename here
+    /// without one there turns a translated line back into a silent nothing, and
+    /// nothing about the types would say so.
+    #[test]
+    fn the_markers_are_the_strings_the_surface_looks_for() {
+        assert_eq!(HARNESS_ABSENT, "harness-not-installed");
+        assert_eq!(HARNESS_LAUNCH_FAILED, "harness-launch-failed");
+        assert_ne!(HARNESS_ABSENT, HARNESS_LAUNCH_FAILED);
     }
 }

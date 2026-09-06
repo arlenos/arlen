@@ -208,7 +208,8 @@ export async function terminalCloseSession(sessionId: string): Promise<void> {
 /// the command + output to a one-shot scoped payload and launches/focuses the
 /// harness pointing at it (the cross-app scoped-context-inject convention, the
 /// block menu's "Ask the agent about this block"). Pull-only; the payload is the
-/// grant. Wire this into the block menu's `ask` once the harness receiver lands.
+/// grant. Wired into the block menu's `ask`; the harness receiver has read the
+/// `--inject` arg since 27 August.
 export async function terminalInjectBlock(
   command: string,
   output: string,
