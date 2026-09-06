@@ -9,6 +9,7 @@
   /// the Applet primitive already supports an inline label that
   /// truncates at `--topbar-applet-label-max-w`.
 
+  import { t } from "$lib/i18n/messages";
   import { invoke } from "@tauri-apps/api/core";
   import { shellAction } from "$lib/shellAction";
   import { listen } from "@tauri-apps/api/event";
@@ -71,12 +72,14 @@
                 : Volume2,
   );
 
+  // Three sentences, three keys, like the battery applet beside it. They were
+  // English literals until 6 September, on the one strip that is always on screen.
   const tooltip = $derived(
     !status
-      ? "Audio"
+      ? $t("sh.audio.tip.plain")
       : status.muted
-        ? "Volume: Muted"
-        : `Volume: ${status.volume}%`,
+        ? $t("sh.audio.tip.muted")
+        : $t("sh.audio.tip.level", { pct: status.volume }),
   );
 
   const isOpen = $derived($activePopover === "audio");
