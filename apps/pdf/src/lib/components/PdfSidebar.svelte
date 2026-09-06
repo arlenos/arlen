@@ -72,11 +72,17 @@
   <!-- Search leads the rail from the h-10 band (level with the content bar);
        the app's own name used to sit here and said nothing the shell does not. -->
   <SidebarHeader class="h-10 justify-center py-0">
-    <div class="head-search">
+    <!-- `role="search"` because the kit's sidebar is divs down to the primitive,
+         so without a landmark here the box is content in no region. -->
+    <div class="head-search" role="search">
       <SearchField id="pdf-search" bind:value={query} placeholder={$t("pdf.search.label")} aria-label={$t("pdf.search.label")} />
     </div>
   </SidebarHeader>
   <SidebarContent>
+    <!-- The nav landmark for the rail: the sample-document notice and the table
+         of contents. Named, because an unnamed landmark is one a reader cannot
+         choose between. -->
+    <nav aria-label={$t("pdf.nav.aria")}>
     {#if $pdfMocked}
       <SidebarGroup>
         <Notice tone="neutral" text={$t("pdf.sample")} />
@@ -140,6 +146,7 @@
         {/if}
       </SidebarGroup>
     {/if}
+    </nav>
   </SidebarContent>
   <SidebarRail />
 </Sidebar>

@@ -11,6 +11,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "pdf.app.title": "Document",
+    "pdf.nav.aria": "Document",
     // A percentage, with the space its language wants: German writes "62 %" with
     // a no-break space, English writes "62%" tight. Markup that glues the sign
     // to the number bypasses the catalogue, which is how this stayed wrong here
@@ -69,6 +70,7 @@ const messages: Catalogs = {
   de: {
     "pdf.pct": "{$n}\u00a0%",
     "pdf.app.title": "Dokument",
+    "pdf.nav.aria": "Dokument",
     "pdf.contents": "Inhalt",
     "pdf.pageFlow": "Die Seiten des Dokuments",
     "pdf.noContents": "Dieses Dokument hat kein Inhaltsverzeichnis.",
