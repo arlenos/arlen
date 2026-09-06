@@ -27,6 +27,7 @@ const messages: Catalogs = {
     // English sentence written in the bridge, drawn as they came in every locale.
     "s.why.noScreencopy": "This desktop does not offer screen capture to apps.",
     "s.why.refused": "The capture was refused. Trying again may work; the detail is in the log.",
+    "s.tryAgain": "Try again",
     "s.swatch": "Colour {$name}",
     "s.swatch.error": "Red",
     "s.swatch.warning": "Yellow",
@@ -80,6 +81,7 @@ const messages: Catalogs = {
     "s.noHost": "Hier ist nichts, womit aufgenommen werden könnte.",
     "s.why.noScreencopy": "Diese Arbeitsumgebung bietet Apps keine Bildschirmaufnahme an.",
     "s.why.refused": "Die Aufnahme wurde abgelehnt. Ein erneuter Versuch kann klappen; die Einzelheiten stehen im Protokoll.",
+    "s.tryAgain": "Erneut versuchen",
     "s.swatch": "Farbe {$name}",
     "s.swatch.error": "Rot",
     "s.swatch.warning": "Gelb",

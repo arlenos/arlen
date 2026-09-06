@@ -369,6 +369,30 @@
   /// The app still captures the primary output on open - the floating-thumbnail
   /// handoff the plan is built around depends on a picture existing immediately,
   /// so picking is a change of mind rather than a step before the first shot.
+  /// Take the picture again, for the one refusal that says another try may work.
+  ///
+  /// The sentence under the heading told a person to try again and the surface
+  /// gave them no way to: the whole window is this message, and the tool bar is
+  /// hidden by its own phase check. A line that names a remedy it does not offer
+  /// is the shape the meetings app had in August with its refused Stop.
+  async function retryPrimary() {
+    const shot = await capturePrimary();
+    if (shot.kind === "unavailable") {
+      captureFailure = shot.why;
+      return;
+    }
+    isSample = shot.kind === "hostless";
+    captureFailure = null;
+    // The hostless answer carries no image - it is the preview, and the fixture
+    // is what stands in for a screen there. Same branch the first capture takes.
+    base = shot.kind === "image" ? await dataUrlToCanvas(shot.dataUrl) : buildFixture();
+    ctx = canvas.getContext("2d");
+    canvas.width = base.width;
+    canvas.height = base.height;
+    shapes = [];
+    redraw();
+  }
+
   async function pickSource(value: string) {
     const [kind, idx] = value.split(":");
     const n = Number(idx);
@@ -700,6 +724,13 @@
   <div class="no-capture" role="alert">
     <p class="no-capture-what">{$t("s.captureUnavailable")}</p>
     <p class="no-capture-why">{$t(WHY[captureFailure])}</p>
+    <!-- ONLY for `refused`, and that is the point. A compositor with no
+         screencopy interface will refuse the next try for the same reason, and
+         `no-host` is the preview; offering a retry there would be a second
+         sentence this window cannot honour. -->
+    {#if captureFailure === "refused"}
+      <Button variant="outline" size="sm" onclick={retryPrimary}>{$t("s.tryAgain")}</Button>
+    {/if}
   </div>
 {:else if phase === "thumbnail" && base}
   <FloatingThumbnail
