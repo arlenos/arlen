@@ -171,7 +171,12 @@
     align-items: center;
     gap: 8px;
     padding: 32px 0;
-    color: color-mix(in srgb, var(--color-fg-shell) 35%, transparent);
+    /* 50%, not 35%. Over the panel's own ground (#0a0a0a) a 35% fade measures
+       3.05:1 and small text needs 4.5; 50% is the first step that clears it, at
+       5.15. It is also the only sentence on the surface when it shows, so a
+       quiet-because-there-is-nothing-here fade was making the one line that
+       explains the emptiness the hardest thing on the panel to read. */
+    color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     font-size: var(--text-sm);
   }
 
