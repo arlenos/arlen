@@ -358,6 +358,15 @@ const messages: Catalogs = {
     "f.results.folder": "Folder",
     "f.results.modified": "Modified",
     "f.results.aria": "Search results",
+    // The sort state, in the button's own name. These headers used to be
+    // `<button role="columnheader" aria-sort=…>` inside a `role="row"` inside
+    // a `role="list"` - a button cannot be a columnheader, and a row cannot be
+    // in a list. Dropping the role alone leaves `aria-sort` with no valid host,
+    // so the state moves into the name instead, which is what a list with sort
+    // controls wants.
+    "f.results.sortNone": "{$col}, sort by this",
+    "f.results.sortAsc": "{$col}, sorted ascending",
+    "f.results.sortDesc": "{$col}, sorted descending",
     "f.results.emptyTitle": "Nothing matches",
     "f.results.emptyHint": "Try fewer letters or different filters.",
     "f.results.noHostTitle": "Search is not available here",
@@ -687,6 +696,9 @@ const messages: Catalogs = {
     "f.results.folder": "Ordner",
     "f.results.modified": "Geändert",
     "f.results.aria": "Suchergebnisse",
+    "f.results.sortNone": "{$col}, danach sortieren",
+    "f.results.sortAsc": "{$col}, aufsteigend sortiert",
+    "f.results.sortDesc": "{$col}, absteigend sortiert",
     "f.results.emptyTitle": "Nichts passt",
     "f.results.emptyHint": "Versuch weniger Buchstaben oder andere Filter.",
     "f.results.noHostTitle": "Suche hier nicht verfügbar",
