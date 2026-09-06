@@ -47,10 +47,7 @@
   const pchar = (b: Block) => (b.origin === "agent" ? "✦" : "❯");
 </script>
 
-<!-- `main`, because a look-mock is a document a person reads - the same call
-     made for the shell's four on 6 September, and the opposite of the one made
-     for the shell's own bar, which is chrome and has no main content to name. -->
-<main class="page">
+<div class="page">
   <section class="col">
     <h2>B · Classic <span class="rec">recommended</span></h2>
     <p class="note">Shell prints prompt + command + output; chrome only on hover / focus.</p>
@@ -100,7 +97,7 @@
       {/each}
     </div>
   </section>
-</main>
+</div>
 
 <style>
   /* The muted Arlen terminal palette (mirrors terminal-theme.ts). */
