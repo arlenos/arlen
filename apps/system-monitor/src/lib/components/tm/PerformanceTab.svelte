@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
   /// The Performance tab (Windows-Performance shape): a device list on the left
   /// (name + current value + a mini live sparkline), the selected device's big live
   /// graph + its current figures on the right.
@@ -10,7 +11,11 @@
   let selected = $state<Device>("cpu");
   const sel = $derived(DEVICES.find((d) => d.key === selected) ?? DEVICES[0]);
 
-  const n = (v: number, digits = 0) => v.toFixed(digits);
+  /// `toFixed` writes a decimal POINT in every language; this app already
+  /// localises the process table's figures through `formatDecimal`, and the
+  /// performance tab beside it did not. Same key, same locale store, so the two
+  /// tabs stop disagreeing about how a number is written.
+  const n = (v: number, digits = 0) => formatDecimal(v, digits, $locale);
 
   /// The headline figure per device, from the last tick. A device with nothing
   /// measured shows a dash: a zero here would be a claim that the machine is idle,
