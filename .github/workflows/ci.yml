@@ -412,6 +412,8 @@ jobs:
           node dev/scripts/test-fixture-helper.mjs
           python3 dev/scripts/check-fixture-deletes.py
           node dev/scripts/test-check-fixture-deletes.mjs
+          python3 dev/scripts/check-fixture-answers-whole.py
+          node dev/scripts/test-check-fixture-answers-whole.mjs
           python3 dev/scripts/check-listener-started.py
           node dev/scripts/test-check-listener-started.mjs
           python3 dev/scripts/check-default-handlers.py
