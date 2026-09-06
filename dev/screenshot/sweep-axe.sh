@@ -88,12 +88,19 @@ SURFACES=(
   # permanent delete with its hold-to-confirm, and the external send with a
   # preview of what would leave the machine.
   #
-  # THE TWO PANELS ARE HERE BECAUSE THEY WERE NOWHERE. Quick Settings and the
-  # notification list open from the bar, and this row carried no click at all - so
-  # the two surfaces a person opens most often on this window had never been
-  # measured. They are also where the panel-only markup lives, which is exactly
-  # the kind that a landing-page walk cannot reach.
-  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]"
+  # THE PANELS ARE HERE BECAUSE THEY WERE NOWHERE. Every applet on the bar opens
+  # a panel, and this row carried no click at all - so the surfaces a person opens
+  # most often on this window had never been measured. They are also where the
+  # panel-only markup lives, which is exactly the kind a landing-page walk cannot
+  # reach: the first two clicks added found a line at 3.05:1, a tile fading its own
+  # status under the floor, and twenty-five rows in no landmark.
+  #
+  # SIX OF THE TEN APPLETS, and the missing four are named rather than left to look
+  # like an oversight. `audio`, `battery`, `tray` and `mpris` do not render on this
+  # fixture at all - no sound server, no battery, no tray client, no player - so a
+  # click spec for them would refuse every run and be deleted within a week. They
+  # need a host that answers, the way the consent specs above do.
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed

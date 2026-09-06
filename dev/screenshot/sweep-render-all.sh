@@ -62,7 +62,7 @@ SURFACES=(
   # surfaces a person opens most often on this window had never been through a
   # render probe either. Same gap as the axe table, found the same way: by
   # putting the two lists side by side.
-  "desktop-shell /|/consent|/waypointer|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]"
+  "desktop-shell /|/consent|/waypointer|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]"
   "files /|/::[data-place=recent]|/::[data-place=trash]"
   "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
