@@ -9,6 +9,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "k.app.title": "Knowledge",
+    "k.nav.aria": "Views",
     "k.menu.timeline": "Timeline",
     // The quiet leading verb of a timeline row, per event kind.
     "k.pv.verb.openedIn": "opened in",
@@ -137,6 +138,7 @@ const messages: Catalogs = {
   },
   de: {
     "k.app.title": "Wissen",
+    "k.nav.aria": "Ansichten",
 
     "k.menu.timeline": "Zeitleiste",
     "k.pv.verb.openedIn": "geöffnet in",

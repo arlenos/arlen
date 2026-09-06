@@ -53,6 +53,10 @@
 
 <Sidebar collapsible="icon">
   <SidebarContent>
+    <!-- The kit's sidebar is divs down to the primitive, so without this the
+         whole rail is content in no landmark. Named, because an unnamed landmark
+         is one a reader cannot choose between. -->
+    <nav aria-label={$t("k.nav.aria")}>
     <!-- pt-1: the group label's centre sits on the h-10 header-bar line.
          Collapsed the label vanishes, so the first icon row takes the edge
          with the same 6px gap the header-bar icons keep; the box stays the
@@ -96,6 +100,7 @@
         {$t("k.caps.opens")}
       </span>
     </SidebarGroup>
+    </nav>
   </SidebarContent>
   <SidebarRail />
 </Sidebar>
