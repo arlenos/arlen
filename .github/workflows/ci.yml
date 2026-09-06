@@ -482,6 +482,8 @@ jobs:
           node dev/scripts/test-check-inert-ellipsis.mjs
           python3 dev/scripts/check-dbus-members-exist.py
           node dev/scripts/test-check-dbus-members-exist.mjs
+          python3 dev/scripts/check-dbus-call-arity.py
+          node dev/scripts/test-check-dbus-call-arity.mjs
           python3 dev/scripts/check-mime-claims-decodable.py
           node dev/scripts/test-check-mime-claims-decodable.mjs
           python3 dev/scripts/check-app-locale-used.py
