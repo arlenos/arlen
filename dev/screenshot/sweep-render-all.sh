@@ -91,6 +91,33 @@ if [ -n "$ONLY" ]; then
   fi
 fi
 
+# THE SERVER OUTLIVES AN INTERRUPTED RUN WITHOUT THIS. Each app's dev server is
+# killed after its sweep, at the bottom of the loop - which never runs if the
+# sweep is stopped part-way, and a full pass is most of an hour, so it gets
+# stopped. Measured on 6 September: thirteen `vite dev` processes still listening
+# on 6431 through 6811, one per interrupted run, hours old.
+#
+# The leak is not the cost. A left-over server answers `curl` perfectly well, and
+# `curl` cannot say who answered - which is the exact failure the check below
+# already guards against for a port held by an EARLIER run. It guards the reader
+# and leaves the litter.
+#
+# `sweep-axe.sh`, this script's twin, has carried the trap since the day it was
+# written. Same line, and the reason it belongs here rather than only there is
+# that a signal is the case a bottom-of-the-loop kill structurally cannot cover.
+# NOT `kill -- "-${server:-0}"`. That default is the whole reason this is a
+# function: with `server` empty - before the first app starts one, and after each
+# is reaped - `-0` is not "nobody", it is THIS PROCESS GROUP. The first cut wrote
+# it that way, copied from the twin, and the clean run at the end signalled
+# itself: 72 probes green, then exit 139 and a core dump, from a script whose
+# work had finished. Signal only what this run actually started.
+stop_current() {
+  [ -n "${sweep:-}" ] && kill "$sweep" 2>/dev/null
+  [ -n "${server:-}" ] && kill -- "-$server" 2>/dev/null
+  return 0
+}
+trap stop_current EXIT INT TERM
+
 swept=0
 fail=0
 for entry in "${SURFACES[@]}"; do
@@ -125,16 +152,30 @@ for entry in "${SURFACES[@]}"; do
   if [ -z "$ready" ]; then
     printf '%-16s %s\n' "$app" "REFUSED: the dev server never answered"
     kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
+    server=""
     fail=1
     PORT=$((PORT + 1))
     continue
   fi
 
   echo "== $app"
-  "$(dirname "${BASH_SOURCE[0]}")/sweep-render.sh" "http://localhost:$PORT" "$LOCALE" "${spec_list[@]}" || fail=1
+  # RUN IT IN THE BACKGROUND AND WAIT, rather than calling it in the foreground.
+  # Bash defers a trap until the current foreground command returns, so a plain
+  # call means a SIGTERM - which is what a timeout or a `kill <pid>` sends - is
+  # held until this app's whole sweep finishes, minutes later, and until then the
+  # server is still up and the sweep still running. `wait` is interruptible, so
+  # the trap fires at once and takes the server with it. Measured both ways: with
+  # the foreground call the port was still answering four seconds after the TERM.
+  "$(dirname "${BASH_SOURCE[0]}")/sweep-render.sh" "http://localhost:$PORT" "$LOCALE" "${spec_list[@]}" &
+  sweep=$!
+  wait "$sweep" || fail=1
+  sweep=""
   swept=$((swept + 1))
 
   kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null
+  # Forgotten once it is reaped, so the trap above cannot signal a group id that
+  # has since been handed to somebody else.
+  server=""
   PORT=$((PORT + 1))
 done
 

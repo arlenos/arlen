@@ -75,7 +75,10 @@ if [ -n "$ONLY" ]; then
 fi
 
 out=$(mktemp -d)
-trap 'rm -rf "$out"; kill -- "-${server:-0}" 2>/dev/null' EXIT
+# `-${server:-0}` would be this script's OWN process group whenever `server` is
+# unset - which it is on every path that refuses before the first server starts.
+# It cost the twin a core dump on an otherwise clean run before it was read here.
+trap 'rm -rf "$out"; [ -n "${server:-}" ] && kill -- "-$server" 2>/dev/null; true' EXIT
 
 total=0
 swept=0
