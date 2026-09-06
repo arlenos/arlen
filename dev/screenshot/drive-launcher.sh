@@ -97,9 +97,16 @@ JS
 # I had imagined. So they assert the MEANING instead - the prefix decides what
 # the words are for, and the wrong offer is the failure worth catching.
 cmd=$(typed '"> uname -a"' "$here/out/launcher-command.png")
+# CASE-INSENSITIVE, and both of these were wrong for it in opposite directions.
+# The hint reads `Enter: run. Shift+Enter: terminal.` in sentence case; these
+# matched `Run` and `Terminal` capitalised, so this one went RED against a
+# launcher doing exactly the right thing, and the negative one below went GREEN
+# because it could no longer find the string it exists to forbid. A false red
+# wastes an hour; a false green is the check quietly switching itself off, and
+# they came from the same character.
 say "a query behind > is offered as something to run" \
   "$(printf '%s' "$cmd" | grep -q '"typed":true' \
-     && printf '%s' "$cmd" | grep -qE "Run|Ausf" && echo 1 || echo 0)" "$cmd"
+     && printf '%s' "$cmd" | grep -qiE "enter: run|ausf" && echo 1 || echo 0)" "$cmd"
 say "and it is not offered to a search engine" \
   "$(case "$cmd" in ""|REFUSED:*) echo 0;; *) printf '%s' "$cmd" | grep -qiE "duckduckgo|google" && echo 0 || echo 1;; esac)" "$cmd"
 
@@ -108,7 +115,7 @@ say "and a query behind ? goes to a search engine, which it names" \
   "$(printf '%s' "$web" | grep -q '"typed":true' \
      && printf '%s' "$web" | grep -qi "duckduckgo" && echo 1 || echo 0)" "$web"
 say "and is not offered to a shell" \
-  "$(case "$web" in ""|REFUSED:*) echo 0;; *) printf '%s' "$web" | grep -qE "Shift\+Enter: Terminal" && echo 0 || echo 1;; esac)" "$web"
+  "$(case "$web" in ""|REFUSED:*) echo 0;; *) printf '%s' "$web" | grep -qiE "shift\+enter: terminal" && echo 0 || echo 1;; esac)" "$web"
 
 # THE TWO EMPTIES, and telling them apart is the point. Under vite every provider
 # rejects, so the launcher's empty line always reads as the refused one - which is
