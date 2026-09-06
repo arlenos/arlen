@@ -255,6 +255,8 @@ jobs:
           python3 dev/scripts/check-optimistic-write.py
           python3 dev/scripts/check-closed-unanswered.py
           node dev/scripts/test-check-closed-unanswered.mjs
+          python3 dev/scripts/check-erased-refusal.py
+          node dev/scripts/test-check-erased-refusal.mjs
           python3 dev/scripts/check-granted-and-used.py
           python3 dev/scripts/check-window-grants.py
           python3 dev/scripts/check-invoke-scope.py
