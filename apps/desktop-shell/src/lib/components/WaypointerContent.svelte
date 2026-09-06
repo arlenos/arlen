@@ -487,12 +487,23 @@
   // these stores drive.
   const inlineResult = writable<InlineEvalResult | null>(null);
 
-  /// The message id for a module action that would not run, or null.
+  /// The message id for an action from this surface that would not run, or null.
   ///
-  /// Held here rather than raised as a toast because a toast renders in THIS
-  /// window and this window is the one that closes; the launcher stays open on a
-  /// failure so the sentence has somewhere to be.
-  const moduleActionError = writable<string | null>(null);
+  /// Held here rather than raised as a toast, and the reason is not the one this
+  /// comment used to give. It said a toast "renders in THIS window and this
+  /// window is the one that closes" - but `raiseRefusal` emits `arlen://toast`,
+  /// which the top bar's bridge renders, and the quick actions on this very
+  /// surface have used it that way since it existed. A toast would be seen.
+  ///
+  /// The real reason to keep it here is better than the wrong one: the launcher
+  /// stays OPEN on a failure, so the sentence sits beside the thing that refused
+  /// and the person can try again without re-opening anything. A toast puts the
+  /// news on the desktop and takes the surface away.
+  ///
+  /// Named for module actions until 6 September, when three more of this
+  /// surface's actions turned out to need it - two clipboard copies and a
+  /// process kill, each of which did its thing, ignored the answer and closed.
+  const actionError = writable<string | null>(null);
 
   const specialMode = writable<SpecialMode>(null);
   const specialArg = writable<string>("");
@@ -518,8 +529,16 @@
   }
 
   function copyUnicodeChar(uc: UnicodeChar) {
-    navigator.clipboard.writeText(uc.char_str).catch(() => {});
-    close();
+    // Await the copy before closing. It used to fire and hide in the same tick,
+    // so a refused clipboard left the person with their PREVIOUS clipboard and
+    // no way to know - they find out at the paste, which is the worst place.
+    void navigator.clipboard
+      .writeText(uc.char_str)
+      .then(() => {
+        actionError.set(null);
+        close();
+      })
+      .catch(() => actionError.set("sh.wp.errCopy"));
   }
 
   /// Map `PowerActionResult.id` to its lucide icon. The backend sets
@@ -560,8 +579,16 @@
   }
 
   function killProcessAction(proc: ProcessInfo, force: boolean) {
-    killProcess(proc.pid, force).catch(() => {});
-    close();
+    // The same shape, and the one where silence costs most: a kill that was
+    // refused - no permission, or the process already gone - closed the launcher
+    // as though it had worked, and the only way to find out was to come back and
+    // look for the process again.
+    void killProcess(proc.pid, force)
+      .then(() => {
+        actionError.set(null);
+        close();
+      })
+      .catch(() => actionError.set("sh.wp.errKill"));
   }
 
   /// Checks if a string looks like a URL.
@@ -809,8 +836,13 @@
       }
       close();
     } else {
-      navigator.clipboard.writeText(result.copy_value).catch(() => {});
-      close();
+      void navigator.clipboard
+        .writeText(result.copy_value)
+        .then(() => {
+          actionError.set(null);
+          close();
+        })
+        .catch(() => actionError.set("sh.wp.errCopy"));
     }
   }
 
@@ -909,8 +941,8 @@
         <!-- CommandEmpty is unusable with shouldFilter={false} because
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
-        {#if $moduleActionError}
-          <div class="wp-empty">{$t($moduleActionError)}</div>
+        {#if $actionError}
+          <div class="wp-empty">{$t($actionError)}</div>
         {/if}
 
         {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
@@ -1259,14 +1291,14 @@
                       await navigator.clipboard.writeText(result.action.text);
                     } catch {
                       ok = false;
-                      moduleActionError.set("sh.wp.errCopy");
+                      actionError.set("sh.wp.errCopy");
                     }
                   } else if (result.action.type === "open_url") {
                     try {
                       await invoke("open_url", { url: result.action.url });
                     } catch {
                       ok = false;
-                      moduleActionError.set("sh.wp.errOpenUrl");
+                      actionError.set("sh.wp.errOpenUrl");
                     }
                   } else if (result.action.type === "execute") {
                     try {
@@ -1276,11 +1308,11 @@
                       });
                     } catch {
                       ok = false;
-                      moduleActionError.set("sh.wp.errRun");
+                      actionError.set("sh.wp.errRun");
                     }
                   }
                   if (ok) {
-                    moduleActionError.set(null);
+                    actionError.set(null);
                     closeWaypointer();
                   }
                 }}
