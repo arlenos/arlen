@@ -422,6 +422,8 @@ jobs:
           node dev/scripts/test-check-fixture-deletes.mjs
           python3 dev/scripts/check-headless-render.py
           node dev/scripts/test-check-headless-render.mjs
+          python3 dev/scripts/check-text-is-text.py
+          node dev/scripts/test-check-text-is-text.mjs
           python3 dev/scripts/check-controls-do-not-write-the-tree.py
           node dev/scripts/test-check-controls-do-not-write-the-tree.mjs
           python3 dev/scripts/check-fixture-answers-whole.py
