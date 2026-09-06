@@ -116,9 +116,11 @@ SHOTS=(
   # what a surface SAYS when its backend refuses - did not photograph any of them.
   # The shell talks to more daemons than any app here, so it has more chances than
   # any app here to offer something it cannot do.
-  "desktop-shell - shell-unavailable"
-  "desktop-shell consent shell-consent-unavailable"
-  "desktop-shell waypointer shell-waypointer-unavailable"
+  # The label after the name is the window the stub claims to be, because these
+  # three surfaces gate on it. Without it the consent card does not mount at all.
+  "desktop-shell - shell-unavailable - main"
+  "desktop-shell consent shell-consent-unavailable - consent"
+  "desktop-shell waypointer shell-waypointer-unavailable - waypointer"
   "system-monitor - system-monitor-unavailable"
   "system-monitor - system-monitor-performance-unavailable #tab-performance"
   "terminal - terminal-unavailable"
@@ -128,12 +130,15 @@ SHOTS=(
 
 ok=(); bad=()
 for entry in "${SHOTS[@]}"; do
-  read -r app route name click <<<"$entry"
+  read -r app route name click label <<<"$entry"
+  # `-` in the click column is "no click", so a row can name a window label
+  # without inventing a selector.
+  [ "${click:-}" = "-" ] && click=""
   [ -n "$ONLY" ] && [ "$app" != "$ONLY" ] && continue
   [ "$route" = "-" ] && route=""
   out="$here/out/${name}.png"
   echo "=== $app ${route:-/} -> $name at ${WIDTH}px"
-  if SHOOT_OPEN="${click:-}" SHOOT_FAILING_HOST=both \
+  if SHOOT_OPEN="${click:-}" SHOOT_WINDOW_LABEL="${label:-}" SHOOT_FAILING_HOST=both \
       "$here/shoot-no-backend.sh" "$app" "$route" "$out" "$WIDTH"; then
     ok+=("$name")
   else
