@@ -86,6 +86,8 @@ const messages: Catalogs = {
     "v.copy": "Copy",
     "v.couldNotOpen": "Could not open this file: {$reason}",
     "v.couldNotOpenUnknown": "Could not open this file.",
+    "v.couldNotOpenNamed": "{$name} could not be opened: {$reason}",
+    "v.couldNotOpenNamedUnknown": "{$name} could not be opened.",
     "v.nothingOpen": "No file is open. Open one from Files, or pass one on the command line.",
   },
   de: {
@@ -167,6 +169,8 @@ const messages: Catalogs = {
     "v.copy": "Kopieren",
     "v.couldNotOpen": "Diese Datei konnte nicht geöffnet werden: {$reason}",
     "v.couldNotOpenUnknown": "Diese Datei konnte nicht geöffnet werden.",
+    "v.couldNotOpenNamed": "{$name} konnte nicht geöffnet werden: {$reason}",
+    "v.couldNotOpenNamedUnknown": "{$name} konnte nicht geöffnet werden.",
     "v.nothingOpen": "Es ist keine Datei geöffnet. Öffne eine aus Dateien, oder übergib eine auf der Kommandozeile.",
   },
 };
