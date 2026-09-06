@@ -17,6 +17,7 @@
 /// `pointer-events: none` so it never shadows the real hit-test.
 
 import { invoke } from "@tauri-apps/api/core";
+import { shellAction } from "$lib/shellAction";
 import { get } from "svelte/store";
 import { windows } from "$lib/stores/windows.js";
 import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
@@ -419,7 +420,11 @@ export function createDragEngine(deps: DragEngineDeps) {
       }
       clearSelection();
       if (captured.kind === "active") {
-        invoke("activate_window", { id: captured.windowId }).catch(() => {});
+        void shellAction(
+          "activate_window",
+          { id: captured.windowId },
+          "sh.toast.windowNotRaised",
+        );
       } else {
         restoreWindow(captured.windowId);
       }
