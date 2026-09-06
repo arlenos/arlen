@@ -46,6 +46,12 @@ pub enum ValidationError {
     InvalidEntityName(String),
     #[error("field name must be snake_case: {0}")]
     InvalidFieldName(String),
+    #[error("entity '{entity}' names {role} field '{field}', which it does not declare")]
+    UnknownDisplayField {
+        entity: String,
+        role: &'static str,
+        field: String,
+    },
 }
 
 /// Validates schema files against naming and namespace rules.
@@ -99,6 +105,27 @@ impl SchemaValidator {
                 }
                 if !is_snake_case(field_name) {
                     return Err(ValidationError::InvalidFieldName(field_name.clone()));
+                }
+            }
+
+            // A display field must name a field the type actually declares.
+            // The absent case is the designed fallback (no title field means the
+            // entry shows its identifier); a title field naming something that
+            // is not there is a broken declaration, and catching it here means
+            // its author learns at registration rather than the library
+            // rendering a blank line on somebody's machine.
+            for (role, declared) in [
+                ("title", &entity_def.title_field),
+                ("subtitle", &entity_def.subtitle_field),
+            ] {
+                if let Some(field) = declared {
+                    if !entity_def.fields.contains_key(field) {
+                        return Err(ValidationError::UnknownDisplayField {
+                            entity: entity_name.clone(),
+                            role,
+                            field: field.clone(),
+                        });
+                    }
                 }
             }
         }
@@ -390,5 +417,52 @@ type = "string"
             validator().validate(&schema),
             Err(ValidationError::InvalidEntityName(n)) if n == "my_item"
         ));
+    }
+
+    #[test]
+    fn a_display_field_must_name_a_field_the_type_declares() {
+        // A title field pointing at nothing is the same shape as every other
+        // claim this tree has removed: it renders as a blank line and nobody
+        // learns why. Caught at registration, named for both roles.
+        for role in ["title_field", "subtitle_field"] {
+            let schema = SchemaFile::parse(&format!(
+                r#"
+[meta]
+namespace = "com.test"
+
+[entities.Note]
+{role} = "headline"
+[entities.Note.fields.title]
+type = "string"
+"#
+            ))
+            .unwrap();
+            assert!(
+                matches!(
+                    validator().validate(&schema),
+                    Err(ValidationError::UnknownDisplayField { .. })
+                ),
+                "{role} naming an undeclared field must be refused"
+            );
+        }
+
+        // And the declared case passes, so the check is not simply rejecting
+        // every type that names one.
+        let ok = SchemaFile::parse(
+            r#"
+[meta]
+namespace = "com.test"
+
+[entities.Note]
+title_field = "title"
+subtitle_field = "body"
+[entities.Note.fields.title]
+type = "string"
+[entities.Note.fields.body]
+type = "text"
+"#,
+        )
+        .unwrap();
+        assert!(validator().validate(&ok).is_ok());
     }
 }

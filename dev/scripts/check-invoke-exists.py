@@ -362,11 +362,13 @@ KNOWN: dict[str, dict[str, str]] = {
         # today the read would return four empty sections on every machine.
         # `knowledge-app.md` decision 8 sequences it exactly this way.
         "knowledge_library": (
-            "the library view. Traced: the bridge-ingest daemon writes into dynamic "
-            "entity tables under a namespace, and the schema registry lists the "
-            "types, so the read is straightforward. What is not is the mapping from "
-            "namespace to the store's four sections and which field is the display "
-            "title - both are schema decisions that every future bridge inherits"
+            "the library view. The two schema decisions this entry used to name - "
+            "how a namespace maps onto a section, and which field is the title - "
+            "were settled on 9 August (bridge-architecture.md) and the declaration "
+            "landed with them: a type carries a display name, a class from a closed "
+            "set and its title field, and a type declaring none renders under "
+            "`other` by its identifier. What is left is the read op and the "
+            "section shape the surface parses"
         ),
     },
     "settings": {

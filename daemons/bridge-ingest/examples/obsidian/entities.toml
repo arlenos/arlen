@@ -19,6 +19,15 @@ version = 1
 description = "A markdown note in an Obsidian vault, keyed by its vault-relative path."
 icon = "file-text"
 
+# How the Library shows this type (bridge-architecture.md, "A bridged type
+# declares how it is displayed"). The schema carries it rather than a table in
+# the interface, so a connector ships its own name and layout and the desktop
+# needs no change to render a source it has never seen. `notes` is one of the
+# five classes the interface knows how to lay out.
+display_name = "Notes"
+display_class = "notes"
+title_field = "title"
+
 # The display title: a frontmatter `title`, else the note's filename stem.
 [entities.Note.fields.title]
 type = "text"

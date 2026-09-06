@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::SchemaError;
 
@@ -58,6 +58,77 @@ pub struct EntityDefinition {
     /// Lifecycle configuration.
     #[serde(default)]
     pub lifecycle: LifecycleConfig,
+    /// The type's name in front of a person, declared by whoever defined the
+    /// type. Empty means undeclared, and an undeclared type is shown by its
+    /// identifier rather than by a name derived from it.
+    #[serde(default)]
+    pub display_name: String,
+    /// How the interface lays this type out. Absent means [`DisplayClass::Other`].
+    #[serde(default)]
+    pub display_class: DisplayClass,
+    /// Which declared field carries an entry's title.
+    ///
+    /// **NONE MEANS THE ENTRY SHOWS ITS IDENTIFIER.** It does not fall back to
+    /// the first string field: a library confidently showing the wrong line is
+    /// worse than one showing a plain id, and every other guess of that shape
+    /// has been removed from this tree.
+    pub title_field: Option<String>,
+    /// Which declared field carries the quiet second line, when the type has one.
+    pub subtitle_field: Option<String>,
+}
+
+/// How the interface lays a type out.
+///
+/// A **closed set** rather than free text (`bridge-architecture.md`, "A bridged
+/// type declares how it is displayed"): the library renders what it is told
+/// instead of guessing a layout for a class it has never seen. `other` always
+/// exists and renders generically, so an unusual source is never blocked from
+/// shipping - and an unrecognised value is refused at parse rather than quietly
+/// becoming `other`, so a typo in a connector's schema is something its author
+/// finds out about.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayClass {
+    /// Short authored text: notes, entries, snippets.
+    Notes,
+    /// Longer authored or collected text: papers, books, files.
+    Documents,
+    /// Correspondence, which has a sender and a moment.
+    Messages,
+    /// Images, audio, video.
+    Media,
+    /// Everything else, laid out generically. Also the value a type that
+    /// declared none is read as.
+    #[default]
+    Other,
+}
+
+impl DisplayClass {
+    /// The wire form, which is also the TOML spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Notes => "notes",
+            Self::Documents => "documents",
+            Self::Messages => "messages",
+            Self::Media => "media",
+            Self::Other => "other",
+        }
+    }
+}
+
+impl EntityDefinition {
+    /// What to call this type in front of a person: its declared display name,
+    /// or the qualified identifier when it declared none. The identifier is the
+    /// deliberate fallback - `md.obsidian.Note` is plain and true, whereas
+    /// deriving "Note" from it invents a name its author never wrote.
+    pub fn display_label<'a>(&'a self, qualified_type: &'a str) -> &'a str {
+        let declared = self.display_name.trim();
+        if declared.is_empty() {
+            qualified_type
+        } else {
+            declared
+        }
+    }
 }
 
 fn default_entity_version() -> u32 {
@@ -338,6 +409,14 @@ cardinality = "many-to-one"
         assert_eq!(note.fields["title"].field_type, FieldType::Text);
         assert_eq!(note.fields["tags"].field_type, FieldType::StringList);
         assert_eq!(note.fields["links"].field_type, FieldType::StringList);
+        // And it declares its display identity, so the Library shows "Notes"
+        // laid out as notes rather than `md.obsidian.Note` under `other`. The
+        // title field is asserted to be one the type actually declares, which is
+        // the half a shipped file can get wrong without anybody noticing.
+        assert_eq!(note.display_class, DisplayClass::Notes);
+        assert_eq!(note.display_label("md.obsidian.Note"), "Notes");
+        let title = note.title_field.as_deref().expect("a declared title field");
+        assert!(note.fields.contains_key(title));
     }
 
     #[test]
@@ -411,5 +490,79 @@ type = "string"
         assert_eq!(schema.meta.namespace, "com.test");
         assert_eq!(schema.meta.schema_version, 1); // default
         assert_eq!(schema.entities.len(), 1);
+    }
+
+    #[test]
+    fn a_type_declares_how_it_is_displayed() {
+        let declared = r#"
+[meta]
+namespace = "md.obsidian"
+
+[entities.Note]
+display_name = "Notes"
+display_class = "notes"
+title_field = "title"
+subtitle_field = "folder"
+[entities.Note.fields.title]
+type = "string"
+[entities.Note.fields.folder]
+type = "string"
+"#;
+        let schema = SchemaFile::parse(declared).unwrap();
+        let note = &schema.entities["Note"];
+        assert_eq!(note.display_class, DisplayClass::Notes);
+        assert_eq!(note.title_field.as_deref(), Some("title"));
+        assert_eq!(note.subtitle_field.as_deref(), Some("folder"));
+        assert_eq!(note.display_label("md.obsidian.Note"), "Notes");
+    }
+
+    #[test]
+    fn a_type_that_declares_nothing_is_other_and_shows_its_identifier() {
+        // The transition state bridge-architecture.md names: existing types gain
+        // the fields, and until they do they render generically under their own
+        // id - visibly plain, never wrong. So the defaults ARE the fallback, and
+        // nothing here may quietly become a nicer-looking guess.
+        let bare = r#"
+[meta]
+namespace = "com.test"
+
+[entities.Item]
+[entities.Item.fields.name]
+type = "string"
+"#;
+        let item = &SchemaFile::parse(bare).unwrap().entities["Item"];
+        assert_eq!(item.display_class, DisplayClass::Other);
+        assert_eq!(item.title_field, None);
+        assert_eq!(item.subtitle_field, None);
+        // Not "Item", and not the `name` field it happens to have.
+        assert_eq!(item.display_label("com.test.Item"), "com.test.Item");
+    }
+
+    #[test]
+    fn a_display_class_outside_the_closed_set_is_refused() {
+        // The whole point of a closed set: an unrecognised class must not become
+        // `other` behind its author's back, or the typo ships and renders.
+        let typo = r#"
+[meta]
+namespace = "com.test"
+
+[entities.Item]
+display_class = "notez"
+[entities.Item.fields.name]
+type = "string"
+"#;
+        assert!(SchemaFile::parse(typo).is_err());
+        // And a whitespace-only display name is undeclared, not a blank label.
+        let blank = r#"
+[meta]
+namespace = "com.test"
+
+[entities.Item]
+display_name = "   "
+[entities.Item.fields.name]
+type = "string"
+"#;
+        let item = &SchemaFile::parse(blank).unwrap().entities["Item"];
+        assert_eq!(item.display_label("com.test.Item"), "com.test.Item");
     }
 }
