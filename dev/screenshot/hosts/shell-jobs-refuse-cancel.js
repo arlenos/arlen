@@ -20,6 +20,14 @@
       metrics: [{ processed: 84, total: 240, unit: "Dateien" }],
       killable: true,
       suspendable: true,
+      // Both of these are non-optional on the wire and the zone reads both -
+      // `j.items` expands the aggregate bar into named rows, and `startedAt`
+      // decides whether a job is old enough to show at all. Left out, this
+      // fixture photographed a thinner zone than the one that exists. Empty and
+      // a fixed instant rather than invented content: the picture stays the one
+      // it was written for, and nothing here is unanswered.
+      items: [],
+      startedAt: 1_756_000_000_000_000,
     },
   ];
 
