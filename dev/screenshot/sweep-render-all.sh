@@ -71,7 +71,7 @@ SURFACES=(
   "pdf /"
   "screenshot /"
   "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/_topbartest"
-  "system-monitor /|/::#tab-performance"
+  "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest"
   "text-editor /|/::.trigger"
   "viewers /|/?demo=image|/?demo=video"

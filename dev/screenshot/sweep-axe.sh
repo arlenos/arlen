@@ -76,7 +76,7 @@ SURFACES=(
   "meetings /|/capture|/meeting/abc"
   "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
-  "system-monitor /|/::#tab-performance"
+  "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick"
   "text-editor /|/::.trigger"
   "viewers /|/?demo=image|/?demo=video"
   "screenshot /"
