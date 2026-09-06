@@ -3672,6 +3672,50 @@ async fn handle_client(
             continue;
         }
 
+        // Library mode: a leading 0x11 byte selects the Library read - every
+        // bridged type that has rows, with the display identity its own schema
+        // declares (bridge-architecture.md). Takes no body: the sections are what
+        // the registry and the graph hold, and there is nothing for a caller to
+        // name. 0x01-0x10 are taken; see `mode_bytes_are_uniquely_assigned`.
+        //
+        // System-anchored, like the two code-analysis reads and for the same
+        // reason: this is an AGGREGATE across every bridge's namespace, which is
+        // wider than any one ThirdParty app's per-label read scope. Denying it is
+        // safe today and widening later is the reversible direction.
+        if buf.first() == Some(&0x11) {
+            let system_anchored = app_id != "unknown"
+                && QuotaConfig::arlen_default().tier_for_app(&app_id) != AppTier::ThirdParty;
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if !system_anchored {
+                crate::library::LIBRARY_UNAVAILABLE.to_string()
+            } else if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                // One query per declared type, so the bound is generous where the
+                // single-query reads take 500 ms.
+                match tokio::time::timeout(
+                    Duration::from_secs(5),
+                    crate::library::handle_library(&graph, &registry),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_elapsed) => crate::library::LIBRARY_UNAVAILABLE.to_string(),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Access-grants mode: a leading 0x05 byte selects the caller-scoped grant
         // browse read (living-capability-graph.md §5). The caller's own grants
         // only (scoped by the attested app_id resolved at connect, never a request
