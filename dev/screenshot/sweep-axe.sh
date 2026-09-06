@@ -70,9 +70,9 @@ PORT=5310
 # "Zulassen?". The check was right and the spec was wrong, which is the good way
 # round.
 SURFACES=(
-  "files /|/::[data-place=recent]|/::[data-place=trash]"
-  "terminal /|/::#terminal-history-open|/::#terminal-new-session"
-  "settings /|/accessibility|/appearance/quicksettings|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts"
+  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest"
+  "settings /|/accessibility|/appearance/quicksettings|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/_topbartest"
   "meetings /|/capture|/meeting/abc"
   "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
@@ -80,7 +80,7 @@ SURFACES=(
   "text-editor /|/::.trigger"
   "viewers /|/?demo=image|/?demo=video"
   "screenshot /"
-  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger"
+  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest"
   "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
   "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event"
   "pdf /"
@@ -94,6 +94,13 @@ SURFACES=(
   # panel-only markup lives, which is exactly the kind a landing-page walk cannot
   # reach: the first two clicks added found a line at 3.05:1, a tile fading its own
   # status under the floor, and twenty-five rows in no landmark.
+  #
+  # THE `_*test` ROUTES OF EVERY APP THAT HAS THEM, on the same reasoning: each
+  # one exists to make a surface reachable that the app's own routes cannot
+  # reach, and none of them was in a table. The shell's seven went in first and
+  # paid immediately - a contrast defect inside the print dialog that white-on-
+  # white had been hiding, and three look-mocks whose own prose was invisible.
+  # `harness` is arlen-ui's and its six stay out, like the rest of that app.
   #
   # AND THE SEVEN `_*test` ROUTES, which were written FOR this loop and were in no
   # table. Each one exists because its surface cannot be reached under vite any
@@ -327,7 +334,12 @@ for entry in "${SURFACES[@]}"; do
     total=$((total + n))
     swept=$((swept + 1))
     printf '%-16s %-28s %s\n' "$app" "$spec" "$(grep -E '^axe:' "$base.axe")"
-    grep -E '^  [a-z-]+ \(' "$base.axe" | sed 's/^/                 /' || true
+    # THE NUMBERS COME THROUGH TOO. `render-wide` prints a contrast finding's
+    # measured ratio on the following line, indented deeper, and a pattern that
+    # matched only the rule line dropped exactly the part that settles the
+    # argument - which is what a contrast finding costs a reader without it: a
+    # second render to disagree with.
+    grep -E '^  [a-z-]+ \(|^      ' "$base.axe" | sed 's/^/                 /' || true
   done
 
   kill -- "-$server" 2>/dev/null; wait "$server" 2>/dev/null

@@ -63,16 +63,16 @@ SURFACES=(
   # render probe either. Same gap as the axe table, found the same way: by
   # putting the two lists side by side.
   "desktop-shell /|/consent|/waypointer|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest"
-  "files /|/::[data-place=recent]|/::[data-place=trash]"
-  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger"
+  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest"
+  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
   "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
   "meetings /|/capture|/meeting/abc"
   "pdf /"
   "screenshot /"
-  "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]"
+  "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/_topbartest"
   "system-monitor /|/::#tab-performance"
-  "terminal /|/::#terminal-history-open|/::#terminal-new-session"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest"
   "text-editor /|/::.trigger"
   "viewers /|/?demo=image|/?demo=video"
 )
