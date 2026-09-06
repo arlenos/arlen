@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   import { shellRead } from "$lib/shellRead";
   /// Layout-mode indicator for the top bar.
   ///
@@ -37,12 +38,18 @@
   const Icon = $derived(
     mode === "tiling" ? LayoutPanelLeft : mode === "monocle" ? Maximize : Layers,
   );
+  // The mode name is the same key the layout panel's pills use, so the bar and
+  // the panel it opens cannot end up calling one mode two things. These were
+  // three English literals until 6 September, on the strip that is always up.
   const tooltip = $derived(
-    mode === "tiling"
-      ? "Layout: Tiling"
-      : mode === "monocle"
-        ? "Layout: Monocle"
-        : "Layout: Floating",
+    $t("sh.layout.tip", {
+      mode:
+        mode === "tiling"
+          ? $t("sh.layout.tile")
+          : mode === "monocle"
+            ? $t("sh.layout.single")
+            : $t("sh.layout.float"),
+    }),
   );
 
   const isOpen = $derived($activePopover === "layout");

@@ -394,6 +394,12 @@ const messages: Catalogs = {
 
     // Layout popover
     "sh.layout.title": "Layout",
+    // The layout applet's tooltip. It was three English literals - "Layout:
+    // Tiling", "Layout: Monocle", "Layout: Floating" - beside a panel whose
+    // three pills were already translated, so the bar and the panel it opens
+    // disagreed about the same word. The mode name comes from the pills'
+    // own keys, so they cannot drift apart again.
+    "sh.layout.tip": "Layout: {$mode}",
     "sh.layout.stateUnknown": "Could not read the window layout.",
     "sh.layout.float": "Float",
     "sh.layout.tile": "Tile",
@@ -1090,6 +1096,7 @@ const messages: Catalogs = {
 
     "sh.layout.title": "Anordnung",
     "sh.layout.stateUnknown": "Die Fensteranordnung konnte nicht gelesen werden.",
+    "sh.layout.tip": "Layout: {$mode}",
     "sh.layout.float": "Schwebend",
     "sh.layout.tile": "Gekachelt",
     "sh.layout.single": "Einzeln",
