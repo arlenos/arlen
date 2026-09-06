@@ -208,13 +208,19 @@ async fn clock_world_remove(id: String) -> Result<(), String> {
 }
 
 /// A structured log line from the frontend into the app's stdout (the shell has
+/// The argument is `msg` rather than `message`, and that is not a preference:
+/// `frontend_log` is registered in ten components and carried THREE argument
+/// shapes, so a logging line copied from one app to another failed to
+/// deserialize and the command was never called - the line added to diagnose
+/// something was itself the thing that went missing. Six of the ten already
+/// agreed on `(level, msg)`, so that is the one they all use.
 /// no devtools console an operator can open).
 #[tauri::command]
-fn frontend_log(level: String, message: String) {
+fn frontend_log(level: String, msg: String) {
     match level.as_str() {
-        "error" => log::error!("[frontend] {message}"),
-        "warn" => log::warn!("[frontend] {message}"),
-        _ => log::info!("[frontend] {message}"),
+        "error" => log::error!("[frontend] {msg}"),
+        "warn" => log::warn!("[frontend] {msg}"),
+        _ => log::info!("[frontend] {msg}"),
     }
 }
 
