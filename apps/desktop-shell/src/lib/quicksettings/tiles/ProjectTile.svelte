@@ -17,13 +17,15 @@
   import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
   import { t } from "$lib/i18n/messages";
   import { FolderOpen, FolderPlus } from "lucide-svelte";
-  import { invoke } from "@tauri-apps/api/core";
   import { focusState, focusedProject } from "$lib/stores/projects.js";
   import { closePopover } from "$lib/stores/activePopover.js";
+  import { shellAction } from "$lib/shellAction";
 
   function openWaypointerWithProjectPrefix() {
     closePopover();
-    invoke("set_query_and_show", { query: "p:", mode: "" }).catch(() => {});
+    // The top bar's project switcher is the same press through another door, and
+    // it swallowed the same answer. Both say it now.
+    void shellAction("set_query_and_show", { query: "p:", mode: "" }, "sh.toast.launcherClosed");
   }
 </script>
 

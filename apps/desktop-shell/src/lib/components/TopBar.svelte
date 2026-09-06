@@ -3,7 +3,6 @@
   import { onMount, onDestroy, setContext, type Component } from "svelte";
   import { writable } from "svelte/store";
   import type { Readable } from "svelte/store";
-  import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { tauriAvailable } from "$lib/tauri";
@@ -41,6 +40,8 @@
   import AirplaneBadge from "$lib/components/topbar/badges/AirplaneBadge.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
   import { closePopover } from "$lib/stores/activePopover.js";
+  import { invoke } from "@tauri-apps/api/core";
+  import { shellAction } from "$lib/shellAction";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu/index.js";
   import { X, FolderSearch } from "lucide-svelte";
 
@@ -50,7 +51,11 @@
   /// switch projects.
   function openProjectSwitcher() {
     closePopover();
-    invoke("set_query_and_show", { query: "p:", mode: "" }).catch(() => {});
+    // Through `shellAction`, because this closes one surface to open another and
+    // used to swallow the answer to the second. A refused open left the person
+    // looking at the desktop: the popover they pressed in is gone and the
+    // launcher they asked for never came - two disappearances and no sentence.
+    void shellAction("set_query_and_show", { query: "p:", mode: "" }, "sh.toast.launcherClosed");
   }
 
   /// Per-output bar identity. The desktop-shell creates one
