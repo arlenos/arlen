@@ -35,6 +35,7 @@ apps/desktop-shell/src/lib/stores/jobs.ts	Converting clip.mp4
 apps/desktop-shell/src/lib/stores/jobs.ts	Copied 18 files to Documents
 apps/desktop-shell/src/lib/stores/jobs.ts	Copying 240 photos to USB
 apps/desktop-shell/src/lib/stores/jobs.ts	Downloading the language model
+apps/desktop-shell/src/lib/stores/jobs.ts	Installing notes-1.2
 apps/desktop-shell/src/lib/stores/jobs.ts	Sending files to your laptop
 apps/desktop-shell/src/lib/stores/menuPalette.ts	Close Window
 apps/desktop-shell/src/lib/stores/menuPalette.ts	Edit
@@ -55,8 +56,6 @@ apps/desktop-shell/src/lib/stores/printDialog.ts	Quarterly report.pdf
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	Arlen OS - Wikipedia
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	Documents
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	tim@arlen: ~/work
-apps/desktop-shell/src/lib/stores/waypointerAsk.ts	AI is off. The agent won't read or answer anything.
-apps/desktop-shell/src/lib/stores/waypointerAsk.ts	The agent isn't reachable right now.
 apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} GB
 apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} KB
 apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} MB
@@ -91,23 +90,15 @@ apps/harness/src/lib/components/chat/FileRefMenu.svelte	Copy relative path
 apps/harness/src/lib/components/chat/FileRefMenu.svelte	Open
 apps/harness/src/lib/components/chat/FileRefMenu.svelte	Open with…
 apps/harness/src/lib/components/chat/FileRefMenu.svelte	Reveal in Files
-apps/harness/src/lib/components/chat/GateCard.svelte	Allowed by:
 apps/harness/src/lib/components/chat/GateCard.svelte	Always allow
-apps/harness/src/lib/components/chat/GateCard.svelte	Applied
-apps/harness/src/lib/components/chat/GateCard.svelte	Applied automatically
 apps/harness/src/lib/components/chat/GateCard.svelte	Auto
 apps/harness/src/lib/components/chat/GateCard.svelte	Only in this project
 apps/harness/src/lib/components/chat/GateCard.svelte	This action type generally
 apps/harness/src/lib/components/chat/GateCard.svelte	Undo
 apps/harness/src/lib/components/chat/GateCard.svelte	files
-apps/harness/src/lib/components/chat/GateCard.svelte	via
 apps/harness/src/lib/components/chat/ImportDialog.svelte	A .json file exported from a chat
 apps/harness/src/lib/components/chat/ImportDialog.svelte	Import chat
 apps/harness/src/lib/components/chat/ImportDialog.svelte	Open a chat you exported as JSON. It is added as a new conversation, so it never overwrites one you have.
-apps/harness/src/lib/components/chat/ModelPicker.svelte	cloud · egress, audited
-apps/harness/src/lib/components/chat/ModelPicker.svelte	local · no egress
-apps/harness/src/lib/components/chat/ModelPicker.svelte	unavailable
-apps/harness/src/lib/components/chat/ModelPicker.svelte	{}k ctx
 apps/harness/src/lib/components/mint/MintFlow.svelte	Include
 apps/harness/src/lib/components/transparency/AccessSection.svelte	While the AI is off, none of this access is active.
 apps/harness/src/lib/components/transparency/AccessSection.svelte	no data
@@ -148,13 +139,12 @@ apps/harness/src/lib/time.ts	{} d ago
 apps/harness/src/lib/time.ts	{} h ago
 apps/harness/src/lib/time.ts	{} min ago
 apps/knowledge/src/lib/stores/library.ts	Attention Is All You Need
-apps/knowledge/src/lib/stores/library.ts	Conference registration confirmed
-apps/knowledge/src/lib/stores/library.ts	Deep Residual Learning for Image Recognition
 apps/knowledge/src/lib/stores/library.ts	Deep work
-apps/knowledge/src/lib/stores/library.ts	Designing Data-Intensive Applications
+apps/knowledge/src/lib/stores/library.ts	Mail
+apps/knowledge/src/lib/stores/library.ts	Notes
+apps/knowledge/src/lib/stores/library.ts	Papers
 apps/knowledge/src/lib/stores/library.ts	Re: review notes
 apps/knowledge/src/lib/stores/library.ts	Scaling Laws for Neural Language Models
-apps/knowledge/src/lib/stores/library.ts	The Rust Programming Language
 apps/knowledge/src/lib/stores/library.ts	Thesis outline
 apps/knowledge/src/lib/stores/search.ts	Arlen OS
 apps/knowledge/src/lib/stores/search.ts	Arlen OS, 9:30 am to 12:15 pm
@@ -188,9 +178,6 @@ apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Standard
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Wide
 apps/settings/src/lib/components/settings/AddCustomBinding.svelte	pkill -USR1 waybar
 apps/settings/src/lib/components/settings/KeyCapture.svelte	Space
-apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	Empty command
-apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	shell: needs an event name
-apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	spawn: needs a command
 apps/settings/src/lib/stores/appSettings.ts	Accent colour
 apps/settings/src/lib/stores/appSettings.ts	Advanced
 apps/settings/src/lib/stores/appSettings.ts	Appearance
