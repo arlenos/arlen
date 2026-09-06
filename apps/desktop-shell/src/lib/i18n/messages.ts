@@ -361,6 +361,14 @@ const messages: Catalogs = {
     "sh.wf.run": "Run",
 
     // Battery popover
+    // The compact age on an undo row, which has to stay one calm line. It was
+    // "now", "4m", "2h" written straight into the component, so a German
+    // reader got English for the most recent entry and an ambiguous letter
+    // for the rest. Same family as the two below, and in the same file, so
+    // the shell keeps one place that knows how to say a length of time.
+    "sh.dur.now": "now",
+    "sh.dur.agoM": "{$n}m",
+    "sh.dur.agoH": "{$n}h",
     "sh.dur.hm": "{$h}h {$m}min",
     "sh.dur.m": "{$m}min",
     "sh.bt.tip.plain": "Bluetooth",
@@ -1070,6 +1078,9 @@ const messages: Catalogs = {
     "sh.wf.install": "Installieren",
     "sh.wf.run": "Ausf\u00fchren",
 
+    "sh.dur.now": "jetzt",
+    "sh.dur.agoM": "{$n} Min.",
+    "sh.dur.agoH": "{$n} Std.",
     "sh.dur.hm": "{$h} Std. {$m} Min.",
     "sh.dur.m": "{$m} Min.",
     "sh.bt.tip.plain": "Bluetooth",
