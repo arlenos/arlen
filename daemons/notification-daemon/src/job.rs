@@ -245,6 +245,37 @@ pub struct JobView {
 /// extra names are dropped, never the count.
 pub const MAX_JOB_ITEMS: usize = 100;
 
+/// The most jobs that may be live at once, across every producer.
+///
+/// **THE REGISTRY WAS UNBOUNDED**, and it is reachable by anything on the
+/// session bus - which since 7 September means four real producers and any
+/// process that runs as this person. A producer stuck in a retry loop
+/// registers without end, and every registration is also a push to the shell,
+/// so the failure is a growing map AND a flooded surface rather than one of
+/// them. The neighbouring notification path decided this class mattered long
+/// ago and rate-limits per app; the job path had nothing.
+///
+/// Sixty-four is far past any real machine: the zone's own threshold means a
+/// person sees a handful at a time, and a desktop with more than five things
+/// genuinely running at once is unusual.
+pub const MAX_LIVE_JOBS: usize = 64;
+
+/// The most live jobs ONE producer may hold.
+///
+/// Separate from the total on purpose: without it, one runaway producer fills
+/// the ceiling and every other app's work stops appearing - the surface would
+/// go quiet about a real copy because something else was looping. Sixteen is
+/// generous for anything that reports honestly.
+pub const MAX_JOBS_PER_APP: usize = 16;
+
+/// The longest title kept, in characters.
+///
+/// Truncated rather than refused, the same judgement as the item list: a title
+/// is a person's line and cutting it still leaves something readable, whereas
+/// refusing the job loses the work's only trace. Counted in characters, not
+/// bytes, so a truncation cannot split a multi-byte character.
+pub const MAX_JOB_TITLE: usize = 200;
+
 /// The fields a producer supplies to register a new job. The registry assigns
 /// the stable `id` and starts it in [`JobState::Running`].
 #[derive(Debug, Clone, PartialEq)]
@@ -287,7 +318,20 @@ impl JobRegistry {
 
     /// Register a new job and return its stable id. Starts `Running` with no
     /// message.
-    pub fn register(&mut self, spec: NewJob) -> u64 {
+    /// Register a job, or refuse when a ceiling is reached.
+    ///
+    /// `None` means the job was NOT registered. A producer ignores the answer -
+    /// a report must never break the work it reports on - so the refusal has to
+    /// be safe to ignore, and it is: nothing was stored, no push went out, and a
+    /// later update against an id that does not exist is already a no-op.
+    pub fn register(&mut self, spec: NewJob) -> Option<u64> {
+        if self.jobs.len() >= MAX_LIVE_JOBS {
+            return None;
+        }
+        let mine = self.jobs.values().filter(|j| j.app_id == spec.app_id).count();
+        if mine >= MAX_JOBS_PER_APP {
+            return None;
+        }
         let id = self.next_id;
         self.next_id += 1;
         self.jobs.insert(
@@ -295,7 +339,7 @@ impl JobRegistry {
             JobView {
                 id,
                 app_id: spec.app_id,
-                title: spec.title,
+                title: spec.title.chars().take(MAX_JOB_TITLE).collect(),
                 progress: spec.progress,
                 state: JobState::Running,
                 state_message: None,
@@ -307,7 +351,7 @@ impl JobRegistry {
                 items: spec.items.into_iter().take(MAX_JOB_ITEMS).collect(),
             },
         );
-        id
+        Some(id)
     }
 
     /// The job with `id`, if it is still registered.
@@ -382,7 +426,12 @@ impl JobViewServer {
     }
 
     /// Register a job from wire values; `total = None` starts it indeterminate.
-    /// Returns the stable id.
+    ///
+    /// Returns the stable id, or **0 when the registry refused it** - a ceiling
+    /// was reached. Zero rather than an error because the wire method answers a
+    /// `u64` and every producer ignores the answer by design; an id that was
+    /// never issued matches no job, so the producer's later `update`/`set_state`
+    /// calls are the no-ops they already are for a finished job.
     #[allow(clippy::too_many_arguments)]
     pub fn register(
         &self,
@@ -413,7 +462,7 @@ impl JobViewServer {
             started_at,
             items,
         };
-        self.lock().register(spec)
+        self.lock().register(spec).unwrap_or(0)
     }
 
     /// Advance a job's amounts (unknown id -> false).
@@ -473,8 +522,8 @@ mod tests {
     #[test]
     fn register_assigns_stable_increasing_ids() {
         let mut r = JobRegistry::new();
-        let a = r.register(spec("files", "Copy A"));
-        let b = r.register(spec("files", "Copy B"));
+        let a = r.register(spec("files", "Copy A")).expect("registered");
+        let b = r.register(spec("files", "Copy B")).expect("registered");
         assert_eq!(a, 1);
         assert_eq!(b, 2);
         assert_eq!(r.get(a).unwrap().title, "Copy A");
@@ -484,7 +533,7 @@ mod tests {
     #[test]
     fn update_and_set_state_mutate_the_job_and_reject_unknown_ids() {
         let mut r = JobRegistry::new();
-        let id = r.register(spec("files", "Copy"));
+        let id = r.register(spec("files", "Copy")).expect("registered");
         assert!(r.update_progress(id, 5, None));
         assert!((r.get(id).unwrap().progress.fraction() - 0.5).abs() < 1e-9);
         assert!(r.set_state(id, JobState::Impeded, Some("disk full".into())));
@@ -498,12 +547,12 @@ mod tests {
     #[test]
     fn remove_drops_the_job_and_the_id_is_never_reused() {
         let mut r = JobRegistry::new();
-        let a = r.register(spec("files", "A"));
+        let a = r.register(spec("files", "A")).expect("registered");
         assert!(r.remove(a));
         assert!(!r.remove(a), "a second remove is a no-op");
         assert!(r.get(a).is_none());
         // The next registration does NOT reuse the freed id.
-        let b = r.register(spec("files", "B"));
+        let b = r.register(spec("files", "B")).expect("registered");
         assert_eq!(b, 2, "ids are never reused");
         assert!(r.is_empty() || r.len() == 1);
     }
@@ -511,9 +560,9 @@ mod tests {
     #[test]
     fn snapshot_lists_active_jobs_ordered_by_id() {
         let mut r = JobRegistry::new();
-        r.register(spec("files", "A"));
-        r.register(spec("forage", "B"));
-        r.register(spec("model", "C"));
+        r.register(spec("files", "A")).expect("registered");
+        r.register(spec("forage", "B")).expect("registered");
+        r.register(spec("model", "C")).expect("registered");
         let snap = r.snapshot();
         let titles: Vec<&str> = snap.iter().map(|j| j.title.as_str()).collect();
         assert_eq!(titles, ["A", "B", "C"], "ordered by ascending id");
@@ -644,5 +693,85 @@ mod tests {
         // update/state on an unknown id is a no-op.
         assert!(!s.update(999, 1, None));
         assert!(s.remove(id));
+    }
+}
+
+#[cfg(test)]
+mod ceiling_tests {
+    use super::*;
+
+    fn spec(app: &str, title: &str) -> NewJob {
+        NewJob {
+            app_id: app.to_string(),
+            title: title.to_string(),
+            progress: Progress::indeterminate(Unit::Items),
+            capabilities: JobCapabilities { killable: false, suspendable: false },
+            started_at: 1,
+            egress_host: None,
+            items: Vec::new(),
+        }
+    }
+
+    /// One producer stuck in a loop fills its own share and stops there, so the
+    /// surface keeps room for everybody else's work.
+    #[test]
+    fn a_runaway_producer_cannot_crowd_out_the_others() {
+        let mut r = JobRegistry::new();
+        for i in 0..MAX_JOBS_PER_APP {
+            assert!(r.register(spec("loop", &format!("run {i}"))).is_some());
+        }
+        assert!(r.register(spec("loop", "one too many")).is_none());
+        // Another app is unaffected: the ceiling is per producer as well as total.
+        assert!(r.register(spec("files", "Copying")).is_some());
+    }
+
+    /// And the whole registry is bounded, whatever mix of producers fills it.
+    #[test]
+    fn the_registry_stops_growing_at_its_ceiling() {
+        let mut r = JobRegistry::new();
+        let mut made = 0;
+        for app in 0..MAX_LIVE_JOBS {
+            if r.register(spec(&format!("app{app}"), "work")).is_some() {
+                made += 1;
+            }
+        }
+        assert_eq!(made, MAX_LIVE_JOBS);
+        assert!(r.register(spec("one-more", "work")).is_none());
+        // A finished job frees its place, so a busy machine recovers rather than
+        // staying full for the session.
+        assert!(r.remove(1));
+        assert!(r.register(spec("one-more", "work")).is_some());
+    }
+
+    /// A title is cut, not refused: the work still gets a row, and the cut lands
+    /// on a character boundary rather than inside one.
+    #[test]
+    fn an_enormous_title_is_shortened_rather_than_dropped() {
+        let mut r = JobRegistry::new();
+        let id = r
+            .register(spec("files", &"ü".repeat(MAX_JOB_TITLE * 3)))
+            .expect("registered");
+        let title = &r.get(id).expect("present").title;
+        assert_eq!(title.chars().count(), MAX_JOB_TITLE);
+        assert!(title.chars().all(|c| c == 'ü'));
+    }
+
+    /// The wire adapter answers 0 for a refusal, which every producer can ignore
+    /// safely: no job carries id 0, so its later calls are the no-ops they would
+    /// be for a job that had already finished.
+    #[test]
+    fn the_wire_answers_zero_when_the_registry_refuses() {
+        let registry = std::sync::Arc::new(std::sync::Mutex::new(JobRegistry::new()));
+        let server = JobViewServer::new(std::sync::Arc::clone(&registry));
+        for _ in 0..MAX_JOBS_PER_APP {
+            assert_ne!(
+                server.register("loop".into(), "run".into(), "items", None, false, false, None, 1, vec![]),
+                0
+            );
+        }
+        let refused = server
+            .register("loop".into(), "run".into(), "items", None, false, false, None, 1, vec![]);
+        assert_eq!(refused, 0);
+        assert!(!server.update(refused, 1, None));
     }
 }
