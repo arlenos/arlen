@@ -60,18 +60,25 @@
 
 <div class="search-results" role="list" aria-label={$t("f.results.aria")}>
   {#if sorted && sorted.length > 0}
-    <div class="sr-header" role="row">
+    <!-- A LIST WITH SORT CONTROLS, not a table. These were
+         `<button role="columnheader" aria-sort=…>` inside a `role="row"` inside a
+         `role="list"`: a button cannot be a columnheader and a row cannot be in a
+         list, so the markup claimed two structures at once and was neither.
+         The system-monitor process table went the other way on 8 September - it
+         became a real grid - and that was right for IT: selection, context menus,
+         a tree to expand. This pane is three columns of results you open, with no
+         grid navigation to promise, so it stays a list and the sort state moves
+         into each button's name where a list can carry it. -->
+    <div class="sr-header">
       {#each COLUMNS as col (col.key)}
         <button
           class="sr-col sr-col-{col.key}"
-          role="columnheader"
-          aria-label={$t(col.labelKey)}
-          onclick={() => setSearchSort(col.key)}
-          aria-sort={$searchSortKey === col.key
+          aria-label={$searchSortKey === col.key
             ? $searchAscending
-              ? "ascending"
-              : "descending"
-            : undefined}
+              ? $t("f.results.sortAsc", { col: $t(col.labelKey) })
+              : $t("f.results.sortDesc", { col: $t(col.labelKey) })
+            : $t("f.results.sortNone", { col: $t(col.labelKey) })}
+          onclick={() => setSearchSort(col.key)}
         >
           {$t(col.labelKey)}
           {#if $searchSortKey === col.key}
@@ -101,7 +108,21 @@
   {/if}
   {#each sorted ?? [] as hit (hit.rel_path)}
     {@const Icon = entryIcon(hit.entry)}
-    <button class="sr-row" ondblclick={() => jump(hit.rel_path)}>
+    <!-- ENTER OPENS IT, which it did not until 6 September. The only handler was
+         `ondblclick`, so a keyboard could tab to every result and open none of
+         them - Enter on a button fires `click`, never `dblclick`. The listitem
+         wrapper is `display: contents`, so the row keeps its own grid columns. -->
+    <div class="sr-item" role="listitem">
+    <button
+      class="sr-row"
+      ondblclick={() => jump(hit.rel_path)}
+      onkeydown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          jump(hit.rel_path);
+        }
+      }}
+    >
       <span class="sr-name-cell">
         <span class="sr-icon"><Icon size={16} strokeWidth={1.75} /></span>
         <span class="sr-name">{hit.entry.name}</span>
@@ -109,6 +130,7 @@
       <span class="sr-dir">{dirOf(hit.rel_path)}</span>
       <span class="sr-meta">{formatModified(hit.entry.modified_unix)}</span>
     </button>
+    </div>
   {/each}
   {#if $searchTruncated}
     <div class="sr-more">{$t("f.results.truncated")}</div>
@@ -157,6 +179,12 @@
     padding-inline-start: 24px;
   }
 
+  /* `display: contents`, so the listitem wrapper carries the role and the button
+     below it keeps being the grid item. Same trick the process table uses for its
+     column headers, used the other way round. */
+  .sr-item {
+    display: contents;
+  }
   .sr-row {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) 9rem;
