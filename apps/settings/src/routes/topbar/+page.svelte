@@ -78,7 +78,7 @@
                 {#if it.kind === "tray"}<span class="tb-tag">{$t("s.topbar.tray")}</span>{/if}
                 <span class="tb-spacer"></span>
                 <span class="tb-state">{it.shown ? $t("s.topbar.shown") : $t("s.topbar.overflow")}</span>
-                <Switch value={it.shown} onchange={(v) => setShown(it.id, v)} />
+                <Switch ariaLabel={$t("s.tb.showSwitch", { item: it.name })} value={it.shown} onchange={(v) => setShown(it.id, v)} />
               </div>
             {/if}
           {/snippet}

@@ -538,6 +538,11 @@ export const b: Catalogs = {
     "s.sys.iconHint": "The icon set across your apps",
     "s.qs.hiddenTile": "Hidden tile: {$tile}. Drag back into the panel or right-click to show",
     "s.pr.jobNumber": "Job {$id}",
+    // The show/hide switch beside each top-bar item. It carried no name at all,
+    // so a reader met eight unnamed switches in a row with no way to tell which
+    // applet each one governs - axe `critical`, found the first time this panel
+    // was rendered by a sweep, on 6 September.
+    "s.tb.showSwitch": "Show {$item} in the top bar",
     "s.tb.reorder": "Reorder {$item}",
     "s.ai.enableBehaviour": "Enable {$name}",
     "s.kbd.variantHint": "Optional variant for the primary layout, for example dvorak or colemak.",
@@ -1565,6 +1570,7 @@ export const b: Catalogs = {
     "s.sys.iconHint": "Der Symbolsatz für deine Apps",
     "s.qs.hiddenTile": "Ausgeblendete Kachel: {$tile}. Zurück ins Panel ziehen oder per Rechtsklick einblenden",
     "s.pr.jobNumber": "Auftrag {$id}",
+    "s.tb.showSwitch": "{$item} in der Leiste zeigen",
     "s.tb.reorder": "{$item} umsortieren",
     "s.ai.enableBehaviour": "{$name} einschalten",
     "s.kbd.variantHint": "Optionale Variante für das primäre Layout, zum Beispiel dvorak oder colemak.",

@@ -16,9 +16,13 @@
   let {
     action,
     query,
+    label,
   }: {
     action: InlineAction;
     query: string;
+    /// The setting's own title, passed down so the inline control can name
+    /// itself. The result row shows it; a screen reader has no other way to it.
+    label: string;
   } = $props();
 
   let value = $state<unknown>(null);
@@ -43,6 +47,7 @@
     <WaypointerInlineToggle
       checked={value === true}
       onchange={(v) => setValue(v)}
+      {label}
     />
   {:else if action.actionType === "select" && action.options}
     <WaypointerInlinePills

@@ -1263,6 +1263,7 @@
                       <WaypointerSettingInline
                         action={sr.setting.inlineAction}
                         {query}
+                        label={sr.setting.title}
                       />
                     {/if}
                   {/snippet}

@@ -60,13 +60,13 @@
         id="mouse-natural-scroll"
       >
         {#snippet control()}
-          <Switch value={$mouse.config.natural_scroll} onchange={(v) => set("natural_scroll", v)} />
+          <Switch ariaLabel={$t("s.mouse.naturalScroll")} value={$mouse.config.natural_scroll} onchange={(v) => set("natural_scroll", v)} />
         {/snippet}
       </Row>
 
       <Row label={$t("s.mouse.leftHanded")} description={$t("s.mouse.leftHanded.desc")} id="mouse-left-handed">
         {#snippet control()}
-          <Switch value={$mouse.config.left_handed} onchange={(v) => set("left_handed", v)} />
+          <Switch ariaLabel={$t("s.mouse.leftHanded")} value={$mouse.config.left_handed} onchange={(v) => set("left_handed", v)} />
         {/snippet}
       </Row>
 

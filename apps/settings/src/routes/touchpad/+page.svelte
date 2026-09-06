@@ -53,7 +53,7 @@
       </Row>
       <Row label={$t("s.touchpad.tapClick")} description={$t("s.touchpad.tapClick.desc")} id="touchpad-tap-to-click">
         {#snippet control()}
-          <Switch value={$touchpad.config.tap_to_click} onchange={(v) => set("tap_to_click", v)} />
+          <Switch ariaLabel={$t("s.touchpad.tapClick")} value={$touchpad.config.tap_to_click} onchange={(v) => set("tap_to_click", v)} />
         {/snippet}
       </Row>
       <Row
@@ -63,6 +63,7 @@
       >
         {#snippet control()}
           <Switch
+            ariaLabel={$t("s.touchpad.tapDrag")}
             value={$touchpad.config.tap_drag}
             onchange={(v) => set("tap_drag", v)}
             disabled={!$touchpad.config.tap_to_click}
@@ -75,7 +76,7 @@
         id="touchpad-disable-while-typing"
       >
         {#snippet control()}
-          <Switch value={$touchpad.config.disable_while_typing} onchange={(v) => set("disable_while_typing", v)} />
+          <Switch ariaLabel={$t("s.touchpad.disableTyping")} value={$touchpad.config.disable_while_typing} onchange={(v) => set("disable_while_typing", v)} />
         {/snippet}
       </Row>
     </Section>
@@ -83,12 +84,12 @@
     <Section label={$t("s.touchpad.scrolling")}>
       <Row label={$t("s.touchpad.twoFinger")} description={$t("s.touchpad.twoFinger.desc")} id="touchpad-two-finger-scroll">
         {#snippet control()}
-          <Switch value={$touchpad.config.two_finger_scroll} onchange={(v) => set("two_finger_scroll", v)} />
+          <Switch ariaLabel={$t("s.touchpad.twoFinger")} value={$touchpad.config.two_finger_scroll} onchange={(v) => set("two_finger_scroll", v)} />
         {/snippet}
       </Row>
       <Row label={$t("s.touchpad.naturalScroll")} description={$t("s.touchpad.naturalScroll.desc")} id="touchpad-natural-scroll">
         {#snippet control()}
-          <Switch value={$touchpad.config.natural_scroll} onchange={(v) => set("natural_scroll", v)} />
+          <Switch ariaLabel={$t("s.touchpad.naturalScroll")} value={$touchpad.config.natural_scroll} onchange={(v) => set("natural_scroll", v)} />
         {/snippet}
       </Row>
     </Section>
