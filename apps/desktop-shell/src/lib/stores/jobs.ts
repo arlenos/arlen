@@ -161,6 +161,24 @@ const MOCK_JOBS: Job[] = [
     suspendable: false,
   },
   {
+    // A job that ended badly and counted nothing - the shape an install failure
+    // has, and the one the eight-second receipt exists for. No bar (nothing was
+    // measured), no metrics, and the sentence that says what went wrong.
+    id: "install-failed",
+    items: [],
+    startedAt: 2600000,
+    title: "Installing notes-1.2",
+    appId: "arlen-installd",
+    appLabel: "arlen-installd",
+    fraction: 0,
+    determinate: false,
+    state: "error_fatal",
+    metrics: [],
+    killable: false,
+    suspendable: false,
+    error: "package not found: notes-1.2.lunpkg",
+  },
+  {
     id: "transfer",
     items: [],
     startedAt: 3000000,
