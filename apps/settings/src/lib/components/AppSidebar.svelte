@@ -169,7 +169,11 @@
       `--color-bg-card` / `--color-fg-app` tokens directly keeps
       the popup themed in both dark and light modes.
     -->
-    <div class="settings-search-wrap">
+    <!-- `role="search"` because the whole sidebar is divs down to the kit's
+         primitive, so without a landmark here the search box is content in no
+         region at all - which is what axe reported on all thirty settings pages
+         the first time this app was swept page by page. -->
+    <div class="settings-search-wrap" role="search">
       <SearchField
         bind:ref={inputEl}
         bind:value={query}
@@ -220,6 +224,9 @@
   </SidebarHeader>
 
   <SidebarContent>
+    <!-- The nav landmark for the section list, named because a landmark with no
+         name is a landmark a reader cannot choose between. -->
+    <nav aria-label={$t("s.nav.aria")}>
     {#each SECTIONS as section (section.label)}
       <SidebarGroup>
         <SidebarGroupLabel>{$t(section.label)}</SidebarGroupLabel>
@@ -244,6 +251,7 @@
         </SidebarMenu>
       </SidebarGroup>
     {/each}
+    </nav>
   </SidebarContent>
 
   <SidebarRail />
