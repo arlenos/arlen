@@ -69,12 +69,23 @@ interface FilterStoreState {
   data: ScreenFilterState;
   loading: boolean;
   error: string | null;
+  /// True when the last WRITE was refused, kept apart from `error`.
+  ///
+  /// The same defect the config store carried, in full: the catch put the reason
+  /// in `error` and then called `loadFilter()` to roll the switch back, and
+  /// `loadFilter()` clears `error` on its first line. So a refused write erased
+  /// its own record, and the person saw the invert-colours switch slide back on
+  /// its own with nothing said. Had it survived, this page renders `error`
+  /// through `ConfigUnavailable` - "these settings cannot be read, the values
+  /// below are defaults" - which after a successful rollback is false twice.
+  writeFailed: boolean;
 }
 
 const inner = writable<FilterStoreState>({
   data: { inverted: false, colorFilter: null },
   loading: false,
   error: null,
+  writeFailed: false,
 });
 
 export const screenFilter: Readable<FilterStoreState> = {
@@ -82,26 +93,30 @@ export const screenFilter: Readable<FilterStoreState> = {
 };
 
 export async function loadFilter(): Promise<void> {
+  // `writeFailed` is deliberately NOT cleared: this also runs as the rollback
+  // for a refused write, and clearing it there is what erased the failure.
   inner.update((s) => ({ ...s, loading: true, error: null }));
   try {
     const dto = await invoke<{
       inverted: boolean;
       colorFilter?: string | null;
     }>("accessibility_filter_get");
-    inner.set({
+    inner.update((s) => ({
+      ...s,
       data: {
         inverted: dto.inverted,
         colorFilter: (dto.colorFilter as ColorFilterLabel | null) ?? null,
       },
       loading: false,
       error: null,
-    });
+    }));
   } catch (e) {
     inner.update((s) => ({ ...s, loading: false, error: String(e) }));
   }
 }
 
 export async function setInverted(value: boolean): Promise<void> {
+  inner.update((st) => ({ ...st, writeFailed: false }));
   // Optimistic UI — read current state, mutate, write.
   let cur: ScreenFilterState = { inverted: false, colorFilter: null };
   inner.update((s) => {
@@ -115,13 +130,14 @@ export async function setInverted(value: boolean): Promise<void> {
         colorFilter: cur.colorFilter,
       },
     });
-  } catch (e) {
-    inner.update((s) => ({ ...s, error: String(e) }));
+  } catch {
     await loadFilter();
+    inner.update((s) => ({ ...s, writeFailed: true }));
   }
 }
 
 export async function setColorFilter(value: ColorFilterLabel): Promise<void> {
+  inner.update((st) => ({ ...st, writeFailed: false }));
   let cur: ScreenFilterState = { inverted: false, colorFilter: null };
   inner.update((s) => {
     cur = { ...s.data, colorFilter: value === "None" ? null : value };
@@ -134,8 +150,8 @@ export async function setColorFilter(value: ColorFilterLabel): Promise<void> {
         colorFilter: cur.colorFilter,
       },
     });
-  } catch (e) {
-    inner.update((s) => ({ ...s, error: String(e) }));
+  } catch {
     await loadFilter();
+    inner.update((s) => ({ ...s, writeFailed: true }));
   }
 }

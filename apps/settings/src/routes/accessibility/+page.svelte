@@ -95,9 +95,7 @@
        read that failed left the inverted and colour-filter rows showing defaults
        with nothing said. -->
   <ConfigUnavailable error={$compositor.error ?? $screenFilter.error} />
-  <!-- The screen-filter store is its own type with its own write path, so it
-       is not folded in here; it needs the same treatment separately. -->
-  <ConfigWriteFailed failed={$compositor.writeFailed} />
+  <ConfigWriteFailed failed={$compositor.writeFailed || $screenFilter.writeFailed} />
   <SectionGrid>
     <Section label={$t("s.a11y.magnifier")}>
     <Row
