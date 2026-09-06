@@ -11,6 +11,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "term.app.title": "Terminal",
+    "term.nav.aria": "Sessions",
     "term.commandInput": "Command input",
     "term.err.newSessionFailed": "No shell could be started, so there is nothing to type into.",
     "term.err.newSessionRefused": "A new session did not open, because no shell could be started.",
@@ -105,6 +106,7 @@ const messages: Catalogs = {
   },
   de: {
     "term.app.title": "Terminal",
+    "term.nav.aria": "Sitzungen",
 
     "term.qa.newSession": "Neue Sitzung (Strg+T)",
     "term.qa.history": "Verlauf (Strg+R)",
