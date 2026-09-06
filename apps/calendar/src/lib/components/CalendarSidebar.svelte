@@ -62,11 +62,17 @@
   <!-- Search leads the rail from the h-10 band (level with the content bar);
        the app's own name used to sit here and said nothing the shell does not. -->
   <SidebarHeader class="h-10 justify-center py-0">
-    <div class="head-search">
+    <!-- `role="search"` because the kit's sidebar is divs down to the primitive,
+         so without a landmark here the box is content in no region. -->
+    <div class="head-search" role="search">
       <SearchField id="cal-search" bind:value={query} placeholder={$t("cal.search")} aria-label={$t("cal.search")} />
     </div>
   </SidebarHeader>
   <SidebarContent>
+    <!-- The nav landmark for the rail: the New event button, the mini month and
+         the calendar list. Named, because an unnamed landmark is one a reader
+         cannot choose between. -->
+    <nav aria-label={$t("cal.nav.aria")}>
     <SidebarGroup>
       <SidebarMenu>
         <SidebarMenuItem>
@@ -135,6 +141,7 @@
         {/if}
       </div>
     </SidebarGroup>
+    </nav>
   </SidebarContent>
   <SidebarRail />
 </Sidebar>

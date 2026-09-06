@@ -12,6 +12,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "cal.app.title": "Calendar",
+    "cal.nav.aria": "Calendars",
     "cal.agenda": "Agenda",
     // Why a new event was not written, one line per cause. The command answers
     // with a tagged word and the store writes the sentence.
@@ -145,6 +146,7 @@ const messages: Catalogs = {
   },
   de: {
     "cal.app.title": "Kalender",
+    "cal.nav.aria": "Kalender",
     "cal.agenda": "Termine",
     "cal.create.noHome": "Es gibt kein Home-Verzeichnis für Kalender.",
     "cal.create.cannotMakeDir": "Der Kalenderordner ließ sich nicht anlegen. {$why}",
