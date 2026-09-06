@@ -55,19 +55,26 @@
   );
   const canSave = $derived(name.trim().length > 0 && baseUrl.trim().length > 0);
 
-  // Mocked until `ai_provider_fetch_models` lands: pretend the endpoint
-  // answered with a couple of model ids.
-  function fetchModels() {
-    models = ["model-large", "model-small"];
-  }
-
-  // Mocked until `ai_provider_test` lands. The real command returns
-  // ok / an HTTP status / a network failure; this cycles so the states are
-  // designable.
-  function runTest() {
-    test = { kind: "testing" };
-    test = { kind: "ok" };
-  }
+  // BOTH CONTROLS ARE DISABLED, AND THAT IS THE HONEST STATE.
+  //
+  // They used to answer from nothing: Fetch put two invented ids into the list,
+  // and Test set "it works" without reaching anything. A dialog that says a
+  // provider you just typed in is reachable, having asked nobody, is the one lie
+  // this surface cannot afford - it is the sentence somebody trusts before
+  // sending a key to that endpoint.
+  //
+  // What each waits on is DIFFERENT, so they are named separately:
+  //  - Fetch waits on `ai_provider_fetch_models`, which does not exist anywhere.
+  //  - Test waits on a command that can reach an endpoint the CALLER typed.
+  //    `ai_provider_test` exists, and it is not that one: it tests a CATALOGUED
+  //    provider through the proxy, deliberately taking no caller URL so there is
+  //    no egress-consent step. Pointing this button at it would test a different
+  //    provider than the one on screen. A command that dials a caller-supplied
+  //    host crosses the line that doc draws on purpose, so it is a decision
+  //    rather than a missing function.
+  //
+  // Nothing is lost meanwhile: the model list is a ChipList bound to `models`, so
+  // ids can still be typed in by hand.
 
   function testLabel(v: TestState): string {
     switch (v.kind) {
@@ -133,7 +140,7 @@
     <div class="field">
       <div class="flabel-row">
         <span class="flabel">{$t("s.addProv.models")}</span>
-        <Button variant="ghost" size="sm" disabled={!baseUrl.trim()} onclick={fetchModels}>
+        <Button variant="ghost" size="sm" disabled>
           {$t("s.addProv.fetch")}
         </Button>
       </div>
@@ -149,7 +156,7 @@
 
     <div class="ap-foot">
       <div class="test">
-        <Button variant="outline" size="sm" disabled={!baseUrl.trim()} onclick={runTest}>
+        <Button variant="outline" size="sm" disabled>
           {$t("s.addProv.testConnection")}
         </Button>
         {#if test.kind !== "idle"}
