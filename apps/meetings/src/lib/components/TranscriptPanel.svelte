@@ -113,7 +113,9 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    /* The secondary token, not a 45% fade: an uppercase 2xs label at about 3:1
+       is what axe reports serious, and this one names the block under it. */
+    color: var(--color-fg-secondary, #a1a1aa);
   }
   .tp-body {
     flex: 1;
