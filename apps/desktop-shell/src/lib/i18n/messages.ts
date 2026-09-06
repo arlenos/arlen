@@ -366,6 +366,16 @@ const messages: Catalogs = {
     "sh.bt.tip.plain": "Bluetooth",
     "sh.bt.tip.off": "Bluetooth: off",
     "sh.bt.tip.unknown": "Bluetooth: not known",
+    // The sound applet's tooltip, in the shape its neighbour below already has.
+    // It used to be three English literals - "Audio", "Volume: Muted",
+    // "Volume: 62%" - on the bar that is always on screen. The
+    // born-translatable lint could not see them: `prose()` wants three words
+    // before it calls a literal a sentence, which is a deliberate floor so
+    // "Ethernet" and "A4" do not flood the baseline, and a two-word sentence
+    // falls through it.
+    "sh.audio.tip.plain": "Sound",
+    "sh.audio.tip.muted": "Volume: muted",
+    "sh.audio.tip.level": "Volume: {$pct}%",
     "sh.bat.tip.plain": "Battery",
     "sh.bat.tip.level": "Battery: {$pct}%",
     "sh.bat.tip.untilFull": "Battery: {$pct}%, {$time} until full",
@@ -1059,6 +1069,9 @@ const messages: Catalogs = {
     "sh.bt.tip.plain": "Bluetooth",
     "sh.bt.tip.off": "Bluetooth: aus",
     "sh.bt.tip.unknown": "Bluetooth: nicht bekannt",
+    "sh.audio.tip.plain": "Ton",
+    "sh.audio.tip.muted": "Lautstärke: stumm",
+    "sh.audio.tip.level": "Lautstärke: {$pct}\u00a0%",
     "sh.bat.tip.plain": "Akku",
     "sh.bat.tip.level": "Akku: {$pct}\u00a0%",
     "sh.bat.tip.untilFull": "Akku: {$pct}\u00a0%, in {$time} voll",
