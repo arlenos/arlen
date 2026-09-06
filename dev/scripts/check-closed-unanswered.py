@@ -221,9 +221,18 @@ def findings_in(text: str) -> list[int]:
         if LOGGING.search(stmt):
             continue
         body = blank[span[0] : span[1]]
-        # The close must be a DIFFERENT statement, not the discarded call's own
-        # name - `closePopover().catch(() => {})` would otherwise match itself.
-        without = body[: m.start() - span[0]] + body[m.end() - span[0] :]
+        # The close must be a DIFFERENT STATEMENT, not the discarded call's own.
+        #
+        # Cutting only the `.catch(...)` text was not enough, and the tree said so:
+        # the PDF reader's window-Close button is `getCurrentWindow().close()`,
+        # where closing IS the action and a silent failure leaves a window the
+        # person can see is still open. Written in the promise form it matched
+        # itself. So the whole statement holding the discarded rejection is
+        # removed before looking for a close.
+        stmt_end = blank.find(";", m.end())
+        stmt_end = span[1] if stmt_end < 0 or stmt_end > span[1] else stmt_end
+        cut_from = (stmt_start + 1) if stmt_start > span[0] else span[0]
+        without = body[: cut_from - span[0]] + body[stmt_end - span[0] :]
         if CLOSER.search(without):
             hits.append(text[: m.start()].count("\n") + 1)
     return sorted(set(hits))
