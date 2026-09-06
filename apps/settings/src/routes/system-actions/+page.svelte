@@ -12,6 +12,7 @@
 
   import { onMount } from "svelte";
   import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
+  import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
   import { mark } from "@arlen/ui-kit/i18n";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
@@ -85,6 +86,7 @@
   description={$t("s.sysact.desc")}
 >
   <ConfigUnavailable error={$compositor.error} />
+  <ConfigWriteFailed failed={$compositor.writeFailed} />
   <SectionGrid>
   {#if modifiedCount > 0}
     <div class="header-actions span-full">

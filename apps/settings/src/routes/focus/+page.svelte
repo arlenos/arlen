@@ -11,6 +11,7 @@
 
   import { onMount } from "svelte";
   import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
+  import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   import { AppWindow, FolderSearch } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -89,6 +90,7 @@
   description={$t("s.focus.desc")}
 >
   <ConfigUnavailable error={$shell.error} />
+  <ConfigWriteFailed failed={$shell.writeFailed} />
   <SectionGrid>
     <Section label={$t("s.focus.topBar")}>
     <Row
