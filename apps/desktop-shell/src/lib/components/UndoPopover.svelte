@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import { agoText } from "$lib/duration";
   /// The unified recent-actions panel (CAH-4): every producer's reversible
   /// acts in one list, newest first - action + its inverse, and a marked
   /// point of no return where there is none. "Undo last" takes back the
@@ -28,13 +29,10 @@
     settings: "sh.undo.by.settings",
   };
 
-  // Compact ages so the row stays one calm line ("now", "4m", "2h").
+  // Compact ages so the row stays one calm line. The words come from the shell's
+  // duration file, which is where the rest of them already live.
   function ago(at: number): string {
-    const s = Math.max(0, Math.floor(Date.now() / 1000) - at);
-    if (s < 90) return "now";
-    const m = Math.floor(s / 60);
-    if (m < 60) return `${m}m`;
-    return `${Math.floor(m / 60)}h`;
+    return agoText($t, Math.floor(Date.now() / 1000) - at);
   }
 </script>
 

@@ -202,7 +202,13 @@ const MOCK_JOBS: Job[] = [
     fraction: 0.8,
     determinate: true,
     state: "error_recoverable",
-    metrics: [{ processed: 48, total: 60, unit: "seconds" }],
+    // `items`, not "seconds". The unit is a WIRE TOKEN and the daemon's
+    // `Unit::from_wire` collapses anything it does not know to `items`, so a
+    // real converter reporting seconds arrives here as items - and "seconds"
+    // could only ever come from this fixture. It showed: a German session read
+    // "48 von 60 seconds", the interface speaking English inside its own
+    // sentence, in a state no machine can produce.
+    metrics: [{ processed: 48, total: 60, unit: "items" }],
     error: "Ran out of disk space. Free some room and retry.",
     killable: true,
     suspendable: false,
