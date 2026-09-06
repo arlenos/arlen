@@ -111,7 +111,7 @@ async fn cmd_install(target: String) {
             std::process::exit(1);
         };
         // Untrusted remote recipe: never build it unconfined.
-        let lunpkg = match commands::build::build_recipe_at(&recipe_path, false).await {
+        let lunpkg = match commands::build::build_recipe_at(&recipe_path, false, None).await {
             Ok(p) => p,
             Err(()) => std::process::exit(1),
         };
@@ -333,7 +333,7 @@ async fn build_by_name(name: String) -> std::path::PathBuf {
     }
 
     // Untrusted remote recipe: never build it unconfined.
-    match commands::build::build_recipe_at(&recipe_path, false).await {
+    match commands::build::build_recipe_at(&recipe_path, false, None).await {
         Ok(p) => p,
         Err(()) => std::process::exit(1),
     }
