@@ -38,6 +38,21 @@
         // reach the bar as "Permission denied (os error 13)".
         return Promise.reject({ problem: "io", why: "Permission denied (os error 13)" });
       }
+      // The SIDEBAR, and it is not decoration here: unanswered, the rail said
+      // "Deine Orte konnten nicht gelesen werden." beside the refusal this
+      // fixture is actually about, so the picture carried two failures and could
+      // not be read as evidence about either. `files_devices` is served below
+      // and never asked - the surface reads places through `files_places` - and
+      // is kept because the command exists and a future rail may.
+      if (cmd === "files_places") {
+        return Promise.resolve({
+          orte: [
+            { label_key: "home", label: "Home", icon: "home", path: "/home/you" },
+            { label_key: "documents", label: "Dokumente", icon: "documents", path: "/home/you/Dokumente" },
+          ],
+          geraete: [],
+        });
+      }
       if (cmd === "files_bookmarks" || cmd === "files_devices" || cmd === "files_projects") {
         return Promise.resolve([]);
       }
