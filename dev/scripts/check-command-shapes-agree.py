@@ -46,7 +46,13 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# An optional root, so the control can point this at a fixture tree instead of
+# editing the repository. Its first cut did edit it - putting a real defect back,
+# running, restoring - which is fine alone and wrong under the pre-commit hook,
+# where the gates run CONCURRENTLY: another check reading the Rust sources
+# mid-control sees a tree nobody wrote. It failed that way within the hour, and a
+# gate that fails at random is worse than no gate.
+ROOT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
 COMMAND = re.compile(
     r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\(([^)]*)\)",
