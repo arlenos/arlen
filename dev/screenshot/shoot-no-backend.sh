@@ -207,15 +207,25 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
     # is refused, which neither of the other two can show. It replaces the stub
     # rather than joining it, since two runtimes cannot both be installed.
     if [ -n "${7:-}" ]; then stub="--host-script $7"; fi
+    # WHICH WINDOW THE STUB SAYS IT IS, and it decides what mounts. The shell
+    # reads its Tauri label straight off the runtime and gates surfaces on it:
+    # the consent card mounts in the `consent` window and nowhere else, and the
+    # launcher is its own window too. The stub answers "main" unless told
+    # otherwise, so without this the sweep photographed all three shell windows
+    # as the bar - an empty consent window, and a launcher rendered as though it
+    # were the primary bar. `render-wide.py` grew the flag for exactly this and
+    # nothing here was passing it.
+    label=""
+    if [ -n "${8:-}" ]; then label="--window-label $8"; fi
     for out in $shots; do
       flags="$stub"
       case "$out" in *-hostfails.png) flags="--stub-host" ;; esac
       if [ -n "${5:-}" ]; then
         python3 "$1/dev/screenshot/render-wide.py" \
-          --url "$2" --out "$out" --width "$4" --require-width "$4" --open "$5" $flags || rc=$?
+          --url "$2" --out "$out" --width "$4" --require-width "$4" --open "$5" $flags $label || rc=$?
       else
         python3 "$1/dev/screenshot/render-wide.py" \
-          --url "$2" --out "$out" --width "$4" --require-width "$4" $flags || rc=$?
+          --url "$2" --out "$out" --width "$4" --require-width "$4" $flags $label || rc=$?
       fi
     done
     # Kill AND wait: the display goes away with xvfb-run the moment this returns,
@@ -224,7 +234,7 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
     if [ -n "$ob" ]; then kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null; fi
     exit $rc
   ' _ "$ROOT" "$URL" "$OUT" "$W" "${SHOOT_OPEN:-}" "${SHOOT_FAILING_HOST:-}" \
-  "${SHOOT_HOST_SCRIPT:-}" \
+  "${SHOOT_HOST_SCRIPT:-}" "${SHOOT_WINDOW_LABEL:-}" \
   2>&1 | grep -v "Gdk-WARNING" || true
 
 # Did we photograph the app, or the preview server's corpse? A page whose text is
