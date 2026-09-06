@@ -44,6 +44,12 @@
         return Promise.resolve(args && args.folderId === "inbox" ? [MSG] : []);
       }
       if (cmd === "mail_open") {
+        // EVERY field of `Message`, not the ones this fixture happens to care
+        // about. An earlier cut left out `to`, `cc`, `attachments` and four more,
+        // and the reading surface iterates them - so MessageView threw while
+        // rendering, Svelte bailed, and the pane kept the "pick a message" it had
+        // been showing. It looked exactly like a live-mailbox defect and was
+        // reported as one for half an hour.
         return Promise.resolve({
           from: "Mara Winter",
           subject: "Rehearsal moved to Thursday",
@@ -52,6 +58,14 @@
           has_html: false,
           only_in_text: [],
           only_in_html: [],
+          refusal: null,
+          to: ["you@example.org"],
+          cc: [],
+          channels: [],
+          attachments: [],
+          invitation: null,
+          sealed: null,
+          path: "/home/you/Maildir/new/m1",
         });
       }
       // No message was passed on the command line, which is what a host answers
