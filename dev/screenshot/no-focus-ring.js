@@ -160,6 +160,16 @@ for (const el of document.querySelectorAll(SEL)) {
   });
   if (held && !shown && !drawnChild) continue;
 
+  // BLUR FIRST. The "before" reading has to be an UNFOCUSED one, and on a
+  // surface that autofocuses it is not: the greeter puts the caret in the
+  // password field on load, so `focus()` on that field was a no-op, before and
+  // after matched, and the probe reported the one control every person meets
+  // first as having no ring. It was wrong, and it was wrong in the direction
+  // that wastes a morning - a finding against correct CSS. Any surface with an
+  // autofocus had the same hole; this is the only one that has been swept.
+  if (document.activeElement && document.activeElement !== document.body) {
+    document.activeElement.blur();
+  }
   const before = snap(el);
   try {
     el.focus({ preventScroll: true });
