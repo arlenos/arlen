@@ -29,6 +29,22 @@ function tree(body) {
   return dir;
 }
 
+// An app whose catalogue is SPLIT over several files and merged, which is what
+// settings does. A key in two of them is dead in the earlier one and nothing
+// looked across the split until 8 September.
+function splitTree(a, b) {
+  const dir = mint("catalog-dup-split-");
+  const at = join(dir, "apps/one/src/lib/i18n");
+  mkdirSync(at, { recursive: true });
+  writeFileSync(join(at, "messages.a.ts"), a);
+  writeFileSync(join(at, "messages.b.ts"), b);
+  writeFileSync(
+    join(at, "messages.ts"),
+    "const messages = {\n  en: { ...a.en, ...b.en },\n  de: { ...a.de, ...b.de },\n};\n",
+  );
+  return dir;
+}
+
 function run(dir) {
   try {
     execFileSync("python3", [GATE, dir], { encoding: "utf8" });
@@ -98,6 +114,44 @@ const messages = {
   if (r.code === 1 && r.out.includes("de"))
     ok("a duplicate in a later locale block is reached");
   else bad("a duplicate in a later locale block is reached", `exit ${r.code}: ${r.out}`);
+  cleanup(d);
+}
+
+{
+  const d = splitTree(
+    'const a = {\n  en: {\n    "a.one": "One",\n  },\n  de: {\n    "a.one": "Eins",\n  },\n};\n',
+    'const b = {\n  en: {\n    "a.one": "One again",\n  },\n  de: {\n    "a.one": "Eins, nochmal",\n  },\n};\n',
+  );
+  const r = run(d);
+  if (r.code === 1 && r.out.includes("messages.a.ts") && r.out.includes("messages.b.ts"))
+    ok("a key defined by two of an app's catalogue files is caught");
+  else bad("a key defined by two of an app's catalogue files is caught", `exit ${r.code}: ${r.out}`);
+  cleanup(d);
+}
+
+{
+  // The other direction, and the reason this cannot just count files: a split
+  // catalogue is the normal case, and two files that share no key are fine.
+  const d = splitTree(
+    'const a = {\n  en: {\n    "a.one": "One",\n  },\n  de: {\n    "a.one": "Eins",\n  },\n};\n',
+    'const b = {\n  en: {\n    "a.two": "Two",\n  },\n  de: {\n    "a.two": "Zwei",\n  },\n};\n',
+  );
+  const r = run(d);
+  if (r.code === 0) ok("two catalogue files that share no key pass");
+  else bad("two catalogue files that share no key pass", `exit ${r.code}: ${r.out}`);
+  cleanup(d);
+}
+
+{
+  // And the merge file itself must not read as a definition of everything it
+  // spreads, or every split catalogue in the tree is a finding.
+  const d = splitTree(
+    'const a = {\n  en: {\n    "a.one": "One",\n  },\n  de: {\n    "a.one": "Eins",\n  },\n};\n',
+    'const b = {\n  en: {\n    "a.two": "Two",\n  },\n  de: {\n    "a.two": "Zwei",\n  },\n};\n',
+  );
+  const r = run(d);
+  if (r.code === 0 && !r.out.includes("messages.ts")) ok("the merge file defines nothing");
+  else bad("the merge file defines nothing", `exit ${r.code}: ${r.out}`);
   cleanup(d);
 }
 

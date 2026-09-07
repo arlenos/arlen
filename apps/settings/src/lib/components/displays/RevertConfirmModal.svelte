@@ -181,7 +181,12 @@
     bind:this={card}
   >
     <div class="modal">
-      <h2 id="revert-title">{$t("s.revert.keep")}</h2>
+<!-- Its own key. It shared `s.revert.keep` with the button below, which
+           takes a `{$seconds}` parameter - so the heading, called without one,
+           rendered the placeholder verbatim: "Aenderungen behalten ({$seconds} s)".
+           Two definitions of that id existed, in two catalogue files, and the
+           merge order decided which one every caller got. -->
+      <h2 id="revert-title">{$t("s.revert.title")}</h2>
       <p class="body">
         {#if pendingRevertId}
           {$t("s.revert.reverting")}
