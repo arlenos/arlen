@@ -29,7 +29,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::bottle::Bottle;
-use crate::launch::{confined_argv, LaunchError, WINE};
+use crate::launch::{settled_wine_argv, LaunchError};
 
 /// The document's name inside the bottle's own `C:` drive.
 ///
@@ -163,45 +163,19 @@ pub fn theme_argv(
     runtime_dir: &Path,
     exists: impl Fn(&Path) -> bool,
 ) -> Result<Vec<String>, LaunchError> {
-    confined_argv(
+    settled_wine_argv(
         bottle,
         usr,
         runtime_dir,
         None,
-        SHELL,
-        &["-c".to_string(), import_script()],
+        &[
+            "regedit".to_string(),
+            "/S".to_string(),
+            format!("'{}'", reg_windows_path()),
+        ],
         exists,
     )
 }
-
-/// The shell that holds the sandbox open. `/usr/bin` rather than `/bin`, because
-/// `/usr` is always bound and `/bin` only when the host has it as a real
-/// directory.
-const SHELL: &str = "/usr/bin/sh";
-
-/// `regedit`, and then a wait for the registry to be written.
-///
-/// **Two commands, and the second is the one that makes this work at all.** A
-/// registry change lives in the running wineserver and is written to `user.reg`
-/// when that server exits. `regedit /S` returns as soon as it has handed the
-/// change over, and the sandbox tears down the moment the program it was given
-/// exits - so with `regedit` alone the import ran, exited 0, and the palette
-/// was gone. Measured, by running it: the value was in neither `user.reg` nor
-/// anywhere else, and the daemon reported `imported: true` about it.
-///
-/// `wineserver -w` waits for that server to finish. Nothing here parses or
-/// interpolates anything: both commands are fixed strings and the only variable,
-/// the document's path, is a constant of this module.
-fn import_script() -> String {
-    format!(
-        "{WINE} regedit /S '{}'; {} -w",
-        reg_windows_path(),
-        WINESERVER
-    )
-}
-
-/// The one that flushes the registry.
-const WINESERVER: &str = "/usr/bin/wineserver";
 
 #[cfg(test)]
 mod tests {
@@ -273,7 +247,7 @@ mod tests {
             .expect("argv");
         // Same confinement as any launch: bwrap flags, then `--`, then what runs.
         let sep = argv.iter().position(|a| a == "--").expect("a separator");
-        assert_eq!(argv[sep + 1], SHELL, "the shell holds the sandbox open");
+        assert_eq!(argv[sep + 1], crate::launch::SHELL, "the shell holds the sandbox open");
         assert_eq!(argv[sep + 2], "-c");
         let script = &argv[sep + 3];
         assert!(script.contains(&format!("regedit /S '{}'", reg_windows_path())));
