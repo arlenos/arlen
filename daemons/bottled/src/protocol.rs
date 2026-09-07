@@ -413,8 +413,7 @@ pub fn view(bottle: &Bottle) -> BottleView {
 pub fn theme(
     bottles_dir: &Path,
     id: &str,
-    document: &str,
-    font_family: &str,
+    document: &crate::theme::Document,
     usr: &Path,
     runtime_dir: &Path,
     exists: impl Fn(&Path) -> bool,
@@ -434,7 +433,7 @@ pub fn theme(
     // Written before the argv is built: the import addresses the file by its
     // Windows path, so a document that is not there yet would have the confined
     // `regedit` open nothing and exit cleanly, which reads as a themed bottle.
-    if crate::theme::write_document(&bottle.prefix_root, document).is_err() {
+    if crate::theme::write_document(&bottle.prefix_root, &document.text).is_err() {
         return Response::Refused { problem: Problem::PrefixMissing };
     }
     let argv = match crate::theme::theme_argv(&bottle, usr, runtime_dir, exists) {
@@ -450,7 +449,7 @@ pub fn theme(
             imported: true,
             // Asked after the import, not assumed from it: the import succeeds
             // whether or not the prefix has the face the substitutes name.
-            font_registered: crate::theme::font_available(&bottle.prefix_root, font_family),
+            font_registered: crate::theme::font_available(&bottle.prefix_root, &document.font_family),
         },
         // NOT a refusal. The bottle is there, Wine is there, the document was
         // written; what failed is the import, and the surface's promise is
@@ -1750,6 +1749,14 @@ mod tests {
     #[test]
     fn a_theme_says_which_thing_stopped_it_and_never_half_reports() {
         let dir = tempfile::tempdir().unwrap();
+        let plain = crate::theme::Document {
+            text: "REGEDIT4\r\n".to_string(),
+            font_family: "Inter".to_string(),
+        };
+        let with_body = crate::theme::Document {
+            text: "REGEDIT4\r\nhello\r\n".to_string(),
+            font_family: "Inter".to_string(),
+        };
         let never =
             |_: &[String]| -> Result<(), String> { panic!("nothing runs once it is refused") };
         std::fs::create_dir_all(dir.path().join("b1")).unwrap();
@@ -1768,11 +1775,11 @@ mod tests {
 
         // An id no bottle has, and an id no bottle may have.
         assert_eq!(
-            theme(dir.path(), "nope", "REGEDIT4\r\n", "Inter", usr, run_dir, |_| true, never),
+            theme(dir.path(), "nope", &plain, usr, run_dir, |_| true, never),
             Response::Refused { problem: Problem::NoSuchBottle }
         );
         assert_eq!(
-            theme(dir.path(), "../etc", "REGEDIT4\r\n", "Inter", usr, run_dir, |_| true, never),
+            theme(dir.path(), "../etc", &plain, usr, run_dir, |_| true, never),
             Response::Refused { problem: Problem::BadId }
         );
 
@@ -1789,13 +1796,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            theme(dir.path(), "b2", "REGEDIT4\r\n", "Inter", usr, run_dir, |_| true, never),
+            theme(dir.path(), "b2", &plain, usr, run_dir, |_| true, never),
             Response::Refused { problem: Problem::PrefixMissing }
         );
 
         // A machine with no Wine.
         assert_eq!(
-            theme(dir.path(), "b1", "REGEDIT4\r\n", "Inter", usr, run_dir, |p| p
+            theme(dir.path(), "b1", &plain, usr, run_dir, |p| p
                 != std::path::Path::new("/usr/bin/wine"), never),
             Response::Refused { problem: Problem::NoWine }
         );
@@ -1803,7 +1810,7 @@ mod tests {
         // An import that ran and failed is NOT a refusal: the bottle is fine and
         // the theme did not land, which is what best-effort means.
         assert_eq!(
-            theme(dir.path(), "b1", "REGEDIT4\r\n", "Inter", usr, run_dir, |_| true, |_| Err(
+            theme(dir.path(), "b1", &plain, usr, run_dir, |_| true, |_| Err(
                 "regedit exited 1".to_string()
             )),
             Response::Themed { imported: false, font_registered: false }
@@ -1812,7 +1819,7 @@ mod tests {
         // And the one that worked. The document is on disk where the Windows
         // path addresses it, and the font is still not registered.
         let seen = std::cell::RefCell::new(Vec::new());
-        let reply = theme(dir.path(), "b1", "REGEDIT4\r\nhello\r\n", "Inter", usr, run_dir, |_| true, |argv| {
+        let reply = theme(dir.path(), "b1", &with_body, usr, run_dir, |_| true, |argv| {
             seen.borrow_mut().extend_from_slice(argv);
             Ok(())
         });

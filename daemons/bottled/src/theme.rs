@@ -67,6 +67,19 @@ pub fn write_document(prefix_root: &Path, document: &str) -> io::Result<PathBuf>
     Ok(path)
 }
 
+/// A generated theme document and the font face it names.
+///
+/// One value rather than two arguments because they have to agree: the report
+/// says whether the prefix has the face, and asking about a different family
+/// than the substitutes were written with would produce an answer about a font
+/// nobody pointed at. Carrying them together makes disagreeing awkward.
+pub struct Document {
+    /// The `.reg` text.
+    pub text: String,
+    /// The single family the font substitutes were pointed at.
+    pub font_family: String,
+}
+
 /// Whether this bottle still needs the document imported.
 ///
 /// The palette is applied before a launch, and doing that unconditionally would

@@ -206,11 +206,10 @@ pub async fn serve_connection(
                     // toolkit specifically, so a `[override.wine]` reaches the
                     // bottle without moving the palette Arlen's own surfaces use.
                     match wine_document() {
-                        Some((doc, family)) => theme(
+                        Some(doc) => theme(
                             bottles_dir,
                             id,
                             &doc,
-                            &family,
                             std::path::Path::new("/usr"),
                             &runtime_dir,
                             |p| p.exists(),
@@ -503,14 +502,14 @@ fn run_to_completion(argv: &[String]) -> Result<(), String> {
 /// drift. The scale is 1.0, and that is a limit rather than a default: the
 /// per-prefix `LogPixels` should follow the display a bottle opens on, and
 /// nothing in this daemon knows which that is.
-fn wine_document() -> Option<(String, String)> {
+fn wine_document() -> Option<crate::theme::Document> {
     match arlen_theme::ArlenTheme::resolve_active(Some(arlen_theme::Toolkit::Wine)) {
-        Ok(t) => Some((
-            arlen_theme::wine::generate_wine_reg(&t, 1.0),
+        Ok(t) => Some(crate::theme::Document {
+            text: arlen_theme::wine::generate_wine_reg(&t, 1.0),
             // The same reading of the stack the substitutes were written with,
             // so the report is about the face the document actually named.
-            arlen_theme::wine::first_family(&t.typography.font_sans).to_string(),
-        )),
+            font_family: arlen_theme::wine::first_family(&t.typography.font_sans).to_string(),
+        }),
         Err(why) => {
             tracing::warn!(%why, "the active theme did not resolve");
             None
@@ -534,15 +533,14 @@ fn theme_if_needed(
     prefix_root: &std::path::Path,
     runtime_dir: &std::path::Path,
 ) {
-    let Some((doc, family)) = wine_document() else { return };
-    if !crate::theme::needs_import(prefix_root, &doc) {
+    let Some(doc) = wine_document() else { return };
+    if !crate::theme::needs_import(prefix_root, &doc.text) {
         return;
     }
     match theme(
         bottles_dir,
         id,
         &doc,
-        &family,
         std::path::Path::new("/usr"),
         runtime_dir,
         |p| p.exists(),
