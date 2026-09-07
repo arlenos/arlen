@@ -102,6 +102,35 @@ pub fn generate_xresources(theme: &ArlenTheme) -> String {
     out
 }
 
+/// The `kitty.conf` that pulls in the colour file beside it.
+///
+/// A colour file no config includes is a file nobody reads, which is what all
+/// four terminal outputs were until this existed. kitty's own documentation is
+/// the source for the two facts this rests on: `include <path>` pulls in a
+/// secondary config, and a relative path is resolved against the location of the
+/// config file doing the including - so the bare name works and no absolute path
+/// has to be written into somebody's home directory.
+///
+/// Only kitty. foot and alacritty are deliberately left alone: foot's `include`
+/// wants an absolute or `~/`-prefixed path and must precede any section, and
+/// alacritty moved `import` under `[general]` at 0.14, so both are
+/// version-dependent in ways I could not check on this machine - neither is
+/// installed here. A selection line that is subtly wrong is worse than none: it
+/// looks done and changes nothing. The Xresources file is a third case again,
+/// since it needs `xrdb -merge` at session start rather than an include.
+///
+/// Proven with kitty's own parser rather than read off its documentation: the
+/// emitted pair resolves to `background = (15,15,15)` and `color1 = (201,106,106)`
+/// - our `bg.app` and our authored ANSI red - and dropping the include line puts
+/// them back to kitty's (0,0,0) and (204,4,3).
+pub fn generate_kitty_include(colour_file: &str) -> String {
+    format!(
+        "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n\
+         # The colours live beside this file so a theme change rewrites them alone.\n\
+         include {colour_file}\n"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,5 +213,20 @@ mod tests {
         }
         // The non-hex authored red fell back to the synthesis.
         assert_eq!(t.terminal.ansi[1], t.color.error);
+    }
+
+    #[test]
+    fn the_kitty_include_names_the_colour_file_beside_it() {
+        let conf = generate_kitty_include("arlen-colors.conf");
+        assert!(conf.starts_with("# arlen-generated"), "the guard marker must lead");
+        // Relative on purpose: kitty resolves it against this file's own
+        // directory, so nobody's home path is written into their config.
+        assert!(conf.contains("\ninclude arlen-colors.conf\n"));
+        assert!(!conf.contains('/'), "no absolute path: {conf}");
+        // kitty only reads a `#` comment when it is the FIRST character, so a
+        // stray indent would turn the marker into a directive it cannot parse.
+        for line in conf.lines().filter(|l| l.starts_with('#')) {
+            assert!(!line.starts_with(" "), "{line}");
+        }
     }
 }

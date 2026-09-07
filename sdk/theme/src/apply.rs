@@ -226,6 +226,17 @@ fn write_toolkit_configs(
         &crate::terminal::generate_kitty_conf(term_theme),
         &mut report,
     );
+    // And the config that includes it. Guarded: a kitty.conf somebody wrote is
+    // theirs, and ours is only written where there is none - which is the state
+    // a fresh machine is in and the state where the Toolkits page currently asks
+    // the PERSON to add an include by hand. Only kitty; `generate_kitty_include`
+    // says why the other three are left alone.
+    write_guarded(
+        &config.join("kitty/kitty.conf"),
+        &crate::terminal::generate_kitty_include("arlen-colors.conf"),
+        INI_MARKER,
+        &mut report,
+    );
     write_owned(
         &config.join("foot/arlen-colors.ini"),
         &crate::terminal::generate_foot_ini(term_theme),
