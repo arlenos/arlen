@@ -20,12 +20,19 @@
 //!
 //! **Honest limits (both fail toward "didn't shrink enough", never toward a
 //! widening, so neither is an authority leak):**
-//! - **Required-reach refusal (§6.3) is NOT yet enforced here.** The design says
-//!   an essential reach is refused so a one-click revoke cannot brick an app, but
-//!   the on-disk `GraphPermissions` carries no `required` marker today, so nothing
-//!   is markable required and the refusal is inert-by-absence. When the schema
-//!   gains a `required` field, wire the refusal in `handle_revoke` before the
-//!   gate; until then the gate will happily approve removing any reach.
+//! - **Required-reach refusal (§6.3) IS enforced now, and only for patterns.**
+//!   This paragraph said the opposite for as long as it took the schema to catch
+//!   up: `GraphPermissions` carries a `required` list today and `revoke_at`
+//!   refuses a listed read or write pattern with `RevokeOutcome::Required` before
+//!   touching the document. What is still open is narrower and worth keeping
+//!   separate - relation and instance-scope reaches are not pattern-keyed, so the
+//!   list cannot name one, and marking those essential needs a shape the profile
+//!   does not have.
+//! - **The App-access page cannot SEE any of that.** The Grant node's `required`
+//!   is written `false` at every emit site, so the surface offers a live Remove on
+//!   an essential reach and meets `OK: required` as a generic failure. Projecting
+//!   it is not a one-line change: the profile marks patterns, the node carries one
+//!   bool for a whole ceiling, so the two do not map. Recorded for the planner.
 //! - **Revoking a pattern still covered by a live wildcard is cosmetic.** The gate
 //!   compares the raw pattern entries, so removing `system.File` while `system.*`
 //!   remains is a strict-subset shrink (reported `Revoked`) even though the
