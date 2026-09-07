@@ -292,5 +292,9 @@ for width in $widths; do
   [ "$clean" = 1 ] && echo "  ok   $spec${host:+@@$host}"
  done
 done
-echo "  --   $checked probe read(s) in $locale across ${widths// /, }px, four probes per view; anything not named here was not looked at"
+# FOUR on a route row and FIVE on a host row, because that is what ran. It said
+# "four probes per view" flat until the container-ring probe was added on
+# 8 September, which left the closing line of every sweep understating itself by
+# one - in the file whose whole job is to say what was looked at.
+echo "  --   $checked probe read(s) in $locale across ${widths// /, }px, four probes per route and five per host row; anything not named here was not looked at"
 exit "$fail"
