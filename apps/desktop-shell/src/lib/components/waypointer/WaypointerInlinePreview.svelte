@@ -55,6 +55,15 @@
 </script>
 
 <!-- Inline result: above the scrollable list, always in DOM -->
+<!-- Click-to-activate is a MOUSE shortcut, and the two suppressions below are the
+     reason rather than the silence. The keyboard path is Enter in the search
+     field: `WaypointerContent`'s key handler reads the inline result and calls
+     `handleInlineAction` before anything else can claim the press, so a person
+     who never touches the mouse types `12*9` and presses Enter. Giving this card
+     a tabindex would add a SECOND path that has to be tabbed to, in a surface
+     whose whole shape is type-then-Enter, and the sibling floating thumbnail in
+     the screenshot app records what that costs: a wrapper that duplicates its own
+     first button and reads as a nested interactive. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div id="wp-inline-wrap" style="display: none; padding: 6px 6px 2px;">
