@@ -1827,7 +1827,18 @@ mod crate_reachability {
         unconsumed.sort();
 
         let known: Vec<String> = KNOWN_UNCONSUMED.iter().map(|(p, _)| p.to_string()).collect();
-        let fresh: Vec<&String> = unconsumed.iter().filter(|u| !known.contains(u)).collect();
+        // A WASM module is not linked by anything and never will be. It is
+        // compiled to a component and staged into a module directory, and the
+        // runtime loads it there by path - so "nothing depends on it" is its
+        // normal condition rather than a gap, and putting each one in the
+        // waiver list above would turn a structural fact into a growing list of
+        // exceptions that each look like a loose end. What WOULD be a real
+        // finding for a module - a manifest that does not parse, an entry file
+        // that is not there - is a different check from this one.
+        let fresh: Vec<&String> = unconsumed
+            .iter()
+            .filter(|u| !known.contains(u) && !u.starts_with("modules/"))
+            .collect();
         assert!(
             fresh.is_empty(),
             "library crates that build and test but nothing depends on ({}):\n  {}\n\

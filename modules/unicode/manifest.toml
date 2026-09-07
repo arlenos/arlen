@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Tim Kicker
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# The first Tier 1 module in the tree. `manifest.toml`, NOT `module.toml`:
+# `modulesd/src/manifest.rs` reads the former and nothing reads the latter.
+
+[module]
+id = "core.unicode"
+name = "Unicode"
+version = "0.1.0"
+type = "first-party"
+entry = "module.wasm"
+description = "Find characters by name or codepoint (e.g. U+2764 or HEART)."
+
+[waypointer.search]
+# The same prefix the in-process plugin answered on, so nothing a person typed
+# before stops working when this replaces it.
+prefix = "u:"
+# 0 rather than the first-party default of 10: this was `priority() -> 0` in the
+# plugin, and it earns it - a `u:` query is unambiguous, so it should not queue
+# behind the app search.
+priority = 0
+max_results = 20
+
+# Nothing. No graph, no network, no events, no clipboard - the copy is an action
+# the HOST fulfils, so even that is not a capability this module holds. An empty
+# section is the honest way to say so, and it is what makes this a clean first
+# guest: nothing here can fail for want of a grant.
+[capabilities]

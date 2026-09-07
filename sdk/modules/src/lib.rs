@@ -750,6 +750,35 @@ fn is_semver_like(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// The first real module's manifest, parsed by the parser that will read it.
+    ///
+    /// `include_str!` rather than a copy: a fixture that drifts from the shipped
+    /// file tests the fixture. `modules/unicode` is the first Tier 1 module in
+    /// the tree, and until it existed every test here parsed a manifest written
+    /// to please the parser.
+    #[test]
+    fn the_first_shipped_module_manifest_parses() {
+        let text = include_str!("../../../modules/unicode/manifest.toml");
+        let m = parse_manifest(text).expect("the shipped manifest parses");
+        assert_eq!(m.module.id, "core.unicode");
+        assert_eq!(m.module.module_type, ModuleType::FirstParty);
+        assert_eq!(m.module.entry, "module.wasm");
+        let search = m
+            .waypointer
+            .as_ref()
+            .and_then(|w| w.search.as_ref())
+            .expect("it declares a waypointer search");
+        assert_eq!(search.prefix.as_deref(), Some("u:"));
+        assert_eq!(search.priority, 0);
+        // It asks for nothing, and the parser has to agree that it asked for
+        // nothing rather than defaulting something on.
+        assert!(m.capabilities.graph.is_none());
+        assert!(m.capabilities.network.is_none());
+        assert!(m.capabilities.event_bus.is_none());
+        assert!(m.capabilities.clipboard.is_none());
+        assert!(!m.capabilities.notifications);
+    }
+
     use super::*;
     use std::io::Write;
 
