@@ -138,7 +138,7 @@ SURFACES=(
   # spec is what found the reason that panel had never been seen: the art button
   # spread the tooltip trigger's props AFTER its own `onclick`, so bits-ui's
   # close handler replaced the toggle and the click did nothing at all.
-  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest"
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/?locale=de::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
