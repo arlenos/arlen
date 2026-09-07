@@ -192,6 +192,38 @@ check-consumers crate="":
     echo "$list" | wc -l | xargs printf '%s consumer(s) to build\n'
     for c in $list; do echo "== check $c =="; "{{ROOT}}/dev/check-crate.sh" check "$c"; done
 
+# Run the TESTS of everything that depends on a changed shared crate.
+#
+# `check-consumers` above BUILDS them, which catches a changed signature and
+# misses a changed answer. On 8 September a gate in `sdk/theme` stopped emitting
+# a key, the assertion for that key lived in a test one crate over, and every
+# commit after it landed green: the pre-commit hook runs the structural checks
+# and the consumer build, not the consumer's tests, so nothing looked.
+#
+# Not folded into the hook, deliberately. These suites take minutes and a
+# multi-minute wait in front of every commit is how a hook gets bypassed. Run it
+# after touching a crate other crates read - `sdk/*` and `contracts/*` are the
+# ones that carry answers rather than just types.
+test-consumers crate="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{crate}}" ]; then
+        list=$(python3 "{{ROOT}}/dev/scripts/contract-consumers.py" "{{crate}}")
+    else
+        list=$(python3 "{{ROOT}}/dev/scripts/contract-consumers.py" --changed)
+    fi
+    if [ -z "$list" ]; then echo "nothing depends on that"; exit 0; fi
+    echo "$list" | wc -l | xargs printf '%s consumer(s) to test\n'
+    status=0
+    for c in $list; do
+        echo "== test $c =="
+        "{{ROOT}}/dev/check-crate.sh" test "$c" || status=1
+    done
+    # Every consumer runs before the failure is reported: stopping at the first
+    # one tells you about a single crate when the answer you want is which of
+    # them the change moved.
+    exit "$status"
+
 # The crate lists here and in ci.yml are hand-kept, so they drift: the justfile
 # fell nine crates behind CI once already, which makes `just test` green on a set
 # CI does not share. This also catches a new crate that nothing builds at all.
