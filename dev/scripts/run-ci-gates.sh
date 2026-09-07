@@ -51,8 +51,43 @@ for s in "${found[@]}"; do
   fi
 done
 
+# AND THE GATES THAT ARE NOT SCRIPTS AT ALL. The derivation above matches
+# `dev/scripts/*.{py,mjs,sh}`, which is a filter on where a gate LIVES - the same
+# shape of maintained list the comment above warns about, one level up. Two of
+# CI's gates are cargo binaries in `sdk/i18n` (`arlen-i18n-lint`, `arlen-rtl-lint`)
+# and were therefore invisible here, so a commit could land red on them and did:
+# the planner reported one on 6 September and another on 7 September, both from my
+# own commits, both from a hook that had just printed a confident tally.
+#
+# Derived the same way, from the workflow rather than from a list here: join the
+# `run:` blocks' line continuations, take every `cargo run … --bin …-lint …`
+# command whole, and drop the shell redirection CI wraps it in. Warm they cost
+# under three seconds together; a cold `sdk/i18n` build is slower, and that is the
+# same first-run cost the rest of the hook pays for its Python.
+mapfile -t lints < <(
+  python3 - .github/workflows/ci.yml <<'EOF'
+import re, sys
+
+text = open(sys.argv[1], encoding="utf-8").read()
+# A YAML `run: |` block keeps shell line continuations, so a command can span
+# lines. Join them before matching, or the arguments are lost.
+joined = re.sub(r"\\\n\s*", " ", text)
+for m in re.finditer(r"(cargo run\b[^\n]*?--bin\s+[A-Za-z0-9_-]+-lint\b[^\n]*)", joined):
+    cmd = m.group(1)
+    # CI wraps each in `out=$(… 2>&1)`; the runner captures output itself.
+    cmd = cmd.split(" 2>&1")[0].rstrip(") ")
+    print(" ".join(cmd.split()))
+EOF
+)
+
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
+
+# One list to run and one to name, so the two kinds report identically.
+names=("${scripts[@]}")
+for cmd in "${lints[@]}"; do
+  names+=("$(sed -n 's/.*--bin \([A-Za-z0-9_-]*\).*/\1/p' <<<"$cmd")")
+done
 
 for i in "${!scripts[@]}"; do
   script="${scripts[$i]}"
@@ -65,12 +100,21 @@ for i in "${!scripts[@]}"; do
     echo $? >"$out/$i.rc"
   } &
 done
+base=${#scripts[@]}
+for j in "${!lints[@]}"; do
+  i=$((base + j))
+  cmd="${lints[$j]}"
+  {
+    eval "$cmd" >"$out/$i.log" 2>&1
+    echo $? >"$out/$i.rc"
+  } &
+done
 wait
 
 fail=0
-for i in "${!scripts[@]}"; do
+for i in "${!names[@]}"; do
   rc=$(cat "$out/$i.rc" 2>/dev/null || echo 1)
-  printf '%-42s ' "${scripts[$i]}"
+  printf '%-42s ' "${names[$i]}"
   if [ "$rc" -eq 0 ]; then
     echo ok
   else
