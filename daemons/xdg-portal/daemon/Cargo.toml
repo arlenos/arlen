@@ -33,7 +33,17 @@ audit-proto = { path = "../../../contracts/audit-proto" }
 # consent through the broker (on behalf of the capturing app) before streaming.
 arlen-consent-contract = { path = "../../../contracts/consent-contract" }
 arlen-launch-contract = { path = "../../../contracts/launch" }
+# The org.freedesktop.impl.portal.Settings backend answers `color-scheme` and
+# `accent-color` from the person's resolved theme, so it reads the same struct
+# the shell renders from rather than a second copy of the resolution chain.
+# `toml` is for the one key that is not in it: `[accessibility] reduce_motion`.
+arlen-theme = { path = "../../../sdk/theme" }
+toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
+# Polling the SettingChanged signal in the Settings real-bus test: zbus hands
+# back a Stream and re-exports only futures-core, so the extension trait that
+# awaits one comes from here.
+futures-util = "0.3"
 tokio = { workspace = true, features = ["test-util", "macros"] }

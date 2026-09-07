@@ -1,5 +1,5 @@
 [Unit]
-Description=Arlen xdg-desktop-portal backend (FileChooser, OpenURI)
+Description=Arlen xdg-desktop-portal backend (file chooser, open URI, screenshot, print, appearance settings)
 Documentation=https://github.com/arlenos/xdg-desktop-portal-arlen
 PartOf=graphical-session.target
 
