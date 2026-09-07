@@ -189,9 +189,9 @@ require_xvfb xvfb-run
 # it read. GDK_BACKEND=x11 makes the toolkit choice explicit rather than leaving it
 # to whichever socket happens to be reachable.
 #
-# The compositor harness (shoot-compositor.sh) is the place where a real Wayland
-# session is the point; this one is Xvfb, and an app here has no business reaching
-# outside it.
+# The compositor harness (shoot-compositor.sh, in the compositor repo) is where a
+# real Wayland session is the point; this one is Xvfb, and an app here has no
+# business reaching outside it.
 xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   set -euo pipefail
   unset WAYLAND_DISPLAY

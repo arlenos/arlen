@@ -101,8 +101,9 @@ require_xvfb() {
 }
 require_xvfb xvfb-run
 
-# The host session is cut off here, the same way `shoot-compositor.sh` does it for
-# the nested compositor. `xvfb-run` sets DISPLAY and nothing else, so an inherited
+# The host session is cut off here, the same way the compositor repo's
+# `shoot-compositor.sh` does it for the nested compositor. `xvfb-run` sets
+# DISPLAY and nothing else, so an inherited
 # WAYLAND_DISPLAY stays valid and a toolkit that prefers Wayland renders against the
 # developer's real session instead of this Xvfb. On 15 August that let an app driven
 # through the sibling app-harness capture the real desktop; nothing here captures, but
