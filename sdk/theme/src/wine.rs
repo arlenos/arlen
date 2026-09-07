@@ -128,9 +128,12 @@ fn colors(t: &ArlenTheme) -> Vec<(&'static str, Rgba)> {
     ]
 }
 
-/// The two registry views a 64-bit prefix serves under `Software`: the native
-/// one and the WOW64 copy a 32-bit program is redirected to.
-const SOFTWARE_VIEWS: [&str; 2] = ["Software", "Software\\Wow6432Node"];
+/// The two views the MACHINE hive serves under `Software`: the native one and
+/// the WOW64 copy a 32-bit program is redirected to. Both exist in a booted
+/// prefix (`system.reg` carries `FontSubstitutes` twice), so a font substitute
+/// written to one reaches half the programs in the bottle. The user hive has no
+/// such split and is written once.
+const MACHINE_VIEWS: [&str; 2] = ["Software", "Software\\Wow6432Node"];
 
 /// `LogPixels` for a display scale: Windows counts DPI from 96 at 1x.
 fn log_pixels(scale: f32) -> u32 {
@@ -157,30 +160,37 @@ pub fn generate_wine_reg(t: &ArlenTheme, scale: f32) -> String {
     // so this is the setting that makes the block above load-bearing rather
     // than a palette some theme engine overrides.
     //
-    // Everything under `Software` is written TWICE, plain and under
-    // `Wow6432Node`. A 64-bit prefix runs 32-bit programs through the WOW64
-    // registry view, and a 32-bit app reading `Software\Microsoft\...` is
-    // served the redirected copy - so a document that writes one view themes
-    // half the bottle and looks like it worked. `Control Panel\Colors` is not
-    // under `Software` and is not redirected, which is why the palette above is
-    // written once.
-    for view in SOFTWARE_VIEWS {
-        out.push_str(&format!(
-            "[HKEY_CURRENT_USER\\{view}\\Microsoft\\Windows\\CurrentVersion\\ThemeManager]\r\n"
-        ));
-        out.push_str("\"ThemeActive\"=\"0\"\r\n\r\n");
+    // ONE view, and that is measured rather than assumed. A booted prefix has
+    // no `Wow6432Node` under HKCU at all - zero keys in `user.reg`, against
+    // 7692 in `system.reg` - because Wine redirects the machine hive and shares
+    // the user's. A second HKCU copy would be a key nothing reads, sitting in
+    // the document looking load-bearing. HKLM below is the opposite case.
+    out.push_str(
+        "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\ThemeManager]\r\n",
+    );
+    out.push_str("\"ThemeActive\"=\"0\"\r\n\r\n");
 
-        // The one OS signal Electron, Chromium and default-vista Qt honour. It
-        // does not recolour them; it stops them rendering a light interior
-        // inside a dark desktop, which is the difference between wrong and
-        // jarring.
-        out.push_str(&format!(
-            "[HKEY_CURRENT_USER\\{view}\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize]\r\n"
-        ));
-        let mode = u32::from(light);
-        out.push_str(&format!("\"AppsUseLightTheme\"=dword:{mode:08x}\r\n"));
-        out.push_str(&format!("\"SystemUsesLightTheme\"=dword:{mode:08x}\r\n\r\n"));
+    // Wine boots a prefix with a SECOND copy of the whole palette under the
+    // theme manager, and leaving it holding the old colours leaves two keys
+    // describing the same thing and disagreeing. Nothing reads it while
+    // `ThemeActive` is "0", so this is agreement rather than function.
+    out.push_str(
+        "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\ThemeManager\\Control Panel\\Colors]\r\n",
+    );
+    for (name, c) in colors(t) {
+        out.push_str(&format!("\"{name}\"=\"{}\"\r\n", rgba_to_win32(c)));
     }
+    out.push_str("\r\n");
+
+    // The one OS signal Electron, Chromium and default-vista Qt honour. It does
+    // not recolour them; it stops them rendering a light interior inside a dark
+    // desktop, which is the difference between wrong and jarring.
+    out.push_str(
+        "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize]\r\n",
+    );
+    let mode = u32::from(light);
+    out.push_str(&format!("\"AppsUseLightTheme\"=dword:{mode:08x}\r\n"));
+    out.push_str(&format!("\"SystemUsesLightTheme\"=dword:{mode:08x}\r\n\r\n"));
 
     // DPI and antialiasing. FontSmoothing 2 is "on"; type 2 is subpixel, and
     // orientation 1 is RGB, which is what a normal desktop panel is.
@@ -198,7 +208,7 @@ pub fn generate_wine_reg(t: &ArlenTheme, scale: f32) -> String {
     // Wine on its fallback, which looks like nothing happened rather than like
     // a failure - so the caller reports it, not this file.
     let font = reg_escape(first_family(&t.typography.font_sans));
-    for view in SOFTWARE_VIEWS {
+    for view in MACHINE_VIEWS {
         out.push_str(&format!(
             "[HKEY_LOCAL_MACHINE\\{view}\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes]\r\n"
         ));
@@ -288,25 +298,34 @@ mod tests {
     }
 
     #[test]
-    fn everything_under_software_is_written_to_both_registry_views() {
-        // A 32-bit program in a 64-bit prefix reads the redirected copy, so a
-        // document that writes one view themes half the bottle and looks like it
-        // worked.
+    fn the_machine_hive_is_written_twice_and_the_user_hive_once() {
+        // Measured in a booted prefix rather than assumed: `user.reg` has ZERO
+        // `Wow6432Node` keys and `system.reg` has 7692, so the machine hive is
+        // redirected for 32-bit programs and the user hive is shared. A font
+        // substitute in one machine view reaches half the bottle; a second copy
+        // of a user key reaches nothing and only looks load-bearing.
         let reg = generate_wine_reg(&theme(), 1.0);
-        for key in [
-            "Software\\Microsoft\\Windows\\CurrentVersion\\ThemeManager",
-            "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-        ] {
-            assert!(reg.contains(&format!("[HKEY_CURRENT_USER\\{key}]")), "native view of {key}");
-            let wow = key.replacen("Software", "Software\\Wow6432Node", 1);
-            assert!(reg.contains(&format!("[HKEY_CURRENT_USER\\{wow}]")), "wow64 view of {key}");
-        }
         let fonts = "Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes";
         assert!(reg.contains(&format!("[HKEY_LOCAL_MACHINE\\Software\\{fonts}]")));
         assert!(reg.contains(&format!("[HKEY_LOCAL_MACHINE\\Software\\Wow6432Node\\{fonts}]")));
-        // The palette is NOT under Software and must not be duplicated: a second
-        // copy would be a key Wine never reads, sitting in the file looking load-bearing.
+        assert!(
+            !reg.contains("[HKEY_CURRENT_USER\\Software\\Wow6432Node"),
+            "the user hive has no redirected view in a prefix"
+        );
         assert_eq!(reg.matches("[HKEY_CURRENT_USER\\Control Panel\\Colors]").count(), 1);
+    }
+
+    #[test]
+    fn the_theme_managers_own_copy_of_the_palette_agrees_with_the_live_one() {
+        // A booted prefix keeps a second palette under the theme manager. Left
+        // alone it holds Wine's defaults, so the two keys describe the same
+        // thing and disagree.
+        let t = theme();
+        let reg = generate_wine_reg(&t, 1.0);
+        let mgr = "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\ThemeManager\\Control Panel\\Colors]";
+        assert!(reg.contains(mgr), "the theme manager's palette is written");
+        let want = format!("\"Hilight\"=\"{}\"", rgba_to_win32(t.color.accent));
+        assert_eq!(reg.matches(&want).count(), 2, "both palettes carry the accent");
     }
 
     #[test]
