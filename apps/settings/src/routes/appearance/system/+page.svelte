@@ -17,6 +17,7 @@
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
+  import { onMount } from "svelte";
   import {
     overrides,
     effective,
@@ -26,16 +27,27 @@
     resetTerminal,
     loadSys,
     sysWriteFailed,
-    CURSOR_THEMES,
-    ICON_THEMES,
+    installedCursorThemes,
+    installedIconThemes,
     sysOptions,
     ANSI_META,
+    type SysOption,
   } from "$lib/stores/themeSystem";
 
   $effect(() => {
     // What `theme.toml` already holds, so a value set on an earlier launch is
     // shown as set instead of the page opening on the theme's own defaults.
     void loadSys();
+  });
+
+  // What this machine actually has. `undefined` is "not read yet" and `null` is
+  // "could not be read"; neither is an empty list, which would say the machine
+  // has no cursor themes at all.
+  let cursors = $state<SysOption[] | null | undefined>(undefined);
+  let icons = $state<SysOption[] | null | undefined>(undefined);
+  onMount(() => {
+    void installedCursorThemes().then((c) => (cursors = c));
+    void installedIconThemes().then((i) => (icons = i));
   });
 
   const cursorSize = $derived(Number($effective.cursorSize));
@@ -67,7 +79,21 @@
           id="sys-cursorTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={String($effective.cursorTheme)} options={sysOptions(CURSOR_THEMES, $t)} ariaLabel={$t("s.sys.cursorTheme")} onchange={(v) => setSys("cursorTheme", v)} />
+            <!-- The list used to be four names written here, of which this
+                 machine might have none. Since the theme's cursor name is
+                 written into the GTK settings files, picking one that is not
+                 installed sends every GTK app to a fallback while the row shows
+                 a confident selection. Same fix the sound theme got. -->
+            {#if cursors === undefined}
+              <span class="sys-said">{$t("s.sys.listReading")}</span>
+            {:else if cursors === null}
+              <span class="sys-said">{$t("s.sys.listUnreadable")}</span>
+            {:else}
+              {#if !cursors.some((c) => c.value === String($effective.cursorTheme))}
+                <span class="sys-said">{$t("s.sys.themeMissing")}</span>
+              {/if}
+              <PopoverSelect value={String($effective.cursorTheme)} options={sysOptions(cursors, $t)} ariaLabel={$t("s.sys.cursorTheme")} onchange={(v) => setSys("cursorTheme", v)} />
+            {/if}
           {/snippet}
         </OverrideRow>
         <OverrideRow
@@ -92,7 +118,16 @@
           id="sys-iconTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={iconTheme} options={sysOptions(ICON_THEMES, $t)} ariaLabel={$t("s.sys.iconTheme")} onchange={(v) => setSys("iconTheme", v)} />
+            {#if icons === undefined}
+              <span class="sys-said">{$t("s.sys.listReading")}</span>
+            {:else if icons === null}
+              <span class="sys-said">{$t("s.sys.listUnreadable")}</span>
+            {:else}
+              {#if !icons.some((i) => i.value === iconTheme)}
+                <span class="sys-said">{$t("s.sys.themeMissing")}</span>
+              {/if}
+              <PopoverSelect value={iconTheme} options={sysOptions(icons, $t)} ariaLabel={$t("s.sys.iconTheme")} onchange={(v) => setSys("iconTheme", v)} />
+            {/if}
           {/snippet}
         </OverrideRow>
       </Section>
@@ -174,6 +209,13 @@
 </Page>
 
 <style>
+  /* The three answers a picker can give that are not a list: reading, could not
+     read, and the configured one is not on this machine. */
+  .sys-said {
+    font-size: var(--font-size-sm);
+    color: var(--color-fg-secondary);
+  }
+
   .editor {
     display: flex;
     flex-direction: column;
