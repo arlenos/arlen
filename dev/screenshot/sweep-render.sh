@@ -94,6 +94,14 @@ trap 'rm -f "$shot"' EXIT
 
 probes="clipped-text clipped-by-parent overlapping-text no-focus-ring"
 
+# A FIFTH, ON HOST ROWS ONLY. `container-focus-ring.js` reads whatever currently
+# HAS focus, so it can only ever speak on a surface where something focused a
+# container - a dialog, an overlay, a switcher - which in this table is exactly
+# the rows that name a host. Running it on every route would cost a quarter more
+# sweep for a probe with nothing to look at, and a probe that always answers `[]`
+# is how a table stops being read.
+host_probes="container-focus-ring"
+
 # THE ANSWER IS THE LAST LINE THAT LOOKS LIKE ONE, not the last line. Mesa
 # writes `DRI3 error: Could not get DRI3 device` to STDOUT on this machine, and
 # after the answer as often as before it - so `tail -n 1` read a driver warning
@@ -122,7 +130,7 @@ done
 # One word per control, matched loosely on purpose: pinning the exact answer
 # here would mean editing this file whenever a fixture gains a case, and the
 # fixtures own their exact answers in their own headers.
-for probe in $probes; do
+for probe in $probes $host_probes; do
   # CLEARED FIRST, and then required to be non-empty. Both halves matter and the
   # second one is not hypothetical: an empty expectation makes `*"$want"*` match
   # every answer including `[]`, so the control passes on a blind probe - which
@@ -136,6 +144,7 @@ for probe in $probes; do
     clipped-by-parent) want="Cut off by its parent" ;;
     overlapping-text) want="Painted over" ;;
     no-focus-ring) want="takes focus" ;;
+    container-focus-ring) want="round itself" ;;
   esac
   [ -n "$want" ] || {
     echo "sweep-render.sh: no control expectation for $probe.js; add its arm above." >&2
@@ -233,7 +242,11 @@ for width in $widths; do
     *) url="$base$path?locale=$locale" ;;
   esac
   clean=1
-  for probe in $probes; do
+  # The host rows get the container-ring probe as well; a route walk has nothing
+  # focused for it to read.
+  row_probes="$probes"
+  [ -n "$host" ] && row_probes="$probes $host_probes"
+  for probe in $row_probes; do
     if [ -n "$host" ]; then
       hostfile="$here/hosts/$host.js"
       if [ ! -f "$hostfile" ]; then

@@ -1,0 +1,46 @@
+<!-- The control for `container-focus-ring.js`, as a file rather than a sentence.
+
+       dev/screenshot/shoot.sh "file://$PWD/dev/screenshot/container-focus-ring-control.html" \
+         /tmp/x.png dev/screenshot/container-focus-ring.js 800 400
+
+     must answer exactly one line, naming `div#ringed.card`. Every other case here
+     is something the probe must NOT report, and each is a way an earlier cut of
+     it was wrong:
+
+       - the fixed container, which suppresses the ring the way the four real
+         sites now do;
+       - a real control, because a ring on a button is the other probe's subject
+         and reporting it here would make this one noise;
+       - a container with a control ROLE, which is a container acting as a
+         control;
+       - and body itself, which is what `document.activeElement` answers on any
+         ordinary page and must read as clean rather than as a finding.
+
+     Only ONE element can be focused, so the cases are proved by moving the
+     `autofocus` and re-running - the file focuses the failing one by default. -->
+<style>
+  body { background: #171717; color: #fafafa; font: 14px system-ui; }
+  .card { padding: 16px; margin: 12px; background: #222; border-radius: 8px; }
+  /* The fix the four real sites carry. */
+  #fixed:focus { outline: none; }
+</style>
+
+<div id="ringed" class="card" tabindex="-1">
+  A container that takes focus and keeps the browser's ring. THE ONE FINDING.
+</div>
+
+<div id="fixed" class="card" tabindex="-1">
+  A container that takes focus and suppresses it. Not reported.
+</div>
+
+<button id="control">A real control keeps its ring, and that is the other probe's subject.</button>
+
+<div id="roled" class="card" tabindex="-1" role="button">
+  A container carrying a control role is acting as a control. Not reported.
+</div>
+
+<script>
+  // Focus the failing case on load. Move this to `#fixed`, `#control` or
+  // `#roled` to prove each of the three quiet cases in turn.
+  document.getElementById("ringed").focus();
+</script>
