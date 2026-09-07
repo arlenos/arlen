@@ -9,6 +9,8 @@
 /// theme's foreground, so it flips with dark/light and ships no colour. A
 /// colour appears only when the user picks a swatch.
 
+import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 import { createConfigStore, type ConfigStore } from "./config";
 
 export type ThemeMode = "light" | "dark";
@@ -312,8 +314,34 @@ export const FONT_OPTIONS = [
   { value: "Fira Code", label: "Fira Code" },
 ];
 
-export const MONO_FONT_OPTIONS = [
-  { value: "JetBrains Mono", label: "JetBrains Mono" },
-  { value: "Fira Code", label: "Fira Code" },
-  { value: "ui-monospace", labelKey: "s.type.systemMono" },
-];
+// The monospace list is no longer written here. It named three families the
+// machine might have none of, and since 8 September the chosen family reaches
+// `gtk-font-name` in the GTK settings files, so picking one that is absent sends
+// every GTK app to a fallback while the row shows a confident selection. Same
+// shape as the cursor and icon lists, and the same fix.
+//
+// The SANS list above stays hardcoded for now, and the reason is a measurement
+// rather than an oversight: this host has 372 font families and 18 monospaced
+// ones. Eighteen is a picker; 372 in a popover with no search is worse to use
+// than four names that may not resolve, and making it searchable is a change to
+// `PopoverSelect` in the kit rather than to this file.
+
+/// The monospace families this machine has, `null` when the list could not be
+/// read - which is a different answer from an empty machine.
+export async function installedMonoFonts(): Promise<{ value: string; label: string }[] | null> {
+  if (!tauriAvailable) {
+    // i18n-foreign: font families name themselves, on disk and in their own
+    // projects, so these two are the names fontconfig would hand back rather
+    // than words of ours.
+    return [
+      { value: "JetBrains Mono", label: "JetBrains Mono" },
+      { value: "DejaVu Sans Mono", label: "DejaVu Sans Mono" },
+    ];
+  }
+  try {
+    const names = await invoke<string[]>("theme_list_mono_fonts");
+    return names.map((n) => ({ value: n, label: n }));
+  } catch {
+    return null;
+  }
+}
