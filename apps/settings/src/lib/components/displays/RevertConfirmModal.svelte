@@ -130,7 +130,20 @@
       busy = false;
     }
   }
+  /// Escape does what the countdown does. This modal is the last thing between
+  /// a person and a display change they may not be able to see well enough to
+  /// cancel with a pointer, and it had no keyboard way out at all - the two
+  /// buttons were reachable only by tabbing into a dialog that never took focus.
+  /// Escape reverts, which is both the safe direction and exactly what happens
+  /// if they do nothing.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!open || busy || e.key !== "Escape") return;
+    e.preventDefault();
+    void revert("cancel");
+  }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 {#if open}
   <!-- Named after its own heading. A modal that says `role="dialog"` and nothing
