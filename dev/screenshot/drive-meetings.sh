@@ -64,7 +64,7 @@ say "the app came up as a meetings app" \
   "$(printf '%s' "$out" | grep -q "Start a meeting" && echo 1 || echo 0)" "$out"
 
 say "with nothing behind it, it says the meetings cannot be read" \
-  "$(printf '%s' "$out" | grep -qE "meetings service is not running|not allowed to read your meetings|Cannot read your meetings" \
+  "$(printf '%s' "$out" | grep -qE "meetings service is not running|not allowed to read your meetings|Your meetings cannot be read" \
      && echo 1 || echo 0)" "$out"
 
 # THE case, and it changed shape on 22 August. It used to ask for a colon and
