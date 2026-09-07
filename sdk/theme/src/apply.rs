@@ -38,6 +38,26 @@ use crate::ArlenTheme;
 /// marker, so a user's own `gtk.css` is never clobbered.
 const GTK_MARKER: &str = "/* arlen-generated theme";
 
+/// The marker that tags an Arlen-generated `gtk-3.0/settings.ini`. A separate
+/// one because that file is INI, where the CSS comment the sheet carries is not
+/// a comment at all - writing the CSS marker into it would give GTK a parse
+/// error on the first line.
+const GTK_INI_MARKER: &str = "# arlen-generated";
+
+/// Where GTK3 looks for installed themes, highest precedence first. The user's
+/// two directories then the system's, which is the order GTK itself searches.
+fn gtk_theme_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        dirs.push(home.join(".themes"));
+    }
+    if let Some(data) = dirs::data_dir() {
+        dirs.push(data.join("themes"));
+    }
+    dirs.push(PathBuf::from("/usr/share/themes"));
+    dirs
+}
+
 /// Header prepended to a generated `gtk.css` (carries [`GTK_MARKER`]).
 const GTK_HEADER: &str =
     "/* arlen-generated theme (managed by Arlen; edits are overwritten on a theme change) */\n";
@@ -116,8 +136,18 @@ fn write_toolkit_configs(
     // against clobbering a foreign file. The libadwaita/adw-gtk3
     // named-colour block is identical for both versions.
     let gtk_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk_css(gtk_theme));
-    write_guarded_gtk(&config.join("gtk-3.0/gtk.css"), &gtk_css, &mut report);
-    write_guarded_gtk(&config.join("gtk-4.0/gtk.css"), &gtk_css, &mut report);
+    write_guarded(&config.join("gtk-3.0/gtk.css"), &gtk_css, GTK_MARKER, &mut report);
+    write_guarded(&config.join("gtk-4.0/gtk.css"), &gtk_css, GTK_MARKER, &mut report);
+
+    // GTK 3 settings: which widget theme, icon set, cursor and font a GTK3 app
+    // uses. None of that is expressible in the override sheet above, and the
+    // theme name is what makes a widget theme reachable at all - GTK falls back
+    // to stock Adwaita for anything this file does not name. Same guard: a
+    // hand-authored settings.ini is left alone, because this one is a file
+    // people really do write themselves.
+    let selected = crate::gtk::installed_gtk_theme(&crate::gtk::GTK_THEME_CANDIDATES, &gtk_theme_dirs());
+    let ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, selected);
+    write_guarded(&config.join("gtk-3.0/settings.ini"), &ini, GTK_INI_MARKER, &mut report);
 
     // Qt: the colour scheme, Arlen-named, for qt6ct and qt5ct.
     let qt_conf = crate::qt::generate_qt_conf(qt_theme);
@@ -191,9 +221,9 @@ fn write_toolkit_configs(
 /// Write a fixed-name `gtk.css`, but never over a foreign file: write only
 /// when the path is absent or already an Arlen-generated file (marker
 /// header). A foreign file is recorded in `skipped_foreign`.
-fn write_guarded_gtk(path: &Path, content: &str, report: &mut ApplyReport) {
+fn write_guarded(path: &Path, content: &str, marker: &str, report: &mut ApplyReport) {
     match std::fs::read_to_string(path) {
-        Ok(existing) if !existing.starts_with(GTK_MARKER) => {
+        Ok(existing) if !existing.starts_with(marker) => {
             report.skipped_foreign.push(path.to_path_buf());
             return;
         }
@@ -332,5 +362,38 @@ accent = "#00ff00"
         assert!(report
             .written
             .contains(&tmp.path().join("kitty/arlen-colors.conf")));
+    }
+
+    /// The same guard on the settings file, and it matters more there: a
+    /// hand-written `settings.ini` is where people put their font and their
+    /// cursor size, and it is a file GTK itself tells them to edit.
+    #[test]
+    fn a_hand_written_settings_ini_is_not_clobbered() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ini = tmp.path().join("gtk-3.0/settings.ini");
+        std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
+        let mine = "[Settings]\ngtk-font-name=Comic Sans MS 18\n";
+        std::fs::write(&ini, mine).unwrap();
+
+        let report = write_foreign_toolkit_configs(&theme(), tmp.path());
+        assert!(report.skipped_foreign.contains(&ini));
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), mine);
+    }
+
+    /// And it does write one when there is nothing to protect, carrying the
+    /// marker that lets the next run recognise its own work.
+    #[test]
+    fn an_absent_settings_ini_is_written_with_the_marker() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ini = tmp.path().join("gtk-3.0/settings.ini");
+        let report = write_foreign_toolkit_configs(&theme(), tmp.path());
+        assert!(report.written.contains(&ini), "{report:?}");
+        let written = std::fs::read_to_string(&ini).unwrap();
+        assert!(written.starts_with(GTK_INI_MARKER));
+        assert!(written.contains("gtk-icon-theme-name="));
+        // Written a second time over its own file rather than skipped.
+        let again = write_foreign_toolkit_configs(&theme(), tmp.path());
+        assert!(again.written.contains(&ini));
+        assert!(!again.skipped_foreign.contains(&ini));
     }
 }

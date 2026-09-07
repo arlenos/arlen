@@ -189,6 +189,85 @@ pub fn generate_gtk3_shape_scss(theme: &ArlenTheme) -> String {
     )
 }
 
+/// The GTK3 theme names Arlen will select, best first.
+///
+/// Ours, then upstream adw-gtk3 - which is what the Toolkits page has told
+/// people to install since before the fork existed, and on a machine that has it
+/// and not ours it still gives the flat shape under our colours.
+pub const GTK_THEME_CANDIDATES: [&str; 2] = ["Arlen", "adw-gtk3"];
+
+/// The first candidate actually installed as a GTK3 theme under `theme_dirs`.
+///
+/// Pure over its inputs, because the decision it feeds is the one that can go
+/// wrong silently: naming a theme that is not installed leaves GTK falling back
+/// to stock Adwaita while `settings.ini` claims otherwise. A directory counts
+/// only when it holds `gtk-3.0/gtk.css` - a bare directory of the right name is
+/// how a half-removed theme looks.
+pub fn installed_gtk_theme<'a>(
+    candidates: &[&'a str],
+    theme_dirs: &[std::path::PathBuf],
+) -> Option<&'a str> {
+    candidates.iter().copied().find(|name| {
+        theme_dirs
+            .iter()
+            .any(|dir| dir.join(name).join("gtk-3.0").join("gtk.css").is_file())
+    })
+}
+
+/// A Pango font description from a CSS font stack and a base size.
+///
+/// GTK wants `Family Size`, and a size with no unit is POINTS - so emitting our
+/// pixel size bare would make every GTK app about a third larger than the shell.
+/// Pango has taken an absolute `px` size since 1.44, so the pixels travel as
+/// pixels and nothing has to invent a dpi. A `size_base` that is not pixels (a
+/// theme is free to write `1rem`) yields the family alone, and the app keeps its
+/// own size rather than being given a number that means something else.
+fn pango_font(stack: &str, size_base: &str) -> String {
+    let family = crate::wine::first_family(stack);
+    match size_base.strip_suffix("px").and_then(|n| n.trim().parse::<f32>().ok()) {
+        Some(px) if px > 0.0 => format!("{family} {}px", px.round() as i64),
+        _ => family.to_string(),
+    }
+}
+
+/// Generate `~/.config/gtk-3.0/settings.ini` from a resolved theme.
+///
+/// The half of the GTK3 spoke that `gtk.css` structurally cannot carry. The
+/// override sheet recolours, but which THEME is in use, which icon set, which
+/// cursor and at what size, and what font - none of those are CSS, they are
+/// settings, and until this existed a GTK3 app on Arlen took the system defaults
+/// for every one of them. That is also why the widget theme was unreachable: a
+/// theme directory nothing selects is a directory.
+///
+/// `theme_name` is what [`installed_gtk_theme`] found, and `None` means no
+/// candidate is installed - in which case the key is OMITTED rather than
+/// written hopefully. The rest of the file is still worth writing: icons, cursor
+/// and font are true regardless of which widget theme is present.
+///
+/// `gtk-application-prefer-dark-theme` is how one theme directory serves both
+/// variants: GTK3 reads `gtk-dark.css` beside `gtk.css` when it is set, which is
+/// what both our fork and upstream adw-gtk3 ship.
+pub fn generate_gtk_settings_ini(theme: &ArlenTheme, theme_name: Option<&str>) -> String {
+    let mut out = String::from(
+        "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n[Settings]\n",
+    );
+    if let Some(name) = theme_name {
+        out.push_str(&format!("gtk-theme-name={name}\n"));
+    }
+    out.push_str(&format!(
+        "gtk-application-prefer-dark-theme={}\n",
+        u8::from(theme.is_dark())
+    ));
+    out.push_str(&format!("gtk-icon-theme-name={}\n", theme.icons.theme));
+    out.push_str(&format!("gtk-cursor-theme-name={}\n", theme.cursor.theme));
+    out.push_str(&format!("gtk-cursor-theme-size={}\n", theme.cursor.size));
+    out.push_str(&format!(
+        "gtk-font-name={}\n",
+        pango_font(&theme.typography.font_sans, &theme.typography.size_base)
+    ));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,5 +428,88 @@ mod tests {
                 "the script does not carry `{line}`; its defaults have drifted from the dark theme"
             );
         }
+    }
+
+    /// Everything a GTK3 app needs that the override sheet cannot say.
+    #[test]
+    fn the_settings_ini_carries_theme_icons_cursor_and_font() {
+        let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
+        let ini = generate_gtk_settings_ini(&t, Some("Arlen"));
+        assert!(ini.starts_with("# arlen-generated"), "the guard marker must lead");
+        assert!(ini.contains("\n[Settings]\n"));
+        assert!(ini.contains("gtk-theme-name=Arlen\n"));
+        assert!(ini.contains(&format!("gtk-icon-theme-name={}\n", t.icons.theme)));
+        assert!(ini.contains(&format!("gtk-cursor-theme-name={}\n", t.cursor.theme)));
+        assert!(ini.contains(&format!("gtk-cursor-theme-size={}\n", t.cursor.size)));
+        assert!(ini.contains("gtk-font-name="));
+        assert!(ini.contains(&format!(
+            "gtk-application-prefer-dark-theme={}\n",
+            u8::from(t.is_dark())
+        )));
+    }
+
+    /// No theme installed means no claim that one is.
+    #[test]
+    fn an_absent_theme_is_omitted_rather_than_named_hopefully() {
+        let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
+        let ini = generate_gtk_settings_ini(&t, None);
+        assert!(!ini.contains("gtk-theme-name"), "{ini}");
+        // The rest is true regardless of which widget theme is present.
+        assert!(ini.contains("gtk-icon-theme-name="));
+        assert!(ini.contains("gtk-font-name="));
+    }
+
+    /// A bare number in a Pango description is POINTS, so pixels must say so.
+    #[test]
+    fn the_font_size_travels_as_pixels_or_not_at_all() {
+        assert_eq!(pango_font("\"Inter Variable\", system-ui", "14px"), "Inter Variable 14px");
+        assert_eq!(pango_font("Cantarell", "16px"), "Cantarell 16px");
+        // Not pixels: the family alone, so the app keeps its own size rather
+        // than being handed a number that means something else.
+        assert_eq!(pango_font("Cantarell", "1rem"), "Cantarell");
+        assert_eq!(pango_font("Cantarell", ""), "Cantarell");
+        assert_eq!(pango_font("Cantarell", "0px"), "Cantarell");
+    }
+
+    /// A directory of the right name is not an installed theme.
+    #[test]
+    fn a_theme_counts_only_when_its_sheet_is_there() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dirs = vec![tmp.path().to_path_buf()];
+        assert_eq!(installed_gtk_theme(&GTK_THEME_CANDIDATES, &dirs), None);
+
+        // Half-removed: the directory survives, the sheet does not.
+        std::fs::create_dir_all(tmp.path().join("Arlen/gtk-3.0")).unwrap();
+        assert_eq!(installed_gtk_theme(&GTK_THEME_CANDIDATES, &dirs), None);
+
+        std::fs::write(tmp.path().join("Arlen/gtk-3.0/gtk.css"), "").unwrap();
+        assert_eq!(installed_gtk_theme(&GTK_THEME_CANDIDATES, &dirs), Some("Arlen"));
+
+        // Ours wins over upstream's when both are there.
+        std::fs::create_dir_all(tmp.path().join("adw-gtk3/gtk-3.0")).unwrap();
+        std::fs::write(tmp.path().join("adw-gtk3/gtk-3.0/gtk.css"), "").unwrap();
+        assert_eq!(installed_gtk_theme(&GTK_THEME_CANDIDATES, &dirs), Some("Arlen"));
+
+        // And upstream's is taken when it is the only one.
+        std::fs::remove_dir_all(tmp.path().join("Arlen")).unwrap();
+        assert_eq!(installed_gtk_theme(&GTK_THEME_CANDIDATES, &dirs), Some("adw-gtk3"));
+    }
+
+    /// The search order is the user's directories before the system's, which is
+    /// GTK's own, so a theme somebody installed for themselves wins.
+    #[test]
+    fn the_earlier_directory_wins() {
+        let a = tempfile::tempdir().expect("tempdir");
+        let b = tempfile::tempdir().expect("tempdir");
+        for dir in [a.path(), b.path()] {
+            std::fs::create_dir_all(dir.join("adw-gtk3/gtk-3.0")).unwrap();
+            std::fs::write(dir.join("adw-gtk3/gtk-3.0/gtk.css"), "").unwrap();
+        }
+        std::fs::create_dir_all(b.path().join("Arlen/gtk-3.0")).unwrap();
+        std::fs::write(b.path().join("Arlen/gtk-3.0/gtk.css"), "").unwrap();
+        // Candidate order beats directory order: "Arlen" is preferred even
+        // though adw-gtk3 sits in the earlier directory.
+        let dirs = vec![a.path().to_path_buf(), b.path().to_path_buf()];
+        assert_eq!(installed_gtk_theme(&GTK_THEME_CANDIDATES, &dirs), Some("Arlen"));
     }
 }

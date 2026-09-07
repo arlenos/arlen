@@ -1629,6 +1629,17 @@ button = 12
             // Every outbound generator runs on the adversarial theme; the
             // structured Alacritty output must still parse as TOML.
             let _ = crate::gtk::generate_gtk_css(&t);
+            // The settings.ini carries free strings (font, icon and cursor
+            // theme names), so it is the one GTK output where a hostile theme
+            // could reach a file as syntax rather than as a colour.
+            let ini = crate::gtk::generate_gtk_settings_ini(&t, Some("Arlen"));
+            for line in ini.lines().filter(|l| l.contains('=')) {
+                let (_, value) = line.split_once('=').expect("a key and a value");
+                assert!(
+                    crate::is_inert_css_token(value),
+                    "a settings.ini value carries syntax: {line}"
+                );
+            }
             let _ = crate::qt::generate_qt_conf(&t);
             let _ = crate::terminal::generate_kitty_conf(&t);
             let _ = crate::terminal::generate_foot_ini(&t);
