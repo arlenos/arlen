@@ -21,20 +21,26 @@ export interface Toolkit {
   /// resolved once at import and would keep the startup language for the life
   /// of the process. `coverageBadge` below already does it this way.
   noteKey: string;
-  /// The honest prerequisite/status, or null.
-  prereq: string | null;
+  /// Catalogue key for the honest prerequisite or status, or null. A key for
+  /// the same reason `noteKey` is one: this list is a module constant, so a
+  /// sentence written here resolves once at import and keeps the language the
+  /// process started in. These four were prose until 7 September and the
+  /// born-translatable lint never saw them, because it does not read a string
+  /// assigned to a field in a constant - which is how the one thing on the page
+  /// that tells a person what to DO stayed English in every locale.
+  prereqKey: string | null;
   /// The native surface (always on; no off toggle, no override).
   native?: boolean;
 }
 
 /// The toolkits and their honest fidelity ceiling (theming-system-plan.md §1).
 export const TOOLKITS: Toolkit[] = [
-  { id: "arlen", name: "Arlen apps + compositor", coverage: "full", noteKey: "s.toolkit.note.arlen", prereq: null, native: true },
-  { id: "gtk3", name: "GTK3", coverage: "full", noteKey: "s.toolkit.note.gtk3", prereq: "Arlen theme installed" },
-  { id: "gtk4", name: "GTK4 / libadwaita", coverage: "colours", noteKey: "s.toolkit.note.gtk4", prereq: null },
-  { id: "qt", name: "Qt5 / Qt6", coverage: "colours", noteKey: "s.toolkit.note.qt", prereq: "Set Qt apps to use qt6ct" },
-  { id: "terminal", name: "Terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereq: "Include the colour file in your terminal config" },
-  { id: "wine", name: "Wine", coverage: "best-effort", noteKey: "s.toolkit.note.wine", prereq: "Experimental" },
+  { id: "arlen", name: "Arlen apps + compositor", coverage: "full", noteKey: "s.toolkit.note.arlen", prereqKey: null, native: true },
+  { id: "gtk3", name: "GTK3", coverage: "full", noteKey: "s.toolkit.note.gtk3", prereqKey: "s.toolkit.prereq.gtk3" },
+  { id: "gtk4", name: "GTK4 / libadwaita", coverage: "colours", noteKey: "s.toolkit.note.gtk4", prereqKey: null },
+  { id: "qt", name: "Qt5 / Qt6", coverage: "colours", noteKey: "s.toolkit.note.qt", prereqKey: "s.toolkit.prereq.qt" },
+  { id: "terminal", name: "Terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereqKey: "s.toolkit.prereq.terminal" },
+  { id: "wine", name: "Wine", coverage: "best-effort", noteKey: "s.toolkit.note.wine", prereqKey: "s.toolkit.prereq.wine" },
 ];
 
 /// Coverage tier → the badge label + tone.

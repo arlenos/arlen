@@ -57,8 +57,8 @@
         </div>
 
         <p class="tk-note">{$t(tk.noteKey)}</p>
-        {#if tk.prereq}
-          <p class="tk-prereq">{tk.prereq}</p>
+        {#if tk.prereqKey}
+          <p class="tk-prereq">{$t(tk.prereqKey)}</p>
         {/if}
 
         {#if !tk.native}
