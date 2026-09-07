@@ -24,10 +24,14 @@
 //!   whenever somebody uses its window, and that file is then theirs. It still
 //!   needs `QT_QPA_PLATFORMTHEME=qt6ct` in the session, which nothing in Arlen
 //!   sets today - our half is done and theirs is named rather than assumed.
-//! - **Terminals (alacritty/kitty/foot/Xresources)**: written to
-//!   Arlen-named colour files. The user's main config must `import` /
-//!   `include` them (or `xrdb -merge` for X) to take effect — a follow-up;
-//!   writing the colour file is this module's job.
+//! - **Terminals**: an Arlen-named colour file, and the main config beside it
+//!   that reads it - `include` for kitty and foot, `[general] import` for
+//!   alacritty - each guarded, so a config the person wrote is theirs and ours
+//!   is written only where there was none. The three differ in what kind of path
+//!   they accept and each was read out of its own upstream documentation rather
+//!   than guessed; `terminal.rs` says which. Xresources is the exception and
+//!   still has no reader: it needs `xrdb -merge` at session start, which is a
+//!   session step rather than a file.
 //!
 //! All writes are best-effort and independent: one failure is recorded in
 //! the [`ApplyReport`] and the rest still run.
