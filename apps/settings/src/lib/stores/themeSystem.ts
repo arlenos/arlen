@@ -39,27 +39,49 @@ export function sysOptions(
   }));
 }
 
-// A `label` in these lists is an installed package's own name; our words carry a
-// `labelKey` instead ("Default", "None"), which is the whole reason the two
-// fields exist. Each list is marked separately because a marker covers the one
-// declaration under it - saying "from here down" would cover nothing.
+// A `label` in one of these lists is an installed package's own name; our words
+// carry a `labelKey` instead ("Default", "None"), which is the whole reason the
+// two fields exist.
 //
-// i18n-foreign: cursor themes name themselves, on disk and in their own project.
-export const CURSOR_THEMES: SysOption[] = [
-  { value: "Default", labelKey: "s.sys.default" },
-  { value: "Adwaita", label: "Adwaita" },
-  { value: "Bibata", label: "Bibata" },
-  { value: "Capitaine", label: "Capitaine" },
-];
+// The cursor and icon lists are no longer constants either, for the reason
+// stated below about sounds and with the same evidence behind it. They named
+// Bibata, Capitaine, Papirus, Numix and Tela - real projects, none of them
+// necessarily on this machine - so the picker offered a confident choice that
+// wrote a theme name nothing could resolve. That mattered little while the value
+// went nowhere; since 8 September it is written into `gtk-3.0/settings.ini` and
+// `gtk-4.0/settings.ini` for every GTK app, and a name GTK cannot find sends it
+// to a fallback rather than to what the person picked.
+//
+// i18n-foreign: cursor themes and icon sets name themselves, on disk and in
+// their own projects, so what comes back from the machine is passed through.
 
-// i18n-foreign: icon sets name themselves, on disk and in their own project.
-export const ICON_THEMES: SysOption[] = [
-  { value: "Default", labelKey: "s.sys.default" },
-  { value: "Papirus", label: "Papirus" },
-  { value: "Adwaita", label: "Adwaita" },
-  { value: "Numix", label: "Numix" },
-  { value: "Tela", label: "Tela" },
-];
+/// The cursor themes this machine actually has, "Default" first.
+export async function installedCursorThemes(): Promise<SysOption[] | null> {
+  return await installedThemes("theme_list_cursor_themes");
+}
+
+/// The icon sets this machine actually has, "Default" first.
+export async function installedIconThemes(): Promise<SysOption[] | null> {
+  return await installedThemes("theme_list_icon_themes");
+}
+
+/// `null` means the list could not be read, which the caller shows as its own
+/// state - an empty list would say "this machine has no cursor themes", and that
+/// is a different sentence from "nobody asked".
+async function installedThemes(command: string): Promise<SysOption[] | null> {
+  const dflt: SysOption = { value: "Default", labelKey: "s.sys.default" };
+  if (!tauriAvailable) {
+    // Under vite the picker still has to be designable, so the fixture is a
+    // plausible machine rather than an empty one.
+    return [dflt, { value: "Adwaita", label: "Adwaita" }];
+  }
+  try {
+    const names = await invoke<string[]>(command);
+    return [dflt, ...names.map((n) => ({ value: n, label: n }))];
+  } catch {
+    return null;
+  }
+}
 
 // The sound themes are no longer a constant: `installedSoundThemes()` below reads
 // what the machine actually has. The list that used to sit here named "Chime" and
