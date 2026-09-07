@@ -1070,13 +1070,19 @@ impl Manager {
                 warn!(module = %module_id, reason = %reason, "tier 1 search trapped");
                 self.record_crash(module_id, &reason).await;
                 self.drop_tier1_instance(module_id).await;
-                // Return empty results so the shell can still render
-                // results from other modules. The crash event broadcast
-                // is what Settings + the user observe.
-                Response::WaypointerResults {
+                // SAID, not swallowed. This used to answer with an empty list
+                // "so the shell can still render results from other modules" -
+                // which is `search_all`'s problem and `search_all` solves it
+                // itself, dropping the crashed module and keeping the rest. A
+                // caller that named ONE module and got `results: []` cannot tell
+                // a module that matched nothing from one that crashed on the way
+                // up. Found by being on the other end of it: the first real
+                // module trapped inside `init` and four probes went by before
+                // anything said so.
+                Response::Error {
                     id: id.to_string(),
-                    module_id: module_id.to_string(),
-                    results: Vec::new(),
+                    code: ErrorCode::ModuleFailed,
+                    message: reason,
                 }
             }
             Err(SearchFailure::Load(reason)) => {
@@ -1094,10 +1100,14 @@ impl Manager {
                 }
             }
             Err(SearchFailure::Cooldown) => {
-                // Module is in crash backoff. Return empty results
-                // without recording a fresh crash — the cooldown is
-                // *what we are doing* for crash recovery, counting it
-                // again would shrink the ladder to nothing.
+                // Still empty, and deliberately unlike the trap above. A
+                // cooldown is not news: the crash that caused it was already
+                // broadcast, the surface has been told, and answering every
+                // keystroke during the backoff with an error would repeat one
+                // event as many times as the person types. No fresh crash is
+                // recorded either — the cooldown is *what we are doing* for
+                // crash recovery, and counting it again would shrink the ladder
+                // to nothing.
                 Response::WaypointerResults {
                     id: id.to_string(),
                     module_id: module_id.to_string(),
