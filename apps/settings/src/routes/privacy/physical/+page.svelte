@@ -136,7 +136,10 @@
                 <span class="found" data-posture={line.posture} aria-hidden="true"></span>
                 <span class="said">{$t(`s.sent.post.${line.surface}.${line.posture}`)}</span>
                 {#if line.fix}
-                  <Button variant="outline" size="sm" id="sent-exposure-fix" onclick={() => fixPosture(line.surface)}>
+                  <!-- No id: this renders once per fixable surface, so a literal one
+                       would be repeated across the page and identify none of them.
+                       Nothing refers to it. -->
+                  <Button variant="outline" size="sm" onclick={() => fixPosture(line.surface)}>
                     {$t("s.sent.fix")}
                   </Button>
                 {/if}
