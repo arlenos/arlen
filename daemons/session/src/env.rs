@@ -40,6 +40,46 @@ pub fn compositing_enabled(product_family: &str) -> bool {
     family == COMPOSITING_FAMILY
 }
 
+/// Where a Qt platform-theme plugin lives, across the distributions this has to
+/// work on. Debian multiarch first because that is what the image is.
+const QT_PLATFORM_THEME_DIRS: [&str; 3] = [
+    "/usr/lib/x86_64-linux-gnu/qt6/plugins/platformthemes",
+    "/usr/lib/qt6/plugins/platformthemes",
+    "/usr/lib64/qt6/plugins/platformthemes",
+];
+
+/// The platform themes Arlen will point Qt at, best colour fidelity first, and
+/// the plugin file each one needs.
+///
+/// `qt6ct` first because it reads the 21-role palette `sdk/theme` writes, which
+/// is the whole Qt colour output; `xdgdesktopportal` second because it needs no
+/// package at all - it ships with Qt and reads dark/light and the accent off the
+/// `org.freedesktop.impl.portal.Settings` backend this desktop now serves, so a
+/// machine with no qt6ct still follows the theme part of the way.
+///
+/// The ORDER is the coder's pick and the one line to change if it is wrong.
+const QT_PLATFORM_THEMES: [(&str, &str); 2] = [
+    ("qt6ct", "libqt6ct.so"),
+    ("xdgdesktopportal", "libqxdgdesktopportal.so"),
+];
+
+/// Which Qt platform theme this machine can actually use, or none.
+///
+/// Pure over the search directories so the choice is testable without a Qt
+/// installation. The point of checking at all: `QT_QPA_PLATFORMTHEME` naming a
+/// plugin that is not there is a setting that reads as configured and does
+/// nothing, and this desktop ships no Qt of its own - a Qt app arrives later,
+/// with whatever it brings. So the answer has to be computed at session start
+/// rather than baked, and "nothing installed" has to be a real answer.
+pub fn qt_platform_theme(plugin_dirs: &[std::path::PathBuf]) -> Option<&'static str> {
+    QT_PLATFORM_THEMES.iter().find_map(|(name, file)| {
+        plugin_dirs
+            .iter()
+            .any(|d| d.join(file).exists())
+            .then_some(*name)
+    })
+}
+
 /// The variables a session exports before starting the compositor.
 ///
 /// Returned rather than applied so the set is one testable value: the script this
@@ -69,6 +109,15 @@ pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, S
     env.insert("LIBGL_ALWAYS_SOFTWARE".into(), "1".into());
     env.insert("GALLIUM_DRIVER".into(), "llvmpipe".into());
     env.insert("GDK_BACKEND".into(), "wayland".into());
+    // Qt's turn. Without this a Qt app takes its platform theme from Qt's own
+    // guess, which on a session that is neither GNOME nor KDE is nothing - so
+    // the qt6ct colour scheme `sdk/theme` writes was read by no one, and the
+    // Toolkits page asked the PERSON to set this variable by hand. Only when the
+    // plugin is really there: naming one that is not is a setting that reads as
+    // configured and does nothing.
+    if let Some(theme) = qt_platform_theme(&QT_PLATFORM_THEME_DIRS.map(std::path::PathBuf::from)) {
+        env.insert("QT_QPA_PLATFORMTHEME".into(), theme.into());
+    }
     env.insert("WEBKIT_DISABLE_DMABUF_RENDERER".into(), "1".into());
     if !compositing_enabled(product_family) {
         env.insert("WEBKIT_DISABLE_COMPOSITING_MODE".into(), "1".into());
@@ -509,5 +558,43 @@ x y
         for var in MUST_BE_UNSET {
             assert!(!env.contains_key(*var), "{var} must not be exported at all");
         }
+    }
+
+    /// Nothing installed is an answer, and the wrong answer here is the one that
+    /// looks right: a variable naming a plugin that is not there.
+    #[test]
+    fn no_qt_plugin_means_no_qt_variable() {
+        let empty = tempfile::tempdir().expect("tempdir");
+        assert_eq!(qt_platform_theme(&[empty.path().to_path_buf()]), None);
+        assert_eq!(qt_platform_theme(&[]), None);
+    }
+
+    /// qt6ct wins when both are there, because it reads the whole palette and
+    /// the portal theme reads dark/light and the accent.
+    #[test]
+    fn the_richer_platform_theme_is_preferred() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("libqxdgdesktopportal.so"), "").unwrap();
+        assert_eq!(
+            qt_platform_theme(&[dir.path().to_path_buf()]),
+            Some("xdgdesktopportal"),
+            "the portal theme alone is still worth having"
+        );
+
+        std::fs::write(dir.path().join("libqt6ct.so"), "").unwrap();
+        assert_eq!(qt_platform_theme(&[dir.path().to_path_buf()]), Some("qt6ct"));
+    }
+
+    /// The directory list is searched in order, and a plugin in the second one
+    /// counts - the image is Debian multiarch and a developer machine is not.
+    #[test]
+    fn a_plugin_in_any_searched_directory_counts() {
+        let a = tempfile::tempdir().expect("tempdir");
+        let b = tempfile::tempdir().expect("tempdir");
+        std::fs::write(b.path().join("libqt6ct.so"), "").unwrap();
+        assert_eq!(
+            qt_platform_theme(&[a.path().to_path_buf(), b.path().to_path_buf()]),
+            Some("qt6ct")
+        );
     }
 }
