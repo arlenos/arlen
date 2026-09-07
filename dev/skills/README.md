@@ -5,7 +5,7 @@ that directory holds symlinks into this one.
 
 **Why they moved (7 September).** `~/.claude/skills/` is not a git repository and is in neither of this
 project's trees: no history, no review, no attribution, no backup. And because every agent on the machine
-shares it, one lane could edit another lane's instructions by accident — the same coupling the repository split
+shares it, one lane could edit another lane's instructions by accident - the same coupling the repository split
 exists to prevent. Authoring them in the repo whose tooling they describe fixes both, and settles who may edit
 which.
 
