@@ -67,7 +67,7 @@ SURFACES=(
   "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
   "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
-  "meetings /|/capture|/meeting/abc"
+  "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes"
   "pdf /"
   "screenshot /"
   # THE OTHER NINETEEN, and they were missing for the reason this header keeps
