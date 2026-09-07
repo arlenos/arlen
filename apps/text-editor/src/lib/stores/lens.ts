@@ -5,10 +5,11 @@
 /// note that references or co-occurs with this file - read-only context you act on),
 /// and project membership. Nothing hand-authored; the system finds the links.
 ///
-/// Mock-vs-live: fixture-backed. `provenance_of` (the caller-scoped read op, PH-R1),
-/// the backlinks/co-occurrence query, and project-membership are coder seams on the
-/// graph daemon; every query is debounced/cached off the render path. Under vite the
-/// store serves a fixture.
+/// Mock-vs-live: all three reads are BUILT in this app's `src-tauri/src/lens.rs` -
+/// `provenance_of`, `related_of` (the backlinks/co-occurrence query) and
+/// `project_of` (membership). The note called them coder seams afterwards. Every
+/// query is debounced/cached off the render path. Under vite the store serves a
+/// fixture.
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";

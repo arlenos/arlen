@@ -9,9 +9,10 @@
 /// backing - an external file carrying a C2PA content credential. Fidelity markers
 /// never overclaim: a `pid` step is "a process", never "app X".
 ///
-/// Mock-vs-live: fixture-backed. The caller-scoped read op (PH-R1, security-critical,
-/// shared with the Living Capability Graph's access_grants) + `provenance_of` + the
-/// S18-A content-origin persistence + the ebpf pid->app resolution are coder seams.
+/// Mock-vs-live: `provenance_of` is BUILT in this app's `src-tauri` and the note
+/// called it a seam afterwards. What is still absent is what would make its answer
+/// rich rather than thin: the S18-A content-origin persistence and the ebpf
+/// pid->app resolution behind it. Under vite a fixture stands in.
 
 import { invoke } from "@tauri-apps/api/core";
 import { relativeTime, type Translate } from "@arlen/ui-kit/i18n";

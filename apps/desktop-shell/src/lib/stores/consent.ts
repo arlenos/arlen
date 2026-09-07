@@ -3,11 +3,11 @@
 /// tier and hands the shell a PendingView; the shell renders the right dialog and
 /// returns an outcome. This is the sibling of the App-access review/revoke page.
 ///
-/// Mock-vs-live: fixture-backed. The `consent_fetch` / `consent_resolve` Tauri
-/// commands wrapping the broker's `ControlClient`, and the broker-signal listener
-/// that drives the fetch, are coder seams; under vite the store serves a fixture
-/// queue so the polymorphic surface renders. Migrating the existing AI-auth and
-/// bluetooth modals onto the broker is a later coder step.
+/// Mock-vs-live: `consent_fetch` and `consent_resolve` are BUILT, in
+/// `src-tauri/src/consent.rs` over the broker's `ControlClient`; this note called
+/// them coder seams afterwards. Under vite the store still serves a fixture queue
+/// so the polymorphic surface renders without a broker. Migrating the existing
+/// AI-auth and bluetooth modals onto the broker is a later coder step.
 
 import { writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
