@@ -85,7 +85,15 @@
     <div class="tray-empty">{$t("sh.tray.empty")}</div>
   {:else}
     <div class="tray-list themed-scroll">
-      {#each items as item}
+      <!-- KEYED ON THE BUS NAME, and the row's own state is why. Each one is a
+           `ContextMenu.Root` holding its open/closed state, its generated ids
+           and its portal; unkeyed, Svelte reuses the instance at index N for
+           whatever item lands there. The tray is the one list in this window
+           where entries appear and vanish while it is open - an app registers,
+           another quits - so a menu opened for one service would keep its open
+           state and be handed another service's `menuPath`. `item.service` is
+           the D-Bus name, unique by construction. -->
+      {#each items as item (item.service)}
         <ContextMenu.Root>
           <ContextMenu.Trigger>
             {#snippet child({ props })}
