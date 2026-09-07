@@ -73,3 +73,23 @@ path = "sdk/arlen-input-client/**"
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Tim Kicker"
 SPDX-License-Identifier = "GPL-3.0-only"
+
+# The vendored adw-gtk3 fork (themes/adw-gtk3/README.md carries the provenance).
+# Upstream states its licence in `meson.build` (`license: ['LGPL2.1']`) and ships
+# the LGPL-2.1 text, with no per-file headers and no copyright line anywhere in
+# the tree - so the holder is recorded as the project's authors, which is as
+# specific as upstream itself is, and the identifier is the "only" form because
+# nothing upstream says "or later" and understating their grant is the safe
+# direction. Without this block the `**` rule above would have declared somebody
+# else's LGPL source as our AGPL, which is the actual defect here; the unused
+# `LICENSES/LGPL-2.1-only.txt` was only how it surfaced.
+#
+# One block for the whole directory, our three files included: `arlen.scss` and
+# `arlen-dark.scss` are derived from upstream's entry points and
+# `_all-widgets.scss` is upstream's own module list lifted out, so all three are
+# LGPL work with our modifications on top rather than fresh first-party code.
+[[annotations]]
+path = "themes/adw-gtk3/**"
+precedence = "closest"
+SPDX-FileCopyrightText = ["The adw-gtk3 authors", "2026 Tim Kicker"]
+SPDX-License-Identifier = "LGPL-2.1-only"
