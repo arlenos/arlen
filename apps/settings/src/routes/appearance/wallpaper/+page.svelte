@@ -1,9 +1,10 @@
 <script lang="ts">
   /// The wallpaper picker (wallpaper-plan.md WP-R1): a thumbnail grid of the
   /// available backgrounds, click to set, a fit control, and add-your-own. Static
-  /// only for v1; live wallpaper + per-monitor are WP-R2. Fixture-backed under
-  /// vite; the daemon bridge (`list_wallpapers`/`set_wallpaper`/`add_wallpaper`)
-  /// is a flagged coder seam.
+  /// only for v1; live wallpaper + per-monitor are WP-R2. The daemon bridge
+  /// (`list_wallpapers`/`set_wallpaper`/`add_wallpaper`) is BUILT; this note
+  /// called it a flagged seam afterwards. Fixture-backed under vite, where there
+  /// is no host to answer.
   import { onMount } from "svelte";
   import { t } from "$lib/i18n/messages";
   import { Page } from "@arlen/ui-kit/components/ui/page";

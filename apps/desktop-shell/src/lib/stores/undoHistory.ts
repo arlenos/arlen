@@ -6,8 +6,9 @@
 /// not an undo promise.
 ///
 /// Mock-vs-live: the session-level `undo_read` / `undo_enact` commands
-/// (capability-gated undo.read/undo.enact, enact-as-user) are coder seams;
-/// under vite a fixture stands in and `undoMocked` says so. The panel only
+/// (capability-gated undo.read/undo.enact, enact-as-user) are BUILT, in
+/// `src-tauri/src/undo_history.rs` - the note called them seams afterwards.
+/// Under vite a fixture stands in and `undoMocked` says so. The panel only
 /// offers enact on entries the read declares enactable.
 
 import { writable, get } from "svelte/store";
