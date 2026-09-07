@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Tim Kicker
-//
-// SPDX-License-Identifier: AGPL-3.0-only
-
 //! Check the offsets the probes were compiled against against the kernel's own.
 //!
 //! A tracepoint record's layout is not part of any ABI. The probe reads a field
