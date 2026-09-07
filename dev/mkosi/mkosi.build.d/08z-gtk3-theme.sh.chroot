@@ -1,0 +1,41 @@
+#!/bin/sh
+# Phase 8z (CHROOT): the Arlen GTK3 widget theme, compiled from the vendored
+# adw-gtk3 fork in `themes/adw-gtk3`.
+#
+# Why the image builds it rather than shipping a checked-in sheet: GTK 3.20
+# reworked theming and point releases still move widget nodes, so a compiled
+# `gtk.css` rots (`themes/adw-gtk3/README.md`). What is vendored is the Sass
+# source, and this is where it becomes a theme.
+#
+# What it is NOT: the colours. Those reach a GTK3 app at runtime through the
+# `@define-color` sheet `sdk/theme` writes to `~/.config/gtk-3.0/gtk.css` on
+# every theme change, because the compiled sheet references GTK named colours
+# rather than baking hexes. So this phase ships the SHAPE and a palette change
+# needs no rebuild. Without it, the `settings.ini` that same apply writes names
+# no theme at all - it omits `gtk-theme-name` when none is installed - and every
+# GTK3 app on the image, our own Tauri windows included, renders stock Adwaita.
+#
+# dart-sass comes from npm: Debian ships `sassc`, which is libsass, and libsass
+# never implemented the `@use` module system this source is written in. Build-time
+# only, so neither node nor sass reaches the image.
+set -eu
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+
+if ! command -v sass >/dev/null 2>&1; then
+    echo ">> installing dart-sass from npm (build-time only)"
+    npm install -g --silent sass@1.102.0
+fi
+
+echo ">> compiling the GTK3 widget theme ($(sass --version))"
+dev/scripts/build-gtk3-theme.sh "$DESTDIR/usr/share/themes"
+
+# The theme is only reachable if the sheet is actually there: `installed_gtk_theme`
+# counts a directory only when it holds `gtk-3.0/gtk.css`, so an empty directory
+# would leave the settings file silently naming nothing. Fail the build instead.
+sheet="$DESTDIR/usr/share/themes/Arlen/gtk-3.0/gtk.css"
+if [ ! -s "$sheet" ]; then
+    echo "!! the GTK3 theme did not compile; refusing to ship a theme directory with no sheet" >&2
+    exit 1
+fi
+echo ">> staged the Arlen GTK3 theme ($(wc -c <"$sheet") bytes)"
