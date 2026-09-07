@@ -1,0 +1,53 @@
+<!-- The control for `escape-dismisses.js`, as a file rather than a sentence.
+     Three overlays, one per answer the probe has to give:
+
+       dev/screenshot/headless.sh \
+         --url "file://$PWD/dev/screenshot/escape-dismisses-control.html" \
+         --out /tmp/x.png --probe-file dev/screenshot/escape-dismisses.js
+
+     must answer exactly:
+
+       ["focus=BODY",
+        "before=[closes on window|closes on document|never closes]",
+        "after=[never closes]"]
+
+     The two that close are the NEAR-MISSES: a probe that reported them would be
+     calling correct code broken, and that is the failure that turns a sweep off.
+     The one that survives is the fault - a handler mounted on the overlay itself,
+     which never receives the key because nothing inside it has focus. That is not
+     invented for the fixture: it is the shape the settings window-rule dialog
+     shipped with, and reading it was not enough to see it.
+
+     Check it both ways. Delete the `window` listener below and the first overlay
+     has to appear in `after` as well; put it back and it must not. -->
+<body style="margin: 0; background: #111; color: #eee; font: 12px system-ui">
+  <!-- Correct, form one: the listener is on the window, so the press reaches it
+       wherever the focus happens to be. -->
+  <div id="a" role="dialog" aria-label="closes on window" style="position: fixed; inset: 10px auto auto 10px; padding: 8px; background: #222">
+    closes on window
+  </div>
+
+  <!-- Correct, form two: a listener added on the document, which is what a
+       component that wires one up on mount produces. -->
+  <div id="b" role="dialog" aria-label="closes on document" style="position: fixed; inset: 60px auto auto 10px; padding: 8px; background: #222">
+    closes on document
+  </div>
+
+  <!-- The fault: the handler is on the overlay, and nothing inside it has focus,
+       so the key never arrives. It looks exactly like the two above in a diff. -->
+  <div id="c" role="dialog" aria-label="never closes" tabindex="-1" style="position: fixed; inset: 110px auto auto 10px; padding: 8px; background: #222">
+    never closes
+  </div>
+
+  <script>
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") document.getElementById("a").remove();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") document.getElementById("b").remove();
+    });
+    document.getElementById("c").addEventListener("keydown", (e) => {
+      if (e.key === "Escape") document.getElementById("c").remove();
+    });
+  </script>
+</body>
