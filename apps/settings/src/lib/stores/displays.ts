@@ -11,7 +11,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { writable, type Writable } from "svelte/store";
 
 // ---------------------------------------------------------------------------
-// Types — mirror `app-settings/src-tauri/src/displays/types.rs`. Kept
+// Types — mirror `apps/settings/src-tauri/src/displays/types.rs`. Kept
 // in sync by hand for now; if the surface grows, ts-rs would be the
 // right fix.
 // ---------------------------------------------------------------------------

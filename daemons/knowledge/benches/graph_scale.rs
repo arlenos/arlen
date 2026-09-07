@@ -4,7 +4,7 @@
 //! (SQLite Write Store + Ladybug Query Store) at different data volumes.
 //!
 //! Run with:
-//!   cargo bench --manifest-path knowledge/Cargo.toml
+//!   cargo bench --manifest-path daemons/knowledge/Cargo.toml
 //!
 //! Results are stored in target/criterion/ and compared against the previous
 //! run automatically. A regression of >10% in any benchmark is a signal to

@@ -8,7 +8,7 @@
 //! ## Sync point
 //!
 //! This is a hand-maintained mirror of the `CREATE NODE TABLE` /
-//! `CREATE REL TABLE` statements in `knowledge/src/graph.rs`. When the
+//! `CREATE REL TABLE` statements in `daemons/knowledge/src/graph.rs`. When the
 //! Knowledge Graph schema changes there, this file must be updated to
 //! match. Phase 9-γ should replace the hardcoded tables with a
 //! dynamic load from the Knowledge Daemon (which owns the Foundation
@@ -93,7 +93,7 @@ impl GraphSchema {
     }
 }
 
-/// Node tables. Mirrors `knowledge/src/graph.rs`.
+/// Node tables. Mirrors `daemons/knowledge/src/graph.rs`.
 const NODES: &[NodeSchema] = &[
     NodeSchema {
         label: "File",
@@ -209,7 +209,7 @@ const NODES: &[NodeSchema] = &[
     },
     // Reserved git node types (foundation §04 pre-provision): a future
     // git-ingestion tier writes rows without a schema migration. No producer
-    // yet; mirrors the `Commit`/`Branch` tables in `knowledge/src/graph.rs`.
+    // yet; mirrors the `Commit`/`Branch` tables in `daemons/knowledge/src/graph.rs`.
     NodeSchema {
         label: "Commit",
         fields: &[
@@ -230,14 +230,14 @@ const NODES: &[NodeSchema] = &[
     },
     // A remote endpoint an app connected to (KG-richness Thrust 1, the
     // OS-observed app<->network edge family). Mirrors the `NetworkEndpoint`
-    // table in `knowledge/src/graph.rs`.
+    // table in `daemons/knowledge/src/graph.rs`.
     NodeSchema {
         label: "NetworkEndpoint",
         fields: &[("id", FieldType::Text), ("protocol", FieldType::Text)],
     },
 ];
 
-/// Relationship tables. Mirrors `knowledge/src/graph.rs`.
+/// Relationship tables. Mirrors `daemons/knowledge/src/graph.rs`.
 const EDGES: &[EdgeSchema] = &[
     EdgeSchema {
         label: "ACCESSED_BY",
@@ -340,7 +340,7 @@ mod tests {
         // The foundation §04 pre-provision: Commit/Branch are reserved so a
         // future git tier needs no migration, and NetworkEndpoint backs the
         // observed app<->network edges. All three exist in the DDL
-        // (knowledge/src/graph.rs) and must be in this mirror so the query DSL
+        // (daemons/knowledge/src/graph.rs) and must be in this mirror so the query DSL
         // recognises the labels rather than rejecting them as unknown.
         let s = GraphSchema::knowledge_graph();
         assert!(s.node("Commit").is_some());

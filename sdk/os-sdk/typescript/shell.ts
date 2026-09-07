@@ -23,7 +23,7 @@ import { invoke } from "@tauri-apps/api/core";
 // ── shell.menu ─────────────────────────────────────────────────────────
 //
 // Those command names live in the SHELL's own binary
-// (desktop-shell/src-tauri/src/menu_store.rs), and a Tauri command is reachable
+// (apps/desktop-shell/src-tauri/src/menu_store.rs), and a Tauri command is reachable
 // only inside the binary that registers it - so an app invoking them by those
 // names is rejected at runtime, which is what `tauri-plugin-shell` says beside
 // its own `menu_register`. The plugin is the app-facing half, and a plugin

@@ -10,7 +10,7 @@
 // nearest `#[cfg(test)]` within 400 lines and excused anything below one, so an
 // admission added at the BOTTOM of a file - after the test module Rust convention
 // puts there - was invisible. Found on 10 August by injecting the same line into
-// `event-bus/src/socket.rs` twice: caught above the test module, missed below it.
+// `daemons/event-bus/src/socket.rs` twice: caught above the test module, missed below it.
 //
 // Run: node dev/scripts/test-check-dev-prefix-admission.mjs
 

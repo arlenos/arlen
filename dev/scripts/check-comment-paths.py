@@ -28,6 +28,20 @@ and 7 candidates, of which 4 were real.
 The remaining three are in KNOWN because they are correct: they name a file in
 somebody ELSE's tree - a recipe in a user's project, a state file under a user's
 app dir - and this repo is the wrong place to look for those.
+
+**AND IT WAS BLIND TO THE BIGGEST SOURCE OF STALE POINTERS, which is the shape of
+its own pattern.** The prefix list is the CURRENT top-level directories, so a
+comment naming the layout this tree had before the June restructure - `knowledge/`,
+`event-bus/`, `desktop-shell/`, `app-settings/` - matched nothing and passed. Swept
+on 8 September: **twenty of them**, in comments that all read as if they had been
+checked. Six sat in `contracts/graph-schema`, whose whole job is to mirror a file
+it was pointing at the wrong path of, and one named a `ModuleLoader` that no
+longer exists in any form.
+
+So MOVED below is the second half of the same question. A pre-restructure prefix
+is not "a path that might be missing" - it is a path that CANNOT exist, because
+the directory has not been there since June, and the message can therefore say
+where the tree keeps that thing now instead of only that the note is wrong.
 """
 
 import os
@@ -80,6 +94,44 @@ KNOWN = {
     ),
 }
 
+# The top-level directories this tree had before the June 2026 restructure, and
+# where each one's contents live now. A comment naming one of these is stale by
+# construction: none of them is a directory any more, so the reference cannot be
+# a correct pointer at anything.
+#
+# `ui-kit` is deliberately absent even though `sdk/ui-kit` is where it went. The
+# app comments say `@arlen/ui-kit/components/...`, which is an npm specifier and
+# not a path at all; the left-edge lookbehind already declines those because the
+# character before is `/`, and putting the name here would turn a correct import
+# reference into a finding the moment somebody wrote one at the start of a line.
+#
+# `compositor` is absent for the opposite reason: it is a SEPARATE repository, so
+# `compositor/src/config/mod.rs` is a correct pointer into another tree, the same
+# class as the KNOWN entries above.
+MOVED = {
+    "app-settings": "apps/settings",
+    "desktop-shell": "apps/desktop-shell",
+    "event-bus": "daemons/event-bus",
+    "knowledge": "daemons/knowledge",
+    "kernel-layer": "daemons/kernel-layer/kernel-layer",
+    "modulesd": "daemons/modulesd",
+    "notification-daemon": "daemons/notification-daemon",
+    "installd": "daemons/installd",
+    "audit-daemon": "daemons/audit-daemon",
+    "anomaly-detector": "daemons/anomaly-detector",
+    "xdg-desktop-portal-lunaris": "daemons/xdg-portal",
+    "ai-layer": "ai",
+}
+
+# The same shape as PATH, over the names that are gone. Kept as its own pattern
+# rather than folded into PATH's alternation so the finding can say where the
+# thing moved to, which is the whole difference between a report somebody acts on
+# and one they have to research first.
+OLD_PATH = re.compile(
+    r"(?<![A-Za-z0-9_/-])((?:" + "|".join(sorted(MOVED, key=len, reverse=True)) + r")"
+    r"/[A-Za-z0-9_./-]+\.(?:rs|toml|md|py|sh|mjs|tsv|ts|svelte|service|json|proto|yaml))\b"
+)
+
 
 
 def scanned_files(root: Path):
@@ -116,6 +168,22 @@ def comment_paths(text: str):
             yield i, m.group(1).rstrip(".,;:`)")
 
 
+def moved_paths(text: str):
+    """`(line number, path)` for every pre-restructure path named in a comment."""
+    for i, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if not (stripped.startswith("//") or stripped.startswith("#")):
+            continue
+        for m in OLD_PATH.finditer(stripped):
+            yield i, m.group(1).rstrip(".,;:`)")
+
+
+def moved_to(ref: str) -> str:
+    """Where the tree keeps the thing that reference names."""
+    head, _, tail = ref.partition("/")
+    return f"{MOVED[head]}/{tail}"
+
+
 def main() -> int:
     problems: list[str] = []
     checked = 0
@@ -136,6 +204,15 @@ def main() -> int:
             if not (ROOT / ref).exists():
                 rel = path.relative_to(ROOT)
                 problems.append(f"{rel}:{line_no}: names `{ref}`, which is not in the tree")
+        for line_no, ref in moved_paths(text):
+            if ref in KNOWN:
+                continue
+            checked += 1
+            rel = path.relative_to(ROOT)
+            problems.append(
+                f"{rel}:{line_no}: names `{ref}`, the layout before the restructure; "
+                f"that lives at `{moved_to(ref)}` now"
+            )
 
     if problems:
         print("comments pointing at files that are not there:\n")

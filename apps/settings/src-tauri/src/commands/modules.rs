@@ -5,9 +5,17 @@
 //!   * `~/.local/share/arlen/modules/` — user-installed (removable)
 //!
 //! Enabled state is persisted in `~/.config/arlen/modules.toml` as a
-//! flat list of disabled module IDs. This matches the shell's
-//! `ModuleLoader` (`desktop-shell/src-tauri/src/modules.rs`) so both
-//! processes see the same source of truth.
+//! flat list of disabled module IDs, which is what the module runtime
+//! reads (`daemons/modulesd/src/enabled.rs`) - one file, so a module
+//! switched off here is off where it would have run.
+//!
+//! It used to name a shell `ModuleLoader` at a pre-restructure path
+//! instead. There is no such type anywhere in the tree, and the shell is
+//! not the other reader: it takes `[waypointer].disabled_plugins` out of
+//! the same file for its built-in plugins and never looks at
+//! `[disabled].modules`. A note that points at a moved file wastes a
+//! minute; one that names a type nobody can find costs the reader their
+//! confidence in the rest of the paragraph.
 //!
 //! Parsing uses the shared `arlen-modules` crate so the manifest
 //! schema stays in sync with the SDK.

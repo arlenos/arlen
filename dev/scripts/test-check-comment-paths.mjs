@@ -129,6 +129,51 @@ check(
   (code) => code === 0,
 );
 
+// THE PRE-RESTRUCTURE LAYOUT, which the gate could not see at all until 8
+// September because its prefix list is the directories that exist NOW. Twenty
+// comments in the tree named the old one and every single one passed.
+check(
+  "a comment naming the pre-restructure layout is caught and told where it went",
+  {
+    "daemons/probe/src/lib.rs": "// mirrors knowledge/src/graph.rs\n",
+    "daemons/knowledge/src/graph.rs": "",
+  },
+  (code, out) =>
+    code === 1 &&
+    out.includes("the layout before the restructure") &&
+    out.includes("daemons/knowledge/src/graph.rs"),
+);
+
+// The point of the second pattern rather than one longer alternation: a moved
+// prefix is stale whether or not anything sits at the new path, so the finding
+// does not depend on the destination existing.
+check(
+  "and it is caught even when nothing sits at the new path either",
+  { "daemons/probe/src/lib.rs": "// see app-settings/src-tauri/src/gone.rs\n" },
+  (code, out) => code === 1 && out.includes("apps/settings/src-tauri/src/gone.rs"),
+);
+
+// The one shape that must NOT trip it. Every app writes `@arlen/ui-kit/...` in
+// its comments; that is an npm specifier, and the moment `ui-kit` joined the
+// moved list those became findings by the hundred.
+check(
+  "a ui-kit import specifier is not a path",
+  {
+    "apps/probe/src/a.svelte":
+      "<!-- x -->\n// wraps @arlen/ui-kit/components/ui/switch/switch.svelte\n",
+    "daemons/probe/src/lib.rs": "// see daemons/probe/src/lib.rs\n",
+  },
+  (code) => code === 0,
+);
+
+// And the separate repository, for the same reason the KNOWN entries exist: the
+// compositor is not in this tree, so a pointer into it is correct.
+check(
+  "a pointer into the compositor repository is left alone",
+  { "daemons/probe/src/lib.rs": "// parsed in compositor/src/config/mod.rs\n" },
+  (code) => code === 0,
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);
