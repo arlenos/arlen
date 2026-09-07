@@ -460,17 +460,21 @@ const USER_FACING_PROPS: &[&str] = &[
 /// have to be found by reading, as this one was.
 const USER_FACING_SUFFIXES: &[&str] = &["error", "message", "failure"];
 
-/// Deliberately absent: `name`, `text` and `body`.
-///
-/// `{ value: "#6366f1", name: "Indigo" }` is a swatch's accessible name and was a
-/// genuine miss, so adding `name` looks obviously right. Measured, it produced 129
-/// findings against 3 for the rest of this list, and nearly all of them were mock
-/// records standing in for a backend: project names, saved-search names, a meeting
-/// transcript. Those must NOT be translated - they are the user's data, in a
-/// fixture until the daemon behind them lands - so the lint would be wrong 97% of
-/// the time on its loudest rule. `name` is the commonest field in any data record,
-/// and no shape test separates our word for a thing from the user's name for it.
-/// The swatch case is fixed at its source instead.
+// Deliberately absent from the list above: `name`, `text` and `body`.
+//
+// `{ value: "#6366f1", name: "Indigo" }` is a swatch's accessible name and was a
+// genuine miss, so adding `name` looks obviously right. Measured, it produced 129
+// findings against 3 for the rest of that list, and nearly all of them were mock
+// records standing in for a backend: project names, saved-search names, a meeting
+// transcript. Those must NOT be translated - they are the user's data, in a
+// fixture until the daemon behind them lands - so the lint would be wrong 97% of
+// the time on its loudest rule. `name` is the commonest field in any data record,
+// and no shape test separates our word for a thing from the user's name for it.
+// The swatch case is fixed at its source instead.
+//
+// A plain comment and not a doc comment: it is about the const ABOVE it, and as
+// `///` it documented whatever came next while a blank line detached it from
+// that too. `just lint` had been red on this crate for it.
 
 /// Call heads whose first string argument is shown to the user.
 const USER_FACING_CALLS: &[&str] = &[
