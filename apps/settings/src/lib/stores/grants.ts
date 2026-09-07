@@ -36,6 +36,10 @@ export interface GrantView {
   revoked: boolean;
   superseded: boolean;
   issued_at: number;
+  /// When a time-boxed grant stops authorising (epoch micros), or `0` for one
+  /// that lasts until revoked. The daemon carries it so a surface can say WHY a
+  /// grant is over instead of quietly listing it as current reach.
+  expires_at: number;
   /// The flattened reach (kept for compatibility; the panel uses the ceiling).
   reach: string[];
   /// "capability-token" (declared in the app profile) or "consent" (allowed in
@@ -543,12 +547,23 @@ export interface Principal {
   lines: ScopeLine[];
 }
 
-/// Group active grants (not revoked, not superseded) by principal, deriving the
-/// honest scope lines for each. Principals with no lines are dropped.
+/// True when a time-boxed grant's window has closed. `expires_at` is `0` for a
+/// grant that lasts until revoked, and epoch MICROS otherwise, where `Date.now`
+/// is millis. Read here rather than through the daemon's `live` because `live`
+/// also goes false when a capability token's minting process exits, which is a
+/// grant lying dormant, not one that is over: dropping those would understate
+/// what an app reaches the moment it starts.
+export function hasExpired(g: GrantView, nowMicros = Date.now() * 1000): boolean {
+  return g.expires_at !== 0 && g.expires_at <= nowMicros;
+}
+
+/// Group active grants (not revoked, not superseded, not expired) by principal,
+/// deriving the honest scope lines for each. Principals with no lines are
+/// dropped.
 export function byApp(t: Translate, loc: string, list: GrantView[]): Principal[] {
   const by = new Map<string, Principal>();
   for (const g of list) {
-    if (g.revoked || g.superseded) continue;
+    if (g.revoked || g.superseded || hasExpired(g)) continue;
     let p = by.get(g.app_id);
     if (!p) {
       p = {
@@ -662,6 +677,7 @@ function g(over: Partial<GrantView> & Pick<GrantView, "id" | "app_id">): GrantVi
     revoked: false,
     superseded: false,
     issued_at: 1_780_000_000_000_000,
+    expires_at: 0,
     reach: [],
     source: "declared",
     consent_class: "",
