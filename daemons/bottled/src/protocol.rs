@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::bottle::{Bottle, Egress};
 use crate::health::{check_bottle, is_booted};
-use crate::launch::{launch_argv, LaunchError};
+use crate::launch::{settled_wine_argv, LaunchError};
 use crate::map_drives;
 use crate::registry::{list_bottles, load_bottle, RegistryError};
 
@@ -507,7 +507,8 @@ pub fn launch(
             problem: Problem::PrefixMissing,
         };
     }
-    let argv = match launch_argv(&bottle, usr, runtime_dir, display, &bottle.program, exists) {
+    let argv = match settled_wine_argv(&bottle, usr, runtime_dir, display, &bottle.program, exists)
+    {
         Ok(v) => v,
         Err(LaunchError::NoRuntime(_)) => {
             return Response::Refused {
@@ -635,7 +636,7 @@ pub fn install(
     };
 
     let program = vec![landed.to_string_lossy().into_owned()];
-    let argv = match launch_argv(&bottle, usr, runtime_dir, display, &program, exists) {
+    let argv = match settled_wine_argv(&bottle, usr, runtime_dir, display, &program, exists) {
         Ok(v) => v,
         Err(LaunchError::NoRuntime(_)) => {
             return Response::Refused {
@@ -1374,15 +1375,21 @@ mod tests {
         assert_eq!(answer, Response::Launched { pid: 4242 });
 
         let argv = seen.into_inner();
-        let program = argv.last().expect("something is run");
-        assert_eq!(
-            program,
-            &prefix
-                .join(crate::install::INSTALLER_DIR)
-                .join("setup.exe")
-                .to_string_lossy()
-                .into_owned(),
-            "what runs is the copy inside the prefix, not the file in Downloads"
+        // The script the confinement runs: the installer, then the wait that lets
+        // wineserver write what it put in the registry.
+        let script = argv.last().expect("something is run");
+        let copy = prefix
+            .join(crate::install::INSTALLER_DIR)
+            .join("setup.exe")
+            .to_string_lossy()
+            .into_owned();
+        assert!(
+            script.contains(&copy),
+            "what runs is the copy inside the prefix, not the file in Downloads: {script}"
+        );
+        assert!(
+            script.contains("wineserver -w"),
+            "without the wait an installer's registry entries are thrown away: {script}"
         );
         assert!(
             !argv.iter().any(|a| a == downloads.to_str().unwrap()),

@@ -11,7 +11,7 @@
 //! own theme itself.
 //!
 //! **The import runs through the same confinement as a Windows program.**
-//! `launch_argv` is the one place that assembles a Wine invocation, and
+//! `settled_wine_argv` is the one place that assembles a Wine invocation, and
 //! `create.rs` already sets the precedent for a non-app one (`wineboot -u`
 //! through the same path). So this needs no new grant, no raw spawn and no
 //! second copy of the bwrap spec: the sandbox that holds a Windows program

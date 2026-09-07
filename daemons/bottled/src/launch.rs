@@ -106,17 +106,6 @@ pub fn launch_env(bottle: &Bottle, display: Option<&str>) -> BTreeMap<String, St
 ///
 /// `exists` decides which plumbing is on this host, injected so the list can be
 /// built for a machine that is not this one.
-pub fn launch_argv(
-    bottle: &Bottle,
-    usr: &Path,
-    runtime_dir: &Path,
-    display: Option<&str>,
-    program: &[String],
-    exists: impl Fn(&Path) -> bool,
-) -> Result<Vec<String>, LaunchError> {
-    confined_argv(bottle, usr, runtime_dir, display, WINE, program, exists)
-}
-
 /// A Wine command, followed by a wait for the registry to be written.
 ///
 /// **The wait is not tidiness, it is the difference between the step happening
@@ -131,9 +120,18 @@ pub fn launch_argv(
 /// same command followed by `wineserver -w` left a 3.8 MB one. A confined
 /// registry import reported success and changed nothing.
 ///
-/// A real program launch does NOT use this: it is detached and holds the server
-/// open itself, and a wait there would keep the sandbox alive for as long as the
-/// person uses the app.
+/// **Every Wine step uses this, including a program launch, and the reasoning
+/// that said otherwise was wrong.** I wrote at first that a launch does not need
+/// it because the app holds the server open itself - true while the app runs,
+/// and beside the point: the loss happens when the app EXITS. A Windows program
+/// that saves its settings to `HKCU` hands them to the server and quits, the
+/// sandbox closes, and the settings are gone, so the app opens with defaults
+/// every single time. Measured with the same probe as the other two: a confined
+/// `reg add` lands nothing without the wait and lands with it.
+///
+/// What the wait costs a launch is that the sandbox outlives the app by the few
+/// seconds the server takes to finish. What it buys is that anything the app
+/// wrote is still there next time.
 ///
 /// The shell is `/usr/bin/sh` rather than `/bin/sh` because `/usr` is always
 /// bound and `/bin` only when the host has it as a real directory. Nothing is
@@ -250,11 +248,12 @@ mod tests {
 
     #[test]
     fn the_program_comes_last_after_the_separator() {
-        let argv = launch_argv(
+        let argv = confined_argv(
             &bottle(),
             Path::new("/usr"),
             Path::new("/run/user/1000"),
             Some(":0"),
+            WINE,
             &["notepad".into(), "D:\\a.txt".into()],
             all,
         )
@@ -285,11 +284,12 @@ mod tests {
             host: PathBuf::from("/proc/self/fd"),
             access: Access::ReadWrite,
         }];
-        let err = launch_argv(
+        let err = confined_argv(
             &b,
             Path::new("/usr"),
             Path::new("/run/user/1000"),
             None,
+            WINE,
             &["notepad".into()],
             all,
         );
@@ -301,11 +301,12 @@ mod tests {
         // Everything else on this host is present; only Wine is missing, which
         // is the state of an image that ships the manager and not the runtime.
         let no_wine = |p: &Path| p != Path::new(WINE);
-        let err = launch_argv(
+        let err = confined_argv(
             &bottle(),
             Path::new("/usr"),
             Path::new("/run/user/1000"),
             None,
+            WINE,
             &["notepad".to_string()],
             no_wine,
         );
@@ -317,11 +318,12 @@ mod tests {
 
     #[test]
     fn a_launch_with_no_program_is_refused() {
-        let err = launch_argv(
+        let err = confined_argv(
             &bottle(),
             Path::new("/usr"),
             Path::new("/run/user/1000"),
             None,
+            WINE,
             &[],
             all,
         );
@@ -330,11 +332,12 @@ mod tests {
 
     #[test]
     fn a_compat_root_this_host_lacks_is_not_bound() {
-        let argv = launch_argv(
+        let argv = confined_argv(
             &bottle(),
             Path::new("/usr"),
             Path::new("/run/user/1000"),
             None,
+            WINE,
             &["notepad".into()],
             |p| p != Path::new("/lib64"),
         )

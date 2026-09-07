@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use arlen_wine_core::launch::launch_argv;
+use arlen_wine_core::launch::settled_wine_argv;
 use arlen_wine_core::registry::load_bottle;
 
 fn main() {
@@ -27,7 +27,7 @@ fn main() {
     };
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".into());
     let display = std::env::var("DISPLAY").ok();
-    let argv = match launch_argv(
+    let argv = match settled_wine_argv(
         &bottle,
         Path::new("/usr"),
         Path::new(&runtime_dir),
