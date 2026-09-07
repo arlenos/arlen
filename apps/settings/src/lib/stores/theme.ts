@@ -328,11 +328,13 @@ export const FONT_OPTIONS = [
 
 /// The monospace families this machine has, `null` when the list could not be
 /// read - which is a different answer from an empty machine.
+// i18n-foreign: font families name themselves, on disk and in their own
+// projects, so the fixture below holds the names fontconfig would hand back
+// rather than words of ours. The marker sits HERE, directly above the
+// declaration, because that is the only place either lint looks - inside the
+// body it annotates nothing, which is where it was first written.
 export async function installedMonoFonts(): Promise<{ value: string; label: string }[] | null> {
   if (!tauriAvailable) {
-    // i18n-foreign: font families name themselves, on disk and in their own
-    // projects, so these two are the names fontconfig would hand back rather
-    // than words of ours.
     return [
       { value: "JetBrains Mono", label: "JetBrains Mono" },
       { value: "DejaVu Sans Mono", label: "DejaVu Sans Mono" },
