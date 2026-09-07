@@ -16,5 +16,8 @@ pub mod profiles;
 pub mod types;
 pub mod wayland_client;
 
-pub use types::{Monitor, MonitorConfig, MonitorMode, Position, Transform};
-pub use wayland_client::{spawn, WaylandCommand, WaylandHandle};
+// No re-exports here. These two lines existed and reached nobody: every caller
+// names the module it wants - `displays::wayland_client::spawn` in `lib.rs`,
+// `wayland_client::{WaylandCommand, WaylandHandle}` in the commands - so the
+// shortcut was a second spelling for the same items with no user. Adding one
+// back is fine; adding one back that nothing uses is what this was.
