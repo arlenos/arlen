@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// EXPECT: 62%
+// EXPECT: 62
 //
 // A runtime with a battery in it, so the battery panel can be opened at all.
 //
@@ -17,6 +17,12 @@
 // would prove only that the panel opened; a number this file chose proves the
 // read arrived, which is the difference between a photograph of the surface and a
 // photograph of its empty state.
+//
+// THE NUMBER WITHOUT ITS SIGN, and that is not laziness. German writes a percent
+// with a no-break space - `62 %` - so `62%` matches the English render and refuses
+// the German one, which left this the only applet host whose row could not be
+// pinned to a locale. The bare number proves the same thing: it is still a value
+// this file chose, and nothing else on the panel is 62.
 //
 // `set_power_profile` refuses on purpose: the panel has a whole branch for a
 // power-mode write that does not take (`bat-refused`, role=alert), and a fixture
