@@ -856,6 +856,32 @@ mod tests {
         }
     }
 
+    /// And the converter that actually RUNS agrees with them.
+    ///
+    /// The round-trip above checks `from_wlr` against `to_wlr`, and neither of
+    /// those is on the apply path: setting a transform on a head goes through
+    /// `transform_to_wenum`, a third mapping of the same eight values that the
+    /// test never touched. Two helpers agreeing with each other while the third
+    /// drifts is a green test over a rotated screen, and the wl_output enum
+    /// carries the same numbering as the wlr protocol, so the comparison is
+    /// exact rather than a second table written here.
+    #[test]
+    fn the_transform_the_apply_path_sends_matches_the_one_it_read() {
+        use wayland_client::protocol::wl_output::Transform as W;
+        for raw in 0u32..8 {
+            let t = Transform::from_wlr(raw).unwrap();
+            let sent = transform_to_wenum(t);
+            assert_eq!(
+                sent as u32, raw,
+                "transform {raw} reads back as {t:?} and would be sent as {sent:?}"
+            );
+        }
+        // The two ends of the range, named, so a silent renumbering upstream
+        // fails on a value somebody recognises rather than on an index.
+        assert_eq!(transform_to_wenum(Transform::Normal), W::Normal);
+        assert_eq!(transform_to_wenum(Transform::Flipped270), W::Flipped270);
+    }
+
     #[test]
     fn enabled_kind_serialises_with_tag() {
         let ek = EnabledKind::Mirror("DP-1".into());
