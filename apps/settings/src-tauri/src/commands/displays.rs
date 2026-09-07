@@ -121,7 +121,7 @@ pub fn display_save_current(
     _app: AppHandle,
 ) -> Result<(), String> {
     use cosmic_comp_config::output::comp::{
-        AdaptiveSync, OutputConfig, OutputInfo, OutputState, OutputsConfig, TransformDef,
+        AdaptiveSync, OutputConfig, OutputInfo, OutputState,
     };
     use cosmic_comp_config::output::displays_toml;
 
