@@ -107,6 +107,41 @@ pub fn generate_qt_conf(theme: &ArlenTheme) -> String {
     )
 }
 
+/// The qt6ct/qt5ct configuration that SELECTS the colour scheme beside it.
+///
+/// The scheme file has been written since this generator existed and nothing
+/// pointed at it, which is the same shape the GTK3 theme was in until 7
+/// September: a file on disk that no program is told to read. qt6ct chooses the
+/// palette from `[Appearance] color_scheme_path` and only honours it when
+/// `custom_palette` is true, so both have to be here or the scheme is decoration.
+///
+/// `style=Fusion` is the plan's target and not a preference: Fusion is the one
+/// built-in QStyle that takes a custom palette faithfully, which is what makes
+/// the colours land. Shape stays Fusion's - that is the documented ceiling of
+/// this path, and Kvantum is the other one.
+///
+/// **No `[Fonts]`.** qt6ct writes a font size in POINTS and the theme carries
+/// pixels; converting needs a dpi this crate has no business inventing, and a
+/// wrong number here would resize every Qt app. Absent means Qt keeps its own,
+/// which is the honest answer rather than a guessed one.
+///
+/// `icon_theme` is threaded through rather than read from the theme for the same
+/// reason the GTK settings file does it: naming a set that is not installed
+/// points an app at nothing.
+pub fn generate_qt_select_conf(scheme_path: &str, icon_theme: Option<&str>) -> String {
+    let mut out = String::from(
+        "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n[Appearance]\n",
+    );
+    out.push_str("style=Fusion\n");
+    out.push_str("custom_palette=true\n");
+    out.push_str(&format!("color_scheme_path={scheme_path}\n"));
+    if let Some(icons) = icon_theme {
+        out.push_str(&format!("icon_theme={icons}\n"));
+    }
+    out.push_str("standard_dialogs=default\n");
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,5 +210,27 @@ mod tests {
                 "unexpected Qt conf line: {line:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_select_conf_points_at_the_scheme_and_turns_it_on() {
+        let conf = generate_qt_select_conf("/home/x/.config/qt6ct/colors/arlen.conf", Some("Adwaita"));
+        assert!(conf.starts_with("# arlen-generated"), "the guard marker must lead");
+        assert!(conf.contains("\n[Appearance]\n"));
+        assert!(conf.contains("style=Fusion\n"));
+        // Without this the path is read and ignored, which is the failure that
+        // looks exactly like a wrong palette.
+        assert!(conf.contains("custom_palette=true\n"));
+        assert!(conf.contains("color_scheme_path=/home/x/.config/qt6ct/colors/arlen.conf\n"));
+        assert!(conf.contains("icon_theme=Adwaita\n"));
+        // A font size here would be points against our pixels.
+        assert!(!conf.contains("[Fonts]"), "{conf}");
+    }
+
+    #[test]
+    fn an_absent_icon_set_is_not_named() {
+        let conf = generate_qt_select_conf("/x/arlen.conf", None);
+        assert!(!conf.contains("icon_theme"), "{conf}");
+        assert!(conf.contains("color_scheme_path=/x/arlen.conf\n"));
     }
 }
