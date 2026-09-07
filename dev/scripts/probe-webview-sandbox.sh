@@ -29,7 +29,7 @@
 # The third form is for the desktop shell, which is a wlr-layer-shell client and
 # cannot come up on a bare X server - under Xvfb it reports "no web process
 # appeared", which is inconclusive and reads like a pass to anyone skimming. It
-# boots the real compositor nested through `dev/screenshot/shoot-compositor.sh`
+# boots the real compositor nested through that repo's own screenshot script
 # and hosts the app under that, so the same comparison happens against a shell
 # that actually started. Slower, and it needs the compositor repo built.
 #

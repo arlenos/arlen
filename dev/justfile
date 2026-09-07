@@ -715,17 +715,13 @@ i18n-baseline:
 screenshot-selfcheck:
     bash "{{justfile_directory()}}/screenshot/test-render-wide.sh"
 
-# ext-image-copy-capture-v1 (auto-negotiated; the fork's only capture protocol, no
-# force flag). Optional env on the script: SHOOT_INJECT (ydotool/wtype, needs
-# /dev/uinput - the one sudo: modprobe uinput + udev rule + ydotoold), SHOOT_BASELINE
-# + SHOOT_TOLERANCE (magick-compare AE tripwire), SHOOT_SETTLE, SHOOT_CLIENT_LOG.
-# Needs a built cosmic-comp at COMPOSITOR_PATH (default ~/Repositories/compositor) +
-# Xvfb + grim. Verified working: boot -> capture -> inspect renders the compositor
-# SSD chrome (titlebar window-controls, window_corners, border) + the client.
-#   just screenshot-nested /tmp/shot.png kitty
-screenshot-nested out client *args:
-    COMPOSITOR_PATH="${COMPOSITOR_PATH:-$HOME/Repositories/compositor}" \
-        "{{justfile_directory()}}/screenshot/shoot-compositor.sh" "{{out}}" {{client}} {{args}}
+# THE NESTED-COMPOSITOR SCREENSHOT LOOP MOVED, 7 September. It lives in the
+# compositor repository now, under its own `dev/screenshot/`, along with the
+# `screenshot-nested` recipe that wrapped it. The reason is ownership rather than
+# tidiness: that repository is a separate lane, and a tool it may run but not fix
+# looks broken and not theirs, which re-couples the two trees at the exact point
+# the split exists to hold. Extending it - injection, baselines, capture protocol -
+# is theirs now.
 
 # Every confinement path this repo has, exercised for real: the launcher, the
 # arbitrary-command sandbox, and the decoder workers. All `#[ignore]`d, so they run

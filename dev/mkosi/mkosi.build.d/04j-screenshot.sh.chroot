@@ -5,7 +5,7 @@
 # VERIFIED CAPTURING BEFORE IT WAS STAGED, and the way it was verified is the point.
 # This app needs a live compositor advertising wlr-screencopy, so a plain Xvfb harness
 # can only ever show its fallback. Run instead against the NESTED compositor
-# (`dev/screenshot/shoot-compositor.sh`) it captures for real: the shot comes back
+# (the compositor repo's nested-screenshot script) it captures for real: the shot comes back
 # recursive, the app window showing a preview of the screen that contains the app
 # window. That is a compositor belonging to the test and not to whoever ran it, which
 # is the only honest way to test a tool that photographs screens.

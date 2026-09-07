@@ -36,7 +36,8 @@ fn daemon_binary(name: &str) -> PathBuf {
 }
 
 /// A binary from the compositor, which is a SEPARATE repo and not under the
-/// monorepo target. `COMPOSITOR_PATH` matches `dev/screenshot/shoot-compositor.sh`.
+/// monorepo target. `COMPOSITOR_PATH` matches the nested-screenshot script that
+/// lives in that repository.
 fn compositor_binary(name: &str) -> PathBuf {
     let root = std::env::var("COMPOSITOR_PATH").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_default();
