@@ -28,8 +28,9 @@ What the answers mean:
   * an `open` request answered `no_handler` - depends on the environment. It is
     the honest answer when nothing in the visible mimeapps files claims the type.
     Note that `XDG_CONFIG_HOME` decides which mimeapps files are visible, and the
-    screenshot harness sets it to a temp dir: under `shoot-compositor.sh` the
-    shell cannot see `~/.config/mimeapps.list`, so `no_handler` there says
+    screenshot harness sets it to a temp dir: under the compositor repo's
+    `shoot-compositor.sh` the shell cannot see `~/.config/mimeapps.list`, so
+    `no_handler` there says
     nothing about the machine. That cost me a while, hence this paragraph.
   * `started` with an app id - the whole path worked, and something is now
     running.

@@ -408,7 +408,8 @@ def main():
                 print("Nothing renders at this size and any probe reports on an"
                       " unlaid-out page. An app that needs layer-shell (the shell"
                       " bar) cannot size itself under plain X11 - drive it in the"
-                      " nested compositor instead (dev/screenshot/shoot-compositor.sh).")
+                      " nested compositor instead (shoot-compositor.sh, in the"
+                      " compositor repo).")
                 return 1
         except Exception as e:  # a driver that cannot answer must not fail the shot
             print(f"viewport: unknown ({e})")

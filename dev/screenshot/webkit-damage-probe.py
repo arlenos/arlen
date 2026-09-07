@@ -45,12 +45,13 @@ surface.** What is being asked is whether a shrinking element inside an
 unchanging surface leaves stale pixels, and the surface's role does not enter
 into that. It also sidesteps two dead ends measured today: gtk4-layer-shell has
 no Python typelib on this host (GtkLayerShell 0.1 is GTK 3, WebKit 6.0 is GTK 4),
-and `shoot-compositor.sh` records that injecting input into a nested surface
-under Xvfb is unsolved - so a probe that needed either would not run at all.
+and `shoot-compositor.sh` (in the compositor repo) records that injecting input
+into a nested surface under Xvfb is unsolved - so a probe that needed either
+would not run at all.
 
 Usage, under the nested compositor:
 
-  dev/screenshot/shoot-compositor.sh /tmp/webkit-damage.png \\
+  <compositor repo>/dev/screenshot/shoot-compositor.sh /tmp/webkit-damage.png \\
     dev/screenshot/webkit-damage-probe.py 1200
 
 A second argument of `transparent` runs it with no page ground and a transparent

@@ -163,8 +163,9 @@ rm -f "$OUT"
 # it produced for months: a narrow-layout PNG that reads as a desktop one.
 # Piped through grep, so the exit code here is grep's; the file check below is
 # the real verdict.
-# `env -u WAYLAND_DISPLAY` for the same reason `shoot-compositor.sh` does it: xvfb-run
-# sets DISPLAY only, so a WebKit that prefers Wayland would render against the real
+# `env -u WAYLAND_DISPLAY` for the same reason the compositor repo's
+# `shoot-compositor.sh` does it: xvfb-run sets DISPLAY only, so a WebKit that
+# prefers Wayland would render against the real
 # session and this "headless" shot would be of the developer's compositor.
 # A window manager, because the renderer reaches its width by going FULLSCREEN
 # and fullscreen is a request that only a WM grants. Without one the window keeps
