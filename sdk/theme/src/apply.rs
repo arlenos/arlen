@@ -29,9 +29,18 @@
 //!   alacritty - each guarded, so a config the person wrote is theirs and ours
 //!   is written only where there was none. The three differ in what kind of path
 //!   they accept and each was read out of its own upstream documentation rather
-//!   than guessed; `terminal.rs` says which. Xresources is the exception and
-//!   still has no reader: it needs `xrdb -merge` at session start, which is a
-//!   session step rather than a file.
+//!   than guessed; `terminal.rs` says which.
+//!
+//!   **Xresources is NOT written**, and that is a measurement rather than an
+//!   omission. It is not a file a program opens on start: it has to be loaded
+//!   into the X server's resource database by `xrdb -merge`, and an Arlen
+//!   machine has no X server to load it into - the image names no `xwayland`
+//!   and no `xrdb` package, and `daemons/session` deliberately UNSETS `DISPLAY`
+//!   before starting the compositor so it takes the DRM path. So the file could
+//!   not be read even by someone who installed an X client. The generator stays
+//!   in `terminal.rs` for the day XWayland is on the image; until then writing
+//!   the file would be the same untruth as a surface reporting a write it never
+//!   made.
 //!
 //! All writes are best-effort and independent: one failure is recorded in
 //! the [`ApplyReport`] and the rest still run.
@@ -334,12 +343,6 @@ fn write_toolkit_configs(
         INI_MARKER,
         &mut report,
     );
-    write_owned(
-        &config.join("arlen/colors.Xresources"),
-        &crate::terminal::generate_xresources(term_theme),
-        &mut report,
-    );
-
     // The theme's per-event sound-name map, for the Notification Daemon to merge
     // into its sound config (it owns playback; the user's notifications.toml
     // overrides still win). Arlen-owned, overwritten freely.
@@ -479,7 +482,6 @@ accent = "#00ff00"
             "alacritty/arlen-colors.toml",
             "kitty/arlen-colors.conf",
             "foot/arlen-colors.ini",
-            "arlen/colors.Xresources",
             // The notification sound map and the CLI-tool colour files.
             "arlen/sounds.toml",
             "arlen/fzf-colors.sh",
@@ -490,6 +492,13 @@ accent = "#00ff00"
         ] {
             assert!(c.join(rel).is_file(), "missing {rel}");
         }
+        // Xresources is deliberately absent: nothing on an Arlen machine can
+        // load it. It needs `xrdb -merge` against an X server, and the image
+        // names neither `xwayland` nor `xrdb` while the session unsets DISPLAY.
+        // If XWayland ever lands, wire the merge FIRST and then restore the
+        // write - a file with no reader is what this whole module stopped doing.
+        assert!(!c.join("arlen/colors.Xresources").exists());
+
         // The GTK file is the direct override (carries the marker) and the
         // libadwaita named-colour block.
         let gtk = std::fs::read_to_string(c.join("gtk-4.0/gtk.css")).unwrap();
