@@ -23,6 +23,19 @@ that appears more than once.
 What it cannot check: whether the surviving value is the right one. Two lines with
 the same id and different text are the case that hurts most, and this only says
 they are there.
+
+**AND IT ONLY LOOKED INSIDE ONE FILE, which is where the real one was hiding.**
+Settings splits its catalogue across `messages.a.ts` and `messages.b.ts` and merges
+them with `{...a.en, ...b.en}`, so a key in both is a duplicate with the same
+consequence - b wins, a is dead - and this saw neither line twice. Eight of them
+had accumulated. One had teeth: `s.revert.keep` was the display revert dialog's
+TITLE in one file and its BUTTON in the other, and the button's text takes a
+`{$seconds}` parameter, so the heading - called without one - rendered
+`Aenderungen behalten ({$seconds} s)` at the top of the modal. Found by
+photographing that modal on 8 September, not by reading either file.
+
+So the second pass groups by (app, locale) across every catalogue file the app
+merges, and reports a key that more than one of them defines.
 """
 
 import collections
@@ -72,11 +85,20 @@ def main() -> int:
 
     findings: list[str] = []
     checked = 0
+    # (app directory, locale) -> key -> the files defining it. An app may split
+    # its catalogue over several files and merge them; a key in two of those is
+    # the same defect as a key twice in one, and the merge order decides it.
+    across: dict[tuple[str, str], dict[str, list[str]]] = collections.defaultdict(
+        lambda: collections.defaultdict(list)
+    )
     for path in files:
         text = path.read_text(encoding="utf-8", errors="replace")
+        app = str(path.parent.relative_to(ROOT))
         for locale, body in locale_blocks(text):
             keys = KEY.findall(body)
             checked += len(keys)
+            for key in set(keys):
+                across[(app, locale)][key].append(path.name)
             for key, count in sorted(collections.Counter(keys).items()):
                 if count > 1:
                     findings.append(
@@ -84,6 +106,15 @@ def main() -> int:
                         f"in `{locale}`. The last one wins and the others are dead, "
                         f"so which sentence a reader gets is decided by line order."
                     )
+
+    for (app, locale), keys in sorted(across.items()):
+        for key, names in sorted(keys.items()):
+            if len(names) > 1:
+                findings.append(
+                    f"{app}: `{key}` is defined in `{locale}` by "
+                    f"{', '.join(sorted(names))}. They are merged in order, so the "
+                    f"later file wins and the earlier definition is dead."
+                )
 
     if not checked:
         print("NOTHING WAS READ: no message id in any catalogue", file=sys.stderr)
@@ -97,8 +128,9 @@ def main() -> int:
 
     print(
         f"{checked} message id(s) across {len(files)} catalogue(s), none defined "
-        f"twice in one locale. Says nothing about whether the text is right - only "
-        f"that no line is silently dead."
+        f"twice in one locale and none defined by two of an app's files. Says "
+        f"nothing about whether the text is right - only that no line is silently "
+        f"dead."
     )
     return 0
 
