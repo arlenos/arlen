@@ -654,7 +654,11 @@
        control with one entry is furniture. -->
   {#if outputs.length + windows.length > 1}
     <div class="source">
-      <label class="source-label" for="capture-source">{$t("s.source")}</label>
+      <!-- A span, not a label: `PopoverSelect` renders a button and forwards no
+           id, so `for="capture-source"` named nothing - the label moved no focus
+           and named no control, while looking exactly like one that did. The
+           picker carries the same words as its own `ariaLabel`. -->
+      <span class="source-label">{$t("s.source")}</span>
       <PopoverSelect
         value={source}
         options={[
