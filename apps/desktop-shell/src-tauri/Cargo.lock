@@ -382,6 +382,7 @@ dependencies = [
  "arlen-confiner",
  "arlen-freedesktop-trash",
  "arlen-permissions",
+ "arlen-theme",
  "audit-proto",
  "libc",
  "serde",

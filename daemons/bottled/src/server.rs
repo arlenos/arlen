@@ -24,7 +24,7 @@ use tokio::net::{UnixListener, UnixStream};
 use arlen_permissions::peer_pidfd::PeerPidfd;
 
 use crate::protocol::{
-    create, forget, handle_request, install, launch, narrow, Problem, Request, Response,
+    create, forget, handle_request, install, launch, narrow, theme, Problem, Request, Response,
 };
 use audit_proto::{AuditKind, AuditSink, IngestRequest, StructuralRecord};
 
@@ -190,6 +190,36 @@ pub async fn serve_connection(
                     |p| p.exists(),
                     spawn_detached,
                 ),
+                Request::Theme { id } => {
+                    // Resolved here rather than on the socket, and for the Wine
+                    // toolkit specifically, so a `[override.wine]` reaches the
+                    // bottle without moving the palette Arlen's own surfaces use.
+                    match arlen_theme::ArlenTheme::resolve_active(Some(
+                        arlen_theme::Toolkit::Wine,
+                    )) {
+                        Ok(t) => {
+                            // 1.0, and that is a limit rather than a default: the
+                            // per-prefix `LogPixels` should follow the display the
+                            // bottle opens on, and nothing here knows which that
+                            // is. A bottle on a 1.5x screen gets 96 DPI text until
+                            // the display config reaches this daemon.
+                            let doc = arlen_theme::wine::generate_wine_reg(&t, 1.0);
+                            theme(
+                                bottles_dir,
+                                id,
+                                &doc,
+                                std::path::Path::new("/usr"),
+                                &runtime_dir,
+                                |p| p.exists(),
+                                run_to_completion,
+                            )
+                        }
+                        Err(why) => {
+                            tracing::warn!(%why, "the active theme did not resolve");
+                            Response::Refused { problem: Problem::CouldNotStart }
+                        }
+                    }
+                }
                 Request::Launch { id } => launch(
                     bottles_dir,
                     id,
