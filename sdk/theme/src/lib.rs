@@ -595,6 +595,70 @@ impl ArlenTheme {
     pub fn user_theme_path(active_id: &str) -> PathBuf {
         Self::user_themes_dir().join(format!("{active_id}.toml"))
     }
+
+    /// Default config path for `~/.config/arlen/appearance.toml`, which is where
+    /// the chosen theme id lives.
+    pub fn user_appearance_path() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("arlen")
+            .join("appearance.toml")
+    }
+
+    /// The theme the person actually chose, resolved from their files.
+    ///
+    /// Every consumer outside Settings had to assemble this by hand: read
+    /// `appearance.toml [theme].active`, decide whether that id means a bundled
+    /// theme or a file in the user's theme directory, then layer `theme.toml`
+    /// over it. Settings does that through its own config plumbing; a daemon
+    /// that wants the same answer should not have to grow a second copy of the
+    /// chain, because the copies drift one clause at a time.
+    ///
+    /// `for_toolkit` picks up that toolkit's `[override.*]` block, so a bottle
+    /// or a GTK app can diverge without moving the shared theme.
+    ///
+    /// **Missing files are not failures.** A machine where nobody has chosen
+    /// anything has no `appearance.toml` and no `theme.toml`, and the honest
+    /// answer there is the bundled dark theme rather than an error - the same
+    /// answer Settings gives. Only a file that is present and does not resolve
+    /// is an error, because that one is a broken choice rather than no choice.
+    pub fn resolve_active(for_toolkit: Option<Toolkit>) -> Result<Self, ResolveError> {
+        let appearance = std::fs::read_to_string(Self::user_appearance_path()).ok();
+        let base = active_base(appearance.as_deref(), |id| {
+            std::fs::read_to_string(Self::user_theme_path(id)).ok()
+        });
+        let customization = std::fs::read_to_string(Self::user_customization_path()).ok();
+        match for_toolkit {
+            Some(tk) => Self::resolve_toolkit(&base, None, customization.as_deref(), tk),
+            None => Self::resolve(&base, None, customization.as_deref()),
+        }
+    }
+}
+
+/// Which theme text the chosen id means, with the fallbacks the choice implies.
+///
+/// Pure, because every branch here is a decision somebody has got wrong before:
+/// no `appearance.toml` at all, a file that does not parse, a `[theme]` table
+/// with no `active`, and an id naming a user theme whose file has since been
+/// deleted. All four mean "nobody has chosen anything that still exists", and
+/// the answer is the bundled dark theme rather than an error or an empty
+/// screen - a person who deletes a theme file should get a working desktop.
+fn active_base(appearance: Option<&str>, user_theme: impl Fn(&str) -> Option<String>) -> String {
+    let id = appearance
+        .and_then(|text| text.parse::<toml::Table>().ok())
+        .and_then(|t| {
+            t.get("theme")?
+                .as_table()?
+                .get("active")?
+                .as_str()
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "dark".to_string());
+    match id.as_str() {
+        "light" => LIGHT_TOML.to_string(),
+        "dark" => DARK_TOML.to_string(),
+        other => user_theme(other).unwrap_or_else(|| DARK_TOML.to_string()),
+    }
 }
 
 /// Color-with-default helper used by `from_file`. Parses the
@@ -1389,6 +1453,41 @@ accent = "#00ff00"
             "\"Hilight\"=\"{}\"",
             crate::wine::rgba_to_win32(wine.color.accent)
         )));
+    }
+
+    #[test]
+    fn the_chosen_theme_falls_back_to_dark_wherever_the_choice_runs_out() {
+        let never = |_: &str| None;
+        let dark_id = ArlenTheme::from_bundled(DARK_TOML).expect("dark").meta.id;
+        let light_id = ArlenTheme::from_bundled(LIGHT_TOML).expect("light").meta.id;
+
+        let id_of = |text: String| ArlenTheme::from_bundled(&text).expect("resolves").meta.id;
+
+        // Nobody has chosen anything.
+        assert_eq!(id_of(active_base(None, never)), dark_id);
+        // The file is there and says light.
+        assert_eq!(
+            id_of(active_base(Some("[theme]\nactive = \"light\"\n"), never)),
+            light_id
+        );
+        // Present but broken, in the three ways it breaks: unparseable, no
+        // `[theme]` table, a table with no `active`. None of these is an error -
+        // they are all "no choice", and a person still needs a desktop.
+        for text in ["this is not toml {{{", "[something]\nelse = 1\n", "[theme]\n"] {
+            assert_eq!(id_of(active_base(Some(text), never)), dark_id, "for {text:?}");
+        }
+        // An id naming a user theme whose file has since been deleted.
+        assert_eq!(
+            id_of(active_base(Some("[theme]\nactive = \"gone\"\n"), never)),
+            dark_id
+        );
+        // And one that is still there.
+        let mine = format!("{SAMPLE_BUNDLED}");
+        let found = |id: &str| (id == "mine").then(|| mine.clone());
+        assert_eq!(
+            id_of(active_base(Some("[theme]\nactive = \"mine\"\n"), found)),
+            ArlenTheme::from_bundled(&mine).expect("sample").meta.id
+        );
     }
 
     #[test]

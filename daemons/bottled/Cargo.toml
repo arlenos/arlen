@@ -29,6 +29,12 @@ arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }
 # every other broker in this tree authenticates with, rather than a second
 # hand-rolled credential read.
 arlen-permissions = { path = "../../sdk/permissions" }
+# The Win32 palette a bottle wears comes from the person's own resolved theme,
+# through the same crate the GTK and Qt spokes emit from. It is a dependency
+# rather than a document on the socket for a reason the module doc gives: a
+# `.reg` is arbitrary registry content, and a bottle is a confinement whose
+# point is that the broker decides what reaches it.
+arlen-theme = { path = "../../sdk/theme" }
 # Forgetting a bottle throws away what somebody installed, so it goes in the
 # ledger before it happens and is refused when the ledger cannot take it.
 audit-proto = { path = "../../contracts/audit-proto" }
