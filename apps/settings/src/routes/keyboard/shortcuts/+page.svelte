@@ -309,6 +309,28 @@
     </div>
   {/if}
 
+  <!-- ABOVE THE LIST, because the list is not empty when the read fails. The
+       workspace-map group renders unconditionally and counts 17 reference rows
+       that come from the shell's own key handler rather than from the store, so
+       with this sentence underneath the page read "17" and then "your shortcuts
+       cannot be read" - and a person cannot tell from the screen that the two
+       are about different things.
+
+       The empty list here used to be reported as "no bindings match", which
+       blames the search box for a read that never happened. With no filter typed
+       it said nothing matched "" while the store held the failure. -->
+  {#if $keybindings.loading}
+    <div class="text-sm text-muted-foreground">{$t("s.sc.loading")}</div>
+  {:else if $keybindings.error}
+    <div class="text-sm text-destructive" role="alert" title={$keybindings.error}>
+      {$t("s.sc.unavailable")}
+    </div>
+  {:else if Object.keys(filtered).length === 0}
+    <div class="text-sm text-muted-foreground">
+      {query ? $t("s.sc.noMatch", { q: query }) : $t("s.sc.none")}
+    </div>
+  {/if}
+
   <div class="flex flex-col gap-2">
     {#each CATEGORIES as category (category.id)}
       {@const entries = filtered[category.id] ?? []}
@@ -369,20 +391,6 @@
     {/each}
   </div>
 
-  {#if $keybindings.loading}
-    <div class="text-sm text-muted-foreground">{$t("s.sc.loading")}</div>
-  {:else if $keybindings.error}
-    <!-- The empty list below used to be reported as "no bindings match", which
-         blames the search box for a read that never happened. With no filter
-         typed it said nothing matched "" while the store held the failure. -->
-    <div class="text-sm text-destructive" role="alert" title={$keybindings.error}>
-      {$t("s.sc.unavailable")}
-    </div>
-  {:else if Object.keys(filtered).length === 0}
-    <div class="text-sm text-muted-foreground">
-      {query ? $t("s.sc.noMatch", { q: query }) : $t("s.sc.none")}
-    </div>
-  {/if}
   </div>
   </SectionGrid>
 </Page>
