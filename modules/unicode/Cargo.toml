@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Tim Kicker
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-module-unicode"
+version = "0.1.0"
+edition = "2021"
+description = "Find characters by name or codepoint, as a Tier 1 WASM module (the first one)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The guest bindings. NOT from `sdk/module-sdk`: that crate's Rust side is a
+# placeholder ("wit-bindgen-generated stub goes here once S5 wires it") with no
+# wit-bindgen dependency at all, so a module author generates their own against
+# the WIT. Doing it the way a third party would is the point of this module.
+wit-bindgen = "0.35"
+unicode_names2 = "1"
+
+[profile.release]
+# A component is shipped, not iterated on: size matters more than build time.
+opt-level = "s"
+strip = true
+lto = true
