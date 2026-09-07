@@ -94,6 +94,14 @@ trap 'rm -f "$shot"' EXIT
 
 probes="clipped-text clipped-by-parent overlapping-text no-focus-ring"
 
+# THE ANSWER IS THE LAST LINE THAT LOOKS LIKE ONE, not the last line. Mesa
+# writes `DRI3 error: Could not get DRI3 device` to STDOUT on this machine, and
+# after the answer as often as before it - so `tail -n 1` read a driver warning
+# as the probe's verdict and reported four clean surfaces as unanswered on the
+# first full run of the host rows. A run that really did not answer still leaves
+# no `[...]` line at all, so a refusal stays loud.
+answer() { grep -E '^\[' | tail -n 1; }
+
 # Whether this run carries a host spec, decided before the controls so they can
 # guard the runner that will actually be used.
 has_host=""
@@ -153,7 +161,7 @@ for probe in $probes; do
   # it.
   if [ -n "$has_host" ]; then
     proof="$("$here/headless.sh" --url "file://$here/$probe-control.html" \
-      --out "$shot" --probe-file "$here/$probe.js" 2>/dev/null | tail -n 1)"
+      --out "$shot" --probe-file "$here/$probe.js" 2>/dev/null | answer)"
     # BOTH HALVES: the control's own word, AND the `[...]` shape the loop below
     # reads. Checking the word alone let a broken stringification through - the
     # array probes came back as a comma-joined string that still contained
@@ -237,11 +245,9 @@ for width in $widths; do
       hostargs=(--url "$url" --out "$shot" --width "$width"
                 --host-script "$hostfile" --probe-file "$here/$probe.js")
       [ -n "$open" ] && hostargs+=(--open "$open")
-      # The probe's answer is the LAST line of stdout; the viewport line precedes
-      # it and everything else the run says goes to stderr. A refusal therefore
-      # leaves the viewport line here, which is not `[...]` and is reported as a
-      # route that did not answer - the loud shape, not a clean one.
-      got="$("$here/headless.sh" "${hostargs[@]}" 2>/dev/null | tail -n 1)"
+      # A run that refuses prints no `[...]` line at all, so `got` is empty and the
+      # loop below reports it as a route that did not answer - loud, not clean.
+      got="$("$here/headless.sh" "${hostargs[@]}" 2>/dev/null | answer)"
     else
       got="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/$probe.js" "$width" 2>&1 \
         | sed -n 's/^inject result: //p')"
