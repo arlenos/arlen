@@ -362,20 +362,66 @@ class Render:
         # text themselves. Encoding both gave `"[]"` for the second pair - a quoted
         # string the sweep reads as no answer at all, which cost two of the four
         # probes on every host row the first time this ran.
+        #
+        # A PROBE MAY ANSWER LATER. Everything above assumes the value is there
+        # the moment the expression returns, and that rules out the questions
+        # worth asking about BEHAVIOUR: press Escape, then look. Svelte flushes
+        # the DOM in a microtask, so a probe that checks immediately sees the old
+        # page and one that spins to wait blocks the very microtask it is waiting
+        # for - measured both ways on the settings modals, and both report that
+        # nothing happened. So a thenable is awaited: the answer lands on
+        # `window.__arlen_probe` and the poll below reads it.
         if self.args.probe_file:
             body = pathlib.Path(self.args.probe_file).read_text(encoding="utf-8")
-            js = ("(v => typeof v === 'string' ? v : JSON.stringify(v))"
-                  "((() => {\n" + body + "\n})())")
+            inner = "(() => {\n" + body + "\n})()"
+            shape = "(v => typeof v === 'string' ? v : JSON.stringify(v))"
         else:
-            js = f"String((() => {{ return ({self.args.probe}); }})())"
-        self.view.evaluate_javascript(js, -1, None, None, None, self.on_probe)
+            inner = f"(() => {{ return ({self.args.probe}); }})()"
+            shape = "String"
+        js = (
+            "(() => { const shape = " + shape + "; const v = " + inner + ";"
+            " if (v && typeof v.then === 'function') {"
+            "   v.then(r => { window.__arlen_probe = shape(r); },"
+            "          e => { window.__arlen_probe = 'probe rejected: ' + e; });"
+            "   return null; }"
+            " window.__arlen_probe = shape(v); return null; })()"
+        )
+        self.probe_deadline = time.monotonic() + self.PROBE_WAIT
+        self.view.evaluate_javascript(js, -1, None, None, None, self.on_probe_started)
 
-    def on_probe(self, view, result):
+    #: How long an awaited probe has to settle. Generous, because the thing being
+    #: waited for is usually one frame; a probe that never resolves is a probe
+    #: that answers nothing, and it says so rather than hanging the run.
+    PROBE_WAIT = 10.0
+
+    def on_probe_started(self, view, result):
         try:
-            print(view.evaluate_javascript_finish(result).to_string())
+            view.evaluate_javascript_finish(result)
         except Exception as e:  # noqa: BLE001
             self.fail(f"probe failed: {e}", 10)
             return
+        self.read_probe()
+
+    def read_probe(self):
+        self.view.evaluate_javascript(
+            "(() => { const v = window.__arlen_probe;"
+            " return v === undefined ? 'arlen-probe-pending' : v; })()",
+            -1, None, None, None, self.on_probe)
+
+    def on_probe(self, view, result):
+        try:
+            value = view.evaluate_javascript_finish(result).to_string()
+        except Exception as e:  # noqa: BLE001
+            self.fail(f"probe failed: {e}", 10)
+            return
+        if value == "arlen-probe-pending":
+            if time.monotonic() < self.probe_deadline:
+                GLib.timeout_add(100, lambda: (self.read_probe(), False)[1])
+                return
+            self.fail(f"refusing: the probe did not answer in "
+                      f"{self.PROBE_WAIT:.0f}s. Nothing was measured.", 10)
+            return
+        print(value)
         self.status = 0
         self.app.quit()
 
