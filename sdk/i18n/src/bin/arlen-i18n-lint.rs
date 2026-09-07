@@ -1,9 +1,12 @@
 //! `arlen-i18n-lint` - the born-translatable gate (i18n-plan.md I18N-R2).
 //!
-//! Scans first-party `.svelte` source for hardcoded user-facing strings (text
-//! nodes plus a small set of user-facing attributes) and gates on a committed
-//! baseline: a string already in the baseline is accepted, a NEW one fails the
-//! run. The point is to stop the i18n debt growing while the UI is built;
+//! Scans first-party `.svelte` AND `.ts` source for hardcoded user-facing
+//! strings and gates on a committed baseline: a string already in the baseline
+//! is accepted, a NEW one fails the run. A component contributes its markup
+//! (text nodes plus a small set of user-facing attributes) and its script; a
+//! `.ts` module contributes its script alone. The header said `.svelte` only
+//! until 8 September, long after the script pass was added, which is how a
+//! finding in a store file reads as the wrong tool having spoken. The point is to stop the i18n debt growing while the UI is built;
 //! retrofitting the baselined strings into the MF2 catalogs is the later
 //! extraction sweep (I18N-R4).
 //!
