@@ -15,5 +15,5 @@
 # line below, add it there too or nothing will ever be routed to it.
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.arlen
-Interfaces=org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.OpenURI;org.freedesktop.impl.portal.Screenshot;
+Interfaces=org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.OpenURI;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Settings;
 UseIn=arlen;

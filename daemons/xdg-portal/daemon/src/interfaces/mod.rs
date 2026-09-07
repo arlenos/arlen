@@ -9,6 +9,7 @@ pub mod options;
 pub mod print;
 pub mod screenshot;
 pub mod screencast;
+pub mod settings;
 
 use tracing::warn;
 

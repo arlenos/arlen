@@ -146,6 +146,11 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
         {"version"},
         "the portal interface version constant",
     ),
+    "daemons/xdg-portal/daemon/src/interfaces/settings.rs": (
+        {"version"},
+        "the portal interface version constant; ReadAll and Read beside it both "
+        "take the header and refuse a sender that is not the frontend",
+    ),
     "daemons/xdg-portal/daemon/src/interfaces/screencast.rs": (
         {"version", "available_source_types", "available_cursor_modes"},
         "portal capability constants; the methods that actually capture resolve "
