@@ -96,6 +96,14 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     // issue/expiry) but must NOT resurrect a revoked or superseded grant (revoked
     // is terminal, §3.1) nor zero an accrued use count, so those are never reset
     // on a match.
+    //
+    // `identity_verified` is false at all three emit sites and nothing in the
+    // tree ever writes it true, which is the honest state rather than an
+    // oversight: attesting a publisher is F3, and until that exists no check has
+    // run. Written down because a constant `false` next to a name like this reads
+    // as a forgotten field, and the correct fix is the attestation, never a
+    // hopeful default. The surface says the same thing in its own words - nothing
+    // has checked - rather than that a check failed.
     stmts.push(format!(
         "MERGE (g:Grant {{id: '{id_esc}'}}) \
          ON CREATE SET g.app_id = '{app_esc}', g.source = 'capability-token', \
