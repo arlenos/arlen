@@ -239,6 +239,28 @@ pub fn installed_gtk_theme<'a>(
     })
 }
 
+/// Whether `name` is an installed ICON theme, as opposed to a directory of the
+/// same name that is something else.
+///
+/// The discriminator is `Directories=` in the theme's `index.theme`, and it is
+/// there because the obvious check is wrong in a way that bites immediately.
+/// `/usr/share/icons/default/index.theme` exists on every desktop and contains
+/// two lines - `[Icon Theme]` and `Inherits=` - because it is the conventional
+/// CURSOR redirect. Our bundled theme's icon token defaults to `default`, so a
+/// naive "does the directory exist" check would have written
+/// `gtk-icon-theme-name=default` into every GTK app's settings, pointing them at
+/// a theme with no icons in it whose inherit line happens to name an icon theme
+/// on this machine and a cursor theme on the next. Measured 7 September:
+/// Adwaita, hicolor and breeze carry `Directories=`; `default` and the Bibata
+/// cursor themes do not.
+pub fn installed_icon_theme(name: &str, icon_dirs: &[std::path::PathBuf]) -> bool {
+    icon_dirs.iter().any(|dir| {
+        std::fs::read_to_string(dir.join(name).join("index.theme"))
+            .map(|text| text.lines().any(|l| l.trim_start().starts_with("Directories=")))
+            .unwrap_or(false)
+    })
+}
+
 /// A Pango font description from a CSS font stack and a base size.
 ///
 /// GTK wants `Family Size`, and a size with no unit is POINTS - so emitting our
@@ -264,15 +286,22 @@ fn pango_font(stack: &str, size_base: &str) -> String {
 /// for every one of them. That is also why the widget theme was unreachable: a
 /// theme directory nothing selects is a directory.
 ///
-/// `theme_name` is what [`installed_gtk_theme`] found, and `None` means no
-/// candidate is installed - in which case the key is OMITTED rather than
-/// written hopefully. The rest of the file is still worth writing: icons, cursor
-/// and font are true regardless of which widget theme is present.
+/// `theme_name` is what [`installed_gtk_theme`] found and `icon_theme` what
+/// [`installed_icon_theme`] confirmed, and `None` for either means the key is
+/// OMITTED rather than written hopefully. The rest of the file is still worth
+/// writing: cursor and font are true regardless of what is installed, because a
+/// cursor theme GTK cannot find falls back to the cursor everybody has and a
+/// font it cannot find falls back through fontconfig, neither of which leaves a
+/// desktop worse off than saying nothing.
 ///
 /// `gtk-application-prefer-dark-theme` is how one theme directory serves both
 /// variants: GTK3 reads `gtk-dark.css` beside `gtk.css` when it is set, which is
 /// what both our fork and upstream adw-gtk3 ship.
-pub fn generate_gtk_settings_ini(theme: &ArlenTheme, theme_name: Option<&str>) -> String {
+pub fn generate_gtk_settings_ini(
+    theme: &ArlenTheme,
+    theme_name: Option<&str>,
+    icon_theme: Option<&str>,
+) -> String {
     let mut out = String::from(
         "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n[Settings]\n",
     );
@@ -283,7 +312,13 @@ pub fn generate_gtk_settings_ini(theme: &ArlenTheme, theme_name: Option<&str>) -
         "gtk-application-prefer-dark-theme={}\n",
         u8::from(theme.is_dark())
     ));
-    out.push_str(&format!("gtk-icon-theme-name={}\n", theme.icons.theme));
+    // Same rule as the widget theme: an icon set that is not installed is not
+    // named. GTK falls back to hicolor for a theme it cannot find, and hicolor
+    // is the bare fallback rather than the system's own choice - so naming a
+    // missing set makes a desktop LESS iconned than saying nothing.
+    if let Some(icons) = icon_theme {
+        out.push_str(&format!("gtk-icon-theme-name={icons}\n"));
+    }
     out.push_str(&format!("gtk-cursor-theme-name={}\n", theme.cursor.theme));
     out.push_str(&format!("gtk-cursor-theme-size={}\n", theme.cursor.size));
     out.push_str(&format!(
@@ -459,11 +494,11 @@ mod tests {
     #[test]
     fn the_settings_ini_carries_theme_icons_cursor_and_font() {
         let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
-        let ini = generate_gtk_settings_ini(&t, Some("Arlen"));
+        let ini = generate_gtk_settings_ini(&t, Some("Arlen"), Some("Adwaita"));
         assert!(ini.starts_with("# arlen-generated"), "the guard marker must lead");
         assert!(ini.contains("\n[Settings]\n"));
         assert!(ini.contains("gtk-theme-name=Arlen\n"));
-        assert!(ini.contains(&format!("gtk-icon-theme-name={}\n", t.icons.theme)));
+        assert!(ini.contains("gtk-icon-theme-name=Adwaita\n"));
         assert!(ini.contains(&format!("gtk-cursor-theme-name={}\n", t.cursor.theme)));
         assert!(ini.contains(&format!("gtk-cursor-theme-size={}\n", t.cursor.size)));
         assert!(ini.contains("gtk-font-name="));
@@ -477,10 +512,13 @@ mod tests {
     #[test]
     fn an_absent_theme_is_omitted_rather_than_named_hopefully() {
         let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
-        let ini = generate_gtk_settings_ini(&t, None);
+        let ini = generate_gtk_settings_ini(&t, None, None);
         assert!(!ini.contains("gtk-theme-name"), "{ini}");
-        // The rest is true regardless of which widget theme is present.
-        assert!(ini.contains("gtk-icon-theme-name="));
+        // An icon set nobody could find is not named either, and for the same
+        // reason: GTK falls back to hicolor for a theme it cannot resolve.
+        assert!(!ini.contains("gtk-icon-theme-name"), "{ini}");
+        // The rest is true regardless of what is installed.
+        assert!(ini.contains("gtk-cursor-theme-name="));
         assert!(ini.contains("gtk-font-name="));
     }
 
