@@ -470,7 +470,7 @@
     flex-wrap: wrap;
     align-items: baseline;
     column-gap: 0.375rem;
-    text-align: left;
+    text-align: start;
     min-width: 0;
     font-size: var(--text-sm);
     font-weight: 500;
@@ -478,7 +478,7 @@
   }
   .how {
     justify-self: stretch;
-    text-align: right;
+    text-align: end;
     min-width: 0;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
