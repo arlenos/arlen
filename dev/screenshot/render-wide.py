@@ -60,6 +60,7 @@ import json
 import os
 import pathlib
 import sys
+import time
 
 # CUT THE HOST SESSION OFF BEFORE GTK IS IMPORTED. Not optional and not a caller's
 # job, because getting it wrong puts a fullscreen window on the developer's real
@@ -537,6 +538,19 @@ class Render:
         refused shutdown was impossible with a single one.
         """
         self.current = self.pending.pop(0)
+        self.open_deadline = time.monotonic() + self.OPEN_WAIT
+        self.try_click()
+
+    #: How long a selector has to appear before `--open` refuses. A control that
+    #: mounts from an async store is not the same thing as a selector that matches
+    #: nothing, and until this existed the two were indistinguishable: the shell's
+    #: notifications applet refused once in a 108-surface sweep and passed by hand a
+    #: minute later, which is exactly the flake that teaches somebody to re-run a
+    #: red sweep instead of reading it. A selector that really matches nothing still
+    #: refuses - three seconds later.
+    OPEN_WAIT = 3.0
+
+    def try_click(self):
         sel = json.dumps(self.current)
         self.view.evaluate_javascript(
             f"(() => {{ const el = document.querySelector({sel});"
@@ -553,8 +567,11 @@ class Render:
         # the unopened page: a screenshot of the thing not happening is the most
         # expensive kind of green.
         if "missing" in verdict:
-            self.fail(f"refusing: --open {self.current!r} matched no element."
-                      f" No screenshot written.", 5)
+            if time.monotonic() < self.open_deadline:
+                GLib.timeout_add(200, lambda: (self.try_click(), False)[1])
+                return
+            self.fail(f"refusing: --open {self.current!r} matched no element"
+                      f" in {self.OPEN_WAIT:.0f}s. No screenshot written.", 5)
             return
         print(f"clicked {self.current}", file=sys.stderr)
         # Between clicks the wait is short: it only has to outlast the state
