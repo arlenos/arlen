@@ -469,8 +469,9 @@ fn default_for(file: ConfigFile) -> toml::Value {
 /// `access_level = 3` (TimeScoped, recent activity) is the generous
 /// default: once enabled, the AI is useful out of the box and the user
 /// narrows if they want, rather than starting blind and having to loosen
-/// it to use it. The sovereignty guarantee is the audit + capability-scope
-/// + local-only + visible/revocable reads, not a tiny default scope.
+/// it to use it. The sovereignty guarantee is the audit, the capability scope,
+/// running local-only and reads that stay visible and revocable. It is not a
+/// tiny default scope.
 /// English, because that is the language the messages are authored in and the
 /// floor of every fallback chain. A machine nobody has told otherwise gets the
 /// source language rather than a guess from `LANG`, which would silently switch
