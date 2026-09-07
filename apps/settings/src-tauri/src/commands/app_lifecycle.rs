@@ -213,14 +213,18 @@ mod tests {
                 .build(&())
                 .unwrap(),
         );
+        // The daemon's sentence is kept, but as DETAIL for the log rather than
+        // as the screen's words: the page writes both halves in the reader's
+        // language off the kind.
         let said = describe_call_failure(denied);
+        assert_eq!(said.kind, "refused");
         assert_eq!(
-            said,
+            said.detail,
             "dev.arlen.desktop-shell is part of the desktop itself and cannot be removed"
         );
 
-        // A denial with nothing to say still gets the generic line rather than an
-        // empty string, which would render as a blank error.
+        // A denial with nothing to say is still a refusal, and still carries a
+        // detail rather than an empty one, which would log as a blank line.
         let bare = zbus::Error::MethodError(
             zbus::names::OwnedErrorName::try_from("org.freedesktop.DBus.Error.AccessDenied")
                 .unwrap(),
@@ -230,7 +234,9 @@ mod tests {
                 .build(&())
                 .unwrap(),
         );
-        assert!(describe_call_failure(bare).contains("refused"));
+        let bare = describe_call_failure(bare);
+        assert_eq!(bare.kind, "failed");
+        assert!(!bare.detail.is_empty());
     }
 
     /// The two failures have to read differently, because they send the reader
@@ -248,8 +254,7 @@ mod tests {
                 .unwrap(),
         );
         let said = describe_call_failure(absent);
-        assert!(said.contains("unavailable"), "got {said}");
-        assert!(!said.contains("refused"), "an absent daemon refused nothing: {said}");
+        assert_eq!(said.kind, "unavailable", "got {said:?}");
 
         let refused = zbus::Error::MethodError(
             zbus::names::OwnedErrorName::try_from("org.arlen.InstallDaemon1.Error.Denied")
@@ -260,6 +265,8 @@ mod tests {
                 .build(&())
                 .unwrap(),
         );
-        assert!(describe_call_failure(refused).contains("refused"));
+        // A denial the daemon did not explain: still not `unavailable`, because
+        // something answered.
+        assert_eq!(describe_call_failure(refused).kind, "failed");
     }
 }
