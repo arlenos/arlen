@@ -92,6 +92,20 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 shot="$(mktemp /tmp/sweep-render-XXXXXX.png)"
 trap 'rm -f "$shot"' EXIT
 
+# THIS FILE'S OWN FINGERPRINT, TAKEN BEFORE THE FIRST RENDER. A full sweep runs
+# for the better part of an hour, and bash reads a script INCREMENTALLY - so an
+# edit landing mid-run changes what the rest of the run executes, and the table
+# it prints is then about two different scripts. That happened twice on
+# 8 September, both times to somebody who knew the rule and thought the edit was
+# too small to matter. Small is the size of edit that gets made without checking
+# what is running.
+#
+# It cannot be prevented from in here, so it is REPORTED: the hash is compared
+# again before the tally, and a change says so loudly next to the numbers rather
+# than leaving them to be trusted. Same reasoning as every other line in this
+# file that names what it did not look at.
+self_hash_start="$(sha256sum "${BASH_SOURCE[0]}" 2>/dev/null | cut -d" " -f1)"
+
 probes="clipped-text clipped-by-parent overlapping-text no-focus-ring"
 
 # A FIFTH, ON HOST ROWS ONLY. `container-focus-ring.js` reads whatever currently
@@ -296,5 +310,12 @@ done
 # "four probes per view" flat until the container-ring probe was added on
 # 8 September, which left the closing line of every sweep understating itself by
 # one - in the file whose whole job is to say what was looked at.
+self_hash_end="$(sha256sum "${BASH_SOURCE[0]}" 2>/dev/null | cut -d" " -f1)"
+if [ -n "$self_hash_start" ] && [ "$self_hash_start" != "$self_hash_end" ]; then
+  echo "  !!   THIS SCRIPT WAS EDITED WHILE THE RUN WAS USING IT. bash reads a"
+  echo "  !!   script incrementally, so the rows above are not all from the same"
+  echo "  !!   file. Re-run before treating any of it as evidence."
+  fail=1
+fi
 echo "  --   $checked probe read(s) in $locale across ${widths// /, }px, four probes per route and five per host row; anything not named here was not looked at"
 exit "$fail"
