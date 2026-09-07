@@ -7,6 +7,8 @@
 /// override map, and the prerequisite detection need coder backend. Fixture until.
 
 import { writable } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// The coverage a theme achieves on a toolkit.
 export type Coverage = "full" | "colours" | "best-effort";
@@ -39,9 +41,41 @@ export const TOOLKITS: Toolkit[] = [
   { id: "gtk3", name: "GTK3", coverage: "full", noteKey: "s.toolkit.note.gtk3", prereqKey: "s.toolkit.prereq.gtk3" },
   { id: "gtk4", name: "GTK4 / libadwaita", coverage: "colours", noteKey: "s.toolkit.note.gtk4", prereqKey: null },
   { id: "qt", name: "Qt5 / Qt6", coverage: "colours", noteKey: "s.toolkit.note.qt", prereqKey: "s.toolkit.prereq.qt" },
-  { id: "terminal", name: "Terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereqKey: "s.toolkit.prereq.terminal" },
+  { id: "terminal", name: "Terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereqKey: null },
   { id: "wine", name: "Wine", coverage: "best-effort", noteKey: "s.toolkit.note.wine", prereqKey: "s.toolkit.prereq.wine" },
 ];
+
+/// Whether the theme is actually in place for a toolkit, as opposed to what the
+/// toolkit could take. The badge says the ceiling; this says the floor.
+export interface ToolkitReach {
+  state: "ours" | "blocked" | "absent";
+  /// The file in the way, when one is.
+  blockedBy: string | null;
+}
+
+/// Per toolkit id. Empty until read, which reads as "not checked" rather than
+/// "fine" - the row shows nothing until there is an answer.
+export const reach = writable<Record<string, ToolkitReach>>({});
+
+/// Ask the backend whether the theme is in place. Read-only, so it is safe on
+/// mount and safe to repeat.
+export async function loadReach(): Promise<void> {
+  try {
+    reach.set(await invoke<Record<string, ToolkitReach>>("theme_toolkit_reach"));
+  } catch {
+    // Under vite there is no backend. The fixture shows the state that is worth
+    // designing for - one toolkit the theme cannot reach - rather than the happy
+    // one, because the happy one renders as nothing at all.
+    if (!tauriAvailable) {
+      reach.set({
+        gtk3: { state: "ours", blockedBy: null },
+        gtk4: { state: "ours", blockedBy: null },
+        qt: { state: "blocked", blockedBy: "qt6ct.conf" },
+        terminal: { state: "ours", blockedBy: null },
+      });
+    }
+  }
+}
 
 /// Coverage tier → the badge label + tone.
 export function coverageBadge(c: Coverage): { labelKey: string; tone: "success" | "outline" | "warn" } {

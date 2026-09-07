@@ -8,6 +8,7 @@
   ///
   /// Mock-vs-live: the coverage tiers + notes are real; the per-toolkit on/off, the
   /// override map, and the prerequisite detection need coder backend. Fixture.
+  import { onMount } from "svelte";
   import { ChevronRight, RotateCcw } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -29,7 +30,13 @@
     hasAccentOverride,
     setAccentOverride,
     resetAccentOverride,
+    reach,
+    loadReach,
   } from "$lib/stores/themeToolkits";
+
+  // Read-only, so asking on mount costs nothing and the row is never a claim
+  // about a check that did not run.
+  onMount(() => void loadReach());
 
   const hubAccent = $derived(String($colorsEffective.accent));
 </script>
@@ -57,6 +64,18 @@
         </div>
 
         <p class="tk-note">{$t(tk.noteKey)}</p>
+        <!-- THE BADGE IS THE CEILING, THIS IS THE FLOOR. A toolkit can be
+             "full" and reached by nothing, because the apply refuses to
+             overwrite a config the person wrote - correctly - and then their
+             file wins. Saying "full" over that is the claim this line exists to
+             stop, and it names the file so nobody has to go looking. -->
+        {#if $reach[tk.id]?.state === "blocked"}
+          <p class="tk-blocked">
+            {$t("s.toolkit.blocked", { file: $reach[tk.id].blockedBy ?? "" })}
+          </p>
+        {:else if $reach[tk.id]?.state === "absent"}
+          <p class="tk-prereq">{$t("s.toolkit.absent")}</p>
+        {/if}
         {#if tk.prereqKey}
           <p class="tk-prereq">{$t(tk.prereqKey)}</p>
         {/if}
@@ -146,6 +165,12 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
+  .tk-blocked {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-warning);
+  }
+
   .tk-prereq {
     margin: 0.25rem 0 0;
     font-size: var(--text-2xs);
