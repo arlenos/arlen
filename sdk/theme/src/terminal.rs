@@ -111,13 +111,10 @@ pub fn generate_xresources(theme: &ArlenTheme) -> String {
 /// config file doing the including - so the bare name works and no absolute path
 /// has to be written into somebody's home directory.
 ///
-/// Only kitty. foot and alacritty are deliberately left alone: foot's `include`
-/// wants an absolute or `~/`-prefixed path and must precede any section, and
-/// alacritty moved `import` under `[general]` at 0.14, so both are
-/// version-dependent in ways I could not check on this machine - neither is
-/// installed here. A selection line that is subtly wrong is worse than none: it
-/// looks done and changes nothing. The Xresources file is a third case again,
-/// since it needs `xrdb -merge` at session start rather than an include.
+/// foot and alacritty have their own, below, because each wants a different
+/// shape of path and neither is installed here to try - both were read out of
+/// the upstream man-page sources instead. The Xresources file is a third case
+/// again, since it needs `xrdb -merge` at session start rather than an include.
 ///
 /// Proven with kitty's own parser rather than read off its documentation: the
 /// emitted pair resolves to `background = (15,15,15)` and `color1 =
@@ -128,6 +125,46 @@ pub fn generate_kitty_include(colour_file: &str) -> String {
         "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n\
          # The colours live beside this file so a theme change rewrites them alone.\n\
          include {colour_file}\n"
+    )
+}
+
+/// The `foot.ini` that includes the colour file.
+///
+/// **Absolute, and that is foot's rule rather than a preference**: its man page
+/// says the include "must be an absolute path, or start with `~/`" - so kitty's
+/// trick of a bare relative name does not transfer, and the resolved path has to
+/// be written in. The include also carries its own section scope, which is why
+/// our file can open with `[colors]` and the including file stays in the default
+/// section afterwards.
+///
+/// Read from `doc/foot.ini.5.scd` upstream, because foot is not installed on the
+/// machine this was written on and a selection line that is subtly wrong is
+/// worse than none: it looks done and changes nothing.
+pub fn generate_foot_include(colours: &str) -> String {
+    format!(
+        "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n\
+         # foot wants an absolute path here, so this one is written out in full.\n\
+         include={colours}\n"
+    )
+}
+
+/// The `alacritty.toml` that imports the colour file.
+///
+/// Two things from the upstream man page. The key lives under **`[general]`**,
+/// where it moved at 0.14 - a bare top-level `import` is the pre-0.14 shape and
+/// would be an unknown key on a current alacritty, which is the silent kind of
+/// wrong. And a path relative to the config file IS allowed here, unlike foot,
+/// so the bare name is enough and nobody's home directory is written in.
+///
+/// Imports load first and the importing file last, so anything the person puts
+/// in their own `alacritty.toml` still wins over our colours. That is the right
+/// way round.
+pub fn generate_alacritty_import(colour_file: &str) -> String {
+    format!(
+        "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n\
+         # The colours live beside this file so a theme change rewrites them alone.\n\
+         [general]\n\
+         import = [\"{colour_file}\"]\n"
     )
 }
 
@@ -228,5 +265,28 @@ mod tests {
         for line in conf.lines().filter(|l| l.starts_with('#')) {
             assert!(!line.starts_with(" "), "{line}");
         }
+    }
+
+    #[test]
+    fn the_foot_include_is_absolute_because_foot_demands_it() {
+        let conf = generate_foot_include("/home/x/.config/foot/arlen-colors.ini");
+        assert!(conf.starts_with("# arlen-generated"));
+        assert!(conf.contains("\ninclude=/home/x/.config/foot/arlen-colors.ini\n"));
+        // A bare name is what kitty takes and foot refuses.
+        assert!(!conf.contains("include=arlen-colors.ini"));
+    }
+
+    #[test]
+    fn the_alacritty_import_is_under_general_and_parses_as_toml() {
+        let conf = generate_alacritty_import("arlen-colors.toml");
+        assert!(conf.starts_with("# arlen-generated"));
+        let parsed: toml::Table = conf.parse().expect("valid TOML");
+        let general = parsed.get("general").expect("the [general] table").as_table().unwrap();
+        let imports = general.get("import").expect("import").as_array().unwrap();
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].as_str(), Some("arlen-colors.toml"));
+        // The pre-0.14 shape would be a top-level key, which a current alacritty
+        // ignores without saying much.
+        assert!(parsed.get("import").is_none(), "{conf}");
     }
 }
