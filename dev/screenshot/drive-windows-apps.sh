@@ -95,7 +95,7 @@ const painted = await settled();
 const text = document.body.innerText;
 return JSON.stringify({
   painted,
-  unavailable: text.includes("Cannot read your Windows apps right now"),
+  unavailable: text.includes("Your Windows apps cannot be read"),
   noneUnknown: !text.includes("No Windows apps installed yet") && !text.includes("Installed apps"),
   runtimesUnknown: text.includes("Runtimes not known"),
   noFixture: !text.includes("Notepad++") && !text.includes("ledger-setup"),
