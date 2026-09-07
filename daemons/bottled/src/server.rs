@@ -172,14 +172,25 @@ pub async fn serve_connection(
                 | Request::RevokeNetwork { .. } => {
                     narrow_for(bottles_dir, &request, app_id.as_deref(), &*audit).await
                 }
-                Request::Create { id } => create(
-                    bottles_dir,
-                    id,
-                    std::path::Path::new("/usr"),
-                    &runtime_dir,
-                    |p| p.exists(),
-                    run_to_completion,
-                ),
+                Request::Create { id } => {
+                    let made = create(
+                        bottles_dir,
+                        id,
+                        std::path::Path::new("/usr"),
+                        &runtime_dir,
+                        |p| p.exists(),
+                        run_to_completion,
+                    );
+                    // A fresh bottle wears the theme from its first launch rather
+                    // than from its second. Only after a create that worked: the
+                    // refusals mean there is no prefix to put anything in.
+                    if !matches!(made, Response::Refused { .. }) {
+                        if let Ok(b) = crate::registry::load_bottle(bottles_dir, id) {
+                            theme_if_needed(bottles_dir, id, &b.prefix_root, &runtime_dir);
+                        }
+                    }
+                    made
+                }
                 Request::Install { id, installer } => install(
                     bottles_dir,
                     id,
@@ -220,7 +231,16 @@ pub async fn serve_connection(
                         }
                     }
                 }
-                Request::Launch { id } => launch(
+                Request::Launch { id } => {
+                    // BEFORE the program starts, and only when the theme actually
+                    // changed. A running Win32 app does not repaint a
+                    // `Control Panel\Colors` change, so apply-then-start is the
+                    // only order that works; the check in front of it is what
+                    // keeps that from costing a Wine invocation on every start.
+                    if let Ok(b) = crate::registry::load_bottle(bottles_dir, id) {
+                        theme_if_needed(bottles_dir, id, &b.prefix_root, &runtime_dir);
+                    }
+                    launch(
                     bottles_dir,
                     id,
                     std::path::Path::new("/usr"),
@@ -228,7 +248,8 @@ pub async fn serve_connection(
                     display.as_deref(),
                     |p| p.exists(),
                     spawn_detached,
-                ),
+                    )
+                }
                 // NAMED rather than a catch-all, so the compiler is the thing that
                 // notices. `handle_request` is exhaustive, so a new ask cannot be
                 // forgotten there; this match had an `other` arm, so a variant that
@@ -483,6 +504,60 @@ fn run_to_completion(argv: &[String]) -> Result<(), String> {
         // The code rather than a sentence: this is one half of a token the window
         // will render, and Wine's own output has already gone to the journal.
         Err(format!("wineboot exited {status}"))
+    }
+}
+
+/// The `.reg` document for the person's current theme, or nothing if it did not
+/// resolve.
+///
+/// One place, because three call sites want it and a second copy of the
+/// resolve-then-generate pair is a second place for the toolkit or the scale to
+/// drift. The scale is 1.0, and that is a limit rather than a default: the
+/// per-prefix `LogPixels` should follow the display a bottle opens on, and
+/// nothing in this daemon knows which that is.
+fn wine_document() -> Option<String> {
+    match arlen_theme::ArlenTheme::resolve_active(Some(arlen_theme::Toolkit::Wine)) {
+        Ok(t) => Some(arlen_theme::wine::generate_wine_reg(&t, 1.0)),
+        Err(why) => {
+            tracing::warn!(%why, "the active theme did not resolve");
+            None
+        }
+    }
+}
+
+/// Put the current theme into a bottle if it is not already wearing it.
+///
+/// Best-effort on purpose, and at two levels. A theme that will not resolve, a
+/// bottle that will not take it, a `regedit` that refuses: none of those is a
+/// reason to refuse the thing the person actually asked for, which is a bottle
+/// or a program. It is logged and the caller carries on.
+///
+/// The check before it is what makes this cheap enough to sit in front of every
+/// launch: the document in the prefix records what was last imported, so an
+/// unchanged theme costs one file read rather than a Wine invocation.
+fn theme_if_needed(
+    bottles_dir: &std::path::Path,
+    id: &str,
+    prefix_root: &std::path::Path,
+    runtime_dir: &std::path::Path,
+) {
+    let Some(doc) = wine_document() else { return };
+    if !crate::theme::needs_import(prefix_root, &doc) {
+        return;
+    }
+    match theme(
+        bottles_dir,
+        id,
+        &doc,
+        std::path::Path::new("/usr"),
+        runtime_dir,
+        |p| p.exists(),
+        run_to_completion,
+    ) {
+        Response::Themed { imported: true, .. } => {
+            tracing::info!(bottle = id, "the bottle is wearing the current theme")
+        }
+        other => tracing::warn!(bottle = id, ?other, "the theme did not reach this bottle"),
     }
 }
 
