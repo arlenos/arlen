@@ -205,30 +205,18 @@ pub async fn serve_connection(
                     // Resolved here rather than on the socket, and for the Wine
                     // toolkit specifically, so a `[override.wine]` reaches the
                     // bottle without moving the palette Arlen's own surfaces use.
-                    match arlen_theme::ArlenTheme::resolve_active(Some(
-                        arlen_theme::Toolkit::Wine,
-                    )) {
-                        Ok(t) => {
-                            // 1.0, and that is a limit rather than a default: the
-                            // per-prefix `LogPixels` should follow the display the
-                            // bottle opens on, and nothing here knows which that
-                            // is. A bottle on a 1.5x screen gets 96 DPI text until
-                            // the display config reaches this daemon.
-                            let doc = arlen_theme::wine::generate_wine_reg(&t, 1.0);
-                            theme(
-                                bottles_dir,
-                                id,
-                                &doc,
-                                std::path::Path::new("/usr"),
-                                &runtime_dir,
-                                |p| p.exists(),
-                                run_to_completion,
-                            )
-                        }
-                        Err(why) => {
-                            tracing::warn!(%why, "the active theme did not resolve");
-                            Response::Refused { problem: Problem::CouldNotStart }
-                        }
+                    match wine_document() {
+                        Some((doc, family)) => theme(
+                            bottles_dir,
+                            id,
+                            &doc,
+                            &family,
+                            std::path::Path::new("/usr"),
+                            &runtime_dir,
+                            |p| p.exists(),
+                            run_to_completion,
+                        ),
+                        None => Response::Refused { problem: Problem::CouldNotStart },
                     }
                 }
                 Request::Launch { id } => {
@@ -515,9 +503,14 @@ fn run_to_completion(argv: &[String]) -> Result<(), String> {
 /// drift. The scale is 1.0, and that is a limit rather than a default: the
 /// per-prefix `LogPixels` should follow the display a bottle opens on, and
 /// nothing in this daemon knows which that is.
-fn wine_document() -> Option<String> {
+fn wine_document() -> Option<(String, String)> {
     match arlen_theme::ArlenTheme::resolve_active(Some(arlen_theme::Toolkit::Wine)) {
-        Ok(t) => Some(arlen_theme::wine::generate_wine_reg(&t, 1.0)),
+        Ok(t) => Some((
+            arlen_theme::wine::generate_wine_reg(&t, 1.0),
+            // The same reading of the stack the substitutes were written with,
+            // so the report is about the face the document actually named.
+            arlen_theme::wine::first_family(&t.typography.font_sans).to_string(),
+        )),
         Err(why) => {
             tracing::warn!(%why, "the active theme did not resolve");
             None
@@ -541,7 +534,7 @@ fn theme_if_needed(
     prefix_root: &std::path::Path,
     runtime_dir: &std::path::Path,
 ) {
-    let Some(doc) = wine_document() else { return };
+    let Some((doc, family)) = wine_document() else { return };
     if !crate::theme::needs_import(prefix_root, &doc) {
         return;
     }
@@ -549,6 +542,7 @@ fn theme_if_needed(
         bottles_dir,
         id,
         &doc,
+        &family,
         std::path::Path::new("/usr"),
         runtime_dir,
         |p| p.exists(),

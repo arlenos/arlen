@@ -88,6 +88,58 @@ pub fn needs_import(prefix_root: &Path, document: &str) -> bool {
     }
 }
 
+/// Whether a prefix has the font family the substitutes point at.
+///
+/// **The plan's font step turned out to be unnecessary here, and this is what
+/// replaced it.** It described copying the `.ttf` into `drive_c/windows/Fonts`
+/// and adding the `Fonts` record, the way winetricks does. Booting a prefix and
+/// looking shows Wine has already done it: it registers **2682** faces by
+/// absolute `Z:\usr\share\fonts\...` path at boot, Arlen's UI font among
+/// them, and it still does so with fontconfig's rules taken away. A bottle
+/// binds `/usr` read-only, so those paths resolve from inside the sandbox too.
+/// Copying a file that is already reachable would be work whose only visible
+/// effect is a second copy of it.
+///
+/// So the honest thing is not to register the font but to ASK, because the
+/// answer is a fact about this machine rather than about our code: a font Arlen
+/// ships would be there and one a person names in a customization file might not
+/// be.
+///
+/// It reads the registry file rather than running `reg query`, because this runs
+/// while deciding what to report and a Wine invocation per report is a cost the
+/// surface does not need. The match is on the value NAME, which Wine writes as
+/// `Family Style (TrueType)` - so `Inter` is present when a name begins with it.
+pub fn font_available(prefix_root: &Path, family: &str) -> bool {
+    if family.is_empty() {
+        return false;
+    }
+    let Ok(text) = std::fs::read_to_string(prefix_root.join("system.reg")) else {
+        return false;
+    };
+    let needle = family.to_lowercase();
+    let mut in_fonts = false;
+    for line in text.lines() {
+        if line.starts_with('[') {
+            in_fonts = line
+                .to_lowercase()
+                .contains("currentversion\\fonts]");
+            continue;
+        }
+        if !in_fonts {
+            continue;
+        }
+        // `"Inter Bold (TrueType)"="Z:\\usr\\..."`. The face name is the part
+        // in quotes, and a family is present when a face name starts with it.
+        if let Some(name) = line.strip_prefix('"').and_then(|r| r.split('"').next()) {
+            let lower = name.to_lowercase();
+            if lower == needle || lower.starts_with(&format!("{needle} ")) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// The `bwrap` argument list that imports the document, mirroring `boot_argv`.
 ///
 /// No display: an import draws nothing, and a bottle has none to draw on at the
@@ -106,48 +158,6 @@ pub fn theme_argv(
         &["regedit".to_string(), "/S".to_string(), reg_windows_path()],
         exists,
     )
-}
-
-/// How far the theme reached in one bottle.
-///
-/// The surface promises "best-effort", and a promise like that is only honest
-/// if the thing making it can say what it did not manage. Each field is
-/// something this code knows rather than something it hopes: nothing here is
-/// inferred from the absence of an error.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ThemeOutcome {
-    /// The bottle this is about.
-    pub id: String,
-    /// The palette, the metrics and the light/dark hint went in.
-    pub imported: bool,
-    /// Why not, when they did not. Absent on success.
-    pub refused: Option<String>,
-    /// Whether the UI font FACE is in the prefix.
-    ///
-    /// Always false today, and that is a fact rather than a gap in the report:
-    /// the document points the legacy substitutes at Arlen's UI font, but a
-    /// substitute naming a face the prefix does not have leaves Wine on its
-    /// fallback. Registering the face - copying the `.ttf` into
-    /// `drive_c/windows/Fonts` and adding the `Fonts` record - is a separate
-    /// step, so until it exists the surface should say the text did not change.
-    pub font_registered: bool,
-}
-
-impl ThemeOutcome {
-    /// A bottle that took what this code can currently give.
-    pub fn imported(id: &str) -> Self {
-        Self { id: id.to_string(), imported: true, refused: None, font_registered: false }
-    }
-
-    /// A bottle that did not, and what stopped it.
-    pub fn refused(id: &str, why: impl std::fmt::Display) -> Self {
-        Self {
-            id: id.to_string(),
-            imported: false,
-            refused: Some(why.to_string()),
-            font_registered: false,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -238,13 +248,40 @@ mod tests {
         assert!(format!("{err}").contains("/usr/bin/wine"));
     }
 
+    /// The shape Wine actually writes, copied from a booted prefix rather than
+    /// imagined: a `Software\...\Fonts` section whose value names are face
+    /// names and whose values are `Z:` paths into the host's font directories.
+    const REAL_SHAPE: &str = concat!(
+        "WINE REGISTRY Version 2\n\n",
+        "[Software\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes] 1788\n",
+        "\"Inter\"=\"Something Else\"\n\n",
+        "[Software\\Microsoft\\Windows\\CurrentVersion\\Fonts] 1788\n",
+        "\"Inter Bold (TrueType)\"=\"Z:\\\\usr\\\\share\\\\fonts\\\\inter\\\\Inter.ttc\"\n",
+        "\"Noto Sans (TrueType)\"=\"Z:\\\\usr\\\\share\\\\fonts\\\\noto\\\\NotoSans-Regular.ttf\"\n\n",
+        "[Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall] 1788\n",
+        "\"Cantarell Reader\"=\"nothing to do with fonts\"\n",
+    );
+
     #[test]
-    fn the_outcome_never_claims_a_font_it_did_not_register() {
-        // The surface says best-effort, and the only honest version of that is
-        // a report that names what did not happen.
-        assert!(!ThemeOutcome::imported("b1").font_registered);
-        let no = ThemeOutcome::refused("b1", "prefix is not booted");
-        assert!(!no.imported);
-        assert_eq!(no.refused.as_deref(), Some("prefix is not booted"));
+    fn the_font_question_is_asked_of_the_prefix_and_answered_from_the_fonts_key() {
+        let dir = tempfile::tempdir().expect("temp");
+        std::fs::write(dir.path().join("system.reg"), REAL_SHAPE).expect("write");
+
+        // Present as a face under the family name.
+        assert!(font_available(dir.path(), "Inter"));
+        assert!(font_available(dir.path(), "Noto Sans"));
+        // Not there at all.
+        assert!(!font_available(dir.path(), "Comic Sans MS"));
+        // A name that appears in the file but NOT in the fonts section. Reading
+        // the whole file for the string would say yes to this, which is how a
+        // report ends up describing a font that is an uninstall entry.
+        assert!(!font_available(dir.path(), "Cantarell"));
+        // The substitutes section names the family too, on the LEFT of an `=`,
+        // and it is a request rather than a fact.
+        assert!(!font_available(dir.path(), "Something Else"));
+        // A prefix with no registry at all, and an empty family.
+        assert!(!font_available(Path::new("/nowhere"), "Inter"));
+        assert!(!font_available(dir.path(), ""));
     }
+
 }
