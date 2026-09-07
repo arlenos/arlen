@@ -67,6 +67,27 @@ pub fn write_document(prefix_root: &Path, document: &str) -> io::Result<PathBuf>
     Ok(path)
 }
 
+/// Whether this bottle still needs the document imported.
+///
+/// The palette is applied before a launch, and doing that unconditionally would
+/// put a Wine invocation in front of every single start of every Windows
+/// program - seconds, every time, for a registry write that is almost always
+/// already there. So the document left in the prefix is the record of what was
+/// last imported: identical means the bottle is already wearing this theme, and
+/// anything else - a different theme, a changed accent, no file at all because
+/// the bottle predates this - means import.
+///
+/// It compares the document rather than a timestamp or a version, because those
+/// are proxies that go wrong in the direction that matters: a theme edited back
+/// to what it was bumps a timestamp, and a bottle restored from a backup keeps
+/// an old file with a new stamp.
+pub fn needs_import(prefix_root: &Path, document: &str) -> bool {
+    match std::fs::read_to_string(reg_host_path(prefix_root)) {
+        Ok(on_disk) => on_disk != document,
+        Err(_) => true,
+    }
+}
+
 /// The `bwrap` argument list that imports the document, mirroring `boot_argv`.
 ///
 /// No display: an import draws nothing, and a bottle has none to draw on at the
@@ -172,6 +193,23 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("drive_c")).expect("drive_c");
         let path = write_document(dir.path(), "REGEDIT4\r\n").expect("written");
         assert_eq!(std::fs::read_to_string(&path).expect("read"), "REGEDIT4\r\n");
+    }
+
+    #[test]
+    fn a_bottle_already_wearing_this_theme_is_not_themed_again() {
+        let dir = tempfile::tempdir().expect("temp");
+        std::fs::create_dir_all(dir.path().join("drive_c")).expect("drive_c");
+        let doc = "REGEDIT4\r\n[HKEY_CURRENT_USER\\Control Panel\\Colors]\r\n";
+
+        // No file yet: a bottle made before any of this existed.
+        assert!(needs_import(dir.path(), doc));
+
+        write_document(dir.path(), doc).expect("written");
+        assert!(!needs_import(dir.path(), doc), "the same theme is already on");
+
+        // A different one - a changed accent is a different document.
+        let other = doc.replace("Colors", "Colours");
+        assert!(needs_import(dir.path(), &other));
     }
 
     #[test]
