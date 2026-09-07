@@ -104,6 +104,79 @@ impl ApplyReport {
     }
 }
 
+/// Whether the theme is actually in place for one toolkit.
+///
+/// Not "did we write it" - whether what is on disk right now is ours. The two
+/// differ on any machine where somebody has written their own config, which the
+/// guarded write correctly refuses to overwrite: the write is reported skipped,
+/// the theme reaches nothing there, and until this existed the only trace was an
+/// `info` line in the shell's log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolkitReach {
+    /// Every file this toolkit needs is one we wrote.
+    Ours,
+    /// At least one is somebody else's, so the theme does not reach this toolkit
+    /// and will not until they move it. Carries the first such file, because a
+    /// surface that can name it saves the reader looking for it.
+    Blocked(PathBuf),
+    /// None of them are there. The apply has not run, or it failed.
+    Absent,
+}
+
+/// The files each toolkit's reach depends on, relative to the config root.
+///
+/// Only the ones a person can have written themselves: the Arlen-named files
+/// under `colors/` and the like are ours outright and always overwritten, so
+/// they can never block anything and would only add noise here.
+const REACH_FILES: [(&str, &[&str]); 4] = [
+    ("gtk3", &["gtk-3.0/gtk.css", "gtk-3.0/settings.ini"]),
+    ("gtk4", &["gtk-4.0/gtk.css", "gtk-4.0/settings.ini"]),
+    ("qt", &["qt6ct/qt6ct.conf"]),
+    (
+        "terminal",
+        &["kitty/kitty.conf", "foot/foot.ini", "alacritty/alacritty.toml"],
+    ),
+];
+
+/// Whether one file on disk is one we wrote, by its marker.
+fn is_ours(path: &Path) -> Option<bool> {
+    let text = std::fs::read_to_string(path).ok()?;
+    Some(text.starts_with(GTK_MARKER) || text.starts_with(INI_MARKER))
+}
+
+/// Report, per toolkit, whether the theme is actually in place.
+///
+/// Read-only and cheap: it opens the handful of files the guarded writes target
+/// and looks at the first line. Nothing here writes, so a surface can ask it as
+/// often as it likes.
+///
+/// One foreign file blocks the toolkit even when its sibling is ours, and that
+/// is the honest reading rather than a harsh one: a GTK3 app with our colours
+/// and somebody else's settings file is not following the theme, it is following
+/// half of it, and half is what makes a coverage badge a lie.
+pub fn toolkit_reach(config_dir: &Path) -> std::collections::BTreeMap<String, ToolkitReach> {
+    REACH_FILES
+        .iter()
+        .map(|(toolkit, files)| {
+            let states: Vec<(PathBuf, Option<bool>)> = files
+                .iter()
+                .map(|f| {
+                    let path = config_dir.join(f);
+                    let ours = is_ours(&path);
+                    (path, ours)
+                })
+                .collect();
+            let foreign = states.iter().find(|(_, ours)| *ours == Some(false));
+            let reach = match foreign {
+                Some((path, _)) => ToolkitReach::Blocked(path.clone()),
+                None if states.iter().any(|(_, ours)| *ours == Some(true)) => ToolkitReach::Ours,
+                None => ToolkitReach::Absent,
+            };
+            ((*toolkit).to_string(), reach)
+        })
+        .collect()
+}
+
 /// Generate and write every foreign-toolkit theme file under `config_dir`.
 ///
 /// `config_dir` is the user config root (`$XDG_CONFIG_HOME`, normally
@@ -542,5 +615,52 @@ accent = "#00ff00"
         assert_eq!(std::fs::read_to_string(&conf).unwrap(), mine);
         // The scheme is still written: it is our own file under `colors/`.
         assert!(report.written.contains(&tmp.path().join("qt6ct/colors/arlen.conf")));
+    }
+
+    /// The three states, over the files a person can really have.
+    #[test]
+    fn the_reach_says_whether_the_theme_is_actually_in_place() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Nothing applied yet.
+        let before = toolkit_reach(tmp.path());
+        assert_eq!(before["gtk3"], ToolkitReach::Absent);
+        assert_eq!(before["terminal"], ToolkitReach::Absent);
+
+        // After an apply, ours.
+        write_foreign_toolkit_configs(&theme(), tmp.path());
+        let after = toolkit_reach(tmp.path());
+        for toolkit in ["gtk3", "gtk4", "qt", "terminal"] {
+            assert_eq!(after[toolkit], ToolkitReach::Ours, "{toolkit}");
+        }
+
+        // One file of somebody's own blocks that toolkit and only that one.
+        std::fs::write(tmp.path().join("gtk-3.0/settings.ini"), "[Settings]\n").unwrap();
+        let blocked = toolkit_reach(tmp.path());
+        assert_eq!(
+            blocked["gtk3"],
+            ToolkitReach::Blocked(tmp.path().join("gtk-3.0/settings.ini")),
+            "and it names the file in the way"
+        );
+        assert_eq!(blocked["gtk4"], ToolkitReach::Ours, "one toolkit at a time");
+        assert_eq!(blocked["terminal"], ToolkitReach::Ours);
+    }
+
+    /// Half is not reach. A toolkit whose colours are ours and whose settings
+    /// file is not is following half a theme, and the badge that says "full"
+    /// over that is the thing this exists to stop.
+    #[test]
+    fn one_foreign_file_blocks_the_toolkit_even_beside_our_own() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("gtk-3.0")).unwrap();
+        std::fs::write(
+            tmp.path().join("gtk-3.0/gtk.css"),
+            format!("{GTK_HEADER}@define-color window_bg_color #000;\n"),
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("gtk-3.0/settings.ini"), "[Settings]\n").unwrap();
+        assert_eq!(
+            toolkit_reach(tmp.path())["gtk3"],
+            ToolkitReach::Blocked(tmp.path().join("gtk-3.0/settings.ini"))
+        );
     }
 }

@@ -161,6 +161,7 @@ pub fn run() {
             commands::theme::theme_list_icon_themes,
             commands::theme::theme_list_cursor_themes,
             commands::theme::theme_toolkit_prereqs,
+            commands::theme::theme_toolkit_reach,
             commands::theme::theme_set_accent,
             commands::theme::get_available_themes,
             commands::values::settings_resolve_options,

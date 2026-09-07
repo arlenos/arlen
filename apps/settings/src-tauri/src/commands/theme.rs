@@ -790,6 +790,59 @@ fn detect_toolkit_prereqs(
     prereqs
 }
 
+/// What the Toolkits page needs to say whether the theme is actually in place.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolkitReachView {
+    /// `"ours"`, `"blocked"` or `"absent"`.
+    pub state: String,
+    /// The file in the way, when one is. Named because a reader who is told
+    /// "blocked" and not by what has to go looking.
+    pub blocked_by: Option<String>,
+}
+
+/// Whether the theme is actually in place per toolkit, keyed by the Toolkits
+/// page's own toolkit ids.
+///
+/// The coverage badge beside it says what a toolkit CAN take; this says what it
+/// has. The two come apart on any machine where somebody wrote their own
+/// `gtk.css` or `kitty.conf`, because the apply refuses to overwrite a file it
+/// did not write - correctly - and then the theme reaches nothing there while
+/// the badge still reads "full". Read-only: it opens the handful of files the
+/// apply targets and looks at the first line.
+#[tauri::command]
+pub fn theme_toolkit_reach() -> std::collections::BTreeMap<String, ToolkitReachView> {
+    let Some(config) = dirs::config_dir() else {
+        return std::collections::BTreeMap::new();
+    };
+    arlen_theme::apply::toolkit_reach(&config)
+        .into_iter()
+        .map(|(k, v)| {
+            let view = match v {
+                arlen_theme::apply::ToolkitReach::Ours => ToolkitReachView {
+                    state: "ours".into(),
+                    blocked_by: None,
+                },
+                arlen_theme::apply::ToolkitReach::Blocked(path) => ToolkitReachView {
+                    state: "blocked".into(),
+                    // The name alone, not the whole path: the reader knows where
+                    // their own config lives and the row has one line.
+                    blocked_by: Some(
+                        path.file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| path.display().to_string()),
+                    ),
+                },
+                arlen_theme::apply::ToolkitReach::Absent => ToolkitReachView {
+                    state: "absent".into(),
+                    blocked_by: None,
+                },
+            };
+            (k, view)
+        })
+        .collect()
+}
+
 /// Whether each detectable toolkit prerequisite is met on this system, so the
 /// Toolkits page shows an HONEST status instead of the fixture: `{ "gtk3": bool,
 /// "qt": bool }` (adw-gtk3 installed, qt6ct configured). The other toolkits carry
