@@ -1830,7 +1830,10 @@ mod tests {
         );
         let argv = seen.into_inner();
         assert!(
-            argv.windows(3).any(|w| w == ["regedit", "/S", &crate::theme::reg_windows_path()]),
+            argv.iter().any(|a| a.contains(&format!(
+                "regedit /S '{}'",
+                crate::theme::reg_windows_path()
+            ))),
             "the import addresses the document it just wrote: {argv:?}"
         );
     }
