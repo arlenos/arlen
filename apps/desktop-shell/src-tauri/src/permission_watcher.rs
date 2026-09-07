@@ -231,7 +231,7 @@ fn producer_socket_path() -> String {
 
 /// Best-effort emit of `permission.changed` on the Event Bus.
 /// Knowledge daemon consumes this to invalidate its token cache
-/// (see `knowledge/src/daemon.rs::handle_graph_event`).
+/// (see `daemons/knowledge/src/daemon.rs::handle_graph_event`).
 ///
 /// Direct UnixStream write mirrors `projects.rs::emit_to_event_bus`
 /// — keeps shell-internal emitters off the `os-sdk` dep tree.

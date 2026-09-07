@@ -3,7 +3,7 @@
 //!
 //! The fake server speaks the same 3-line plaintext registration
 //! plus length-prefixed protobuf framing as the real bus
-//! (`event-bus/src/socket.rs:130-172`), but answers from local
+//! (`daemons/event-bus/src/socket.rs:130-172`), but answers from local
 //! state. This exercises the full SDK consumer pipeline: register,
 //! receive event, mpsc forward, drop unsubscribes, reconnect on
 //! disconnect.

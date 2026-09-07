@@ -25,7 +25,7 @@
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { t } from "$lib/i18n/messages";
 
-  // Mirrors `app-settings/src-tauri/src/commands/night_light.rs::NightLightState`.
+  // Mirrors `apps/settings/src-tauri/src/commands/night_light.rs::NightLightState`.
   // Kept in hand-sync; if the schema grows, ts-rs would be the right
   // fix but for D2 the surface is small.
   type ScheduleMode = "manual" | "sunset_sunrise" | "custom";

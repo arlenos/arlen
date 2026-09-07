@@ -2,7 +2,7 @@
 ///
 /// Reads/writes `~/.config/arlen/shell.toml`. The Settings app only
 /// touches the `[toast]` section today — the desktop-shell has a live
-/// watcher for this file (see `desktop-shell/src-tauri/src/shell_config.rs`)
+/// watcher for this file (see `apps/desktop-shell/src-tauri/src/shell_config.rs`)
 /// which re-emits `arlen://shell-config-changed` so toast appearance
 /// changes propagate without a restart.
 

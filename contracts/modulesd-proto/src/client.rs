@@ -22,7 +22,7 @@ use crate::{Event, Request, Response};
 ///
 /// It does not match the daemon's bound, and the line here used to say it did.
 /// The daemon's `MAX_FRAME_BYTES` is 1 MiB and guards the REQUEST it reads
-/// (`modulesd/src/socket/server.rs:241`); this one is eight times larger and
+/// (`daemons/modulesd/src/socket/server.rs:241`); this one is eight times larger and
 /// guards the other direction. So the two numbers bound different things and a
 /// request over 1 MiB is refused by the daemon with nothing here to have warned
 /// about it.

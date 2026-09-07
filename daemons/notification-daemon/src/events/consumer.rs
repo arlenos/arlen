@@ -63,7 +63,7 @@ const SUBSCRIPTIONS: &str = "focus.,window.fullscreen_";
 ///
 /// A named function rather than a `format!` at the call site so the shape can be
 /// tested. The bus reads exactly three lines and BLOCKS on the third
-/// (`event-bus/src/socket.rs:694-696`), so a copy that sends two never finishes
+/// (`daemons/event-bus/src/socket.rs:694-696`), so a copy that sends two never finishes
 /// registering and receives nothing - which is what happened to the knowledge
 /// writer when the uid line was added in Phase 3.1 and one consumer was missed.
 /// That went unnoticed until an integration test drove the assembled pipeline.

@@ -42,13 +42,13 @@ import sqlite3
 import sys
 
 #: What the normalizer stamps on every event it forwards
-#: (`kernel-layer/src/normalizer.rs`). The one string that separates the sensor's
+#: (`daemons/kernel-layer/kernel-layer/src/normalizer.rs`). The one string that separates the sensor's
 #: events from the desktop's in a store that holds both.
 KERNEL_SOURCE = "ebpf"
 
 #: And the session identity it uses when nothing set one, for the message: an
 #: event that happens in no session still needs a named origin
-#: (`kernel-layer/src/main.rs`).
+#: (`daemons/kernel-layer/kernel-layer/src/main.rs`).
 KERNEL_ORIGIN = "system:kernel-layer"
 
 
