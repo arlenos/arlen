@@ -33,5 +33,8 @@ if out=$(reuse lint 2>&1); then
 fi
 
 printf '%-42s FAIL\n' "reuse lint"
-printf '%s\n' "$out" | tail -25
+# The findings come BEFORE reuse's own summary block, so print that half rather
+# than the tail: a `tail` here showed a wall of zero-counts and none of the file
+# names, which is the shape of a message people stop reading.
+printf '%s\n' "$out" | sed '/^# SUMMARY/,$d' | grep -v '^$' | head -25
 exit 1
