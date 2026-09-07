@@ -30,7 +30,7 @@ export interface Toolkit {
 /// The toolkits and their honest fidelity ceiling (theming-system-plan.md §1).
 export const TOOLKITS: Toolkit[] = [
   { id: "arlen", name: "Arlen apps + compositor", coverage: "full", noteKey: "s.toolkit.note.arlen", prereq: null, native: true },
-  { id: "gtk3", name: "GTK3", coverage: "full", noteKey: "s.toolkit.note.gtk3", prereq: "adw-gtk3 detected" },
+  { id: "gtk3", name: "GTK3", coverage: "full", noteKey: "s.toolkit.note.gtk3", prereq: "Arlen theme installed" },
   { id: "gtk4", name: "GTK4 / libadwaita", coverage: "colours", noteKey: "s.toolkit.note.gtk4", prereq: null },
   { id: "qt", name: "Qt5 / Qt6", coverage: "colours", noteKey: "s.toolkit.note.qt", prereq: "Set Qt apps to use qt6ct" },
   { id: "terminal", name: "Terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereq: "Include the colour file in your terminal config" },

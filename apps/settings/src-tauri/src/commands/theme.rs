@@ -742,13 +742,20 @@ fn gtk_theme_dirs() -> Vec<std::path::PathBuf> {
     dirs
 }
 
-/// Whether the `adw-gtk3` GTK theme is installed - the prerequisite the Toolkits
-/// page names for full GTK3 shape. An `adw-gtk3` or `adw-gtk3-dark` directory
-/// under any GTK-theme dir counts. Pure over the search dirs so it is testable.
-fn adw_gtk3_present(gtk_theme_dirs: &[std::path::PathBuf]) -> bool {
-    gtk_theme_dirs
-        .iter()
-        .any(|d| d.join("adw-gtk3").is_dir() || d.join("adw-gtk3-dark").is_dir())
+/// Whether a GTK3 widget theme Arlen can select is installed - the prerequisite
+/// the Toolkits page names for full GTK3 shape.
+///
+/// This used to look for a bare `adw-gtk3` directory, which stopped being the
+/// question on 7 September: Arlen ships its OWN fork now (`themes/adw-gtk3`,
+/// built into `/usr/share/themes/Arlen` by the image), so the old check said the
+/// prerequisite was unmet on a machine that has ours and met on one that has
+/// upstream's but is not using it. It now asks the same question the apply asks
+/// when it writes `gtk-theme-name` - one answer, not two that can disagree - and
+/// that answer counts a directory only when it holds `gtk-3.0/gtk.css`, because
+/// a bare directory of the right name is what a half-removed theme looks like.
+fn gtk3_widget_theme_present(gtk_theme_dirs: &[std::path::PathBuf]) -> bool {
+    arlen_theme::gtk::installed_gtk_theme(&arlen_theme::gtk::GTK_THEME_CANDIDATES, gtk_theme_dirs)
+        .is_some()
 }
 
 /// Whether qt6ct is the configured Qt platform theme - the prerequisite for the
@@ -769,7 +776,7 @@ fn detect_toolkit_prereqs(
     qt6ct_ready: bool,
 ) -> std::collections::BTreeMap<String, bool> {
     let mut prereqs = std::collections::BTreeMap::new();
-    prereqs.insert("gtk3".to_string(), adw_gtk3_present(gtk_theme_dirs));
+    prereqs.insert("gtk3".to_string(), gtk3_widget_theme_present(gtk_theme_dirs));
     prereqs.insert("qt".to_string(), qt6ct_ready);
     prereqs
 }
@@ -1246,12 +1253,23 @@ mod tests {
     }
 
     #[test]
-    fn adw_gtk3_is_detected_only_when_a_theme_dir_exists() {
+    fn the_gtk3_prereq_follows_the_theme_the_apply_would_select() {
         let tmp = tempfile::tempdir().unwrap();
         let dirs = vec![tmp.path().to_path_buf()];
-        assert!(!adw_gtk3_present(&dirs), "absent by default");
-        std::fs::create_dir(tmp.path().join("adw-gtk3-dark")).unwrap();
-        assert!(adw_gtk3_present(&dirs), "the -dark variant counts");
+        assert!(!gtk3_widget_theme_present(&dirs), "absent by default");
+
+        // A directory alone is not a theme, and the old check said it was.
+        std::fs::create_dir_all(tmp.path().join("adw-gtk3/gtk-3.0")).unwrap();
+        assert!(!gtk3_widget_theme_present(&dirs), "an empty directory is not installed");
+        std::fs::write(tmp.path().join("adw-gtk3/gtk-3.0/gtk.css"), "").unwrap();
+        assert!(gtk3_widget_theme_present(&dirs), "upstream's still counts");
+
+        // And ours, which the old check could not see at all.
+        let other = tempfile::tempdir().unwrap();
+        let dirs = vec![other.path().to_path_buf()];
+        std::fs::create_dir_all(other.path().join("Arlen/gtk-3.0")).unwrap();
+        std::fs::write(other.path().join("Arlen/gtk-3.0/gtk.css"), "").unwrap();
+        assert!(gtk3_widget_theme_present(&dirs), "the theme Arlen ships counts");
     }
 
     #[test]
