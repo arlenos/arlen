@@ -1362,11 +1362,41 @@ accent = "#00ff00"
     }
 
     #[test]
+    fn a_wine_override_reaches_the_bottle_and_nothing_else() {
+        // The Wine palette lands inside an interface Arlen did not draw, so a
+        // colour that reads well in Arlen can read badly in a Windows dialog.
+        // That is what the override is for, and it must not leak into the
+        // toolkits Arlen does draw.
+        let custom = r##"
+[override.wine.color.semantic]
+accent = "#00ff00"
+"##;
+        let wine = ArlenTheme::resolve_toolkit(SAMPLE_BUNDLED, None, Some(custom), Toolkit::Wine)
+            .expect("resolve wine");
+        assert!((wine.color.accent[1] - 1.0).abs() < 0.01, "the bottle takes the override");
+        let base = ArlenTheme::resolve(SAMPLE_BUNDLED, None, Some(custom)).expect("base");
+        let gtk = ArlenTheme::resolve_toolkit(SAMPLE_BUNDLED, None, Some(custom), Toolkit::Gtk)
+            .expect("resolve gtk");
+        assert_eq!(base.color.accent, gtk.color.accent, "gtk must match the base");
+        assert!(
+            (gtk.color.accent[1] - 1.0).abs() > 0.01,
+            "gtk must NOT get the Wine-only green accent"
+        );
+        // And the emitted document carries it, since a resolved override that no
+        // generator reads is an override that does nothing.
+        let reg = crate::wine::generate_wine_reg(&wine, 1.0);
+        assert!(reg.contains(&format!(
+            "\"Hilight\"=\"{}\"",
+            crate::wine::rgba_to_win32(wine.color.accent)
+        )));
+    }
+
+    #[test]
     fn resolve_toolkit_with_no_override_equals_resolve() {
         // With no [override.*], every toolkit resolves identically to the base -
         // so a generator can call resolve_toolkit unconditionally.
         let base = ArlenTheme::resolve(SAMPLE_BUNDLED, None, None).expect("base");
-        for tk in [Toolkit::Gtk, Toolkit::Qt, Toolkit::Terminal] {
+        for tk in [Toolkit::Gtk, Toolkit::Qt, Toolkit::Terminal, Toolkit::Wine] {
             let t = ArlenTheme::resolve_toolkit(SAMPLE_BUNDLED, None, None, tk).expect("toolkit");
             assert_eq!(base.color.accent, t.color.accent);
             assert!((base.radius.intensity - t.radius.intensity).abs() < 0.001);

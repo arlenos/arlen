@@ -46,6 +46,7 @@ pub struct ToolkitOverrides {
     pub gtk:      Option<Box<ArlenThemeFile>>,
     pub qt:       Option<Box<ArlenThemeFile>>,
     pub terminal: Option<Box<ArlenThemeFile>>,
+    pub wine:     Option<Box<ArlenThemeFile>>,
 }
 
 /// A rendering toolkit a per-toolkit override can target.
@@ -57,6 +58,14 @@ pub enum Toolkit {
     Qt,
     /// Terminal emulators (Alacritty / kitty / foot colours).
     Terminal,
+    /// Windows programs in a Wine bottle (the Win32 system palette).
+    ///
+    /// It earns an override for a reason the other three do not have: this is
+    /// the one toolkit where the theme lands on an interface Arlen did not
+    /// draw, so a palette that reads well in Arlen can read badly inside a
+    /// Windows dialog, and the fix has to be sayable without moving the shared
+    /// theme. `appearance-surface.md` §5b already offers the row.
+    Wine,
 }
 
 impl ToolkitOverrides {
@@ -66,6 +75,7 @@ impl ToolkitOverrides {
             Toolkit::Gtk => self.gtk,
             Toolkit::Qt => self.qt,
             Toolkit::Terminal => self.terminal,
+            Toolkit::Wine => self.wine,
         }
     }
 }
