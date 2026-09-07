@@ -28,6 +28,9 @@
     winApps,
     winActionFailed,
     launchFailed,
+    applyBottleTheme,
+    bottleTheme,
+    themeFailed,
     launchFailureKey,
     forgetFailed,
     forgetFailureKey,
@@ -232,6 +235,13 @@
         text={$t(launchFailureKey($launchFailed.reason), { name: $launchFailed.name })}
       />
     {/if}
+    {#if $themeFailed}
+      <Notice
+        tone="caution"
+        class="span-full"
+        text={$t("s.wa.themeFailed", { name: $themeFailed.name, reason: $themeFailed.reason })}
+      />
+    {/if}
     {#if $programFailed}
       <Notice tone="error" class="span-full" text={$t(programFailureKey($programFailed))} />
     {/if}
@@ -298,6 +308,32 @@
       {#if health && health.unexpected > 0}
         <Notice tone="caution" class="span-full" text={$t("s.wa.healthUnexpected", { count: health.unexpected })} />
       {/if}
+
+      <!-- HOW FAR THE THEME GOT, PER BOTTLE. The Toolkits page promises Wine
+           best-effort, and best-effort is only honest if somebody can check it.
+           A Wine app draws its own interior, so what is reachable is the Win32
+           palette and the interface font, and those are two facts rather than
+           one: a bottle can take the colours and still have no font to draw
+           with. Absent means nobody asked, which is not the same as "it did not
+           work" - so the sentence says so instead of showing a state. -->
+      <Section label={$t("s.wa.theme")} class="span-full">
+        <Row
+          id="win-theme"
+          label={$bottleTheme[bottle.id]
+            ? $bottleTheme[bottle.id].imported && $bottleTheme[bottle.id].fontRegistered
+              ? $t("s.wa.themeBoth")
+              : $bottleTheme[bottle.id].imported
+                ? $t("s.wa.themeColoursOnly")
+                : $t("s.wa.themeNeither")
+            : $t("s.wa.themeUnknown")}
+        >
+          {#snippet control()}
+            <Button variant="outline" size="sm" onclick={() => bottle && applyBottleTheme(bottle.id)}>
+              {$t("s.wa.themeApply")}
+            </Button>
+          {/snippet}
+        </Row>
+      </Section>
 
       <!-- THE QUESTION AN INSTALL LEAVES BEHIND. A Windows installer does not say
            what it installed, so between running one and starting the app there is

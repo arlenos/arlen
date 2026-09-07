@@ -789,6 +789,13 @@ export const b: Catalogs = {
     "s.wa.confirmLabel": "Delete",
     "s.wa.launchApp": "Launch",
     "s.wa.launchFailed": "\"{$name}\" was not launched: the Windows service did not take the request.",
+    "s.wa.theme": "Appearance",
+    "s.wa.themeApply": "Apply the theme",
+    "s.wa.themeUnknown": "Nobody has checked this bottle.",
+    "s.wa.themeBoth": "The colours and the interface font reached it.",
+    "s.wa.themeColoursOnly": "The colours reached it; the font is not in this bottle.",
+    "s.wa.themeNeither": "Neither the colours nor the font reached it.",
+    "s.wa.themeFailed": "The theme did not reach \"{$name}\": {$reason}",
     "s.wa.forgetFailed":
       "\"{$name}\" was not removed, so it and its files are still on this machine.",
     "s.wa.forgetNotAllowed":
@@ -1819,6 +1826,13 @@ export const b: Catalogs = {
     "s.wa.confirmLabel": "L\u00f6schen",
     "s.wa.launchApp": "Starten",
     "s.wa.launchFailed": "\u201e{$name}\u201c wurde nicht gestartet: Der Windows-Dienst hat die Anfrage nicht angenommen.",
+    "s.wa.theme": "Erscheinungsbild",
+    "s.wa.themeApply": "Theme anwenden",
+    "s.wa.themeUnknown": "Diese Flasche hat noch niemand geprüft.",
+    "s.wa.themeBoth": "Farben und Oberflächenschrift sind angekommen.",
+    "s.wa.themeColoursOnly": "Die Farben sind angekommen; die Schrift fehlt in dieser Flasche.",
+    "s.wa.themeNeither": "Weder die Farben noch die Schrift sind angekommen.",
+    "s.wa.themeFailed": "Das Theme hat \u201e{$name}\u201c nicht erreicht: {$reason}",
     "s.wa.forgetFailed":
       "\u201e{$name}\u201c wurde nicht entfernt, es liegt mit seinen Dateien weiter auf dieser Maschine.",
     "s.wa.forgetNotAllowed":
