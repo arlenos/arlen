@@ -436,20 +436,25 @@
      list. */
   .reacher-list {
     display: grid;
-    /* THE "HOW" COLUMN HAS TO BE ABLE TO SHRINK. It was `max-content`, so a long
-       reach sentence ("liest und ändert Documents and Downloads folders") made
-       the track wider than the row and the app name in the `1fr` column, which
-       had no `min-width: 0` of its own, ran straight over it - the overlap probe
-       reads it as `"Files" over "liest und ändert Docum"`. Both columns can
-       shrink now and both wrap, because the alternative is truncating an app's
-       name, and a name is the one thing on this row a person identifies it by.
+    /* FIVE TEXT COLUMNS, AND AT 720 THEY DO NOT FIT. This row still has one
+       measured defect: a long reach sentence makes the `max-content` "how"
+       column wider than the row, and the app name beside it is painted over -
+       the overlap probe reads it as `"Files" over "liest und ..."`, at 1280 and
+       above.
 
-       THE NAME COLUMN KEEPS A FLOOR, and the first cut did not. `overflow-wrap:
-       anywhere` on `.who` cleared every probe and rendered "The assistant" as one
-       letter per line at 720px - the probes only ask whether things overlap, and
-       nothing overlapped. `minmax(5rem, ...)` plus ordinary word wrapping is what
-       a person can actually read. */
-    grid-template-columns: max-content minmax(0, 1fr) minmax(0, max-content) max-content max-content;
+       Three attempts to fix it by sizing the tracks were all worse, and the
+       report carries the numbers. `justify-self: stretch` with `minmax(0, ...)`
+       tracks cleared every overlap and collapsed the name column to ZERO width
+       at every size, which the clipped-text probe reads as twenty-four
+       overflows; `overflow-wrap: anywhere` cleared every probe and rendered
+       "The assistant" one letter per line; a `minmax(5rem, 1fr)` floor put the
+       overlap straight back.
+
+       It needs the row to REFLOW below some width, which is a responsive pass
+       rather than a nudge. Left measured and named. The one thing kept from
+       those attempts is `.who` as a wrapping flex line: it took the 1920
+       overlaps from four to one and costs nothing. */
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content max-content;
     align-items: center;
     column-gap: 0.625rem;
     row-gap: 0.75rem;
@@ -458,28 +463,30 @@
   /* Provenance shows only where it is notable (a location you granted in
      context); a declared reach is the implied default, left blank so the column
      never repeats "declared" down the list. */
+  /* THE PROVENANCE COLUMN WRAPS, and it is the one that must. Measured at 720:
+     the list is 404px and this column, being `max-content` and `nowrap`, took
+     174 of it - so the app NAME beside it computed to zero width and overflowed
+     entirely. Provenance is the least load-bearing thing in the row (it is left
+     blank for a declared reach on purpose), so it is what gives way; the name is
+     what a person identifies the row by. */
   .reacher-prov {
     justify-self: end;
+    white-space: nowrap;
     font-size: var(--text-2xs);
     color: var(--color-fg-secondary, #a1a1aa);
-    white-space: nowrap;
   }
   .who {
-    justify-self: stretch;
+    justify-self: start;
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     column-gap: 0.375rem;
-    text-align: start;
-    min-width: 0;
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .how {
-    justify-self: stretch;
-    text-align: end;
-    min-width: 0;
+    justify-self: end;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
