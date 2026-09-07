@@ -13,24 +13,29 @@
 //! module directory and drives the manager the way the shell does.
 //!
 //! **It fails today, and that is the finding rather than a broken test.**
-//! Discovery and tier classification pass; instantiation does not:
+//! Discovery, tier classification and enable all pass. Hosting does not, and
+//! BOTH ways of building a Rust guest fail, differently:
 //!
-//! ```text
-//! instantiate: component imports instance `wasi:io/poll@0.2.6`,
-//! but a matching implementation was not found in the linker
-//! ```
+//! * `wasm32-wasip2` - the target rustup gives you - links the standard
+//!   library, and the standard library imports WASI. Thirteen interfaces in
+//!   that build, all `wasi:cli/*` and `wasi:io/*` (stdio, exit, environment),
+//!   none of them filesystem or sockets. `modulesd`'s linker provides the four
+//!   `arlen:host/*` interfaces and nothing else, so instantiation is refused:
+//!   "component imports instance `wasi:io/poll@0.2.6`, but a matching
+//!   implementation was not found in the linker".
 //!
-//! A Rust guest built for `wasm32-wasip2` links the standard library, and the
-//! standard library imports WASI - thirteen interfaces in this component, all
-//! of them `wasi:cli/*` and `wasi:io/*` (stdio, exit, environment), none of
-//! them filesystem or sockets. `modulesd`'s linker provides the four
-//! `arlen:host/*` interfaces and nothing else, so the component is refused
-//! before `init()` runs. Leave the test here and failing: it is the shortest
-//! statement of why no Rust module has ever been hosted.
+//! * `wasm32-unknown-unknown` plus `wasm-tools component new` - what
+//!   `just module-unicode` builds - imports nothing at all and instantiates
+//!   cleanly. Then `init()` traps, at an unnamed wasm function, which is what
+//!   Rust's std does on a target where most of it aborts.
+//!
+//! So there is no way to write this module in Rust today that the daemon can
+//! run. Leave the test here and failing: it is the shortest statement of why
+//! the runtime has never hosted a guest.
 //!
 //! `#[ignore]`d because it needs the component built first:
 //!
-//!   cargo build --release --target wasm32-wasip2 --manifest-path modules/unicode/Cargo.toml
+//!   just module-unicode
 //!   cargo test -p arlen-modulesd --test unicode_module -- --ignored
 
 use std::path::{Path, PathBuf};
@@ -52,7 +57,7 @@ fn repo_root() -> PathBuf {
 fn stage(into: &Path) {
     let root = repo_root();
     let manifest = root.join("modules/unicode/manifest.toml");
-    let wasm = root.join("target/wasm32-wasip2/release/arlen_module_unicode.wasm");
+    let wasm = root.join("modules/unicode/module.wasm");
     assert!(
         wasm.is_file(),
         "the component is not built. See this file's header for the command.",
@@ -60,9 +65,6 @@ fn stage(into: &Path) {
     let dir = into.join(MODULE_ID);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::copy(&manifest, dir.join("manifest.toml")).unwrap();
-    // Renamed on the way in, because `entry` names `module.wasm` and cargo
-    // names the artifact after the crate. An install does this too; saying so
-    // here is the difference between a test and a coincidence.
     std::fs::copy(&wasm, dir.join("module.wasm")).unwrap();
 }
 
