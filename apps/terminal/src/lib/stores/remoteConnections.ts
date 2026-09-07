@@ -20,6 +20,15 @@ export interface SavedHost {
   port: number;
   /// The KG project this host belongs to (grouping), or null.
   project: string | null;
+  /// When it was last connected to.
+  ///
+  /// **A STRING ONLY WHILE IT IS A FIXTURE, and whoever builds the backend
+  /// should not keep it one.** The sample values here are English ("2 hours
+  /// ago", "yesterday"), which is what the palette renders on a German page
+  /// today - harmless in a fixture, and a real defect the moment a daemon
+  /// supplies them, because a pre-formatted date crossing the boundary means the
+  /// backend chose the reader's language. Epoch micros with the surface doing
+  /// the formatting is the shape the rest of this tree uses.
   lastUsed: string | null;
 }
 

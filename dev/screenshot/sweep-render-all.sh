@@ -81,7 +81,7 @@ SURFACES=(
   # parameter only a running backend can supply.
   "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/_topbartest|/about|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/apps|/display|/extensions|/language|/mouse|/notifications|/topbar|/touchpad|/apps/dev.arlen.notes@@settings-uninstall-refused|/apps/dev.arlen.notes@@settings-uninstall-unavailable|/apps/dev.arlen.notes@@settings-uninstall-failed|/apps/dev.arlen.notes@@settings-uninstall-unknown|/privacy@@settings-revoke-refused|/privacy::.seg-pill:nth-of-type(2)|/apps/com.example.editor|/windows-apps/b1|/workspaces::.footer button|/display@@settings-display-revert|/keyboard/shortcuts@@settings-key-capture"
   "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick"
-  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect"
   "text-editor /|/::.trigger"
   "viewers /|/?demo=image|/?demo=video"
 )
