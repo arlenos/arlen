@@ -29,7 +29,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::bottle::Bottle;
-use crate::launch::{launch_argv, LaunchError};
+use crate::launch::{confined_argv, LaunchError, WINE};
 
 /// The document's name inside the bottle's own `C:` drive.
 ///
@@ -163,15 +163,45 @@ pub fn theme_argv(
     runtime_dir: &Path,
     exists: impl Fn(&Path) -> bool,
 ) -> Result<Vec<String>, LaunchError> {
-    launch_argv(
+    confined_argv(
         bottle,
         usr,
         runtime_dir,
         None,
-        &["regedit".to_string(), "/S".to_string(), reg_windows_path()],
+        SHELL,
+        &["-c".to_string(), import_script()],
         exists,
     )
 }
+
+/// The shell that holds the sandbox open. `/usr/bin` rather than `/bin`, because
+/// `/usr` is always bound and `/bin` only when the host has it as a real
+/// directory.
+const SHELL: &str = "/usr/bin/sh";
+
+/// `regedit`, and then a wait for the registry to be written.
+///
+/// **Two commands, and the second is the one that makes this work at all.** A
+/// registry change lives in the running wineserver and is written to `user.reg`
+/// when that server exits. `regedit /S` returns as soon as it has handed the
+/// change over, and the sandbox tears down the moment the program it was given
+/// exits - so with `regedit` alone the import ran, exited 0, and the palette
+/// was gone. Measured, by running it: the value was in neither `user.reg` nor
+/// anywhere else, and the daemon reported `imported: true` about it.
+///
+/// `wineserver -w` waits for that server to finish. Nothing here parses or
+/// interpolates anything: both commands are fixed strings and the only variable,
+/// the document's path, is a constant of this module.
+fn import_script() -> String {
+    format!(
+        "{WINE} regedit /S '{}'; {} -w",
+        reg_windows_path(),
+        WINESERVER
+    )
+}
+
+/// The one that flushes the registry.
+const WINESERVER: &str = "/usr/bin/wineserver";
 
 #[cfg(test)]
 mod tests {
@@ -241,13 +271,75 @@ mod tests {
         let b = bottle(dir.path());
         let argv = theme_argv(&b, Path::new("/usr"), Path::new("/run/user/1000"), |_| true)
             .expect("argv");
-        // Same shape as any launch: bwrap flags, then `--`, then wine.
+        // Same confinement as any launch: bwrap flags, then `--`, then what runs.
         let sep = argv.iter().position(|a| a == "--").expect("a separator");
-        assert_eq!(
-            &argv[sep + 1..],
-            ["/usr/bin/wine", "regedit", "/S", &reg_windows_path()]
+        assert_eq!(argv[sep + 1], SHELL, "the shell holds the sandbox open");
+        assert_eq!(argv[sep + 2], "-c");
+        let script = &argv[sep + 3];
+        assert!(script.contains(&format!("regedit /S '{}'", reg_windows_path())));
+        assert!(
+            script.contains("wineserver -w"),
+            "without the wait the change is lost when the sandbox tears down: {script}"
         );
         assert!(argv[..sep].iter().any(|a| a == "--ro-bind" || a == "--bind"), "it is confined");
+    }
+
+    /// The whole path, run for real: a booted prefix, the argv this module
+    /// builds, `bwrap` and `regedit`, and then the registry read back.
+    ///
+    /// `#[ignore]`d because it needs Wine, `bwrap` and a kernel that will give an
+    /// unprivileged user namespace. Everything else in this file proves what the
+    /// argv SAYS; only this proves a confined `regedit` can reach a document
+    /// inside the prefix and change the registry - which is the one claim the
+    /// unit tests structurally cannot make, since the sandbox is the thing under
+    /// test.
+    ///
+    ///   cargo test -p arlen-wine-core -- --ignored theme_metal
+    #[test]
+    #[ignore]
+    fn theme_metal_reaches_the_registry_through_the_confinement() {
+        use std::process::Command;
+        let dir = tempfile::tempdir().expect("temp");
+        let prefix = dir.path().join("pfx");
+        std::fs::create_dir_all(&prefix).expect("prefix dir");
+
+        // Booted directly rather than through `boot_argv`: what is under test is
+        // the import, and a boot failure here would look like an import failure.
+        let boot = Command::new("wineboot")
+            .arg("--init")
+            .env("WINEPREFIX", &prefix)
+            .env("WINEDEBUG", "-all")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .status()
+            .expect("wineboot runs");
+        assert!(boot.success(), "the prefix did not boot");
+
+        let document = concat!(
+            "REGEDIT4\r\n\r\n",
+            "[HKEY_CURRENT_USER\\Control Panel\\Colors]\r\n",
+            "\"Hilight\"=\"7 8 9\"\r\n"
+        );
+        write_document(&prefix, document).expect("the document goes in");
+
+        let b = bottle(&prefix);
+        let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run".into());
+        let argv = theme_argv(&b, Path::new("/usr"), Path::new(&runtime), |p| p.exists())
+            .expect("the argv assembles on this machine");
+        let ran = Command::new("bwrap").args(&argv).status().expect("bwrap runs");
+        assert!(ran.success(), "the confined import failed: {ran}");
+
+        // NO `wineserver -k` here, and that is not tidiness. The script inside
+        // the sandbox already waited for the server to write the change out; a
+        // kill afterwards starts another server, which loads the registry and
+        // writes it back on the way out, and the import is gone. The first cut
+        // of this test did exactly that and reported the mechanism broken when
+        // the mechanism was fine.
+        let back = std::fs::read_to_string(prefix.join("user.reg")).expect("read user.reg");
+        assert!(
+            back.contains("\"Hilight\"=\"7 8 9\""),
+            "the palette did not reach the registry through the sandbox"
+        );
     }
 
     #[test]

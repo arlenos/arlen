@@ -114,6 +114,29 @@ pub fn launch_argv(
     program: &[String],
     exists: impl Fn(&Path) -> bool,
 ) -> Result<Vec<String>, LaunchError> {
+    confined_argv(bottle, usr, runtime_dir, display, WINE, program, exists)
+}
+
+/// The same confinement around any executable inside it.
+///
+/// Split out because one step needs a command SEQUENCE rather than a program: a
+/// registry import has to outlive `regedit` until wineserver writes the change
+/// out, and killing the sandbox the moment `regedit` exits loses it silently -
+/// measured, not guessed. Everything about the sandbox is identical; only what
+/// is exec'd inside it differs, so the two cannot drift apart.
+///
+/// The Wine check stays here rather than moving to the caller: nothing in a
+/// bottle runs without Wine, whatever the executable is, since the executable is
+/// only ever a way of starting one.
+pub fn confined_argv(
+    bottle: &Bottle,
+    usr: &Path,
+    runtime_dir: &Path,
+    display: Option<&str>,
+    exec: &str,
+    program: &[String],
+    exists: impl Fn(&Path) -> bool,
+) -> Result<Vec<String>, LaunchError> {
     if program.is_empty() {
         return Err(LaunchError::NoProgram);
     }
@@ -143,7 +166,7 @@ pub fn launch_argv(
         }
     }
     argv.push("--".into());
-    argv.push(WINE.to_string());
+    argv.push(exec.to_string());
     argv.extend(program.iter().cloned());
     Ok(argv)
 }
