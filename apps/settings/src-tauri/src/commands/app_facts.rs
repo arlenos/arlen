@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Tim Kicker
 //
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 //! The facts about an installed app that the per-app page states above its
 //! settings: who published it, what it opens, what it is storing.

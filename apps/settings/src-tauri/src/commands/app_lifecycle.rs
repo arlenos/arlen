@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Tim Kicker
 //
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 //! Removing an app from its settings page.
 //!

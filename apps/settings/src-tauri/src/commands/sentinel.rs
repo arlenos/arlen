@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Tim Kicker
 //
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 
 //! The privacy sentinel's state and switches, read from the daemon that measures
 //! them (`privacy-sentinel-plan.md`).
