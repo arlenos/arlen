@@ -847,6 +847,15 @@ export const removed = writable<RemovedItem[]>([]);
 
 /// A transient message when a revoke/restore did not go through on the daemon
 /// (the page shows it, then it clears). Null when nothing to say.
+/// The snackbar's message as a catalogue KEY, never a sentence.
+///
+/// It held finished English prose until 8 September, set here and rendered
+/// verbatim on the privacy page - so a German reader pressing Remove against a
+/// daemon that refused got "Could not remove that reach. Nothing changed." in
+/// the middle of a German page. The i18n lint could not see it: it reads a prose
+/// literal ASSIGNED to an `*error`/`*message` name, and this was an argument to a
+/// store's `set`. A key crossing the boundary also survives a locale change,
+/// which a rendered sentence does not.
 export const actionNotice = writable<string | null>(null);
 
 let removedSeq = 0;
@@ -900,7 +909,7 @@ export async function revokeScope(
 
   if (!(await applyReaches("revoke_reach", action.appId, action.reaches, ["OK: revoked", "OK: no-change"]))) {
     reinstateLocal(removedItem);
-    actionNotice.set("Could not remove that reach. Nothing changed.");
+    actionNotice.set("s.priv.removeFailed");
     return null;
   }
   return removedItem;
@@ -948,7 +957,7 @@ function reinstateLocal(item: RemovedItem): void {
 export async function restore(item: RemovedItem): Promise<void> {
   reinstateLocal(item);
   if (!(await applyReaches("restore_reach", item.appId, item.reaches, ["OK: restored", "OK: no-change"]))) {
-    actionNotice.set("Could not restore that reach here.");
+    actionNotice.set("s.priv.restoreFailed");
   }
 }
 

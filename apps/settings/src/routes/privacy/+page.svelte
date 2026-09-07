@@ -344,7 +344,7 @@
 
 {#if $actionNotice}
   <div class="snackbar" role="status">
-    <span class="snack-text">{$actionNotice}</span>
+    <span class="snack-text">{$t($actionNotice)}</span>
     <button type="button" class="snack-undo" onclick={() => actionNotice.set(null)}>{$t("s.priv.dismiss")}</button>
   </div>
 {/if}
