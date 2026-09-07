@@ -36,6 +36,10 @@
 //! the bottles, import into both registries, register the font face, report per
 //! bottle what would not take - lands with the caller that can ask.
 //!
+//! **The palette mapping in [`colors`] is provisional**, and deliberately kept
+//! to one table so it can be replaced without touching anything else here. See
+//! that function's note for whose call it is.
+//!
 //! Like the GTK and Qt spokes this consumes the **resolved** theme. Colours
 //! and numbers are safe by construction; the one free string that reaches a
 //! file is the UI font name, and `.reg` has a quoting rule of its own, so it
@@ -65,6 +69,16 @@ pub fn reg_escape(value: &str) -> String {
 
 /// The 31 `Control Panel\Colors` slots, in `COLOR_*` index order, mapped from
 /// the resolved semantic tokens.
+///
+/// **THE MAPPING IS PROVISIONAL AND IS NOT THIS LANE'S TO SETTLE.** Which Arlen
+/// colour becomes which Win32 system colour is a look, the same kind of choice
+/// as the 21 `QPalette` roles and the four bevel factors next door in `qt.rs`,
+/// and a look chosen while building the mechanism gets redone by the lane that
+/// owns the design. This one is defensible enough to run and to photograph, and
+/// it is meant to be replaced: every decision below is a table entry, so
+/// changing the whole palette is editing this function and nothing else. The
+/// mechanism around it - reading the resolved theme, the document shape, the
+/// escape, the metrics, the per-bottle apply - does not move when it changes.
 ///
 /// The shape is the flat-classic one, which is the whole reason this path is a
 /// good fit: unthemed Win32 rendering with an Arlen palette already looks like
@@ -114,6 +128,10 @@ fn colors(t: &ArlenTheme) -> Vec<(&'static str, Rgba)> {
     ]
 }
 
+/// The two registry views a 64-bit prefix serves under `Software`: the native
+/// one and the WOW64 copy a 32-bit program is redirected to.
+const SOFTWARE_VIEWS: [&str; 2] = ["Software", "Software\\Wow6432Node"];
+
 /// `LogPixels` for a display scale: Windows counts DPI from 96 at 1x.
 fn log_pixels(scale: f32) -> u32 {
     (96.0 * scale.clamp(0.5, 4.0)).round() as u32
@@ -138,20 +156,31 @@ pub fn generate_wine_reg(t: &ArlenTheme, scale: f32) -> String {
     // Palette path on, `.msstyles` off. The flat-classic look IS the Arlen fit,
     // so this is the setting that makes the block above load-bearing rather
     // than a palette some theme engine overrides.
-    out.push_str(
-        "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\ThemeManager]\r\n",
-    );
-    out.push_str("\"ThemeActive\"=\"0\"\r\n\r\n");
+    //
+    // Everything under `Software` is written TWICE, plain and under
+    // `Wow6432Node`. A 64-bit prefix runs 32-bit programs through the WOW64
+    // registry view, and a 32-bit app reading `Software\Microsoft\...` is
+    // served the redirected copy - so a document that writes one view themes
+    // half the bottle and looks like it worked. `Control Panel\Colors` is not
+    // under `Software` and is not redirected, which is why the palette above is
+    // written once.
+    for view in SOFTWARE_VIEWS {
+        out.push_str(&format!(
+            "[HKEY_CURRENT_USER\\{view}\\Microsoft\\Windows\\CurrentVersion\\ThemeManager]\r\n"
+        ));
+        out.push_str("\"ThemeActive\"=\"0\"\r\n\r\n");
 
-    // The one OS signal Electron, Chromium and default-vista Qt honour. It does
-    // not recolour them; it stops them rendering a light interior inside a dark
-    // desktop, which is the difference between wrong and jarring.
-    out.push_str(
-        "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize]\r\n",
-    );
-    let mode = u32::from(light);
-    out.push_str(&format!("\"AppsUseLightTheme\"=dword:{mode:08x}\r\n"));
-    out.push_str(&format!("\"SystemUsesLightTheme\"=dword:{mode:08x}\r\n\r\n"));
+        // The one OS signal Electron, Chromium and default-vista Qt honour. It
+        // does not recolour them; it stops them rendering a light interior
+        // inside a dark desktop, which is the difference between wrong and
+        // jarring.
+        out.push_str(&format!(
+            "[HKEY_CURRENT_USER\\{view}\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize]\r\n"
+        ));
+        let mode = u32::from(light);
+        out.push_str(&format!("\"AppsUseLightTheme\"=dword:{mode:08x}\r\n"));
+        out.push_str(&format!("\"SystemUsesLightTheme\"=dword:{mode:08x}\r\n\r\n"));
+    }
 
     // DPI and antialiasing. FontSmoothing 2 is "on"; type 2 is subpixel, and
     // orientation 1 is RGB, which is what a normal desktop panel is.
@@ -169,11 +198,14 @@ pub fn generate_wine_reg(t: &ArlenTheme, scale: f32) -> String {
     // Wine on its fallback, which looks like nothing happened rather than like
     // a failure - so the caller reports it, not this file.
     let font = reg_escape(first_family(&t.typography.font_sans));
-    out.push_str(
-        "[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes]\r\n",
-    );
-    for legacy in ["MS Shell Dlg", "MS Shell Dlg 2", "Segoe UI", "Tahoma", "MS Sans Serif"] {
-        out.push_str(&format!("\"{legacy}\"=\"{font}\"\r\n"));
+    for view in SOFTWARE_VIEWS {
+        out.push_str(&format!(
+            "[HKEY_LOCAL_MACHINE\\{view}\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes]\r\n"
+        ));
+        for legacy in ["MS Shell Dlg", "MS Shell Dlg 2", "Segoe UI", "Tahoma", "MS Sans Serif"] {
+            out.push_str(&format!("\"{legacy}\"=\"{font}\"\r\n"));
+        }
+        out.push_str("\r\n");
     }
 
     out
@@ -253,6 +285,28 @@ mod tests {
         assert!(generate_wine_reg(&t, 1.0).contains("\"AppsUseLightTheme\"=dword:00000000"));
         t.meta.variant = ThemeVariant::Light;
         assert!(generate_wine_reg(&t, 1.0).contains("\"AppsUseLightTheme\"=dword:00000001"));
+    }
+
+    #[test]
+    fn everything_under_software_is_written_to_both_registry_views() {
+        // A 32-bit program in a 64-bit prefix reads the redirected copy, so a
+        // document that writes one view themes half the bottle and looks like it
+        // worked.
+        let reg = generate_wine_reg(&theme(), 1.0);
+        for key in [
+            "Software\\Microsoft\\Windows\\CurrentVersion\\ThemeManager",
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        ] {
+            assert!(reg.contains(&format!("[HKEY_CURRENT_USER\\{key}]")), "native view of {key}");
+            let wow = key.replacen("Software", "Software\\Wow6432Node", 1);
+            assert!(reg.contains(&format!("[HKEY_CURRENT_USER\\{wow}]")), "wow64 view of {key}");
+        }
+        let fonts = "Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes";
+        assert!(reg.contains(&format!("[HKEY_LOCAL_MACHINE\\Software\\{fonts}]")));
+        assert!(reg.contains(&format!("[HKEY_LOCAL_MACHINE\\Software\\Wow6432Node\\{fonts}]")));
+        // The palette is NOT under Software and must not be duplicated: a second
+        // copy would be a key Wine never reads, sitting in the file looking load-bearing.
+        assert_eq!(reg.matches("[HKEY_CURRENT_USER\\Control Panel\\Colors]").count(), 1);
     }
 
     #[test]
