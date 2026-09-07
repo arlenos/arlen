@@ -111,12 +111,20 @@ mod tests {
 
     #[test]
     fn a_refusal_is_not_an_absence_either() {
-        // The third state, and the one that only appears once the daemon exists:
-        // with nobody owning the name every error is ServiceUnknown, so today this
-        // arm is reached only here. It is in the contract because the contract is
-        // what the sidebar will read when accountsd does arrive - telling a person
+        // The third state, and it stopped being hypothetical: `daemons/online-accounts`
+        // owns `org.arlen.Accounts1` and ships `arlen-accountsd.service` plus its
+        // D-Bus activation file, so a real refusal - the per-app capability gate
+        // declining - is now reachable on a machine where it runs rather than only
+        // here. The comment said "once the daemon exists" for as long as it took
+        // that to happen.
+        //
+        // What is still missing is the CONSUMER: `network_places` is registered
+        // and nothing in the frontend calls it, so the sidebar shows no network
+        // places at all. That is honest - it claims nothing - but it means this
+        // arm's value is still the contract rather than a screen. Telling a person
         // "not available on this system" about accounts they can see in Settings
-        // sends them to install something that is already installed.
+        // would send them to install something already installed, which is why the
+        // distinction is kept whether or not anything renders it yet.
         let denied = classify(Err(zbus::Error::MethodError(
             "org.freedesktop.DBus.Error.AccessDenied"
                 .try_into()
