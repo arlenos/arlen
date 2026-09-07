@@ -84,7 +84,7 @@ SURFACES=(
   # turns off. The `[id]` routes need a parameter that only a running backend
   # can supply, so they are not reachable from a route walk at all.
   "settings /|/about|/accessibility|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/quicksettings|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/appearance/wallpaper|/apps|/display|/extensions|/focus|/keyboard|/knowledge|/language|/mouse|/notifications|/printers|/privacy|/privacy/physical|/system-actions|/topbar|/touchpad|/windows-apps|/workspaces|/keyboard/shortcuts|/_topbartest|/apps/dev.arlen.notes@@settings-uninstall-refused|/apps/dev.arlen.notes@@settings-uninstall-unavailable|/apps/dev.arlen.notes@@settings-uninstall-failed|/apps/dev.arlen.notes@@settings-uninstall-unknown|/privacy@@settings-revoke-refused|/privacy::.seg-pill:nth-of-type(2)|/apps/com.example.editor|/windows-apps/b1|/workspaces::.footer button|/display@@settings-display-revert|/keyboard/shortcuts@@settings-key-capture"
-  "meetings /|/capture|/meeting/abc"
+  "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes"
   "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
   "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick"
