@@ -41,8 +41,17 @@ pub const IMAGE_MIMES: &[&str] = &[
     "image/x-tga",
 ];
 
-/// The audio MIME types the viewer handles (the simple player). Registered
-/// alongside the images once the audio decode worker lands.
+/// The audio MIME types the viewer handles (the simple player).
+///
+/// Registered alongside the images, present tense: `host/src/mimeapps.rs` chains
+/// this list onto [`IMAGE_MIMES`], the desktop entry claims all of them, and
+/// `arlen-decode-audio` is the sandboxed worker that probes them.
+/// `check-mime-claims-decodable` holds the two together, so a claim here without
+/// a decoder is a red build rather than a file that opens to nothing.
+///
+/// It said "once the audio decode worker lands" until 8 September, by which time
+/// the worker, the registration and the gate over both had all landed. A note
+/// about a missing neighbour outlives its subject unless somebody re-reads it.
 pub const AUDIO_MIMES: &[&str] =
     &["audio/flac", "audio/mpeg", "audio/wav", "audio/ogg", "audio/aiff", "audio/mp4", "audio/aac"];
 
