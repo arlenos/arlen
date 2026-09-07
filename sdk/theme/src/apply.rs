@@ -221,6 +221,12 @@ fn write_toolkit_configs(
         &crate::terminal::generate_alacritty_toml(term_theme),
         &mut report,
     );
+    write_guarded(
+        &config.join("alacritty/alacritty.toml"),
+        &crate::terminal::generate_alacritty_import("arlen-colors.toml"),
+        INI_MARKER,
+        &mut report,
+    );
     write_owned(
         &config.join("kitty/arlen-colors.conf"),
         &crate::terminal::generate_kitty_conf(term_theme),
@@ -240,6 +246,15 @@ fn write_toolkit_configs(
     write_owned(
         &config.join("foot/arlen-colors.ini"),
         &crate::terminal::generate_foot_ini(term_theme),
+        &mut report,
+    );
+    // foot's include must be absolute, so the resolved path goes in rather than
+    // a bare name.
+    let foot_colours = config.join("foot/arlen-colors.ini");
+    write_guarded(
+        &config.join("foot/foot.ini"),
+        &crate::terminal::generate_foot_include(&foot_colours.to_string_lossy()),
+        INI_MARKER,
         &mut report,
     );
     write_owned(
