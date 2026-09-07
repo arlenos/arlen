@@ -95,6 +95,18 @@
 </div>
 
 <style>
+  /* NO RING ON THE OVERLAY ITSELF. `onWorkspaceOverlayOpenEvent` focuses this
+     element so Super+Tab's subsequent keys land here, and WebKit rings whatever
+     is focused - on a container that is a 4.8px outline round the whole switcher,
+     which reads as an error state on a surface that is only ever a chooser. It
+     matches `:focus-visible` too, so scoping to that does not help. Measured on
+     8 September, the first time this overlay was rendered; the three Settings
+     dialogs had the same thing for the same reason. The ring belongs on the
+     cards, which carry their own selected styling. */
+  .overlay:focus {
+    outline: none;
+  }
+
   .overlay {
     position: absolute;
     top: 100%;
