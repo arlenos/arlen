@@ -238,10 +238,18 @@ export const winActionFailed = writable(false);
 /// hardcoded initial value, so every session - including a real one on a machine
 /// with no Wine at all - stated which runtimes were on the disk. A runtime list
 /// is an OBSERVATION, and there is no honest default for one of those, so this
-/// opens empty and `runtimesKnown` says whether anybody has looked. Under vite
-/// the fixture stands in for the look.
+/// opens empty and `runtimesKnown` says whether anybody has looked.
+///
+/// It used to make an exception under vite - three named runtimes, "so the
+/// fixture stands in for the look" - and that exception put the word "Installed"
+/// beside Wine, Proton and DXVK on every design render of this page, including
+/// one taken today. A fixture standing in for a measurement is the same defect
+/// one layer out, and it cost more than it gave: the two states this section
+/// actually reaches on a real machine, none and not-known, were never once
+/// rendered, because the only path that renders without a backend was showing a
+/// state that cannot occur.
 export const defaults = writable<WinDefaults>({
-  runtimes: !tauriAvailable ? [{ name: "Wine 9.0" }, { name: "Proton 9.0" }, { name: "DXVK 2.4" }] : [],
+  runtimes: [],
 });
 
 /// Load the bottles. Live: `list_bottles`; fixture under vite.
@@ -708,8 +716,9 @@ export async function loadRuntimes(): Promise<void> {
     runtimesKnown.set(true);
   } catch {
     // Not measured is not the same as none, so the panel is told nothing rather
-    // than told there is nothing.
-    runtimesKnown.set(!tauriAvailable);
+    // than told there is nothing. That holds under vite too, where the command
+    // cannot be reached at all: nobody looked, and the section says exactly that.
+    runtimesKnown.set(false);
   }
 }
 

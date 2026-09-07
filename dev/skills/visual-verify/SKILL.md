@@ -102,6 +102,11 @@ sweep for days.
   a debug binary means screenshotting whatever dev server holds that port.
 - **`shoot-app.sh` refuses a binary older than its source** and says which file changed. That refusal is correct;
   rebuild rather than reaching for `SHOOT_ALLOW_STALE=1`.
+- **`?locale=de` only takes on a DEV server.** The hook is `applyDevLocale()` and it is guarded by
+  `import.meta.env.DEV`, so a `vite preview` of a production build renders English under a URL that says `de` and
+  says nothing about it. `sweep-render-all.sh` starts `npm run dev` for exactly this reason; a hand-rolled render
+  that starts `vite preview` instead is an English shot wearing a German filename. Settings is the app to watch,
+  since it adopts the language its own way.
 - **A served frontend can be older than its source** even when the binary is fresh - a `.svelte` edit with no
   rebuild renders yesterday's markup.
 - **Two runs fight over one port.** `sweep-render-all.sh` derives its base port from its pid in blocks of 40 for
