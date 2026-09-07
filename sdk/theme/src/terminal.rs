@@ -120,9 +120,9 @@ pub fn generate_xresources(theme: &ArlenTheme) -> String {
 /// since it needs `xrdb -merge` at session start rather than an include.
 ///
 /// Proven with kitty's own parser rather than read off its documentation: the
-/// emitted pair resolves to `background = (15,15,15)` and `color1 = (201,106,106)`
-/// - our `bg.app` and our authored ANSI red - and dropping the include line puts
-/// them back to kitty's (0,0,0) and (204,4,3).
+/// emitted pair resolves to `background = (15,15,15)` and `color1 =
+/// (201,106,106)`, our `bg.app` and our authored ANSI red, and dropping the
+/// include line puts them back to kitty's (0,0,0) and (204,4,3).
 pub fn generate_kitty_include(colour_file: &str) -> String {
     format!(
         "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n\
