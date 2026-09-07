@@ -97,6 +97,7 @@ pub fn run() {
             commands::sentinel::sentinel_fix_posture,
             commands::windows_apps::list_bottles,
             commands::windows_apps::bottle_health,
+            commands::windows_apps::theme_bottle,
             commands::windows_apps::launch_windows_app,
             commands::windows_apps::delete_bottle,
             commands::windows_apps::windows_runtimes,

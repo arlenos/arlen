@@ -154,6 +154,50 @@ pub async fn bottle_health(id: String) -> Result<BottleHealth, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// How far the Arlen theme reached inside one bottle.
+///
+/// Two facts, and they are separate because a bottle can take one without the
+/// other: the Win32 palette was written into the prefix's registry, and the
+/// interface font is one the prefix can actually resolve. A bottle that took the
+/// colours but has no font still draws its own; saying "themed" for both would
+/// be the claim `windows-apps-plan.md` spends its honesty discipline avoiding.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BottleTheme {
+    /// The palette reached the prefix registry.
+    pub imported: bool,
+    /// The interface font is registered in the prefix, so the app can draw with it.
+    pub font_registered: bool,
+}
+
+/// Write the current Arlen theme into one bottle and report how far it reached.
+///
+/// The daemon already themes a bottle when it creates one and again when it
+/// launches, so this is the explicit re-apply: after a theme change, or when the
+/// panel wants an answer rather than an assumption. It is also the only way the
+/// surface can say anything true per bottle - before this command the daemon's
+/// answer reached nobody, which is a reach we would otherwise have had to claim
+/// or stay silent about.
+#[tauri::command]
+pub async fn theme_bottle(id: String) -> Result<BottleTheme, String> {
+    tokio::task::spawn_blocking(move || {
+        match ask(&socket_path(), &Request::Theme { id }) {
+            Ok(Response::Themed {
+                imported,
+                font_registered,
+            }) => Ok(BottleTheme {
+                imported,
+                font_registered,
+            }),
+            Ok(Response::Refused { problem }) => Err(format!("{problem:?}")),
+            Ok(other) => Err(format!("the Windows runtime answered {other:?}")),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Start the Windows program a bottle exists to run.
 ///
 /// The daemon owns the process, so it outlives this window - which is the reason

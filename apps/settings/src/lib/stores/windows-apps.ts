@@ -569,6 +569,41 @@ export async function bottleHealth(id: string): Promise<BottleHealth | null> {
   }
 }
 
+/// How far the Arlen theme reached inside one bottle.
+///
+/// Two facts and not one, because a bottle can take the palette and still have no
+/// font to draw with. The Wine row on the Toolkits page promises best-effort;
+/// this is what makes that promise checkable per bottle instead of a word.
+export interface BottleTheme {
+  imported: boolean;
+  fontRegistered: boolean;
+}
+
+/// The last theme apply, per bottle id. Absent means nobody has asked.
+export const bottleTheme = writable<Record<string, BottleTheme>>({});
+
+/// Why a theme apply did not happen, and to which bottle. Cleared on the next try.
+export const themeFailed = writable<{ name: string; reason: string } | null>(null);
+
+/// Write the current theme into one bottle and record how far it reached. Live:
+/// `theme_bottle`. A failure is kept as a sentence rather than swallowed, because
+/// "nothing visibly happened" is what a silent catch looks like from the chair.
+export async function applyBottleTheme(id: string): Promise<void> {
+  themeFailed.set(null);
+  try {
+    const t = await invoke<BottleTheme>("theme_bottle", { id });
+    bottleTheme.update((m) => ({ ...m, [id]: t }));
+  } catch (e) {
+    if (!tauriAvailable) {
+      // Under vite there is no daemon; the fixture says what a themed bottle
+      // looks like rather than leaving the row empty for the wrong reason.
+      bottleTheme.update((m) => ({ ...m, [id]: { imported: true, fontRegistered: false } }));
+      return;
+    }
+    themeFailed.set({ name: nameOf(id), reason: String(e) });
+  }
+}
+
 /// What the last reach change actually did.
 ///
 /// `changed: false` is an ANSWER, not a failure: revoking a folder a bottle no
