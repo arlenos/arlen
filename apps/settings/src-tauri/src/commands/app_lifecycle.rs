@@ -21,7 +21,33 @@
 //! a different job is not this one's outcome.
 
 use futures_util::StreamExt;
+use serde::Serialize;
 use zbus::Connection;
+
+/// Why a removal did not happen, as a TOKEN rather than a sentence.
+///
+/// The daemon writes its refusals in English for a person, which was the right
+/// instinct and the wrong layer: Settings then finished a German sentence with
+/// an English clause, and `check-refusal-language` refuses that for the reason
+/// it gives - one place chooses the language. So the kind travels and the page
+/// writes both halves; `detail` is for the log, never for the screen.
+///
+/// The four kinds are the distinctions that change what a person does next, and
+/// no finer: nothing to ask (`unavailable`), something said no (`refused`), it
+/// tried and failed (`failed`), and the one that is worth its own word because
+/// guessing either way would be a lie (`unknown` - the daemon went away or never
+/// reported, so whether the app is gone is genuinely not known here).
+#[derive(Debug, Serialize)]
+pub struct UninstallError {
+    pub kind: &'static str,
+    pub detail: String,
+}
+
+impl UninstallError {
+    fn new(kind: &'static str, detail: impl Into<String>) -> Self {
+        Self { kind, detail: detail.into() }
+    }
+}
 
 const BUS_NAME: &str = "org.arlen.InstallDaemon1";
 const OBJECT_PATH: &str = "/org/arlen/InstallDaemon1";
@@ -42,14 +68,14 @@ fn is_safe_app_id(id: &str) -> bool {
 }
 
 /// Wait for one job's completion signal.
-async fn wait_for_job(conn: &Connection, job_id: &str) -> Result<(), String> {
+async fn wait_for_job(conn: &Connection, job_id: &str) -> Result<(), UninstallError> {
     let proxy = zbus::Proxy::new(conn, BUS_NAME, OBJECT_PATH, INTERFACE)
         .await
-        .map_err(|e| format!("proxy creation failed: {e}"))?;
+        .map_err(|e| UninstallError::new("failed", format!("proxy creation failed: {e}")))?;
     let mut stream = proxy
         .receive_all_signals()
         .await
-        .map_err(|e| format!("signal subscription failed: {e}"))?;
+        .map_err(|e| UninstallError::new("failed", format!("signal subscription failed: {e}")))?;
 
     let deadline = tokio::time::Instant::now() + JOB_TIMEOUT;
     loop {
@@ -69,12 +95,16 @@ async fn wait_for_job(conn: &Connection, job_id: &str) -> Result<(), String> {
                 if sid != job_id {
                     continue;
                 }
-                return if ok { Ok(()) } else { Err(error) };
+                return if ok { Ok(()) } else { Err(UninstallError::new("refused", error)) };
             }
             // The daemon went away mid-job. Whether the removal happened is
             // genuinely unknown, and saying so is better than guessing either way.
-            Ok(None) => return Err("the install daemon stopped responding".to_owned()),
-            Err(_) => return Err("the removal did not report back in time".to_owned()),
+            Ok(None) => {
+                return Err(UninstallError::new("unknown", "the install daemon stopped responding"))
+            }
+            Err(_) => {
+                return Err(UninstallError::new("unknown", "the removal did not report back in time"))
+            }
         }
     }
 }
@@ -94,12 +124,13 @@ async fn wait_for_job(conn: &Connection, job_id: &str) -> Result<(), String> {
 /// daemon can produce. Matched by substring for the same reason
 /// `tauri-plugin-portal` does it: the error name arrives as an owned string and
 /// zbus offers no typed variant to match on.
-fn describe_call_failure(err: zbus::Error) -> String {
+fn describe_call_failure(err: zbus::Error) -> UninstallError {
     match &err {
         zbus::Error::MethodError(name, _, _) if name.as_str().contains("ServiceUnknown") => {
-            "removing apps is unavailable on this system: nothing provides the \
-             install daemon"
-                .to_owned()
+            UninstallError::new(
+                "unavailable",
+                "nothing provides the install daemon on this system",
+            )
         }
         // A refusal the daemon explained: it decides what may be removed - a
         // component of the running desktop is refused by name - and the sentence
@@ -109,20 +140,20 @@ fn describe_call_failure(err: zbus::Error) -> String {
         zbus::Error::MethodError(name, Some(detail), _)
             if name.as_str().ends_with("AccessDenied") && !detail.trim().is_empty() =>
         {
-            detail.trim().to_owned()
+            UninstallError::new("refused", detail.trim())
         }
-        _ => format!("the install daemon refused the request: {err}"),
+        _ => UninstallError::new("failed", format!("the install daemon refused the request: {err}")),
     }
 }
 
 #[tauri::command]
-pub async fn settings_app_uninstall(app_id: String) -> Result<(), String> {
+pub async fn settings_app_uninstall(app_id: String) -> Result<(), UninstallError> {
     if !is_safe_app_id(&app_id) {
-        return Err("not an app id".to_owned());
+        return Err(UninstallError::new("failed", "not an app id"));
     }
     let conn = Connection::session()
         .await
-        .map_err(|e| format!("cannot reach the session bus: {e}"))?;
+        .map_err(|e| UninstallError::new("failed", format!("cannot reach the session bus: {e}")))?;
     let reply = conn
         .call_method(
             Some(BUS_NAME),
@@ -136,12 +167,17 @@ pub async fn settings_app_uninstall(app_id: String) -> Result<(), String> {
     let job_id: String = reply
         .body()
         .deserialize()
-        .map_err(|e| format!("unexpected reply from the install daemon: {e}"))?;
+        .map_err(|e| {
+            UninstallError::new("failed", format!("unexpected reply from the install daemon: {e}"))
+        })?;
     // An empty job id is how the daemon refuses: its result arrives on a signal,
     // so it has no error channel on the method itself. Waiting on it would spend
     // the whole timeout and then report "no answer" for what was a clear no.
     if job_id.is_empty() {
-        return Err("the install daemon did not authorise this removal".to_owned());
+        return Err(UninstallError::new(
+            "refused",
+            "the install daemon did not authorise this removal",
+        ));
     }
     wait_for_job(&conn, &job_id).await
 }
