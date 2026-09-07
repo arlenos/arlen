@@ -145,7 +145,7 @@ const messages: Catalogs = {
     "v.couldNotPrint": "Diese Datei konnte nicht gedruckt werden: {$reason}",
     "v.print.noPortal": "Auf diesem Rechner ist kein Drucken eingerichtet, es wurde also nichts geschickt.",
     "v.print.noBus": "Der Druckdialog ließ sich nicht öffnen.",
-    "v.print.fileUnreadable": "Diese Datei ließ sich nicht lesen, um sie zum Drucker zu schicken: {$message}",
+    "v.print.fileUnreadable": "Diese Datei konnte nicht gelesen werden, um sie zum Drucker zu schicken: {$message}",
     "v.couldNotRestore": "Sie konnte nicht zurückgelegt werden: {$reason}",
     "v.restore.nameTaken": "Dieser Name ist wieder in Gebrauch.",
     "v.restore.unsupported": "Dieses Laufwerk kann eine Datei nicht zurücklegen, ohne das zu gefährden, was jetzt dort liegt.",
