@@ -241,6 +241,8 @@ jobs:
           node dev/scripts/test-check-controls-exist.mjs
           python3 dev/scripts/check-catalog-duplicates.py
           node dev/scripts/test-check-catalog-duplicates.mjs
+          python3 dev/scripts/check-message-params.py
+          node dev/scripts/test-check-message-params.mjs
           python3 dev/scripts/check-menu-labels-translated.py
           node dev/scripts/test-check-menu-labels-translated.mjs
           python3 dev/scripts/check-app-names-agree.py
