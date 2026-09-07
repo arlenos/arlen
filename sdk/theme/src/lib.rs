@@ -1482,7 +1482,7 @@ accent = "#00ff00"
             dark_id
         );
         // And one that is still there.
-        let mine = format!("{SAMPLE_BUNDLED}");
+        let mine = SAMPLE_BUNDLED.to_string();
         let found = |id: &str| (id == "mine").then(|| mine.clone());
         assert_eq!(
             id_of(active_base(Some("[theme]\nactive = \"mine\"\n"), found)),
