@@ -81,6 +81,25 @@
   /// Escape closes without adding. The dialog is `aria-modal` and had no
   /// keyboard way out; its own KeyCapture child already listens for Escape, so
   /// the shape was here and the dialog around it did not use it.
+  /// The dialog takes the focus when it opens and hands it back when it closes.
+  /// `aria-modal="true"` claims the rest of the page is inert, and nothing moved
+  /// the focus in - measured `focusInside=false, active=BODY`, so a keyboard was
+  /// tabbing the page behind the overlay. The card, not the first field: the
+  /// heading is what a reader needs to hear first.
+  let card = $state<HTMLElement | null>(null);
+  let restoreTo: HTMLElement | null = null;
+
+  $effect(() => {
+    if (open) {
+      restoreTo = document.activeElement as HTMLElement | null;
+      card?.focus();
+      return;
+    }
+    const back = restoreTo;
+    restoreTo = null;
+    back?.focus?.();
+  });
+
   function onWindowKeydown(e: KeyboardEvent) {
     if (!open || capturing || e.key !== "Escape") return;
     e.preventDefault();
@@ -106,6 +125,7 @@
       aria-modal="true"
       aria-labelledby="add-custom-title"
       tabindex="-1"
+      bind:this={card}
     >
       <h2 id="add-custom-title" class="mb-4 text-base font-semibold">{$t("s.bind.addCustom")}</h2>
 

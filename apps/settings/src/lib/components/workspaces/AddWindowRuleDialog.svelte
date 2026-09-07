@@ -104,6 +104,25 @@
   /// opens, so the press lands on `body` and never reaches a handler mounted
   /// inside the dialog's own subtree. Driven headlessly, focus was `BODY` and
   /// the dialog stayed open. On the window it fires wherever the focus is.
+  /// The dialog takes the focus when it opens and hands it back when it closes.
+  /// It claims `aria-modal="true"`, and until now nothing moved the focus into
+  /// it - measured `focusInside=false, active=BODY` - so a keyboard tabbed the
+  /// page behind the overlay and a reader was never taken to the dialog at all.
+  /// The same absence is why the old Escape handler could not fire.
+  let card = $state<HTMLElement | null>(null);
+  let restoreTo: HTMLElement | null = null;
+
+  $effect(() => {
+    if (open) {
+      restoreTo = document.activeElement as HTMLElement | null;
+      card?.focus();
+      return;
+    }
+    const back = restoreTo;
+    restoreTo = null;
+    back?.focus?.();
+  });
+
   function onWindowKeydown(e: KeyboardEvent) {
     if (!open || e.key !== "Escape") return;
     e.preventDefault();
@@ -121,6 +140,7 @@
       aria-labelledby="window-rule-title"
       aria-modal="true"
       tabindex="-1"
+      bind:this={card}
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
