@@ -204,6 +204,12 @@ lint: check-crates
     set -euo pipefail
     for c in {{RUST_CRATES}}; do echo "== clippy $c =="; cargo clippy --manifest-path "{{ROOT}}/$c/Cargo.toml" --all-targets -- -D warnings; done
 
+# Build the GTK3 widget theme from the vendored adw-gtk3 fork into `out`.
+# Shape only: colour reaches a GTK3 app through the @define-color overrides
+# sdk/theme writes, so a palette change needs no rebuild. Needs dart-sass.
+gtk3-theme out="target/themes":
+    bash "{{justfile_directory()}}/scripts/build-gtk3-theme.sh" "{{out}}"
+
 # Format all rust crates.
 fmt:
     #!/usr/bin/env bash

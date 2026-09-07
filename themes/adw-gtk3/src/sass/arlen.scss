@@ -1,0 +1,23 @@
+// The Arlen light entry point.
+//
+// The one thing it does that upstream's `gtk.scss` does not: it configures the
+// shape before anything loads it, from `_arlen-tokens.scss`, which the build
+// writes out of the resolved Arlen theme. Colour is NOT configured here and must
+// not be - the compiled sheet references GTK named colours (`@window_bg_color`,
+// `@accent_color`) rather than baking hexes, so the person's palette reaches it
+// at runtime through the `@define-color` overrides `sdk/theme` already writes to
+// `~/.config/gtk-3.0/gtk.css`. Baking colour here would freeze it instead.
+@use 'arlen-tokens' as tokens;
+
+@use 'settings' with (
+  $variant: 'light',
+  $button_radius: tokens.$button_radius,
+  $menu_radius: tokens.$menu_radius,
+  $window_radius: tokens.$window_radius,
+  $popover_radius: tokens.$popover_radius,
+  $card_radius: tokens.$card_radius,
+  $dialog_radius: tokens.$dialog_radius,
+  $check_radius: tokens.$check_radius
+);
+
+@use 'all-widgets';
