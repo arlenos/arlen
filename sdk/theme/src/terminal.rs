@@ -88,6 +88,13 @@ pub fn generate_foot_ini(theme: &ArlenTheme) -> String {
     out
 }
 
+/// NOT WIRED, on purpose: an Arlen machine has no X server to load this into.
+/// `xrdb -merge` is the only way an Xresources file reaches a client, the image
+/// names neither `xwayland` nor `xrdb`, and the session unsets `DISPLAY` so the
+/// compositor takes the DRM path. Kept because the mapping is right and the day
+/// XWayland is on the image this is the emitter; `apply.rs` says the same from
+/// the other side. Wire the merge before restoring the write.
+///
 /// Generate an Xresources fragment (`*.foreground`/`*.background`/
 /// `*.cursorColor` + `*.color0`..`*.color15`).
 pub fn generate_xresources(theme: &ArlenTheme) -> String {
