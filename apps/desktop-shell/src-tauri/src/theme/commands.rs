@@ -501,7 +501,13 @@ mod tests {
         let ini = tmp.path().join("gtk-3.0/settings.ini");
         assert!(ini.is_file(), "no settings.ini at {}", ini.display());
         let text = std::fs::read_to_string(&ini).expect("read");
-        assert!(text.contains("gtk-icon-theme-name="), "{text}");
+        // NOT the icon theme: the bundled theme names `default`, which is a
+        // cursor redirect rather than an icon theme, so `installed_icon_theme`
+        // correctly leaves the key out on most machines. This asserted it until
+        // that gate landed on 8 September, and the assertion was demanding the
+        // bug back. The cursor and the font are the two that are always there.
+        assert!(text.contains("gtk-cursor-theme-name="), "{text}");
+        assert!(text.contains("gtk-font-name="), "{text}");
         assert!(tmp.path().join("gtk-3.0/gtk.css").is_file());
         assert!(tmp.path().join("gtk-4.0/gtk.css").is_file());
     }
