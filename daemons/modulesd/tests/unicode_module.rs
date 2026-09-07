@@ -91,6 +91,23 @@ async fn the_first_module_is_discovered_hosted_and_answers_a_search() {
     assert_eq!(m.tier, ModuleTier::Wasm, "a module.wasm on disk is Tier 1");
     assert!(!m.failed, "the module is not in a failed state before it has run");
 
+    // Enabling it. The module asks for nothing, so `describe(caps).needs_consent()`
+    // is false and the broker is never dialled - which means this must succeed
+    // with no consent broker running at all. That is the property worth pinning:
+    // a module that wants no authority is not gated behind a service that would
+    // have nothing to ask about.
+    let resp = manager
+        .handle_request(Request::SetEnabled {
+            id: "1b".into(),
+            module_id: MODULE_ID.into(),
+            enabled: true,
+        })
+        .await;
+    assert!(
+        !matches!(resp, Response::Error { .. }),
+        "a capability-less module enables without a broker: {resp:?}"
+    );
+
     // A codepoint query: one result, no scan, and the character itself in the
     // title. This is the call that instantiates the component, runs `init` and
     // crosses the WIT boundary in both directions.
