@@ -58,6 +58,20 @@ fn gtk_theme_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// Where icon themes are looked for, in the freedesktop search order: the two
+/// per-user directories then the system's.
+fn icon_theme_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        dirs.push(home.join(".icons"));
+    }
+    if let Some(data) = dirs::data_dir() {
+        dirs.push(data.join("icons"));
+    }
+    dirs.push(PathBuf::from("/usr/share/icons"));
+    dirs
+}
+
 /// Header prepended to a generated `gtk.css` (carries [`GTK_MARKER`]).
 const GTK_HEADER: &str =
     "/* arlen-generated theme (managed by Arlen; edits are overwritten on a theme change) */\n";
@@ -150,8 +164,28 @@ fn write_toolkit_configs(
     // hand-authored settings.ini is left alone, because this one is a file
     // people really do write themselves.
     let selected = crate::gtk::installed_gtk_theme(&crate::gtk::GTK_THEME_CANDIDATES, &gtk_theme_dirs());
-    let ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, selected);
+    // The icon set is named only when it is one, which is not the same as the
+    // directory being there - see `installed_icon_theme`.
+    let icons = crate::gtk::installed_icon_theme(&gtk_theme.icons.theme, &icon_theme_dirs())
+        .then_some(gtk_theme.icons.theme.as_str());
+    let ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, selected, icons);
     write_guarded(&config.join("gtk-3.0/settings.ini"), &ini, GTK_INI_MARKER, &mut report);
+
+    // GTK 4 reads its OWN settings file and none of GTK 3's, so without this a
+    // GTK4 app took our colours and the system's icons, cursor and font. Measured
+    // on GTK 4.20: all five keys are honoured from `gtk-4.0/settings.ini`,
+    // `gtk-application-prefer-dark-theme` included - which is what makes a GTK4
+    // app that never linked libadwaita go dark, the case that rendered light in
+    // the 7 September toolkit shot. libadwaita apps take the same answer through
+    // the portal instead, and agreeing with ourselves in both channels is the
+    // point.
+    //
+    // No theme name here, and the `None` is deliberate rather than a fallback:
+    // Arlen ships no GTK4 widget theme and will not, because there is no stable
+    // selector contract to write one against. Naming one would be the claim the
+    // GTK3 side omits for the other reason.
+    let gtk4_ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, None, icons);
+    write_guarded(&config.join("gtk-4.0/settings.ini"), &gtk4_ini, GTK_INI_MARKER, &mut report);
 
     // Qt: the colour scheme, Arlen-named, for qt6ct and qt5ct.
     let qt_conf = crate::qt::generate_qt_conf(qt_theme);
@@ -394,7 +428,24 @@ accent = "#00ff00"
         assert!(report.written.contains(&ini), "{report:?}");
         let written = std::fs::read_to_string(&ini).unwrap();
         assert!(written.starts_with(GTK_INI_MARKER));
-        assert!(written.contains("gtk-icon-theme-name="));
+        // The two keys that are true whatever is installed. The icon set is NOT
+        // asserted: the bundled theme names `default`, which is a cursor
+        // redirect rather than an icon theme, so on most machines the key is
+        // correctly absent - and a test that demanded it would be demanding the
+        // bug back.
+        assert!(written.contains("gtk-cursor-theme-name="));
+        assert!(written.contains("gtk-font-name="));
+
+        // GTK 4 reads its own file, so the same answer has to be in both. The
+        // difference is the theme name: GTK3 may be told which widget theme to
+        // use, GTK4 never is, because we ship none.
+        let ini4 = tmp.path().join("gtk-4.0/settings.ini");
+        assert!(report.written.contains(&ini4), "{report:?}");
+        let four = std::fs::read_to_string(&ini4).unwrap();
+        assert!(four.starts_with(GTK_INI_MARKER));
+        assert!(four.contains("gtk-cursor-theme-size="));
+        assert!(four.contains("gtk-application-prefer-dark-theme="));
+        assert!(!four.contains("gtk-theme-name"), "GTK4 must not be told a theme: {four}");
         // Written a second time over its own file rather than skipped.
         let again = write_foreign_toolkit_configs(&theme(), tmp.path());
         assert!(again.written.contains(&ini));
