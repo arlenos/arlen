@@ -9,7 +9,10 @@
 #
 # It is the CI list, read out of the workflow at run time rather than kept here,
 # so a gate added to CI is picked up without anyone remembering to add it twice.
-# Roughly fifteen seconds; the gates run concurrently for exactly that reason.
+# Under a minute on this laptop, measured 8 September; the gates run
+# concurrently for exactly that reason. It said fifteen seconds until then,
+# which was true when there were fifty of them and is the sort of number that
+# rots quietly - there are 150 now, plus the two cargo lints.
 #
 # `git commit --no-verify` skips it. That is deliberate and not a loophole: a
 # hook with no escape gets uninstalled the first time it is wrong, and then it
