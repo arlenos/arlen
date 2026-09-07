@@ -144,6 +144,51 @@ pub fn generate_gtk_css(theme: &ArlenTheme) -> String {
     out
 }
 
+/// The shape half of the GTK3 theme: the Sass variables the vendored adw-gtk3
+/// fork is configured with, as the `_arlen-tokens.scss` its entry points load.
+///
+/// This is the OTHER file the GTK3 spoke needs, and it is deliberately not
+/// colour. The compiled adw-gtk3 sheet references GTK named colours rather than
+/// baking hexes, so the palette reaches a GTK3 app at runtime through
+/// [`generate_gtk_css`] and needs no rebuild; what a rebuild is for is the
+/// geometry, which GTK3 CSS cannot express as a variable. Measured on the real
+/// sheet before this was written: 42 rules take `$button_radius`.
+///
+/// **The mapping is near-identity and the two exceptions are named.** Six of the
+/// seven land on the token that shares their meaning - button on `button`, card
+/// on `card`, dialog on `modal`, window on the intensity-scaled
+/// `window_corners`, popover and menu on `card`, which is what the token's own
+/// documentation calls "cards, popovers, panels, dropdown menus". The seventh,
+/// a checkbox, takes `chip`: it is the smallest square thing in the house and
+/// there is no checkbox token. Upstream derives window and popover as
+/// `button + 6px`; we do not, because our scale already says what those shapes
+/// are. If arlen-ui wants a different answer for menu or check, those are the
+/// two lines to change.
+///
+/// Every value goes through the `effective_*` accessors, so the roundness slider
+/// moves a GTK3 app in lock-step with the shell - once something rebuilds the
+/// sheet, which is the open half of this strand.
+pub fn generate_gtk3_shape_scss(theme: &ArlenTheme) -> String {
+    let px = |v: f32| format!("{}px", v.max(0.0).round() as i64);
+    format!(
+        "// Written from the resolved Arlen theme. Do not check a copy of this in.\n\
+         $button_radius: {};\n\
+         $menu_radius: {};\n\
+         $window_radius: {};\n\
+         $popover_radius: {};\n\
+         $card_radius: {};\n\
+         $dialog_radius: {};\n\
+         $check_radius: {};\n",
+        px(theme.effective_button()),
+        px(theme.effective_card()),
+        px(theme.effective_window_corners()[0]),
+        px(theme.effective_card()),
+        px(theme.effective_card()),
+        px(theme.effective_modal()),
+        px(theme.effective_chip()),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,6 +294,59 @@ mod tests {
                     || line.starts_with("--window-radius:")
                     || line == "}",
                 "unexpected GTK CSS line: {line:?}"
+            );
+        }
+    }
+
+    /// The vendored fork's seven shape variables, all of them, from the theme.
+    #[test]
+    fn the_gtk3_shape_names_every_variable_the_fork_configures() {
+        let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
+        let scss = generate_gtk3_shape_scss(&t);
+        for name in [
+            "$button_radius",
+            "$menu_radius",
+            "$window_radius",
+            "$popover_radius",
+            "$card_radius",
+            "$dialog_radius",
+            "$check_radius",
+        ] {
+            assert!(scss.contains(&format!("{name}: ")), "{name} is not emitted");
+        }
+        // Sass needs a unit, and a bare number would compile to a radius of
+        // nothing rather than fail.
+        for line in scss.lines().filter(|l| l.starts_with('$')) {
+            assert!(line.ends_with("px;"), "not a pixel length: {line}");
+        }
+    }
+
+    /// The roundness slider reaches it, the same way `--window-radius` does.
+    #[test]
+    fn the_gtk3_shape_rides_the_roundness_slider() {
+        let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
+        let at_one = generate_gtk3_shape_scss(&t);
+        let mut sharper = t.clone();
+        sharper.radius.intensity = 0.0;
+        let at_zero = generate_gtk3_shape_scss(&sharper);
+        assert_ne!(at_one, at_zero, "intensity does not reach the sheet");
+        assert!(at_zero.contains("$button_radius: 0px;"));
+        assert!(at_zero.contains("$window_radius: 0px;"));
+    }
+
+    /// The build script states the same numbers, and this is what stops the two
+    /// drifting. `dev/scripts/build-gtk3-theme.sh` carries house defaults so it
+    /// runs standalone; if they stop matching the shipped dark theme, a
+    /// development build silently produces a shape nothing else in the house
+    /// uses.
+    #[test]
+    fn the_build_scripts_defaults_are_the_shipped_themes_shape() {
+        const SCRIPT: &str = include_str!("../../../dev/scripts/build-gtk3-theme.sh");
+        let t = ArlenTheme::from_bundled(crate::DARK_TOML).expect("resolve dark");
+        for line in generate_gtk3_shape_scss(&t).lines().filter(|l| l.starts_with('$')) {
+            assert!(
+                SCRIPT.contains(line),
+                "the script does not carry `{line}`; its defaults have drifted from the dark theme"
             );
         }
     }

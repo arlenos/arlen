@@ -41,16 +41,18 @@ cp -r "$fork/src/sass" "$build/sass"
 if [ -n "$tokens" ]; then
   cp "$tokens" "$build/sass/_arlen-tokens.scss"
 else
-  # The house defaults, stated once. A caller with a resolved ArlenTheme passes
-  # its own file and these are not consulted.
+  # The shipped dark theme's shape, so a development build produces what the
+  # house actually looks like. `arlen_theme::gtk::generate_gtk3_shape_scss` is
+  # what a caller with a resolved theme uses instead, and a test in that crate
+  # pins these lines to its output so the two cannot drift.
   cat > "$build/sass/_arlen-tokens.scss" <<'TOKENS'
 // Written by the build. Do not check a copy of this in.
-$button_radius: 8px;
-$menu_radius: 8px;
+$button_radius: 6px;
+$menu_radius: 12px;
 $window_radius: 12px;
 $popover_radius: 12px;
 $card_radius: 12px;
-$dialog_radius: 12px;
+$dialog_radius: 16px;
 $check_radius: 4px;
 TOKENS
 fi
