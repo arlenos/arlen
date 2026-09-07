@@ -17,10 +17,13 @@
 //!   guarded: it overwrites only a file Arlen itself generated (one
 //!   carrying the marker header) or a missing file, never a hand-authored
 //!   `gtk.css` — a foreign file is reported skipped, not clobbered.
-//! - **Qt (qt6ct/qt5ct)**: the colour scheme is written to an Arlen-named
-//!   file under `colors/`. Selecting it (pointing `qt6ct.conf` at the
-//!   scheme + `custom_palette=true`) is a follow-up; the scheme file itself
-//!   is the generator's job and lands here.
+//! - **Qt (qt6ct/qt5ct)**: the colour scheme goes to an Arlen-named file under
+//!   `colors/`, and the `qt6ct.conf` beside it points at the scheme with
+//!   `custom_palette=true` - both, because a scheme nothing selects is a file
+//!   nobody reads. That conf is guarded like the GTK ones: qt6ct rewrites it
+//!   whenever somebody uses its window, and that file is then theirs. It still
+//!   needs `QT_QPA_PLATFORMTHEME=qt6ct` in the session, which nothing in Arlen
+//!   sets today - our half is done and theirs is named rather than assumed.
 //! - **Terminals (alacritty/kitty/foot/Xresources)**: written to
 //!   Arlen-named colour files. The user's main config must `import` /
 //!   `include` them (or `xrdb -merge` for X) to take effect — a follow-up;
@@ -38,11 +41,11 @@ use crate::ArlenTheme;
 /// marker, so a user's own `gtk.css` is never clobbered.
 const GTK_MARKER: &str = "/* arlen-generated theme";
 
-/// The marker that tags an Arlen-generated `gtk-3.0/settings.ini`. A separate
-/// one because that file is INI, where the CSS comment the sheet carries is not
-/// a comment at all - writing the CSS marker into it would give GTK a parse
-/// error on the first line.
-const GTK_INI_MARKER: &str = "# arlen-generated";
+/// The marker that tags an Arlen-generated INI: the GTK settings files and the
+/// qt6ct/qt5ct selection. A separate one from [`GTK_MARKER`] because these files
+/// are INI, where the CSS comment the sheet carries is not a comment at all -
+/// writing the CSS marker into one would give the parser an error on line one.
+const INI_MARKER: &str = "# arlen-generated";
 
 /// Where GTK3 looks for installed themes, highest precedence first. The user's
 /// two directories then the system's, which is the order GTK itself searches.
@@ -169,7 +172,7 @@ fn write_toolkit_configs(
     let icons = crate::gtk::installed_icon_theme(&gtk_theme.icons.theme, &icon_theme_dirs())
         .then_some(gtk_theme.icons.theme.as_str());
     let ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, selected, icons);
-    write_guarded(&config.join("gtk-3.0/settings.ini"), &ini, GTK_INI_MARKER, &mut report);
+    write_guarded(&config.join("gtk-3.0/settings.ini"), &ini, INI_MARKER, &mut report);
 
     // GTK 4 reads its OWN settings file and none of GTK 3's, so without this a
     // GTK4 app took our colours and the system's icons, cursor and font. Measured
@@ -185,12 +188,32 @@ fn write_toolkit_configs(
     // selector contract to write one against. Naming one would be the claim the
     // GTK3 side omits for the other reason.
     let gtk4_ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, None, icons);
-    write_guarded(&config.join("gtk-4.0/settings.ini"), &gtk4_ini, GTK_INI_MARKER, &mut report);
+    write_guarded(&config.join("gtk-4.0/settings.ini"), &gtk4_ini, INI_MARKER, &mut report);
 
     // Qt: the colour scheme, Arlen-named, for qt6ct and qt5ct.
     let qt_conf = crate::qt::generate_qt_conf(qt_theme);
     write_owned(&config.join("qt6ct/colors/arlen.conf"), &qt_conf, &mut report);
     write_owned(&config.join("qt5ct/colors/arlen.conf"), &qt_conf, &mut report);
+
+    // And the file that SELECTS it. Writing a scheme nothing points at is the
+    // same nothing the GTK3 theme was until its settings file existed - qt6ct
+    // reads the palette from `color_scheme_path` and only honours it under
+    // `custom_palette`, so the scheme above was decoration on its own.
+    //
+    // Guarded, and this one is the reason the guard exists: qt6ct writes this
+    // file itself whenever somebody uses its window, and that file is theirs.
+    // Ours is written when there is none - which is the state a fresh machine is
+    // in, and the state where the Toolkits page currently asks the PERSON to go
+    // and do this by hand.
+    //
+    // NB it still needs `QT_QPA_PLATFORMTHEME=qt6ct` in the session to take
+    // effect, and nothing in Arlen sets that today. So this closes our half and
+    // leaves theirs visible rather than pretending the chain is whole.
+    for (dir, file) in [("qt6ct", "qt6ct.conf"), ("qt5ct", "qt5ct.conf")] {
+        let scheme = config.join(dir).join("colors/arlen.conf");
+        let select = crate::qt::generate_qt_select_conf(&scheme.to_string_lossy(), icons);
+        write_guarded(&config.join(dir).join(file), &select, INI_MARKER, &mut report);
+    }
 
     // Terminals: Arlen-named colour files the user's config imports.
     write_owned(
@@ -427,7 +450,7 @@ accent = "#00ff00"
         let report = write_foreign_toolkit_configs(&theme(), tmp.path());
         assert!(report.written.contains(&ini), "{report:?}");
         let written = std::fs::read_to_string(&ini).unwrap();
-        assert!(written.starts_with(GTK_INI_MARKER));
+        assert!(written.starts_with(INI_MARKER));
         // The two keys that are true whatever is installed. The icon set is NOT
         // asserted: the bundled theme names `default`, which is a cursor
         // redirect rather than an icon theme, so on most machines the key is
@@ -442,7 +465,7 @@ accent = "#00ff00"
         let ini4 = tmp.path().join("gtk-4.0/settings.ini");
         assert!(report.written.contains(&ini4), "{report:?}");
         let four = std::fs::read_to_string(&ini4).unwrap();
-        assert!(four.starts_with(GTK_INI_MARKER));
+        assert!(four.starts_with(INI_MARKER));
         assert!(four.contains("gtk-cursor-theme-size="));
         assert!(four.contains("gtk-application-prefer-dark-theme="));
         assert!(!four.contains("gtk-theme-name"), "GTK4 must not be told a theme: {four}");
@@ -450,5 +473,44 @@ accent = "#00ff00"
         let again = write_foreign_toolkit_configs(&theme(), tmp.path());
         assert!(again.written.contains(&ini));
         assert!(!again.skipped_foreign.contains(&ini));
+    }
+
+    /// The scheme is written and something points at it. Both, or the palette is
+    /// a file nobody reads.
+    #[test]
+    fn the_qt_scheme_is_selected_and_not_just_written() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let report = write_foreign_toolkit_configs(&theme(), tmp.path());
+        for dir in ["qt6ct", "qt5ct"] {
+            let scheme = tmp.path().join(dir).join("colors/arlen.conf");
+            let select = tmp.path().join(dir).join(format!("{dir}.conf"));
+            assert!(report.written.contains(&scheme), "{dir} scheme: {report:?}");
+            assert!(report.written.contains(&select), "{dir} selection: {report:?}");
+            let text = std::fs::read_to_string(&select).unwrap();
+            assert!(text.starts_with(INI_MARKER));
+            assert!(text.contains("custom_palette=true"));
+            assert!(
+                text.contains(&format!("color_scheme_path={}", scheme.display())),
+                "the selection must name the scheme beside it: {text}"
+            );
+        }
+    }
+
+    /// And a qt6ct.conf the person already has is theirs. qt6ct rewrites this
+    /// file whenever somebody uses its window, so a foreign one is the normal
+    /// case on a machine that has ever run it.
+    #[test]
+    fn a_users_own_qt6ct_conf_is_not_clobbered() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let conf = tmp.path().join("qt6ct/qt6ct.conf");
+        std::fs::create_dir_all(conf.parent().unwrap()).unwrap();
+        let mine = "[Appearance]\nstyle=Breeze\n";
+        std::fs::write(&conf, mine).unwrap();
+
+        let report = write_foreign_toolkit_configs(&theme(), tmp.path());
+        assert!(report.skipped_foreign.contains(&conf));
+        assert_eq!(std::fs::read_to_string(&conf).unwrap(), mine);
+        // The scheme is still written: it is our own file under `colors/`.
+        assert!(report.written.contains(&tmp.path().join("qt6ct/colors/arlen.conf")));
     }
 }
