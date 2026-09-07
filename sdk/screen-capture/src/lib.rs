@@ -11,7 +11,7 @@
 //! This crate is the reusable capture library shared by the first-party screenshot
 //! tool and the portal Screenshot / ScreenCast backends. It is being built
 //! incrementally, each slice runtime-verified under a nested compositor
-//! (`dev/screenshot/shoot-compositor.sh`). Slice 1 (here) is connection + global
+//! (the compositor repo's nested-screenshot script). Slice 1 (here) is connection + global
 //! enumeration: confirm the client reaches the compositor and that it advertises
 //! the two capture managers. The capture session, buffers, and PNG output land in
 //! the next slices.

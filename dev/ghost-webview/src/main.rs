@@ -33,7 +33,7 @@
 //! ```text
 //! cargo build --manifest-path dev/ghost-webview/Cargo.toml
 //! SHOOT_SKIP_XVFB=1 SHOOT_DISPLAY=:0 RUST_LOG=info \
-//!   dev/screenshot/shoot-compositor.sh /tmp/ghost-webview.png \
+//!   <compositor repo>/dev/screenshot/shoot-compositor.sh /tmp/ghost-webview.png \
 //!   "$PWD/target/debug/arlen-ghost-webview" 1200
 //! ```
 //!
@@ -156,7 +156,7 @@ const SHRINK_AND_REPORT: &str = r#"
 /// asking whether a key ARRIVES beats asking what the compositor says about it.
 ///
 ///   SHOOT_SKIP_XVFB=1 SHOOT_DISPLAY=:0 SHOOT_CLIENT2='sleep 5; wtype x' \
-///     RUST_LOG=info dev/screenshot/shoot-compositor.sh /tmp/kb.png \
+///     RUST_LOG=info <compositor repo>/dev/screenshot/shoot-compositor.sh /tmp/kb.png \
 ///     "$PWD/target/debug/arlen-ghost-webview" 2000 kbflip
 ///
 /// `exclusive_from_start` is the CONTROL, and without it this probe proves
