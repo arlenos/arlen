@@ -762,6 +762,15 @@ fn gtk3_widget_theme_present(gtk_theme_dirs: &[std::path::PathBuf]) -> bool {
 /// Fusion-shaped Qt colours the generator targets. Met when
 /// `QT_QPA_PLATFORMTHEME=qt6ct` or a `qt6ct.conf` is present. Pure over its two
 /// inputs so it is testable.
+///
+/// Both halves are now the SYSTEM's job rather than the person's: the session
+/// sets the variable when the qt6ct plugin is installed
+/// (`daemons/session/src/env.rs`), and the theme apply writes the conf when
+/// there is none. So what is left for a person to do is install qt6ct, which is
+/// what the page's prerequisite line says. A machine with only Qt's own portal
+/// platform theme answers FALSE here and that is right: it follows dark, light
+/// and the accent through the portal, not the 21-role palette this row is
+/// about.
 fn qt6ct_configured(platform_theme: Option<&str>, conf_present: bool) -> bool {
     platform_theme == Some("qt6ct") || conf_present
 }
