@@ -699,6 +699,24 @@ i18n-prune:
 i18n-baseline:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv --update
 
+# Build the unicode module into a hostable component.
+#
+# TWO steps, and the second is not optional: `wasm32-unknown-unknown` emits a
+# core module, and `modulesd` loads components. `wasm-tools component new` wraps
+# it using the type sections wit-bindgen already embedded. NB neither build path
+# is hostable today - see `coder-reports.md`, 8 September: wasip2 imports WASI
+# that the linker does not provide, and this one traps inside `init`. The recipe
+# exists so the next person reproduces that in one command rather than five.
+module-unicode:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v wasm-tools >/dev/null || { echo "wasm-tools missing: cargo install wasm-tools --locked" >&2; exit 2; }
+    cargo build --release --target wasm32-unknown-unknown --manifest-path "{{ROOT}}/modules/unicode/Cargo.toml"
+    wasm-tools component new \
+      "{{ROOT}}/target/wasm32-unknown-unknown/release/arlen_module_unicode.wasm" \
+      -o "{{ROOT}}/modules/unicode/module.wasm"
+    echo "wrote modules/unicode/module.wasm"
+
 # Nested-compositor screenshot loop (autonomous-verify-pipeline-plan.md primary loop):
 # boot cosmic-comp nested in Xvfb, launch a Wayland CLIENT under it, grim-capture to
 # OUT, then INSPECT the PNG yourself (the metal-verify behavioural rule - your own
