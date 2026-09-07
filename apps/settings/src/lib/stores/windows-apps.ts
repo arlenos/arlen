@@ -604,6 +604,18 @@ export async function applyBottleTheme(id: string): Promise<void> {
   }
 }
 
+/// Drop the recorded reach for one bottle.
+///
+/// Called when the bottle stops following the theme: the sentence described how
+/// far a theme got into a bottle that is no longer taking it, and a true answer
+/// to a question nobody is asking any more is still the wrong thing on screen.
+export function forgetBottleTheme(id: string): void {
+  bottleTheme.update((m) => {
+    const { [id]: _dropped, ...rest } = m;
+    return rest;
+  });
+}
+
 /// What the last reach change actually did.
 ///
 /// `changed: false` is an ANSWER, not a failure: revoking a folder a bottle no

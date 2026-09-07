@@ -29,6 +29,7 @@
     winActionFailed,
     launchFailed,
     applyBottleTheme,
+    forgetBottleTheme,
     bottleTheme,
     themeFailed,
     launchFailureKey,
@@ -309,32 +310,6 @@
         <Notice tone="caution" class="span-full" text={$t("s.wa.healthUnexpected", { count: health.unexpected })} />
       {/if}
 
-      <!-- HOW FAR THE THEME GOT, PER BOTTLE. The Toolkits page promises Wine
-           best-effort, and best-effort is only honest if somebody can check it.
-           A Wine app draws its own interior, so what is reachable is the Win32
-           palette and the interface font, and those are two facts rather than
-           one: a bottle can take the colours and still have no font to draw
-           with. Absent means nobody asked, which is not the same as "it did not
-           work" - so the sentence says so instead of showing a state. -->
-      <Section label={$t("s.wa.theme")} class="span-full">
-        <Row
-          id="win-theme"
-          label={$bottleTheme[bottle.id]
-            ? $bottleTheme[bottle.id].imported && $bottleTheme[bottle.id].fontRegistered
-              ? $t("s.wa.themeBoth")
-              : $bottleTheme[bottle.id].imported
-                ? $t("s.wa.themeColoursOnly")
-                : $t("s.wa.themeNeither")
-            : $t("s.wa.themeUnknown")}
-        >
-          {#snippet control()}
-            <Button variant="outline" size="sm" onclick={() => bottle && applyBottleTheme(bottle.id)}>
-              {$t("s.wa.themeApply")}
-            </Button>
-          {/snippet}
-        </Row>
-      </Section>
-
       <!-- THE QUESTION AN INSTALL LEAVES BEHIND. A Windows installer does not say
            what it installed, so between running one and starting the app there is
            a step only a person can take. Without this card the launch button
@@ -507,12 +482,43 @@
               />
             {/snippet}
           </Row>
-          <Row id="win-follow-theme" label={$t("s.wa.followTheme")}>
+          <!-- THE SWITCH SAYS WHAT SHOULD HAPPEN; THE DESCRIPTION SAYS WHAT DID.
+               A Wine app draws its own interior, so what the theme can reach is
+               the Win32 palette and the interface font, and those are two facts
+               rather than one: a bottle can take the colours and still have no
+               font to draw with. The Toolkits page promises Wine best-effort,
+               and best-effort is only honest if somebody can check it here.
+               Absent means nobody asked, which is not the same as "it did not
+               work", so the sentence says that instead of showing a state. The
+               ask is a button because it WRITES into the prefix - reading it on
+               mount would theme a bottle for the crime of being looked at. -->
+          <Row
+            id="win-follow-theme"
+            label={$t("s.wa.followTheme")}
+            description={$bottleTheme[bottle.id]
+              ? $bottleTheme[bottle.id].imported && $bottleTheme[bottle.id].fontRegistered
+                ? $t("s.wa.themeBoth")
+                : $bottleTheme[bottle.id].imported
+                  ? $t("s.wa.themeColoursOnly")
+                  : $t("s.wa.themeNeither")
+              : $t("s.wa.themeUnknown")}
+          >
             {#snippet control()}
+              <!-- ONE CONTROL. This carried an "Apply the theme" button beside
+                   the switch for one render, and next to a toggle a button reads
+                   as the toggle's label - the picture said so. Turning it on IS
+                   the ask: the write happens then, and the description below the
+                   label becomes the answer. Turning it off drops the answer,
+                   because it described a bottle that is no longer following. -->
               <Switch
                 value={bottle.followsTheme ?? false}
                 ariaLabel={$t("s.wa.followTheme")}
-                onchange={(v) => bottle && patchBottle(bottle.id, { followsTheme: v })}
+                onchange={(v) => {
+                  if (!bottle) return;
+                  patchBottle(bottle.id, { followsTheme: v });
+                  if (v) void applyBottleTheme(bottle.id);
+                  else forgetBottleTheme(bottle.id);
+                }}
               />
             {/snippet}
           </Row>
