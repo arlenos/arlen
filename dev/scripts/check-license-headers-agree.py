@@ -65,8 +65,16 @@ KNOWN = {
 # licensed `\\s`. Requiring the identifier charset means a mention in prose or
 # inside a regex is not a header, and a header still is one.
 IDENT = r"[A-Za-z0-9.+()-]+"
+# The tag is ASSEMBLED rather than written out, and that is not decoration.
+# `reuse lint` scans every file for this exact string and reads what follows as
+# the file's own licence: with the pattern spelled out, REUSE parsed
+# `[ \t]*({IDENT}...` as an SPDX expression and the licence job went red on the
+# commit that added this gate. Keeping the two halves apart puts the pattern out
+# of REUSE's reach without teaching REUSE to skip a file - a suppression that
+# hides this one today hides a real one later. The control pins it.
+TAG = "SPDX-License" "-Identifier:"
 HEADER = re.compile(
-    rf"SPDX-License-Identifier:[ \t]*({IDENT}(?:[ \t]+(?:OR|AND|WITH)[ \t]+{IDENT})*)"
+    rf"{re.escape(TAG)}[ \t]*({IDENT}(?:[ \t]+(?:OR|AND|WITH)[ \t]+{IDENT})*)"
 )
 
 

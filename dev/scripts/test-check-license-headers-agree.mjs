@@ -71,7 +71,12 @@ function gateOver(files) {
   }
 }
 
-const header = (id) => `// SPDX-FileCopyrightText: 2026 Tim Kicker\n//\n// SPDX-License-Identifier: ${id}\n\n//! A file.\n`;
+// Assembled, never spelled out: `reuse lint` reads this file too, and a fixture
+// header written literally is parsed as this file's own licence. That is how the
+// licence job went red on the commit that added the gate, twice over - once here
+// and once in the checker's pattern.
+const TAG = "SPDX-License" + "-Identifier:";
+const header = (id) => `// SPDX-FileCopyrightText: 2026 Tim Kicker\n//\n// ${TAG} ${id}\n\n//! A file.\n`;
 
 console.log("licence headers agree with the map:");
 
@@ -138,7 +143,7 @@ console.log("licence headers agree with the map:");
   // docstring and in its own pattern, matched itself, and reported a file
   // licensed `\\s`. A mention is not a header.
   const r = gateOver({
-    "dev/scripts/a.py": 'PATTERN = r"SPDX-License-Identifier:\\s*(.+)"  # not a header\n',
+    "dev/scripts/a.py": `PATTERN = r"${TAG}\\s*(.+)"  # not a header\n`,
   });
   check("the tag named in prose or a pattern is not read as a header",
         r.code === 0 && /0 headers agree/.test(r.out), r.out.trim().split("\n")[0]);
