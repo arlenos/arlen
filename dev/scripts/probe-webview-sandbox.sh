@@ -80,8 +80,18 @@ if [ "$WAYLAND" = "1" ]; then
   # reaches it. Without this line `off` would be accepted and quietly ignored on
   # this path, and a probe that cannot fail is not evidence of anything.
   [ "$MODE" = "off" ] && export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+  # The harness moved to the compositor repository on 7 September. Without it the
+  # client never starts, and "no web process appeared" is the same thing this path
+  # exists to stop being read as a verdict - so refuse instead.
+  COMPOSITOR_PATH="${COMPOSITOR_PATH:-$HOME/Repositories/compositor}"
+  SHOOT="$COMPOSITOR_PATH/dev/screenshot/shoot-compositor.sh"
+  if [ ! -f "$SHOOT" ]; then
+    echo "no compositor harness at $SHOOT" >&2
+    echo "  it lives in the compositor repo now; set COMPOSITOR_PATH if yours is elsewhere" >&2
+    exit 2
+  fi
   SHOOT_SETTLE=$((SETTLE + 6)) SHOOT_CLIENT_LOG=/tmp/probe-app.log \
-    bash "$(dirname "$0")/../screenshot/shoot-compositor.sh" \
+    bash "$SHOOT" \
       /tmp/probe-webview-sandbox.png "$BIN" >/tmp/probe-compositor.log 2>&1 &
   HARNESS=$!
   XVFB=""
