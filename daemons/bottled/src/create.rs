@@ -52,6 +52,13 @@ pub struct NewBottle {
 /// `wineboot -u` rather than plain `wine`: it is the documented way to ask Wine to
 /// create or update a prefix and exit, instead of starting a program that happens
 /// to have the side effect.
+/// NB the boot WAITS for wineserver (`settled_wine_argv`), and the reason is a
+/// defect this had until 7 September: `bwrap` tears the sandbox down when the
+/// program it was given exits, so the server that writes `system.reg` and
+/// `user.reg` was killed before it wrote them. A confined boot returned zero and
+/// left a prefix holding `dosdevices` and `drive_c` and no registry at all -
+/// which a later launch papers over by initialising one again, so nothing ever
+/// looked broken.
 pub fn boot_argv(
     prefix_root: &Path,
     usr: &Path,
@@ -69,7 +76,7 @@ pub fn boot_argv(
         plumbing: Plumbing::default(),
         program: Vec::new(),
     };
-    crate::launch::launch_argv(
+    crate::launch::settled_wine_argv(
         &scaffold,
         usr,
         runtime_dir,
@@ -194,6 +201,42 @@ mod tests {
         true
     }
 
+    /// The boot, run for real, checked by what it left behind.
+    ///
+    /// `#[ignore]`d because it needs Wine, `bwrap` and an unprivileged user
+    /// namespace. It exists because the argv assertion above passed for weeks
+    /// while the boot wrote NO REGISTRY AT ALL: the sandbox closed before
+    /// wineserver could write, every exit code was zero, and a later launch
+    /// quietly initialised a prefix again so nothing looked wrong. A test about
+    /// what the argv says cannot see that; only the files can.
+    ///
+    ///   cargo test -p arlen-wine-core -- --ignored boot_metal
+    #[test]
+    #[ignore]
+    fn boot_metal_leaves_a_prefix_with_a_registry_in_it() {
+        let dir = tempfile::tempdir().expect("temp");
+        let prefix = dir.path().join("pfx");
+        std::fs::create_dir_all(&prefix).expect("prefix dir");
+        let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run".into());
+
+        let argv = boot_argv(&prefix, Path::new("/usr"), Path::new(&runtime), |p| p.exists())
+            .expect("the argv assembles on this machine");
+        let ran = std::process::Command::new("bwrap")
+            .args(&argv)
+            .status()
+            .expect("bwrap runs");
+        assert!(ran.success(), "the confined boot failed: {ran}");
+
+        for name in ["system.reg", "user.reg", "userdef.reg"] {
+            let f = prefix.join(name);
+            assert!(f.is_file(), "the boot left no {name}");
+            assert!(
+                std::fs::metadata(&f).expect("stat").len() > 0,
+                "{name} is empty, so the boot did not finish writing it"
+            );
+        }
+    }
+
     #[test]
     fn a_boot_reaches_nothing_of_the_persons_and_runs_wineboot() {
         let argv = boot_argv(
@@ -206,13 +249,14 @@ mod tests {
 
         let sep = argv.iter().position(|a| a == "--").expect("a separator");
         assert_eq!(
-            &argv[sep + 1..],
-            &[
-                crate::launch::WINE.to_string(),
-                "wineboot".to_string(),
-                "-u".to_string()
-            ],
-            "the boot asks Wine to make the prefix and exit, rather than starting a program"
+            argv[sep + 1],
+            crate::launch::SHELL,
+            "the shell holds the sandbox open until the registry is written"
+        );
+        let script = &argv[sep + 3];
+        assert!(
+            script.contains("wineboot -u"),
+            "the boot asks Wine to make the prefix and exit, rather than starting a program: {script}"
         );
 
         // No grant means no host directory is bound in: the whole point of booting

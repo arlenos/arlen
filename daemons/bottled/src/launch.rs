@@ -117,6 +117,53 @@ pub fn launch_argv(
     confined_argv(bottle, usr, runtime_dir, display, WINE, program, exists)
 }
 
+/// A Wine command, followed by a wait for the registry to be written.
+///
+/// **The wait is not tidiness, it is the difference between the step happening
+/// and not happening.** A Wine process hands its registry changes to wineserver
+/// and exits; the server writes them to `user.reg` and `system.reg` when IT
+/// exits. `bwrap --die-with-parent --unshare-pid` tears the sandbox down the
+/// moment the program it was given exits, so the server dies first and the
+/// changes are gone - with every exit code still zero.
+///
+/// Measured on 7 September, in both places it applies. A confined `wineboot -u`
+/// left a prefix holding `dosdevices` and `drive_c` and NO registry at all; the
+/// same command followed by `wineserver -w` left a 3.8 MB one. A confined
+/// registry import reported success and changed nothing.
+///
+/// A real program launch does NOT use this: it is detached and holds the server
+/// open itself, and a wait there would keep the sandbox alive for as long as the
+/// person uses the app.
+///
+/// The shell is `/usr/bin/sh` rather than `/bin/sh` because `/usr` is always
+/// bound and `/bin` only when the host has it as a real directory. Nothing is
+/// interpolated into the script but the caller's fixed argument list.
+pub fn settled_wine_argv(
+    bottle: &Bottle,
+    usr: &Path,
+    runtime_dir: &Path,
+    display: Option<&str>,
+    wine_args: &[String],
+    exists: impl Fn(&Path) -> bool,
+) -> Result<Vec<String>, LaunchError> {
+    let script = format!("{WINE} {}; {WINESERVER} -w", wine_args.join(" "));
+    confined_argv(
+        bottle,
+        usr,
+        runtime_dir,
+        display,
+        SHELL,
+        &["-c".to_string(), script],
+        exists,
+    )
+}
+
+/// The shell that holds the sandbox open for the wait above.
+pub const SHELL: &str = "/usr/bin/sh";
+
+/// The process that actually writes a prefix's registry to disk.
+pub const WINESERVER: &str = "/usr/bin/wineserver";
+
 /// The same confinement around any executable inside it.
 ///
 /// Split out because one step needs a command SEQUENCE rather than a program: a
