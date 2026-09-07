@@ -100,18 +100,7 @@ impl ThemeState {
     /// never fatal to the in-app update).
     fn resolve_and_emit(&self, app: &AppHandle) -> Result<CssVariables, ThemeError> {
         let (theme, css) = self.resolve_full()?;
-        if let Some(config_dir) = self.xdg_config_dir() {
-            let report = arlen_theme::apply::write_foreign_toolkit_configs(&theme, &config_dir);
-            for (path, err) in &report.errors {
-                log::warn!("theme apply: failed to write {}: {err}", path.display());
-            }
-            for path in &report.skipped_foreign {
-                log::info!(
-                    "theme apply: kept a non-Arlen file at {} (not overwritten)",
-                    path.display()
-                );
-            }
-        }
+        self.write_toolkit_files(&theme);
         // Broadcast the resolved variables to the per-user runtime file so
         // every other Arlen app's theme consumer live-reskins too, not just
         // the shell's own webviews (GAP-20). The shell is the theme authority;
@@ -120,6 +109,28 @@ impl ThemeState {
         write_theme_broadcast(&css);
         let _ = app.emit("arlen://theme-v2-changed", &css);
         Ok(css)
+    }
+
+    /// Write the foreign-toolkit (GTK/Qt/terminal) config files for a resolved
+    /// theme, so a theme reaches non-Svelte apps too.
+    ///
+    /// Best-effort by design: a write failure is logged and never blocks the
+    /// in-app update, and a file the user wrote themselves is kept rather than
+    /// clobbered - `write_foreign_toolkit_configs` reports both.
+    fn write_toolkit_files(&self, theme: &ArlenTheme) {
+        let Some(config_dir) = self.xdg_config_dir() else {
+            return;
+        };
+        let report = arlen_theme::apply::write_foreign_toolkit_configs(theme, &config_dir);
+        for (path, err) in &report.errors {
+            log::warn!("theme apply: failed to write {}: {err}", path.display());
+        }
+        for path in &report.skipped_foreign {
+            log::info!(
+                "theme apply: kept a non-Arlen file at {} (not overwritten)",
+                path.display()
+            );
+        }
     }
 
     /// Reconcile the runtime theme broadcast to the current selection.
@@ -131,7 +142,18 @@ impl ThemeState {
     /// logged, never fatal to startup.
     pub fn broadcast_current(&self) {
         match self.resolve_full() {
-            Ok((_theme, css)) => write_theme_broadcast(&css),
+            Ok((theme, css)) => {
+                write_theme_broadcast(&css);
+                // The same reconcile, for the toolkits. Until this was here the
+                // GTK, Qt and terminal files were written ONLY on a theme
+                // change, so a machine where nobody had touched the appearance
+                // page had none of them - and a GTK3 app rendered stock Adwaita
+                // on a system that ships its own theme, because the settings.ini
+                // that selects it had never been written. Same argument as the
+                // broadcast above: a stale file steers apps, and an absent one
+                // steers them just as wrongly.
+                self.write_toolkit_files(&theme);
+            }
             Err(e) => log::warn!("theme: startup broadcast reconcile failed: {e}"),
         }
     }
@@ -449,4 +471,38 @@ pub fn reset_theme(
     drop(config);
 
     Ok(state.resolve_and_emit(&app)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The startup reconcile has to actually produce the files, and the one that
+    /// matters most is the settings file: without it a GTK3 app never finds the
+    /// theme the image ships, and the failure is invisible - the app just looks
+    /// like stock Adwaita.
+    ///
+    /// Driven through `write_toolkit_files` rather than `broadcast_current`
+    /// because the latter also writes the runtime broadcast, which lives in
+    /// `$XDG_RUNTIME_DIR` and is the developer's own session; a test has no
+    /// business writing there.
+    #[test]
+    fn the_toolkit_files_land_under_the_xdg_config_root() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let config_dir = tmp.path().join("arlen");
+        std::fs::create_dir_all(&config_dir).expect("config dir");
+        let state = ThemeState::new(config_dir, tmp.path().join("data")).expect("state");
+
+        let theme = ArlenTheme::from_bundled(arlen_theme::DARK_TOML).expect("resolve");
+        state.write_toolkit_files(&theme);
+
+        // The sheet and the settings file, which are the two halves of the GTK3
+        // spoke: colour and selection.
+        let ini = tmp.path().join("gtk-3.0/settings.ini");
+        assert!(ini.is_file(), "no settings.ini at {}", ini.display());
+        let text = std::fs::read_to_string(&ini).expect("read");
+        assert!(text.contains("gtk-icon-theme-name="), "{text}");
+        assert!(tmp.path().join("gtk-3.0/gtk.css").is_file());
+        assert!(tmp.path().join("gtk-4.0/gtk.css").is_file());
+    }
 }
