@@ -135,9 +135,13 @@ fn write_toolkit_configs(
     // GTK 3 + 4: gtk.css is the direct override file (fixed name), guarded
     // against clobbering a foreign file. The libadwaita/adw-gtk3
     // named-colour block is identical for both versions.
-    let gtk_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk_css(gtk_theme));
-    write_guarded(&config.join("gtk-3.0/gtk.css"), &gtk_css, GTK_MARKER, &mut report);
-    write_guarded(&config.join("gtk-4.0/gtk.css"), &gtk_css, GTK_MARKER, &mut report);
+    // Not one sheet for both: GTK3's parser has no custom properties and
+    // answers the `--window-radius` block with an error every app logs at
+    // startup, so it gets the colours and GTK4 gets the colours plus the radius.
+    let gtk3_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk3_css(gtk_theme));
+    let gtk4_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk_css(gtk_theme));
+    write_guarded(&config.join("gtk-3.0/gtk.css"), &gtk3_css, GTK_MARKER, &mut report);
+    write_guarded(&config.join("gtk-4.0/gtk.css"), &gtk4_css, GTK_MARKER, &mut report);
 
     // GTK 3 settings: which widget theme, icon set, cursor and font a GTK3 app
     // uses. None of that is expressible in the override sheet above, and the

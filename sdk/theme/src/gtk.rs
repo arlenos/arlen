@@ -139,9 +139,34 @@ pub fn generate_gtk_css(theme: &ArlenTheme) -> String {
         out.push_str(&format!("@define-color {name} {};\n", hex(*colour)));
     }
 
-    // The one geometry libadwaita honours via the CSS-override path.
+    // The one geometry libadwaita honours via the CSS-override path. GTK3 does
+    // NOT: its CSS parser has no custom properties, and it answered this exact
+    // block with `Theme parsing error: gtk.css:69:2: Expected semicolon` in
+    // every GTK3 app on the 7 September toolkit render - our own Tauri windows
+    // included, since WebKitGTK is GTK3. So it is emitted here and stripped by
+    // [`generate_gtk3_css`], rather than shipped to a parser that refuses it.
     out.push_str(&format!("\nwindow {{\n  --window-radius: {radius}px;\n}}\n"));
     out
+}
+
+/// The same sheet for GTK3: every named colour, and none of the custom property
+/// GTK3 cannot parse.
+///
+/// The colours are the whole of what GTK3 takes from this file - the shape comes
+/// from the widget theme instead ([`generate_gtk3_shape_scss`]), which is the
+/// division the two toolkits force on us rather than one we chose.
+pub fn generate_gtk3_css(theme: &ArlenTheme) -> String {
+    let full = generate_gtk_css(theme);
+    match full.find("\nwindow {") {
+        Some(at) => {
+            let mut out = full[..at].to_string();
+            out.push('\n');
+            out
+        }
+        // Unreachable while the block above exists, and if it ever stops
+        // existing the whole sheet is still correct for GTK3.
+        None => full,
+    }
 }
 
 /// The shape half of the GTK3 theme: the Sass variables the vendored adw-gtk3
@@ -511,5 +536,22 @@ mod tests {
         // though adw-gtk3 sits in the earlier directory.
         let dirs = vec![a.path().to_path_buf(), b.path().to_path_buf()];
         assert_eq!(installed_gtk_theme(&GTK_THEME_CANDIDATES, &dirs), Some("Arlen"));
+    }
+
+    /// GTK3 refuses a custom property, so it must not be handed one.
+    #[test]
+    fn the_gtk3_sheet_drops_the_property_gtk3_cannot_parse() {
+        let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
+        let four = generate_gtk_css(&t);
+        let three = generate_gtk3_css(&t);
+        assert!(four.contains("--window-radius:"), "gtk4 keeps the radius");
+        assert!(!three.contains("--window-radius"), "gtk3 must not carry it");
+        assert!(!three.contains("window {"), "and not the empty block either");
+        // Nothing else is lost: every colour the GTK4 sheet defines is still
+        // there, which is the half GTK3 actually reads.
+        for line in four.lines().filter(|l| l.starts_with("@define-color")) {
+            assert!(three.contains(line), "gtk3 lost `{line}`");
+        }
+        assert!(three.ends_with('\n'));
     }
 }
