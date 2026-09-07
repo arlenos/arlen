@@ -43,7 +43,6 @@
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import PrincipalGrants from "$lib/components/privacy/PrincipalGrants.svelte";
   import SchemaSection from "$lib/components/apps/SchemaSection.svelte";
-  import { readsAsInternal } from "$lib/errors";
   import { t, locale } from "$lib/i18n/messages";
 
   const appId = $derived($page.params.id ?? "");
@@ -104,19 +103,26 @@
           await invoke("settings_app_uninstall", { appId });
           await goto("/apps");
         } catch (e) {
-          // BOTH SENTENCES ARE WRITTEN HERE, and the daemon's own words go to the
-          // log rather than into the middle of one. Interpolating them reads
-          // half-German half-English to a German reader, which is what
-          // `check-refusal-language` refuses and it is right: one place chooses
-          // the language. What the reader still gets is the distinction that
-          // changes what they do next - nothing answered, or something answered
-          // no. Giving them the daemon's specific refusal in their own language
-          // needs the command to return a token instead of a sentence; that is a
-          // change to its contract and it is written down rather than half-done.
+          // THE COMMAND ANSWERS A TOKEN, so every sentence a person reads is
+          // written here. It used to answer a sentence, which meant this page
+          // finished a German line with the daemon's English one - what
+          // `check-refusal-language` refuses, and it is right that one place
+          // chooses the language. The detail is for the log.
+          //
+          // `unknown` earns its own kind rather than folding into a failure: if
+          // the daemon stops reporting mid-job, whether the app is gone is
+          // genuinely not known, and saying "it was not removed" would be a
+          // guess dressed as a fact.
           console.error("uninstall failed", e);
-          uninstallError = readsAsInternal(String(e))
-            ? $t("s.apps.uninstall.failedPlain")
-            : $t("s.apps.uninstall.refused");
+          const kind = (e as { kind?: string } | null)?.kind;
+          uninstallError =
+            kind === "unavailable"
+              ? $t("s.apps.uninstall.unavailable")
+              : kind === "refused"
+                ? $t("s.apps.uninstall.refused")
+                : kind === "unknown"
+                  ? $t("s.apps.uninstall.unknown")
+                  : $t("s.apps.uninstall.failed");
         }
       },
     };
