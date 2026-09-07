@@ -32,11 +32,17 @@
     resetAccentOverride,
     reach,
     loadReach,
+    prereqs,
+    loadPrereqs,
+    showPrereq,
   } from "$lib/stores/themeToolkits";
 
   // Read-only, so asking on mount costs nothing and the row is never a claim
   // about a check that did not run.
-  onMount(() => void loadReach());
+  onMount(() => {
+    void loadReach();
+    void loadPrereqs();
+  });
 
   const hubAccent = $derived(String($colorsEffective.accent));
 </script>
@@ -76,7 +82,12 @@
         {:else if $reach[tk.id]?.state === "absent"}
           <p class="tk-prereq">{$t("s.toolkit.absent")}</p>
         {/if}
-        {#if tk.prereqKey}
+        <!-- Only when it is not met. A line telling somebody to install a thing
+             they already have reads as a warning about nothing, and a page of
+             those is how a reader learns to skip the small print. A toolkit the
+             backend cannot detect keeps its line always, because there it is a
+             standing status rather than a thing to go and do. -->
+        {#if tk.prereqKey && showPrereq($prereqs, tk.id)}
           <p class="tk-prereq">{$t(tk.prereqKey)}</p>
         {/if}
 

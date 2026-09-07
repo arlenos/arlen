@@ -3,8 +3,10 @@
 /// (the honest fidelity ceiling), whether it is on, and a per-toolkit override.
 /// A flat list, never an N x M matrix; ragged coverage is stated per row.
 ///
-/// Mock-vs-live: the coverage tiers + notes are real; the per-toolkit on/off, the
-/// override map, and the prerequisite detection need coder backend. Fixture until.
+/// Mock-vs-live: the coverage tiers, the notes, the prerequisite detection and
+/// the reach (whether the theme is actually in place, or whose file is in the
+/// way) are all real. The per-toolkit on/off and the override map still need
+/// coder backend and are fixture until they have one.
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
@@ -75,6 +77,34 @@ export async function loadReach(): Promise<void> {
       });
     }
   }
+}
+
+/// Whether each detectable prerequisite is met, per toolkit id. Empty until
+/// read. A toolkit with no entry has nothing to detect, and its line is a status
+/// rather than a condition - Wine's "Experimental" is true whatever is
+/// installed.
+export const prereqs = writable<Record<string, boolean>>({});
+
+/// Ask the backend which prerequisites this machine meets. Read-only.
+export async function loadPrereqs(): Promise<void> {
+  try {
+    prereqs.set(await invoke<Record<string, boolean>>("theme_toolkit_prereqs"));
+  } catch {
+    // The fixture says MET for both, so the vite render shows the page a person
+    // with a working desktop sees. The unmet case is one line and is designed
+    // by reading the row with the condition shown.
+    if (!tauriAvailable) prereqs.set({ gtk3: true, qt: true });
+  }
+}
+
+/// Whether a toolkit's prerequisite line should be shown at all.
+///
+/// A line that says what to install is worth reading when the thing is missing
+/// and is noise every other time. So: a toolkit the backend can detect shows it
+/// only when the answer is NO, and one it cannot detect shows it always, because
+/// there the line is a standing status rather than a thing to go and do.
+export function showPrereq(p: Record<string, boolean>, id: string): boolean {
+  return !(id in p) || p[id] === false;
 }
 
 /// Coverage tier → the badge label + tone.
