@@ -238,10 +238,10 @@ pub enum Response {
     ///
     /// `font_registered` is its own field rather than folded into `imported`
     /// because the surface promises best-effort, and a promise like that is
-    /// only honest if it can say which half landed. Today it is always false:
-    /// the document points the legacy font substitutes at Arlen's UI font, and
-    /// a substitute naming a face the prefix does not have leaves Wine on its
-    /// fallback, so the text does not change until the face is registered.
+    /// only honest if it can say which half landed. It is measured by asking
+    /// the prefix, since the import succeeds whether or not the face the
+    /// substitutes name is there, and a substitute pointing at a missing face
+    /// leaves Wine on its fallback and changes nothing.
     Themed { imported: bool, font_registered: bool },
     /// The compatibility runtimes on this machine.
     ///
@@ -414,6 +414,7 @@ pub fn theme(
     bottles_dir: &Path,
     id: &str,
     document: &str,
+    font_family: &str,
     usr: &Path,
     runtime_dir: &Path,
     exists: impl Fn(&Path) -> bool,
@@ -445,7 +446,12 @@ pub fn theme(
         Err(_) => return Response::Refused { problem: Problem::CouldNotStart },
     };
     match run(&argv) {
-        Ok(()) => Response::Themed { imported: true, font_registered: false },
+        Ok(()) => Response::Themed {
+            imported: true,
+            // Asked after the import, not assumed from it: the import succeeds
+            // whether or not the prefix has the face the substitutes name.
+            font_registered: crate::theme::font_available(&bottle.prefix_root, font_family),
+        },
         // NOT a refusal. The bottle is there, Wine is there, the document was
         // written; what failed is the import, and the surface's promise is
         // best-effort - so it is told the theme did not land in this bottle
@@ -1762,11 +1768,11 @@ mod tests {
 
         // An id no bottle has, and an id no bottle may have.
         assert_eq!(
-            theme(dir.path(), "nope", "REGEDIT4\r\n", usr, run_dir, |_| true, never),
+            theme(dir.path(), "nope", "REGEDIT4\r\n", "Inter", usr, run_dir, |_| true, never),
             Response::Refused { problem: Problem::NoSuchBottle }
         );
         assert_eq!(
-            theme(dir.path(), "../etc", "REGEDIT4\r\n", usr, run_dir, |_| true, never),
+            theme(dir.path(), "../etc", "REGEDIT4\r\n", "Inter", usr, run_dir, |_| true, never),
             Response::Refused { problem: Problem::BadId }
         );
 
@@ -1783,13 +1789,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            theme(dir.path(), "b2", "REGEDIT4\r\n", usr, run_dir, |_| true, never),
+            theme(dir.path(), "b2", "REGEDIT4\r\n", "Inter", usr, run_dir, |_| true, never),
             Response::Refused { problem: Problem::PrefixMissing }
         );
 
         // A machine with no Wine.
         assert_eq!(
-            theme(dir.path(), "b1", "REGEDIT4\r\n", usr, run_dir, |p| p
+            theme(dir.path(), "b1", "REGEDIT4\r\n", "Inter", usr, run_dir, |p| p
                 != std::path::Path::new("/usr/bin/wine"), never),
             Response::Refused { problem: Problem::NoWine }
         );
@@ -1797,7 +1803,7 @@ mod tests {
         // An import that ran and failed is NOT a refusal: the bottle is fine and
         // the theme did not land, which is what best-effort means.
         assert_eq!(
-            theme(dir.path(), "b1", "REGEDIT4\r\n", usr, run_dir, |_| true, |_| Err(
+            theme(dir.path(), "b1", "REGEDIT4\r\n", "Inter", usr, run_dir, |_| true, |_| Err(
                 "regedit exited 1".to_string()
             )),
             Response::Themed { imported: false, font_registered: false }
@@ -1806,7 +1812,7 @@ mod tests {
         // And the one that worked. The document is on disk where the Windows
         // path addresses it, and the font is still not registered.
         let seen = std::cell::RefCell::new(Vec::new());
-        let reply = theme(dir.path(), "b1", "REGEDIT4\r\nhello\r\n", usr, run_dir, |_| true, |argv| {
+        let reply = theme(dir.path(), "b1", "REGEDIT4\r\nhello\r\n", "Inter", usr, run_dir, |_| true, |argv| {
             seen.borrow_mut().extend_from_slice(argv);
             Ok(())
         });

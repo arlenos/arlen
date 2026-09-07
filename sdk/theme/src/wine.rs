@@ -223,11 +223,16 @@ pub fn generate_wine_reg(t: &ArlenTheme, scale: f32) -> String {
 
 /// The first family in a CSS font stack, unquoted.
 ///
+/// Public because the caller that applies this document has to ask the prefix
+/// whether that face is actually there, and it must ask about the same name the
+/// substitutes were written with. Two readings of one stack is how a report ends
+/// up describing a font nobody pointed at.
+///
 /// `font_sans` is a CSS list ("Inter", system-ui, sans-serif) because that is
 /// what the web side needs; a font substitute names exactly one face. Taking
 /// the head is the only reading that can be right, since the fallbacks are
 /// names the prefix has never heard of.
-fn first_family(stack: &str) -> &str {
+pub fn first_family(stack: &str) -> &str {
     stack
         .split(',')
         .next()
