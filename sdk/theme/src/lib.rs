@@ -56,6 +56,7 @@ pub mod gtk;
 pub mod qt;
 pub mod sounds;
 pub mod terminal;
+pub mod wine;
 mod watcher;
 
 pub use file::{
@@ -1511,6 +1512,21 @@ button = 12
             // The CLI-tool emitters too. They were added after this list and it
             // did not grow with them, so the "every outbound generator" claim
             // above had quietly stopped being true.
+            // The Wine generator too: its output is imported by `regedit`, so a
+            // free string reaching it unescaped is a parse failure in a prefix
+            // rather than a wrong colour.
+            let reg = crate::wine::generate_wine_reg(&t, 1.0);
+            for line in reg.lines() {
+                let l = line.trim_end_matches('\r');
+                if l.is_empty() || l == "REGEDIT4" {
+                    continue;
+                }
+                proptest::prop_assert!(
+                    (l.starts_with('[') && l.ends_with(']'))
+                        || (l.starts_with('"') && l.contains("\"=")),
+                    "payload {p:?} produced a .reg line that is neither section nor value: {l:?}"
+                );
+            }
             let _ = crate::cli::generate_fzf_colors(&t);
             let _ = crate::cli::generate_git_colors(&t);
             let _ = crate::cli::generate_delta_config(&t);
