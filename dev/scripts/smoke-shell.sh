@@ -70,11 +70,34 @@ python3 "$ROOT/dev/scripts/probe-launch-socket.py" > "$ANSWER" 2>&1
 EOF
 chmod +x "$INJECT"
 
+# The nested-compositor harness moved to the compositor repository on 7 September,
+# because that lane owns it. Resolve it there, and stop rather than run without it:
+# an absent harness leaves the client log empty, and an empty log passes the panic
+# grep below, so a missing script would print "no panic" about a shell that never
+# started.
+COMPOSITOR_PATH="${COMPOSITOR_PATH:-$HOME/Repositories/compositor}"
+SHOOT="$COMPOSITOR_PATH/dev/screenshot/shoot-compositor.sh"
+if [ ! -f "$SHOOT" ]; then
+  echo "no compositor harness at $SHOOT" >&2
+  echo "  it lives in the compositor repo now; set COMPOSITOR_PATH if yours is elsewhere" >&2
+  exit 2
+fi
+
 SHOOT_SETTLE=${SHOOT_SETTLE:-14} SHOOT_CLIENT_LOG="$LOG" SHOOT_INJECT="$INJECT" \
-  bash "$ROOT/dev/screenshot/shoot-compositor.sh" /tmp/arlen-shell-smoke.png "$BIN" \
+  bash "$SHOOT" /tmp/arlen-shell-smoke.png "$BIN" \
   >/tmp/arlen-shell-smoke-harness.log 2>&1
+harness_rc=$?
 
 rc=0
+
+# A log with nothing in it is not a quiet start, it is a shell that never wrote
+# one, and every check below reads absence as good news. Say which it was.
+if [ ! -s "$LOG" ]; then
+  echo "FAIL: the shell wrote no log, so nothing below was checked"
+  echo "  harness exited $harness_rc; tail of /tmp/arlen-shell-smoke-harness.log:"
+  tail -5 /tmp/arlen-shell-smoke-harness.log 2>/dev/null | sed 's/^/    /'
+  exit 1
+fi
 
 if grep -q "panicked" "$LOG"; then
   echo "FAIL: the shell panicked during startup"
