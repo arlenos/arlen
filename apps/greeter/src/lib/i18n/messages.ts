@@ -30,7 +30,7 @@ const messages: Catalogs = {
     "g.noProfile": "No account is selected, so there is nothing to sign in to.",
     // WHY a sign-in did not happen, one per token the host returns. These were
     // English sentences written in Rust and drawn on the login screen.
-    "g.why.noAccountList": "The list of accounts on this machine could not be read, so nobody can be signed in.",
+    "g.why.noAccountList": "The accounts on this machine cannot be read, so nobody can be signed in.",
     "g.why.unknownProfile": "This machine has no account by that name.",
     "g.why.noGreetd": "The login service is not reachable, so the session cannot be started.",
     "g.why.unknownSession": "That desktop session is not installed on this machine.",
@@ -70,7 +70,7 @@ const messages: Catalogs = {
     "g.switchUser": "Benutzer wechseln",
     "g.authFailed": "Das hat nicht geklappt. Versuch es noch einmal.",
     "g.noProfile": "Es ist kein Konto ausgewählt, es gibt also nichts, wo man sich anmelden könnte.",
-    "g.why.noAccountList": "Die Liste der Konten auf diesem Rechner ließ sich nicht lesen, es kann sich also niemand anmelden.",
+    "g.why.noAccountList": "Die Konten dieses Rechners können nicht gelesen werden, es kann sich also niemand anmelden.",
     "g.why.unknownProfile": "Auf diesem Rechner gibt es kein Konto mit diesem Namen.",
     "g.why.noGreetd": "Der Anmeldedienst ist nicht erreichbar, die Sitzung lässt sich also nicht starten.",
     "g.why.unknownSession": "Diese Desktop-Sitzung ist auf diesem Rechner nicht installiert.",

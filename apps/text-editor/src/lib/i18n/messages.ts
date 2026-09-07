@@ -118,7 +118,7 @@ const messages: Catalogs = {
     "te.print.failed": "Konnte nicht drucken: {$reason}",
     "te.print.noPortal": "Auf diesem Rechner ist kein Drucken eingerichtet, es wurde also nichts geschickt.",
     "te.print.noBus": "Der Nachrichtenbus der Arbeitsumgebung läuft nicht, der Druckdialog war also nicht erreichbar.",
-    "te.print.fileUnreadable": "Diese Datei ließ sich nicht lesen, um sie zum Drucker zu schicken: {$message}",
+    "te.print.fileUnreadable": "Diese Datei konnte nicht gelesen werden, um sie zum Drucker zu schicken: {$message}",
     "te.save.unsaved": "Nicht gespeicherte Änderungen",
     "te.save.saved": "Gespeichert",
     "te.lineNumbers.toggle": "Zeilennummern umschalten",
