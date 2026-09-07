@@ -224,6 +224,16 @@
     z-index: 100;
   }
 
+  /* NO RING ON THE CARD ITSELF. The card takes focus when the dialog opens, so a
+     person tabbing lands inside it and Escape reaches the handler - but WebKit
+     draws its default ring on whatever is focused, and on a container that is a
+     4.8px reddish outline around the whole dialog, which reads as an error. It
+     matches `:focus-visible` too, so scoping to that does not help. The ring
+     belongs on the controls inside; the dialog announces itself by being one. */
+  .dialog:focus {
+    outline: none;
+  }
+
   .dialog {
     width: 100%;
     max-width: 420px;

@@ -119,8 +119,12 @@
     class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
     role="presentation"
   >
+    <!-- `focus:outline-none` because the card takes focus when the dialog opens
+         and WebKit rings whatever is focused - on a container that is a heavy
+         outline round the whole card, which reads as an error. The ring belongs
+         on the controls inside. -->
     <div
-      class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
+      class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg focus:outline-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-custom-title"
