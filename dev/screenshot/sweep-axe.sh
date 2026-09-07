@@ -71,7 +71,7 @@ PORT=5310
 # round.
 SURFACES=(
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest"
-  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect"
   # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
   # this header keeps naming: the list IS the coverage. Settings has 38 route
   # pages and this row held 14, so more of that app was unmeasured than
