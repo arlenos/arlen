@@ -23,6 +23,14 @@ fn main() {
     for p in &report.written {
         println!("wrote {}", p.display());
     }
+    // The skipped ones matter as much as the written ones and this printed
+    // neither, so a run against a real home said "wrote 17 files" while quietly
+    // leaving six of the person's own alone. Both readings of that silence are
+    // wrong: it looks like the theme reached everything, and when it has NOT
+    // reached a toolkit there is nothing on screen saying why.
+    for p in &report.skipped_foreign {
+        println!("kept {} (not ours, so not overwritten)", p.display());
+    }
     for (p, why) in &report.errors {
         eprintln!("failed {}: {why}", p.display());
     }
