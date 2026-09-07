@@ -7,6 +7,8 @@
   /// below it is read. No declared schema shows honestly as one quiet line,
   /// never an invented panel.
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import { invoke } from "@tauri-apps/api/core";
   import { page } from "$app/stores";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
   import { Page } from "@arlen/ui-kit/components/ui/page";
@@ -41,6 +43,7 @@
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import PrincipalGrants from "$lib/components/privacy/PrincipalGrants.svelte";
   import SchemaSection from "$lib/components/apps/SchemaSection.svelte";
+  import { readsAsInternal } from "$lib/errors";
   import { t, locale } from "$lib/i18n/messages";
 
   const appId = $derived($page.params.id ?? "");
@@ -83,6 +86,42 @@
       run: () => revokeScope(line, appLabel),
     };
   }
+  /// Uninstalling. `settings_app_uninstall` has been implemented and registered
+  /// for weeks; the button beside it was disabled under a comment saying there
+  /// was no command yet, which is the stale-note shape this tree keeps finding.
+  ///
+  /// The refusal is the daemon's own sentence. It decides what may be removed -
+  /// a component of the running desktop is refused BY NAME - and that wording is
+  /// the only part the person can act on, so it is shown rather than wrapped.
+  let uninstallError = $state<string | null>(null);
+  function askUninstall(appLabel: string) {
+    uninstallError = null;
+    pending = {
+      title: $t("s.apps.uninstall.title"),
+      message: $t("s.apps.uninstall.msg", { app: appLabel }),
+      run: async () => {
+        try {
+          await invoke("settings_app_uninstall", { appId });
+          await goto("/apps");
+        } catch (e) {
+          // BOTH SENTENCES ARE WRITTEN HERE, and the daemon's own words go to the
+          // log rather than into the middle of one. Interpolating them reads
+          // half-German half-English to a German reader, which is what
+          // `check-refusal-language` refuses and it is right: one place chooses
+          // the language. What the reader still gets is the distinction that
+          // changes what they do next - nothing answered, or something answered
+          // no. Giving them the daemon's specific refusal in their own language
+          // needs the command to return a token instead of a sentence; that is a
+          // change to its contract and it is written down rather than half-done.
+          console.error("uninstall failed", e);
+          uninstallError = readsAsInternal(String(e))
+            ? $t("s.apps.uninstall.failedPlain")
+            : $t("s.apps.uninstall.refused");
+        }
+      },
+    };
+  }
+
   async function onConfirm() {
     if (pending === null) return;
     await pending.run();
@@ -110,12 +149,19 @@
         {/if}
       </div>
       <div class="head-actions">
-        <!-- Launch and uninstall have no Settings command yet (seams); the
-             buttons state the shape of the page without pretending to work. -->
-        <Button variant="outline" size="sm" disabled>{$t("s.apps.open")}</Button>
-        <Button variant="outline" size="sm" disabled>{$t("s.apps.uninstall")}</Button>
+        <!-- Open is gone rather than disabled. Settings has no way to launch
+             another app - no shell IPC, no spawn - so the control could never do
+             anything, and a button that can never work is chrome wearing a
+             control's clothes. The launcher opens apps. -->
+        <Button variant="outline" size="sm" onclick={() => askUninstall(label)}>
+          {$t("s.apps.uninstall")}
+        </Button>
       </div>
     </div>
+
+    {#if uninstallError}
+      <p class="uninstall-error span-full" role="alert">{uninstallError}</p>
+    {/if}
 
     {#if unverified}
       <div class="banner span-full" role="note">
@@ -223,6 +269,11 @@
 />
 
 <style>
+  .uninstall-error {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--destructive);
+  }
   .note {
     margin: 0;
     font-size: var(--text-2xs);
