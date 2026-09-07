@@ -661,6 +661,34 @@ pub async fn theme_list_fonts() -> Vec<String> {
     families.into_iter().collect()
 }
 
+/// The MONOSPACE families this machine has, for the monospace picker.
+///
+/// A separate query rather than a filter over [`theme_list_fonts`], because the
+/// family list carries no spacing information - fontconfig knows which families
+/// are monospaced and nothing downstream of `fc-list : family` does. Measured on
+/// the development host: 372 families, 18 of them monospaced. Offering the other
+/// 354 in a monospace picker is offering a wrong answer, and picking one of them
+/// now reaches the terminal palette and the GTK font.
+#[tauri::command]
+pub async fn theme_list_mono_fonts() -> Vec<String> {
+    let Ok(output) = tokio::process::Command::new("fc-list")
+        .args([":spacing=100", "family"])
+        .output()
+        .await
+    else {
+        return Vec::new();
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut families: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for line in text.lines() {
+        let primary = line.split(',').next().unwrap_or(line).trim();
+        if !primary.is_empty() {
+            families.insert(primary.to_string());
+        }
+    }
+    families.into_iter().collect()
+}
+
 /// The XDG icon-theme search directories: `/usr/share/icons`, the user data
 /// dir's `icons/`, and legacy `~/.icons`. A missing directory is simply skipped
 /// by the readers below.

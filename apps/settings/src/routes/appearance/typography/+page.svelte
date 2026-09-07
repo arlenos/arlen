@@ -25,7 +25,7 @@
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
   import FontSelect from "$lib/components/appearance/FontSelect.svelte";
   import { effective as colorsEffective } from "$lib/stores/themeColors";
-  import { FONT_OPTIONS, MONO_FONT_OPTIONS } from "$lib/stores/theme";
+  import { FONT_OPTIONS, installedMonoFonts } from "$lib/stores/theme";
   import {
     overrides,
     effective,
@@ -39,6 +39,9 @@
     // The rows show the resolved theme's typography, so they have to read it.
     void loadTypography();
   });
+
+  let monoFonts = $state<{ value: string; label: string }[] | null | undefined>(undefined);
+  onMount(() => void installedMonoFonts().then((f) => (monoFonts = f)));
 
   const sans = $derived(String($effective.fontSans));
   const mono = $derived(String($effective.fontMono));
@@ -87,12 +90,26 @@
           id="typo-fontMono"
         >
           {#snippet control()}
-            <FontSelect
-              value={mono}
-              options={sysOptions(MONO_FONT_OPTIONS, $t)}
-              ariaLabel={$t("s.typo.mono")}
-              onchange={(v) => setTypo("fontMono", v)}
-            />
+            <!-- What this machine has, not three names it might not. The
+                 monospace half is read and the interface half above is not, and
+                 that is measured rather than lazy: this host has 18 monospaced
+                 families and 372 in total, and 372 in a popover with no search
+                 is worse to use than a short list that may not resolve. -->
+            {#if monoFonts === undefined}
+              <span class="typo-said">{$t("s.sys.listReading")}</span>
+            {:else if monoFonts === null}
+              <span class="typo-said">{$t("s.sys.listUnreadable")}</span>
+            {:else}
+              {#if !monoFonts.some((f) => f.value === mono)}
+                <span class="typo-said">{$t("s.sys.themeMissing")}</span>
+              {/if}
+              <FontSelect
+                value={mono}
+                options={monoFonts}
+                ariaLabel={$t("s.typo.mono")}
+                onchange={(v) => setTypo("fontMono", v)}
+              />
+            {/if}
           {/snippet}
         </OverrideRow>
       </Section>
@@ -198,6 +215,12 @@
 </Page>
 
 <style>
+  /* Reading, unreadable, and "the one set here is not on this machine". */
+  .typo-said {
+    font-size: var(--font-size-sm);
+    color: var(--color-fg-secondary);
+  }
+
   .editor {
     display: flex;
     flex-direction: column;

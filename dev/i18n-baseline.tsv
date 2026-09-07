@@ -226,7 +226,6 @@ apps/settings/src/lib/stores/capsules.ts	Project Atlas notes
 apps/settings/src/lib/stores/capsules.ts	Reading list
 apps/settings/src/lib/stores/capsules.ts	Recipe collection
 apps/settings/src/lib/stores/capsules.ts	Trip 2026
-apps/settings/src/lib/stores/displays.ts	{} × {} @ {} Hz
 apps/settings/src/lib/stores/models.ts	Answers your questions.
 apps/settings/src/lib/stores/models.ts	Background work
 apps/settings/src/lib/stores/models.ts	Balanced
@@ -238,17 +237,12 @@ apps/settings/src/lib/stores/models.ts	Names new chats. A small local model is p
 apps/settings/src/lib/stores/models.ts	Runs the tasks you have turned on.
 apps/settings/src/lib/stores/models.ts	Your machine can run models up to about 8B at a good speed.
 apps/settings/src/lib/stores/printers.ts	Network
+apps/settings/src/lib/stores/theme.ts	DejaVu Sans Mono
 apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
 apps/settings/src/lib/stores/themeSystem.ts	Adwaita
-apps/settings/src/lib/stores/themeSystem.ts	Bibata
-apps/settings/src/lib/stores/themeSystem.ts	Capitaine
-apps/settings/src/lib/stores/themeSystem.ts	Numix
-apps/settings/src/lib/stores/themeSystem.ts	Papirus
-apps/settings/src/lib/stores/themeSystem.ts	Tela
 apps/settings/src/routes/about/+page.svelte	Arlen OS
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
 apps/settings/src/routes/appearance/system/+page.svelte	arlen@desktop
@@ -262,8 +256,6 @@ apps/settings/src/routes/appearance/system/+page.svelte	src
 apps/settings/src/routes/appearance/system/+page.svelte	warning:
 apps/settings/src/routes/appearance/system/+page.svelte	~/src
 apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
-apps/settings/src/routes/apps/[id]/+page.svelte	{} GB
-apps/settings/src/routes/apps/[id]/+page.svelte	{} MB
 apps/settings/src/routes/extensions/+page.svelte	forage install
 apps/settings/src/routes/knowledge/+page.svelte	{} GB
 apps/settings/src/routes/knowledge/+page.svelte	{} KB

@@ -158,6 +158,7 @@ pub fn run() {
             commands::theme::sound_cues,
             commands::theme::theme_export,
             commands::theme::theme_list_fonts,
+            commands::theme::theme_list_mono_fonts,
             commands::theme::theme_list_icon_themes,
             commands::theme::theme_list_cursor_themes,
             commands::theme::theme_toolkit_prereqs,
