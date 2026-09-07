@@ -233,7 +233,13 @@
         <Section class="span-full">
           <div class="data-head">
             <span class="data-icon"><FamilyIcon size={16} strokeWidth={1.75} /></span>
-            <span class="data-name">{r.label}</span>
+            <!-- `label` on a family group is a catalogue KEY, not a name: the
+                 by-app pivot has always written `{$t(fam.label)}` and this one
+                 printed it raw, so every section on this half of the page read
+                 `s.fam.data`, `s.fam.network`, `s.fam.files`. Nothing caught it
+                 because the key is held in a table and rendered through a
+                 variable, and nobody had rendered this pivot. -->
+            <span class="data-name">{$t(r.label)}</span>
             <span class="data-count">
               {$t("s.priv.appCount", { count: appCount })}
             </span>
@@ -244,7 +250,7 @@
               <span class="who">
                 {reacher.label}{#if !reacher.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
               </span>
-              <span class="how" class:dim={reacher.line.own}>{howText(reacher.line)}</span>
+              <span class="how">{howText(reacher.line)}</span>
               <span class="reacher-prov">{$t(reacher.line.provenance.id, reacher.line.provenance.params)}</span>
               {#if reacher.line.revoke.enabled}
                 <button
@@ -365,14 +371,10 @@
     margin-bottom: 0.25rem;
   }
   .warn {
-    margin-inline-start: 0.375rem;
     font-size: var(--text-2xs);
     color: var(--color-warning, #ca8a04);
   }
 
-  .dim {
-    opacity: 0.6;
-  }
 
   /* "Remove" is quiet by default and firms up on hover; a calm tidy action, not
      an alarm. */
@@ -434,7 +436,20 @@
      list. */
   .reacher-list {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content max-content max-content;
+    /* THE "HOW" COLUMN HAS TO BE ABLE TO SHRINK. It was `max-content`, so a long
+       reach sentence ("liest und ändert Documents and Downloads folders") made
+       the track wider than the row and the app name in the `1fr` column, which
+       had no `min-width: 0` of its own, ran straight over it - the overlap probe
+       reads it as `"Files" over "liest und ändert Docum"`. Both columns can
+       shrink now and both wrap, because the alternative is truncating an app's
+       name, and a name is the one thing on this row a person identifies it by.
+
+       THE NAME COLUMN KEEPS A FLOOR, and the first cut did not. `overflow-wrap:
+       anywhere` on `.who` cleared every probe and rendered "The assistant" as one
+       letter per line at 720px - the probes only ask whether things overlap, and
+       nothing overlapped. `minmax(5rem, ...)` plus ordinary word wrapping is what
+       a person can actually read. */
+    grid-template-columns: max-content minmax(0, 1fr) minmax(0, max-content) max-content max-content;
     align-items: center;
     column-gap: 0.625rem;
     row-gap: 0.75rem;
@@ -450,19 +465,36 @@
     white-space: nowrap;
   }
   .who {
-    justify-self: start;
+    justify-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.375rem;
+    text-align: left;
+    min-width: 0;
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .how {
-    justify-self: end;
+    justify-self: stretch;
+    text-align: right;
+    min-width: 0;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
-  .how.dim {
-    opacity: 0.75;
-  }
+  /* NO SECOND DIM ON `.how`, and none on `.cap-reads` either. Both used to take
+     an `opacity` on top of a colour that was already muted, and the stack landed
+     under the contrast floor: `.how` mixes the foreground at 55%, a further 0.75
+     made it #757575 on #171717 - 3.89:1 where 4.5 is required, measured by axe
+     the first time this pivot was ever rendered. The generic `.dim { opacity }`
+     did the same to `.cap-reads`, which sets its own colour and does not need it.
+
+     The `.how` cue is gone rather than tuned. It marked a reach limited to the
+     app's own data, which is what the text beside it already says in words - so
+     it was decoration duplicating the sentence, and it cost legibility to say
+     nothing new. A de-emphasis that has to be measured in tenths to stay legible
+     is not a de-emphasis anybody can see anyway. */
 
   /* Recently removed: the same aligned grid, with a quiet Restore that puts back
      exactly what was taken (never a fresh grant). */
