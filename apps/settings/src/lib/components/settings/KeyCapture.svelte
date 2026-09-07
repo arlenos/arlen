@@ -108,16 +108,32 @@
     if (captured) onCapture(captured);
   }
 
+  /// The dialog takes the focus when it opens and hands it back when it closes.
+  ///
+  /// The CAPTURE never needed it - `handleKeydown` is a document-level listener,
+  /// so the keys are read wherever focus happens to be. What needed it is
+  /// everything else: measured with the dialog open, `document.activeElement` was
+  /// BODY, so `aria-modal="true"` was telling a screen reader the rest of the page
+  /// was inert while its reading position was still out there in it, and Tab
+  /// walked the page behind the modal.
+  let card = $state<HTMLElement | null>(null);
+  let restoreTo: HTMLElement | null = null;
+
   $effect(() => {
     if (open) {
       livePreview = "…";
       captured = null;
       conflicts = null;
       checking = false;
+      restoreTo = document.activeElement as HTMLElement | null;
+      card?.focus();
       window.addEventListener("keydown", handleKeydown, { capture: true });
       return () => {
         if (conflictTimer) clearTimeout(conflictTimer);
         window.removeEventListener("keydown", handleKeydown, { capture: true });
+        const back = restoreTo;
+        restoreTo = null;
+        back?.focus?.();
       };
     }
   });
@@ -132,8 +148,14 @@
     aria-modal="true"
     aria-labelledby="keycapture-title"
   >
+    <!-- `focus:outline-none` because the card takes focus and WebKit rings
+         whatever is focused; on a container that is a heavy outline round the
+         whole dialog, which reads as an error. The ring belongs on the controls
+         inside. -->
     <div
-      class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
+      class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg focus:outline-none"
+      tabindex="-1"
+      bind:this={card}
     >
       <h2 id="keycapture-title" class="mb-2 text-base font-semibold">
         {$t("s.bind.pressCombo")}
