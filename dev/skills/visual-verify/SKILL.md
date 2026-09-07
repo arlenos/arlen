@@ -1,12 +1,12 @@
 ---
 name: visual-verify
-description: Look at an Arlen surface with your own eyes — render any app headless and screenshot it, sweep every surface through the layout and axe probes, drive a refusal that no route reaches, boot the image in a VM. Invoke for ANY UI / render / layout / accessibility / "does it actually look right" task, and BEFORE ever saying something cannot be verified visually.
+description: Look at an Arlen surface with your own eyes - render any app headless and screenshot it, sweep every surface through the layout and axe probes, drive a refusal that no route reaches, boot the image in a VM. Invoke for ANY UI / render / layout / accessibility / "does it actually look right" task, and BEFORE ever saying something cannot be verified visually.
 ---
 
 # Looking is always available, and it finds what reading cannot
 
 Nobody boots this system or watches a render on your behalf. **The headless screenshot is the only visual
-channel there is** — there is no verification step waiting on a person. Saying a thing cannot be checked
+channel there is** - there is no verification step waiting on a person. Saying a thing cannot be checked
 visually, or turning to a backend slice instead, is avoidance rather than a constraint.
 
 The reason this matters is not process. Six weeks of findings say the same thing: **a diff cannot show you what
@@ -19,7 +19,7 @@ heavy red ring nobody wrote. Every one of those was found by looking and none by
 render → **look at the picture** → check it against what the surface is supposed to say → fix → **re-render**.
 
 Two failure modes to know before you start. A probe answering `[]` means it found nothing, which is not the same
-as the page being right — probes ask about collisions and boxes, never about whether a person can read the
+as the page being right - probes ask about collisions and boxes, never about whether a person can read the
 result. And a fixture that never reached its state answers exactly like a clean page; that is what
 `probe-host.sh` exists to stop.
 
@@ -36,9 +36,9 @@ Everything is in `~/Repositories/arlen/dev/`.
 | Does axe pass, with real colour-contrast numbers? | `dev/screenshot/sweep-axe.sh [width] [app]` (add `--axe` to `headless.sh` for one page) |
 | What does this app do when every backend call fails? | `dev/screenshot/shoot-no-backend.sh <app> [route] [out.png]` |
 | …across every app? | `dev/screenshot/sweep-no-backend.sh [width] [app]` |
-| What does a REFUSAL look like — a state no route reaches? | a host fixture plus `dev/screenshot/probe-host.sh <host> <base> <probe.js> [width] [locale]` |
+| What does a REFUSAL look like - a state no route reaches? | a host fixture plus `dev/screenshot/probe-host.sh <host> <base> <probe.js> [width] [locale]` |
 | Does the whole image boot to a shell bar? | `python3 dev/vm/verify.py --image dev/mkosi/arlen.raw --require-bar --wait 90 --out shot.png` |
-| Does the compositor draw a client? | `just screenshot-nested <out.png> <client>` — **that repo has its own agent now; do not commit there** |
+| Does the compositor draw a client? | `dev/screenshot/shoot-compositor.sh <out.png> <client>` **in the compositor repo** - the harness and its recipe moved there on 7 September, and that repo has its own agent; do not commit there |
 
 `headless.sh` is the only sanctioned way to render. It owns three things that were each got wrong once: an Xvfb
 with a real screen size (`xvfb-run -a` alone gives 640×480), the host session cut off (`-u WAYLAND_DISPLAY`,
@@ -50,18 +50,18 @@ no file). Calling `render-wide.py` yourself skips all three; a gate refuses a co
 
 `dev/screenshot/*.js`, passed with `--probe-file`, or run over a whole table by the sweeps.
 
-- `clipped-text.js` — an element outgrew its own box.
-- `clipped-by-parent.js` — an ancestor that clips cut a child sideways.
-- `overlapping-text.js` — two elements painted in the same place.
-- `no-focus-ring.js` — a control takes keyboard focus and looks no different.
-- `escape-dismisses.js` — a dismissible thing does not answer Escape.
+- `clipped-text.js` - an element outgrew its own box.
+- `clipped-by-parent.js` - an ancestor that clips cut a child sideways.
+- `overlapping-text.js` - two elements painted in the same place.
+- `no-focus-ring.js` - a control takes keyboard focus and looks no different.
+- `escape-dismisses.js` - a dismissible thing does not answer Escape.
 
 They ask genuinely different questions and a layout change can pass any two. They are also all blind to
 legibility: `overflow-wrap: anywhere` clears every one of them and renders a name one letter per line.
 
 ## Host fixtures: seeing the state no route reaches
 
-Most of what a surface says only appears when something goes wrong — a refused write, an expired grant, a
+Most of what a surface says only appears when something goes wrong - a refused write, an expired grant, a
 daemon that is not there. Under vite those paths are unreachable, so `dev/screenshot/hosts/*.js` installs a
 `window.__TAURI_INTERNALS__` that answers the page's reads and refuses the one call under test, then drives the
 gesture.
@@ -75,7 +75,7 @@ Four things that cost a round each:
   `check-fixture-answers-whole.py` refuses a commit that gets this wrong.
 - **Reject with what the caller reads.** A page that switches on `e.kind` needs a rejected object, not a string,
   or the fixture photographs the fallback branch while looking like it worked. And check which way the caller
-  treats a thrown error — some treat it as success on purpose.
+  treats a thrown error - some treat it as success on purpose.
 - **Answer the page's OTHER reads honestly.** Two refusals in one picture is evidence about neither.
 
 Selectors: a page usually has several buttons carrying the same word. Take the one by its class *and* its exact
@@ -84,7 +84,7 @@ text, and remember `--open` clicks before the probe runs.
 ## Sweeps are the coverage, so what is missing from them is invisible
 
 The tables in `sweep-render-all.sh` and `sweep-axe.sh` are the list of what gets looked at. A surface not in
-them is unmeasured, not clean — a mail sweep once reported "0 violations" having swept nothing at all.
+them is unmeasured, not clean - a mail sweep once reported "0 violations" having swept nothing at all.
 
 Three shapes that a route walk cannot reach on its own, all of which had real defects behind them:
 
@@ -102,14 +102,14 @@ sweep for days.
   a debug binary means screenshotting whatever dev server holds that port.
 - **`shoot-app.sh` refuses a binary older than its source** and says which file changed. That refusal is correct;
   rebuild rather than reaching for `SHOOT_ALLOW_STALE=1`.
-- **A served frontend can be older than its source** even when the binary is fresh — a `.svelte` edit with no
+- **A served frontend can be older than its source** even when the binary is fresh - a `.svelte` edit with no
   rebuild renders yesterday's markup.
 - **Two runs fight over one port.** `sweep-render-all.sh` derives its base port from its pid in blocks of 40 for
   exactly this. When you start a dev server by hand, pick an unusual port and take it down afterwards with
   `fuser -k -n tcp <port>`.
 
 **`pkill -f` will kill the shell you typed it in.** `-f` matches the whole command line, and your own wrapper's
-command line contains the pattern you just typed — so `pkill -f sweep.sh` from a shell running `sweep.sh` kills
+command line contains the pattern you just typed - so `pkill -f sweep.sh` from a shell running `sweep.sh` kills
 that shell, and the tool reports the death as a bare exit code 144 with no explanation. Use `fuser -k -n tcp
 <port>` for a server, `pkill <name>` (no `-f`) for a process by name, or `kill <pid>` from a `ps` you just read.
 This bit three times in one day, twice after the rule had been written down.
@@ -121,4 +121,4 @@ pointing at nothing, a banner saying a check failed where no check runs, a Remov
 will refuse, a heading printing `{$seconds}` because it was called without one, `lang="en"` over German text.
 
 Two habits that keep paying: read the German render (a longer language finds the fixed-width column English hid),
-and read your own fix in the picture — twice in one morning a fix was half a fix until it was looked at.
+and read your own fix in the picture - twice in one morning a fix was half a fix until it was looked at.

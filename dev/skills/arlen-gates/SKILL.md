@@ -1,6 +1,6 @@
 ---
 name: arlen-gates
-description: How a mechanical check earns its place in an Arlen repo — what makes one worth writing, the control that proves it can still fail, the false-positive traps that get checks switched off, and how to wire it so it actually runs. Invoke BEFORE writing any check, lint, gate or CI step, and when a defect you just fixed looks like it could recur.
+description: How a mechanical check earns its place in an Arlen repo - what makes one worth writing, the control that proves it can still fail, the false-positive traps that get checks switched off, and how to wire it so it actually runs. Invoke BEFORE writing any check, lint, gate or CI step, and when a defect you just fixed looks like it could recur.
 ---
 
 # A check nobody can see fail is an assertion, not a check
@@ -30,7 +30,7 @@ This is the step that separates the checks that work from the ones that get reve
 - A first pattern for "is a repo path in this comment" matched 65 things, essentially all prose (`dev/null`,
   `apps/AI`). Requiring a file extension took it to 7 candidates, 4 of them real.
 - A first pattern for "does this control assert" read `ok(` and `bad(` and reported 60 of 156, because half of
-  them name the helper `check()`. The real oracle was not a word at all — a control's verdict is its exit code.
+  them name the helper `check()`. The real oracle was not a word at all - a control's verdict is its exit code.
 - A scouting script once passed a whole corpus for the wrong reason (its pattern happened to include
   `process.exit(`), and trusting it would have shipped a check believing the tree clean.
 
@@ -40,14 +40,14 @@ not act on, the pattern is wrong, not the tree.
 ## The control is the point
 
 `check-controls-exist.py` refuses a `check-*` with no `test-check-*` beside it, and that is structural rather
-than a matter of remembering — the moment to skip the control is exactly the moment a new check feels obviously
+than a matter of remembering - the moment to skip the control is exactly the moment a new check feels obviously
 right.
 
 A control mints a throwaway tree, plants the defect, runs the gate against that tree, and asserts it goes red.
 Then plants the correct version and asserts it goes green. **Both directions**, or you have not shown the gate
 discriminates.
 
-- Take the fixture helper (`dev/scripts/lib/fixture.mjs`) — the gates run concurrently, and a control that edits
+- Take the fixture helper (`dev/scripts/lib/fixture.mjs`) - the gates run concurrently, and a control that edits
   the real tree turns three unrelated checks red.
 - **The best control case is the defect that actually happened.** Checking two files out at the commit before
   their fix and watching the gate name the exact line is as strong as it gets.
@@ -58,7 +58,7 @@ discriminates.
 
 Every gate here ends by printing what it read and what it cannot say. That line is load-bearing: "0 violations"
 from a sweep that swept nothing looks identical to a clean run. A gate that reads zero files should exit 2 with
-`NOTHING WAS READ`, not 0 — a wrong root is the likeliest way to get a confident green.
+`NOTHING WAS READ`, not 0 - a wrong root is the likeliest way to get a confident green.
 
 ## Deriving a list beats maintaining one, and a filter is a maintained list wearing a costume
 
@@ -80,7 +80,7 @@ would break if it were "fixed". A bare allowlist rots into a place people add na
 
 The pre-commit hook derives its list from that workflow, so step 3 is what makes it run before a commit rather
 than after. `check-wired.py` refuses a check that is in the tree and in no run list; `check-tests-run.py` does
-the same for tests. Expect one of them to refuse your first commit — that is them working.
+the same for tests. Expect one of them to refuse your first commit - that is them working.
 
 ## The recurring lesson
 
