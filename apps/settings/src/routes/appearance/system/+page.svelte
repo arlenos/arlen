@@ -199,7 +199,25 @@
               <span class="icon-tile"><Image size={16} strokeWidth={1.75} /></span>
               <span class="icon-tile"><Image size={16} strokeWidth={1.75} /></span>
             </span>
-            <span class="ind-note">{$t("s.sys.indIcons", { theme: iconTheme })}</span>
+            <!-- "applied to the desktop" is a claim, and it was made whatever
+                 the name was. The house theme's icon token defaults to
+                 `default`, which is a cursor redirect rather than an icon
+                 theme, so the settings writers correctly leave the key out and
+                 nothing is applied - while this line said it was.
+                 THREE states, because "Default" is a third thing and not a
+                 missing theme: it is the choice to name none, and what then
+                 happens is that apps keep whatever the system gives them. The
+                 absent branch is for a name somebody set that this machine does
+                 not have, which is the case that used to read as applied. -->
+            <span class="ind-note">
+              {#if iconTheme === "Default"}
+                {$t("s.sys.indIconsDefault")}
+              {:else if icons && !icons.some((i) => i.value === iconTheme)}
+                {$t("s.sys.indIconsAbsent", { theme: iconTheme })}
+              {:else}
+                {$t("s.sys.indIcons", { theme: iconTheme })}
+              {/if}
+            </span>
           </div>
         </div>
       </div>
