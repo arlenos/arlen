@@ -17,8 +17,11 @@
 #
 # Usage: dev/screenshot/shoot-toolkits.sh [dark|light] [out.png]
 #   ADW_GTK3_DIR  a directory holding adw-gtk3/ and adw-gtk3-dark/ (the release
-#                 tarball unpacked); without it GTK3 renders stock Adwaita and the
-#                 sheet's libadwaita names reach only GTK4.
+#                 tarball unpacked). Since the fork landed this is no longer how
+#                 the GTK3 leg gets its shape: with it unset the script builds
+#                 `themes/adw-gtk3` into the private data dir and renders the
+#                 Arlen theme, which is the thing we actually ship. Set it only
+#                 to compare against upstream's.
 # Requires: sway, grim, python3 with PyGObject (Gtk 4 + Adw) and PyQt6, qt6ct.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,8 +44,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 1. The toolkit files, exactly as apply.rs writes them for this theme.
-(cd "$root/sdk/theme" && cargo run -q --example emit -- "$variant" "$work/config") || exit 1
+# 1a. The GTK3 widget theme, from the vendored fork, into the private data dir.
+# It goes first because the settings.ini apply.rs writes NAMES a theme only when
+# one is installed, and it looks in this data dir - so building after emitting
+# would leave the sheet unselected and the whole GTK3 leg would render stock.
+gtk3_built=""
+if [ -z "${ADW_GTK3_DIR:-}" ]; then
+  mkdir -p "$work/data/themes"
+  if XDG_DATA_HOME="$work/data" "$root/dev/scripts/build-gtk3-theme.sh" "$work/data/themes" \
+      >"$work/gtk3-theme-build.log" 2>&1; then
+    gtk3_built="Arlen"
+  else
+    echo "!! the GTK3 theme did not build, so its leg renders stock Adwaita:" >&2
+    tail -3 "$work/gtk3-theme-build.log" >&2
+  fi
+fi
+
+# 1b. The toolkit files, exactly as apply.rs writes them for this theme. The
+# private data dir is passed through so the theme detection in the settings.ini
+# sees what 1a just built rather than whatever is installed on the host.
+(cd "$root/sdk/theme" && env XDG_DATA_HOME="$work/data" \
+  cargo run -q --example emit -- "$variant" "$work/config") || exit 1
 # qt6ct needs to be told to use the scheme; apply.rs deliberately leaves that
 # choice to the user (their qt6ct.conf may carry other settings), so here the
 # harness makes it.
@@ -59,13 +81,17 @@ fixed="JetBrains Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 general="Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 EOF
 # adw-gtk3, when supplied, as the GTK3 theme that reads the libadwaita names.
-gtk3_theme="Adwaita"
+# Which theme the GTK3 window ends up in. Ours needs no override at all: the
+# settings.ini emitted above names it, and letting GTK read that file is the
+# point - it renders the path we ship rather than one the harness forced with
+# `GTK_THEME=`, which is a debug variable no user has set.
+gtk3_theme=""
 if [ -n "${ADW_GTK3_DIR:-}" ] && [ -d "$ADW_GTK3_DIR/adw-gtk3" ]; then
   mkdir -p "$work/data/themes"
   cp -r "$ADW_GTK3_DIR/adw-gtk3" "$ADW_GTK3_DIR/adw-gtk3-dark" "$work/data/themes/"
   gtk3_theme="adw-gtk3"
   [ "$variant" = dark ] && gtk3_theme="adw-gtk3-dark"
-elif [ "$variant" = dark ]; then
+elif [ -z "$gtk3_built" ] && [ "$variant" = dark ]; then
   gtk3_theme="Adwaita:dark"
 fi
 scheme="prefer-light"
@@ -85,8 +111,13 @@ cfg="$work/sway.cfg"
   fi
   printf 'exec env %s GDK_BACKEND=wayland ADW_DEBUG_COLOR_SCHEME=%s python3 %q >%q 2>&1\n' \
     "$env_common" "$scheme" "$here/toolkits/gallery-gtk.py" "$work/gtk4.log"
-  printf 'exec env %s GDK_BACKEND=wayland GTK_THEME=%s gedit --new-window >%q 2>&1\n' \
-    "$env_common" "$gtk3_theme" "$work/gtk3.log"
+  if [ -n "$gtk3_theme" ]; then
+    printf 'exec env %s GDK_BACKEND=wayland GTK_THEME=%s gedit --new-window >%q 2>&1\n' \
+      "$env_common" "$gtk3_theme" "$work/gtk3.log"
+  else
+    printf 'exec env %s GDK_BACKEND=wayland gedit --new-window >%q 2>&1\n' \
+      "$env_common" "$work/gtk3.log"
+  fi
   printf 'exec env %s QT_QPA_PLATFORM=wayland QT_QPA_PLATFORMTHEME=qt6ct python3 %q >%q 2>&1\n' \
     "$env_common" "$here/toolkits/gallery-qt.py" "$work/qt6.log"
   # A GTK4 app that never linked libadwaita reads the theme_* names, so it is
@@ -111,5 +142,5 @@ WAYLAND_DISPLAY="$wd" grim "$out"; rc=$?
 for l in arlen gtk4 gtk3 qt6 gtk4plain; do
   if [ -s "$work/$l.log" ]; then echo "-- $l.log:"; tail -3 "$work/$l.log"; fi
 done
-echo "shot rc=$rc -> $out (gtk3 theme: $gtk3_theme, scheme: $scheme)"
+echo "shot rc=$rc -> $out (gtk3: ${gtk3_theme:-${gtk3_built:-stock Adwaita} via settings.ini}, scheme: $scheme)"
 exit $rc
