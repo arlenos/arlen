@@ -24,10 +24,17 @@ FRONTENDS := "sdk/module-sdk apps/knowledge apps/clock daemons/xdg-portal/picker
 default:
     @just --list
 
-# One-time: install process-compose into ~/.local/bin (no sudo).
+# One-time on a fresh machine: link the agent skills into ~/.claude/skills and
+# install process-compose into ~/.local/bin (no sudo). Both idempotent.
+#
+# The skills half is here because it was nowhere: `dev/setup-skills.sh` existed and
+# nothing ran it, so after the skills moved into the tree on 7 September the
+# `visual-verify` link was simply absent for four hours and the harness loaded no
+# skill at all. A setup step nobody can reach is not a setup step.
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
+    bash "{{ROOT}}/dev/setup-skills.sh"
     if command -v process-compose >/dev/null 2>&1; then echo "process-compose already installed: $(command -v process-compose)"; exit 0; fi
     mkdir -p "$HOME/.local/bin"
     ver="v1.40.1"

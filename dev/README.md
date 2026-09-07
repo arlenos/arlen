@@ -38,7 +38,8 @@ just vm               # eBPF kernel-layer in QEMU
 `knowledge` waits on them (a readiness probe), the AI layer waits on knowledge,
 and so on. It replaces the old hand-rolled tmux script with dependency-aware
 startup, health checks, per-process logs, restart-on-crash and a TUI. One-time
-install: `just setup` (downloads the static binary into `~/.local/bin`, no sudo).
+install: `just setup` (downloads the static binary into `~/.local/bin`, no sudo,
+and links the agent skills in `dev/skills/` into `~/.claude/skills`).
 For scripted/detached use, `just dev -D` runs headless; reattach with
 `process-compose attach`.
 

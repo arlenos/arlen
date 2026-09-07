@@ -10,7 +10,10 @@ exists to prevent. Authoring them in the repo whose tooling they describe fixes 
 which.
 
 **The symlink is load-bearing.** The harness reads `~/.claude/skills/<name>/SKILL.md` and nothing else, so a
-fresh machine needs the links recreated; `dev/setup-skills.sh` does that and is idempotent.
+fresh machine needs the links recreated. `just setup` does that (via `dev/setup-skills.sh`), and both are
+idempotent. It runs from the recipe rather than only as a loose script because a setup step nobody invokes
+is one that does not happen: after the move on 7 September the `visual-verify` link was missing for four
+hours and the harness loaded no skill at all.
 
 **What belongs here:** a skill about this repository's tooling. A skill about the compositor's belongs in the
 compositor repo beside the scripts it describes. Personal skills that have nothing to do with this project stay
