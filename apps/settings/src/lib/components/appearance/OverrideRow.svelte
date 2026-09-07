@@ -50,9 +50,17 @@
 </div>
 
 <style>
+  /* WRAPS WHEN THE LABEL WOULD BE STARVED. The control does not shrink (a
+     select compressed to nothing is worse than a wrapped row), so in a narrow
+     section it took 272 of the row's 404px and left the label 88 - narrower
+     than the German word "Benachrichtigung", which then simply ran out of its
+     box rather than wrapping or ellipsing. Wrapping puts the control on its own
+     line instead, which is what the App-access list does one page over when its
+     columns stop fitting. */
   .or-row {
     position: relative;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 1rem;
@@ -74,7 +82,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.0625rem;
-    flex: 1;
+    /* The basis is what decides the wrap: below it the label would be narrower
+       than a long compound word, so the row breaks instead. */
+    flex: 1 1 11rem;
     min-width: 0;
   }
   .or-title {
