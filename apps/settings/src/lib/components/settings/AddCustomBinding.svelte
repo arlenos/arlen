@@ -78,7 +78,17 @@
     binding = combo;
     capturing = false;
   }
+  /// Escape closes without adding. The dialog is `aria-modal` and had no
+  /// keyboard way out; its own KeyCapture child already listens for Escape, so
+  /// the shape was here and the dialog around it did not use it.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!open || capturing || e.key !== "Escape") return;
+    e.preventDefault();
+    cancel();
+  }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 {#if open}
   <!-- The dialog role belongs to the CARD, not to the sheet of black behind it,
