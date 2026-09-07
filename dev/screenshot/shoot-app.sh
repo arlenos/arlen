@@ -219,7 +219,12 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
     # parse time with an unmatched-quote error pointing at the wrong line.
     echo "a webdriver is already listening on port $SHOOT_PORT: refusing to run" >&2
     echo "rather than attach to it. Wait for the previous shot to finish, or kill" >&2
-    echo "the leftover with: pkill -f tauri-driver" >&2
+    # `pkill tauri-driver`, NOT `pkill -f tauri-driver`. Without -f pkill matches
+    # the process NAME; with it, the whole command line - including the command
+    # line of the shell that ran the pkill, if somebody pastes this into a
+    # `bash -c`. That self-kill happened three times in one day to the person
+    # writing this, each time reported as the mysterious exit code 144.
+    echo "the leftover with: pkill tauri-driver" >&2
     exit 1
   fi
   tauri-driver --port "$SHOOT_PORT" --native-driver "$NATIVE" \

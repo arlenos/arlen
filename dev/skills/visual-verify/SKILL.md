@@ -105,8 +105,14 @@ sweep for days.
 - **A served frontend can be older than its source** even when the binary is fresh — a `.svelte` edit with no
   rebuild renders yesterday's markup.
 - **Two runs fight over one port.** `sweep-render-all.sh` derives its base port from its pid in blocks of 40 for
-  exactly this. When you start a dev server by hand, pick an unusual port and take it down afterwards —
-  `fuser -k -n tcp <port>`, never `pkill -f "port 5333"`, which matches its own wrapper shell and kills the run.
+  exactly this. When you start a dev server by hand, pick an unusual port and take it down afterwards with
+  `fuser -k -n tcp <port>`.
+
+**`pkill -f` will kill the shell you typed it in.** `-f` matches the whole command line, and your own wrapper's
+command line contains the pattern you just typed — so `pkill -f sweep.sh` from a shell running `sweep.sh` kills
+that shell, and the tool reports the death as a bare exit code 144 with no explanation. Use `fuser -k -n tcp
+<port>` for a server, `pkill <name>` (no `-f`) for a process by name, or `kill <pid>` from a `ps` you just read.
+This bit three times in one day, twice after the rule had been written down.
 
 ## Reading the picture
 
