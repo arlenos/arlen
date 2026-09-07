@@ -138,6 +138,13 @@ impl Transform {
         })
     }
 
+    /// The wlr numbering for a transform.
+    ///
+    /// `#[allow(dead_code)]` because the only callers are tests - the round-trip
+    /// against `from_wlr` and `the_transform_the_apply_path_sends_matches_the_one_it_read`
+    /// in `wayland_client` - and the lib target compiles those out, so the
+    /// lib-only clippy pass reports it unused however many tests use it.
+    #[allow(dead_code)]
     pub fn to_wlr(self) -> u32 {
         match self {
             Transform::Normal => 0,
