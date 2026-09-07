@@ -236,6 +236,42 @@ pub fn generate_starship_palette(theme: &ArlenTheme) -> String {
     out
 }
 
+/// The `git/config` that INCLUDES the two gitconfig fragments above.
+///
+/// Written because a fragment nobody includes is a file nobody reads. Both
+/// `git-colors.gitconfig` and `delta.gitconfig` carried a comment telling the
+/// person the `[include]` line to add by hand, which is the same shape as the
+/// terminal colour files before the includes landed: correct content, no reader.
+///
+/// **Why `$XDG_CONFIG_HOME/git/config` and not `~/.gitconfig`.** git reads BOTH
+/// as global config, and git-config(1) is explicit about the order: the XDG file
+/// is the second one, and "any single-valued variable set in this file will be
+/// overwritten by whatever is in ~/.gitconfig". That is exactly the precedence
+/// we want - a colour the person set themselves still wins over ours - and it
+/// keeps us out of the file their identity and aliases live in. The write is
+/// guarded on the Arlen marker, so an existing `git/config` is theirs.
+///
+/// **Absolute paths**, like foot's include: `[include] path` is relative to the
+/// including file, and the fragments sit in a different directory.
+///
+/// Proven with git itself rather than read off its documentation: with the three
+/// files emitted into a private `XDG_CONFIG_HOME` and an empty `HOME`,
+/// `git config --list --show-origin` names `git-colors.gitconfig` for 16 entries
+/// and `delta.gitconfig` for 12, and `color.diff.new` resolves to `#8fae74`,
+/// our ANSI green. Writing `color.diff.new = "#123456"` into `~/.gitconfig` then
+/// wins, which is the precedence claimed above, measured rather than assumed.
+pub fn generate_git_include(colors: &str, delta: &str) -> String {
+    format!(
+        "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n\
+         # The colours live in the files below so a theme change rewrites them alone.\n\
+         # git reads this AFTER ~/.gitconfig, so anything you set there still wins.\n\
+         [include]\n\
+         \tpath = {colors}\n\
+         [include]\n\
+         \tpath = {delta}\n"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -358,6 +394,17 @@ mod tests {
             let hex = line.split('"').nth(1).unwrap();
             assert!(hex.len() == 6 && !hex.contains('#'), "slot {line} is bare RRGGBB");
         }
+    }
+
+    #[test]
+    fn the_git_include_names_both_fragments_and_carries_the_marker() {
+        let out = super::generate_git_include("/x/arlen/git-colors.gitconfig", "/x/arlen/delta.gitconfig");
+        // The marker is what makes the write guarded: without it we would
+        // overwrite a git config somebody wrote themselves.
+        assert!(out.starts_with("# arlen-generated"));
+        assert_eq!(out.matches("[include]").count(), 2);
+        assert!(out.contains("\tpath = /x/arlen/git-colors.gitconfig"));
+        assert!(out.contains("\tpath = /x/arlen/delta.gitconfig"));
     }
 
     #[test]

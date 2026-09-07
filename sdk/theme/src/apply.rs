@@ -42,6 +42,16 @@
 //!   the file would be the same untruth as a surface reporting a write it never
 //!   made.
 //!
+//! - **CLI tools**: colour fragments for git, delta, fzf, starship and a base16
+//!   scheme for editors. git and delta are WIRED - a guarded
+//!   `$XDG_CONFIG_HOME/git/config` includes both fragments, and git reads it
+//!   after `~/.gitconfig` so anything the person set themselves still wins. The
+//!   other three cannot be: fzf takes its palette from `FZF_DEFAULT_OPTS`, which
+//!   is a shell rc the person owns; starship reads exactly one config file and
+//!   has no include; the base16 scheme is for whichever editor plugin they use.
+//!   Each of those three carries the activation line in its own first comment,
+//!   which is the most a file can do for itself.
+//!
 //! All writes are best-effort and independent: one failure is recorded in
 //! the [`ApplyReport`] and the rest still run.
 
@@ -376,6 +386,21 @@ fn write_toolkit_configs(
         &crate::cli::generate_delta_config(term_theme),
         &mut report,
     );
+    // The git fragments above are inert until something includes them, so the
+    // include goes in too - guarded, so a `git/config` the person wrote is
+    // theirs. Absolute paths: `[include] path` resolves against the including
+    // file, and the fragments live one directory over.
+    let git_colors = config.join("arlen/git-colors.gitconfig");
+    let git_delta = config.join("arlen/delta.gitconfig");
+    write_guarded(
+        &config.join("git/config"),
+        &crate::cli::generate_git_include(
+            &git_colors.to_string_lossy(),
+            &git_delta.to_string_lossy(),
+        ),
+        INI_MARKER,
+        &mut report,
+    );
     write_owned(
         &config.join("arlen/base16-arlen.yaml"),
         &crate::cli::generate_nvim_base16(term_theme),
@@ -487,6 +512,7 @@ accent = "#00ff00"
             "arlen/fzf-colors.sh",
             "arlen/git-colors.gitconfig",
             "arlen/delta.gitconfig",
+            "git/config",
             "arlen/starship-palette.toml",
             "arlen/base16-arlen.yaml",
         ] {
