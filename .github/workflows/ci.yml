@@ -492,6 +492,8 @@ jobs:
           node dev/scripts/test-check-message-placeholders.mjs
           python3 dev/scripts/check-rail-landmark.py
           node dev/scripts/test-check-rail-landmark.mjs
+          python3 dev/scripts/check-id-references.py
+          node dev/scripts/test-check-id-references.mjs
           python3 dev/scripts/check-dbus-members-exist.py
           node dev/scripts/test-check-dbus-members-exist.mjs
           python3 dev/scripts/check-dbus-call-arity.py

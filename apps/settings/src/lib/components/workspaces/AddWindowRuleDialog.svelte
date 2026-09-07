@@ -154,10 +154,14 @@
       </div>
 
       <div class="field-toggle">
-        <label for="rule-dialog">
+        <!-- A span, not a label: `Switch` renders its own button and forwards no
+             id, so `for="rule-dialog"` named nothing - it moved no focus and named
+             no control while looking exactly like one that did. The switch carries
+             its own `ariaLabel`. -->
+        <span class="toggle-label">
           <span>{$t("s.wrule.matchDialogs")}</span>
           <span class="hint">{$t("s.wrule.matchDialogsHint")}</span>
-        </label>
+        </span>
         <Switch
           value={matchDialog}
           ariaLabel={$t("s.rule.matchDialogs")}
@@ -247,7 +251,7 @@
     gap: 0.875rem;
   }
 
-  .field-toggle label {
+  .field-toggle .toggle-label {
     display: flex;
     flex-direction: column;
     gap: 2px;
