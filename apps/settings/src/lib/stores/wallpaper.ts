@@ -1,10 +1,12 @@
 /// The wallpaper picker (wallpaper-plan.md WP-R1): choose the desktop background.
 ///
-/// Mock-vs-live: the wallpaper daemon (`daemons/wallpaper`) renders + schedules;
-/// the app-side Tauri bridge (`list_wallpapers` / `set_wallpaper` / `add_wallpaper`)
-/// is a coder seam not built yet, so a fixture set stands in under vite. Real
-/// wallpapers are image sources; the fixtures use CSS gradients so the grid, the
-/// set, and the add flow all render without image files.
+/// Mock-vs-live: the wallpaper daemon (`daemons/wallpaper`) renders + schedules,
+/// and the app-side bridge is LIVE - `list_wallpapers`, `set_wallpaper` and
+/// `add_wallpaper` are implemented, registered and called from here. The note
+/// above used to say the bridge was "a coder seam not built yet", which outlived
+/// its subject the way `ask.ts`'s did. Under plain vite a fixture set still
+/// stands in, because there is no host to answer; the fixtures use CSS gradients
+/// so the grid, the set and the add flow render without image files.
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";

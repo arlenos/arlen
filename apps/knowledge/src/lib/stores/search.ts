@@ -5,9 +5,10 @@
 /// NL-to-query. Saved searches are the query-as-folder bet: a query + its
 /// facets kept as a runnable place.
 ///
-/// Mock-vs-live: `knowledge_search` is the coder seam; under vite a local
-/// index assembled from the one fixture story (projects, library, timeline)
-/// stands in and `searchMocked` says so.
+/// Mock-vs-live: `knowledge_search` is BUILT and this store calls it; the note
+/// here called it the coder seam long after it stopped being one. Under vite a
+/// local index assembled from the one fixture story (projects, library,
+/// timeline) stands in and `searchMocked` says so.
 import { writable, derived, get } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";

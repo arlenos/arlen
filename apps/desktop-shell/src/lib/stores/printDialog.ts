@@ -5,13 +5,14 @@
 /// printer directly, only the result of a user-driven dialog - the same isolation
 /// the file picker and the screencast source picker use.
 ///
-/// Mock-vs-live: fixture-backed. The portal print backend (`PreparePrint` ->
-/// `Print(fd)`), the request feed (`poll_print_request`), the submit/cancel path
-/// (`submit_print` / `cancel_print`), printer enumeration in the shell
-/// (`printers_list` / `printers_default`, which the settings backend already has),
-/// the real first-page raster (`render_print_preview`), and the modal input-region
-/// activation are coder seams. Under vite the store serves a fixture so the surface
-/// renders and drives.
+/// Mock-vs-live: most of this is BUILT and the note said otherwise for weeks.
+/// The request feed (`poll_print_request`), the submit/cancel path
+/// (`submit_print` / `cancel_print`) and printer enumeration in the shell
+/// (`printers_list` / `printers_default`) are all implemented and registered.
+/// What remains a seam is the portal print backend itself (`PreparePrint` ->
+/// `Print(fd)`), the real first-page raster (`render_print_preview`) and the
+/// modal input-region activation. Under vite the store serves a fixture so the
+/// surface renders and drives.
 
 import { get, writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";

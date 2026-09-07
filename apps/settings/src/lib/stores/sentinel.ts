@@ -1,9 +1,11 @@
 /// The Physical-World Privacy Sentinel state (privacy-sentinel-plan.md): five
 /// detectors, deterministic ones default-on, ambient watchers opt-in. The
-/// `org.arlen.Sentinel1` daemon and its Tauri bridge are coder seams
-/// (`sentinel_get_state`, `sentinel_set_detector`, `sentinel_set_alerts`,
-/// `sentinel_set_sensitivity`); under vite a fixture stands in so every card
-/// state renders and drives.
+/// `org.arlen.Sentinel1` daemon and its Tauri bridge are BUILT - all five of
+/// `sentinel_get_state`, `sentinel_set_detector`, `sentinel_set_alerts`,
+/// `sentinel_set_sensitivity` and `sentinel_fix_posture` are implemented and
+/// registered. This note called them coder seams afterwards, on the one page
+/// whose whole point is not to claim a protection nobody checked. Under vite a
+/// fixture stands in so every card state renders and drives.
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";

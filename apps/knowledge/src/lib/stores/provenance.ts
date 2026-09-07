@@ -3,8 +3,9 @@
 /// plus degree-of-interest, never a node-link diagram. Every hop renders a
 /// reason and a relationship in plain words (the comprehension metric), never
 /// a raw identifier. Live: `knowledge_provenance` is the scoped provenance
-/// read (a coder seam over the FILE_PART_OF provenance columns + the bridge
-/// origin tags); under vite a fixture map covers the story's known nodes, and
+/// read over the FILE_PART_OF provenance columns and the bridge origin tags,
+/// and it is BUILT - the note called it a coder seam afterwards. Under vite a
+/// fixture map covers the story's known nodes, and
 /// an unknown node gets ONLY its origin line - honestly thin, never invented
 /// rich.
 import { invoke } from "@tauri-apps/api/core";

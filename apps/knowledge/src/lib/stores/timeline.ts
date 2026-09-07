@@ -2,8 +2,9 @@
 /// recorded activity, grouped by day, with contiguous work clustered into
 /// sessions. This is recall of what the system actually captured - typed
 /// events, never screenshots - so the store never invents history: live it
-/// reads the `knowledge_timeline` command (a coder seam over the FUSE timeline
-/// + the typed reads); under vite a fixture stands in and `mocked` says so.
+/// reads the `knowledge_timeline` command, which is BUILT (the note here called
+/// it a coder seam long after it was); under vite a fixture stands in and
+/// `mocked` says so.
 import { get, writable } from "svelte/store";
 import { isServiceAbsent } from "$lib/service";
 import { tauriAvailable } from "$lib/tauri";

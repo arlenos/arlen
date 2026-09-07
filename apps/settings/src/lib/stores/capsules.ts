@@ -4,9 +4,10 @@
 /// has handed outward. Day-one same-machine.
 ///
 /// Mock-vs-live: fixture-backed. `list_capsules` (enumerate the revoke-set + grant
-/// metadata + remaining op-count + the origin label) is NOT built yet, and
-/// `revoke_capsule` needs a Tauri wrapper over the daemon's terminal revoke; both
-/// are coder seams. The store falls back to a fixture under vite, like grants.ts.
+/// metadata + remaining op-count + the origin label) and `revoke_capsule` are
+/// BOTH BUILT now, in `commands/capsules.rs`; this note said neither was long
+/// after they landed. The store still falls back to a fixture under vite, like
+/// grants.ts, because there is no host to answer.
 ///
 /// Revoke is TERMINAL: the durable revoke-set refuses every future read. It is not
 /// restorable and it cannot un-send a copy the recipient already holds - so there is

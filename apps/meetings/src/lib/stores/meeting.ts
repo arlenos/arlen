@@ -3,10 +3,11 @@
 /// merges the two INLINE - your lines full-strength, the AI's enhancements in the AI
 /// tint under the line they anchor to - both checkable against the embedded transcript.
 ///
-/// Mock-vs-live: `meetings_list`, `meeting_note {id}` and `meeting_summarize` are
-/// live; the ASR capture stream, notes persistence (`meeting_save_notes`), speaker
-/// relabel (`meeting_relabel_speaker`) and item updates (`meeting_update_item`) are
-/// coder seams - under vite the fixture stands in and edits apply locally.
+/// Mock-vs-live: every command this store dials is BUILT - `meetings_list`,
+/// `meeting_note {id}`, `meeting_summarize`, and the three the note still called
+/// seams (`meeting_save_notes`, `meeting_relabel_speaker`, `meeting_update_item`).
+/// What remains a seam is the ASR capture stream itself. Under vite the fixture
+/// stands in and edits apply locally.
 /// i18n-foreign: the fixture's meeting titles, notes and transcript lines are
 /// what was said in the room, not this app's copy.
 import { writable, get } from "svelte/store";

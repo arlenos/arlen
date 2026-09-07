@@ -5,7 +5,8 @@
 ///
 /// As-of (`valid_as_of`, direction 1): `asOf` holds the unix time the columns
 /// answer for; null is now. Live both ride one scoped read,
-/// `knowledge_projects_list(path, asOf)` - a coder seam; under vite the
+/// `knowledge_projects_list(path, asOf)`, which is BUILT - the note called it a
+/// coder seam afterwards. Under vite the
 /// fixture stands in, with a genuinely different past state so the time
 /// travel shows real change, and `projectsMocked` says so.
 import { writable } from "svelte/store";
