@@ -98,17 +98,23 @@
     reset();
     onCancel();
   }
+
+  /// Escape closes. It USED to hang off the backdrop's own `onkeydown`, which
+  /// reads correct and never fired: the dialog does not take focus when it
+  /// opens, so the press lands on `body` and never reaches a handler mounted
+  /// inside the dialog's own subtree. Driven headlessly, focus was `BODY` and
+  /// the dialog stayed open. On the window it fires wherever the focus is.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!open || e.key !== "Escape") return;
+    e.preventDefault();
+    cancel();
+  }
 </script>
 
+<svelte:window onkeydown={onWindowKeydown} />
+
 {#if open}
-  <div
-    class="backdrop"
-    onclick={cancel}
-    onkeydown={(e) => {
-      if (e.key === "Escape") cancel();
-    }}
-    role="presentation"
-  >
+  <div class="backdrop" onclick={cancel} role="presentation">
     <div
       class="dialog"
       role="dialog"
