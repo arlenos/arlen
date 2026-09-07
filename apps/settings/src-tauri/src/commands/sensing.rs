@@ -17,10 +17,19 @@
 //! took. Writing a sibling temp file and renaming means a reader sees the old
 //! contents or the new one, never neither.
 
+// `Write` is used by the tests below (`write_all` on a `File`) and by nothing in
+// the lib target, so the lib-only clippy pass calls it unused. Removing it fails
+// the test build, which is how this comment came to exist.
 use std::io::Write;
 use std::path::PathBuf;
 
 /// Where the shared vector table lives, relative to this file.
+///
+/// `#[allow(dead_code)]` because its only reader is
+/// `every_reader_agrees_with_the_shared_vector_table` below, and the lib target
+/// compiles the test module out - so the lib-only clippy pass calls a constant
+/// the suite depends on unused.
+#[allow(dead_code)]
 const VECTOR_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dev/fixtures/sensing-vectors");
 
 /// Which switches exist, and where they stand.

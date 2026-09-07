@@ -145,7 +145,9 @@ mod tests {
         let mut orig = Vec::new();
         let mut trans = Vec::new();
         let base = trans_table + count * 8;
-        for (id, text) in pairs {
+        // Originals first, so this loop wants the id alone; the translations
+        // follow in their own pass below.
+        for (id, _) in pairs {
             orig.push((id.len() as u32, (base + strings.len()) as u32));
             strings.extend_from_slice(id);
             strings.push(0);
