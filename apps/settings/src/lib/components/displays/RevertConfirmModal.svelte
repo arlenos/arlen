@@ -136,6 +136,28 @@
   /// buttons were reachable only by tabbing into a dialog that never took focus.
   /// Escape reverts, which is both the safe direction and exactly what happens
   /// if they do nothing.
+  /// The modal takes the focus when it opens and hands it back when it closes.
+  /// It says `aria-modal="true"`, which is a claim that the rest of the page is
+  /// inert - and until now nothing moved the focus in, so a keyboard was still
+  /// tabbing through the page BEHIND the overlay and a screen reader was never
+  /// told the dialog existed. Measured: `focusInside=false, active=BODY`.
+  ///
+  /// The card rather than a button: this one asks whether to keep a display
+  /// change, and arming either answer under the return key is not a courtesy.
+  let card = $state<HTMLElement | null>(null);
+  let restoreTo: HTMLElement | null = null;
+
+  $effect(() => {
+    if (open) {
+      restoreTo = document.activeElement as HTMLElement | null;
+      card?.focus();
+      return;
+    }
+    const back = restoreTo;
+    restoreTo = null;
+    back?.focus?.();
+  });
+
   function onWindowKeydown(e: KeyboardEvent) {
     if (!open || busy || e.key !== "Escape") return;
     e.preventDefault();
@@ -150,7 +172,14 @@
        else is announced as an unnamed dialog, and this one is the last thing
        between a person and a display change they cannot see well enough to
        cancel. -->
-  <div class="backdrop" role="dialog" aria-modal="true" aria-labelledby="revert-title">
+  <div
+    class="backdrop"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="revert-title"
+    tabindex="-1"
+    bind:this={card}
+  >
     <div class="modal">
       <h2 id="revert-title">{$t("s.revert.keep")}</h2>
       <p class="body">
