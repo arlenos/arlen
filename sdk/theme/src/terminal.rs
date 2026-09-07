@@ -121,7 +121,8 @@ pub fn generate_xresources(theme: &ArlenTheme) -> String {
 /// foot and alacritty have their own, below, because each wants a different
 /// shape of path and neither is installed here to try - both were read out of
 /// the upstream man-page sources instead. The Xresources file is a third case
-/// again, since it needs `xrdb -merge` at session start rather than an include.
+/// again and is NOT written at all: it needs `xrdb -merge` against an X server,
+/// and an Arlen machine has none.
 ///
 /// Proven with kitty's own parser rather than read off its documentation: the
 /// emitted pair resolves to `background = (15,15,15)` and `color1 =
