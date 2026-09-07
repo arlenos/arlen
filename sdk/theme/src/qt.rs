@@ -15,12 +15,16 @@
 //!
 //! Like the GTK spoke this consumes the **resolved** [`ArlenTheme`] and is safe
 //! by construction: every emitted value is a serialized colour, so no theme
-//! free-string can reach the file. The Fusion bevel shades (`Light`/`Midlight`/
-//! `Dark`/`Mid`) are derived from the button colour the way Qt itself derives
-//! them (`lighter(150)`/`lighter(125)`/`darker(200)`/`darker(150)`), so bevels
-//! track the theme without four extra schema slots.
+//! free-string can reach the file.
+//!
+//! The Fusion bevel shades (`Light`/`Midlight`/`Dark`/`Mid`) are NOT derived by
+//! multiplying the button colour, which is what Qt does for a 3D style and what
+//! this did until 7 September. The house is flat: a button is a surface with a
+//! hairline, so the highlight is the default border, the shadow is the deepest
+//! surface, and the two middle shades are the card and the border. Looked at
+//! beside an Arlen window with `dev/screenshot/shoot-toolkits.sh`.
 
-use crate::{scale_rgb, ArlenTheme, Rgba};
+use crate::{ArlenTheme, Rgba};
 
 /// Serialize a resolved [`Rgba`] to Qt's `#AARRGGBB` form (alpha first).
 pub fn rgba_to_qt_hex(c: Rgba) -> String {
@@ -48,10 +52,10 @@ fn active_roles(t: &ArlenTheme) -> [Rgba; 21] {
     [
         c.fg_primary,             // 0  WindowText
         button,                   // 1  Button
-        scale_rgb(button, 1.5),   // 2  Light
-        scale_rgb(button, 1.25),  // 3  Midlight
-        scale_rgb(button, 0.5),   // 4  Dark
-        scale_rgb(button, 0.66),  // 5  Mid
+        c.border_default,         // 2  Light: the hairline, not a bevel
+        c.bg_card,                // 3  Midlight
+        c.bg_shell,               // 4  Dark: the deepest surface
+        c.border_default,         // 5  Mid
         c.fg_primary,             // 6  Text
         bright_text,              // 7  BrightText
         c.fg_primary,             // 8  ButtonText
