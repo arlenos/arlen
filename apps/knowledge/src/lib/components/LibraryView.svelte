@@ -66,6 +66,13 @@
 
   <div class="li-scroll">
     {#if $sources && $sources.length === 0}
+      <!-- The empty line names where a source comes from, not only that there
+           are none. "No sources bridged in yet" on its own is a dead end with a
+           "yet" in it: it implies the reader forgot a step and says nothing
+           about which. A bridge is an installed extension
+           (`ExtensionKind::Bridge`) and the Store is where one is installed
+           from, so that is the honest second half. It names the place rather
+           than promising a button this page does not have. -->
       <p class="li-empty">{$libraryNoService
           ? $t("k.li.noService")
           : $libraryUnavailable
