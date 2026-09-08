@@ -13,7 +13,6 @@ pub mod process_kill;
 pub mod quick_actions;
 pub mod projects;
 pub mod shell;
-pub mod unicode;
 pub mod unit_converter;
 pub mod url;
 pub mod window_switcher;
@@ -65,7 +64,6 @@ pub fn register_builtins(
         Box::new(shell::ShellPlugin),
         Box::new(man::ManPlugin),
         Box::new(process_kill::ProcessKillPlugin),
-        Box::new(unicode::UnicodePlugin),
     ];
 
     for plugin in plugins {
