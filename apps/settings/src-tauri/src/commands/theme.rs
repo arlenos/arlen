@@ -944,17 +944,6 @@ pub fn theme_toolkit_prereqs() -> std::collections::BTreeMap<String, bool> {
     detect_toolkit_prereqs(&gtk_theme_dirs(), qt6ct_ready)
 }
 
-/// Set the accent color (hex string like `#3b82f6`).
-#[tauri::command]
-pub async fn theme_set_accent(color: String) -> Result<(), String> {
-    config_set(
-        ConfigFile::Appearance,
-        "overrides.accent".into(),
-        serde_json::Value::String(color),
-    )
-    .await
-}
-
 /// A theme as the gallery lists it: identity + a resolved preview swatch.
 /// Mirrors the desktop-shell `ThemeInfo` and adds `swatch` so the gallery
 /// renders real colours instead of a fixture.
