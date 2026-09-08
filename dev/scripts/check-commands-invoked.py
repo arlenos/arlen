@@ -39,6 +39,15 @@ there is a claim that a command is deliberately unreachable, which is a thing to
 decide rather than to inherit. A central table of fifty reasons is a table nobody
 reads; the marker is how an entry leaves it.
 
+NOT COVERED: Tauri PLUGIN commands. A plugin registers its own handler set and is
+invoked as `plugin:<name>|<cmd>`, through a TypeScript binding the plugin ships
+(`sdk/tauri-plugin-*/index.ts`) which builds that string in a template literal. The
+same question is askable there and this scan cannot answer it - the call from an
+app is a function call into the binding, not a name in the app's source. Measured
+once on 8 September: reading the plugin handler lists alone made 40 commands look
+dark and every one was a false positive, because the binding calls them all. The
+gap is named here rather than closed by widening the check badly.
+
 Shown to fail before being trusted: `dev/scripts/test-check-commands-invoked.mjs`.
 
 Usage: check-commands-invoked.py [repo-root]
@@ -55,7 +64,7 @@ from pathlib import Path
 # and a fabricated per-command justification would be worse than none. Each wants
 # the same answer: call it, or delete it.
 CARRIED: dict[str, tuple[int, str]] = {
-    "desktop-shell": (19, "the 8 September scan, re-measured per-app, less the three night-light commands, `get_project` (kept as the function `intent_ipc` calls) and `save_shell_config` (deleted - a whole-file write nothing called, and the read-modify-write its neighbour warns loses data) (`night_light_set` kept as the function `quick_action_run` calls, the schedule and location setters deleted - Settings owns those controls and reaches the compositor through the shell.toml watcher, which no Tauri command can do across apps). Three clusters: the six `qs_layout_*` writers (a SECOND writer for a file Settings already edits through `config_set` - which side owns the layout's invariants is a decision, not a deletion), the global-menu registry (`register_menu`/`set_menu_state`/`unregister_menu` - the shell's cross-app menu path, which no app uses because each declares its menu to its own backend), and features with no UI at all"),
+    "desktop-shell": (18, "the 8 September scan, re-measured per-app. What is left splits three ways: the six `qs_layout_*` writers (a second writer for a file Settings already edits, so which side owns the layout invariants is a decision not a deletion), the global-menu registry - `register_menu`/`set_menu_state`/`unregister_menu` - which no app uses because each declares its menu to its own backend, and features with no surface at all"),
     "files": (2, "the 8 September scan"),
     "harness": (16, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - the marker is per-app, so ours on the other six does not answer for theirs"),
     "settings": (13, "the 8 September scan, re-measured per-app, less `theme_get`, `keybindings_get_defaults` and `keybindings_get_all_conflicts` (all deleted - each a second name for something a live command already returns). The three `extensions_*` commands are the backend of the management surface the shell-extension strand named, so a strand rather than a loose end; four theme readers; and the ai/keybinding readers"),
