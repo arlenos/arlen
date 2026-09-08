@@ -78,6 +78,53 @@ fn classify(
     }
 }
 
+/// Mount an account's Files drive and return the mount point to navigate into.
+///
+/// A remote place has no path until it is mounted: the daemon spawns a confined
+/// rclone under `arlen-run` and only then is there a directory. So the sidebar
+/// entry carries the account id and the click mounts first, the same shape the
+/// Devices section already uses for an unmounted removable drive.
+///
+/// Idempotent on the daemon's side - a second click on a mounted account gets its
+/// mount point back rather than a second rclone.
+#[tauri::command]
+pub async fn network_mount(account_id: String) -> Result<String, String> {
+    accounts_proxy()
+        .await
+        .map_err(|e| e.to_string())?
+        .call("Mount", &(account_id,))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Unmount an account's Files drive.
+///
+/// NOT `files_unmount`, which runs `udisksctl` against a block device. A remote
+/// place is not a block device: it is a confined rclone the accounts daemon owns,
+/// and only the daemon can stop it. Idempotent - unmounting an unmounted account
+/// succeeds.
+#[tauri::command]
+pub async fn network_unmount(account_id: String) -> Result<(), String> {
+    accounts_proxy()
+        .await
+        .map_err(|e| e.to_string())?
+        .call("Unmount", &(account_id,))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// A proxy on the accounts daemon's interface, for the calls that are not a read.
+async fn accounts_proxy() -> Result<zbus::Proxy<'static>, zbus::Error> {
+    let conn = zbus::Connection::session().await?;
+    zbus::Proxy::new(
+        &conn,
+        "org.arlen.Accounts1",
+        "/org/arlen/Accounts1",
+        "org.arlen.Accounts1",
+    )
+    .await
+}
+
 /// Call `org.arlen.Accounts1.ListAccounts` and return its `(id, provider, identity,
 /// presentation)` tuples (already capability-filtered to this app's grant by the
 /// daemon). Errors when the session bus or the daemon is unreachable.
