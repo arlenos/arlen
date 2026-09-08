@@ -190,6 +190,41 @@ export const historyFailed = writable(false);
 /// does nothing: it looks like it worked.
 export const historyCapped = writable(false);
 
+/// The apps the daemon has ever had a notification from.
+///
+/// More than the apps in the list: the point of the filter is reaching back to
+/// something from an app you have nothing pending from, which is most of them
+/// once the panel has been cleared. Answered asynchronously over
+/// `notification:known_apps`, like the history itself.
+export const knownApps = writable<string[]>([]);
+
+/// Which app the history is being read for, or null for all of them.
+export const historyApp = writable<string | null>(null);
+
+/// Ask the daemon which apps it knows.
+export async function loadKnownApps(): Promise<void> {
+  try {
+    await invoke("notification_get_known_apps");
+  } catch (e) {
+    // The filter simply offers nothing but All. Not worth a line: the panel
+    // works exactly as it did before the filter existed.
+    console.warn("[notifications] known-apps request failed:", e);
+  }
+}
+
+/// Read the history for one app, or for all of them again.
+///
+/// Resets the paging state, because the two answers are different histories:
+/// keeping `hasMore` from the unfiltered read would leave the button offered
+/// after a filtered one had reached its end.
+export async function setHistoryApp(app: string | null): Promise<void> {
+  historyApp.set(app);
+  historyHasMore.set(true);
+  historyCapped.set(false);
+  historyFailed.set(false);
+  await loadOlder();
+}
+
 /// Ask for the page before the oldest notification on screen.
 ///
 /// Paged by timestamp rather than an offset: the daemon's own query is
@@ -197,12 +232,16 @@ export const historyCapped = writable(false);
 /// while the panel is open.
 export async function loadOlder(): Promise<void> {
   if (get(historyLoading)) return;
-  const list = get(notifications);
+  const app = get(historyApp);
+  // Page from the oldest notification OF THIS APP on screen, not the oldest on
+  // screen: with a filter set, the global oldest belongs to somebody else and
+  // paging before it would skip everything this app sent in between.
+  const list = get(notifications).filter((n) => !app || n.app_name === app);
   const oldest = list.length > 0 ? list[list.length - 1].timestamp : "";
   historyLoading.set(true);
   historyFailed.set(false);
   try {
-    await getHistory(HISTORY_PAGE, oldest);
+    await getHistory(HISTORY_PAGE, oldest, app ?? "");
   } catch (e) {
     console.error("[notifications] history request failed:", e);
     historyLoading.set(false);
@@ -508,6 +547,11 @@ export function initNotifications(): () => void {
       );
       notifications.set(payload.pending);
       dndState.set({ mode: payload.dnd_mode });
+    }),
+
+    // The apps the daemon knows, for the history filter.
+    listen<{ app_names: string[] }>("notification:known_apps", ({ payload }) => {
+      knownApps.set(payload.app_names ?? []);
     }),
 
     // History response (appended to store for infinite scroll). Re-applies
