@@ -328,20 +328,6 @@ fn terminal_last_command(
     live.assembler.last_command()
 }
 
-/// A session's visible screen as text (terminal.md Option B): the webview renders
-/// this so command output appears without the compositor grid-subsurface. The UI
-/// polls it alongside `terminal_blocks`; a missing session yields an empty grid.
-#[tauri::command]
-fn terminal_grid(session_id: String, registry: State<Mutex<SessionRegistry>>) -> GridSnapshot {
-    let Ok(reg) = registry.lock() else {
-        return GridSnapshot::default();
-    };
-    reg.sessions
-        .get(&session_id)
-        .map(|live| live.engine.screen_snapshot())
-        .unwrap_or_default()
-}
-
 /// Drain a session's raw PTY output bytes for the xterm.js drive renderer. The
 /// frontend invokes this on each `terminal://frame` signal and writes the bytes
 /// to its xterm.js instance, which does the VT parsing + render (engine-down).
@@ -870,7 +856,6 @@ pub fn run() {
             terminal_sessions,
             terminal_blocks,
             terminal_last_command,
-            terminal_grid,
             terminal_drain_output,
             terminal_input,
             terminal_resize,

@@ -36,18 +36,11 @@ from pathlib import Path
 # than a tolerated shape: each wants the same answer as a dark command, which is
 # call it or delete it.
 CARRIED: dict[str, tuple[int, str]] = {
-    "desktop-shell": (
-        1,
-        "`openWaypointer`: the launcher opens through the compositor's Super-tap "
-        "protocol, which calls the Rust side directly, so this has never had a "
-        "caller - and it would be wrong if it did, since it sets visible and then "
-        "TOGGLES, closing a launcher that is already open",
-    ),
     "terminal": (
-        2,
-        "`terminalGrid`, left from before the grid came through xterm, and "
+        1,
         "`readCapability`, whose own doc says there is nowhere yet to put the "
-        "sentence it returns",
+        "sentence it returns - a gap awaiting a surface rather than an affordance "
+        "deliberately kept available, which is why it is carried and not excused",
     ),
 }
 
