@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 /// Shared menu store managed by Tauri.
@@ -45,6 +45,15 @@ pub fn store_register(
 }
 
 /// Remove a menu from the store and emit the unregistration event.
+/// Drop an app's menu and tell the frontend.
+///
+/// A plain function rather than a command, which is the whole shape of this
+/// module now. There were `register_menu` and `unregister_menu` commands beside
+/// these until 9 September, and no app could ever reach them: a Tauri command
+/// does not cross an app boundary, and the shell's own webview has no app menu
+/// to declare. Every real registration arrives over the bus
+/// (`app.menu.registered`, handled in `event_bus.rs`) or from the GTK bridge,
+/// and both call in here directly.
 pub fn store_unregister(app: &AppHandle, store: &AppMenuStore, app_id: &str) {
     store.lock().unwrap().remove(app_id);
     let _ = app.emit(
@@ -53,29 +62,6 @@ pub fn store_unregister(app: &AppHandle, store: &AppMenuStore, app_id: &str) {
             app_id: app_id.to_string(),
         },
     );
-}
-
-/// Register or update the menu structure for an app.
-#[tauri::command]
-pub fn register_menu(
-    app: AppHandle,
-    store: tauri::State<AppMenuStore>,
-    app_id: String,
-    items: serde_json::Value,
-) {
-    store.lock().unwrap().insert(app_id.clone(), items.clone());
-    let _ = app.emit("arlen://menu-registered", MenuRegisteredPayload { app_id, items });
-}
-
-/// Remove the menu for an app.
-#[tauri::command]
-pub fn unregister_menu(
-    app: AppHandle,
-    store: tauri::State<AppMenuStore>,
-    app_id: String,
-) {
-    store.lock().unwrap().remove(&app_id);
-    let _ = app.emit("arlen://menu-unregistered", MenuUnregisteredPayload { app_id });
 }
 
 /// Dispatch a menu action.
