@@ -13,8 +13,10 @@
 # which it protects nothing at all, which is worse than the gap.
 #
 # So it is narrowed by EFFECT: only a change under `sdk/` or `contracts/` can break
-# a crate the commit does not touch, and only the crates that path-depend on it can
-# be broken. Both are enumerable from the tree itself - excluding the build cache
+# a crate the commit does not touch, and only the crates that depend on it can be
+# broken - by a cargo path dependency, or by generating WIT bindings from its
+# directory, which is the same dependency written somewhere cargo cannot see. Both
+# are enumerable from the tree itself - excluding the build cache
 # under `dev/mkosi/mkosi.builddir/`, which holds a VENDORED git checkout of this
 # repo whose manifests match the same grep. Checking it would compile a stale copy
 # of the tree against the new source and report failures about neither.
@@ -60,6 +62,16 @@ fi
 root=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 cd "$root" || exit 0
 
+# `--list` prints the selection and stops, so a control can pin WHICH crates a
+# change reaches without paying for the compile. The selection is the half that
+# rots silently: a check that quietly stopped selecting anything would exit 0
+# forever and read exactly like a pass.
+list_only=""
+if [ "${1:-}" = "--list" ]; then
+    list_only=1
+    shift
+fi
+
 changed=("$@")
 if [ ${#changed[@]} -eq 0 ]; then
     mapfile -t changed < <(git diff --cached --name-only)
@@ -99,7 +111,37 @@ for crate in "${!shared[@]}"; do
         to_check["$(dirname "$manifest")"]=1
     done < <(grep -rl "$crate\"" --include=Cargo.toml . 2>/dev/null \
              | grep -vE '/target/|/mkosi\.builddir/|/node_modules/' | sed 's|^\./||')
+
+    # A manifest is not the only way to depend on a shared crate, and the one it
+    # misses cost a day on 8 September: a WASM guest reaches the WIT with
+    # `wit_bindgen::generate!({ path: "../../sdk/module-sdk/wit" })` and names it
+    # NOWHERE in its Cargo.toml. Adding three fields to `search-result` left
+    # `modules/unicode` unable to compile, and this gate said nothing because the
+    # crate is not a cargo dependent of anything that changed.
+    #
+    # Narrow on the mechanism rather than on the mention: a source file that both
+    # names the changed crate's path AND invokes the macro is generating bindings
+    # from it. Grepping for the path alone would select every file with the crate
+    # in a comment and make the hook slow enough to be bypassed.
+    while IFS= read -r source; do
+        [ -n "$source" ] || continue
+        grep -q 'wit_bindgen::generate!' "$source" || continue
+        dir=$(dirname "$source")
+        while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+            if [ -f "$dir/Cargo.toml" ]; then
+                to_check["$dir"]=1
+                break
+            fi
+            dir=$(dirname "$dir")
+        done
+    done < <(grep -rl "$crate" --include='*.rs' . 2>/dev/null \
+             | grep -vE '/target/|/mkosi\.builddir/|/node_modules/' | sed 's|^\./||')
 done
+
+if [ -n "$list_only" ]; then
+    printf '%s\n' "${!to_check[@]}" | sort
+    exit 0
+fi
 
 echo "shared crate changed (${!shared[*]}); checking ${#to_check[@]} affected crate(s)"
 
