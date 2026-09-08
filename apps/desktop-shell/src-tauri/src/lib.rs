@@ -426,7 +426,6 @@ pub fn run() {
             shell_overlay_client::debug_workspace_update,
             menu_store::dispatch_menu_action,
             menu_store::get_menu,
-            menu_store::set_menu_state,
             waypointer::toggle_waypointer,
             waypointer::set_query_and_show,
             audio::get_audio_status,
