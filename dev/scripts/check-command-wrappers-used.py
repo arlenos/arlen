@@ -37,20 +37,17 @@ from pathlib import Path
 # call it or delete it.
 CARRIED: dict[str, tuple[int, str]] = {
     "desktop-shell": (
-        4,
-        "the 8 September wrapper scan, less `markRead` (opening the panel marks "
-        "what is in it read now). What is left: `openWaypointer` (the launcher "
-        "opens through the compositor protocol instead), `openSourcePickerDemo`, "
-        "and the two derived helpers `windowsOnWorkspace` and `minimizedCountFor`",
+        1,
+        "`openWaypointer`: the launcher opens through the compositor's Super-tap "
+        "protocol, which calls the Rust side directly, so this has never had a "
+        "caller - and it would be wrong if it did, since it sets visible and then "
+        "TOGGLES, closing a launcher that is already open",
     ),
-    "files": (1, "the 8 September wrapper scan: `countFacets`"),
     "terminal": (
         2,
-        "the 8 September wrapper scan, less `terminalConfigSet` (the zoom is kept "
-        "now - the scan's first find was a real defect rather than a tidy-up). "
-        "`terminalGrid` is left over from before the grid came through xterm, and "
-        "`readCapability`'s own doc says there is nowhere yet to put the sentence "
-        "it returns",
+        "`terminalGrid`, left from before the grid came through xterm, and "
+        "`readCapability`, whose own doc says there is nowhere yet to put the "
+        "sentence it returns",
     ),
 }
 
@@ -66,9 +63,14 @@ DEFINITION = re.compile(
     r"|export\s+const\s+(\w+)\s*(?::[^=\n]+)?=\s*(?:async\s*)?\("
 )
 
-# How far past the definition to look for the invoke. Long enough for a wrapper
-# with a doc comment and a try/catch, short enough not to run into the next one.
-BODY_WINDOW = 2000
+# Where one definition's body ends: the next top-level `export`. A fixed window
+# was the first cut and it was wrong - 2000 characters ran past three short pure
+# helpers into the next wrapper down the file, so the scan called
+# `windowsOnWorkspace`, `minimizedCountFor` and `countFacets` command wrappers on
+# the strength of an `invoke` that belongs to their neighbour. A gate that
+# reports a function for what the one below it does is a gate people learn to
+# ignore.
+NEXT_DEFINITION = re.compile(r"\nexport ")
 
 SUFFIXES = (".ts", ".svelte")
 SKIP = ("/node_modules/", "/build/", "/.svelte-kit/", "/target/")
@@ -100,7 +102,8 @@ def unused_wrappers(texts: dict[Path, str]) -> list[str]:
             continue
         for m in DEFINITION.finditer(text):
             name = m.group(1) or m.group(2)
-            body = text[m.end() : m.end() + BODY_WINDOW]
+            after = NEXT_DEFINITION.search(text, m.end())
+            body = text[m.end() : after.start() if after else len(text)]
             if "invoke(" not in body and "invoke<" not in body:
                 continue
             if SELF_EXCUSED.search(head_above(text, m.start())):
