@@ -24,14 +24,12 @@
   let {
     list,
     filter = "",
-    flatten = false,
     selectedId,
     onSelect,
     onContextMenu,
   }: {
     list: Process[];
     filter?: string;
-    flatten?: boolean;
     selectedId?: number;
     onSelect?: (p: Process) => void;
     onContextMenu?: (p: Process, x: number, y: number) => void;
@@ -124,14 +122,15 @@
       if (rows.length === 0) continue;
       out.push({ kind: "group", id: g.id });
       for (const p of rows) {
+        // No unfold branch here on purpose. "Show every process" is a different
+        // SAMPLE, not a different rendering of this one: an aggregate row is the
+        // first process of its group with the rest summed into it, so unfolding
+        // would drop that process and hide its numbers with it. The store asks
+        // for the flat list instead, and a flat row simply has no children.
         const kids = p.children ?? [];
-        if (flatten && kids.length) {
-          for (const c of [...kids].sort(cmp)) out.push({ kind: "proc", proc: c, depth: 0, expandable: false, open: false });
-        } else {
-          const open = expanded.has(p.id);
-          out.push({ kind: "proc", proc: p, depth: 0, expandable: kids.length > 0, open });
-          if (open) for (const c of [...kids].sort(cmp)) out.push({ kind: "proc", proc: c, depth: 1, expandable: false, open: false });
-        }
+        const open = expanded.has(p.id);
+        out.push({ kind: "proc", proc: p, depth: 0, expandable: kids.length > 0, open });
+        if (open) for (const c of [...kids].sort(cmp)) out.push({ kind: "proc", proc: c, depth: 1, expandable: false, open: false });
       }
     }
     return out;

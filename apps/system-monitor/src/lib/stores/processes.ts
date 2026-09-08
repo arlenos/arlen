@@ -8,7 +8,7 @@
 /// coder's Rust collection sidecar over the capability-gated read; under vite the
 /// store serves a fixture.
 
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
 import { refreshMs } from "$lib/refresh";
@@ -87,6 +87,25 @@ export const mocked = writable(false);
 /// True when a real session could not read the process list at all.
 export const unavailable = writable(false);
 
+/// Show every process on its own row instead of one row per app.
+///
+/// The toolbar's toggle, and it decides WHICH COMMAND the poll asks for, which is
+/// the whole point of it living here. The two shapes are two samples of the same
+/// data - `list_app_rows` folds, `list_processes` does not - and the fold is not
+/// reversible in the frontend, so unfolding what arrived folded is not the same
+/// answer.
+export const flatList = writable(false);
+
+/// Flip the toggle and re-read at once.
+///
+/// Without the reload the view would keep whichever shape the last poll fetched
+/// until the next tick, which at a ten-second refresh is a button that appears
+/// to do nothing for ten seconds.
+export function setFlatList(on: boolean): void {
+  flatList.set(on);
+  void load();
+}
+
 /// Why the last action on a process did not happen: a message id and its values,
 /// NOT a sentence. Null when all is well.
 ///
@@ -136,13 +155,21 @@ function whyKey(e: unknown): string {
   return "sm.why.other";
 }
 
-/// Load the process list. Live: `list_app_rows`; fixture under vite.
+/// Load the process list. Live: `list_app_rows` or `list_processes`; fixture under
+/// vite.
 ///
-/// The GROUPED rows, because that is what the plan says the landing opens on -
-/// one "chrome" row over its children rather than fifteen nameless pids. The
-/// flat `list_processes` is still there and is what the power-user toggle will
-/// ask for; both return the same `Process` shape, the grouped one simply
-/// carrying `children`.
+/// The landing opens on the GROUPED rows - one "chrome" row over its children
+/// rather than fifteen nameless pids - and the toolbar's toggle asks for the flat
+/// sample instead. Both return the same `Process` shape; the grouped one simply
+/// carries `children`.
+///
+/// THE TOGGLE ASKS THE BACKEND, and it used to unfold the grouped rows on screen
+/// instead. That looked equivalent and was not: `group_processes` turns the FIRST
+/// process of a group into the aggregate row and puts only the others in
+/// `children`, so unfolding listed everything except that first process while its
+/// CPU and memory stayed summed into a row the unfold had just hidden. On a
+/// machine running a browser that is a renderer missing from "all processes"
+/// every time somebody looks.
 ///
 /// Merged, not replaced. The backend reports neither `limited` (a cgroup
 /// `cpu.max` leash it has no field for) nor `paused`, so a blind `set` would drop
@@ -150,8 +177,9 @@ function whyKey(e: unknown): string {
 /// re-derived from the backend's own status instead of being carried, so it
 /// self-corrects when a process is frozen or thawed outside this app.
 export async function load(): Promise<void> {
+  const flat = get(flatList);
   try {
-    const next = await invoke<Process[]>("list_app_rows");
+    const next = await invoke<Process[]>(flat ? "list_processes" : "list_app_rows");
     processes.update((prev) => {
       const wasLimited = new Set(prev.filter((p) => p.limited).map((p) => p.id));
       return next.map((p) => ({
@@ -173,7 +201,11 @@ export async function load(): Promise<void> {
     if (loads >= 2) ratesReady.set(true);
   } catch {
     if (!tauriAvailable) {
-      processes.set(FIXTURE);
+      // The fixture's parent rows are synthetic totals, not real processes, so
+      // here the unfold IS right - the same fold that loses a process against a
+      // live sample loses nothing against invented one. It keeps the toggle
+      // reviewable under vite and in the render sweep.
+      processes.set(flat ? FIXTURE.flatMap((p) => p.children ?? [p]) : FIXTURE);
       mocked.set(true);
       unavailable.set(false);
       return;

@@ -537,4 +537,28 @@ mod tests {
     fn no_processes_is_no_rows_rather_than_a_panic() {
         assert!(group_processes(&[]).is_empty());
     }
+
+    #[test]
+    fn the_children_are_not_the_group_so_unfolding_loses_a_process() {
+        // The fold is not reversible, and the "show every process" toggle used to
+        // try. The FIRST process of a group becomes the aggregate row and only the
+        // rest go into `children`, so listing the children in place of the row
+        // drops that first process while its CPU stays summed into the row that
+        // was just hidden. This pins the shape so nobody rebuilds the unfold: the
+        // flat view is a second sample, not a second rendering.
+        let flat = [
+            row(11, "chrome", "app", "running", 4.0, 100.0),
+            row(12, "chrome", "app", "running", 2.0, 50.0),
+            row(13, "chrome", "app", "running", 1.0, 25.0),
+        ];
+        let grouped = group_processes(&flat);
+        assert_eq!(grouped.len(), 1);
+        let kids = grouped[0].children.as_ref().expect("the other two");
+        assert_eq!(kids.len(), 2, "one fewer than the processes");
+        assert!(
+            !kids.iter().any(|k| k.id == 11),
+            "the first process is the row, not a child",
+        );
+        assert_eq!(grouped[0].cpu, 7.0, "its CPU is in the row, not beside it");
+    }
 }
