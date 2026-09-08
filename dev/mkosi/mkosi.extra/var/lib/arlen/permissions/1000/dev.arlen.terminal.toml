@@ -73,7 +73,20 @@ read = [
 # `publish` is empty by fact, not omission: there is no emitter anywhere in
 # apps/terminal/src-tauri (checked, not assumed). It is a pure consumer.
 [event_bus]
-publish = []
+publish = [
+    # The quick actions this app pushes into the shell's top bar. `topbar.ts`
+    # calls `toolbar.setQuickActions`, and `os-sdk/src/toolbar.rs` carries that as
+    # `app.toolbar.quick_actions` from THIS process - the emit is the terminal's
+    # even though the buttons appear in the shell.
+    #
+    # This list was empty, which read as "emits nothing" and was true of the
+    # terminal's own source: the call goes through the plugin binding, so nothing
+    # in `src-tauri` names an event. Latent rather than broken today - the bus is
+    # in shadow mode (`ARLEN_EVENT_BUS_ENFORCE`, off by default) - but at the
+    # cutover the terminal's top-bar actions would stop appearing, with nothing
+    # here to say why.
+    "app.toolbar.quick_actions",
+]
 subscribe = [
     "accessibility.state",
     "app.toolbar.action_invoked",
