@@ -49,7 +49,13 @@ trap cleanup EXIT
 
 # 1. The toolkit files, exactly as apply.rs writes them for this theme, plus
 # the Wine document the bottle daemon would import.
-(cd "$root/sdk/theme" && cargo run -q --example emit -- "$variant" "$work/config" >/dev/null) || exit 1
+# `ARLEN_TOOLKIT_CUSTOMIZATION=<theme.toml>` layers a customization over the
+# bundled theme before the toolkit files are written, which is how a PICKED
+# colour gets into this picture. Without it the gallery can only ever show what
+# ships, and "does the accent somebody chose reach a GTK button" is the question
+# the mapping most needs answered.
+(cd "$root/sdk/theme" && cargo run -q --example emit -- \
+  "$variant" "$work/config" ${ARLEN_TOOLKIT_CUSTOMIZATION:+"$ARLEN_TOOLKIT_CUSTOMIZATION"} >/dev/null) || exit 1
 # qt6ct and qt5ct need to be told to use the scheme and the house font;
 # apply.rs deliberately leaves both to the user (their qtNct.conf may carry
 # other settings), so here the harness makes the choice.
