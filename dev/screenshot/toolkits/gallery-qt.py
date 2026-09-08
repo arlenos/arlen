@@ -8,31 +8,39 @@
 # a menu bar and a toolbar, a list with a selected row, tabs, buttons (one of
 # them default, one disabled), a line edit with a placeholder, a check box, a
 # combo, a slider, a progress bar and a status bar. Fusion draws everything
-# from the QPalette qt6ct hands it, which is what gets photographed.
+# from the QPalette qt6ct (or qt5ct) hands it, which is what gets photographed.
+#
+# `QT_GALLERY_MAJOR=5` runs the same window on PyQt5, so the one colour scheme
+# the theme writes for both can be looked at under both.
+import importlib
+import os
 import sys
 
-from PyQt6.QtWidgets import (
-    QApplication,
-    QCheckBox,
-    QComboBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QListWidget,
-    QMainWindow,
-    QProgressBar,
-    QPushButton,
-    QSlider,
-    QTabWidget,
-    QToolBar,
-    QVBoxLayout,
-    QWidget,
-)
-from PyQt6.QtCore import Qt
+QT = "PyQt5" if os.environ.get("QT_GALLERY_MAJOR") == "5" else "PyQt6"
+QtWidgets = importlib.import_module(f"{QT}.QtWidgets")
+QtCore = importlib.import_module(f"{QT}.QtCore")
+globals().update({name: getattr(QtWidgets, name) for name in (
+    "QApplication",
+    "QCheckBox",
+    "QComboBox",
+    "QHBoxLayout",
+    "QLabel",
+    "QLineEdit",
+    "QListWidget",
+    "QMainWindow",
+    "QProgressBar",
+    "QPushButton",
+    "QSlider",
+    "QTabWidget",
+    "QToolBar",
+    "QVBoxLayout",
+    "QWidget",
+)})
+Qt = QtCore.Qt
 
 app = QApplication(sys.argv)
 win = QMainWindow()
-win.setWindowTitle("Qt6 gallery")
+win.setWindowTitle(f"{QT[2:]} gallery")
 win.resize(560, 520)
 
 menu = win.menuBar()
@@ -68,7 +76,7 @@ col.addWidget(QCheckBox("Show unread only", checked=True))
 disabled = QCheckBox("Sync (no account)")
 disabled.setEnabled(False)
 col.addWidget(disabled)
-slider = QSlider(Qt.Orientation.Horizontal)
+slider = QSlider(Qt.Orientation.Horizontal if QT == "PyQt6" else Qt.Horizontal)
 slider.setValue(60)
 col.addWidget(slider)
 progress = QProgressBar()
@@ -91,4 +99,4 @@ outer.addWidget(tabs)
 win.setCentralWidget(root)
 win.statusBar().showMessage("Reading your mail.")
 win.show()
-sys.exit(app.exec())
+sys.exit(app.exec() if QT == "PyQt6" else app.exec_())
