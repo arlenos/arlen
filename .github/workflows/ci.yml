@@ -411,6 +411,8 @@ jobs:
           node dev/scripts/test-check-image-writes.mjs
           python3 dev/scripts/check-apps-on-image.py
           node dev/scripts/test-check-apps-on-image.mjs
+          python3 dev/scripts/check-modules-on-image.py
+          node dev/scripts/test-check-modules-on-image.mjs
           python3 dev/scripts/check-runtime-assets.py
           node dev/scripts/test-check-runtime-assets.mjs
           python3 dev/scripts/check-desktop-entries.py
