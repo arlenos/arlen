@@ -26,3 +26,6 @@ tauri-plugin = { version = "2", features = ["build"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+# For building the wire payloads the relay decides on. The plugin itself never
+# encodes one - it only reads what the shell publishes - so this is a test dep.
+prost = "0.13"

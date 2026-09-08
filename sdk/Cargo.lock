@@ -4287,6 +4287,7 @@ dependencies = [
  "log",
  "notify 7.0.0",
  "os-sdk",
+ "prost",
  "serde",
  "serde_json",
  "tauri",
