@@ -309,11 +309,12 @@
       // and nothing rendered it, so an app could publish "Run tests" and no
       // surface would list it.
       updateShortcutResults(q).catch(() => noteRefusal());
-      // TEMPORARILY DISABLED: same bisection as the worker-pool
-      // init effect above. If a hidden iframe host is the layout
-      // regressor, even silently calling searchModules with no
-      // workers shouldn't matter, but cutting the call avoids any
-      // listener side-effects too.
+      // The Tier 2 workers. This call was cut during the same bisection as
+      // the worker pool, and the pool came back on 8 September once the
+      // stretch it was blamed for failed to reproduce - so the cut is over
+      // and this fans the query out to every mounted worker. A pool with no
+      // workers resolves empty, which is the state on any machine today:
+      // nothing mounts a worker unless a Tier 2 module is installed.
       searchModules(q)
         .then((results) => {
           moduleResults.set(results);
