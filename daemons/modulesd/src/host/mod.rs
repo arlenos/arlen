@@ -13,6 +13,7 @@
 
 pub mod context;
 pub mod events;
+pub mod files;
 pub mod graph;
 pub mod log;
 pub mod network;
