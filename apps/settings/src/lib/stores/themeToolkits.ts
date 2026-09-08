@@ -18,7 +18,15 @@ export type Coverage = "full" | "colours" | "best-effort";
 /// One toolkit target.
 export interface Toolkit {
   id: string;
-  name: string;
+  /// The row's name, as a catalogue key rather than a literal.
+  ///
+  /// Five of the six are product names that read the same in every language, so
+  /// this looks like ceremony until you read the sixth: "Arlen apps +
+  /// compositor" is a PHRASE, and it sat in a German page in English, inside
+  /// German sentences ("Das Thema auf Arlen apps + compositor anwenden"). A key
+  /// for every row means the next one that is a phrase cannot arrive as a
+  /// literal by being typed next to a product name.
+  nameKey: string;
   coverage: Coverage;
   /// Catalogue key for the one-line fidelity note. A key rather than the
   /// sentence, because this list is a module constant: prose written here is
@@ -39,12 +47,12 @@ export interface Toolkit {
 
 /// The toolkits and their honest fidelity ceiling (theming-system-plan.md §1).
 export const TOOLKITS: Toolkit[] = [
-  { id: "arlen", name: "Arlen apps + compositor", coverage: "full", noteKey: "s.toolkit.note.arlen", prereqKey: null, native: true },
-  { id: "gtk3", name: "GTK3", coverage: "full", noteKey: "s.toolkit.note.gtk3", prereqKey: "s.toolkit.prereq.gtk3" },
-  { id: "gtk4", name: "GTK4 / libadwaita", coverage: "colours", noteKey: "s.toolkit.note.gtk4", prereqKey: null },
-  { id: "qt", name: "Qt5 / Qt6", coverage: "colours", noteKey: "s.toolkit.note.qt", prereqKey: "s.toolkit.prereq.qt" },
-  { id: "terminal", name: "Terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereqKey: null },
-  { id: "wine", name: "Wine", coverage: "best-effort", noteKey: "s.toolkit.note.wine", prereqKey: "s.toolkit.prereq.wine" },
+  { id: "arlen", nameKey: "s.toolkit.name.arlen", coverage: "full", noteKey: "s.toolkit.note.arlen", prereqKey: null, native: true },
+  { id: "gtk3", nameKey: "s.toolkit.name.gtk3", coverage: "full", noteKey: "s.toolkit.note.gtk3", prereqKey: "s.toolkit.prereq.gtk3" },
+  { id: "gtk4", nameKey: "s.toolkit.name.gtk4", coverage: "colours", noteKey: "s.toolkit.note.gtk4", prereqKey: null },
+  { id: "qt", nameKey: "s.toolkit.name.qt", coverage: "colours", noteKey: "s.toolkit.note.qt", prereqKey: "s.toolkit.prereq.qt" },
+  { id: "terminal", nameKey: "s.toolkit.name.terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereqKey: null },
+  { id: "wine", nameKey: "s.toolkit.name.wine", coverage: "best-effort", noteKey: "s.toolkit.note.wine", prereqKey: "s.toolkit.prereq.wine" },
 ];
 
 /// Whether the theme is actually in place for a toolkit, as opposed to what the
