@@ -6,7 +6,7 @@
   // render. The block frame, inline images and artifacts stay web-UI around
   // this; only the live grid is xterm.js.
   import { onMount, onDestroy } from "svelte";
-  import { Terminal, type IMarker, type IDecoration } from "@xterm/xterm";
+  import { Terminal, type IMarker, type IDecoration, type ILink } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
   import { CanvasAddon } from "@xterm/addon-canvas";
@@ -20,7 +20,9 @@
     terminalInjectBlock,
     terminalSaveOutput,
     terminalConfigGet,
+    openUrl,
   } from "$lib/contract";
+  import { findLinks, logicalLine, cellAt } from "$lib/links";
   import { matchZoom, zoomStep, type ZoomAction } from "$lib/zoom";
   import { get } from "svelte/store";
   // Aliased: `t` is the local xterm instance throughout the mount, and the store
@@ -457,6 +459,53 @@
     },
   };
 
+  /// Open a URL in the user's browser, and say so in the log when it will not go.
+  ///
+  /// A refused open is not something the person who clicked can act on: the
+  /// scheme allowlist is the same on both sides, so a rejection here means the
+  /// scanner offered something the opener does not take. That is ours to fix,
+  /// not theirs to read.
+  function open(url: string): void {
+    openUrl(url).catch((e) => console.warn("terminal: open_url refused", url, e));
+  }
+
+  /// Make URLs in the output clickable.
+  ///
+  /// TWO PATHS, because two different things arrive as a link. A program that
+  /// speaks OSC 8 hands xterm the URL itself and xterm finds it without help -
+  /// but with no `linkHandler` set, xterm's own fallback puts an English
+  /// `confirm()` box on screen and then calls `window.open`, which in a window
+  /// with no chrome is a dialogue nobody can read in their language followed by
+  /// a page with no way back. The handler replaces both halves of that.
+  ///
+  /// The provider is the other path: a bare URL printed by a program that knows
+  /// nothing about hyperlinks, which is nearly all of them. It scans the whole
+  /// logical line rather than the row under the pointer, so a long address split
+  /// across two rows is one link instead of a click on its first half.
+  function registerLinks(t: Terminal): void {
+    t.options.linkHandler = {
+      activate: (_event, text) => open(text),
+    };
+    t.registerLinkProvider({
+      provideLinks(bufferLineNumber, callback) {
+        // xterm counts the row from one here and from zero on the buffer.
+        const line = logicalLine(t.buffer.active, bufferLineNumber - 1);
+        if (!line) {
+          callback(undefined);
+          return;
+        }
+        const links: ILink[] = findLinks(line.text).map((span) => ({
+          // `end` is one past the last character; the range wants the cell that
+          // character sits in.
+          range: { start: cellAt(line, span.start), end: cellAt(line, span.end - 1) },
+          text: span.url,
+          activate: () => open(span.url),
+        }));
+        callback(links.length > 0 ? links : undefined);
+      },
+    });
+  }
+
   onMount(() => {
     const t = new Terminal({
       cursorBlink: true,
@@ -482,6 +531,7 @@
     t.open(host);
     loadRenderer(t);
     registerBlockChrome(t);
+    registerLinks(t);
 
     // Zoom shortcuts (§5b): Ctrl +/-/0 adjust the font size and must NOT reach the
     // PTY (Ctrl+- is a control byte to the shell otherwise). A non-zoom key is

@@ -280,3 +280,14 @@ export async function readCapability(): Promise<Capability | null> {
     return null;
   }
 }
+
+/// Hand a URL to the user's browser, through the portal.
+///
+/// Never navigation inside the webview: this window has no chrome and no way
+/// back, so a link that loaded in place would replace the terminal with a web
+/// page and strand whoever clicked it. The backend refuses any scheme but
+/// http(s) and mailto, so a refusal here is a bug in whatever offered the link
+/// rather than something a person can act on - it goes to the log.
+export async function openUrl(url: string): Promise<void> {
+  await invoke("open_url", { url });
+}
