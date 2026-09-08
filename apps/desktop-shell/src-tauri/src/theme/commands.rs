@@ -242,7 +242,11 @@ fn select_interface(selection: &arlen_theme::gtk::InterfaceSelection) {
         set_string("icon-theme", icons);
     }
     set_string("cursor-theme", &selection.cursor_theme);
-    set_string("font-name", &selection.font);
+    // Absent when fontconfig could not resolve the family: the key keeps
+    // whatever it had, which is a font this machine actually has.
+    if let Some(font) = &selection.font {
+        set_string("font-name", font);
+    }
     // The schema's own vocabulary for the same bit `settings.ini` spells
     // `gtk-application-prefer-dark-theme`.
     set_string(
@@ -578,7 +582,7 @@ mod tests {
             icon_theme: None,
             cursor_theme: "default".into(),
             cursor_size: 24,
-            font: "Inter Variable 14px".into(),
+            font: Some("Inter Variable 14px".into()),
             dark: true,
         };
         select_interface(&selection);

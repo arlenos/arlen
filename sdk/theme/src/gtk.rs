@@ -288,7 +288,10 @@ fn pango_font(stack: &str, size_base: &str) -> String {
 ///
 /// `theme_name` is what [`installed_gtk_theme`] found and `icon_theme` what
 /// [`installed_icon_theme`] confirmed, and `None` for either means the key is
-/// OMITTED rather than written hopefully. The rest of the file is still worth
+/// OMITTED rather than written hopefully. The FONT follows the same rule since
+/// 8 September - a family fontconfig cannot resolve is left unnamed, because the
+/// toolkit then substitutes silently and our windows and theirs disagree. The
+/// rest of the file is still worth
 /// writing: cursor and font are true regardless of what is installed, because a
 /// cursor theme GTK cannot find falls back to the cursor everybody has and a
 /// font it cannot find falls back through fontconfig, neither of which leaves a
@@ -297,6 +300,43 @@ fn pango_font(stack: &str, size_base: &str) -> String {
 /// `gtk-application-prefer-dark-theme` is how one theme directory serves both
 /// variants: GTK3 reads `gtk-dark.css` beside `gtk.css` when it is set, which is
 /// what both our fork and upstream adw-gtk3 ship.
+/// Whether fontconfig can actually resolve a family, or `None` if it cannot say.
+///
+/// The same rule this file already keeps for icon themes, applied to the font:
+/// naming one the machine does not have makes a desktop WORSE than saying
+/// nothing, because the toolkit then substitutes silently and every foreign app
+/// disagrees with ours about the body font. That is not hypothetical - on 8
+/// September the image had no Inter at all while the theme named "Inter
+/// Variable", and only our own windows looked right because the Svelte apps
+/// bundle it as a webfont.
+///
+/// `fc-match` is the oracle rather than a directory scan, because a family name
+/// lives inside a font's name table and fontconfig also resolves aliases. It
+/// ALWAYS answers, falling back to something else when it does not have the
+/// family, so the test is whether the answer is the family that was asked for.
+///
+/// `None` means fontconfig could not be asked - no `fc-match` on this machine -
+/// and the caller should keep naming the font rather than dropping it: an absent
+/// tool is not evidence of an absent font.
+pub fn font_family_installed(family: &str) -> Option<bool> {
+    let out = std::process::Command::new("fc-match")
+        .arg("--format=%{family}")
+        .arg(family)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let answer = String::from_utf8_lossy(&out.stdout);
+    // fontconfig answers with the family list of the matched face, comma
+    // separated when a face carries several names.
+    Some(
+        answer
+            .split(',')
+            .any(|name| name.trim().eq_ignore_ascii_case(family.trim())),
+    )
+}
+
 /// The interface choices a theme makes, before either vocabulary names them.
 ///
 /// There are two readers for the same six decisions and they use different
@@ -316,10 +356,25 @@ pub struct InterfaceSelection {
     pub cursor_theme: String,
     /// The cursor size in pixels.
     pub cursor_size: u32,
-    /// The interface font, as a Pango description.
-    pub font: String,
+    /// The interface font as a Pango description, or `None` when the family is
+    /// not on this machine and naming it would be a substitution nobody asked
+    /// for.
+    pub font: Option<String>,
     /// Whether the theme is a dark one.
     pub dark: bool,
+}
+
+/// The font to name, or `None` when this machine does not have the family.
+///
+/// Only a KNOWN-absent family is dropped. If fontconfig cannot be asked the font
+/// is named as before, because an absent tool says nothing about an absent font.
+fn font_for(theme: &ArlenTheme) -> Option<String> {
+    let font = pango_font(&theme.typography.font_sans, &theme.typography.size_base);
+    let family = crate::wine::first_family(&theme.typography.font_sans);
+    match font_family_installed(family) {
+        Some(false) => None,
+        _ => Some(font),
+    }
 }
 
 /// What this theme selects, given what the machine turned out to have.
@@ -333,7 +388,7 @@ pub fn interface_selection(
         icon_theme: icon_theme.map(str::to_string),
         cursor_theme: theme.cursor.theme.clone(),
         cursor_size: theme.cursor.size,
-        font: pango_font(&theme.typography.font_sans, &theme.typography.size_base),
+        font: font_for(theme),
         dark: theme.is_dark(),
     }
 }
@@ -363,7 +418,9 @@ pub fn generate_gtk_settings_ini(
     }
     out.push_str(&format!("gtk-cursor-theme-name={}\n", sel.cursor_theme));
     out.push_str(&format!("gtk-cursor-theme-size={}\n", sel.cursor_size));
-    out.push_str(&format!("gtk-font-name={}\n", sel.font));
+    if let Some(font) = &sel.font {
+        out.push_str(&format!("gtk-font-name={font}\n"));
+    }
     out
 }
 
@@ -373,6 +430,50 @@ mod tests {
     use crate::ArlenTheme;
 
     const SAMPLE: &str = include_str!("../test-fixtures/sample.toml");
+
+    #[test]
+    fn a_font_nobody_has_is_not_named() {
+        // fontconfig's own answer decides, so skip where it cannot be asked
+        // rather than assert something this machine cannot know.
+        let Some(present) = font_family_installed("Definitely Not A Font 12345") else {
+            return;
+        };
+        assert!(!present, "fontconfig claims to have a font nobody has");
+
+        let mut theme = ArlenTheme::from_bundled(crate::DARK_TOML).unwrap();
+        theme.typography.font_sans = "\"Definitely Not A Font 12345\", sans-serif".into();
+        let sel = interface_selection(&theme, Some("Arlen"), None);
+        assert_eq!(sel.font, None, "a missing family must not be named");
+        let ini = generate_gtk_settings_ini(&theme, Some("Arlen"), None);
+        assert!(!ini.contains("gtk-font-name"), "the key is omitted, not written empty:\n{ini}");
+        // The rest of the file is unaffected: this is one key, not a bail-out.
+        assert!(ini.contains("gtk-theme-name=Arlen"));
+        assert!(ini.contains("gtk-cursor-theme-name="));
+    }
+
+    #[test]
+    fn a_font_the_machine_has_is_named() {
+        // Every machine resolves its own default sans, whatever it is called.
+        let Some(default_family) = std::process::Command::new("fc-match")
+            .arg("--format=%{family}")
+            .arg("sans-serif")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).split(',').next().unwrap_or("").trim().to_string())
+            .filter(|f| !f.is_empty())
+        else {
+            return;
+        };
+        let mut theme = ArlenTheme::from_bundled(crate::DARK_TOML).unwrap();
+        theme.typography.font_sans = format!("\"{default_family}\", sans-serif");
+        let sel = interface_selection(&theme, None, None);
+        assert!(
+            sel.font.as_deref().is_some_and(|f| f.starts_with(&default_family)),
+            "the family this machine resolves must still be named, got {:?}",
+            sel.font
+        );
+    }
 
     #[test]
     fn rgba_to_hex_drops_opaque_alpha_and_keeps_translucent() {
