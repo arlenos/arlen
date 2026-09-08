@@ -155,6 +155,106 @@ pub fn deny_roots_from(
     roots
 }
 
+/// The most a guest gets from one `read`.
+///
+/// A module asked for a file, not for the host's memory: the store is capped at
+/// 64 MB and a guest that asks for something larger would take the daemon's
+/// allocation with it. Eight megabytes covers what this capability is for - a
+/// man page is kilobytes, `/usr/share/dict/words` is about one megabyte - and
+/// anything past it is told `too-large` rather than being cut off silently.
+pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
+
+/// What went wrong, in the vocabulary the WIT enum uses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refusal {
+    /// Under something no manifest may name.
+    Denied,
+    /// Outside every prefix this module declared.
+    NotAllowed,
+    /// Absent, or a link that goes nowhere.
+    NotFound,
+    /// There and unreadable.
+    Unreadable,
+    /// Larger than [`MAX_READ_BYTES`].
+    TooLarge,
+}
+
+/// One directory entry, as the guest sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entry {
+    pub name: String,
+    pub directory: bool,
+    pub size: u64,
+}
+
+fn declared(ctx: &CapabilityContext) -> Vec<PathBuf> {
+    ctx.capabilities
+        .files
+        .as_ref()
+        .map(|f| f.read.iter().map(PathBuf::from).collect())
+        .unwrap_or_default()
+}
+
+fn resolved(ctx: &CapabilityContext, path: &str) -> Result<PathBuf, Refusal> {
+    match decide(
+        Path::new(path),
+        &declared(ctx),
+        &deny_roots(),
+        |p| std::fs::canonicalize(p),
+    ) {
+        Verdict::Allow(p) => Ok(p),
+        Verdict::Denied { under } => {
+            tracing::warn!(
+                module = %ctx.module_id,
+                denied_under = %under.display(),
+                "files.read refused: the path is on the deny list"
+            );
+            Err(Refusal::Denied)
+        }
+        Verdict::Undeclared => Err(Refusal::NotAllowed),
+        Verdict::Unresolvable => Err(Refusal::NotFound),
+    }
+}
+
+/// Read a whole file, if this module may.
+pub fn read(ctx: &CapabilityContext, path: &str) -> Result<Vec<u8>, Refusal> {
+    let path = resolved(ctx, path)?;
+    let meta = std::fs::metadata(&path).map_err(|_| Refusal::Unreadable)?;
+    if meta.is_dir() {
+        // A directory is not a file, and saying `unreadable` here is more honest
+        // than handing back whatever the platform does with `read_to_end` on one.
+        return Err(Refusal::Unreadable);
+    }
+    if meta.len() > MAX_READ_BYTES {
+        return Err(Refusal::TooLarge);
+    }
+    std::fs::read(&path).map_err(|_| Refusal::Unreadable)
+}
+
+/// List a directory, if this module may.
+pub fn list_dir(ctx: &CapabilityContext, path: &str) -> Result<Vec<Entry>, Refusal> {
+    let path = resolved(ctx, path)?;
+    let dir = std::fs::read_dir(&path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => Refusal::NotFound,
+        _ => Refusal::Unreadable,
+    })?;
+    let mut out = Vec::new();
+    for entry in dir.flatten() {
+        let Ok(meta) = entry.metadata() else { continue };
+        out.push(Entry {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            directory: meta.is_dir(),
+            size: if meta.is_dir() { 0 } else { meta.len() },
+        });
+    }
+    // Sorted, because a directory's order is the filesystem's and a guest that
+    // renders a listing should not change between calls for no reason.
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+use crate::host::context::CapabilityContext;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,6 +352,98 @@ mod tests {
     fn a_path_that_does_not_resolve_says_so() {
         let v = decide(Path::new("/nowhere"), &declared(), &deny(), resolver("", ""));
         assert_eq!(v, Verdict::Unresolvable);
+    }
+
+    fn ctx_reading(prefixes: &[&std::path::Path]) -> CapabilityContext {
+        let caps = arlen_modules::ModuleCapabilities {
+            files: Some(arlen_modules::FilesCapability {
+                read: prefixes.iter().map(|p| p.display().to_string()).collect(),
+            }),
+            ..Default::default()
+        };
+        CapabilityContext::new("com.example.reader", caps)
+    }
+
+    #[test]
+    fn a_declared_file_reads_and_an_undeclared_sibling_does_not() {
+        let tmp = tempfile::tempdir().unwrap();
+        let allowed = tmp.path().join("allowed");
+        let other = tmp.path().join("other");
+        std::fs::create_dir_all(&allowed).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(allowed.join("page"), b"HEAVY BLACK HEART").unwrap();
+        std::fs::write(other.join("secret"), b"no").unwrap();
+
+        let ctx = ctx_reading(&[&std::fs::canonicalize(&allowed).unwrap()]);
+        assert_eq!(
+            read(&ctx, allowed.join("page").to_str().unwrap()),
+            Ok(b"HEAVY BLACK HEART".to_vec())
+        );
+        assert_eq!(
+            read(&ctx, other.join("secret").to_str().unwrap()),
+            Err(Refusal::NotAllowed)
+        );
+    }
+
+    #[test]
+    fn a_module_that_declared_nothing_reads_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("f"), b"x").unwrap();
+        let ctx = CapabilityContext::empty("com.example.quiet");
+        assert_eq!(
+            read(&ctx, tmp.path().join("f").to_str().unwrap()),
+            Err(Refusal::NotAllowed)
+        );
+    }
+
+    #[test]
+    fn a_listing_names_entries_and_sorts_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        std::fs::write(root.join("b"), b"22").unwrap();
+        std::fs::write(root.join("a"), b"1").unwrap();
+        std::fs::create_dir(root.join("c")).unwrap();
+
+        let ctx = ctx_reading(&[&root]);
+        let listed = list_dir(&ctx, root.to_str().unwrap()).expect("listed");
+        assert_eq!(
+            listed,
+            vec![
+                Entry { name: "a".into(), directory: false, size: 1 },
+                Entry { name: "b".into(), directory: false, size: 2 },
+                Entry { name: "c".into(), directory: true, size: 0 },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_directory_is_not_a_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let ctx = ctx_reading(&[&root]);
+        assert_eq!(read(&ctx, root.to_str().unwrap()), Err(Refusal::Unreadable));
+    }
+
+    #[test]
+    fn a_link_out_of_the_declared_root_is_refused_by_the_real_resolver() {
+        // The same claim as the injected-resolver test, but through
+        // `std::fs::canonicalize`, because the guarantee rests on what the real
+        // one does with a symlink.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let inside = root.join("inside");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&inside).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret"), b"no").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret"), inside.join("escape")).unwrap();
+
+        let ctx = ctx_reading(&[&inside]);
+        assert_eq!(
+            read(&ctx, inside.join("escape").to_str().unwrap()),
+            Err(Refusal::NotAllowed),
+            "the link resolves out of the declared root"
+        );
     }
 
     #[test]
