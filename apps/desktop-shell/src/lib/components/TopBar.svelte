@@ -39,6 +39,7 @@
   import NightLightBadge from "$lib/components/topbar/badges/NightLightBadge.svelte";
   import AirplaneBadge from "$lib/components/topbar/badges/AirplaneBadge.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
+  import { showProjectName } from "$lib/stores/focusSettings.js";
   import { closePopover } from "$lib/stores/activePopover.js";
   import { invoke } from "@tauri-apps/api/core";
   import { shellAction } from "$lib/shellAction";
@@ -357,8 +358,15 @@
                     attributes).
                   -->
                   <span class="focus-dot" style:background={$focusState.accentColor}></span>
+                {:else if !$showProjectName}
+                  <!-- With the name hidden and no project accent there would be
+                       nothing left to see or click, and the way out of Focus
+                       Mode is this button's context menu. The dot stands in. -->
+                  <span class="focus-dot"></span>
                 {/if}
-                <span class="focus-name">{$focusState.projectName}</span>
+                {#if $showProjectName}
+                  <span class="focus-name">{$focusState.projectName}</span>
+                {/if}
               </button>
             {/snippet}
           </ContextMenu.Trigger>
