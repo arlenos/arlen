@@ -53,15 +53,23 @@ const EPOCH_DEADLINE_TICKS: u64 = 50;
 /// constant: a module could not build anything at startup that it did not have
 /// to rebuild on every keystroke.
 ///
-/// 500 M rather than a doubling, because a doubling answers nothing: the first
-/// real guest measured a single scan of the Unicode name space at 200-400 M. An
-/// index built here lives in the store for the module's lifetime, so it is paid
-/// once and every later `search` reads it.
+/// **1.5 G, and the number moved once it was measured against a real index.** The
+/// ruling said hundreds of millions, from a report that had measured a single
+/// SCAN of the Unicode name space at 200-400 M. Building an index over the same
+/// data costs more than scanning it once: the first module's name buffer plus
+/// its trigram buckets came in between 1 G and 1.5 G, and 500 M could not build
+/// it at all. The scan was the floor, not the whole cost.
+///
+/// What this does NOT loosen is the guard that matters. Fuel counts instructions,
+/// not time, and the five-second wall clock covers `init` unchanged - 1.5 G of
+/// wasm is a second or two, well inside it. A guest that hangs is stopped by the
+/// deadline either way; this only stops the daemon killing a module for doing
+/// legitimate one-time work.
 ///
 /// This is not a way around the search budget. The wall-clock deadline covers
 /// `init` unchanged at five seconds, and a guest that hangs in a host call is
 /// stopped by that rather than by fuel.
-pub const INIT_FUEL_BUDGET: u64 = 500_000_000;
+pub const INIT_FUEL_BUDGET: u64 = 1_500_000_000;
 
 /// Default fuel budget per host call. One million Wasmtime fuel units
 /// is roughly ten milliseconds of typical numeric work; modules that
