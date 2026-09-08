@@ -67,7 +67,6 @@ CARRIED: dict[str, tuple[int, str]] = {
     "desktop-shell": (15, "the 8 September scan, re-measured per-app. What is left splits three ways: the six `qs_layout_*` writers (a second writer for a file Settings already edits, so which side owns the layout invariants is a decision not a deletion), the global-menu registry - `register_menu`/`set_menu_state`/`unregister_menu` - which no app uses because each declares its menu to its own backend, and features with no surface at all"),
     "harness": (16, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - the marker is per-app, so ours on the other six does not answer for theirs"),
     "settings": (13, "the 8 September scan, re-measured per-app, less `theme_get`, `keybindings_get_defaults` and `keybindings_get_all_conflicts` (all deleted - each a second name for something a live command already returns). The three `extensions_*` commands are the backend of the management surface the shell-extension strand named, so a strand rather than a loose end; four theme readers; and the ai/keybinding readers"),
-    "system-monitor": (1, "the 8 September scan"),
     "store": (4, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - I do not write in their tree, so the marker the other apps carry is not mine to add here"),
 }
 

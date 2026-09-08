@@ -1,13 +1,13 @@
 <script lang="ts">
   /// The task-manager window. The landing IS the process list (no verdict page).
   /// Tabs sit above it (Processes first, always); a toolbar carries the filter + the
-  /// group/flatten toggle.
+  /// grouped/all toggle.
   import { onMount } from "svelte";
   import ProcessTable from "$lib/components/tm/ProcessTable.svelte";
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
   import DetailPane from "$lib/components/tm/DetailPane.svelte";
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
-  import { processes, mocked, unavailable, lastError, load, startProcessPolling, stopProcessPolling, stop, stopRow, pause, resume, limit, unlimit, pauseRow, resumeRow, limitRow, unlimitRow, type Process } from "$lib/stores/processes";
+  import { processes, mocked, unavailable, lastError, load, startProcessPolling, stopProcessPolling, stop, stopRow, pause, resume, limit, unlimit, pauseRow, resumeRow, limitRow, unlimitRow, flatList, setFlatList, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { initAppMenu, menuAction } from "$lib/menu";
   import { t, dir } from "$lib/i18n/messages";
@@ -25,7 +25,6 @@
   ] as const;
   let tab = $state<(typeof TABS)[number]["key"]>("Processes");
   let filter = $state("");
-  let flatten = $state(false);
   let selected = $state<Process | null>(null);
   let menu = $state<{ proc: Process; x: number; y: number } | null>(null);
 
@@ -197,15 +196,15 @@
               {...props}
               type="button"
               class="toggle"
-              class:on={flatten}
-              onclick={() => (flatten = !flatten)}
+              class:on={$flatList}
+              onclick={() => setFlatList(!$flatList)}
             >
-        {#if flatten}<Rows3 size={14} strokeWidth={2} /> {$t("tm.toggle.all")}{:else}<Layers size={14} strokeWidth={2} /> {$t("tm.toggle.grouped")}{/if}
+        {#if $flatList}<Rows3 size={14} strokeWidth={2} /> {$t("tm.toggle.all")}{:else}<Layers size={14} strokeWidth={2} /> {$t("tm.toggle.grouped")}{/if}
             </button>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.TooltipContent side="bottom">
-          {$t(flatten ? "tm.toggle.toGrouped" : "tm.toggle.toAll")}
+          {$t($flatList ? "tm.toggle.toGrouped" : "tm.toggle.toAll")}
         </Tooltip.TooltipContent>
       </Tooltip.Root>
     </div>
@@ -215,7 +214,6 @@
         <ProcessTable
           list={$processes}
           {filter}
-          {flatten}
           selectedId={selected?.id}
           onSelect={(p) => (selected = p)}
           onContextMenu={(p, x, y) => (menu = { proc: p, x, y })}
