@@ -231,6 +231,59 @@ fn classify_network_failure(
     }
 }
 
+/// `files.read` / `files.list-dir`, over the decision in `host::files`.
+///
+/// The whole policy lives one module over; this only carries the answer across
+/// the ABI and turns a [`crate::host::files::Refusal`] into the error code the
+/// WIT names. The two refusals stay distinguishable on purpose: `denied` is the
+/// deny list, which no manifest can widen, and `not-allowed` is a path outside
+/// what this module declared - one tells an author their manifest is too narrow,
+/// the other that the answer will never be yes.
+impl wit::arlen::host::files::Host for ModuleStore {
+    async fn read(
+        &mut self,
+        path: String,
+    ) -> Result<Vec<u8>, wit::arlen::host::files::Error> {
+        crate::host::files::read(&self.ctx, &path).map_err(files_error)
+    }
+
+    async fn list_dir(
+        &mut self,
+        path: String,
+    ) -> Result<Vec<wit::arlen::host::files::Entry>, wit::arlen::host::files::Error> {
+        crate::host::files::list_dir(&self.ctx, &path)
+            .map(|entries| {
+                entries
+                    .into_iter()
+                    .map(|e| wit::arlen::host::files::Entry {
+                        name: e.name,
+                        directory: e.directory,
+                        size: e.size,
+                    })
+                    .collect()
+            })
+            .map_err(files_error)
+    }
+}
+
+/// A refusal in the ABI's vocabulary.
+///
+/// The message says what the code already says and nothing more: which of the
+/// host's own paths a guest collided with is in the daemon's log, not in the
+/// guest's error.
+fn files_error(refusal: crate::host::files::Refusal) -> wit::arlen::host::files::Error {
+    use crate::host::files::Refusal;
+    use wit::arlen::host::files::{Error, ErrorCode};
+    let (code, message) = match refusal {
+        Refusal::Denied => (ErrorCode::Denied, "this path is not readable by a module"),
+        Refusal::NotAllowed => (ErrorCode::NotAllowed, "outside the prefixes this module declared"),
+        Refusal::NotFound => (ErrorCode::NotFound, "no such path"),
+        Refusal::Unreadable => (ErrorCode::Unreadable, "the path could not be read"),
+        Refusal::TooLarge => (ErrorCode::TooLarge, "larger than a module may read in one call"),
+    };
+    Error { code, message: message.to_string() }
+}
+
 impl wit::arlen::host::network::Host for ModuleStore {
     async fn fetch(
         &mut self,

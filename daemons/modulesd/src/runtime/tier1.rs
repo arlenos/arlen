@@ -493,6 +493,8 @@ fn populate_linker(linker: &mut Linker<ModuleStore>) -> Result<()> {
         .map_err(|e| DaemonError::Internal(format!("link network: {e}")))?;
     wit::arlen::host::events::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
         .map_err(|e| DaemonError::Internal(format!("link events: {e}")))?;
+    wit::arlen::host::files::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+        .map_err(|e| DaemonError::Internal(format!("link files: {e}")))?;
     wit::arlen::host::log::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
         .map_err(|e| DaemonError::Internal(format!("link log: {e}")))?;
 
