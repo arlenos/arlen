@@ -829,6 +829,32 @@ pub struct ToolkitReachView {
     pub blocked_by: Option<String>,
 }
 
+/// Which widget theme GTK3 apps will actually be in, if anything says.
+///
+/// Not what we wrote. Measured on 8 September: GTK3 prefers
+/// `org.gnome.desktop.interface` over `gtk-3.0/settings.ini` whenever those
+/// schemas are installed, and falls back to that schema's DEFAULT rather than to
+/// the file - so a page that reads only the files can report the theme reaching
+/// GTK3 while every GTK3 app on the machine is in stock Adwaita. That is exactly
+/// what this page is for, so it asks.
+///
+/// `None` means nothing here has an opinion: no schema source, no
+/// `org.gnome.desktop.interface`, or no `gtk-theme` key. On such a machine the
+/// settings file IS the reader and the file-based answer is the right one.
+fn selected_gtk_theme() -> Option<String> {
+    use gio::prelude::SettingsExt;
+    let source = gio::SettingsSchemaSource::default()?;
+    let schema = source.lookup("org.gnome.desktop.interface", true)?;
+    if !schema.has_key("gtk-theme") {
+        return None;
+    }
+    Some(
+        gio::Settings::new("org.gnome.desktop.interface")
+            .string("gtk-theme")
+            .to_string(),
+    )
+}
+
 /// Whether the theme is actually in place per toolkit, keyed by the Toolkits
 /// page's own toolkit ids.
 ///
@@ -843,9 +869,34 @@ pub fn theme_toolkit_reach() -> std::collections::BTreeMap<String, ToolkitReachV
     let Some(config) = dirs::config_dir() else {
         return std::collections::BTreeMap::new();
     };
+    // What is SELECTED, which is a different question from what is written and
+    // the one a GTK3 app answers to. A name that is not one of ours means the
+    // files below are correct and unread.
+    let selected = selected_gtk_theme();
+    let selection_is_ours = selected
+        .as_deref()
+        .map(|name| arlen_theme::gtk::GTK_THEME_CANDIDATES.contains(&name))
+        .unwrap_or(true);
+
     arlen_theme::apply::toolkit_reach(&config)
         .into_iter()
         .map(|(k, v)| {
+            // The GTK3 row is the one this applies to: the schema names ONE
+            // widget theme and only GTK3 has one of ours to name. A GTK4 or Qt
+            // app is not steered by it.
+            if k == "gtk3" && !selection_is_ours {
+                return (
+                    k,
+                    ToolkitReachView {
+                        // Its own state, not "blocked": the file case is a file
+                        // the person wrote and the sentence says so, while this
+                        // one is a theme NAME and the same sentence would read
+                        // "your own Adwaita is in the way".
+                        state: "unselected".into(),
+                        blocked_by: selected.clone(),
+                    },
+                );
+            }
             let view = match v {
                 arlen_theme::apply::ToolkitReach::Ours => ToolkitReachView {
                     state: "ours".into(),

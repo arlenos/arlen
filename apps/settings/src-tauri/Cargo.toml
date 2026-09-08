@@ -28,6 +28,13 @@ arlen-notification-daemon = { path = "../../../daemons/notification-daemon" }
 arlen-forage-bridge-install = { path = "../../../forage/bridge-install" }
 arlen-ai-model-manager = { path = "../../../ai/ai-model-manager" }
 arlen-theme = { path = "../../../sdk/theme" }
+# To ask what GTK3 will actually do. `sdk/theme` decides the theme and writes the
+# files; which theme a GTK3 app ends up in is decided by
+# `org.gnome.desktop.interface`, and reporting reach without reading that is
+# reporting what we wrote rather than what is in force. gio stays out of
+# `sdk/theme` on purpose - it is consumed by crates that have no business
+# linking glib - so the reader lives here, at the surface that asks.
+gio = "0.18"
 arlen-printers = { path = "../../../sdk/printers" }
 arlen-wallpaper = { path = "../../../daemons/wallpaper" }
 arlen-print = { path = "../../../daemons/print", features = ["cups"] }
