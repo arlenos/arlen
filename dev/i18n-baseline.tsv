@@ -226,15 +226,6 @@ apps/settings/src/lib/stores/capsules.ts	Project Atlas notes
 apps/settings/src/lib/stores/capsules.ts	Reading list
 apps/settings/src/lib/stores/capsules.ts	Recipe collection
 apps/settings/src/lib/stores/capsules.ts	Trip 2026
-apps/settings/src/lib/stores/models.ts	Answers your questions.
-apps/settings/src/lib/stores/models.ts	Background work
-apps/settings/src/lib/stores/models.ts	Balanced
-apps/settings/src/lib/stores/models.ts	Best quality
-apps/settings/src/lib/stores/models.ts	Chat
-apps/settings/src/lib/stores/models.ts	Chat titles
-apps/settings/src/lib/stores/models.ts	Fast
-apps/settings/src/lib/stores/models.ts	Names new chats. A small local model is plenty.
-apps/settings/src/lib/stores/models.ts	Runs the tasks you have turned on.
 apps/settings/src/lib/stores/models.ts	Your machine can run models up to about 8B at a good speed.
 apps/settings/src/lib/stores/printers.ts	Network
 apps/settings/src/lib/stores/theme.ts	DejaVu Sans Mono
