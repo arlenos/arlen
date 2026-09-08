@@ -48,6 +48,7 @@ lsblk	-	files, system-monitor	base	util-linux
 fusermount	fuse3	knowledge timeline mount	ships	the timeline FUSE mount
 bwrap	bubblewrap	arlen-run, terminal, pi sidecar	ships	every confined child runs under it
 fc-list	fontconfig	settings font list	ships	the font picker in Settings
+fc-match	fontconfig	theme font naming	ships	the interface font key, which is omitted rather than naming a family this machine cannot resolve
 
 # ── absent, and each one is a feature that does not work here ────────────────
 nmcli	network-manager	desktop-shell network.rs	absent	ALL networking UI: the WiFi list, connect, disconnect, VPN. NetworkManager is not on the appliance image, so every network popover action fails at spawn
