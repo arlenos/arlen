@@ -1632,7 +1632,11 @@ button = 12
             // The settings.ini carries free strings (font, icon and cursor
             // theme names), so it is the one GTK output where a hostile theme
             // could reach a file as syntax rather than as a colour.
-            let ini = crate::gtk::generate_gtk_settings_ini(&t, Some("Arlen"), Some(t.icons.theme.as_str()));
+            let ini = crate::gtk::generate_gtk_settings_ini(&crate::gtk::interface_selection(
+                &t,
+                Some("Arlen"),
+                Some(t.icons.theme.as_str()),
+            ));
             for line in ini.lines().filter(|l| l.contains('=')) {
                 let (_, value) = line.split_once('=').expect("a key and a value");
                 assert!(

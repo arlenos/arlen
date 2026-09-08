@@ -284,8 +284,19 @@ fn write_toolkit_configs(
     // directory being there - see `installed_icon_theme`.
     let icons = crate::gtk::installed_icon_theme(&gtk_theme.icons.theme, &icon_theme_dirs())
         .then_some(gtk_theme.icons.theme.as_str());
-    report.selection = Some(crate::gtk::interface_selection(gtk_theme, selected, icons));
-    let ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, selected, icons);
+    let mut selection = crate::gtk::interface_selection(gtk_theme, selected, icons);
+    // Same rule as the icon theme one line up, and measured the same way - at the
+    // caller, so the selection itself stays a pure function of the theme. A
+    // family fontconfig cannot resolve is not named: the toolkit would substitute
+    // silently and every foreign app would disagree with ours about the body
+    // font. An absent `fc-match` says nothing, so the font is kept.
+    if crate::gtk::font_family_installed(crate::wine::first_family(&gtk_theme.typography.font_sans))
+        == Some(false)
+    {
+        selection.font = None;
+    }
+    let ini = crate::gtk::generate_gtk_settings_ini(&selection);
+    report.selection = Some(selection.clone());
     write_guarded(&config.join("gtk-3.0/settings.ini"), &ini, INI_MARKER, &mut report);
 
     // GTK 4 reads its OWN settings file and none of GTK 3's, so without this a
@@ -308,7 +319,12 @@ fn write_toolkit_configs(
     // Arlen ships no GTK4 widget theme and will not, because there is no stable
     // selector contract to write one against. Naming one would be the claim the
     // GTK3 side omits for the other reason.
-    let gtk4_ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, None, icons);
+    // The same answer minus the theme name, rather than a second derivation of
+    // it: the two files must not be able to disagree about the font or the
+    // cursor.
+    let mut gtk4_selection = selection;
+    gtk4_selection.gtk_theme = None;
+    let gtk4_ini = crate::gtk::generate_gtk_settings_ini(&gtk4_selection);
     write_guarded(&config.join("gtk-4.0/settings.ini"), &gtk4_ini, INI_MARKER, &mut report);
 
     // Qt: the colour scheme, Arlen-named, for qt6ct and qt5ct.
@@ -515,6 +531,27 @@ accent = "#00ff00"
         let gtk_a = std::fs::read_to_string(a.path().join("gtk-4.0/gtk.css")).unwrap();
         let gtk_b = std::fs::read_to_string(b.path().join("gtk-4.0/gtk.css")).unwrap();
         assert_eq!(gtk_a, gtk_b);
+    }
+
+    #[test]
+    fn a_font_this_machine_cannot_resolve_is_not_named() {
+        // Skips where fontconfig cannot be asked, because an absent tool is not
+        // evidence and the apply keeps naming the font in that case.
+        let Some(false) = crate::gtk::font_family_installed("Definitely Not A Font 12345") else {
+            return;
+        };
+        let mut theme = theme();
+        theme.typography.font_sans = "\"Definitely Not A Font 12345\", sans-serif".into();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let report = write_foreign_toolkit_configs(&theme, tmp.path());
+        assert!(report.is_clean(), "errors: {:?}", report.errors);
+        for rel in ["gtk-3.0/settings.ini", "gtk-4.0/settings.ini"] {
+            let ini = std::fs::read_to_string(tmp.path().join(rel)).unwrap();
+            assert!(!ini.contains("gtk-font-name"), "{rel} names a font nobody has:\n{ini}");
+            // The rest of the file is unaffected.
+            assert!(ini.contains("gtk-cursor-theme-name="), "{rel} lost its other keys");
+        }
+        assert_eq!(report.selection.and_then(|s| s.font), None);
     }
 
     #[test]
