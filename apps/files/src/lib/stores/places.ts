@@ -42,6 +42,33 @@ const deviceNodes = new Map<string, string>();
 /// mounts it first, then navigates into the new mountpoint.
 const unmountedDevices = new Set<string>();
 
+/// One configured remote drive (mirrors the Rust `RemotePlace`).
+interface RemotePlace {
+  id: string;
+  name: string;
+  kind: "cloud" | "network-share";
+}
+
+/// What `network_places` may answer (mirrors the Rust `NetworkPlaces`). Three
+/// states, because an empty list would otherwise say "you have no accounts" on a
+/// machine whose accounts daemon is absent or has turned this app away.
+type NetworkPlaces =
+  | { state: "configured"; places: RemotePlace[] }
+  | { state: "denied"; reason: string }
+  | { state: "unavailable"; reason: string };
+
+/// Account id per Network place path, so a click can mount the account the row
+/// stands for. A remote drive HAS no path until it is mounted - the daemon spawns
+/// a confined rclone and only then is there a directory - so the row carries a
+/// sentinel and the mount answers with the real one. Same shape as the unmounted
+/// removable drives above.
+const remoteAccounts = new Map<string, string>();
+
+/// The sentinel path a Network row carries before it is mounted.
+function remotePath(id: string): string {
+  return `account:${id}`;
+}
+
 /// The loaded groups, whose `label` holds a message KEY for the four section
 /// headings the file manager owns. Consumers read [`placeGroups`], which resolves
 /// them; the raw store is what the loader writes.
@@ -105,6 +132,19 @@ export async function removeBookmark(path: string): Promise<void> {
 /// no way to tell a refusal from a click that missed. That is the empty-on-error
 /// defect in the shape of a button.
 export async function removePlace(place: Place): Promise<void> {
+  const account = remoteAccounts.get(place.path);
+  if (account) {
+    // Not udisks: a remote drive is a confined rclone the accounts daemon owns,
+    // so only the daemon can stop it.
+    try {
+      await invoke("network_unmount", { accountId: account });
+      opError.set(null);
+    } catch {
+      opError.set({ key: "f.places.disconnectRefused", values: { place: place.label } });
+    }
+    await loadPlaces();
+    return;
+  }
   const device = deviceNodes.get(place.path);
   if (device) {
     try {
@@ -137,6 +177,25 @@ export async function navigatePlace(
   place: Place,
   navigate: (path: string) => void,
 ): Promise<void> {
+  const account = remoteAccounts.get(place.path);
+  if (account) {
+    // The row has no path yet; the mount answers with one. Both ways this ends
+    // nowhere say so, for the same reason the drive below does.
+    let mountpoint: string;
+    try {
+      mountpoint = await invoke<string>("network_mount", { accountId: account });
+    } catch {
+      opError.set({ key: "f.places.connectRefused", values: { place: place.label } });
+      return;
+    }
+    if (!mountpoint) {
+      opError.set({ key: "f.places.connectedNowhere", values: { place: place.label } });
+      return;
+    }
+    opError.set(null);
+    navigate(mountpoint);
+    return;
+  }
   if (unmountedDevices.has(place.path)) {
     try {
       await invoke("files_mount", { device: place.path });
@@ -167,6 +226,17 @@ export const homePath = writable("/home");
 /// look identical in the sidebar and only one of them is a statement about this
 /// machine; the sidebar says which.
 export const placesUnavailable = writable(false);
+
+/// True when the accounts daemon answered and refused this app.
+///
+/// The third state gets a line and the other two do not, because only this one is
+/// actionable and only this one would otherwise mislead. An absent subsystem is
+/// silence - there is nothing on this machine to talk about - and no accounts is
+/// silence too, since a heading over nothing tells a person something they already
+/// know. A refusal is different: the accounts are there, this app may not see
+/// them, and saying "not available on this system" about accounts visible in
+/// Settings would send somebody to install what is already installed.
+export const networkDenied = writable(false);
 
 export async function loadPlaces(): Promise<void> {
   const groups: PlaceGroup[] = [];
@@ -267,6 +337,31 @@ export async function loadPlaces(): Promise<void> {
     }
   } catch {
     // No graph yet: the group simply does not render.
+  }
+  networkDenied.set(false);
+  remoteAccounts.clear();
+  try {
+    const network = await invoke<NetworkPlaces>("network_places");
+    if (network.state === "denied") {
+      networkDenied.set(true);
+    } else if (network.state === "configured" && network.places.length > 0) {
+      for (const r of network.places) remoteAccounts.set(remotePath(r.id), r.id);
+      groups.push({
+        label: "f.places.network",
+        railHidden: true,
+        places: network.places.map((r) => ({
+          label: r.name,
+          icon: r.kind === "cloud" ? "cloud" : "system",
+          path: remotePath(r.id),
+          removable: true,
+          // The kit's X says "Unpin", which is what it does for a bookmark. Here
+          // it stops a running rclone, so it says that instead.
+          removeLabel: get(t)("f.places.disconnectAria", { place: r.name }),
+        })),
+      });
+    }
+  } catch {
+    // The command itself did not answer. Same as `unavailable`: no section.
   }
   placeGroupsRaw.set(groups);
 

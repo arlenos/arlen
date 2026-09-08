@@ -24,6 +24,7 @@
     navigatePlace,
     savedSearches,
     placesUnavailable,
+    networkDenied,
   } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
   import {
@@ -106,6 +107,15 @@
     {#if $placesUnavailable}
       <p class="places-unavailable group-data-[collapsible=icon]:hidden">
         {$t("f.sidebar.placesUnavailable")}
+      </p>
+    {/if}
+    <!-- The accounts daemon answered and turned this app away. No Network group is
+         rendered in that case, so without this the refusal would look like having
+         no accounts - and the person would go looking in Settings for accounts
+         they already have. -->
+    {#if $networkDenied}
+      <p class="places-unavailable group-data-[collapsible=icon]:hidden">
+        {$t("f.sidebar.networkDenied")}
       </p>
     {/if}
     {#if $savedFolders.length > 0}

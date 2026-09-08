@@ -56,6 +56,7 @@ const messages: Catalogs = {
     "f.place.desktop": "Desktop",
     "f.place.system": "System",
     "f.places.devices": "Devices",
+    "f.places.network": "Network",
     "f.places.bookmarks": "Bookmarks",
     "f.places.projects": "Projects",
     "f.facet.type.document": "Documents",
@@ -264,6 +265,10 @@ const messages: Catalogs = {
     "f.places.mountedNowhere": "{$place} was mounted, but no location appeared for it",
     "f.places.ejectAria": "Eject {$place}",
     "f.places.ejectRefused": "{$place} is still in use, so it was not ejected",
+    "f.places.connectRefused": "{$place} did not connect, so it was not opened",
+    "f.places.connectedNowhere": "{$place} connected, but no location appeared for it",
+    "f.places.disconnectAria": "Disconnect {$place}",
+    "f.places.disconnectRefused": "{$place} was not disconnected",
     "f.prov.incomplete": "Part of this history could not be read, so steps may be missing",
     "f.facet.unavailable": "These options are not available on this system",
     "f.facet.denied": "Files is not allowed to read these options",
@@ -312,6 +317,7 @@ const messages: Catalogs = {
     // Trash are listed directly under it - they need no backend, which is the
     // whole reason this line exists. Scoped to the places themselves.
     "f.sidebar.placesUnavailable": "Your places cannot be read.",
+    "f.sidebar.networkDenied": "Files is not allowed to see your online accounts.",
     "f.sidebar.foldersUnsaved": "Not saved. These will be gone after a restart.",
 
     // Tabs
@@ -442,6 +448,7 @@ const messages: Catalogs = {
     "f.place.desktop": "Schreibtisch",
     "f.place.system": "System",
     "f.places.devices": "Geräte",
+    "f.places.network": "Netzwerk",
     "f.places.bookmarks": "Lesezeichen",
     "f.places.projects": "Projekte",
     "f.facet.type.document": "Dokumente",
@@ -615,6 +622,10 @@ const messages: Catalogs = {
     "f.places.mountedNowhere": "{$place} wurde eingehängt, aber es ist kein Ort dafür aufgetaucht",
     "f.places.ejectAria": "{$place} auswerfen",
     "f.places.ejectRefused": "{$place} ist noch in Benutzung und wurde nicht ausgeworfen",
+    "f.places.connectRefused": "{$place} hat sich nicht verbunden und wurde deshalb nicht geöffnet",
+    "f.places.connectedNowhere": "{$place} ist verbunden, aber es ist kein Ort dafür aufgetaucht",
+    "f.places.disconnectAria": "{$place} trennen",
+    "f.places.disconnectRefused": "{$place} wurde nicht getrennt",
     "f.prov.incomplete": "Ein Teil dieser Historie konnte nicht gelesen werden, es fehlen womöglich Schritte",
     "f.facet.unavailable": "Diese Optionen sind auf diesem System nicht verfügbar",
     "f.facet.denied": "Files darf diese Optionen nicht lesen",
@@ -658,6 +669,7 @@ const messages: Catalogs = {
     "f.sidebar.trash": "Papierkorb",
     "f.sidebar.aria": "Orte",
     "f.sidebar.placesUnavailable": "Deine Orte können nicht gelesen werden.",
+    "f.sidebar.networkDenied": "Dateien darf deine Online-Konten nicht sehen.",
     "f.sidebar.foldersUnsaved": "Nicht gespeichert. Nach einem Neustart sind sie weg.",
 
     "f.tab.close": "Tab schließen",

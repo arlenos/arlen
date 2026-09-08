@@ -1777,10 +1777,12 @@ fn files_mount(device: String) -> Result<(), String> {
 /// NO CALLER: the sidebar has one affordance per entry and for a removable drive
 /// it is EJECT, which unmounts and then powers the drive down - the safe compound
 /// action a person actually wants, and `files_eject` is the live command for it.
-/// A bare unmount is the right verb for a mount you keep and stop using, and the
-/// only entries of that kind are network places, which the sidebar does not show
-/// yet (`network_places` is registered and unreached for the same reason). So this
-/// gets its caller when that section is built, not before.
+/// A bare unmount is the right verb for a mount you keep and stop using, and this
+/// used to say the Network section would bring the caller. It did not: a remote
+/// place is a confined rclone the accounts daemon owns, so its unmount is
+/// `org.arlen.Accounts1.Unmount` through `remote::network_unmount`, and udisks has
+/// nothing to do with it. What is left for this one is a block device somebody
+/// wants unmounted without powering the drive down, which no surface offers.
 #[tauri::command]
 fn files_unmount(device: String) -> Result<(), String> {
     udisksctl("unmount", &device)
@@ -2518,6 +2520,8 @@ pub fn run() {
             frontend_log,
             publish_menu,
             remote::network_places,
+            remote::network_mount,
+            remote::network_unmount,
             files_list,
             files_list_location,
             files_list_location_as_of,
