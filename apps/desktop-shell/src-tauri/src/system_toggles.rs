@@ -89,7 +89,13 @@ pub fn get_toggle_status(state: tauri::State<'_, ToggleState>) -> ToggleStatus {
 ///
 /// Uses `systemd-inhibit` to prevent the system from going idle or
 /// sleeping. Killing the child process releases the inhibit.
-#[tauri::command]
+/// NOT a `#[tauri::command]`, and it stopped being one on 8 September.
+///
+/// It was registered and no frontend ever invoked it: the badge and the
+/// launcher both go through `quick_action_run` with `qa.toggle_caffeine`, which
+/// lands here. A command attribute on a function nothing calls says the
+/// frontend may reach it, which was not true, and the scan for that class is
+/// `dev/scripts/check-commands-invoked.py`.
 pub fn toggle_caffeine(state: tauri::State<'_, ToggleState>) -> Result<bool, String> {
     let mut guard = state.caffeine.lock().unwrap();
     if let Some(ref mut child) = *guard {
@@ -133,7 +139,8 @@ pub fn toggle_caffeine(state: tauri::State<'_, ToggleState>) -> Result<bool, Str
 ///
 /// Starts recording to `~/Videos/arlen-{timestamp}.mp4`.
 /// Stops by sending SIGINT to the process.
-#[tauri::command]
+/// NOT a `#[tauri::command]`, for the same reason as its caffeine sibling: the
+/// live path is `quick_action_run` with `qa.toggle_recording`.
 pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, String> {
     let mut rec_guard = state.recording.lock().unwrap();
     let mut path_guard = state.recording_path.lock().unwrap();

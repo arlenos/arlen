@@ -43,7 +43,7 @@ from pathlib import Path
 # and a fabricated per-command justification would be worse than none. Each wants
 # the same answer: call it, or delete it.
 CARRIED: dict[str, tuple[int, str]] = {
-    "desktop-shell": (19, "the 8 September scan, less `waypointer_search` which was deleted the day it was found; the quick-settings layout writers and the menu registry are the clusters worth taking next"),
+    "desktop-shell": (17, "the 8 September scan, less `waypointer_search` and the two toggle commands `quick_action_run` had already superseded. What is left splits three ways: the six `qs_layout_*` writers (a SECOND writer for a file Settings already edits through `config_set` - which side owns the layout's invariants is a decision, not a deletion), the three-command global-menu registry (nothing registers a menu), and features with no UI at all"),
     "files": (2, "the 8 September scan"),
     "harness": (10, "the 8 September scan; arlen-ui's app, so theirs to answer"),
     "screenshot": (1, "the 8 September scan; region capture, which is a shipped feature nobody's UI reaches"),
