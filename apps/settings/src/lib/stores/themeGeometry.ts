@@ -5,10 +5,25 @@
 /// value; an override layers on top (sparse). A master knob up front, the
 /// granular per-token overrides behind expanders.
 ///
-/// Mock-vs-live: `radius_intensity` / `border_width` / the compositor gaps are
-/// real config keys, but the appearance/compositor stores don't render without a
-/// backend, so this reads a fixture. The per-radius / window-corner / spacing
-/// overrides need the theme.toml override backend (flagged for the coder).
+/// STILL A FIXTURE, and the note above it was out of date. `setGeom` moves a
+/// local store and writes nothing, so every slider on the Geometry page changes
+/// what it draws and nothing else - and the page carries no marker saying so, so
+/// the numbers read as this machine's settings.
+///
+/// The backend the old note waited on has landed for most of it. Checked
+/// 9 September against `apps/settings/src-tauri/src/commands/theme.rs`:
+/// `theme_resolved_metrics` reports `radius.{chip,button,input,card,modal,
+/// intensity,window_corners}` and `spacing.{xs,sm,md,lg,xl}`, and
+/// `theme_set_metric` writes them back - eleven of the sixteen fields here, by
+/// exactly the route `themeTypography` already takes.
+///
+/// The other five are not one job with those eleven, which is why this is
+/// recorded rather than half-done: `gap` and `smart gaps` are compositor keys
+/// (`layout.inner_gap`, written by the workspaces page and read in the
+/// compositor repo), `density` has no resolved metric at all, and `border_width`
+/// is emitted by neither command. Wiring eleven sliders while five stay inert,
+/// with nothing on screen to tell them apart, would be worse than a page that is
+/// uniformly a mock.
 
 import { writable, derived } from "svelte/store";
 
@@ -52,7 +67,8 @@ export const GEOM_FIELDS: GeomField[] = [
   { key: "gap", label: "s.geom.gap.label", hint: "s.geom.gap.hint", group: "gaps", tier: "common", min: 0, max: 24, step: 1, unit: "px" },
 ];
 
-/// The active theme's resolved geometry values (fixture: the house defaults).
+/// The house defaults, standing in for the theme's resolved values until the
+/// read above is wired. Not this machine's numbers.
 export const GEOM_DEFAULTS: Record<string, number> = {
   intensity: 1,
   r_chip: 4,
