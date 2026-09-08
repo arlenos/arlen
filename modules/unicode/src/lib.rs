@@ -238,16 +238,23 @@ impl Guest for Unicode {
 
 /// One result, in the shape the ABI has.
 ///
-/// NB no `title_key`/`description_key`. The shell's own `SearchResult` carries
-/// them so a result can name a catalogue entry instead of prose, and the wire
-/// type says in its doc that it deliberately did not follow. So this title -
-/// the character and its Unicode name - is untranslatable by construction, and
-/// so is every other module's.
+/// **The keys are here and this module still sends none, which is the honest
+/// answer rather than an omission.** When this was written the ABI had no
+/// `title-key`, so its own report said a module's results were untranslatable by
+/// construction; that was the finding that led to ruling 2 and the fields now
+/// exist. But nothing on a unicode result is prose. "HEAVY BLACK HEART" is the
+/// character's name in the standard, the same in every language, and `U+2764` is
+/// a number. A key here would point at a catalogue entry that could only repeat
+/// them. The `man` module is where the fields earn their place: the sentence
+/// "Section 1" is written BY the module and has a German form.
 fn hit(cp: u32, ch: char, name: &str, relevance: f32) -> SearchResult {
     SearchResult {
         id: format!("u-{cp:04X}"),
         title: format!("{ch}  {name}"),
+        title_key: None,
         description: Some(format!("U+{cp:04X}")),
+        description_key: None,
+        args: None,
         icon: None,
         relevance,
         action: Action::Copy(ch.to_string()),

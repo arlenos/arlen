@@ -127,25 +127,23 @@ async fn the_first_module_is_discovered_hosted_and_answers_a_search() {
 
 }
 
-/// A name search, which is the open question rather than a passing check.
+/// A name search, and the reason this test was written before it could pass.
 ///
-/// **It fails, and that is the finding.** The in-process plugin answers this
-/// from an index of every named codepoint, built once and reused. A module
-/// cannot: the fuel budget is per host call and has no allowance for one-time
-/// setup, so the guest walks the codepoint space on every keystroke and 1 M fuel
-/// does not reach `HEART`. Measured 8 September, with the daemon's error chain
-/// finally printed: `wasm trap: all fuel consumed by WebAssembly`.
+/// **It failed for a day, deliberately.** The in-process plugin answers this from
+/// an index of every named codepoint, built once and reused. A module could not:
+/// the fuel budget was per host call with no allowance for one-time setup, so the
+/// guest walked the codepoint space on every keystroke and 1 M fuel did not reach
+/// `HEART` - `wasm trap: all fuel consumed by WebAssembly`. It was left asserting
+/// what an extension author should get rather than the trap they did get, on
+/// purpose: a test that asserted the trap would have gone green over a real gap
+/// and then defended it.
 ///
-/// Left asserting what an extension author should get rather than the trap they
-/// do get, on purpose. A test that asserted the trap would go green over a real
-/// gap and defend it; this one goes green the day the gap closes.
-///
-/// The gap is a capability question rather than a plumbing one, so it is
-/// recorded for the planner in `coder-reports.md`: a larger one-time budget for
-/// `init`, a persistent index in the instance the daemon already keeps between
-/// calls, or setup fuel paid once and refilled per call.
+/// It went green on 8 September when `init` got its own budget and the guest
+/// built a trigram index in it. What it pins now is that the index survives - a
+/// module that rebuilt it per keystroke, or lost it between calls because the
+/// store stopped living for the module's lifetime, fails here again.
 #[tokio::test]
-#[ignore = "the open fuel finding; needs modules/unicode built, see the file header"]
+#[ignore = "needs modules/unicode built; see the file header"]
 async fn a_name_search_should_not_have_to_rescan_the_codepoint_space() {
     let tmp = tempfile::tempdir().unwrap();
     std::env::set_var("ARLEN_USER_MODULES_DIR", tmp.path());
