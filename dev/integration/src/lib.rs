@@ -565,6 +565,18 @@ impl EphemeralStack {
     /// Block until the socket named `name` appears under the runtime root, the
     /// readiness contract `process-compose.yaml` uses. Returns the socket path on
     /// success; errors if it does not appear within `timeout`.
+    /// Wait for a daemon to bind, on the house allowance.
+    ///
+    /// [`DEFAULT_READY_TIMEOUT`] existed for this and nothing read it: every
+    /// scenario wrote `Duration::from_secs(20)` out by hand instead, seventy-odd
+    /// times, so the "default" was a claim rather than a policy and changing it
+    /// would have changed nothing. Use this where the wait is ordinary; pass a
+    /// duration explicitly where it is not, as the knowledge daemon does at 30s
+    /// because it opens a graph before it binds.
+    pub fn wait_ready(&self, name: &str) -> std::io::Result<PathBuf> {
+        self.wait_socket(name, DEFAULT_READY_TIMEOUT)
+    }
+
     pub fn wait_socket(&self, name: &str, timeout: Duration) -> std::io::Result<PathBuf> {
         let path = self.socket_path(name);
         let start = Instant::now();
