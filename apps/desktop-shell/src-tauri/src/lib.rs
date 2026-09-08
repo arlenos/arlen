@@ -504,7 +504,6 @@ pub fn run() {
             layout::set_layout_tiled_headers,
             permissions::get_app_permissions,
             permissions::get_app_permission_detail,
-            waypointer_system::waypointer_search,
             waypointer_system::waypointer_execute,
             waypointer_system::waypointer_list_plugins,
             waypointer_system::waypointer_search_plugin,
