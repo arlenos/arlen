@@ -6,8 +6,9 @@
   /// sample and a floating one, since neither shows in a static app strip. Rich
   /// by structure, not omission (appearance-surface.md).
   ///
-  /// Mock-vs-live: `reduce_motion` is real (`set_reduce_motion`); durations /
-  /// easing / shadows / blur need the theme.toml override backend. Fixture until.
+  /// Mock-vs-live: reduce motion is live - it writes `appearance.toml
+  /// [accessibility] reduce_motion`, which the shell reads. The durations,
+  /// easing, shadows and blur are local-only and the page says so on screen.
   import { onMount } from "svelte";
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
@@ -34,9 +35,16 @@
     shadowPresets,
     easingBezier,
     shadowCss,
+    loadMd,
   } from "$lib/stores/themeMotionDepth";
+  import { theme } from "$lib/stores/theme";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
 
   const reduce = $derived(Boolean($effective.reduceMotion));
+
+  onMount(() => {
+    void theme.load().then(loadMd);
+  });
   const durNormal = $derived(Number($effective.durationNormal));
   const easing = $derived(String($effective.easing));
   const shadow = $derived(String($effective.shadow));
@@ -56,6 +64,10 @@
   description={$t("s.md.desc")}
 >
   <SectionGrid>
+    <!-- The page draws the house values and its sliders write nothing. Said here
+         rather than only in a source comment: a person reading numbers on a
+         settings page takes them for their own. -->
+    <Notice tone="neutral" class="span-full" text={$t("s.md.notApplied")} />
     <div class="editor span-full">
     <div class="controls">
       <Section label={$t("s.md.motion")}>

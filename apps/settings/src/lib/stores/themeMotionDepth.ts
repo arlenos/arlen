@@ -3,13 +3,30 @@
 /// override model as the other suite pages. Easing and shadows are chosen from
 /// presets (the raw bezier / shadow strings are not hand-edited).
 ///
-/// Mock-vs-live: `reduce_motion` is a real command (`set_reduce_motion`); the
-/// durations / easing / shadows / blur need the theme.toml override backend.
-/// Fixture-backed until those land.
+/// Mock-vs-live, corrected 9 September. **Reduce motion is live now**; the
+/// durations, easing, shadows and blur are still local-only, so those sliders
+/// change what the page draws and nothing else. The page says so on screen
+/// rather than only here.
+///
+/// The old note said reduce motion was "a real command (`set_reduce_motion`)".
+/// It is a real command IN THE SHELL, which Settings cannot call - a Tauri
+/// command does not cross an app boundary - and the switch here called neither
+/// it nor anything else. Settings' own path is the config key the shell reads,
+/// `appearance.toml [accessibility] reduce_motion`, which is what it writes now.
+/// Somebody who needs less animation flipped that switch and got none.
+///
+/// The rest wait on a decision rather than a wire: `theme_resolved_metrics`
+/// reports every `motion.*` and `depth.*` key, but this page's `shadow` field is
+/// ONE preset standing for four theme strings (`depth.shadow_{sm,md,lg,card}`),
+/// and `easing` is a preset name where the theme carries a bezier. Whether the
+/// page owns presets or the theme owns the strings is a design call, and wiring
+/// the four that map cleanly while two stay inert would leave a page that works
+/// until it does not.
 
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 
 import { t } from "$lib/i18n/messages";
+import { theme } from "$lib/stores/theme";
 
 /// The active theme's resolved values (fixture: the house defaults).
 export const MD_DEFAULTS: Record<string, string | number | boolean> = {
@@ -77,13 +94,35 @@ export function isOverridden(o: Record<string, string | number | boolean>, key: 
 }
 
 /// Set a field; setting it back to the theme's value clears the override.
-export function setMd(key: string, value: string | number | boolean): void {
+///
+/// Reduce motion also goes to disk, because it is the one field here with a
+/// reader. The store moves first so the switch does not lag, and a refused write
+/// puts it back - a switch that stays where you left it while the file says
+/// otherwise is the surface lying about what it did.
+export async function setMd(key: string, value: string | number | boolean): Promise<void> {
+  const before = get(overrides);
   overrides.update((o) => {
     const next = { ...o };
     if (value === MD_DEFAULTS[key]) delete next[key];
     else next[key] = value;
     return next;
   });
+  if (key !== "reduceMotion") return;
+  try {
+    await theme.setValue("accessibility.reduce_motion", value);
+  } catch (e) {
+    overrides.set(before);
+    throw e;
+  }
+}
+
+/// Read what the config already holds, so the switch opens on the machine's
+/// state rather than on the house default.
+export async function loadMd(): Promise<void> {
+  const held = get(theme).data?.accessibility?.reduce_motion;
+  if (typeof held === "boolean" && held !== MD_DEFAULTS.reduceMotion) {
+    overrides.update((o) => ({ ...o, reduceMotion: held }));
+  }
 }
 
 /// Clear a field's override, back to the theme's value.

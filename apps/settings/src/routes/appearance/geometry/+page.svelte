@@ -13,6 +13,7 @@
   /// are a separate job, and why wiring only eleven would be worse than this, are
   /// in `$lib/stores/themeGeometry.ts`.
   import { ChevronRight } from "lucide-svelte";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -68,6 +69,10 @@
   description={$t("s.geom.desc")}
 >
   <SectionGrid>
+    <!-- The page draws the house values and its sliders write nothing. Said here
+         rather than only in a source comment: a person reading numbers on a
+         settings page takes them for their own. -->
+    <Notice tone="neutral" class="span-full" text={$t("s.geom.notApplied")} />
     <div class="editor span-full">
     <div class="controls">
       <Section label={$t("s.geom.round")}>
