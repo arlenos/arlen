@@ -18,7 +18,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::Mutex;
 use wasmtime::component::{Component, Linker};
 use arlen_modules::ModuleCapabilities;
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
