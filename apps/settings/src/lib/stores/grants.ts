@@ -242,6 +242,11 @@ export interface ScopeLine {
   required: boolean;
   /// System-managed reach: not per-app revocable here.
   systemManaged: boolean;
+  /// The revocation handle when this line is a consent record rather than a
+  /// declared capability. Null for everything else, and what tells the revoke
+  /// path which of the two mechanisms to use: narrowing a profile scope and
+  /// releasing a consent are different acts on different daemons.
+  consentGrantId: string | null;
   /// "declared at install" or "you allowed this".
   /// Which master switch can refuse this reach outright, if any.
   ///
@@ -282,14 +287,22 @@ function revokeAction(
   reaches: RevokedReach[],
   required: boolean,
   systemManaged: boolean,
+  consentGrantId: string | null = null,
 ): RevokeAction {
   // No reason travels with the verdict. `PrincipalGrants` derives the same three
   // cases from the line itself and says them through the catalog
   // (`s.priv.required` / `systemManaged` / `notRevocable`), so a second wording
   // here was a longer, untranslated duplicate that nothing rendered - three
   // carefully phrased sentences no reader ever saw.
-  if (required || systemManaged || reaches.length === 0)
-    return { appId, reaches, enabled: false };
+  if (required || systemManaged) return { appId, reaches, enabled: false };
+  // A consent grant carries no reach - it is not a narrowing of a declared
+  // capability, it is a record of something you allowed in context - so the
+  // reach test would refuse every one of them. It said "not revocable" about
+  // the camera permission somebody granted, on the page whose job is taking it
+  // back, while `revoke_consent` sat registered and admitted by the broker for
+  // exactly this.
+  if (consentGrantId) return { appId, reaches, enabled: true };
+  if (reaches.length === 0) return { appId, reaches, enabled: false };
   return { appId, reaches, enabled: true };
 }
 
@@ -352,6 +365,9 @@ function tokenLines(t: Translate, grant: GrantView, c: Ceiling): ScopeLine[] {
       provenance: { id: "s.priv.prov.declared" },
       detail,
       entityType,
+      // A declared capability, never a consent record: this line narrows a
+      // profile scope, which is the other mechanism entirely.
+      consentGrantId: null,
       revoke: revokeAction(grant.app_id, reaches, grant.required, grant.source === "system"),
       text: `${verb} ${object}`,
     });
@@ -523,7 +539,14 @@ function nonGraphLine(t: Translate, loc: string, grant: GrantView): ScopeLine {
     provenance: provenanceOf(loc, grant),
     detail,
     entityType: null,
-    revoke: revokeAction(grant.app_id, [], grant.required, systemManaged),
+    consentGrantId: grant.source === "consent" ? grant.id : null,
+    revoke: revokeAction(
+      grant.app_id,
+      [],
+      grant.required,
+      systemManaged,
+      grant.source === "consent" ? grant.id : null,
+    ),
     text: `${verb} ${object}`,
   };
 }
@@ -870,7 +893,9 @@ export async function revokeScope(
   appLabel: string,
 ): Promise<RemovedItem | null> {
   const action = line.revoke;
-  if (!action.enabled || action.reaches.length === 0 || !line.entityType) return null;
+  if (!action.enabled) return null;
+  if (line.consentGrantId) return revokeConsentLine(line.consentGrantId);
+  if (action.reaches.length === 0 || !line.entityType) return null;
   const entityType = line.entityType;
 
   let item: RemovedItem | null = null;
@@ -913,6 +938,38 @@ export async function revokeScope(
     return null;
   }
   return removedItem;
+}
+
+/// Release one remembered consent, by its revocation handle.
+///
+/// A DIFFERENT ACT from narrowing a declared scope, and the difference is the
+/// reason it returns nothing to undo: a released consent cannot be handed back
+/// from here. The app asks again in context, which is where a consent is
+/// supposed to be given - re-granting it from a settings page would be minting
+/// an answer to a question nobody was asked.
+///
+/// Optimistic and reverted on refusal, like its neighbour: the row goes at once
+/// so the click reads as done, and comes back with the failure line if the
+/// broker would not release it.
+async function revokeConsentLine(grantId: string): Promise<null> {
+  let previous: GrantView[] = [];
+  grants.update((list) => {
+    previous = list;
+    return list.filter((g) => g.id !== grantId);
+  });
+  try {
+    const outcome = await invoke<string>("revoke_consent", { grantId });
+    // "no-change" is an unknown or already-released handle. The row is gone
+    // either way and that is the true end state, so it is not a failure.
+    if (outcome !== "revoked" && outcome !== "no-change") {
+      throw new Error(outcome);
+    }
+  } catch (e) {
+    console.warn("[settings] consent revoke refused:", e);
+    grants.set(previous);
+    actionNotice.set("s.priv.removeFailed");
+  }
+  return null;
 }
 
 /// Remove every scope an app holds. Returns all the removed records.
