@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Tim Kicker
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[module]
+id = "core.man"
+name = "Manual pages"
+version = "0.1.0"
+type = "first-party"
+entry = "module.wasm"
+description = "Find a manual page by name."
+
+[waypointer.search]
+# The prefix the shell's own man plugin answers on, so a person who types it
+# today keeps getting an answer.
+prefix = "man "
+max_results = 20
+
+# The capability this module exists to test. One directory, named rather than
+# "the filesystem": everything under it is reference data the system already
+# ships, and none of it is the person's.
+[capabilities.files]
+read = ["/usr/share/man"]

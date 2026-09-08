@@ -35,11 +35,13 @@ mod tests {
     use arlen_modules::{EventBusCapability, ModuleCapabilities};
 
     fn ctx(publish: Vec<&str>, subscribe: Vec<&str>) -> CapabilityContext {
-        let mut caps = ModuleCapabilities::default();
-        caps.event_bus = Some(EventBusCapability {
-            publish: publish.into_iter().map(String::from).collect(),
-            subscribe: subscribe.into_iter().map(String::from).collect(),
-        });
+        let caps = ModuleCapabilities {
+            event_bus: Some(EventBusCapability {
+                publish: publish.into_iter().map(String::from).collect(),
+                subscribe: subscribe.into_iter().map(String::from).collect(),
+            }),
+            ..Default::default()
+        };
         CapabilityContext::new("x", caps)
     }
 
