@@ -120,9 +120,16 @@ cfg="$work/sway.cfg"
   fi
   printf 'exec env %s QT_QPA_PLATFORM=wayland QT_QPA_PLATFORMTHEME=qt6ct python3 %q >%q 2>&1\n' \
     "$env_common" "$here/toolkits/gallery-qt.py" "$work/qt6.log"
-  # A GTK4 app that never linked libadwaita reads the theme_* names, so it is
-  # the test of that half of the sheet; without a sound server it shows its
-  # connection dialog, which is a window all the same.
+  # A GTK4 app that never linked libadwaita, and the measurement it produced
+  # refutes the reason it was put here. The comment used to say such an app
+  # "reads the theme_* names, so it is the test of that half of the sheet"; on
+  # 8 September its window came out #353535, which is GTK4's own Adwaita dark,
+  # while the libadwaita gallery beside it came out our #0f0f0f exactly. So the
+  # dark SCHEME reaches a plain GTK4 app through settings.ini and the PALETTE
+  # does not: GTK4's built-in stylesheet does not resolve those names from a
+  # user sheet the way GTK3's Adwaita does. It is still the test of that half,
+  # and the answer is no. Without a sound server it shows its connection
+  # dialog, which is a window all the same.
   if command -v pavucontrol >/dev/null 2>&1; then
     printf 'exec env %s GDK_BACKEND=wayland pavucontrol >%q 2>&1\n' "$env_common" "$work/gtk4plain.log"
   fi
