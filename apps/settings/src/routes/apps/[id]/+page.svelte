@@ -39,6 +39,7 @@
     loadAppGeneral,
     clearAppCache,
   } from "$lib/stores/appSettings";
+  import { appAudit, loadAppAudit } from "$lib/stores/appAudit";
   import { orderedSections, orphanKeys } from "$lib/appSettings";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import PrincipalGrants from "$lib/components/privacy/PrincipalGrants.svelte";
@@ -53,6 +54,7 @@
       loadAppSettings(appId);
       loadAppMeta(appId);
       loadAppGeneral(appId);
+      loadAppAudit(appId);
     }
   });
 
@@ -209,8 +211,37 @@
         <Section label={$t("s.apps.reach")}>
           <PrincipalGrants {principal} split showHead={false} onRemoveScope={askScope} />
         </Section>
-        <!-- Declared, not observed: honest until the audit feed exists. -->
+        <!-- The declared half. The observed half is the section below it. -->
         <p class="sect-desc">{$t("s.apps.usageNote")}</p>
+      </div>
+      <!-- What it actually did, from the audit ledger, filtered daemon-side to
+           this app's kernel-attested actor. The three states are kept apart: a
+           record that cannot be read is not a record of nothing. -->
+      <div class="sect span-full">
+        <Section label={$t("s.apps.activity")}>
+          {#if $appAudit === null}
+            <p class="no-schema">{$t("s.apps.activityReading")}</p>
+          {:else if !$appAudit.available}
+            <p class="no-schema">{$t("s.apps.activityUnavailable")}</p>
+          {:else if $appAudit.entries.length === 0}
+            <p class="no-schema">{$t("s.apps.activityNone")}</p>
+          {:else}
+            {#if $appAudit.tampered}
+              <p class="no-schema" role="alert">{$t("s.apps.activityTampered")}</p>
+            {/if}
+            {#each $appAudit.entries as e (e.index)}
+              <Row
+                label={$t(`s.apps.did.${e.kind}`)}
+                description={`${e.subject} - ${e.outcome}`}
+              />
+            {/each}
+          {/if}
+        </Section>
+        {#if $appAudit && $appAudit.available && $appAudit.total > $appAudit.entries.length}
+          <p class="sect-desc">
+            {$t("s.apps.activityMore", { total: $appAudit.total })}
+          </p>
+        {/if}
       </div>
       <div class="span-full">
         <LinkCard href="/privacy" title={$t("s.apps.allApps")} description={$t("s.apps.allAppsDesc")}>
