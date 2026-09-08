@@ -129,10 +129,12 @@ async fn currency_module_discoverable_after_copy_and_capabilities_enforced() {
     //    end-to-end coverage lives in `network_e2e.rs`.
     use arlen_modulesd::host::{network::check_fetch, CapabilityContext};
     use arlen_modules::{ModuleCapabilities, NetworkCapability};
-    let mut caps = ModuleCapabilities::default();
-    caps.network = Some(NetworkCapability {
-        allowed_domains: vec!["api.exchangerate.host".into()],
-    });
+    let caps = ModuleCapabilities {
+        network: Some(NetworkCapability {
+            allowed_domains: vec!["api.exchangerate.host".into()],
+        }),
+        ..Default::default()
+    };
     let ctx = CapabilityContext::new("com.example.currency", caps);
     check_fetch(
         &ctx,
