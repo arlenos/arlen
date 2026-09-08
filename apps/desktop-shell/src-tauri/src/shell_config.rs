@@ -279,29 +279,25 @@ fn read_at(path: &Path) -> Result<ShellConfig, String> {
     let content = fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
     toml::from_str(&content).map_err(|e| format!("parse: {e}"))
 }
+// `save_shell_config` lived here and is deleted. It wrote the WHOLE file from a
+// value the caller had read earlier, and nothing called it - while the function
+// directly below documents exactly why: a read-modify-write through
+// `get_shell_config` + `save_shell_config` can lose a field another writer
+// changed in between, which is the reason `update_shell_config` exists. So it was
+// not a surface waiting to be built, it was an invitation to the bug its
+// neighbour is written to prevent.
 
-/// Writes the shell config to disk.
-///
-/// This is the frontend-facing full-replace path (Quick-Settings
-/// `persistConfig`). It still acquires `WRITE_LOCK` so it serialises
-/// against the in-process selective patchers in `update_shell_config`,
-/// but it is by definition a "I'm authoritative for the whole file"
-/// operation: any field the caller didn't include is gone. Prefer
-/// `update_shell_config` from inside the daemon.
-#[tauri::command]
-pub fn save_shell_config(config: ShellConfig) -> Result<(), String> {
-    let _guard = WRITE_LOCK.lock().map_err(|_| "WRITE_LOCK poisoned".to_string())?;
-    write_atomic(&config)
-}
 
 /// Atomic, lock-protected partial update.
 ///
 /// Loads the current on-disk state under `WRITE_LOCK`, hands it to
 /// the patcher closure, and writes the mutated value back via
 /// `write_atomic`. Use this from any in-process writer that only
-/// needs to touch a subset of fields — it cannot lose data the way
-/// an unguarded read-modify-write through `get_shell_config` +
-/// `save_shell_config` can.
+/// needs to touch a subset of fields — it cannot lose data the way an unguarded
+/// read-modify-write can: read the whole file, change one field, write the whole
+/// file back, and any field another writer changed in between is gone. There used
+/// to be a whole-file `save_shell_config` beside `get_shell_config` inviting
+/// exactly that, and it is deleted.
 ///
 /// Returns the value that was written, so callers that need to act
 /// on the post-write state (logging, broadcasting, etc.) don't need
@@ -337,13 +333,6 @@ where
     Ok(cfg)
 }
 
-/// Serialise `cfg` and write it to `shell.toml` atomically: write
-/// to `shell.toml.tmp` then `rename` over the target. POSIX `rename`
-/// is atomic within the same filesystem, so a process crash mid-
-/// write cannot leave a partial or empty config file.
-fn write_atomic(cfg: &ShellConfig) -> Result<(), String> {
-    write_atomic_at(&config_path(), cfg)
-}
 
 /// The atomic write over an explicit path. See [`read_at`] for why the path is a
 /// parameter rather than read from the environment.
