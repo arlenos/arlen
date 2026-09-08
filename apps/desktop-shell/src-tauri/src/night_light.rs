@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::shell_config::{
-    NightLightSchedule, ShellConfig, get_shell_config, update_shell_config,
+    ShellConfig, get_shell_config, update_shell_config,
 };
 use crate::shell_overlay_client::ShellOverlaySender;
 
@@ -20,7 +20,14 @@ use crate::shell_overlay_client::ShellOverlaySender;
 /// The temperature is preserved in shell.toml even when disabled
 /// so the next time the user flips the toggle on, it resumes at
 /// the same value.
-#[tauri::command]
+///
+/// NOT a `#[tauri::command]`, and it stopped being one on 8 September. Nothing
+/// in this app's frontend invoked it: the badge and the launcher both go through
+/// `quick_action_run` with `qa.toggle_night_light`, which lands here. Settings
+/// cannot reach it either - a Tauri command does not cross an app boundary, which
+/// is why Settings writes `shell.toml` and the watcher in `shell_config` relays
+/// the change to the compositor. So the registration said the frontend may reach
+/// this, and no frontend could.
 pub fn night_light_set(
     enabled: bool,
     temperature: u16,
@@ -34,49 +41,14 @@ pub fn night_light_set(
     Ok(())
 }
 
-/// Update the schedule mode and (for custom mode) the start/end
-/// times. `schedule` is one of `"manual" | "sunset_sunrise" | "custom"`.
-/// Times are minutes-since-midnight. The compositor re-evaluates
-/// immediately, so a custom-mode change can flip the current
-/// effective state.
-#[tauri::command]
-pub fn night_light_set_schedule(
-    schedule: String,
-    custom_start: u32,
-    custom_end: u32,
-    sender: State<'_, Arc<ShellOverlaySender>>,
-) -> Result<(), String> {
-    let parsed = match schedule.as_str() {
-        "manual" => NightLightSchedule::Manual,
-        "sunset_sunrise" => NightLightSchedule::SunsetSunrise,
-        "custom" => NightLightSchedule::Custom,
-        other => return Err(format!("unknown schedule '{other}'")),
-    };
-    update_shell_config(|cfg| {
-        cfg.night_light.schedule = parsed;
-        cfg.night_light.custom_start = custom_start;
-        cfg.night_light.custom_end = custom_end;
-    })?;
-    sender.set_night_light_schedule(parsed.to_protocol(), custom_start, custom_end);
-    Ok(())
-}
-
-/// Update the user's geographic location. Used by the
-/// `sunset_sunrise` schedule mode. `(0.0, 0.0)` is treated as
-/// "unset" by the compositor.
-#[tauri::command]
-pub fn night_light_set_location(
-    latitude: f64,
-    longitude: f64,
-    sender: State<'_, Arc<ShellOverlaySender>>,
-) -> Result<(), String> {
-    update_shell_config(|cfg| {
-        cfg.night_light.latitude = latitude;
-        cfg.night_light.longitude = longitude;
-    })?;
-    sender.set_night_light_location(latitude, longitude);
-    Ok(())
-}
+// The schedule and location setters lived here and are deleted. They were
+// commands with no caller in either direction: this app's frontend never invoked
+// them, and Settings - which owns the schedule and location controls - could not,
+// because a Tauri command does not cross an app boundary. Settings writes
+// `shell.toml` and `shell_config`'s watcher calls `replay_persisted_state` below,
+// which pushes location, schedule and enabled to the compositor on every change.
+// That is the live path and it covers what these two did, so they were a second
+// writer nothing wrote through rather than a faster one.
 
 /// Push the persisted night-light state to the compositor on
 /// startup so the gamma engine matches what shell.toml said at the
