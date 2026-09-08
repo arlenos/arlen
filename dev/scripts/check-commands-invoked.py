@@ -70,7 +70,6 @@ CARRIED: dict[str, tuple[int, str]] = {
     "settings": (13, "the 8 September scan, re-measured per-app, less `theme_get`, `keybindings_get_defaults` and `keybindings_get_all_conflicts` (all deleted - each a second name for something a live command already returns). The three `extensions_*` commands are the backend of the management surface the shell-extension strand named, so a strand rather than a loose end; four theme readers; and the ai/keybinding readers"),
     "system-monitor": (1, "the 8 September scan"),
     "store": (4, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - I do not write in their tree, so the marker the other apps carry is not mine to add here"),
-    "terminal": (1, "the 8 September scan"),
 }
 
 # A command explains its own absence with this in its doc comment, followed by
