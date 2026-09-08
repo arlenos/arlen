@@ -15,6 +15,7 @@
 
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { accentForeground } from "./theme";
 import { tauriAvailable } from "$lib/tauri";
 
 /// One semantic colour role.
@@ -118,6 +119,24 @@ export const effective = derived([resolved, overrides], ([$r, $o]) => {
   for (const k of Object.keys($o)) out[k] = $o[k];
   return out;
 });
+
+/// Apply the effective accent to this app's own root, so Settings renders the
+/// colour the rest of the desktop is rendering.
+///
+/// It reads the RESOLVED palette rather than a config key, which is the whole
+/// point: `theme_resolved_palette` answers from the same `ArlenTheme::resolve`
+/// that GTK, Qt, the terminal generator and the compositor consume, so there is
+/// one accent and not a second one that only this window believes in. An
+/// override on top wins here for the same reason it wins there.
+if (typeof document !== "undefined") {
+  effective.subscribe(($e) => {
+    const accent = $e.accent;
+    if (!accent) return;
+    const root = document.documentElement;
+    root.style.setProperty("--color-accent", accent);
+    root.style.setProperty("--color-accent-foreground", accentForeground(accent));
+  });
+}
 
 /// Whether a role is currently overridden.
 export function isOverridden(o: Record<string, string>, key: string): boolean {

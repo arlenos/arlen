@@ -143,15 +143,12 @@ export function getMonochromeAccent(mode: string | undefined): string {
   return mode === "light" ? MONO_LIGHT : MONO_DARK;
 }
 
-/// Resolve the current effective accent from a loaded config. A picked swatch
-/// (`overrides.accent`) wins, except the `$foreground` sentinel which means
-/// monochrome; with no override the accent is the monochrome default.
-export function resolveAccent(config: AppearanceConfig | null): string {
-  const mode = config?.theme?.active;
-  const override = config?.overrides?.accent;
-  if (!override || override === MONO_SENTINEL) return getMonochromeAccent(mode);
-  return override;
-}
+/// The monochrome accent for a mode, which is what a theme that names no accent
+/// falls back to.
+///
+/// The `overrides.accent` reader that used to live here is gone: the accent has
+/// one channel and it is `[color.semantic] accent` in theme.toml. See
+/// `applyAppearance`.
 
 /// Parse a `#rrggbb` string into its RGB components (0-255).
 function parseHex(hex: string): [number, number, number] | null {
@@ -229,9 +226,13 @@ export function applyAppearance(config: AppearanceConfig | null): void {
     delete root.dataset.theme;
   }
 
-  const accent = resolveAccent(config);
-  root.style.setProperty("--color-accent", accent);
-  root.style.setProperty("--color-accent-foreground", accentForeground(accent));
+  // The accent is NOT read from here any more. It lives in `[color.semantic]
+  // accent` in theme.toml, which is the layer every consumer resolves - GTK, Qt,
+  // the terminal generator and the compositor all read the resolved theme and
+  // none of them saw the `overrides.accent` key this used to read. Setting the
+  // app's own `--color-accent` from that key meant Settings could show one
+  // accent while the rest of the desktop rendered another. `themeColors.ts`
+  // applies it from the resolved palette instead.
 
   // Radius intensity → 6 semantic CSS vars. `full` and the per-corner
   // window outline are categorical and never scaled (mirrors
@@ -271,7 +272,6 @@ export function applyAppearance(config: AppearanceConfig | null): void {
   root.style.fontSize = `${fontSize}px`;
 
   console.log("[theme] applied:", {
-    accent,
     intensity,
     fontInterface,
     fontMono,
