@@ -63,7 +63,6 @@ mod waypointer;
 mod waypointer_plugins;
 mod waypointer_processes;
 mod waypointer_system;
-mod waypointer_unicode;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -554,7 +553,6 @@ pub fn run() {
             minimized_windows::tile_window,
             waypointer_processes::get_processes,
             waypointer_processes::kill_process,
-            waypointer_unicode::search_unicode,
             projects::list_projects,
             projects::get_project,
             projects::get_project_for_app,
