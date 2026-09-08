@@ -22,6 +22,53 @@ pub struct TimelineConfig {
     /// While true, no event is written to the store.
     #[serde(default)]
     pub paused: bool,
+    /// Apps whose activity is never stored.
+    ///
+    /// Settings has written this since the Knowledge page existed and nothing
+    /// read it, under a row that says "Nothing these apps do is recorded". A
+    /// person excluded their password manager and the daemon went on recording
+    /// it, which is the same class as the pause above and worse in kind: a pause
+    /// is visible when it fails, an exclusion is not.
+    #[serde(default)]
+    pub excluded_apps: Vec<String>,
+    /// Path prefixes whose activity is never stored. Same history as
+    /// `excluded_apps`, under "Activity under these paths is never recorded".
+    #[serde(default)]
+    pub excluded_paths: Vec<String>,
+}
+
+impl TimelineConfig {
+    /// Whether an event from `app_id` about `path` is excluded from the store.
+    ///
+    /// Apps match EXACTLY, case-insensitively: the id is a machine value the
+    /// user picks from a list of what has been seen, and a substring rule would
+    /// make `mail` exclude `mailbox-indexer` without saying so. Paths match as
+    /// PREFIXES on a component boundary, which is what "activity under this
+    /// path" means - `/home/t/private` covers `/home/t/private/x` and not
+    /// `/home/t/private-notes`.
+    ///
+    /// Either field empty means that half excludes nothing, never everything: a
+    /// list nobody has filled in is not a claim about all apps.
+    pub fn is_excluded(&self, app_id: &str, path: &str) -> bool {
+        if !app_id.is_empty()
+            && self
+                .excluded_apps
+                .iter()
+                .any(|a| a.eq_ignore_ascii_case(app_id))
+        {
+            return true;
+        }
+        !path.is_empty() && self.excluded_paths.iter().any(|p| path_under(path, p))
+    }
+}
+
+/// Whether `path` is `prefix` or sits under it, on a component boundary.
+fn path_under(path: &str, prefix: &str) -> bool {
+    let prefix = prefix.trim_end_matches('/');
+    if prefix.is_empty() {
+        return false;
+    }
+    path == prefix || path.strip_prefix(prefix).is_some_and(|r| r.starts_with('/'))
 }
 
 /// Just enough of the file to reach `[timeline]`; the other sections have their
@@ -93,12 +140,60 @@ pub fn is_paused() -> bool {
     paused_flag().load(Ordering::Relaxed)
 }
 
+/// The exclusion lists every collector reads, kept current beside the flag.
+///
+/// A `RwLock` rather than an atomic because the value is two lists, and read by
+/// every admitted event: readers never block each other, and the writer takes it
+/// once per poll interval only when the file changed.
+static RULES: std::sync::OnceLock<Arc<std::sync::RwLock<TimelineConfig>>> =
+    std::sync::OnceLock::new();
+
+/// The shared rules, seeded from the config on first use.
+pub fn rules() -> Arc<std::sync::RwLock<TimelineConfig>> {
+    RULES
+        .get_or_init(|| Arc::new(std::sync::RwLock::new(TimelineConfig::load())))
+        .clone()
+}
+
+/// Is this event excluded right now?
+///
+/// A poisoned lock reads as NOT excluded, deliberately and against the usual
+/// fail-closed instinct: the alternative is a panic in one collector silently
+/// switching recording off for everything, and a person who notices that their
+/// timeline stopped has no way to connect it to a lock. The exclusion is a
+/// privacy promise, so this is the one place worth stating - if the lock is ever
+/// poisoned the promise is not kept, and the log line says so.
+pub fn is_excluded(app_id: &str, path: &str) -> bool {
+    match rules().read() {
+        Ok(cfg) => cfg.is_excluded(app_id, path),
+        Err(e) => {
+            tracing::error!("timeline rules unreadable ({e}); exclusions are not being applied");
+            false
+        }
+    }
+}
+
 pub async fn watch_paused(flag: Arc<AtomicBool>) {
     const INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
     let mut last = flag.load(Ordering::Relaxed);
     loop {
         tokio::time::sleep(INTERVAL).await;
-        let now = TimelineConfig::load().paused;
+        let cfg = TimelineConfig::load();
+        // The lists travel with the flag: one read of one file answers both, and
+        // a second poller would be a second answer to "what is recorded".
+        if let Ok(mut guard) = rules().write() {
+            if guard.excluded_apps != cfg.excluded_apps
+                || guard.excluded_paths != cfg.excluded_paths
+            {
+                tracing::info!(
+                    "timeline exclusions changed: {} app(s), {} path(s)",
+                    cfg.excluded_apps.len(),
+                    cfg.excluded_paths.len()
+                );
+            }
+            *guard = cfg.clone();
+        }
+        let now = cfg.paused;
         if now != last {
             flag.store(now, Ordering::Relaxed);
             last = now;
@@ -117,6 +212,51 @@ mod tests {
 
     fn parse(s: &str) -> TimelineConfig {
         toml::from_str::<GraphConfig>(s).map(|c| c.timeline).unwrap_or_default()
+    }
+
+    #[test]
+    fn an_excluded_app_is_matched_exactly_and_case_insensitively() {
+        let cfg = parse("[timeline]\nexcluded_apps = [\"dev.arlen.mail\"]\n");
+        assert!(cfg.is_excluded("dev.arlen.mail", "/home/t/x"));
+        assert!(cfg.is_excluded("DEV.ARLEN.MAIL", ""));
+        // Not a substring rule: an id that merely contains an excluded one is a
+        // different app, and excluding it without being asked is the quiet kind
+        // of wrong on a privacy control.
+        assert!(!cfg.is_excluded("dev.arlen.mailbox-indexer", ""));
+    }
+
+    #[test]
+    fn an_excluded_path_covers_what_is_under_it_and_nothing_beside_it() {
+        let cfg = parse("[timeline]\nexcluded_paths = [\"/home/t/private\"]\n");
+        assert!(cfg.is_excluded("", "/home/t/private"));
+        assert!(cfg.is_excluded("", "/home/t/private/notes/a.md"));
+        // The component boundary is the whole point of the rule.
+        assert!(!cfg.is_excluded("", "/home/t/private-notes/a.md"));
+        assert!(!cfg.is_excluded("", "/home/t/public/a.md"));
+    }
+
+    #[test]
+    fn a_trailing_slash_on_the_rule_changes_nothing() {
+        let cfg = parse("[timeline]\nexcluded_paths = [\"/home/t/private/\"]\n");
+        assert!(cfg.is_excluded("", "/home/t/private/a.md"));
+    }
+
+    #[test]
+    fn empty_lists_exclude_nothing_rather_than_everything() {
+        // A list nobody filled in is not a claim about all apps, and reading it
+        // that way would stop recording on a fresh install.
+        let cfg = parse("[timeline]\npaused = false\n");
+        assert!(!cfg.is_excluded("dev.arlen.files", "/home/t/x"));
+        assert!(!cfg.is_excluded("", ""));
+    }
+
+    #[test]
+    fn an_empty_rule_entry_is_not_a_wildcard() {
+        // An empty string in the list would prefix-match every path if the rule
+        // were naive. Somebody pressing Add on a blank field must not switch
+        // recording off for the whole disk.
+        let cfg = parse("[timeline]\nexcluded_paths = [\"\", \"/\"]\n");
+        assert!(!cfg.is_excluded("", "/home/t/x"));
     }
 
     #[test]

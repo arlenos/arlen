@@ -61,7 +61,6 @@
   // Same startup-only config, same honest restart hint.
   let excludedApps = $state<string[]>([]);
   let excludedPaths = $state<string[]>([]);
-  let timelineDirty = $state(false);
 
   const maxDepth = $derived<number>(
     ($graph.data?.projects?.max_depth as number | undefined) ??
@@ -93,12 +92,17 @@
     excludedPaths = (get(graph).data?.timeline?.excluded_paths as string[] | undefined) ?? [];
   });
 
+  /// No restart hint on these two.
+  ///
+  /// The daemon polls `[timeline]` every couple of seconds - the same watcher
+  /// that carries the pause switch - so an exclusion takes effect while the page
+  /// is still open. It said "restart required" while nothing read these lists at
+  /// all, which made the hint the most accurate thing on the row and for the
+  /// wrong reason.
   async function persistExcludedApps() {
-    timelineDirty = true;
     await graph.setValue("timeline.excluded_apps", excludedApps);
   }
   async function persistExcludedPaths() {
-    timelineDirty = true;
     await graph.setValue("timeline.excluded_paths", excludedPaths);
   }
 
@@ -293,17 +297,6 @@
           />
         {/snippet}
       </Row>
-      {#if timelineDirty}
-        <Row
-          label={$t("s.know.restart")}
-          description={$t("s.know.restart.desc")}
-          id="kg-rec-restart-hint"
-        >
-          {#snippet control()}
-            <AlertCircle size={16} class="kg-warn-icon" />
-          {/snippet}
-        </Row>
-      {/if}
     </Section>
 
     <!-- The button here was permanently disabled with a description saying the
