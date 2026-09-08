@@ -297,34 +297,73 @@ fn pango_font(stack: &str, size_base: &str) -> String {
 /// `gtk-application-prefer-dark-theme` is how one theme directory serves both
 /// variants: GTK3 reads `gtk-dark.css` beside `gtk.css` when it is set, which is
 /// what both our fork and upstream adw-gtk3 ship.
+/// The interface choices a theme makes, before either vocabulary names them.
+///
+/// There are two readers for the same six decisions and they use different
+/// words: a `settings.ini` says `gtk-theme-name` and
+/// `gtk-application-prefer-dark-theme=1`, while `org.gnome.desktop.interface`
+/// says `gtk-theme` and `color-scheme='prefer-dark'`. Deciding once here and
+/// rendering twice is what stops the two files disagreeing about the same
+/// machine - which is the failure a second writer invites, and the reason this
+/// type exists rather than a second copy of the rules in the shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InterfaceSelection {
+    /// The widget theme to select, or `None` when none is installed.
+    pub gtk_theme: Option<String>,
+    /// The icon set, or `None` when the named one is not installed.
+    pub icon_theme: Option<String>,
+    /// The cursor theme name.
+    pub cursor_theme: String,
+    /// The cursor size in pixels.
+    pub cursor_size: u32,
+    /// The interface font, as a Pango description.
+    pub font: String,
+    /// Whether the theme is a dark one.
+    pub dark: bool,
+}
+
+/// What this theme selects, given what the machine turned out to have.
+pub fn interface_selection(
+    theme: &ArlenTheme,
+    theme_name: Option<&str>,
+    icon_theme: Option<&str>,
+) -> InterfaceSelection {
+    InterfaceSelection {
+        gtk_theme: theme_name.map(str::to_string),
+        icon_theme: icon_theme.map(str::to_string),
+        cursor_theme: theme.cursor.theme.clone(),
+        cursor_size: theme.cursor.size,
+        font: pango_font(&theme.typography.font_sans, &theme.typography.size_base),
+        dark: theme.is_dark(),
+    }
+}
+
 pub fn generate_gtk_settings_ini(
     theme: &ArlenTheme,
     theme_name: Option<&str>,
     icon_theme: Option<&str>,
 ) -> String {
+    let sel = interface_selection(theme, theme_name, icon_theme);
     let mut out = String::from(
         "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n[Settings]\n",
     );
-    if let Some(name) = theme_name {
+    if let Some(name) = &sel.gtk_theme {
         out.push_str(&format!("gtk-theme-name={name}\n"));
     }
     out.push_str(&format!(
         "gtk-application-prefer-dark-theme={}\n",
-        u8::from(theme.is_dark())
+        u8::from(sel.dark)
     ));
     // Same rule as the widget theme: an icon set that is not installed is not
     // named. GTK falls back to hicolor for a theme it cannot find, and hicolor
     // is the bare fallback rather than the system's own choice - so naming a
     // missing set makes a desktop LESS iconned than saying nothing.
-    if let Some(icons) = icon_theme {
+    if let Some(icons) = &sel.icon_theme {
         out.push_str(&format!("gtk-icon-theme-name={icons}\n"));
     }
-    out.push_str(&format!("gtk-cursor-theme-name={}\n", theme.cursor.theme));
-    out.push_str(&format!("gtk-cursor-theme-size={}\n", theme.cursor.size));
-    out.push_str(&format!(
-        "gtk-font-name={}\n",
-        pango_font(&theme.typography.font_sans, &theme.typography.size_base)
-    ));
+    out.push_str(&format!("gtk-cursor-theme-name={}\n", sel.cursor_theme));
+    out.push_str(&format!("gtk-cursor-theme-size={}\n", sel.cursor_size));
+    out.push_str(&format!("gtk-font-name={}\n", sel.font));
     out
 }
 
