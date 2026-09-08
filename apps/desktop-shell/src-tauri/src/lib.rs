@@ -424,8 +424,6 @@ pub fn run() {
             shell_overlay_client::set_consent_input_region,
             shell_overlay_client::resolve_app_icon,
             shell_overlay_client::debug_workspace_update,
-            menu_store::register_menu,
-            menu_store::unregister_menu,
             menu_store::dispatch_menu_action,
             menu_store::get_menu,
             menu_store::set_menu_state,
