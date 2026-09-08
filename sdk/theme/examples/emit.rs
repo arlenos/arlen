@@ -3,7 +3,12 @@
 //! (`dev/screenshot/shoot-toolkits.sh`). The mapping in `gtk.rs` and `qt.rs` is
 //! a design decision, and a design decision is checked with a picture.
 //!
-//! Usage: `cargo run --example emit -- <dark|light> <config-dir>`
+//! Usage: `cargo run --example emit -- <dark|light> <config-dir> [customization.toml]`
+//!
+//! The optional third argument is a `theme.toml` layered on top, which is how a
+//! PICKED colour can be looked at rather than only a bundled one. Without it the
+//! gallery can only ever show what ships, and the question worth a picture is
+//! whether the accent somebody chose reaches a GTK button and a Qt dialog.
 
 use std::path::Path;
 
@@ -20,7 +25,11 @@ fn main() {
         "light" => LIGHT_TOML,
         _ => usage(),
     };
-    let theme = ArlenTheme::from_bundled(bundled).expect("the bundled theme resolves");
+    let customization = args.next().map(|p| {
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("cannot read {p}: {e}"))
+    });
+    let theme = ArlenTheme::resolve(bundled, None, customization.as_deref())
+        .expect("the theme resolves");
     let report = write_foreign_toolkit_configs(&theme, Path::new(&dir));
     // Wine is per bottle and `apply` leaves it to `bottled`; here one document
     // at 96 DPI is enough for a throwaway prefix to import and be looked at.
