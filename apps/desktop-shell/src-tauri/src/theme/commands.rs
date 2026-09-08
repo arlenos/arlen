@@ -14,9 +14,9 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use arlen_desktop_shell_core::theme::css::{to_css_string, to_css_variables, CssVariables};
+use arlen_desktop_shell_core::theme::css::{to_css_variables, CssVariables};
 use arlen_desktop_shell_core::theme::loader::{resolve_theme, ThemeError, ThemeLoader};
-use arlen_desktop_shell_core::theme::schema::{AppearanceConfig, ThemeInfo};
+use arlen_desktop_shell_core::theme::schema::AppearanceConfig;
 
 // ---------------------------------------------------------------------------
 // State
@@ -480,13 +480,11 @@ impl From<ThemeError> for ThemeCommandError {
 pub fn get_theme(state: tauri::State<'_, ThemeState>) -> Result<CssVariables, ThemeCommandError> {
     Ok(state.resolve()?)
 }
+// `get_theme_css` lived here and is deleted. It rendered the resolved theme as a
+// CSS string; the live `get_theme` returns the same resolved theme as
+// `CssVariables` and the frontend's `injectThemeVariables` applies it. Two
+// representations of one state with a reader for one of them.
 
-/// Get the resolved CSS as an injectable string.
-#[tauri::command]
-pub fn get_theme_css(state: tauri::State<'_, ThemeState>) -> Result<String, ThemeCommandError> {
-    let css = state.resolve()?;
-    Ok(to_css_string(&css))
-}
 
 /// Switch to a different theme by ID.
 #[tauri::command]
@@ -505,12 +503,12 @@ pub fn set_theme(
 
     Ok(state.resolve_and_emit(&app)?)
 }
+// `get_available_themes` lived here and is deleted. The shell's quick settings
+// picks dark or light through `set_theme`; listing every installed theme is the
+// appearance page's job, and Settings registers and calls its own copy. A theme
+// LIST with no picker to fill was the shell holding half of somebody else's
+// surface.
 
-/// List all available themes (built-in + user).
-#[tauri::command]
-pub fn get_available_themes(state: tauri::State<'_, ThemeState>) -> Vec<ThemeInfo> {
-    state.loader.list_themes()
-}
 
 /// Get the currently active theme ID.
 #[tauri::command]
