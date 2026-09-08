@@ -18,7 +18,15 @@
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { t } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
+  import { t, locale } from "$lib/i18n/messages";
+  import {
+    contrastReport,
+    contrastUnavailable,
+    loadContrast,
+    failing,
+    type ContrastRole,
+  } from "$lib/stores/contrast";
   import {
     compositor,
     screenFilter,
@@ -35,7 +43,22 @@
   onMount(() => {
     compositor.load();
     loadFilter();
+    loadContrast();
   });
+
+  /// The sentence for one failing pair.
+  ///
+  /// Which floor it is held to arrives as a translated word inside the sentence
+  /// rather than as a second sentence beside it, so a German reading is one
+  /// clause and not two glued together.
+  function missText(r: ContrastRole): string {
+    const floor = $t(r.usage === "large" ? "s.a11y.contrastFloorLarge" : "s.a11y.contrastFloorBody");
+    const wcag = formatDecimal(r.wcag, 1, $locale);
+    const apca = formatDecimal(Math.abs(r.apca), 0, $locale);
+    if (!r.wcagPass && !r.apcaPass) return $t("s.a11y.contrastMissBoth", { floor, wcag, apca });
+    if (!r.wcagPass) return $t("s.a11y.contrastMissWcag", { floor, wcag });
+    return $t("s.a11y.contrastMissApca", { floor, apca });
+  }
 
   // Derived current values with defaults filled in.
   const enableMouseZoom = $derived<boolean>(
@@ -204,5 +227,33 @@
       {/snippet}
     </Row>
     </Section>
+
+  <!-- Measured, not claimed. The audit runs over the RESOLVED theme, so a
+       custom appearance or an accent somebody picked is judged the same way a
+       shipped one is - which is the case that actually goes wrong. -->
+  <Section label={$t("s.a11y.contrast")}>
+    {#if $contrastUnavailable}
+      <p class="contrast-note">{$t("s.a11y.contrastUnavailable")}</p>
+    {:else if $contrastReport === null}
+      <p class="contrast-note">{$t("s.a11y.contrastReading")}</p>
+    {:else if failing($contrastReport).length === 0}
+      <p class="contrast-note">{$t("s.a11y.contrastAllPass")}</p>
+    {:else}
+      <p class="contrast-note" role="alert">{$t("s.a11y.contrastSomeFail")}</p>
+      {#each failing($contrastReport) as r (r.pair)}
+        <Row label={r.pair} description={missText(r)} />
+      {/each}
+    {/if}
+  </Section>
   </SectionGrid>
 </Page>
+
+<style>
+  /* 55%: this line is often the only thing in its section, so it is held to the
+     readable floor rather than the decorative one. */
+  .contrast-note {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+</style>
