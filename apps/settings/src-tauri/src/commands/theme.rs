@@ -9,11 +9,11 @@ use tauri::{AppHandle, Emitter};
 
 use super::config::{config_get, config_reset, config_set, ConfigFile};
 
-/// Return the current appearance.toml as a JSON object.
-#[tauri::command]
-pub fn theme_get() -> Result<serde_json::Value, String> {
-    config_get(ConfigFile::Appearance, None)
-}
+// `theme_get` lived here and is deleted. It was two lines wrapping
+// `config_get(Appearance, None)` under a second name, and nothing called it: the
+// appearance store reads the same file through the generic config path
+// (`createConfigStore("appearance")`), which is the one every other config
+// surface uses. A second name for one read is a second thing to keep in step.
 
 /// One resolved colour role for the Appearance preview and per-field override
 /// rows.

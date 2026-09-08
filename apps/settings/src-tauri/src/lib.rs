@@ -142,7 +142,6 @@ pub fn run() {
             commands::config::ai_defaults_set_role,
             commands::config::config_reset,
             commands::config::config_get_default,
-            commands::theme::theme_get,
             commands::theme::theme_resolved_palette,
             commands::theme::theme_contrast_report,
             commands::theme::theme_resolved_terminal,
