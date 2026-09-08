@@ -46,7 +46,7 @@
 //! goes through [`reg_escape`] rather than trusting the resolve gate to have
 //! covered a format it does not know about.
 
-use crate::{scale_rgb, ArlenTheme, Rgba, ThemeVariant};
+use crate::{ArlenTheme, Rgba, ThemeVariant};
 
 /// Serialize a resolved [`Rgba`] the way `Control Panel\Colors` wants it:
 /// three decimal channels separated by spaces. Alpha is dropped, because a
@@ -85,8 +85,11 @@ pub fn reg_escape(value: &str) -> String {
 /// Arlen, where a `.msstyles` would be an XP-format detour reaching only
 /// comctl32-v6 apps. So the caption is a flat fill rather than a gradient (both
 /// gradient slots take the same colour as their base), and the four button
-/// bevels are derived from the button face the way Qt derives its own, so they
-/// track the theme without four more schema slots.
+/// bevels come from tokens rather than from multiplying the face, the same
+/// call `qt.rs` made on 7 September: the house is flat, so the highlight is
+/// the default border, the light the card, the dark shadow the deepest surface
+/// and the shadow the strong border. Looked at in `winecfg` beside an Arlen
+/// window with `dev/screenshot/shoot-toolkits.sh wine`.
 fn colors(t: &ArlenTheme) -> Vec<(&'static str, Rgba)> {
     let c = &t.color;
     let button = c.bg_card;
@@ -114,9 +117,9 @@ fn colors(t: &ArlenTheme) -> Vec<(&'static str, Rgba)> {
         ("GrayText", c.fg_disabled),
         ("ButtonText", c.fg_primary),
         ("InactiveTitleText", c.fg_secondary),
-        ("ButtonHilight", scale_rgb(button, 1.25)),
-        ("ButtonDkShadow", scale_rgb(button, 0.5)),
-        ("ButtonLight", scale_rgb(button, 1.5)),
+        ("ButtonHilight", c.border_default),
+        ("ButtonDkShadow", c.bg_shell),
+        ("ButtonLight", c.bg_card),
         ("InfoText", c.fg_primary),
         ("InfoWindow", c.bg_overlay),
         ("ButtonAlternateFace", button),
