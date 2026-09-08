@@ -238,10 +238,12 @@ mod tests {
     use arlen_modules::{ModuleCapabilities, NetworkCapability};
 
     fn ctx_for(domains: &[&str]) -> Arc<CapabilityContext> {
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: domains.iter().map(|s| s.to_string()).collect(),
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: domains.iter().map(|s| s.to_string()).collect(),
+            }),
+            ..Default::default()
+        };
         Arc::new(CapabilityContext::new("com.example.test", caps))
     }
 

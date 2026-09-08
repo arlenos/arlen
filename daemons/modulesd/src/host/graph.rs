@@ -175,11 +175,13 @@ mod tests {
     use arlen_modules::{GraphCapability, ModuleCapabilities};
 
     fn ctx(read: Vec<&str>, write: Vec<&str>) -> CapabilityContext {
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: read.into_iter().map(String::from).collect(),
-            write: write.into_iter().map(String::from).collect(),
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: read.into_iter().map(String::from).collect(),
+                write: write.into_iter().map(String::from).collect(),
+            }),
+            ..Default::default()
+        };
         CapabilityContext::new("x", caps)
     }
 

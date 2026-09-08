@@ -361,6 +361,15 @@ fn proto_to_wit_result(
     }
 }
 
+/// One module's hosted instance, and the cell that guarantees one of it.
+///
+/// The nesting is not incidental, so it is named rather than repeated: the
+/// `OnceCell` is what makes two concurrent searches share a single `init`, and
+/// the `Mutex` is what serialises calls into it, because a wasmtime `Store` is
+/// `!Sync`. The `Arc`s let a caller take the cell out of the map and await
+/// outside the map's lock.
+type InstanceCell = OnceCell<Arc<Mutex<Tier1Instance>>>;
+
 pub struct Manager {
     modules: RwLock<HashMap<String, ModuleEntry>>,
     tier1: Arc<Tier1Runtime>,
@@ -402,7 +411,7 @@ pub struct Manager {
     /// instantiation happens lock-free outside it. The inner
     /// `Mutex<Tier1Instance>` still serialises calls on the same
     /// module because wasmtime `Store` is `!Sync`.
-    tier1_instances: RwLock<HashMap<String, Arc<OnceCell<Arc<Mutex<Tier1Instance>>>>>>,
+    tier1_instances: RwLock<HashMap<String, Arc<InstanceCell>>>,
     /// Running `mcp.server` socket supervisors, keyed by `module.id`.
     /// Each entry owns the WASM host and the task serving the
     /// module's MCP Unix socket. Unlike `tier1_instances` (lazy, on
@@ -2124,11 +2133,12 @@ mod tests {
     /// compares against `describe`'s output rather than a hand-copied string.
     fn modules_capabilities_for_test() -> arlen_modules::ModuleCapabilities {
         use arlen_modules::NetworkCapability;
-        let mut caps = arlen_modules::ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
-        });
-        caps
+        arlen_modules::ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into()],
+            }),
+            ..Default::default()
+        }
     }
 
     #[tokio::test]
@@ -2329,10 +2339,12 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("com.example.weather", Tier::Iframe))
             .await;
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into()],
+            }),
+            ..Default::default()
+        };
         let ctx = CapabilityContext::new("com.example.weather", caps);
         m.register_iframe_for_test(IframeInstance {
             module_id: "com.example.weather".into(),
@@ -2376,10 +2388,12 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("com.example.poster", Tier::Iframe))
             .await;
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into()],
+            }),
+            ..Default::default()
+        };
         let ctx = CapabilityContext::new("com.example.poster", caps);
         m.register_iframe_for_test(IframeInstance {
             module_id: "com.example.poster".into(),
@@ -2423,10 +2437,12 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("com.example.bad-b64", Tier::Iframe))
             .await;
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into()],
+            }),
+            ..Default::default()
+        };
         let ctx = CapabilityContext::new("com.example.bad-b64", caps);
         m.register_iframe_for_test(IframeInstance {
             module_id: "com.example.bad-b64".into(),
@@ -2471,10 +2487,12 @@ mod tests {
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("x", Tier::Iframe)).await;
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.invalid".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.invalid".into()],
+            }),
+            ..Default::default()
+        };
         let ctx = CapabilityContext::new("x", caps);
         m.register_iframe_for_test(IframeInstance {
             module_id: "x".into(),
@@ -2527,11 +2545,13 @@ mod tests {
         let (tx, _rx) = broadcast::channel(16);
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("x", Tier::Iframe)).await;
-        let mut caps = ModuleCapabilities::default();
-        caps.event_bus = Some(EventBusCapability {
-            publish: vec!["module.com.example.".into()],
-            subscribe: vec![],
-        });
+        let caps = ModuleCapabilities {
+            event_bus: Some(EventBusCapability {
+                publish: vec!["module.com.example.".into()],
+                subscribe: vec![],
+            }),
+            ..Default::default()
+        };
         let ctx = CapabilityContext::new("x", caps);
         m.register_iframe_for_test(IframeInstance {
             module_id: "x".into(),
@@ -2603,11 +2623,13 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("com.example.graph", Tier::Iframe))
             .await;
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: vec!["module.com.example.".into()],
-            write: vec![],
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: vec!["module.com.example.".into()],
+                write: vec![],
+            }),
+            ..Default::default()
+        };
         let ctx = CapabilityContext::new("com.example.graph", caps);
         m.register_iframe_for_test(IframeInstance {
             module_id: "com.example.graph".into(),
@@ -2673,11 +2695,13 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("com.example.graph2", Tier::Iframe))
             .await;
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: vec!["core.".into()],
-            write: vec![],
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: vec!["core.".into()],
+                write: vec![],
+            }),
+            ..Default::default()
+        };
         let ctx = CapabilityContext::new("com.example.graph2", caps);
         m.register_iframe_for_test(IframeInstance {
             module_id: "com.example.graph2".into(),
@@ -2933,8 +2957,7 @@ mod tests {
     /// cell and would share its inner init future on a success
     /// path. Failure (no `module.wasm` on disk) returns Err from
     /// both without poisoning the cell.
-    // ----- Codex round-2 finding 1: prefix-exclusive routing ------------
-
+    /// A manifest that declares a search prefix, a pattern, or neither.
     fn manifest_with_search(
         prefix: Option<&str>,
         pattern: Option<&str>,
@@ -3244,13 +3267,11 @@ mod tests {
         // First crash = Immediate → no cooldown.
         let r1 = m.record_crash("com.example.flap", "trap").await;
         assert_eq!(r1, Recovery::Immediate);
-        match m.ensure_tier1_instance("com.example.flap").await {
-            Err(DaemonError::InCooldown { .. }) => {
-                panic!("Immediate recovery must NOT set a cooldown")
-            }
-            // Any other error is fine — the test only cares about
-            // the InCooldown gate.
-            _ => {}
+        // Any other error is fine: the test only cares about the InCooldown gate.
+        if let Err(DaemonError::InCooldown { .. }) =
+            m.ensure_tier1_instance("com.example.flap").await
+        {
+            panic!("Immediate recovery must NOT set a cooldown");
         }
 
         // Second crash = Delayed{5s} → cooldown active.

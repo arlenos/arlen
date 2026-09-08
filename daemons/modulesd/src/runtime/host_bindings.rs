@@ -428,11 +428,13 @@ mod tests {
 
     #[tokio::test]
     async fn events_emit_denied_for_undeclared_namespace() {
-        let mut caps = ModuleCapabilities::default();
-        caps.event_bus = Some(EventBusCapability {
-            publish: vec!["module.com.example.".into()],
-            subscribe: vec![],
-        });
+        let caps = ModuleCapabilities {
+            event_bus: Some(EventBusCapability {
+                publish: vec!["module.com.example.".into()],
+                subscribe: vec![],
+            }),
+            ..Default::default()
+        };
         let mut s = store_with(caps);
         let result =
             wit::arlen::host::events::Host::emit(&mut s, "system.shutdown".into(), vec![]).await;
@@ -447,11 +449,13 @@ mod tests {
         // → BusDisconnected. The important property is that we got
         // past the capability gate (no `Denied`) and the SDK
         // actually attempted the wire call.
-        let mut caps = ModuleCapabilities::default();
-        caps.event_bus = Some(EventBusCapability {
-            publish: vec!["module.com.example.".into()],
-            subscribe: vec![],
-        });
+        let caps = ModuleCapabilities {
+            event_bus: Some(EventBusCapability {
+                publish: vec!["module.com.example.".into()],
+                subscribe: vec![],
+            }),
+            ..Default::default()
+        };
         let mut s = store_with(caps);
         let result = wit::arlen::host::events::Host::emit(
             &mut s,
@@ -473,11 +477,13 @@ mod tests {
 
     #[tokio::test]
     async fn graph_query_denied_outside_read_allowlist() {
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: vec!["module.com.example.".into()],
-            write: vec![],
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: vec!["module.com.example.".into()],
+                write: vec![],
+            }),
+            ..Default::default()
+        };
         let mut s = store_with(caps);
         let result =
             wit::arlen::host::graph::Host::query(&mut s, "MATCH (f:core.File) RETURN f".into())
@@ -494,11 +500,13 @@ mod tests {
         // ErrorCode::Internal. The important guarantee is that the
         // capability check passed (no `Denied` code) and the wire
         // call was actually attempted — no more silent stub.
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: vec!["core.".into()],
-            write: vec![],
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: vec!["core.".into()],
+                write: vec![],
+            }),
+            ..Default::default()
+        };
         let mut s = store_with(caps);
         let result =
             wit::arlen::host::graph::Host::query(&mut s, "MATCH (f:core.File) RETURN f".into())
@@ -524,11 +532,13 @@ mod tests {
         // Once a real daemon is wired, an allowed write that the
         // daemon rejects would surface as `InvalidQuery` per the
         // SDK's QueryError mapping.
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: vec![],
-            write: vec!["module.x.".into()],
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: vec![],
+                write: vec!["module.x.".into()],
+            }),
+            ..Default::default()
+        };
         let mut s = store_with(caps);
         let result = wit::arlen::host::graph::Host::write(
             &mut s,
@@ -544,11 +554,13 @@ mod tests {
 
     #[tokio::test]
     async fn graph_write_without_write_capability_denied() {
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: vec!["core.".into()],
-            write: vec![],
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: vec!["core.".into()],
+                write: vec![],
+            }),
+            ..Default::default()
+        };
         let mut s = store_with(caps);
         let result = wit::arlen::host::graph::Host::write(
             &mut s,
@@ -561,10 +573,12 @@ mod tests {
 
     #[tokio::test]
     async fn network_fetch_denied_for_undeclared_host() {
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into()],
+            }),
+            ..Default::default()
+        };
         let mut s = store_with(caps);
         let result = wit::arlen::host::network::Host::fetch(
             &mut s,
@@ -581,10 +595,12 @@ mod tests {
 
     #[tokio::test]
     async fn network_fetch_rejects_http_scheme() {
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into()],
+            }),
+            ..Default::default()
+        };
         let mut s = store_with(caps);
         let result = wit::arlen::host::network::Host::fetch(
             &mut s,

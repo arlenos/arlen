@@ -119,7 +119,7 @@ fn prefix_match(allowlist: &[String], target: &str) -> bool {
 /// entries to bare hosts (no schemes, no paths).
 fn host_from_url(url: &str) -> Option<&str> {
     let after_scheme = url.split_once("://")?.1;
-    Some(after_scheme.split('/').next()?.split(':').next()?)
+    after_scheme.split('/').next()?.split(':').next()
 }
 
 #[cfg(test)]
@@ -146,10 +146,12 @@ mod tests {
 
     #[test]
     fn network_matches_exact_host() {
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into()],
+            }),
+            ..Default::default()
+        };
         let ctx = ctx_with(caps);
         assert!(ctx.allow_network("https://api.example.com/v1/foo"));
         assert!(ctx.allow_network("http://api.example.com/"));
@@ -161,21 +163,25 @@ mod tests {
     fn network_rejects_port_mismatch_only_on_host_diff() {
         // Hosts with explicit ports still match because we strip ports
         // on the URL side. Manifest can't include ports anyway.
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into()],
+            }),
+            ..Default::default()
+        };
         let ctx = ctx_with(caps);
         assert!(ctx.allow_network("https://api.example.com:8443/path"));
     }
 
     #[test]
     fn graph_prefix_match() {
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: vec!["core.".into(), "shared.Person".into()],
-            write: vec![],
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: vec!["core.".into(), "shared.Person".into()],
+                write: vec![],
+            }),
+            ..Default::default()
+        };
         let ctx = ctx_with(caps);
         assert!(ctx.allow_graph_read("core.File"));
         assert!(ctx.allow_graph_read("core.App"));
@@ -186,22 +192,26 @@ mod tests {
 
     #[test]
     fn graph_wildcard_allows_all() {
-        let mut caps = ModuleCapabilities::default();
-        caps.graph = Some(GraphCapability {
-            read: vec!["*".into()],
-            write: vec![],
-        });
+        let caps = ModuleCapabilities {
+            graph: Some(GraphCapability {
+                read: vec!["*".into()],
+                write: vec![],
+            }),
+            ..Default::default()
+        };
         let ctx = ctx_with(caps);
         assert!(ctx.allow_graph_read("anything.at.all"));
     }
 
     #[test]
     fn events_prefix_publish() {
-        let mut caps = ModuleCapabilities::default();
-        caps.event_bus = Some(EventBusCapability {
-            publish: vec!["module.example.".into()],
-            subscribe: vec!["focus.".into()],
-        });
+        let caps = ModuleCapabilities {
+            event_bus: Some(EventBusCapability {
+                publish: vec!["module.example.".into()],
+                subscribe: vec!["focus.".into()],
+            }),
+            ..Default::default()
+        };
         let ctx = ctx_with(caps);
         assert!(ctx.allow_event_publish("module.example.refreshed"));
         assert!(!ctx.allow_event_publish("module.other.x"));

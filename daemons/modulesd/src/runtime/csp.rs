@@ -38,14 +38,14 @@ pub fn build_csp(module_id: &str, capabilities: &ModuleCapabilities) -> String {
 
     [
         format!("default-src 'self' module://{module_id}"),
-        format!("script-src 'self'"),
-        format!("style-src 'self' 'unsafe-inline'"),
+        "script-src 'self'".to_string(),
+        "style-src 'self' 'unsafe-inline'".to_string(),
         format!("img-src 'self' module://{module_id} data:"),
         format!("font-src 'self' module://{module_id} data:"),
         format!("connect-src {}", connect.join(" ")),
-        format!("frame-ancestors 'self'"),
-        format!("base-uri 'self'"),
-        format!("form-action 'none'"),
+        "frame-ancestors 'self'".to_string(),
+        "base-uri 'self'".to_string(),
+        "form-action 'none'".to_string(),
     ]
     .join("; ")
 }
@@ -63,10 +63,12 @@ mod tests {
 
     #[test]
     fn csp_includes_network_allowlist_in_connect_src() {
-        let mut caps = ModuleCapabilities::default();
-        caps.network = Some(NetworkCapability {
-            allowed_domains: vec!["api.example.com".into(), "cdn.example.com".into()],
-        });
+        let caps = ModuleCapabilities {
+            network: Some(NetworkCapability {
+                allowed_domains: vec!["api.example.com".into(), "cdn.example.com".into()],
+            }),
+            ..Default::default()
+        };
         let csp = build_csp("x", &caps);
         assert!(csp.contains("https://api.example.com"));
         assert!(csp.contains("https://cdn.example.com"));

@@ -31,7 +31,7 @@ use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 
 use crate::error::Result;
 use crate::host::CapabilityContext;
-use crate::runtime::tier1::{McpInstance, Tier1Runtime, DEFAULT_FUEL_BUDGET};
+use crate::runtime::tier1::{McpInstance, Tier1Runtime};
 use crate::runtime::wit;
 
 /// Wall-clock budget for a single `list-tools` / `call-tool` guest

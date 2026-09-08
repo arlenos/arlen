@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Tim Kicker
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-module-man"
+version = "0.1.0"
+edition = "2021"
+description = "Find a man page by name, as the first module to read files and ship its own catalogue"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.35"
+
+[profile.release]
+opt-level = "s"
+strip = true
+lto = true
