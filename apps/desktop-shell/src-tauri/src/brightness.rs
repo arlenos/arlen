@@ -173,17 +173,12 @@ impl BrightnessState {
         devices
     }
 }
+// `brightness_get_devices` lived here and is deleted. Nothing in this app's
+// frontend enumerated the backlights: the quick-settings slider uses
+// `brightness_get_primary` on purpose, and the per-device surface is Settings'
+// display page, which registers and calls its own copy. `enumerate_devices` is
+// the shared half and stays.
 
-/// List every backlight device with its current value and gamma-
-/// adjusted slider fraction. Used by the Settings panel when more
-/// than one panel is attached (rare on laptops, common on
-/// docked-with-internal-and-edid setups).
-#[tauri::command]
-pub async fn brightness_get_devices() -> Vec<BacklightDevice> {
-    tokio::task::spawn_blocking(enumerate_devices)
-        .await
-        .unwrap_or_default()
-}
 
 /// Convenience for QuickSettings: returns the first / preferred
 /// device (firmware > platform > raw, then alphabetical) or
