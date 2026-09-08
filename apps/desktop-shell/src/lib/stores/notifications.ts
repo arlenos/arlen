@@ -111,6 +111,27 @@ export async function markRead(id: number): Promise<void> {
   await invoke("notification_mark_read", { id });
 }
 
+/// Mark everything on the list read, because the list is on screen.
+///
+/// The badge counts unread and nothing ever marked one read, so it only ever came
+/// down by dismissing: a person who opened the panel, read the notifications and
+/// closed it again still had a bell claiming they had not. The whole read path was
+/// built - command, daemon, `notification:read` event, the store flip - and had no
+/// trigger.
+///
+/// NOT optimistic. The flag flips when the daemon says so, so a refused write
+/// leaves the badge up, which is the truth: it was not marked read. Nothing on
+/// screen has claimed otherwise in the meantime, so there is nothing to revert and
+/// nothing to explain.
+function markVisibleRead(): void {
+  for (const n of get(notifications)) {
+    if (n.read) continue;
+    markRead(n.id).catch((e) =>
+      console.error("[notifications] markRead failed:", n.id, e),
+    );
+  }
+}
+
 export async function clearAll(): Promise<void> {
   // Optimistic, and reverted on refusal for the same reason as a single dismiss,
   // one order of magnitude louder: an emptied panel that refills on the next sync
@@ -230,13 +251,21 @@ function onToastGone() {
 const MAX_QUEUED = 5;
 let toastQueue: Notification[] = [];
 let panelOpen = false;
+/// The notifications popover in particular, as opposed to any popover. The toast
+/// queue cares about all of them - a toast over quick settings is as much in the
+/// way - and the read marking cares about exactly one.
+let notificationsOpen = false;
 let unsubscribePanel: (() => void) | null = null;
 
 function startPanelTracker(): void {
   if (unsubscribePanel) return;
   unsubscribePanel = activePopover.subscribe((v) => {
     const wasOpen = panelOpen;
+    const wasNotifications = notificationsOpen;
     panelOpen = v !== null;
+    notificationsOpen = v === "notifications";
+    // The notifications panel just opened: what is in it has been seen.
+    if (!wasNotifications && notificationsOpen) markVisibleRead();
     // Panel just closed: flush queued toasts.
     if (wasOpen && !panelOpen) {
       const toFlush = toastQueue.splice(0, MAX_QUEUED);
@@ -429,6 +458,15 @@ export function initNotifications(): () => void {
         "icon:",
         payload.app_icon ? "yes" : "no",
       );
+      // Arriving while the panel is open is arriving in front of somebody, so it
+      // is read on sight. Without this the badge would sit at one behind an open
+      // panel showing that very notification - the surface disagreeing with
+      // itself about something the person is looking at.
+      if (notificationsOpen) {
+        markRead(payload.id).catch((e) =>
+          console.error("[notifications] markRead failed:", payload.id, e),
+        );
+      }
       notifications.update(($n) => {
         const updated = [payload, ...$n];
         return updated.length > MAX_NOTIFICATIONS

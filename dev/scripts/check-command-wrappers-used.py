@@ -37,11 +37,11 @@ from pathlib import Path
 # call it or delete it.
 CARRIED: dict[str, tuple[int, str]] = {
     "desktop-shell": (
-        5,
-        "the 8 September wrapper scan: `markRead` (the panel shows unread badges "
-        "and never marks one read), `openWaypointer` (the launcher opens through "
-        "the compositor protocol instead), `openSourcePickerDemo`, and the two "
-        "derived helpers `windowsOnWorkspace` and `minimizedCountFor`",
+        4,
+        "the 8 September wrapper scan, less `markRead` (opening the panel marks "
+        "what is in it read now). What is left: `openWaypointer` (the launcher "
+        "opens through the compositor protocol instead), `openSourcePickerDemo`, "
+        "and the two derived helpers `windowsOnWorkspace` and `minimizedCountFor`",
     ),
     "files": (1, "the 8 September wrapper scan: `countFacets`"),
     "terminal": (
