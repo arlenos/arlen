@@ -39,6 +39,14 @@ What it does NOT check:
     a different thing from the per-app profiles compared here, and they become an
     app's profile only when a package install enrols one.
   * apps that are not in the image at all.
+  * **the greeter, which IS in the image and is not an app-shaped install.** It
+    goes to `/usr/bin/arlen-greeter` rather than `/usr/lib/arlen/apps/<id>/bin`,
+    so the scan below cannot see it, and the count above says "every app the image
+    installs" while meaning "every app installed in the app shape". Checked on
+    8 September rather than assumed: the greeter registers nine commands and dials
+    NO capability-gated daemon - no graph socket, no event bus, no capability
+    client - so it needs no profile and its absence here is correct rather than a
+    blind spot. If it ever talks to one, this exception is the thing that hid it.
 
 Shown to fail before being trusted: deleting a shipped profile, or adding an app
 step without one, makes it name that app.
