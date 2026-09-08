@@ -738,27 +738,12 @@ pub fn keybindings_get_conflicts() -> Result<Vec<Conflict>, String> {
         .collect())
 }
 
-/// Expose the catalogue + defaults so the UI can render a reset button.
-#[tauri::command]
-pub fn keybindings_get_defaults() -> Result<Vec<KeybindingEntry>, String> {
-    Ok(CATALOGUE
-        .iter()
-        .map(|row| KeybindingEntry {
-            id: row.action.to_string(),
-            action: row.action.to_string(),
-            binding: row.default_binding.map(|s| s.to_string()),
-            default_binding: row.default_binding.map(|s| s.to_string()),
-            is_custom: false,
-            category: row.category.to_string(),
-            label_key: Some(catalogue_label_key(row.action)),
-            // Never shown for a catalogue row unless the catalog is missing the
-            // message; the action id is at least true when that happens.
-            label: row.action.to_string(),
-            description_key: catalogue_description_key(row.action),
-            module_id: None,
-        })
-        .collect())
-}
+// `keybindings_get_defaults` lived here and is deleted. Its doc said it existed
+// "so the UI can render a reset button", and the UI renders that button from
+// `default_binding` on every entry `keybindings_get_all` already returns -
+// `KeybindingRow` reads it, shows it and resets to it. A second command for a
+// field the live one hands over is a second thing to keep in step.
+
 
 /// Replace the entire `[keybindings]` section with the defaults.
 #[tauri::command]
@@ -871,31 +856,12 @@ pub async fn keybindings_query_live_conflicts(
         .collect())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConflictGroup {
-    pub binding: String,
-    pub entries: Vec<KeybindingEntry>,
-}
+// `ConflictGroup` and `keybindings_get_all_conflicts` lived here and are deleted.
+// The grouped form carried the whole `KeybindingEntry` per clashing accelerator
+// where the live `keybindings_get_conflicts` carries the action strings - and the
+// page already holds every entry from `keybindings_get_all`, so it can join the
+// two itself. A third scan over one set, not a view nobody built.
 
-/// Static conflict scan over the effective keybinding set Settings
-/// can see (catalogue + user + modules + customs). Returns one
-/// [`ConflictGroup`] per accelerator that has more than one entry.
-#[tauri::command]
-pub fn keybindings_get_all_conflicts() -> Result<Vec<ConflictGroup>, String> {
-    let all = keybindings_get_all()?;
-    let mut by_binding: std::collections::BTreeMap<String, Vec<KeybindingEntry>> =
-        std::collections::BTreeMap::new();
-    for entry in all {
-        if let Some(ref binding) = entry.binding {
-            by_binding.entry(binding.clone()).or_default().push(entry);
-        }
-    }
-    Ok(by_binding
-        .into_iter()
-        .filter(|(_, v)| v.len() > 1)
-        .map(|(binding, entries)| ConflictGroup { binding, entries })
-        .collect())
-}
 
 // -----------------------------------------------------------------------
 // Keyboard layouts
