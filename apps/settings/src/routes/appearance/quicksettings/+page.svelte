@@ -20,11 +20,11 @@
   /// commands against `~/.config/arlen/quicksettings.toml`. The
   /// shell's file-watcher picks up changes automatically.
   ///
-  /// Codex review fixes:
-  ///   * HIGH-1 (forward-compat): unknown tile ids (module-tier
+  /// Two properties the editor holds:
+  ///   * Forward-compat: unknown tile ids (module-tier
   ///     `<module>:<tile>` from a future installer) are preserved
   ///     verbatim across save round-trips, never silently dropped.
-  ///   * HIGH-2 (parse-fail mutation): if `config_get` fails to
+  ///   * Parse-fail mutation: if `config_get` fails to
   ///     parse the on-disk file, the editor enters `readOnly`
   ///     mode — drag/resize/hide are all blocked until reload or
   ///     reset succeeds. Without this, the very next click after
@@ -166,7 +166,7 @@
   /// `true` after `config_get` failed with a parse/read error.
   /// Blocks every mutation until `load()` succeeds again or the
   /// user clicks "Reset to defaults" (which deletes the
-  /// malformed file). Codex HIGH-2.
+  /// malformed file).
   let readOnly = $state(false);
   let banner = $state<{ kind: "warning" | "error" | "info"; message: string } | null>(null);
 
@@ -265,7 +265,7 @@
   });
 
   /// Single-flight versioned save. Carries `unknown` entries
-  /// untouched (Codex HIGH-1) and rolls back on error only when
+  /// untouched and rolls back on error only when
   /// no newer write has been started since.
   async function persist(nextKnown: RawTileEntry[]) {
     if (readOnly) return;

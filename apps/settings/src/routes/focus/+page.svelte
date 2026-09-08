@@ -28,9 +28,9 @@
 
   /// Backend returns `Vec<AppHistoryEntry>` — objects with
   /// `app_name`, `last_seen`, `count`. AppPicker expects flat
-  /// strings, so we map to `app_name` after fetch (Codex Sprint C
-  /// review HIGH 2 — passing the raw objects through broke
-  /// AppPicker's string methods on every keystroke).
+  /// strings, so we map to `app_name` after fetch. Passing the raw
+  /// objects through breaks AppPicker's string methods on every
+  /// keystroke.
   interface AppHistoryEntry {
     app_name: string;
     last_seen?: number;

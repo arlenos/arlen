@@ -43,9 +43,9 @@ const VALID_MODES: &[&str] = &["ai", "files", "apps"];
 
 /// Per-connection read deadline. Single-shot search requests are
 /// trivially fast (one envelope, < 4 KB body), so anything slower
-/// than this is a stalled or malicious client. Codex post-Sprint
-/// review MEDIUM-2 fix: previously connections without a frame
-/// could pin a tokio task indefinitely.
+/// than this is a stalled or malicious client. Without it, a
+/// connection that never sends a frame pins a tokio task
+/// indefinitely.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Cap on simultaneous in-flight broker connections. Each open()
@@ -90,7 +90,7 @@ async fn run(app: AppHandle) -> Result<(), String> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
-                // Connection cap (Codex post-Sprint review MEDIUM-2).
+                // Connection cap.
                 // Try-acquire so we never block the accept loop: if
                 // 32 connections are already in flight, drop the new
                 // socket. The caller will retry; a flood-attacker
@@ -155,7 +155,7 @@ async fn connection_task(stream: UnixStream, app: AppHandle) -> Result<(), Strin
 
     // Single-shot: read exactly one envelope, dispatch, return.
     // Wrapped in a read-deadline so a stalled client cannot pin
-    // the task indefinitely (Codex review MEDIUM-2). The deadline
+    // the task indefinitely. The deadline
     // applies to the time-from-accept-to-first-complete-frame; an
     // open() request fits in one packet and finishes in
     // milliseconds, so 5s is generous.
@@ -526,8 +526,8 @@ mod tests {
         assert_eq!(MAX_QUERY_BYTES, 4096);
     }
 
-    /// Codex review MEDIUM-2: a stalled or malicious authenticated
-    /// client must not pin the broker task indefinitely. The
+    /// A stalled or malicious authenticated client must not pin
+    /// the broker task indefinitely. The
     /// deadline guards both partial-frame and idle-after-accept.
     #[test]
     fn read_timeout_is_bounded() {
@@ -535,8 +535,8 @@ mod tests {
         assert!(READ_TIMEOUT <= Duration::from_secs(30));
     }
 
-    /// Codex review MEDIUM-2: connection cap protects against
-    /// fd-exhaustion + task-pool DoS from a single misbehaving
+    /// The connection cap protects against fd-exhaustion and
+    /// task-pool DoS from a single misbehaving
     /// client. 32 is high enough for legitimate burst use, low
     /// enough that the OS doesn't notice if every slot stalls.
     #[test]

@@ -21,8 +21,8 @@
 //!   `exists=false` to mean revoke-all and drop all connections
 //!   from that `app_id`.
 //!
-//! Robustness contract (Codex adversarial review high-1 fix):
-//! revocation is security-sensitive, so a missed inotify event
+//! Robustness contract: revocation is security-sensitive, so a
+//! missed inotify event
 //! must not strand stale grants. The watcher therefore
 //!
 //! * Maintains a known-app set keyed by `app_id`. Each emit
@@ -210,10 +210,9 @@ impl ProfileWatcher {
                         }
                     }
                     Err(e) => {
-                        // Codex adversarial-review high-1: notify
-                        // errors (queue overflow, watch invalidation,
-                        // dir-temporarily-gone) must not silently
-                        // drop revocation events. Schedule a full
+                        // A notify error (queue overflow, watch
+                        // invalidation, dir-temporarily-gone) must
+                        // not silently drop a revocation event. Schedule a full
                         // rescan; the worker thread picks it up
                         // within ~50 ms and emits a ProfileChange
                         // per add/remove diff against the known set.
@@ -566,8 +565,8 @@ mod tests {
         assert!(change.exists);
     }
 
-    /// Codex adversarial-review high-1: simulate "notify never told
-    /// us this file was deleted" by leaving a stale entry in the
+    /// Simulate "notify never told us this file was deleted" by
+    /// leaving a stale entry in the
     /// known set, then triggering `force_rescan`. The watcher must
     /// emit `exists=false` so brokers drop the stale grant.
     #[test]

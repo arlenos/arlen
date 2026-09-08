@@ -40,8 +40,8 @@ struct ModuleEntry {
     record: ModuleRecord,
     enabled: bool,
     crash: CrashState,
-    /// Codex round-2 finding 3 fix: the next `Instant` at which a
-    /// retry of this module is permitted. `None` means no cooldown
+    /// The next `Instant` at which a retry of this module is
+    /// permitted. `None` means no cooldown
     /// is active. Updated from the `Recovery` returned by
     /// `CrashState::record_crash`; consulted by
     /// `ensure_tier1_instance` and the search dispatch path so that
@@ -89,8 +89,8 @@ impl ModuleEntry {
 /// hits backpressure quickly.
 const NETWORK_CONCURRENCY_PER_MODULE: usize = 4;
 
-/// Wall-clock budget for a single Tier 1 `search` or `execute` call
-/// (Codex finding 4). Fuel covers CPU loops; this timeout covers
+/// Wall-clock budget for a single Tier 1 `search` or `execute` call.
+/// Fuel covers CPU loops; this timeout covers
 /// async host calls that can block the guest indefinitely (e.g. a
 /// slow / hanging upstream HTTP server even before reqwest's own
 /// 30 s timeout kicks in). Foundation §6 budgets ~10 ms per
@@ -156,8 +156,8 @@ struct ModuleDispatch {
     query: String,
 }
 
-/// Codex round-2 finding 1 fix: decide *which set of modules* sees a
-/// query, not whether each module independently passes a filter.
+/// Decide *which set of modules* sees a query, not whether each
+/// module independently passes a filter.
 ///
 /// Matches the semantics of the in-process
 /// `waypointer_system::PluginManager::search` (line 40-80 of that
@@ -386,8 +386,8 @@ pub struct Manager {
     /// means the module ships no catalogue, which is a fact worth caching too -
     /// otherwise the modules WITHOUT one pay the lookup forever.
     catalogues: Mutex<HashMap<String, Option<Arc<arlen_i18n::Localizer>>>>,
-    /// S6 backend wiring + Codex S6 fix 3: each Tier 1 module gets
-    /// its own `UnixGraphClient` and `UnixEventEmitter` so a
+    /// Each Tier 1 module gets its own `UnixGraphClient` and
+    /// `UnixEventEmitter` so a
     /// cancelled mid-call cannot leave a stale frame on the shared
     /// stream for the next module to read. Manager holds the
     /// canonical socket paths plus a single shared instance used by
@@ -401,9 +401,9 @@ pub struct Manager {
     /// Live Tier 1 WASM instances keyed by `module.id`. Each value
     /// is wrapped in `Arc<OnceCell<...>>` so a per-module
     /// initialisation runs at most once even under concurrent
-    /// first-touch (Codex finding 3: the old read-then-write
-    /// hashmap pattern let two parallel searches each call guest
-    /// `init()`, doubling any host side effects init performs).
+    /// first-touch. A read-then-write hashmap let two parallel
+    /// searches each call guest `init()`, doubling any host side
+    /// effects init performs.
     ///
     /// The outer `RwLock` only protects the map shape (insertions /
     /// removals). Reading an entry takes a brief read lock, clones
@@ -479,7 +479,7 @@ impl Manager {
         }))
     }
 
-    /// Construct fresh per-module backend clients (Codex S6 fix 3).
+    /// Construct fresh per-module backend clients.
     /// Each Tier 1 instance owns its own `UnixGraphClient` and
     /// `UnixEventEmitter`. Cancellation of one module's mid-call
     /// host import leaves a stale frame only on *its* stream; the
@@ -572,7 +572,7 @@ impl Manager {
     /// the runtime's pre-populated linker, and calls `init()` with
     /// the wall-clock timeout configured in `tier1::INIT_TIMEOUT`.
     ///
-    /// **Single-init guarantee** (Codex finding 3): concurrent
+    /// **Single-init guarantee**: concurrent
     /// first-touch calls for the same module race only on the
     /// `OnceCell` insertion, never on the wasmtime instantiate +
     /// init path. The first call wins, runs guest `init()` exactly
@@ -588,8 +588,8 @@ impl Manager {
         &self,
         module_id: &str,
     ) -> crate::error::Result<Arc<Mutex<Tier1Instance>>> {
-        // Codex round-2 finding 3: enforce crash backoff *before*
-        // touching the wasmtime path. If the module is in cooldown
+        // Crash backoff is enforced *before* touching the wasmtime
+        // path. If the module is in cooldown
         // after a recent crash, reject the request so the search
         // dispatch path can return empty results. Without this gate,
         // rapid keystrokes between crashes would keep firing
@@ -651,9 +651,8 @@ impl Manager {
             };
 
             let component = self.tier1.compile(&root).await?;
-            // Codex S6 fix 3: per-module clients so a cancelled
-            // host call cannot poison the shared stream for the
-            // next module's call.
+            // Per-module clients, so a cancelled host call cannot
+            // poison the shared stream for the next module's call.
             let (graph, events) = self.per_module_clients();
             let instance = self
                 .tier1
@@ -1173,8 +1172,8 @@ impl Manager {
         }
 
         // Snapshot eligible Tier 1 modules, then resolve the
-        // dispatch set with prefix-exclusive semantics (Codex
-        // round-2 finding 1). `route_search_all` mirrors the
+        // dispatch set with prefix-exclusive semantics.
+        // `route_search_all` mirrors the
         // in-process `waypointer_system::PluginManager::search`
         // contract: if any module owns a matching prefix it wins
         // exclusively; otherwise every non-prefix module sees the
@@ -1192,9 +1191,8 @@ impl Manager {
             .map(|d| (d.module_id, d.max_results, d.query))
             .collect();
 
-        // Codex round-2 finding 2: `FuturesUnordered` retains
-        // results from modules that finish before the aggregate
-        // budget. The old `timeout(join_all(...))` pattern replaced
+        // `FuturesUnordered` retains results from modules that
+        // finish before the aggregate budget. The old `timeout(join_all(...))` pattern replaced
         // the ENTIRE batch with `Vec::new()` on timeout — one slow
         // module erased every quick module's results.
         //
@@ -1318,7 +1316,7 @@ impl Manager {
         // Split-borrow: take a mutable reference to the whole instance
         // and pull `provider` + `store` from it without aliasing.
         let inst = &mut *guard;
-        // Codex finding 4: wrap the WIT call in a wall-clock timeout.
+        // The WIT call is wrapped in a wall-clock timeout.
         // Fuel handles CPU loops; this covers async host calls that
         // can block the guest beyond the per-keystroke budget.
         let wit_results = tokio::time::timeout(
@@ -1434,7 +1432,7 @@ impl Manager {
 
         let wit_hit = proto_to_wit_result(&result);
         let inst = &mut *guard;
-        // Codex finding 4: same wall-clock guard as `search`.
+        // The same wall-clock guard as `search`.
         let exec_outcome = tokio::time::timeout(
             SEARCH_TIMEOUT,
             inst.provider
@@ -1670,8 +1668,8 @@ impl Manager {
         }
     }
 
-    /// S6 follow-up (Codex fix 2): Tier 2 iframes route their graph
-    /// reads/writes through the same real backend client and the
+    /// Tier 2 iframes route their graph reads and writes through
+    /// the same real backend client and the
     /// same per-namespace capability gate as Tier 1 modules. The
     /// previous stub returned `GraphResult { rows: "[]" }` on
     /// allowed calls, which masked unwritten data as silent success.
@@ -1920,10 +1918,10 @@ impl Manager {
         };
         let now = Instant::now();
         let recovery = entry.crash.record_crash(now, reason);
-        // Codex round-2 finding 3: store the retry deadline so the
-        // search dispatch path can short-circuit during backoff.
-        // Without this the recorded `Recovery` was rhetorical only
-        // and the next keystroke would re-trigger compile/init,
+        // Store the retry deadline so the search dispatch path can
+        // short-circuit during backoff. Without it the recorded
+        // `Recovery` is rhetorical and the next keystroke re-triggers
+        // compile and init,
         // promoting flapping modules to permanent-failed within
         // hundreds of milliseconds.
         entry.next_retry_at = match recovery {
@@ -2608,8 +2606,8 @@ mod tests {
         }
     }
 
-    /// Codex S6 fix 2: Tier 2 graph reads/writes must route through
-    /// the real backend, not fake-success. Capability-denied path
+    /// Tier 2 graph reads and writes route through the real backend,
+    /// not fake-success. Capability-denied path
     /// surfaces as PermissionDenied; capability-allowed path attempts
     /// the wire call (test env has no daemon → Internal, but crucially
     /// NOT PermissionDenied and NOT silent success).
@@ -2660,8 +2658,8 @@ mod tests {
         }
     }
 
-    /// Codex S6 fix 3: per-module clients are constructed fresh per
-    /// call to `per_module_clients`. Two invocations return distinct
+    /// Per-module clients are constructed fresh per call to
+    /// `per_module_clients`. Two invocations return distinct
     /// `UnixGraphClient` and `UnixEventEmitter` instances so a
     /// cancellation poisoning one module's stream does not affect
     /// any other module.
@@ -2942,9 +2940,9 @@ mod tests {
         m.shutdown_all_tier1().await;
     }
 
-    /// Codex finding 3: the previous read-then-write pattern could
-    /// run guest `init()` twice when two parallel first-touch calls
-    /// raced past the empty-cache check. The OnceCell-based rewrite
+    /// A read-then-write pattern could run guest `init()` twice when
+    /// two parallel first-touch calls raced past the empty-cache
+    /// check. The OnceCell-based rewrite
     /// allocates exactly one cell per module on the first race; both
     /// concurrent ensure calls share it and the init closure runs
     /// at most once.
@@ -3015,8 +3013,8 @@ mod tests {
         assert!(dispatched.iter().all(|d| d.query == "hello"));
     }
 
-    /// **Codex round-2 finding 1 core property**: a winning prefix
-    /// causes exclusive dispatch — always-active modules in the same
+    /// **The core property**: a winning prefix causes exclusive
+    /// dispatch — always-active modules in the same
     /// registry must NOT see the prefixed query.
     #[test]
     fn route_search_all_prefix_match_is_exclusive() {
@@ -3081,7 +3079,7 @@ mod tests {
 
     #[tokio::test]
     async fn handle_search_all_prefix_exclusive_end_to_end() {
-        // Codex round-2 finding 1 verified through the public API:
+        // Prefix exclusivity through the public API:
         // three modules — always-active, `$`-prefix, `=`-prefix.
         // Send query "$btc". Only the `$` module is dispatched;
         // always-active and `=`-prefix never see this keystroke.
@@ -3154,8 +3152,8 @@ mod tests {
         );
     }
 
-    /// Codex finding 4: per-call and aggregate timeouts must exist
-    /// and be sensibly ordered. The aggregate must be larger than
+    /// The per-call and aggregate timeouts must exist and be
+    /// sensibly ordered. The aggregate must be larger than
     /// the per-call budget so a single slow module hitting its
     /// per-call timeout still leaves headroom for the rest of the
     /// batch.
@@ -3198,18 +3196,17 @@ mod tests {
         assert_eq!(cells.len(), 0, "empty/whitespace query must not dispatch");
     }
 
-    /// Codex round-2 finding 2: when handle_search_all hits its
-    /// aggregate budget, results from modules that finished must
-    /// survive. We verify the structural property: even when every
+    /// When handle_search_all hits its aggregate budget, results
+    /// from modules that finished must survive. We verify the structural property: even when every
     /// module fails fast (no module.wasm → WasmLoad → 4 crashes),
     /// the dispatch loop processes them rather than discarding the
     /// whole batch on a single slow one.
     ///
     /// We cannot easily simulate one slow module without a real
     /// wasmtime instance, so this test exercises the *non-timeout*
-    /// happy path: many quick-failing modules. The codex regression
-    /// it guards against was that the old `timeout(join_all)` would
-    /// have erased everything; FuturesUnordered with per-module
+    /// happy path: many quick-failing modules. The regression it
+    /// guards against is `timeout(join_all)`, which erased
+    /// everything; FuturesUnordered with per-module
     /// SEARCH_TIMEOUT keeps every completed result.
     #[tokio::test]
     async fn handle_search_all_processes_each_module_independently() {
@@ -3251,8 +3248,8 @@ mod tests {
         }
     }
 
-    /// Codex round-2 finding 3: after a recorded crash with a
-    /// Recovery::Delayed return value, the next ensure-call within
+    /// After a recorded crash with a `Recovery::Delayed` return
+    /// value, the next ensure-call within
     /// the cooldown window must short-circuit with
     /// DaemonError::InCooldown — not rerun compile/init. Otherwise
     /// rapid keystrokes between crashes burn through the ladder in

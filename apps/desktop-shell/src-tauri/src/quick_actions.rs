@@ -156,11 +156,10 @@ async fn dispatch(id: &str, app: AppHandle) -> Result<&'static str, String> {
 
 /// Run a `loginctl <action>` scoped to the current GUI session.
 ///
-/// Codex high-1: previously `qa.logout` shelled out to `loginctl
-/// terminate-user <whoami>`, which kills *every* session for the
-/// user — SSH logins, parallel desktop sessions, long-running
-/// background processes — not just the one the user clicked
-/// "Log Out" in. We resolve the active session via
+/// NOT `loginctl terminate-user <whoami>`, which kills *every*
+/// session for the user (SSH logins, parallel desktop sessions,
+/// long-running background processes) and not just the one the
+/// user clicked "Log Out" in. We resolve the active session via
 /// `XDG_SESSION_ID` (set by logind for the current login) and
 /// terminate only it. If the env var is missing (rare; nested
 /// dev sessions, broken login flow) we surface an error rather

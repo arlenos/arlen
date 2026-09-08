@@ -1,9 +1,9 @@
 //! FileChooser portal option-dictionary parsing.
 //!
 //! The portal spec maps the `a{sv}` options dictionary to a fixed
-//! set of well-known keys. Codex review #4 flagged that the F2.4
-//! interface dropped almost all of them; this module reconstructs
-//! the typed view so the picker UI receives the caller's intent.
+//! set of well-known keys. The F2.4 interface dropped almost all
+//! of them; this module reconstructs the typed view so the picker
+//! UI receives the caller's intent.
 //!
 //! Types per the spec at
 //! https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.FileChooser.html

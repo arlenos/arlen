@@ -935,8 +935,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // declare per-control DOM ids. We index the panel itself so
   // search by "monitor"/"resolution"/"display" surfaces it; deep
   // linking to specific controls is a follow-up that needs to be
-  // paired with `id={anchor}` props on each Row (Codex Sprint D
-  // review MEDIUM 2).
+  // paired with `id={anchor}` props on each Row.
   {
     id: "display.panel",
     titleKey: "s.idx.display.panel.title",
@@ -1050,17 +1049,9 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     anchor: "ai-executor-live",
   },
 
-  // Privacy panel intentionally NOT in the registry: it's
-  // disabled in navigation until Phase 8 ships the
-  // permission-management UI. Indexing it would surface
-  // misleading hits in Waypointer search (Codex Sprint D review
-  // HIGH 1). The placeholder page still renders for direct-URL
-  // visitors so the architecture link stays reachable.
-
   // Mouse + Touchpad: existing entries already cover the well-
   // known anchors (acceleration, tap-to-click, …); per-control
   // additions for middle-click-emulation, tap-drag-lock, etc.
   // would point to non-existent ids on the existing pages. Drop
-  // the broken extras until the pages opt into id={anchor} (Codex
-  // Sprint D review MEDIUM 2).
+  // the broken extras until the pages opt into id={anchor}.
 ];

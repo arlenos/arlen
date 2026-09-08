@@ -88,10 +88,9 @@ const URI_PATH_SET: &AsciiSet = &CONTROLS
 
 /// Parse a `file://` URI into a filesystem path. Percent-decodes,
 /// rejects path-traversal segments, and refuses anything that
-/// does not resolve to an absolute path — Codex flagged that the
-/// previous string-prefix authorization let
-/// `file:///run/user/1000/doc/../../etc/passwd` pass because
-/// `starts_with` is not a containment check.
+/// does not resolve to an absolute path. A string-prefix
+/// authorization lets `file:///run/user/1000/doc/../../etc/passwd`
+/// pass, because `starts_with` is not a containment check.
 fn parse_file_uri(uri: &str) -> Result<PathBuf, &'static str> {
     let suffix = uri.strip_prefix("file://").ok_or("not a file:// URI")?;
     // Strip optional host (always empty for local file://).
@@ -161,16 +160,16 @@ fn classify_scheme(uri: &str) -> SchemeClass {
 /// tests pass a literal.
 ///
 /// Authorization rules:
-/// - `Unknown` (identity-resolution failed) → deny. Codex flagged
-///   that fail-open here let a transient D-Bus glitch waive the
-///   sandbox check.
+/// - `Unknown` (identity-resolution failed) → deny. Failing open
+///   here would let a transient D-Bus glitch waive the sandbox
+///   check.
 /// - `Unconfined` → allow. The caller could open the file from a
 ///   shell anyway.
 /// - `Flatpak`/`Snap` → URI must parse cleanly (no traversal,
 ///   no NUL, percent-decode UTF-8) AND the resulting path must
 ///   start with the Document Portal mount path. The path-based
 ///   check replaces the previous string-prefix check that was
-///   bypassable via `file:///mount/../escape` (Codex critical).
+///   bypassable via `file:///mount/../escape`.
 fn file_uri_authorized_with_prefix(
     uri: &str,
     identity: &CallerIdentity,
@@ -812,10 +811,10 @@ mod tests {
         ));
     }
 
-    /// Codex CRITICAL: path traversal in the URI must not bypass
-    /// the mount-membership check. `file:///mount/../etc/passwd`
-    /// previously satisfied `starts_with(mount-prefix)`; now it
-    /// is rejected at parse time before the prefix check runs.
+    /// Path traversal in the URI must not bypass the
+    /// mount-membership check. `file:///mount/../etc/passwd`
+    /// satisfies `starts_with(mount-prefix)`, so it is rejected at
+    /// parse time before the prefix check runs.
     #[test]
     fn file_uri_traversal_rejected_for_sandboxed() {
         let id = CallerIdentity::Flatpak {
@@ -849,7 +848,7 @@ mod tests {
         ));
     }
 
-    /// Codex HIGH: identity-resolution failure must fail-closed
+    /// Identity-resolution failure must fail-closed
     /// for file:// URIs even if the URI looks safe.
     #[test]
     fn file_uri_unknown_identity_denies() {
@@ -894,8 +893,7 @@ mod tests {
         assert_eq!(p, PathBuf::from("/home/user/My Documents/x.txt"));
     }
 
-    /// Codex review-style coverage for the redactor: secret-bearing
-    /// query strings strip cleanly.
+    /// The redactor: secret-bearing query strings strip cleanly.
     #[test]
     fn redact_strips_query_and_fragment() {
         assert_eq!(

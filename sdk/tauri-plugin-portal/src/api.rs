@@ -34,9 +34,9 @@ const RESPONSE_CANCELLED: u32 = 1;
 /// backend has its own allow-list (`xdg-desktop-portal-arlen`
 /// `daemon/src/interfaces/open_uri.rs::classify_scheme`), but
 /// other backends (xdg-desktop-portal-gtk, -kde) may accept
-/// additional schemes — Codex review flagged that contract drift
-/// as a trust-boundary expansion. Enforcing the allow-list locally
-/// keeps behaviour deterministic across backends.
+/// additional schemes, and that contract drift is a trust-boundary
+/// expansion. Enforcing the allow-list locally keeps behaviour
+/// deterministic across backends.
 const ALLOWED_OPEN_URI_SCHEMES: &[&str] = &[
     "http://",
     "https://",
@@ -538,7 +538,7 @@ mod tests {
         }
     }
 
-    /// Codex H1: anything outside the allow-list rejects locally.
+    /// Anything outside the allow-list rejects locally.
     /// `javascript:` (XSS via opener), `data:` (data exfil), bare
     /// strings, custom schemes — none of these reach the portal.
     #[test]

@@ -65,7 +65,7 @@ pub fn knowledge_stats_get() -> Result<KnowledgeStats, String> {
     //
     // We deliberately do NOT use "DB file readable" as a liveness
     // signal — it's stale on-disk data after a crash and would
-    // misreport a dead daemon as running (Codex Sprint C review).
+    // misreport a dead daemon as running.
     let daemon_running = daemon_socket_exists() || fuse_mounted;
     let socket_open_to_others = daemon_socket_open_to_others();
 
@@ -84,10 +84,9 @@ mod tests {
     use super::*;
 
     /// Daemon-running heuristic uses the socket file (or FUSE mount)
-    /// as the truthy signal. Stale DB files MUST NOT count — that
-    /// was the Codex Sprint C review MEDIUM finding: a leftover
-    /// `events.db` from a previous run misreported a dead daemon
-    /// as running.
+    /// as the truthy signal. Stale DB files MUST NOT count: a
+    /// leftover `events.db` from a previous run would misreport a
+    /// dead daemon as running.
     #[test]
     fn daemon_running_uses_socket_not_db_size() {
         let stats = knowledge_stats_get().unwrap();

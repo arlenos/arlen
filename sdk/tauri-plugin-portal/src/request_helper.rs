@@ -88,8 +88,8 @@ where
     // With subscription in place, fire the method.
     let allocated_path = method().await.map_err(PickerError::from_zbus)?;
     if allocated_path.as_str() != request_path.as_str() {
-        // Fail fast (Codex review): the predicted path is the only
-        // one we subscribed to. Waiting for the timeout would leave
+        // Fail fast: the predicted path is the only one subscribed
+        // to. Waiting for the timeout would leave
         // the user staring at an unresponsive picker for six
         // minutes. The portal will eventually time out the orphan
         // Request internally; the caller can retry.

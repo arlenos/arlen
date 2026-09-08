@@ -224,8 +224,8 @@ async fn action_invoked_decode_helper_round_trips() {
 
 #[tokio::test]
 async fn multi_window_emits_carry_distinct_window_ids() {
-    // Sprint B-thin v2 / Codex F2.2 regression. Two windows of
-    // the same app must emit toolbar state with their own
+    // Two windows of the same app must emit toolbar state with
+    // their own
     // window_id so the shell can key state per-(app, window)
     // and not last-emit-wins one out.
     let bus = FakeProducer::start().await;

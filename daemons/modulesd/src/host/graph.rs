@@ -52,10 +52,10 @@ pub fn extract_namespace(cypher: &str) -> Option<String> {
 /// `'...'`, with `\` escapes) and Cypher comments (`// to end of
 /// line` and `/* ... */`).
 ///
-/// Codex S6 critical finding fix: the previous single-namespace
-/// extraction let an attacker get past the capability gate by
-/// putting an allowed label first and then querying disallowed
-/// namespaces later in the same Cypher string. The knowledge daemon
+/// **Every one, not the first.** Extracting a single namespace let
+/// an attacker get past the capability gate by putting an allowed
+/// label first and then querying disallowed namespaces later in the
+/// same Cypher string. The knowledge daemon
 /// (Phase 1A) has no scope enforcement of its own, so the gate has
 /// to cover the *whole* query, not just its prefix.
 pub fn extract_all_namespaces(cypher: &str) -> Vec<String> {
@@ -131,9 +131,8 @@ fn is_label_char(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_' || b == b'.'
 }
 
-/// Codex S6 critical finding fix: every namespace the Cypher
-/// touches must pass the capability allowlist, not just the first.
-/// `Unknown` query kinds and Cypher with no labels at all stay
+/// Every namespace the Cypher touches must pass the capability
+/// allowlist, not just the first. `Unknown` query kinds and Cypher with no labels at all stay
 /// rejected closed (no namespace → no policy basis).
 pub fn check_query(ctx: &CapabilityContext, cypher: &str) -> Result<QueryKind> {
     let kind = classify(cypher);
@@ -244,7 +243,7 @@ mod tests {
         assert!(check_query(&c, "EXPLAIN PROFILE x").is_err());
     }
 
-    // ----- Codex S6 critical finding tests --------------------------------
+    // The multi-namespace gate.
 
     /// Multi-namespace query: every label must pass. An attacker who
     /// embeds an allowed label first and then accesses a disallowed

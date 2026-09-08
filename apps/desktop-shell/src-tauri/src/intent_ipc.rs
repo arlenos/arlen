@@ -330,10 +330,9 @@ const FILE_DISPATCH_BLOCKLIST: &[&str] = &[
 
 /// `file` intent → xdg-open canonicalised path.
 ///
-/// Phase-6 broker-side defenses (Codex post-Sprint review HIGH-1):
-/// the original implementation called `xdg-open` on a raw user-
-/// supplied path which bypassed the path-traversal guards the
-/// spec promised. Phase 6 now does:
+/// Broker-side defenses. Calling `xdg-open` on a raw user-supplied
+/// path bypasses the path-traversal guards the spec promises, so
+/// this does:
 ///
 /// 1. absolute-path check (unchanged)
 /// 2. `fs::canonicalize` to resolve `..` segments + symlinks; this
@@ -503,7 +502,7 @@ fn first_scheme(s: &str) -> &str {
 /// Defensive scheme rejection. URI schemes are **case-insensitive
 /// per RFC 3986** so the comparison must lowercase before matching;
 /// otherwise `JaVaScRiPt:alert(1)` would silently bypass the
-/// allowlist (Codex post-Sprint review HIGH-2). `file:` is also
+/// allowlist. `file:` is also
 /// rejected here because url callers must use the `file` intent
 /// type for local paths — that path runs `fs::canonicalize` and
 /// checks against the system-internal directory blocklist; routing
@@ -645,11 +644,10 @@ mod tests {
         assert!(!is_rejected_scheme("mailto:foo@bar.com"));
     }
 
-    /// Codex review HIGH-2: mixed-case URI schemes must be
-    /// rejected. RFC 3986 §3.1 states schemes are
-    /// case-insensitive, so the previous case-sensitive
-    /// `starts_with` check let `JaVaScRiPt:alert(1)` silently
-    /// pass through to xdg-open.
+    /// Mixed-case URI schemes must be rejected. RFC 3986 §3.1
+    /// states schemes are case-insensitive, so a case-sensitive
+    /// `starts_with` check lets `JaVaScRiPt:alert(1)` pass
+    /// silently through to xdg-open.
     #[test]
     fn is_rejected_scheme_handles_mixed_case() {
         assert!(is_rejected_scheme("JaVaScRiPt:alert(1)"));
@@ -716,7 +714,7 @@ mod tests {
         assert!(matches!(r, Err((proto::ErrorKind::ErrorNotFound, _))));
     }
 
-    /// Codex review HIGH-1: file dispatch must canonicalise the
+    /// File dispatch must canonicalise the
     /// path before opening so `..` traversal + tmpfs-symlink
     /// rebasing cannot escape the user's intended target.
     #[tokio::test]
@@ -798,8 +796,8 @@ mod tests {
         let _: fn(&ConnectionAuth, &str, &'static str) = audit_grant;
     }
 
-    /// Semaphore singleton — repeated calls return the same Arc.
-    /// Codex parity check with search_ipc + clipboard_ipc.
+    /// Semaphore singleton: repeated calls return the same Arc,
+    /// as in search_ipc and clipboard_ipc.
     #[test]
     fn semaphore_is_shared_singleton() {
         let s1 = semaphore();

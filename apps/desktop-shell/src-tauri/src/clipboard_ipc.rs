@@ -46,7 +46,7 @@ const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const SOCKET_NAME: &str = "clipboard.sock";
 
 /// Cap on simultaneous in-flight broker connections. Mirrors the
-/// search broker's hardening (Codex post-Sprint review MEDIUM-2).
+/// search broker's hardening.
 /// Higher than search because clipboard subscribe-connections are
 /// long-lived (a Arlen-aware app holds one open across its
 /// session); 64 covers a realistic 8-app workspace with 8x
@@ -96,7 +96,7 @@ async fn run(history: Arc<ClipboardHistory>) -> Result<(), String> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
-                // Connection cap (Codex review parity with search_ipc).
+                // Connection cap, as in search_ipc.
                 // Try-acquire so we never block the accept loop: if
                 // 64 connections are already in flight, drop the new
                 // socket. The peer can retry; a flood-attacker gets
@@ -178,8 +178,8 @@ async fn connection_task(
     // task indefinitely. Once the peer's first envelope decodes
     // successfully we drop the deadline — subscribe-style
     // connections legitimately idle for hours waiting for clipboard
-    // events. (Codex-parity with search_ipc; first-frame-only
-    // because clipboard is long-lived, unlike search's single-shot.)
+    // events. First-frame-only, unlike search's per-frame deadline,
+    // because a clipboard connection is long-lived.
     let mut got_first_frame = false;
 
     loop {
@@ -621,8 +621,8 @@ mod tests {
         }
     }
 
-    /// Codex-parity with search_ipc: a stalled or malicious
-    /// authenticated client cannot pin the broker task. Unlike
+    /// As in search_ipc, a stalled or malicious authenticated
+    /// client cannot pin the broker task. Unlike
     /// search's per-frame deadline, clipboard's deadline is
     /// FIRST-FRAME ONLY because subscribe-connections legitimately
     /// idle for hours.
@@ -632,7 +632,7 @@ mod tests {
         assert!(FIRST_FRAME_TIMEOUT <= Duration::from_secs(30));
     }
 
-    /// Codex-parity: connection cap protects against fd-exhaustion.
+    /// The connection cap protects against fd-exhaustion.
     /// 64 (vs search's 32) because clipboard's subscribe pattern
     /// keeps connections open across the app's session, so a
     /// realistic 8-app workspace already wants 8 slots.
