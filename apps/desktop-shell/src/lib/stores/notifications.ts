@@ -144,6 +144,51 @@ export async function getHistory(
   });
 }
 
+/// How many older notifications one press asks for.
+const HISTORY_PAGE = 25;
+
+/// Whether there may be older notifications than the panel is showing.
+///
+/// True until the daemon says otherwise, because it keeps thirty days of them and
+/// the panel starts from the pending ones alone: a person who dismissed something
+/// and wants it back has always had it stored and never had a way to it.
+export const historyHasMore = writable(true);
+
+/// True while a page is on its way.
+export const historyLoading = writable(false);
+
+/// True when the request was refused. Its own state rather than a silent stop:
+/// a button that goes quiet is indistinguishable from a list that has ended.
+export const historyFailed = writable(false);
+
+/// True when the panel is holding as much as it will hold.
+///
+/// The merge below trims to `MAX_NOTIFICATIONS` and trims from the END, so a page
+/// arriving into a full store is discarded. Without this the button would stay
+/// offered and stop doing anything, which is the worse half of a control that
+/// does nothing: it looks like it worked.
+export const historyCapped = writable(false);
+
+/// Ask for the page before the oldest notification on screen.
+///
+/// Paged by timestamp rather than an offset: the daemon's own query is
+/// `timestamp < ?`, and an offset would re-shuffle under a notification arriving
+/// while the panel is open.
+export async function loadOlder(): Promise<void> {
+  if (get(historyLoading)) return;
+  const list = get(notifications);
+  const oldest = list.length > 0 ? list[list.length - 1].timestamp : "";
+  historyLoading.set(true);
+  historyFailed.set(false);
+  try {
+    await getHistory(HISTORY_PAGE, oldest);
+  } catch (e) {
+    console.error("[notifications] history request failed:", e);
+    historyLoading.set(false);
+    historyFailed.set(true);
+  }
+}
+
 // ── Input Region Tracking ────────────────────────────────────────────────
 
 let visibleCount = 0;
@@ -433,15 +478,23 @@ export function initNotifications(): () => void {
     listen<{ notifications: Notification[]; has_more: boolean }>(
       "notification:history",
       ({ payload }) => {
+        historyLoading.set(false);
+        historyFailed.set(false);
+        // `has_more` had no reader until the panel gained a way to ask. The
+        // daemon sets it by whether the page came back full, so it is the only
+        // thing that can end the button honestly.
+        historyHasMore.set(payload.has_more);
         notifications.update(($n) => {
           const existingIds = new Set($n.map((n) => n.id));
           const newOnes = payload.notifications.filter(
             (n) => !existingIds.has(n.id),
           );
           const merged = [...$n, ...newOnes];
-          return merged.length > MAX_NOTIFICATIONS
-            ? merged.slice(0, MAX_NOTIFICATIONS)
-            : merged;
+          if (merged.length > MAX_NOTIFICATIONS) {
+            historyCapped.set(true);
+            return merged.slice(0, MAX_NOTIFICATIONS);
+          }
+          return merged;
         });
       },
     ),
