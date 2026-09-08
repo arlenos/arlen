@@ -13,12 +13,18 @@
     groupedNotifications,
     clearAll,
     loadOlder,
+    knownApps,
+    historyApp,
+    loadKnownApps,
+    setHistoryApp,
     historyHasMore,
     historyLoading,
     historyFailed,
     historyCapped,
   } from "$lib/stores/notifications.js";
+  import { onMount } from "svelte";
   import NotificationItem from "$lib/components/NotificationItem.svelte";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Bell, Trash2, ChevronDown } from "lucide-svelte";
 
   let expandedGroups = $state<Set<string>>(new Set());
@@ -27,8 +33,24 @@
   /// the template destructures entries readably; the keyed each
   /// reconciles by app name either way.
   const groupEntries = $derived(
-    Array.from($groupedNotifications.entries()),
+    Array.from($groupedNotifications.entries()).filter(
+      ([appName]) => $historyApp === null || appName === $historyApp,
+    ),
   );
+
+  /// The filter's options: every app the daemon knows, plus the ones on screen.
+  ///
+  /// The union rather than the daemon's list alone, because a notification that
+  /// arrived this second is in the panel before any read has asked the daemon
+  /// again - and a filter that cannot name what you are looking at is worse than
+  /// no filter.
+  const filterApps = $derived(
+    Array.from(new Set([...$knownApps, ...$groupedNotifications.keys()])).sort(
+      (a, b) => a.localeCompare(b),
+    ),
+  );
+
+  onMount(loadKnownApps);
 
   function toggleGroup(key: string) {
     expandedGroups = new Set(expandedGroups);
@@ -119,6 +141,18 @@
        looking at an empty panel is exactly the one who wants back the
        notification they just dismissed. -->
   <div class="notif-history">
+    {#if filterApps.length > 1}
+      <!-- Only when there is a choice to make. One app is not a filter. -->
+      <PopoverSelect
+        value={$historyApp ?? ""}
+        options={[
+          { value: "", label: $t("sh.notif.fromAll") },
+          ...filterApps.map((a) => ({ value: a, label: a })),
+        ]}
+        ariaLabel={$t("sh.notif.fromAria")}
+        onchange={(v) => void setHistoryApp(v === "" ? null : v)}
+      />
+    {/if}
     {#if $historyFailed}
       <p class="notif-history-note" role="alert">{$t("sh.notif.olderFailed")}</p>
     {:else if $historyCapped}
@@ -136,7 +170,9 @@
 <style>
   .notif-history {
     display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 8px;
     padding-top: 2px;
   }
   .notif-history-btn {
