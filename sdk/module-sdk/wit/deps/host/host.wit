@@ -77,6 +77,54 @@ interface events {
     }
 }
 
+interface files {
+    /// Read a file whole.
+    ///
+    /// Capability: `files.read = [prefix, ...]`, path prefixes the way
+    /// `network` declares domains. Undeclared means the import is not linked
+    /// and the module does not run.
+    ///
+    /// The host canonicalises the argument with symlinks resolved BEFORE
+    /// checking, so a link inside an allowed prefix cannot point out of it, and
+    /// refuses a deny-listed path whatever the manifest says. Read only: there
+    /// is no write, create, delete, or stat beyond what a listing carries.
+    read: func(path: string) -> result<list<u8>, error>;
+
+    /// List a directory. `man` cannot find a page without one.
+    ///
+    /// Named `list-dir` rather than `list`, which WIT reserves for the list
+    /// type and rejects as a function name.
+    list-dir: func(path: string) -> result<list<entry>, error>;
+
+    record entry {
+        /// The entry's name, not its path: a guest joins it to what it asked
+        /// for rather than being handed somewhere it did not ask about.
+        name: string,
+        /// Whether it is a directory, so a guest can walk without a stat call.
+        directory: bool,
+        /// Size in bytes, zero for a directory.
+        size: u64,
+    }
+
+    record error {
+        code: error-code,
+        message: string,
+    }
+
+    enum error-code {
+        /// The path is under something no manifest may name.
+        denied,
+        /// The path is outside every prefix this module declared.
+        not-allowed,
+        /// Absent, or a link that goes nowhere.
+        not-found,
+        /// Present and unreadable: permissions, or a device that will not read.
+        unreadable,
+        /// Larger than the host will hand a guest in one call.
+        too-large,
+    }
+}
+
 interface log {
     /// Logging is unconditionally allowed. Goes to the daemon's stderr
     /// tagged with the module ID; the user can read it in Settings.

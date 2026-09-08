@@ -457,6 +457,17 @@ pub struct ModuleCapabilities {
     /// allowlists (`["focus.", "window."]` etc).
     #[serde(default)]
     pub event_bus: Option<EventBusCapability>,
+    /// Filesystem READ access, as absolute path prefixes
+    /// (`files.read = ["/usr/share/man"]`), the way `network` declares domains.
+    ///
+    /// There is no write half and there is not going to be one: the capability
+    /// exists so a module can read reference data it does not ship, and a module
+    /// that needs to keep something has `storage`. The host canonicalises with
+    /// symlinks resolved before checking a prefix, and refuses a deny-listed path
+    /// whatever this says - `daemons/modulesd/src/host/files.rs` holds that list
+    /// and the argument for it.
+    #[serde(default)]
+    pub files: Option<FilesCapability>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -465,6 +476,15 @@ pub struct GraphCapability {
     pub read: Vec<String>,
     #[serde(default)]
     pub write: Vec<String>,
+}
+
+/// Read access to named path prefixes.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FilesCapability {
+    /// Absolute path prefixes this module may read under. Empty grants nothing,
+    /// which is the same as not declaring the capability at all.
+    #[serde(default)]
+    pub read: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
