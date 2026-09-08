@@ -128,6 +128,20 @@ custom = [
 publish = [
     "file.opened",
     "app.menu.*",
+    # The breadcrumb this app pushes into the shell's top bar. `topbar.ts` calls
+    # `toolbar.setBreadcrumb`, and `os-sdk/src/toolbar.rs` carries that as
+    # `app.toolbar.breadcrumb` from THIS process - so the grant is the file
+    # manager's even though the surface it draws on is the shell's. Named rather
+    # than granted as `app.toolbar.*`: this app pushes a breadcrumb and nothing
+    # else, and a `toolbar.clear` or a progress bar would want its own line.
+    #
+    # Latent rather than broken today - the bus is in shadow mode
+    # (`ARLEN_EVENT_BUS_ENFORCE`, off by default), so an ungranted publish is
+    # logged and delivered. At the cutover it would stop being delivered, and the
+    # breadcrumb would vanish from the top bar with nothing in this app to say
+    # why. That is the failure this line exists to prevent, written before the
+    # cutover rather than after it.
+    "app.toolbar.breadcrumb",
 ]
 subscribe = [
     "app.menu.*",
