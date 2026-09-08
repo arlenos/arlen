@@ -257,6 +257,8 @@ jobs:
           node dev/scripts/test-check-command-shapes-agree.mjs
           node dev/scripts/test-check-invoke-shape.mjs
           python3 dev/scripts/check-invoke-exists.py
+          python3 dev/scripts/check-commands-invoked.py
+          node dev/scripts/test-check-commands-invoked.mjs
           node dev/scripts/test-check-invoke-exists.mjs
           python3 dev/scripts/check-optimistic-write.py
           python3 dev/scripts/check-closed-unanswered.py
