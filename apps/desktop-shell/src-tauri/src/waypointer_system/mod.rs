@@ -176,18 +176,6 @@ fn open_request(request: arlen_launch_contract::LaunchRequest) -> Result<(), Str
     }
 }
 
-/// List all currently-registered built-in plugins with their metadata.
-/// The same data is written to the on-disk registry file at startup
-/// (see `registry::write_registry`); this command is the in-process
-/// equivalent used by the shell's own UI.
-#[tauri::command]
-pub fn waypointer_list_plugins(
-    state: tauri::State<'_, PluginManagerState>,
-) -> Vec<PluginDescriptor> {
-    let mgr = state.read().unwrap();
-    mgr.plugin_descriptors()
-}
-
 /// Query a single plugin by id. The Waypointer frontend uses this to
 /// surface dedicated plugins (e.g. `core.power`) as their own
 /// CommandGroup sections without routing through the generic search —

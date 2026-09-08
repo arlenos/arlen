@@ -139,7 +139,8 @@ impl PluginManager {
     }
 
     /// Snapshot all registered plugins' metadata. Used by the registry
-    /// writer and the `waypointer_list_plugins` Tauri command.
+    /// writer, which is the only reader Settings has: it takes the file rather
+    /// than cross-process IPC.
     pub fn plugin_descriptors(&self) -> Vec<PluginDescriptor> {
         self.plugins
             .iter()
