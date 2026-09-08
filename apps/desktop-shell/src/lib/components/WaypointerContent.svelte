@@ -24,7 +24,7 @@
     Command, CommandInput, CommandList,
     CommandGroup, CommandItem, CommandSeparator,
   } from "@arlen/ui-kit/components/ui/command/index.js";
-  import { AppWindow, BookOpen, Globe, Skull, FolderKanban, X, Settings2 } from "lucide-svelte";
+  import { AppWindow, BookOpen, Globe, Skull, FolderKanban, X, Settings2, Puzzle } from "lucide-svelte";
   import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState, loadProjects } from "$lib/stores/projects.js";
   import {
     settingsResults, searchSettings, clearSettingsResults,
@@ -79,6 +79,10 @@
     dictResults, updateDictResults, clearDictResults,
     type DictResult,
   } from "$lib/stores/waypointerDict.js";
+  import {
+    extensionResults, updateExtensionResults, clearExtensionResults,
+    runExtensionResult, type ExtensionResult,
+  } from "$lib/stores/waypointerExtensions.js";
   import {
     refreshFromDaemon as refreshModuleWorkers,
     installListener as installModuleListener,
@@ -290,6 +294,17 @@
           );
         })
         .catch(() => noteRefusal());
+      // The installed Tier 1 extensions, which nothing asked until now: the
+      // aggregate command that reaches the module runtime has no caller, so
+      // every module in the tree was unreachable from here.
+      const t6 = performance.now();
+      updateExtensionResults(q)
+        .then(() => {
+          console.log(
+            `[wp-search] extensions: ${(performance.now() - t6).toFixed(1)}ms`,
+          );
+        })
+        .catch(() => noteRefusal());
       // TEMPORARILY DISABLED: same bisection as the worker-pool
       // init effect above. If a hidden iframe host is the layout
       // regressor, even silently calling searchModules with no
@@ -331,6 +346,7 @@
     clearFileResults();
     clearClipboardResults();
     clearDictResults();
+    clearExtensionResults();
     clearRecents();
     console.timeLog("wp-open", "stores cleared");
     // Load MRU apps + graph-recent files in parallel. Both are cached
@@ -945,7 +961,7 @@
           <div class="wp-empty">{$t($actionError)}</div>
         {/if}
 
-        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
+        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && $extensionResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
           <!-- Two different sentences, because they are two different facts.
                Every provider's failure leaves its store empty, which is also
                what finding nothing looks like, so without the count this said
@@ -1235,6 +1251,25 @@
                   emphasis={60}
                   title={def.title}
                   description={def.description}
+                />
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $extensionResults.length > 0}
+          <CommandGroup heading={$t("sh.wp.grp.extensions")}>
+            {#each $extensionResults as ext (ext.id)}
+              <CommandItem
+                value={`extension-${ext.id}`}
+                onSelect={() => { void runExtensionResult(ext); close(); }}
+              >
+                <WaypointerResult
+                  icon={Puzzle}
+                  emphasis={60}
+                  title={ext.title}
+                  description={ext.description}
                 />
               </CommandItem>
             {/each}
