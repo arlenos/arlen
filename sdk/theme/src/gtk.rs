@@ -364,19 +364,6 @@ pub struct InterfaceSelection {
     pub dark: bool,
 }
 
-/// The font to name, or `None` when this machine does not have the family.
-///
-/// Only a KNOWN-absent family is dropped. If fontconfig cannot be asked the font
-/// is named as before, because an absent tool says nothing about an absent font.
-fn font_for(theme: &ArlenTheme) -> Option<String> {
-    let font = pango_font(&theme.typography.font_sans, &theme.typography.size_base);
-    let family = crate::wine::first_family(&theme.typography.font_sans);
-    match font_family_installed(family) {
-        Some(false) => None,
-        _ => Some(font),
-    }
-}
-
 /// What this theme selects, given what the machine turned out to have.
 pub fn interface_selection(
     theme: &ArlenTheme,
@@ -388,17 +375,12 @@ pub fn interface_selection(
         icon_theme: icon_theme.map(str::to_string),
         cursor_theme: theme.cursor.theme.clone(),
         cursor_size: theme.cursor.size,
-        font: font_for(theme),
+        font: Some(pango_font(&theme.typography.font_sans, &theme.typography.size_base)),
         dark: theme.is_dark(),
     }
 }
 
-pub fn generate_gtk_settings_ini(
-    theme: &ArlenTheme,
-    theme_name: Option<&str>,
-    icon_theme: Option<&str>,
-) -> String {
-    let sel = interface_selection(theme, theme_name, icon_theme);
+pub fn generate_gtk_settings_ini(sel: &InterfaceSelection) -> String {
     let mut out = String::from(
         "# arlen-generated (managed by Arlen; edits are overwritten on a theme change)\n[Settings]\n",
     );
@@ -432,45 +414,34 @@ mod tests {
     const SAMPLE: &str = include_str!("../test-fixtures/sample.toml");
 
     #[test]
-    fn a_font_nobody_has_is_not_named() {
-        // fontconfig's own answer decides, so skip where it cannot be asked
-        // rather than assert something this machine cannot know.
-        let Some(present) = font_family_installed("Definitely Not A Font 12345") else {
-            return;
+    fn fontconfig_tells_a_missing_family_from_a_present_one() {
+        // The oracle only. Whether the key is then omitted is the APPLY path's
+        // rule, tested there, because that is where the measurement belongs.
+        let Some(missing) = font_family_installed("Definitely Not A Font 12345") else {
+            return; // no fc-match here, and an absent tool asserts nothing
         };
-        assert!(!present, "fontconfig claims to have a font nobody has");
+        assert!(!missing, "fontconfig claims to have a font nobody has");
+    }
 
-        let mut theme = ArlenTheme::from_bundled(crate::DARK_TOML).unwrap();
-        theme.typography.font_sans = "\"Definitely Not A Font 12345\", sans-serif".into();
-        let sel = interface_selection(&theme, Some("Arlen"), None);
-        assert_eq!(sel.font, None, "a missing family must not be named");
-        let ini = generate_gtk_settings_ini(&theme, Some("Arlen"), None);
+    #[test]
+    fn the_settings_file_omits_a_font_the_selection_does_not_carry() {
+        let theme = ArlenTheme::from_bundled(crate::DARK_TOML).unwrap();
+        let mut sel = interface_selection(&theme, Some("Arlen"), None);
+        sel.font = None;
+        let ini = generate_gtk_settings_ini(&sel);
         assert!(!ini.contains("gtk-font-name"), "the key is omitted, not written empty:\n{ini}");
-        // The rest of the file is unaffected: this is one key, not a bail-out.
+        // One key, not a bail-out: everything else is still there.
         assert!(ini.contains("gtk-theme-name=Arlen"));
         assert!(ini.contains("gtk-cursor-theme-name="));
     }
 
     #[test]
-    fn a_font_the_machine_has_is_named() {
-        // Every machine resolves its own default sans, whatever it is called.
-        let Some(default_family) = std::process::Command::new("fc-match")
-            .arg("--format=%{family}")
-            .arg("sans-serif")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).split(',').next().unwrap_or("").trim().to_string())
-            .filter(|f| !f.is_empty())
-        else {
-            return;
-        };
-        let mut theme = ArlenTheme::from_bundled(crate::DARK_TOML).unwrap();
-        theme.typography.font_sans = format!("\"{default_family}\", sans-serif");
+    fn the_selection_names_the_font_and_does_no_io_to_decide() {
+        let theme = ArlenTheme::from_bundled(crate::DARK_TOML).unwrap();
         let sel = interface_selection(&theme, None, None);
         assert!(
-            sel.font.as_deref().is_some_and(|f| f.starts_with(&default_family)),
-            "the family this machine resolves must still be named, got {:?}",
+            sel.font.as_deref().is_some_and(|f| f.starts_with("Inter Variable")),
+            "the theme's own family is what the selection carries, got {:?}",
             sel.font
         );
     }
@@ -634,7 +605,7 @@ mod tests {
     #[test]
     fn the_settings_ini_carries_theme_icons_cursor_and_font() {
         let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
-        let ini = generate_gtk_settings_ini(&t, Some("Arlen"), Some("Adwaita"));
+        let ini = generate_gtk_settings_ini(&interface_selection(&t, Some("Arlen"), Some("Adwaita")));
         assert!(ini.starts_with("# arlen-generated"), "the guard marker must lead");
         assert!(ini.contains("\n[Settings]\n"));
         assert!(ini.contains("gtk-theme-name=Arlen\n"));
@@ -652,7 +623,7 @@ mod tests {
     #[test]
     fn an_absent_theme_is_omitted_rather_than_named_hopefully() {
         let t = ArlenTheme::from_bundled(SAMPLE).expect("resolve");
-        let ini = generate_gtk_settings_ini(&t, None, None);
+        let ini = generate_gtk_settings_ini(&interface_selection(&t, None, None));
         assert!(!ini.contains("gtk-theme-name"), "{ini}");
         // An icon set nobody could find is not named either, and for the same
         // reason: GTK falls back to hicolor for a theme it cannot resolve.
