@@ -38,8 +38,41 @@ export interface UndoEntry {
   state: "ready" | "enacting" | "done";
 }
 
+/// One step of the record behind a row: what the ledger attested, oldest first.
+export interface UndoStep {
+  producer: UndoProducer;
+  /// The audit kind as a token this app words, never the ledger's own noun.
+  kind: string;
+  /// The content-free structural subject, e.g. `agent.auto-tag-by-project`.
+  subject: string;
+  /// Unix seconds.
+  at: number;
+}
+
+/// The chain behind one row, with the op it belongs to echoed back.
+export interface UndoDetail {
+  opId: string;
+  steps: UndoStep[];
+}
+
 /// The ledger view, newest first, or null before the read settles.
 export const undoHistory = writable<UndoEntry[] | null>(null);
+
+/// Which row has its record open, or null. One at a time: the panel is 380px
+/// wide and a second open chain would push the first off the bottom.
+export const undoOpen = writable<string | null>(null);
+
+/// The open row's chain, or null while it is being read.
+export const undoDetail = writable<UndoDetail | null>(null);
+
+/// True when the open row's record could not be read.
+///
+/// The daemon's rule, which this side must not soften: an unreachable service, an
+/// unreadable ledger and an unknown op are all errors and none of them is an empty
+/// list. Somebody opened the disclosure to see the record, so an empty chain has
+/// to mean the ledger holds nothing further - a failed read drawn that way would
+/// be the panel stating the one thing it does not know.
+export const undoDetailUnavailable = writable(false);
 /// True while the list is the FIXTURE, not the signed log. Only ever set outside
 /// a Tauri session (design work under vite), where there is no backend to ask.
 export const undoMocked = writable(false);
@@ -102,6 +135,42 @@ export async function enact(opId: string): Promise<void> {
     setState(opId, "done");
   } catch {
     setState(opId, "done");
+  }
+}
+
+/// The record behind one row, as a sample for design work under vite.
+const FIXTURE_STEPS: UndoStep[] = [
+  { producer: "agent", kind: "permission", subject: "agent.auto-tag-by-project", at: now - 60 * 4 - 2 },
+  { producer: "agent", kind: "graph-access", subject: "agent.auto-tag-by-project", at: now - 60 * 4 },
+];
+
+/// Open the record behind a row, or close it if it is the one already open.
+///
+/// The answer carries the op it belongs to, and a late one for a row nobody is
+/// looking at any more is DROPPED rather than drawn: two clicks in a row would
+/// otherwise leave the first read's chain under the second row's heading, which
+/// on this surface is a claim about who did what.
+export async function toggleDetail(opId: string): Promise<void> {
+  if (get(undoOpen) === opId) {
+    undoOpen.set(null);
+    undoDetail.set(null);
+    undoDetailUnavailable.set(false);
+    return;
+  }
+  undoOpen.set(opId);
+  undoDetail.set(null);
+  undoDetailUnavailable.set(false);
+  try {
+    const detail = await invoke<UndoDetail>("undo_detail", { opId });
+    if (get(undoOpen) !== opId) return;
+    undoDetail.set(detail);
+  } catch {
+    if (get(undoOpen) !== opId) return;
+    if (isTauri()) {
+      undoDetailUnavailable.set(true);
+      return;
+    }
+    undoDetail.set({ opId, steps: FIXTURE_STEPS.map((s) => ({ ...s })) });
   }
 }
 

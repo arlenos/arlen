@@ -14,7 +14,11 @@
     undoHistory,
     undoMocked,
     undoUnavailable,
+    undoOpen,
+    undoDetail,
+    undoDetailUnavailable,
     enact,
+    toggleDetail,
     type UndoProducer,
   } from "$lib/stores/undoHistory";
 
@@ -55,11 +59,18 @@
     <div class="undo-list">
       {#each $undoHistory as e (e.opId)}
         <div class="undo-row" class:done={e.state === "done"}>
-          <span class="undo-text">
+          <!-- The sentence IS the disclosure control: what a person wants the
+               record for is the row they are reading, and a separate chevron
+               would spend a column of a 380px panel on a second way to say so. -->
+          <button
+            class="undo-text"
+            aria-expanded={$undoOpen === e.opId}
+            onclick={() => void toggleDetail(e.opId)}
+          >
             <span class="undo-who">{$t(WHO[e.producer])}</span>
             <span class="undo-verb">{$t(`sh.undo.did.${e.kind}`)}</span>
             <span class="undo-object">{e.object}</span>
-          </span>
+          </button>
           {#if e.reversibility === "irreversible"}
             <span class="undo-ponr">{$t("sh.undo.irreversible")}</span>
           {:else if e.state === "done"}
@@ -74,6 +85,31 @@
           {/if}
           <span class="undo-time">{ago(e.at)}</span>
         </div>
+        {#if $undoOpen === e.opId}
+          <div class="undo-chain">
+            {#if $undoDetailUnavailable}
+              <!-- A failed read, never an empty chain: an empty one means the
+                   ledger holds nothing further, which is a claim about the record
+                   rather than about this panel's luck reaching it. -->
+              <p class="undo-chain-note">{$t("sh.undo.detailUnavailable")}</p>
+            {:else if $undoDetail && $undoDetail.steps.length === 0}
+              <p class="undo-chain-note">{$t("sh.undo.detailEmpty")}</p>
+            {:else if $undoDetail}
+              {#each $undoDetail.steps as step (step.at + step.subject)}
+                <div class="undo-step">
+                  <span class="undo-step-what">
+                    <span class="undo-who">{$t(WHO[step.producer])}</span>
+                    <span class="undo-verb">{$t(`sh.undo.step.${step.kind}`)}</span>
+                    <span class="undo-step-subject">{step.subject}</span>
+                  </span>
+                  <span class="undo-time">{ago(step.at)}</span>
+                </div>
+              {/each}
+            {:else}
+              <p class="undo-chain-note">{$t("sh.undo.detailReading")}</p>
+            {/if}
+          </div>
+        {/if}
       {/each}
     </div>
   {/if}
@@ -114,10 +150,49 @@
   .undo-row.done {
     opacity: 0.55;
   }
-  /* The sentence wraps rather than truncating - the object is the point. */
+  /* The sentence wraps rather than truncating - the object is the point. It is a
+     button (the disclosure) with every button default undone, so it reads as the
+     line it was before rather than as a control sitting in a list of sentences. */
   .undo-text {
     min-width: 0;
     line-height: 1.35;
+    border: none;
+    background: transparent;
+    padding: 0;
+    text-align: start;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  /* The chain sits under its row, indented to the sentence it belongs to. */
+  .undo-chain {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin: 0.1rem 0 0.35rem 0.75rem;
+    padding-inline-start: 0.5rem;
+    border-inline-start: 1px solid color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
+  }
+  .undo-chain-note {
+    margin: 0;
+    font-size: var(--text-2xs);
+    /* 55%, matching the panel's other quiet lines: this one is often the only
+       thing under an opened row, so it has to be readable rather than faint. */
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .undo-step {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 2.2rem;
+    align-items: baseline;
+    column-gap: 0.5rem;
+  }
+  .undo-step-what {
+    min-width: 0;
+    line-height: 1.35;
+  }
+  .undo-step-subject {
+    font-size: var(--text-2xs);
+    color: color-mix(in srgb, var(--color-fg-primary) 75%, transparent);
   }
   /* The actor leads the sentence in the same quiet register as the verb;
      the word itself carries the distinction, not a chip. */
