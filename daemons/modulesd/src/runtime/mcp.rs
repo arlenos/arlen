@@ -212,7 +212,7 @@ impl McpModuleHost {
             return Err(McpHostError::Revoked);
         }
         // Refill fuel; a previous call may have left a partial budget.
-        let _ = guard.store.set_fuel(DEFAULT_FUEL_BUDGET);
+        crate::runtime::tier1::refuel(&mut guard.store);
         let inst = &mut *guard;
         let outcome = tokio::time::timeout(
             MCP_CALL_TIMEOUT,
@@ -255,7 +255,7 @@ impl McpModuleHost {
         if !self.is_active() {
             return Err(McpHostError::Revoked);
         }
-        let _ = guard.store.set_fuel(DEFAULT_FUEL_BUDGET);
+        crate::runtime::tier1::refuel(&mut guard.store);
         let inst = &mut *guard;
         let outcome = tokio::time::timeout(
             MCP_CALL_TIMEOUT,

@@ -176,3 +176,59 @@ async fn a_name_search_should_not_have_to_rescan_the_codepoint_space() {
         other => panic!("expected results, got {other:?}"),
     }
 }
+
+/// An instance that has been idle longer than the epoch deadline still answers.
+///
+/// **This caught a bug an hour after the deadline was introduced, which is why it
+/// is kept rather than deleted.** The epoch deadline counts from the CURRENT
+/// epoch, so setting it once when the store is created gives the instance five
+/// seconds of wall clock in total - not five seconds of running. A module worked
+/// until the deadline passed and then trapped with `wasm trap: interrupt` on
+/// every later call, on an instance that had done nothing in between. The daemon
+/// now sets both budgets together at each host call.
+///
+/// The pause is longer than `EPOCH_DEADLINE_TICKS` on purpose: shorter and the
+/// test passes whether or not the bug is back.
+#[tokio::test]
+#[ignore = "needs modules/unicode built (see the file header) and pauses past the deadline"]
+async fn an_idle_instance_still_answers_after_the_deadline_would_have_passed() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::env::set_var("ARLEN_USER_MODULES_DIR", tmp.path());
+    stage(tmp.path());
+
+    let (tx, _rx) = broadcast::channel(16);
+    let manager: Arc<Manager> = Manager::new(tx).unwrap();
+    manager.discover().await;
+    let _ = manager
+        .handle_request(Request::SetEnabled {
+            id: "1".into(),
+            module_id: MODULE_ID.into(),
+            enabled: true,
+        })
+        .await;
+
+    // The first call is what instantiates, so the clock starts here.
+    let _ = manager
+        .handle_request(Request::WaypointerSearch {
+            id: "2".into(),
+            module_id: MODULE_ID.into(),
+            query: "U+2764".into(),
+        })
+        .await;
+
+    tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+
+    let resp = manager
+        .handle_request(Request::WaypointerSearch {
+            id: "3".into(),
+            module_id: MODULE_ID.into(),
+            query: "U+2764".into(),
+        })
+        .await;
+    match resp {
+        Response::WaypointerResults { results, .. } => {
+            assert_eq!(results.len(), 1, "the idle instance still answers: {results:?}");
+        }
+        other => panic!("an instance idle past the deadline was killed: {other:?}"),
+    }
+}

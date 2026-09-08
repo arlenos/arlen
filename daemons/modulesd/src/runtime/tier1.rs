@@ -100,6 +100,26 @@ pub struct Tier1Runtime {
     linker: Arc<Mutex<Linker<ModuleStore>>>,
 }
 
+/// Give a store its budgets for one call: fuel, and time.
+///
+/// **Both, always, together.** The epoch deadline is a count from the CURRENT
+/// epoch, not a per-call allowance, so setting it once at store creation buys
+/// the instance five seconds of wall clock in total and then kills it - not five
+/// seconds of running. Probed on 8 September against the first real module: a
+/// search, a seven-second pause, and the next search trapped with `wasm trap:
+/// interrupt` on an instance that had done nothing in between. A module would
+/// have worked for five seconds after being enabled and been dead for the rest
+/// of the session.
+///
+/// That was my own bug from an hour earlier, and it is the reason both budgets
+/// live in one function: fuel was already refilled per call in four places, and
+/// a deadline that has to be refilled in the same four places will not stay in
+/// step unless it is the same line.
+pub fn refuel(store: &mut Store<ModuleStore>) {
+    let _ = store.set_fuel(DEFAULT_FUEL_BUDGET);
+    store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
+}
+
 impl Tier1Runtime {
     pub fn new() -> Result<Self> {
         let mut config = Config::new();
@@ -205,13 +225,10 @@ impl Tier1Runtime {
             ModuleStore::new(ctx, graph_client, event_emitter),
         );
         store.limiter(|s| &mut s.limits);
-        // Without this the store's deadline is 0, which is already past, and the
-        // guest traps on its first instruction. See the engine config above for
-        // what that cost.
-        store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
         store.epoch_deadline_trap();
-        // Initial fuel budget; refilled per host call by the manager.
-        let _ = store.set_fuel(DEFAULT_FUEL_BUDGET);
+        // Both budgets, through the one function that sets both. See its doc for
+        // why the deadline cannot be set once here.
+        refuel(&mut store);
         store
     }
 
