@@ -268,35 +268,15 @@ pub async fn module_host_call(
     }
 }
 
-/// Toggle a module's enabled state. Daemon revokes any live nonces
-/// belonging to the module on disable, so the shell should also
-/// remove the iframe element after this call returns.
-#[tauri::command]
-pub async fn modulesd_set_enabled(
-    module_id: String,
-    enabled: bool,
-    client: tauri::State<'_, Arc<ModulesdClient>>,
-) -> Result<(), String> {
-    let resp = call(
-        client.inner(),
-        Request::SetEnabled {
-            id: String::new(),
-            module_id,
-            enabled,
-        },
-    )
-    .await?;
-    match resp {
-        Response::Acked { .. } => Ok(()),
-        Response::Error { code, message, .. } => {
-            log::warn!("modulesd refused: {code:?}: {message}");
-            Err(refusal(code))
-        }
-        ref other => Err(unexpected("modulesd", other)),
-    }
-}
-
 /// Manual retry for a permanently-failed module.
+///
+/// NB there is no enable/disable command beside this one, and that is on
+/// purpose. A `modulesd_set_enabled` sat here until 9 September with no caller:
+/// toggling a module is Settings' Extensions page, which reaches the same daemon
+/// op through its own command, and that path carries the consent gate the toggle
+/// exists to pass. Two commands to one op means two places to keep that gate
+/// right. Retry has no such twin - it is the shell's own affordance on a module
+/// it is hosting.
 #[tauri::command]
 pub async fn retry_module(
     module_id: String,

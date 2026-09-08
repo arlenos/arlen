@@ -64,7 +64,20 @@ from pathlib import Path
 # and a fabricated per-command justification would be worse than none. Each wants
 # the same answer: call it, or delete it.
 CARRIED: dict[str, tuple[int, str]] = {
-    "desktop-shell": (7, "the 8 September scan, re-measured per-app, less `connect_hidden_network` (the network panel joins a hidden one now), `undo_detail` (the recent-actions panel opens a row's record), `app_shortcut_invoke` (the launcher lists the focused app's actions), `notification_get_known_apps` (the panel's history can be read one app at a time) and `waypointer_list_plugins` (deleted - Settings reads the registry FILE the shell writes, which is the deliberate cross-process channel). What is left splits three ways: the six `qs_layout_*` writers (a second writer for a file Settings already edits, so which side owns the layout invariants is a decision not a deletion), the global-menu registry - `register_menu`/`set_menu_state`/`unregister_menu` - which no app uses because each declares its menu to its own backend, and features with no surface at all"),
+    "desktop-shell": (
+        6,
+        "the six `qs_layout_*` writers, and nothing else. They are a second writer "
+        "for a file Settings already edits, so which side owns the layout "
+        "invariants is a decision rather than a deletion. Everything else the "
+        "8 September scan found here is answered: `connect_hidden_network` (the "
+        "network panel joins a hidden one), `undo_detail` (the recent-actions "
+        "panel opens a row's record), `app_shortcut_invoke` (the launcher lists "
+        "the focused app's actions) and `notification_get_known_apps` (the "
+        "history reads one app at a time) got their surfaces; "
+        "`waypointer_list_plugins`, `register_menu`, `unregister_menu`, "
+        "`set_menu_state` and `modulesd_set_enabled` were deleted, each a second "
+        "path to something a live one already reaches"
+    ),
     "harness": (16, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - the marker is per-app, so ours on the other six does not answer for theirs"),
     "settings": (10, "the 8 September scan, re-measured per-app, less `theme_get`, `keybindings_get_defaults` and `keybindings_get_all_conflicts` (all deleted - each a second name for something a live command already returns) `settings_app_audit` (an app's page shows what it did, beside what it may reach) `theme_contrast_report` (the accessibility page audits the active appearance) and `revoke_consent` (a consent line on the privacy surface can be released now). The three `extensions_*` commands are the backend of the management surface the shell-extension strand named, so a strand rather than a loose end; three theme readers; and the ai/keybinding readers"),
     "store": (4, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - I do not write in their tree, so the marker the other apps carry is not mine to add here"),
