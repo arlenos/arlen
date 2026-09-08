@@ -584,28 +584,44 @@ fn emit_focus_deactivated(project_id: &str, duration_seconds: u64) {
 
 /// Load suppress_notifications_from from the project's .project file.
 fn load_suppress_list(root_path: &str) -> Vec<String> {
+    match project_suppress_list(root_path) {
+        // The project named its own, so it decides. That is what the Settings
+        // row promises: "Per-project .project files override this list."
+        Some(list) => list,
+        // It did not, so the default applies. This branch is the fix: the
+        // default list has been written by Settings since Sprint C and read by
+        // nobody, so a person who silenced Slack for every Focus session was
+        // interrupted by Slack in every project that did not repeat the setting
+        // - which is all of them, since almost no `.project` carries a focus
+        // section. A default nobody reads is worse than no default: the surface
+        // says the silence is arranged.
+        None => crate::shell_config::get_shell_config()
+            .map(|c| c.focus_settings.default_suppressed_apps)
+            .unwrap_or_default(),
+    }
+}
+
+/// The project's own suppress list, or `None` when it does not declare one.
+///
+/// `None` and `Some(vec![])` are different answers and the caller depends on it:
+/// an empty `suppress_notifications_from = []` is a project saying "silence
+/// nothing here", which must not fall back to the global default.
+fn project_suppress_list(root_path: &str) -> Option<Vec<String>> {
     let project_file = PathBuf::from(root_path).join(".project");
     if !project_file.exists() {
-        return Vec::new();
+        return None;
     }
-    let content = match std::fs::read_to_string(&project_file) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-    let config: toml::Value = match toml::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
-    config
-        .get("focus")
-        .and_then(|f| f.get("suppress_notifications_from"))
-        .and_then(|s| s.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
+    let content = std::fs::read_to_string(&project_file).ok()?;
+    let config: toml::Value = toml::from_str(&content).ok()?;
+    let arr = config
+        .get("focus")?
+        .get("suppress_notifications_from")?
+        .as_array()?;
+    Some(
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect(),
+    )
 }
 
 // ── Persistence (shell.toml [focus] section) ────────────────────────────
@@ -813,14 +829,39 @@ mod tests {
             "[project]\nname = \"t\"\n\n[focus]\nsuppress_notifications_from = [\"slack\", \"discord\"]\n",
         )
         .unwrap();
-        let list = load_suppress_list(tmp.path().to_str().unwrap());
-        assert_eq!(list, vec!["slack", "discord"]);
+        assert_eq!(
+            project_suppress_list(tmp.path().to_str().unwrap()),
+            Some(vec!["slack".to_string(), "discord".to_string()])
+        );
+    }
+
+    /// The project half only. `load_suppress_list` reads the user's own
+    /// `shell.toml` for its default, so asserting on it here would be asserting
+    /// about the machine the test runs on - the shape that turned the board red
+    /// this morning.
+    #[test]
+    fn load_suppress_list_missing_file() {
+        assert_eq!(project_suppress_list("/nonexistent/path"), None);
     }
 
     #[test]
-    fn load_suppress_list_missing_file() {
-        let list = load_suppress_list("/nonexistent/path");
-        assert!(list.is_empty());
+    fn a_project_that_declares_no_focus_section_defers() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".project"), "[project]\nname = \"t\"\n").unwrap();
+        assert_eq!(project_suppress_list(tmp.path().to_str().unwrap()), None);
+    }
+
+    #[test]
+    fn an_empty_project_list_is_a_decision_not_an_absence() {
+        // "Silence nothing in this project" has to beat the global default, so
+        // the empty list must come back as Some rather than None.
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join(".project"),
+            "[project]\nname = \"t\"\n\n[focus]\nsuppress_notifications_from = []\n",
+        )
+        .unwrap();
+        assert_eq!(project_suppress_list(tmp.path().to_str().unwrap()), Some(vec![]));
     }
 
     #[test]

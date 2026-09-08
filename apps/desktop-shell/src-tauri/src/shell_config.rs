@@ -50,6 +50,28 @@ pub struct ShellConfig {
     /// `confined` routes launches through `arlen-run`.
     #[serde(default)]
     pub launcher: LauncherConfig,
+    /// Focus Mode defaults, written by the Settings Focus page.
+    #[serde(default)]
+    pub focus_settings: FocusSettingsConfig,
+}
+
+/// `[focus_settings]` in `shell.toml`: what Focus Mode does when a project does
+/// not say.
+///
+/// Settings has written this since Sprint C and NOTHING read it. Its own row
+/// says "Whenever Focus Mode is active, notifications from these apps are
+/// silenced. Per-project .project files override this list" - and the project
+/// file was not overriding the list, it was the only list there had ever been.
+/// A person who silenced Slack for every Focus session kept being interrupted by
+/// Slack.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FocusSettingsConfig {
+    /// Apps silenced in every Focus session that does not name its own.
+    #[serde(default)]
+    pub default_suppressed_apps: Vec<String>,
+    /// Whether the top bar names the focused project.
+    #[serde(default)]
+    pub show_project_name: bool,
 }
 
 /// Launcher configuration. `confined = false` (default) launches apps directly,
