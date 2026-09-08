@@ -233,13 +233,52 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .build()
 }
 
-/// Internal helper to keep the action-invoked decode + filter
-/// loop typed regardless of which surface fired
-/// (toolbar vs. shortcut).
-struct ActionTuple {
-    app_id: String,
-    action: String,
-    window_id: String,
+/// What one bus event on the three action topics becomes for this app.
+///
+/// Split out of the consumer loop so the ROUTING is testable without a bus, a
+/// runtime or a window: which topic goes to which Tauri event, whose clicks are
+/// kept, and what an undecodable payload does. The loop below is then delivery
+/// and nothing else.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Relay {
+    /// A toolbar or shortcut click. Routed to `window_id`, or broadcast when it
+    /// is empty (a producer that pre-dates the window_id schema).
+    AppAction { action: String, window_id: String },
+    /// A top-bar menu click. Per-app rather than per-window, so no routing.
+    MenuAction { app_id: String, action: String },
+}
+
+/// Decide what an event becomes, or nothing.
+///
+/// Nothing covers three cases and they are all deliberate: a topic this app does
+/// not relay, a payload that will not decode, and a click aimed at another app -
+/// every subscriber on the bus sees every other app's clicks, so the id filter
+/// is what makes this a per-app channel rather than a broadcast one.
+pub(crate) fn relay_for(topic: &str, payload: &[u8], app_id: &str) -> Option<Relay> {
+    match topic {
+        "app.menu.action_invoked" => {
+            let v = decode_shortcut_invoked(payload)?;
+            (v.app_id == app_id).then(|| Relay::MenuAction {
+                app_id: v.app_id,
+                action: v.action,
+            })
+        }
+        "app.toolbar.action_invoked" => {
+            let v = decode_action_invoked(payload)?;
+            (v.app_id == app_id).then(|| Relay::AppAction {
+                action: v.action,
+                window_id: v.window_id,
+            })
+        }
+        "app.shortcut.action_invoked" => {
+            let v = decode_shortcut_invoked(payload)?;
+            (v.app_id == app_id).then(|| Relay::AppAction {
+                action: v.action,
+                window_id: v.window_id,
+            })
+        }
+        _ => None,
+    }
 }
 
 /// Subscribe to the three action topics an app hears back on and re-emit the
@@ -314,88 +353,46 @@ fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
             };
 
             while let Some(event) = rx.recv().await {
-                // A menu click leaves through its own Tauri event, so it is
-                // handled before the two that share `arlen://app-action`.
-                if event.r#type == "app.menu.action_invoked" {
-                    let Some(v) = decode_shortcut_invoked(&event.payload) else {
-                        continue;
-                    };
-                    if v.app_id != target_app_id {
-                        continue;
-                    }
-                    // The superset payload: the apps destructure `{app_id,
-                    // action}` and filter on the id themselves. A menu is
-                    // per-app rather than per-window, so there is no window to
-                    // route to - the shell's own publisher sends no window id
-                    // with it.
-                    if let Err(e) = app_handle.emit(
-                        "arlen://menu-action",
-                        serde_json::json!({ "app_id": v.app_id, "action": v.action }),
-                    ) {
-                        log::warn!("menu-action emit failed: {e}");
-                    }
-                    continue;
-                }
-                // Decode based on which action surface fired.
-                // Both have identical wire shape (app_id, action,
-                // window_id) — apps' onAction handler treats
-                // them uniformly.
-                let invoked = match event.r#type.as_str() {
-                    "app.toolbar.action_invoked" => {
-                        decode_action_invoked(&event.payload).map(|v| {
-                            (v.app_id, v.action, v.window_id)
-                        })
-                    }
-                    "app.shortcut.action_invoked" => {
-                        decode_shortcut_invoked(&event.payload).map(|v| {
-                            (v.app_id, v.action, v.window_id)
-                        })
-                    }
-                    _ => continue,
-                };
-                let Some((invoked_app_id, action, window_id)) = invoked else {
-                    continue;
-                };
-                // Re-pack into a struct shape identical to the
-                // toolbar branch to keep the rest of the loop
-                // simple. `crate::os_sdk::ActionInvoked` would be
-                // ideal but it's typed for the toolbar event;
-                // we open-code the tuple instead.
-                let invoked = ActionTuple {
-                    app_id: invoked_app_id,
-                    action,
-                    window_id,
-                };
-                // Filter: only forward actions targeted at this app.
-                if invoked.app_id != target_app_id {
-                    continue;
-                }
-                // Route per-webview using the window_id field
-                // carried in the payload (B8.4 — closes the
-                // multi-window same-app routing gap). Falls back
-                // to broadcast only when window_id is empty (e.g.
-                // legacy producers that pre-date the window_id
-                // schema).
-                if invoked.window_id.is_empty() {
-                    if let Err(e) = app_handle.emit(
-                        "arlen://app-action",
-                        serde_json::json!({ "action": invoked.action }),
-                    ) {
-                        log::warn!("toolbar app-action broadcast emit failed: {e}");
-                    }
-                    continue;
-                }
-                let Some(window) = app_handle.get_webview_window(&invoked.window_id)
+                let Some(relay) = relay_for(&event.r#type, &event.payload, &target_app_id)
                 else {
-                    // Window is gone (closed during dispatch).
-                    // Drop silently — the action has no recipient.
                     continue;
                 };
-                if let Err(e) = window.emit(
-                    "arlen://app-action",
-                    serde_json::json!({ "action": invoked.action }),
-                ) {
-                    log::warn!("toolbar app-action emit failed: {e}");
+                match relay {
+                    Relay::MenuAction { app_id, action } => {
+                        // The superset payload: every listener destructures
+                        // `{app_id, action}` and filters on the id itself.
+                        if let Err(e) = app_handle.emit(
+                            "arlen://menu-action",
+                            serde_json::json!({ "app_id": app_id, "action": action }),
+                        ) {
+                            log::warn!("menu-action emit failed: {e}");
+                        }
+                    }
+                    Relay::AppAction { action, window_id } => {
+                        // Route per-webview using the window_id the payload
+                        // carries (B8.4 - closes the multi-window same-app
+                        // routing gap). Broadcast only when it is empty.
+                        if window_id.is_empty() {
+                            if let Err(e) = app_handle.emit(
+                                "arlen://app-action",
+                                serde_json::json!({ "action": action }),
+                            ) {
+                                log::warn!("toolbar app-action broadcast emit failed: {e}");
+                            }
+                            continue;
+                        }
+                        let Some(window) = app_handle.get_webview_window(&window_id) else {
+                            // Window is gone (closed during dispatch). Drop
+                            // silently - the action has no recipient.
+                            continue;
+                        };
+                        if let Err(e) = window.emit(
+                            "arlen://app-action",
+                            serde_json::json!({ "action": action }),
+                        ) {
+                            log::warn!("toolbar app-action emit failed: {e}");
+                        }
+                    }
                 }
             }
 
@@ -424,4 +421,116 @@ fn cleanup_window<R: Runtime>(app: &tauri::AppHandle<R>, window_label: &str) {
         let mut guard = subs.lock().await;
         guard.retain(|(win, _id), _| win != &label);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{relay_for, Relay};
+    use prost::Message as _;
+
+    /// The wire shape the shell publishes for a menu or shortcut click.
+    fn shortcut_payload(app_id: &str, action: &str, window_id: &str) -> Vec<u8> {
+        os_sdk::proto::ShortcutActionInvokedPayload {
+            app_id: app_id.into(),
+            action: action.into(),
+            window_id: window_id.into(),
+        }
+        .encode_to_vec()
+    }
+
+    /// The toolbar's own payload, which is a different message on the wire.
+    fn toolbar_payload(app_id: &str, action: &str, window_id: &str) -> Vec<u8> {
+        os_sdk::proto::ToolbarActionInvokedPayload {
+            app_id: app_id.into(),
+            action: action.into(),
+            window_id: window_id.into(),
+        }
+        .encode_to_vec()
+    }
+
+    #[test]
+    fn a_menu_click_becomes_a_menu_action_carrying_its_app_id() {
+        // The listeners in eleven apps destructure `{app_id, action}` and filter
+        // on the id, so the id has to survive the relay.
+        let relay = relay_for(
+            "app.menu.action_invoked",
+            &shortcut_payload("dev.arlen.clock", "alarm.new", ""),
+            "dev.arlen.clock",
+        );
+        assert_eq!(
+            relay,
+            Some(Relay::MenuAction {
+                app_id: "dev.arlen.clock".into(),
+                action: "alarm.new".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_toolbar_click_keeps_its_window() {
+        let relay = relay_for(
+            "app.toolbar.action_invoked",
+            &toolbar_payload("dev.arlen.files", "view.refresh", "main"),
+            "dev.arlen.files",
+        );
+        assert_eq!(
+            relay,
+            Some(Relay::AppAction {
+                action: "view.refresh".into(),
+                window_id: "main".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_shortcut_click_is_an_app_action_too() {
+        let relay = relay_for(
+            "app.shortcut.action_invoked",
+            &shortcut_payload("dev.arlen.files", "search", ""),
+            "dev.arlen.files",
+        );
+        assert!(matches!(relay, Some(Relay::AppAction { .. })));
+    }
+
+    #[test]
+    fn another_apps_click_is_not_this_apps_business() {
+        // Every subscriber sees every app's clicks. The id filter is what makes
+        // this a per-app channel, and dropping it would put one app's menu
+        // actions into every other app's webview.
+        for topic in [
+            "app.menu.action_invoked",
+            "app.shortcut.action_invoked",
+            "app.toolbar.action_invoked",
+        ] {
+            let payload = if topic == "app.toolbar.action_invoked" {
+                toolbar_payload("dev.arlen.mail", "compose", "")
+            } else {
+                shortcut_payload("dev.arlen.mail", "compose", "")
+            };
+            assert_eq!(relay_for(topic, &payload, "dev.arlen.clock"), None, "{topic}");
+        }
+    }
+
+    #[test]
+    fn a_topic_this_app_does_not_relay_is_ignored() {
+        assert_eq!(
+            relay_for(
+                "app.menu.registered",
+                &shortcut_payload("dev.arlen.clock", "alarm.new", ""),
+                "dev.arlen.clock",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_payload_that_will_not_decode_relays_nothing() {
+        // Fail quiet rather than guess: an undecodable payload is a producer
+        // this build does not understand, and inventing an action from it would
+        // run something nobody asked for.
+        assert_eq!(
+            relay_for("app.menu.action_invoked", b"not a protobuf at all", "dev.arlen.clock"),
+            None
+        );
+    }
 }

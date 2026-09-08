@@ -59,3 +59,26 @@ read = [
 # What closes it is the mint, not a grant here. A file the user attached is a path
 # they chose, which is exactly the shape the file-manager ruling describes: the act
 # of choosing IS the authorisation, scoped to that path, read-only, revocable.
+
+# Event-bus scopes, for the shadow-to-enforce cutover the bus is parked halfway
+# through (`ARLEN_EVENT_BUS_ENFORCE`, off by default). This section was missing
+# entirely, which under enforcement means this app publishes nothing and
+# subscribes to nothing.
+#
+# THE MENU IS THE WHOLE OF IT, and this app is the odd one out in how it gets
+# there. Eleven apps hear their menu clicks through `sdk/tauri-plugin-shell`,
+# which subscribes on their behalf and is therefore covered by
+# `check-plugin-subscriptions`. The harness does NOT link that plugin - it drives
+# `os_sdk::menu` directly and runs its own consumer (`menu.rs`) - so no check
+# demands these lines and nothing in a scan would have said the menu goes dead at
+# the cutover. Written from the source: `Menu::register`/`clear` publish
+# `app.menu.registered` and `app.menu.unregistered` (os-sdk/src/menu.rs:182,192),
+# and `subscribe_menu_actions` subscribes `app.menu.action_invoked` (:199).
+[event_bus]
+publish = [
+    "app.menu.registered",
+    "app.menu.unregistered",
+]
+subscribe = [
+    "app.menu.action_invoked",
+]
