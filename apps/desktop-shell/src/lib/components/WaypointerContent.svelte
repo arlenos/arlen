@@ -306,16 +306,13 @@
       // regressor, even silently calling searchModules with no
       // workers shouldn't matter, but cutting the call avoids any
       // listener side-effects too.
-      void searchModules;
-      void moduleResults;
-      // const t6 = performance.now();
-      // searchModules(q)
-      //   .then((results) => {
-      //     moduleResults.set(results);
-      //   })
-      //   .catch(() => {
-      //     moduleResults.set([]);
-      //   });
+      searchModules(q)
+        .then((results) => {
+          moduleResults.set(results);
+        })
+        .catch(() => {
+          moduleResults.set([]);
+        });
       requestAnimationFrame(() => {
         console.timeEnd("wp-search-total");
       });
@@ -597,18 +594,32 @@
     return false;
   }
 
-  // PERMANENTLY OFF until the Tier 2 worker pool can be initialised
-  // without taking over the Waypointer's flex layout. The Waypointer
-  // window is a layer-shell overlay anchored to all four edges, and
-  // calling `installModuleListener()` / `refreshModuleWorkers()` at
-  // mount time was making the wp-card stretch to fill the window.
-  // The store's body-level host insertion alone shouldn't matter —
-  // it's always positioned off-screen — so the regression is
-  // probably the listener install racing with the Tauri webview
-  // first paint. Re-enable once we wire the worker pool from a
-  // dedicated route or after the Waypointer is actually shown.
-  void installModuleListener;
-  void refreshModuleWorkers;
+  // The Tier 2 worker pool. This was off behind a `void` and a comment saying
+  // "PERMANENTLY OFF until the worker pool can be initialised without taking
+  // over the Waypointer's flex layout" - the card was said to stretch to fill
+  // the window once the listener installed.
+  //
+  // MEASURED on 8 September rather than inherited. With a Tier 2 module present
+  // (`?searchmock=tier2`) the host element and its iframe mount and the card is
+  // 600x74, the same to the pixel as with the pool off. The stretch does not
+  // reproduce, so the caller is on and the sentence is gone; what remains of
+  // that finding is the geometry assertion in `drive-launcher.sh`, which fails
+  // if the card ever grows with a worker mounted.
+  //
+  // The bound on that measurement, because it is not nothing: it is a headless
+  // WebKit render of the page, not the layer-shell overlay anchored to all four
+  // edges that the original sentence named. If the stretch is specific to the
+  // anchored surface it would take a VM boot to see. It is safe to be wrong
+  // here today - nothing mounts a worker unless a Tier 2 module is installed,
+  // and no module ships on the image at all yet.
+  $effect(() => {
+    installModuleListener();
+    refreshModuleWorkers();
+    const handle = setInterval(() => {
+      refreshModuleWorkers();
+    }, 30_000);
+    return () => clearInterval(handle);
+  });
 
   // Poll for query changes and trigger search + evaluation.
   // The interval lives inside `$effect` so each mount gets its own

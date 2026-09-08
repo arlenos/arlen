@@ -188,5 +188,31 @@ say "the unicode keyword reaches the same answer the prefix does" \
   "$(printf '%s' "$kw" | grep -q '"typed":true' \
      && printf '%s' "$kw" | grep -qi "HEAVY BLACK HEART" && echo 1 || echo 0)" "$kw"
 
+# THE TIER 2 WORKER POOL AND THE CARD IT WAS SAID TO STRETCH. The pool sat off
+# behind "PERMANENTLY OFF until it can be initialised without taking over the
+# Waypointer's flex layout", and the state that sentence describes could not be
+# reached at all without a daemon - the discovery call rejects and the pool does
+# nothing. `?searchmock=tier2` reports one eligible module so the host and its
+# iframe really mount. The card is 600x74 either way; this fails if it grows.
+cat > "$work/tier2.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+await wait(3000);
+const card = document.querySelector(".wp-card");
+if (!card) return JSON.stringify({ card: false });
+const r = card.getBoundingClientRect();
+return JSON.stringify({
+  card: true,
+  height: Math.round(r.height),
+  fillsViewport: r.height > window.innerHeight * 0.5,
+  hosts: document.querySelectorAll("[data-arlen-role='module-worker-host']").length,
+});
+JS
+t2=$("$here/shoot.sh" "http://localhost:$port/waypointer?searchmock=tier2" \
+  "$here/out/launcher-tier2.png" "$work/tier2.js" 2>&1 | sed -n 's/^inject result: //p')
+
+say "a mounted Tier 2 worker does not take over the card" \
+  "$(printf '%s' "$t2" | grep -q '"hosts":1' \
+     && printf '%s' "$t2" | grep -q '"fillsViewport":false' && echo 1 || echo 0)" "$t2"
+
 [ "$fail" = 0 ] && echo "the launcher says what its prefixes do, answers a search that found nothing, and shows what an extension found"
 exit "$fail"

@@ -75,6 +75,24 @@
               : [],
       };
     }
+    // `?searchmock=tier2` (DEV) reports one eligible iframe module, so the Tier 2
+    // worker pool actually mounts its host and an iframe. It exists because the
+    // pool was off behind "PERMANENTLY OFF until it stops taking over the
+    // Waypointer's flex layout" and nobody could look at the claim: without a
+    // daemon the discovery call rejects and the pool does nothing, so the state
+    // being worked around was unreachable. With this the card can be measured
+    // with a worker mounted, which is how that sentence was finally answered.
+    if (new URLSearchParams(location.search).get("searchmock") === "tier2") {
+      (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+        invoke: async (cmd: string) =>
+          cmd === "modulesd_list_modules"
+            ? [{ id: "com.example.t2", tier: "iframe", enabled: true, failed: false,
+                 extensionPoints: ["waypointer"], name: "T2", version: "0.1.0" }]
+            : cmd === "evaluate_waypointer_input"
+              ? null
+              : [],
+      };
+    }
     if (new URLSearchParams(location.search).get("searchmock") === "empty") {
       // Shape-aware, not one answer for everything: the inline evaluator
       // returns an OPTION, and `[]` is truthy, so a blanket empty array made an
