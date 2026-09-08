@@ -130,6 +130,33 @@ export const loadThing = async (): Promise<void> => {
   cleanup(root);
 }
 
+// The false positive the first cut had: a pure helper sitting ABOVE a wrapper.
+// A fixed look-ahead window ran past the helper into the wrapper's invoke and
+// reported the helper, which is a gate reporting a function for what the one
+// below it does.
+{
+  const root = tree({
+    "lib/stores/thing.ts": `import { invoke } from "@tauri-apps/api/core";
+
+export function addOne(n: number): number {
+  return n + 1;
+}
+
+export async function loadThing(): Promise<void> {
+  await invoke("load_thing");
+}
+`,
+    "lib/components/Thing.svelte": `<script lang="ts">
+  import { loadThing } from "$lib/stores/thing";
+  loadThing();
+</script>
+`,
+  });
+  const { code, out } = run(root);
+  check("a pure helper above a wrapper is not the wrapper", code === 0 && !out.includes("addOne"));
+  cleanup(root);
+}
+
 // A carried count that is too high has to come down, the same ratchet the
 // command check runs: a stale allowance is a place a new one hides.
 {
