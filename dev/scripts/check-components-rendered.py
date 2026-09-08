@@ -100,19 +100,6 @@ KNOWN_MODULES: dict[str, str] = {
         "the module-host barrel, ahead of the Tier-2 module surface. Retires when "
         "that surface imports it"
     ),
-    "apps/terminal/src/lib/keymap.ts": (
-        "the terminal's key table, orphaned by the xterm.js cutover, which owns key "
-        "handling now. Retires by deletion once the cutover's leftovers are swept "
-        "as a batch"
-    ),
-    "apps/terminal/src/lib/live-region.ts": (
-        "the old renderer's rule for which grid rows are the LIVE region (the "
-        "running command or the idle prompt, as against finished blocks). Nothing "
-        "to do with ARIA despite the name - I read it as an announcer once and "
-        "wrote that here, which is why this entry now says what the file is. "
-        "Orphaned by the xterm cutover, which owns the grid. Retires by deletion "
-        "with the rest of that cutover's leftovers"
-    ),
 }
 
 # `utils.ts` per app: eleven near-identical shadcn scaffold copies of `cn()`, all

@@ -31,11 +31,6 @@ export function initWaypointerListeners(): () => void {
     return teardown;
 }
 
-export function openWaypointer() {
-    waypointerVisible.set(true);
-    invoke("toggle_waypointer");
-}
-
 export function closeWaypointer() {
     // Set store immediately so the UI reacts before the Tauri round-trip.
     waypointerVisible.set(false);

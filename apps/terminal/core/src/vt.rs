@@ -434,10 +434,18 @@ pub trait VtEngine {
     /// this on the low-rate `VtEvent` channel (§2.3), never the byte firehose.
     fn drain_events(&mut self) -> Vec<VtEvent>;
 
-    /// A snapshot of the visible screen as text, for the webview to render
-    /// (terminal.md Option B). The default is an empty grid, so an engine that
-    /// has no screen model (a mock, or the OSC-only path) is unaffected; the
-    /// concrete PTY engine overrides it from its VT parser.
+    /// A snapshot of the visible screen, with the mark-derived rows overlaid.
+    ///
+    /// NO PRODUCTION CALLER since the grid moved to xterm.js: the webview was
+    /// the reader (terminal.md Option B) and it renders the raw byte stream now,
+    /// so `terminal_grid` and the cell-painting renderer are gone. What keeps
+    /// this here is the engine's own live-PTY tests, which drive it to assert
+    /// that `running` and `output_start_row` follow the OSC 133 marks - the
+    /// block model rests on those, and this is the only place they are readable
+    /// as one consistent picture.
+    ///
+    /// The default is an empty grid, so an engine with no screen model (a mock,
+    /// or the OSC-only path) is unaffected.
     fn screen_snapshot(&self) -> crate::GridSnapshot {
         crate::GridSnapshot::default()
     }

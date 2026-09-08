@@ -72,36 +72,6 @@ export interface GridCell {
   wide: boolean;
 }
 
-/// A point-in-time view of the terminal screen (the Rust `GridSnapshot`): the
-/// visible grid as rows of styled cells plus the geometry and cursor. The
-/// webview paints these cells (with colour and alignment) so command output
-/// appears without the compositor grid-subsurface (terminal.md Option B).
-export interface GridSnapshot {
-  cols: number;
-  rows: number;
-  cells: GridCell[][];
-  /// Whether a fullscreen / TUI app holds the alternate screen; the renderer
-  /// paints the full grid (no trailing-row trimming) when this is set.
-  alt_screen: boolean;
-  cursor_row: number;
-  cursor_col: number;
-  /// Whether the cursor should be drawn (the VT SHOW_CURSOR mode). The live
-  /// region paints a block cursor at (cursor_row, cursor_col) only when set, so
-  /// a TUI that hides its cursor (btop) gets no spurious block over its frame.
-  cursor_visible: boolean;
-  /// Whether a command is running (its OSC 133;C mark seen, 133;D not yet).
-  /// Lets the renderer tell an in-flight command's output from an idle prompt,
-  /// so the shell's prompt is never drawn under the block-model composer.
-  running: boolean;
-  /// The grid row where the running command's output begins (cursor row at the
-  /// ExecStart mark, past the prompt + command echo); null at an idle prompt.
-  output_start_row: number | null;
-  /// The grid row where the current prompt begins (cursor row at the PromptStart
-  /// 133;A mark), cleared at ExecStart; null while a command runs or before the
-  /// first marked prompt. The live region renders from here at an idle prompt so
-  /// the shell's prompt + the line being typed are the interactive surface.
-  prompt_start_row: number | null;
-}
 
 /// A running (or finished) shell, surfaced as a tab in the sidebar.
 export interface Session {
@@ -157,10 +127,6 @@ export async function terminalBlocks(sessionId: string): Promise<Block[]> {
 /// there is no session or no finished command yet.
 export async function terminalLastCommand(sessionId: string): Promise<string | null> {
   return invoke<string | null>("terminal_last_command", { sessionId });
-}
-
-export async function terminalGrid(sessionId: string): Promise<GridSnapshot> {
-  return invoke<GridSnapshot>("terminal_grid", { sessionId });
 }
 
 /// Drain the session's raw PTY output bytes for the xterm.js renderer: the bytes
