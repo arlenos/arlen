@@ -20,6 +20,7 @@
     terminalInjectBlock,
     terminalSaveOutput,
     terminalConfigGet,
+    terminalConfigSet,
     openUrl,
   } from "$lib/contract";
   import { findLinks, logicalLine, cellAt } from "$lib/links";
@@ -81,8 +82,8 @@
   // the pre-config fallback.
   let baseFontSize = TERMINAL_FONT_SIZE;
 
-  // Apply a zoom shortcut to the live grid: a transient font-size change (not
-  // persisted - the base is the config's), re-fit so the grid + PTY reflow.
+  // Apply a zoom shortcut to the live grid: change the font size, re-fit so the
+  // grid + PTY reflow, and keep the new size (see persistZoom below).
   function applyZoom(action: ZoomAction): void {
     if (!term || !fit) return;
     const current = term.options.fontSize ?? baseFontSize;
@@ -94,6 +95,37 @@
     // pixel column (the first fit measured the new face; pin reads it, re-fit applies).
     pinCellWidthToInteger(term);
     fit.fit();
+    persistZoom(next);
+  }
+
+  /// Whether the size on screen is also the size on disk.
+  ///
+  /// Said once per outage, not once per keystroke: Ctrl+- held down is a run of
+  /// steps and one sentence per step would paint the grid with it. The next
+  /// accepted write re-arms the line, the same way a refused keystroke does.
+  let zoomUnsaved = false;
+
+  /// Keep the size across restarts.
+  ///
+  /// The mount READS a saved size and nothing ever wrote one, so every zoom was
+  /// forgotten on the next launch while the code that would remember it sat
+  /// beside the code that read it. A person who sets their font size and finds it
+  /// back at the default reports that as "it forgot", and they are right.
+  ///
+  /// A refused write says so in the grid, which is where this app says
+  /// everything: the size on screen is correct either way, so the fact worth
+  /// carrying is the one the screen cannot show - that it will not survive.
+  function persistZoom(size: number): void {
+    terminalConfigSet(size).then(
+      () => {
+        zoomUnsaved = false;
+      },
+      () => {
+        if (zoomUnsaved || !term) return;
+        zoomUnsaved = true;
+        term.write(`\r\n\x1b[33m${get(messages)("term.zoomNotSaved")}\x1b[0m\r\n`);
+      },
+    );
   }
 
   // Pull the bytes the engine buffered since the last drain and feed them to

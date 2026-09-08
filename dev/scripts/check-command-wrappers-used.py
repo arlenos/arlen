@@ -45,11 +45,12 @@ CARRIED: dict[str, tuple[int, str]] = {
     ),
     "files": (1, "the 8 September wrapper scan: `countFacets`"),
     "terminal": (
-        3,
-        "the 8 September wrapper scan: `terminalGrid` (the grid comes through "
-        "xterm now), `terminalConfigSet` (so a zoom step is never persisted - a "
-        "real defect, not a tidy-up) and `readCapability`, whose own doc says "
-        "there is nowhere yet to put the sentence it returns",
+        2,
+        "the 8 September wrapper scan, less `terminalConfigSet` (the zoom is kept "
+        "now - the scan's first find was a real defect rather than a tidy-up). "
+        "`terminalGrid` is left over from before the grid came through xterm, and "
+        "`readCapability`'s own doc says there is nowhere yet to put the sentence "
+        "it returns",
     ),
 }
 
