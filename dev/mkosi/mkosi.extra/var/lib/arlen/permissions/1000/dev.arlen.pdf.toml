@@ -43,3 +43,28 @@ read_only = [
     "/home/$USER",
     "/run/media/$USER",
 ]
+
+# The bus section this file did not have, which is a different kind of absence
+# from the ones the header lists: those were decided, this one was never
+# considered. The reader links `tauri-plugin-arlen-shell`, and that plugin's init
+# calls `spawn_action_invoked_consumer` UNCONDITIONALLY - every app linking it
+# subscribes to these two patterns at startup, whether or not a line of the app's
+# own source says so. Reading `apps/pdf` alone will never show it.
+#
+# Without the grant the subscribe is filtered out, `subscribe` still returns Ok,
+# and the plugin's self-healing loop waits on a receiver that never yields: the
+# toolbar buttons and the shortcuts in this app simply stop working, with nothing
+# anywhere saying why. The knowledge profile carries the measured version of that
+# failure from a 14 August enforce boot; this is the same one, unfixed, in the app
+# that had no `[event_bus]` at all.
+#
+# `publish = []` is the honest statement rather than an omission. The reader
+# registers no menu - it holds no `Menu` helper and its `lib.rs` names none - so it
+# emits nothing, and saying so is what stops a later reader assuming the section is
+# incomplete.
+[event_bus]
+publish = []
+subscribe = [
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+]
