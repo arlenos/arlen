@@ -1773,6 +1773,14 @@ fn files_mount(device: String) -> Result<(), String> {
 }
 
 /// Unmount a block device (`udisksctl unmount`).
+///
+/// NO CALLER: the sidebar has one affordance per entry and for a removable drive
+/// it is EJECT, which unmounts and then powers the drive down - the safe compound
+/// action a person actually wants, and `files_eject` is the live command for it.
+/// A bare unmount is the right verb for a mount you keep and stop using, and the
+/// only entries of that kind are network places, which the sidebar does not show
+/// yet (`network_places` is registered and unreached for the same reason). So this
+/// gets its caller when that section is built, not before.
 #[tauri::command]
 fn files_unmount(device: String) -> Result<(), String> {
     udisksctl("unmount", &device)
