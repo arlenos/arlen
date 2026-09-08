@@ -52,6 +52,7 @@
   import AmbientOverlay from "$lib/components/AmbientOverlay.svelte";
   import { Toaster } from "svelte-sonner";
   import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
+  import { initFocusSettings } from "$lib/stores/focusSettings.js";
   import { initToastBridge } from "$lib/stores/toastBridge.js";
   import { watchForPrints } from "$lib/stores/printDialog.js";
   import { watchJobs } from "$lib/stores/jobs.js";
@@ -259,6 +260,7 @@
       initWindowHeaderListeners(),
       initProjects(),
       initToastConfig(),
+      initFocusSettings(),
       initToastBridge(),
       initToolbarStore(),
       initAppStateStores(),
