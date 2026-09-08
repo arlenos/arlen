@@ -48,6 +48,33 @@
               : [],
       };
     }
+    // `?searchmock=extensions` (DEV) answers the module runtime with two rows.
+    // The Tier 1 half of the launcher reaches a daemon over a socket, so under
+    // plain vite it can only ever be empty - which is how its section went from
+    // built to shipped without anyone seeing it draw. This is the one state that
+    // says whether an installed extension's answer looks like an answer.
+    if (new URLSearchParams(location.search).get("searchmock") === "extensions") {
+      const hit = (id: string, title: string, description: string) => ({
+        id,
+        title,
+        description,
+        icon: null,
+        relevance: 1,
+        action: { type: "copy", text: title },
+        plugin_id: "module:core.unicode",
+      });
+      (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+        invoke: async (cmd: string) =>
+          cmd === "waypointer_search_modules"
+            ? [
+                hit("u-2764", "\u2764  HEAVY BLACK HEART", "U+2764"),
+                hit("u-2665", "\u2665  BLACK HEART SUIT", "U+2665"),
+              ]
+            : cmd === "evaluate_waypointer_input"
+              ? null
+              : [],
+      };
+    }
     if (new URLSearchParams(location.search).get("searchmock") === "empty") {
       // Shape-aware, not one answer for everything: the inline evaluator
       // returns an OPTION, and `[]` is truthy, so a blanket empty array made an
