@@ -651,13 +651,35 @@ accent = "#00ff00"
         assert!(report.written.contains(&ini), "{report:?}");
         let written = std::fs::read_to_string(&ini).unwrap();
         assert!(written.starts_with(INI_MARKER));
-        // The two keys that are true whatever is installed. The icon set is NOT
-        // asserted: the bundled theme names `default`, which is a cursor
-        // redirect rather than an icon theme, so on most machines the key is
-        // correctly absent - and a test that demanded it would be demanding the
-        // bug back.
+        // ONE key here is true whatever is installed, and this test used to
+        // claim two. The icon set is not asserted: the bundled theme names
+        // `default`, which is a cursor redirect rather than an icon theme, so
+        // on most machines the key is correctly absent and a test demanding it
+        // would be demanding the bug back.
         assert!(written.contains("gtk-cursor-theme-name="));
-        assert!(written.contains("gtk-font-name="));
+
+        // The FONT is host-dependent and the old comment said it was not, which
+        // is how the assertion below came to fail on CI while passing here: a
+        // GitHub runner has no Inter, the emitter correctly drops a family
+        // fontconfig cannot resolve (`a_font_this_machine_cannot_resolve_is_not_named`
+        // is the same rule from the other side), and the test read that as a
+        // defect. So assert the CONTRACT rather than the machine - the key is
+        // there exactly when the family resolves, mirroring the gate in
+        // `write_foreign_toolkit_configs` including the "an absent `fc-match`
+        // says nothing" arm.
+        let fixture = theme();
+        let family = crate::wine::first_family(&fixture.typography.font_sans);
+        if crate::gtk::font_family_installed(family) == Some(false) {
+            assert!(
+                !written.contains("gtk-font-name="),
+                "{family:?} does not resolve here, so it must not be named:\n{written}"
+            );
+        } else {
+            assert!(
+                written.contains("gtk-font-name="),
+                "{family:?} resolves here, so it must be named:\n{written}"
+            );
+        }
 
         // GTK 4 reads its own file, so the same answer has to be in both. The
         // difference is the theme name: GTK3 may be told which widget theme to
