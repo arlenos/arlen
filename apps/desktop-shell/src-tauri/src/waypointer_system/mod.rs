@@ -73,6 +73,24 @@ async fn module_results(query: &str) -> Vec<SearchResult> {
     kept.iter().map(|e| e.to_search_result()).collect()
 }
 
+/// What the installed modules found, as their own surface.
+///
+/// **This exists because the aggregate had no caller.** `waypointer_search`
+/// asks the plugins and then the module runtime, and nothing in the frontend
+/// invokes it: the launcher calls `search_apps` for applications and
+/// `waypointer_search_plugin` once per builtin surface. So the module half of
+/// the launcher was complete, tested and unreachable - a module could ship,
+/// enable, answer on the socket, and never put a row in front of anybody.
+///
+/// Modules only, deliberately. Calling the aggregate from the frontend would
+/// return every builtin as well, and the builtins each already have their own
+/// section, so the launcher would show files, clipboard and the rest twice. A
+/// module is a surface like any other; this is its `waypointer_search_plugin`.
+#[tauri::command]
+pub async fn waypointer_search_modules(query: String) -> Vec<SearchResult> {
+    module_results(&query).await
+}
+
 /// Execute a search result.
 ///
 /// A builtin's result goes to the plugin manager, as it always has. A module's

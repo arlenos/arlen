@@ -509,6 +509,7 @@ pub fn run() {
             waypointer_system::waypointer_execute,
             waypointer_system::waypointer_list_plugins,
             waypointer_system::waypointer_search_plugin,
+            waypointer_system::waypointer_search_modules,
             theme::commands::get_theme,
             theme::commands::get_theme_css,
             theme::commands::set_theme,
