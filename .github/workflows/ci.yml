@@ -263,6 +263,8 @@ jobs:
           node dev/scripts/test-check-command-wrappers-used.mjs
           python3 dev/scripts/check-tauri-events-heard.py
           node dev/scripts/test-check-tauri-events-heard.mjs
+          python3 dev/scripts/check-settings-keys-read.py
+          node dev/scripts/test-check-settings-keys-read.mjs
           node dev/scripts/test-check-invoke-exists.mjs
           python3 dev/scripts/check-optimistic-write.py
           python3 dev/scripts/check-closed-unanswered.py
