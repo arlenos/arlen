@@ -44,9 +44,14 @@ EXCLUDED = {
     # sixteen of them. Measured 25 August by running `cargo check --tests` over
     # each: two did not compile at all, `apps/text-editor/src-tauri` (17 tests
     # dead since its open path became a tagged enum and an assertion kept testing
-    # the old sentence) and `sdk/ui-kit/src-tauri` (34 errors, still). Nothing
+    # the old sentence) and `sdk/ui-kit/src-tauri` (34 errors). Nothing
     # said so, because a test that does not compile and does not run looks the
     # same from here as one that passes.
+    #
+    # Re-measured 8 September by `just test-consumers sdk/theme`, which builds and
+    # TESTS each of them: text-editor is green again, ui-kit still is not (16 lib
+    # errors, `ArlenTheme::load` and `::panda`, both removed from `sdk/theme` on
+    # 3 May - four months of a crate nothing builds). ui-kit is arlen-ui's lane.
     #
     # `cargo check --tests` would catch it without linking a binary, but it still
     # needs the webkit headers the runner does not carry, so closing this is a CI
