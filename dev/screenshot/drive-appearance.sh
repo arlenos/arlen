@@ -79,8 +79,24 @@ JS
 
 cat > "$work/read.js" <<'JS'
 const inv = window.__TAURI_INTERNALS__.invoke;
-return Promise.all([inv("theme_system_overrides"), inv("theme_color_overrides")])
-  .then(([sys, col]) => JSON.stringify({ ansi1: sys.ansi1, accent: col.accent }))
+// The RESOLVED palette as well as the overrides: picking an accent has to bring
+// its own hover and pressed, and the overrides table cannot say whether it did.
+return Promise.all([
+  inv("theme_system_overrides"),
+  inv("theme_color_overrides"),
+  inv("theme_resolved_palette"),
+])
+  .then(([sys, col, pal]) => {
+    const by = {};
+    for (const r of pal) by[r.role] = r.hex;
+    return JSON.stringify({
+      ansi1: sys.ansi1,
+      accent: col.accent,
+      resolved_accent: by.accent,
+      hover: by.accent_hover,
+      pressed: by.accent_pressed,
+    });
+  })
   .catch((e) => JSON.stringify({ error: String(e) }));
 JS
 
@@ -148,6 +164,21 @@ SHOOT_INJECT="$work/goto.js:$work/read.js" SHOOT_INJECT_SETTLE=3 \
 
 grep -q '"ansi1":"#ff0055"' "$work/run2.log" || { echo "!! the second launch did not find the ANSI slot" >&2; exit 1; }
 grep -q '"accent":"#00ddaa"' "$work/run2.log" || { echo "!! the second launch did not find the accent" >&2; exit 1; }
+
+# AND ITS SIBLINGS. Every bundled theme authors `accent_hover`, so before
+# 8 September a picked accent kept the bundled indigo hover: the button lit up
+# indigo under a teal accent, and no test anywhere could see it because each
+# layer was individually correct. The merge now drops an inherited sibling when a
+# later layer names the accent without naming it, and the resolver derives from
+# the accent that won. What that has to look like from here is a hover that is
+# neither the bundled `#818cf8` nor the accent itself.
+grep -q '"hover":"#818cf8"' "$work/run2.log" \
+  && { echo "!! the picked accent kept the bundled hover" >&2; exit 1; }
+grep -q '"hover":"#00ddaa"' "$work/run2.log" \
+  && { echo "!! the hover is the accent itself, so Rule A did not run" >&2; exit 1; }
+grep -qE '"hover":"#[0-9a-f]{6}"' "$work/run2.log" \
+  || { echo "!! no resolved hover came back at all" >&2; exit 1; }
+echo ">> derived siblings: $(sed -n 's/.*\("hover":"[^"]*"\).*/\1/p' "$work/run2.log" | head -1) $(sed -n 's/.*\("pressed":"[^"]*"\).*/\1/p' "$work/run2.log" | head -1)"
 
 # And rendered, not merely returned. The live preview draws the resolved palette,
 # so the second swatch of the ANSI strip is the value that came back - a page that
