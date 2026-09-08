@@ -33,6 +33,17 @@ use crate::runtime::wit::WaypointerProvider;
 /// section, which Settings surfaces to the user at install time.
 pub const DEFAULT_MEMORY_LIMIT: usize = 64 * 1024 * 1024;
 
+/// How often the epoch advances. The unit the deadline below is counted in.
+const EPOCH_TICK: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// How many ticks a guest may run before it is interrupted, so five seconds.
+///
+/// Deliberately longer than anything a waypointer search should take and shorter
+/// than a person will wait: the fuel budget is what bounds ordinary work, and
+/// this is the backstop for the case fuel cannot see - a guest blocked in a host
+/// call rather than executing instructions.
+const EPOCH_DEADLINE_TICKS: u64 = 50;
+
 /// Default fuel budget per host call. One million Wasmtime fuel units
 /// is roughly ten milliseconds of typical numeric work; modules that
 /// exceed it trap and are counted toward crash recovery, so a runaway
@@ -95,8 +106,21 @@ impl Tier1Runtime {
         config.async_support(true);
         config.wasm_component_model(true);
         config.consume_fuel(true);
-        // Cooperative cancellation: long-running modules can be
-        // interrupted by setting `Store::epoch_deadline_trap`.
+        // Cooperative cancellation: long-running modules can be interrupted at
+        // an epoch deadline.
+        //
+        // ENABLING THIS ALONE IS A TRAP, and it is why this runtime had never
+        // hosted a guest. With epoch interruption on, a fresh `Store` carries
+        // deadline 0 while the engine starts at epoch 0, so the FIRST instruction
+        // of the FIRST call is already past its deadline: every module trapped
+        // with `wasm trap: interrupt` before running a line of its own code. And
+        // nothing incremented the epoch, so a deadline could not have fired
+        // usefully even where one had been set. Measured on 8 September with
+        // `modules/unicode`, the first real guest, whose own test header had
+        // concluded the ABI or the build was at fault.
+        //
+        // The two halves live together now and neither is optional: the ticker
+        // below is the clock, and the store gets a deadline where it is created.
         config.epoch_interruption(true);
 
         // S7.3: wasmtime caches compiled components under
@@ -123,6 +147,25 @@ impl Tier1Runtime {
 
         let engine = Engine::new(&config)
             .map_err(|e| DaemonError::Internal(format!("wasmtime engine init: {e}")))?;
+
+        // The clock the epoch deadline counts in. One thread for the process,
+        // ticking whether or not a module is running, which is what lets a store
+        // say "trap after N ticks" without the host having to watch it.
+        //
+        // A weak handle, so the ticker does not keep the engine alive after the
+        // runtime is dropped; the loop ends with the last strong reference.
+        {
+            let ticker = engine.weak();
+            std::thread::Builder::new()
+                .name("modulesd-epoch".into())
+                .spawn(move || {
+                    while let Some(engine) = ticker.upgrade() {
+                        std::thread::sleep(EPOCH_TICK);
+                        engine.increment_epoch();
+                    }
+                })
+                .map_err(|e| DaemonError::Internal(format!("epoch ticker: {e}")))?;
+        }
 
         let mut linker = Linker::<ModuleStore>::new(&engine);
         populate_linker(&mut linker)?;
@@ -162,6 +205,11 @@ impl Tier1Runtime {
             ModuleStore::new(ctx, graph_client, event_emitter),
         );
         store.limiter(|s| &mut s.limits);
+        // Without this the store's deadline is 0, which is already past, and the
+        // guest traps on its first instruction. See the engine config above for
+        // what that cost.
+        store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
+        store.epoch_deadline_trap();
         // Initial fuel budget; refilled per host call by the manager.
         let _ = store.set_fuel(DEFAULT_FUEL_BUDGET);
         store
@@ -202,7 +250,7 @@ impl Tier1Runtime {
             .await
             .map_err(|e| DaemonError::WasmLoad {
                 module_id: module_id.to_string(),
-                reason: format!("instantiate: {e}"),
+                reason: format!("instantiate: {e:#}"),
             })?;
         drop(linker);
 
@@ -223,9 +271,16 @@ impl Tier1Runtime {
                 module_id: module_id.to_string(),
                 reason: format!("init returned error: {module_err}"),
             }),
+            // `{trap:#}` and not `{trap}`: anyhow's plain Display prints only the
+            // outermost message, and wasmtime puts the REASON in the source below
+            // it. So a trapping module reported "error while executing at wasm
+            // backtrace: 0: 0x2282 - <unknown>!<wasm function 18>" and nothing
+            // about what went wrong - which cost an hour on the first real guest
+            // on 8 September, reading the module's own bytecode to guess. The
+            // daemon had the sentence the whole time and dropped it.
             Ok(Err(trap)) => Err(DaemonError::WasmTrap {
                 module_id: module_id.to_string(),
-                reason: format!("init trapped: {trap}"),
+                reason: format!("init trapped: {trap:#}"),
             }),
             Err(_elapsed) => Err(DaemonError::WasmTrap {
                 module_id: module_id.to_string(),
@@ -257,7 +312,7 @@ impl Tier1Runtime {
             .await
             .map_err(|e| DaemonError::WasmLoad {
                 module_id: module_id.to_string(),
-                reason: format!("instantiate: {e}"),
+                reason: format!("instantiate: {e:#}"),
             })?;
         drop(linker);
 
@@ -277,7 +332,7 @@ impl Tier1Runtime {
             }),
             Ok(Err(trap)) => Err(DaemonError::WasmTrap {
                 module_id: module_id.to_string(),
-                reason: format!("init trapped: {trap}"),
+                reason: format!("init trapped: {trap:#}"),
             }),
             Err(_elapsed) => Err(DaemonError::WasmTrap {
                 module_id: module_id.to_string(),
@@ -313,7 +368,7 @@ impl Tier1Instance {
         {
             tracing::warn!(
                 module = module_id,
-                "shutdown trapped: {err}",
+                "shutdown trapped: {err:#}",
             );
         }
     }
@@ -340,7 +395,7 @@ impl McpInstance {
             .call_shutdown(&mut self.store)
             .await
         {
-            tracing::warn!(module = module_id, "mcp shutdown trapped: {err}");
+            tracing::warn!(module = module_id, "mcp shutdown trapped: {err:#}");
         }
     }
 }
