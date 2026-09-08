@@ -31,7 +31,12 @@
   onMount(() => {
     refresh();
     let stop: UnlistenFn | null = null;
-    listen("arlen://audio-changed", refresh).then((u) => (stop = u));
+    // `audio-changed`, no scheme. The monitor in `audio.rs` emits it bare, and
+    // this listened for an `arlen://` name nothing sends: the tile refreshed on
+    // its five-second timer alone, so a volume change made anywhere else showed
+    // up here up to five seconds later. The indicator beside it had the name
+    // right, which is how one surface came to be slower than its neighbour.
+    listen("audio-changed", refresh).then((u) => (stop = u));
     const interval = setInterval(refresh, 5_000);
     return () => {
       clearInterval(interval);
