@@ -144,6 +144,11 @@ fn copy_png(png_base64: String) -> Result<(), String> {
 /// something was itself the thing that went missing. Six of the ten already
 /// agreed on `(level, msg)`, so that is the one they all use.
 /// the Arlen shell, so this is how the UI reports diagnostics).
+/// NO CALLER: the debugging affordance, deliberately available rather than
+/// routinely used. Tauri's WebView DevTools cannot be opened on this desktop, so
+/// a frontend diagnosing something routes it through here into the app's stdout;
+/// committed code does not call it, and a call left behind in committed code
+/// would be the thing to remove. See `dev/scripts/check-commands-invoked.py`.
 #[tauri::command]
 fn frontend_log(level: String, msg: String) {
     match level.as_str() {

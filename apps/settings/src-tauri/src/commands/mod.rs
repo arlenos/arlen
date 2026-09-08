@@ -37,6 +37,11 @@ pub mod windows_apps;
 /// Route a log line from the frontend into the Rust logger so it
 /// shows up in the same stdout stream as backend logs. Used by
 /// debug instrumentation when WebView DevTools are not reachable.
+/// NO CALLER: the debugging affordance, deliberately available rather than
+/// routinely used. Tauri's WebView DevTools cannot be opened on this desktop, so
+/// a frontend diagnosing something routes it through here into the app's stdout;
+/// committed code does not call it, and a call left behind in committed code
+/// would be the thing to remove. See `dev/scripts/check-commands-invoked.py`.
 #[tauri::command]
 pub fn frontend_log(level: String, msg: String) {
     match level.as_str() {
