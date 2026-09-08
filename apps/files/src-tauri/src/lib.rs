@@ -27,7 +27,6 @@ use cap_std::ambient_authority;
 use os_sdk::graph::ReadOutcome;
 use cap_std::fs::Dir;
 use serde::Serialize;
-use tauri::Emitter;
 
 /// Whether the app runs under the Arlen shell (the event-bus socket
 /// exists): the UI then leaves its chrome to the global topbar and
@@ -2443,45 +2442,6 @@ async fn publish_menu(groups: Vec<os_sdk::menu::MenuGroup>) -> Result<(), String
         .map_err(|e| e.to_string())
 }
 
-/// Forwarded to the webview as `arlen://menu-action` when the user
-/// clicks a topbar menu item. The frontend maps `action` to the
-/// matching file-manager operation.
-#[derive(Clone, Serialize)]
-struct MenuActionEvent {
-    action: String,
-}
-
-/// Receive topbar-menu clicks and forward them into this app's webview.
-///
-/// The menu is published into the topbar over the Event Bus
-/// ([`publish_menu`], called by the webview); the shell publishes the
-/// clicked action back
-/// onto the bus as `app.menu.action_invoked`. We subscribe to that
-/// back-channel (filtered to our own app_id by the SDK) and re-emit
-/// each action as a Tauri event the frontend handles (#2b). Best-effort:
-/// if the bus is unreachable the menu simply stays inert, like the
-/// publish side.
-async fn run_menu_action_listener(app: tauri::AppHandle) {
-    let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| APP_ID.to_string());
-    let socket =
-        os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
-    let consumer = os_sdk::event_consumer::UnixEventConsumer::new(
-        socket.to_string_lossy().into_owned(),
-    );
-    let mut actions = match os_sdk::menu::subscribe_menu_actions(&consumer, app_id).await {
-        Ok(rx) => rx,
-        Err(e) => {
-            log::warn!("menu-action channel unavailable: {e}");
-            return;
-        }
-    };
-    while let Some(action) = actions.recv().await {
-        if let Err(e) = app.emit("arlen://menu-action", MenuActionEvent { action }) {
-            log::warn!("forwarding a menu action to the webview failed: {e}");
-        }
-    }
-}
-
 pub fn run() {
     // Dependencies at warn, this app at info. A blanket `info` also turns on
     // zbus, which logs D-Bus handshake frames WITH their message bytes - and a
@@ -2504,14 +2464,14 @@ pub fn run() {
     glib::set_prgname(Some(APP_ID));
 
     tauri::Builder::default()
-        .setup(|app| {
-            // The webview publishes the menu itself once its catalog is up
-            // (`publish_menu`), so the labels are in the reader's language.
-            // Receive topbar-menu clicks back from the shell and forward them
-            // into the webview so the frontend runs the operation (#2b).
-            tauri::async_runtime::spawn(run_menu_action_listener(app.handle().clone()));
-            Ok(())
-        })
+        // The webview publishes the menu itself once its catalog is up
+        // (`publish_menu`), so the labels are in the reader's language. The
+        // clicks come back through the plugin below, which subscribes
+        // `app.menu.action_invoked` inside every app that loads it and re-emits
+        // it as `arlen://menu-action`. This app used to run its own consumer for
+        // that topic - written when the plugin did not carry it, and the reason
+        // ten other apps listened for a relay that was never built. Two
+        // subscribers would deliver every click twice.
         .plugin(tauri_plugin_arlen_shell::init())
         .manage(thumbnail::ThumbnailLimiter::new())
         .manage(Mutex::new(UndoStack::new()))

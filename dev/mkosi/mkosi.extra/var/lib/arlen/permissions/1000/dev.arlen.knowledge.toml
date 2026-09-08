@@ -137,4 +137,14 @@ read = [
 # followed: a profile granting `app.menu.*` to an app whose source names no emit.
 [event_bus]
 publish = ["app.menu.*"]
-subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked"]
+subscribe = [
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+    # The third of the plugin's topics, added 9 September. An app publishes its
+    # top-bar menu through the same plugin and the shell pushes the click back as
+    # `app.menu.action_invoked`; nothing relayed it into the webview, so eleven
+    # apps listened for a menu action that never arrived and their menus were
+    # drawn and inert. The relay now lives in the plugin, which makes this grant a
+    # consequence of linking it rather than a choice.
+    "app.menu.action_invoked",
+]

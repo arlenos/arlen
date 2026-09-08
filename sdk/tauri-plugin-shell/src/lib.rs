@@ -242,10 +242,23 @@ struct ActionTuple {
     window_id: String,
 }
 
-/// Subscribe to `app.toolbar.action_invoked` and
-/// `app.shortcut.action_invoked` Event Bus events and re-emit
-/// matching ones (filtered by this app's id) as per-webview
-/// `arlen://app-action` Tauri events.
+/// Subscribe to the three action topics an app hears back on and re-emit the
+/// ones aimed at it: toolbar and shortcut clicks as `arlen://app-action`, menu
+/// clicks as `arlen://menu-action`.
+///
+/// THE MENU TOPIC WAS MISSING AND ELEVEN APPS WERE LISTENING FOR IT. An app
+/// publishes its top-bar menu through this plugin, the shell draws it, the user
+/// picks an item, and the shell pushes the action back onto the bus as
+/// `app.menu.action_invoked`. Two apps wrote their own consumer for that; the
+/// rest listened for a relay nobody had built, so their menus were drawn and
+/// inert. It belongs here for the same reason the other two topics do: the
+/// plugin is already the one thing running inside every app's process with a
+/// bus connection.
+///
+/// It stays a SEPARATE Tauri event rather than joining `arlen://app-action`,
+/// because the apps already listen for `arlen://menu-action` with a payload
+/// carrying `app_id`, and a menu click is a different surface from a toolbar
+/// button even where the handler is the same.
 ///
 /// This is the receive side of the action-dispatch path the
 /// desktop-shell pushes when the user clicks a Quick Action or
@@ -281,6 +294,7 @@ fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
                 .subscribe(vec![
                     "app.toolbar.action_invoked".to_string(),
                     "app.shortcut.action_invoked".to_string(),
+                    "app.menu.action_invoked".to_string(),
                 ])
                 .await
             {
@@ -300,6 +314,28 @@ fn spawn_action_invoked_consumer<R: Runtime, M: tauri::Manager<R>>(
             };
 
             while let Some(event) = rx.recv().await {
+                // A menu click leaves through its own Tauri event, so it is
+                // handled before the two that share `arlen://app-action`.
+                if event.r#type == "app.menu.action_invoked" {
+                    let Some(v) = decode_shortcut_invoked(&event.payload) else {
+                        continue;
+                    };
+                    if v.app_id != target_app_id {
+                        continue;
+                    }
+                    // The superset payload: the apps destructure `{app_id,
+                    // action}` and filter on the id themselves. A menu is
+                    // per-app rather than per-window, so there is no window to
+                    // route to - the shell's own publisher sends no window id
+                    // with it.
+                    if let Err(e) = app_handle.emit(
+                        "arlen://menu-action",
+                        serde_json::json!({ "app_id": v.app_id, "action": v.action }),
+                    ) {
+                        log::warn!("menu-action emit failed: {e}");
+                    }
+                    continue;
+                }
                 // Decode based on which action surface fired.
                 // Both have identical wire shape (app_id, action,
                 // window_id) — apps' onAction handler treats

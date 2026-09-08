@@ -52,12 +52,12 @@ const GRANTED = `[info]
 app_id = "dev.arlen.reader"
 [event_bus]
 publish = []
-subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked"]
+subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked", "app.menu.action_invoked"]
 `;
 
 {
   const root = tree({ profile: GRANTED });
-  check("a linking app granted both patterns passes", run(root).code === 0);
+  check("a linking app granted every pattern passes", run(root).code === 0);
   cleanup(root);
 }
 
@@ -99,6 +99,21 @@ subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked"]
   const root = tree({ links: false, profile: '[info]\napp_id = "dev.arlen.reader"\n' });
   const r = run(root);
   check("an app that does not link the plugin is not asked", r.code === 1 && r.out.includes("pointed wrong"));
+  cleanup(root);
+}
+
+// A family grant covers the member. `app.menu.*` on the bus is a prefix on a dot
+// boundary, so demanding the literal beside it would be asking for a line that
+// changes nothing - and a check that does that gets ignored.
+{
+  const root = tree({
+    profile: `[info]
+app_id = "dev.arlen.reader"
+[event_bus]
+subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked", "app.menu.*"]
+`,
+  });
+  check("a family grant covers the member it contains", run(root).code === 0);
   cleanup(root);
 }
 

@@ -19,10 +19,12 @@ Two shapes found the day this was written:
     beside them - listening for the right name - updated at once. One surface
     slower than its neighbour, for a scheme prefix.
 
-  * **A relay nobody built.** Thirteen apps listen for `arlen://menu-action`,
-    the click coming back from their own top-bar menu. Two of them wrote a
-    consumer for it; the other eleven did not, and the shared plugin does not
-    forward that topic, so their menus are drawn and inert.
+  * **A relay nobody built.** Thirteen apps listened for `arlen://menu-action`,
+    the click coming back from their own top-bar menu. Two had written a consumer
+    for it; the other eleven had not, and the shared plugin did not forward that
+    topic, so their menus were drawn and inert. Fixed the same day by moving the
+    relay into the plugin - which is why the carried list below is one entry and
+    not fourteen.
 
 The rule is deliberately generous about what counts as a sender: the name has
 to appear as a string literal ANYWHERE in the Rust the app links - its own
@@ -42,32 +44,20 @@ from pathlib import Path
 # Events listened for with no sender, by app, with why. Every entry is a real
 # defect rather than a tolerated shape.
 CARRIED: dict[str, tuple[int, str]] = {
-    "calendar": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "clock": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "knowledge": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "mail": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "meetings": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "pdf": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "screenshot": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "store": (1, "`arlen://menu-action`, the top-bar menu relay; arlen-ui's app"),
-    "system-monitor": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "terminal": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "text-editor": (1, "`arlen://menu-action`, the top-bar menu relay"),
-    "viewers": (1, "`arlen://menu-action`, the top-bar menu relay"),
     "settings": (
-        2,
-        "`arlen://menu-action` (the top-bar menu relay) and "
-        "`arlen://shell-config-changed`",
+        1,
+        "`arlen://shell-config-changed`: nothing emits it, and the shell config "
+        "it would announce is read on demand instead. Either the emit was never "
+        "written or the listener outlived it",
     ),
 }
 
-# The eleven-app half of the carried list is ONE cause: the app publishes its
-# menu through `sdk/tauri-plugin-shell`, the shell pushes the click back onto the
-# bus as `app.menu.action_invoked`, and nothing in those apps subscribes it. Two
-# apps wrote their own consumer (`files`, `harness`); the rest listen for a relay
-# that was never built. The fix belongs in the plugin, which already subscribes
-# the toolbar and shortcut topics inside every app's process - and it crosses
-# into another lane's app, so it is reported rather than taken.
+# The eleven-app half of the first carried list was ONE cause, and it is fixed:
+# an app publishes its top-bar menu through `sdk/tauri-plugin-shell`, the shell
+# pushes the click back as `app.menu.action_invoked`, and nothing subscribed it
+# on the app's behalf. Two apps had written their own consumer; the rest listened
+# for a relay that did not exist. The relay is in the plugin now, beside the two
+# action topics it already carried, which is why this list is one entry long.
 
 LISTEN = re.compile(r'listen(?:<[^>]*>)?\(\s*"([a-z][a-z0-9:/._-]*)"')
 
