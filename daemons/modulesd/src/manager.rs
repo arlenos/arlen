@@ -1289,7 +1289,12 @@ impl Manager {
         .map_err(|_| {
             SearchFailure::Trap(format!("search exceeded {}s wall-clock budget", SEARCH_TIMEOUT.as_secs()))
         })?
-        .map_err(|trap| SearchFailure::Trap(format!("search trap: {trap}")))?;
+        // `{trap:#}` for the reason the whole chain carries: wasmtime puts "wasm
+        // trap: all fuel consumed" (or interrupt, or out of bounds) in the source
+        // BELOW the backtrace line, and plain Display prints only the backtrace.
+        // A module author reading "search trap: error while executing at wasm
+        // backtrace" learns nothing they can act on.
+        .map_err(|trap| SearchFailure::Trap(format!("search trap: {trap:#}")))?;
 
         Ok(wit_to_proto_results(module_id, wit_results, max_results))
     }
@@ -1372,14 +1377,14 @@ impl Manager {
                 message: format!("module returned error: {module_err}"),
             },
             Ok(Err(trap)) => {
-                warn!(module = %module_id, "execute trapped: {trap}");
+                warn!(module = %module_id, "execute trapped: {trap:#}");
                 drop(guard);
-                self.record_crash(module_id, &format!("execute trapped: {trap}")).await;
+                self.record_crash(module_id, &format!("execute trapped: {trap:#}")).await;
                 self.drop_tier1_instance(module_id).await;
                 Response::Error {
                     id: id.to_string(),
                     code: ErrorCode::Internal,
-                    message: format!("execute trapped: {trap}"),
+                    message: format!("execute trapped: {trap:#}"),
                 }
             }
             Err(_elapsed) => {
