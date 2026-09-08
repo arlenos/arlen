@@ -38,7 +38,9 @@
   onMount(() => {
     refresh();
     let stop: UnlistenFn | null = null;
-    listen("arlen://bluetooth-changed", refresh).then((u) => (stop = u));
+    // `bluetooth-changed`, no scheme - the same slip the audio tile had. The
+    // BlueZ watcher in `bluetooth.rs` emits it bare.
+    listen("bluetooth-changed", refresh).then((u) => (stop = u));
     return () => stop?.();
   });
 
