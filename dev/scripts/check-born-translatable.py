@@ -117,11 +117,13 @@ KNOWN: dict[str, tuple[int, str]] = {
     "apps/harness/src/routes/_rendertest/+page.svelte": (2, "arlen-ui's; the render demo's chart titles"),
     "apps/store/src/lib/stores/catalog.ts": (15, "arlen-ui's app; a fixture catalogue of other people's software"),
     "sdk/ui-kit/src/routes/_i18n/+page.svelte": (1, "the kit's i18n demo route; the string is the demo"),
-    # Real copy, and it is read on arlen-ui's Models page - the three tier notes
+    # Real copy, and it is read on arlen-ui's Models page - the tier notes
     # ("Snappy on your machine, lighter answers.") come from this store and are
     # rendered verbatim. Translating them means changing what their page calls,
-    # so it lands with them rather than across the lane line.
-    "apps/settings/src/lib/stores/models.ts": (7, "feeds arlen-ui's models page; the tier notes are theirs to route"),
+    # so it lands with them rather than across the lane line. Six of the seven
+    # have since been routed; the allowance follows them down, because a number
+    # that stays where the work started is a place a new one can hide.
+    "apps/settings/src/lib/stores/models.ts": (1, "feeds arlen-ui's models page; the last tier note is theirs to route"),
     # A real one, and arlen-ui's: the saturation pad's accessible name.
     "sdk/ui-kit/src/lib/components/ui/color-picker/ColorPicker.svelte": (1, "arlen-ui's; the pad's aria-label at :186"),
 }
