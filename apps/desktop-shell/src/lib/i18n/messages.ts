@@ -646,6 +646,11 @@ const messages: Catalogs = {
     "sh.notif.showAllAria": "Show all notifications from {$app}",
     "sh.notif.clear": "Clear",
     "sh.notif.empty": "No notifications",
+    "sh.notif.older": "Show older",
+    "sh.notif.olderLoading": "Reading...",
+    "sh.notif.olderNone": "Nothing older is kept.",
+    "sh.notif.olderCapped": "This is as far back as the panel holds.",
+    "sh.notif.olderFailed": "Older notifications could not be read.",
     "sh.notif.dismiss": "Dismiss",
 
     // Menu palette
@@ -1331,6 +1336,11 @@ const messages: Catalogs = {
     "sh.notif.showAllAria": "Alle Mitteilungen von {$app} anzeigen",
     "sh.notif.clear": "L\u00f6schen",
     "sh.notif.empty": "Keine Mitteilungen",
+    "sh.notif.older": "\u00c4ltere anzeigen",
+    "sh.notif.olderLoading": "Wird gelesen ...",
+    "sh.notif.olderNone": "\u00c4lteres wird nicht aufbewahrt.",
+    "sh.notif.olderCapped": "Weiter zur\u00fcck reicht das Panel nicht.",
+    "sh.notif.olderFailed": "\u00c4ltere Mitteilungen konnten nicht gelesen werden.",
     "sh.notif.dismiss": "Schlie\u00dfen",
 
     "sh.menu.title": "App-Men\u00fc",

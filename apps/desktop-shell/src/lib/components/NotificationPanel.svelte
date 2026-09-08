@@ -12,6 +12,11 @@
     notifications,
     groupedNotifications,
     clearAll,
+    loadOlder,
+    historyHasMore,
+    historyLoading,
+    historyFailed,
+    historyCapped,
   } from "$lib/stores/notifications.js";
   import NotificationItem from "$lib/components/NotificationItem.svelte";
   import { Bell, Trash2, ChevronDown } from "lucide-svelte";
@@ -107,9 +112,55 @@
       {/each}
     </div>
   {/if}
+
+  <!-- The daemon keeps thirty days of these and the panel started from the
+       pending ones alone, so everything a person dismissed was stored and
+       unreachable. The footer is under BOTH branches on purpose: somebody
+       looking at an empty panel is exactly the one who wants back the
+       notification they just dismissed. -->
+  <div class="notif-history">
+    {#if $historyFailed}
+      <p class="notif-history-note" role="alert">{$t("sh.notif.olderFailed")}</p>
+    {:else if $historyCapped}
+      <p class="notif-history-note">{$t("sh.notif.olderCapped")}</p>
+    {:else if $historyHasMore}
+      <button class="notif-history-btn" disabled={$historyLoading} onclick={() => void loadOlder()}>
+        {$historyLoading ? $t("sh.notif.olderLoading") : $t("sh.notif.older")}
+      </button>
+    {:else}
+      <p class="notif-history-note">{$t("sh.notif.olderNone")}</p>
+    {/if}
+  </div>
 </div>
 
 <style>
+  .notif-history {
+    display: flex;
+    justify-content: center;
+    padding-top: 2px;
+  }
+  .notif-history-btn {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
+    transition: background 0.1s, color 0.1s;
+  }
+  .notif-history-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
+    color: var(--color-fg-shell);
+  }
+  .notif-history-btn:disabled {
+    opacity: 0.6;
+  }
+  /* 55%, the readable floor this shell settled on for a line that is sometimes
+     the only thing in its region. */
+  .notif-history-note {
+    margin: 0;
+    font-size: var(--text-2xs);
+    color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
+  }
+
   .notif-section {
     display: flex;
     flex-direction: column;
