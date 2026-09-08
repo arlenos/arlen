@@ -1271,7 +1271,7 @@ impl Manager {
 
         let mut guard = instance.lock().await;
         // Refill fuel; an earlier call may have left some leftover.
-        let _ = guard.store.set_fuel(crate::runtime::tier1::DEFAULT_FUEL_BUDGET);
+        crate::runtime::tier1::refuel(&mut guard.store);
 
         // Split-borrow: take a mutable reference to the whole instance
         // and pull `provider` + `store` from it without aliasing.
@@ -1357,7 +1357,7 @@ impl Manager {
         };
 
         let mut guard = instance.lock().await;
-        let _ = guard.store.set_fuel(crate::runtime::tier1::DEFAULT_FUEL_BUDGET);
+        crate::runtime::tier1::refuel(&mut guard.store);
 
         let wit_hit = proto_to_wit_result(&result);
         let inst = &mut *guard;
