@@ -63,3 +63,22 @@ for root in "${BUILDROOT:-}" ""; do
     fi
     echo ">> no permission dirs under ${root:-/}"
 done
+
+# Compile the schema overrides, because an override that is not compiled in is a
+# file nobody reads. `mkosi.extra` ships `99-arlen.gschema.override`, and GSettings
+# only ever reads `gschemas.compiled` - so without this step the Arlen default for
+# `org.gnome.desktop.interface gtk-theme` is inert and every GTK3 app on a fresh
+# image is in stock Adwaita.
+#
+# Debian keeps the compiler out of $PATH (it is not in libglib2.0-bin here), so it
+# is called by its real path. A missing compiler is fatal rather than skipped: the
+# alternative is an image that looks built and renders unthemed, which is the
+# failure this whole step exists to close.
+schema_compiler=/usr/lib/x86_64-linux-gnu/glib-2.0/glib-compile-schemas
+if [ -x "$schema_compiler" ]; then
+    "$schema_compiler" /usr/share/glib-2.0/schemas
+    echo ">> compiled the GSettings schemas, Arlen override included"
+else
+    echo "!! $schema_compiler is missing, so the schema overrides would ship inert" >&2
+    exit 1
+fi

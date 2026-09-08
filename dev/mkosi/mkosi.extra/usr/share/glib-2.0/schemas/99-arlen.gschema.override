@@ -1,0 +1,25 @@
+# The image's own default for the schema GTK actually reads.
+#
+# Measured on 8 September: GTK3 takes its widget theme from
+# `org.gnome.desktop.interface` whenever these schemas are installed - they are,
+# 37 of them - and falls back to the SCHEMA'S DEFAULT rather than to the
+# `gtk-3.0/settings.ini` we write. With no value set that default is 'Adwaita',
+# so a GTK3 app on a fresh image was in stock Adwaita even though the Arlen theme
+# was built, installed and named in the settings file.
+#
+# The shell writes this key on every theme apply, which covers a running desktop.
+# This covers what happens before that and if it ever fails: the first GTK3 window
+# of a session, a session where the shell did not start, an app launched from a
+# tty. An override changes the DEFAULT only, so a value the person sets themselves
+# still wins - which is the layering we want rather than a value we force.
+#
+# Sorted last on purpose: Debian ships 10_gsettings-desktop-schemas.gschema.override
+# and the highest-numbered file wins.
+#
+# Font deliberately absent. Ours resolves to Inter, which is not on this image,
+# and naming a font the machine does not have is the same untruth as naming an
+# icon theme it does not have - `generate_gtk_settings_ini` omits that key for
+# exactly this reason.
+[org.gnome.desktop.interface]
+gtk-theme='Arlen'
+color-scheme='prefer-dark'
