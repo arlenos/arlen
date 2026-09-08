@@ -140,9 +140,6 @@ pub struct FileWrittenEvent {
 #[cfg(feature = "user")]
 unsafe impl Send for FileWrittenEvent {}
 
-/// Maximum length of an IP address stored as a string.
-pub const MAX_ADDR_LEN: usize = 46;
-
 /// An event emitted on a TCP state transition to ESTABLISHED.
 #[repr(C)]
 #[derive(Clone, Copy)]
