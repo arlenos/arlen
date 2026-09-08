@@ -47,9 +47,17 @@ cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
 # `<dir>:<crate-name>:<module id>`. The id is the manifest's and is what the
 # daemon keys the directory by, so the two must agree; `check-modules-on-image.py`
 # reads the manifest rather than trusting this line.
+#
+# ONLY THE MODULE THAT DECLARES NOTHING, for now, and the reason is a hole rather
+# than caution. `discover()` starts a module enabled unless the user's disabled
+# list names it, and the consent gate sits on the `SetEnabled` request - so a
+# module that arrives on the image never passes it. Probed on 8 September: staged
+# `core.man` in a directory, called `discover`, then `WaypointerSearch` with no
+# broker running and no toggle, and it read `/usr/share/man` and answered twenty
+# results. Shipping a capability-bearing module today grants it silently.
+# `core.unicode` declares nothing, so it is safe under any answer to that.
 modules="
 modules/unicode:arlen_module_unicode:core.unicode
-modules/man:arlen_module_man:core.man
 "
 
 for m in $modules; do

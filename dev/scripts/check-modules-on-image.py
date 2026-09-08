@@ -44,7 +44,15 @@ from pathlib import Path
 # Module directories that deliberately do not ship, and why. A fixture is the
 # clear case: it exists to be instantiated by a test, and putting it on a real
 # machine would offer a person a module whose whole purpose is to be refused.
-NOT_ON_IMAGE: dict[str, str] = {}
+NOT_ON_IMAGE: dict[str, str] = {
+    "man": (
+        "it declares `files.read`, and a module that arrives on the image is enabled by "
+        "`discover()` without ever passing the consent gate, which sits on the SetEnabled "
+        "request. Probed 8 September: staged, discovered, searched with no broker and no "
+        "toggle, and it read /usr/share/man. Ships once a discovered capability-bearing "
+        "module has to hold a grant to go active"
+    ),
+}
 
 STAGE_DIR = "/usr/share/arlen/modules"
 
