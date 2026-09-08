@@ -437,6 +437,7 @@ const messages: Catalogs = {
     "sh.wp.grp.processes": "Processes",
     "sh.wp.grp.applications": "Applications",
     "sh.wp.grp.extensions": "Extensions",
+    "sh.wp.grp.appActions": "App Actions",
     // What a quick action says once it has taken. The backend names the line and
     // this writes it: it used to build the sentence itself, in English, so a
     // German desktop flipped the switch and answered in the wrong language.
@@ -1159,6 +1160,7 @@ const messages: Catalogs = {
     "sh.wp.grp.processes": "Prozesse",
     "sh.wp.grp.applications": "Programme",
     "sh.wp.grp.extensions": "Erweiterungen",
+    "sh.wp.grp.appActions": "App-Aktionen",
     "sh.toast.assistantDidNotOpen": "Der Assistent hat nicht geöffnet. {$why}",
     "sh.toast.commandDidNotRun": "Der Befehl ist nicht gelaufen. {$why}",
     "sh.toast.launcherClosed": "Der Starter ging nicht auf.",

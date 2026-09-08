@@ -20,7 +20,7 @@
     Command, CommandInput, CommandList,
     CommandGroup, CommandItem, CommandSeparator,
   } from "@arlen/ui-kit/components/ui/command/index.js";
-  import { AppWindow, BookOpen, Globe, Skull, FolderKanban, X, Settings2, Puzzle } from "lucide-svelte";
+  import { AppWindow, BookOpen, Globe, Skull, FolderKanban, X, Settings2, Puzzle, Zap } from "lucide-svelte";
   import { activeProjects, activateFocus, deactivateFocus, isFocused, focusState, loadProjects } from "$lib/stores/projects.js";
   import {
     settingsResults, searchSettings, clearSettingsResults,
@@ -79,6 +79,10 @@
     extensionResults, updateExtensionResults, clearExtensionResults,
     runExtensionResult, type ExtensionResult,
   } from "$lib/stores/waypointerExtensions.js";
+  import {
+    shortcutResults, updateShortcutResults, clearShortcutResults,
+    runShortcutResult, type ShortcutResult,
+  } from "$lib/stores/waypointerShortcuts";
   import {
     refreshFromDaemon as refreshModuleWorkers,
     installListener as installModuleListener,
@@ -301,6 +305,10 @@
           );
         })
         .catch(() => noteRefusal());
+      // The focused app's own quick actions. Every layer under this was built
+      // and nothing rendered it, so an app could publish "Run tests" and no
+      // surface would list it.
+      updateShortcutResults(q).catch(() => noteRefusal());
       // TEMPORARILY DISABLED: same bisection as the worker-pool
       // init effect above. If a hidden iframe host is the layout
       // regressor, even silently calling searchModules with no
@@ -339,6 +347,7 @@
     clearClipboardResults();
     clearDictResults();
     clearExtensionResults();
+    clearShortcutResults();
     clearRecents();
     console.timeLog("wp-open", "stores cleared");
     // Load MRU apps + graph-recent files in parallel. Both are cached
@@ -1238,6 +1247,25 @@
                   emphasis={60}
                   title={ext.title}
                   description={ext.description}
+                />
+              </CommandItem>
+            {/each}
+          </CommandGroup>
+          <CommandSeparator />
+        {/if}
+
+        {#if $shortcutResults.length > 0}
+          <CommandGroup heading={$t("sh.wp.grp.appActions")}>
+            {#each $shortcutResults as sc (sc.id)}
+              <CommandItem
+                value={`shortcut-${sc.id}`}
+                onSelect={() => { void runShortcutResult(sc); close(); }}
+              >
+                <WaypointerResult
+                  icon={Zap}
+                  emphasis={60}
+                  title={sc.title}
+                  description={sc.description}
                 />
               </CommandItem>
             {/each}

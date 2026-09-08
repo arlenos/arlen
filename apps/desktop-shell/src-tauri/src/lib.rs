@@ -500,7 +500,6 @@ pub fn run() {
             permissions::get_app_permissions,
             permissions::get_app_permission_detail,
             waypointer_system::waypointer_execute,
-            waypointer_system::waypointer_list_plugins,
             waypointer_system::waypointer_search_plugin,
             waypointer_system::waypointer_search_modules,
             theme::commands::get_theme,
