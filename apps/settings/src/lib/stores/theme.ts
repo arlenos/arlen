@@ -236,8 +236,6 @@ export function applyAppearance(config: AppearanceConfig | null): void {
   // Radius intensity → 6 semantic CSS vars. `full` and the per-corner
   // window outline are categorical and never scaled (mirrors
   // ArlenTheme::effective_full / effective_window_corners).
-  // Codex post-Sprint review HIGH-3 + companion app-settings-side
-  // intensity-injection bug.
   const intensity = config?.overrides?.radius_intensity ?? 1.0;
   root.style.setProperty(
     "--radius-chip",

@@ -39,8 +39,7 @@ const ACTIONS: &[QuickAction] = &[
     // DND is split into explicit enable / disable because the
     // shell side has no local DND-state cache — the daemon owns
     // it. Implicit "toggle" would require an async daemon round-
-    // trip just to flip a known value (Sprint D plan E11 + the
-    // Codex review's audit of cascading state).
+    // trip just to flip a known value.
     QuickAction {
         id: "qa.dnd_enable",
         icon: "bell-off",

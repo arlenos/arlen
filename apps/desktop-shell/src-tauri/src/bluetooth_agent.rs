@@ -1228,7 +1228,7 @@ mod tests {
         }
     }
 
-    /// Codex finding 1: a second blocking request must not be
+    /// A second blocking request must not be
     /// silently inserted alongside an existing one. The data layer
     /// reports the count; the agent uses that to short-circuit.
     #[test]
@@ -1278,7 +1278,7 @@ mod tests {
         assert_eq!(pm.count_blocking(), 2);
     }
 
-    /// Codex finding 2: Display entries must be cleanable per
+    /// Display entries must be cleanable per
     /// device path so a successful pair flow drops the dialog.
     #[test]
     fn pending_map_dismiss_display_only_targets_display_kind() {
@@ -1362,9 +1362,9 @@ mod tests {
     }
 
     /// `pending_dtos()` must reflect exactly what's left in the
-    /// map. Codex's concern was that a stale Display entry could
-    /// resurrect the dialog on frontend-restore — once we clean it
-    /// up via `dismiss_display_for_device`, `dtos()` must agree.
+    /// map. A stale Display entry would resurrect the dialog on
+    /// frontend-restore, so once `dismiss_display_for_device` has
+    /// cleaned it up, `dtos()` must agree.
     #[test]
     fn pending_dtos_reflects_post_dismiss_state() {
         let mut pm = PendingMap::default();

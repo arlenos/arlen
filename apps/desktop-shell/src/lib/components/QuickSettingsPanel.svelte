@@ -82,7 +82,7 @@
   /// by the shell-config-changed file watch), an error means the
   /// user's customisation just got corrupted somehow; we keep the
   /// last-known-good state in `userEntries` rather than silently
-  /// reverting to defaults (Codex review HIGH-3 / medium-3).
+  /// reverting to defaults.
   /// Either way we surface a visible warning toast — without it
   /// the failure looks like a "reset to defaults" mystery.
   let hasLoadedOnce = $state(false);

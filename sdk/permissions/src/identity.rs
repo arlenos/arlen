@@ -460,9 +460,9 @@ pub fn pid_start_time(pid: u32) -> Result<u64, IdentityError> {
 ///
 /// 1. Canonical AI daemon install paths -> "ai-daemon"
 /// 2. `/usr/bin/arlen-{name}` (root-only writable) -> `{name}`
-///    Per-binary identity, no shared `system` principal. Closes
-///    F4 (codex review): a `/usr/bin/arlen-notifyd` no longer
-///    inherits the same profile as `/usr/bin/arlen-knowledge`.
+///    Per-binary identity, no shared `system` principal, so a
+///    `/usr/bin/arlen-notifyd` does not inherit the same profile
+///    as `/usr/bin/arlen-knowledge`.
 ///    Each canonical daemon binary loads its own
 ///    `~/.config/permissions/{name}.toml`.
 /// 3. `/usr/lib/arlen/apps/{app_id}/...` -> app_id
@@ -1756,8 +1756,7 @@ mod tests {
 
     /// Canonical daemons under `/usr/bin/arlen-*` resolve to
     /// per-binary app_ids, not the shared "system" principal.
-    /// Closes F4 (codex adversarial review post-Sprint-D): the
-    /// catch-all bucket let any canonical-looking binary inherit
+    /// A catch-all bucket let any canonical-looking binary inherit
     /// `system`'s profile, collapsing least-privilege between
     /// notifyd, knowledge, installd, etc.
     #[test]

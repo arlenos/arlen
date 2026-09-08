@@ -84,10 +84,6 @@ export const PANELS: PanelMeta[] = [
   // Apps & Modules
   { id: "apps", title: "s.nav.apps", icon: "AppWindow", enabled: true, href: "/apps" },
   { id: "extensions", title: "s.nav.extensions", icon: "Puzzle", enabled: true, href: "/extensions" },
-  // Disabled until Phase 8 ships the permission-management UI.
-  // The route still resolves (the page renders a placeholder for
-  // direct-URL visitors) but the sidebar entry is greyed out and
-  // the settings-search index doesn't list it — Codex Sprint D
   // Was disabled while the panel was a placeholder: offering a permission
   // page that cannot actually manage permissions is a security UX trap. The
   // App-access browser is now real (it reads live grants via `access_grants`

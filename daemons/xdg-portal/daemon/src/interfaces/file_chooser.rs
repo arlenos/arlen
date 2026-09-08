@@ -135,10 +135,10 @@ impl FileChooser {
                 current_filter,
                 ..
             } => {
-                // Fail-closed on identity-resolution failure. Codex
-                // flagged that returning raw file:// to a possibly-
-                // sandboxed caller (because we coalesced the failure
-                // into Unconfined) is a Document-Portal-bypass.
+                // Fail-closed on identity-resolution failure.
+                // Returning raw file:// to a possibly-sandboxed
+                // caller, because the failure was coalesced into
+                // Unconfined, is a Document-Portal bypass.
                 // Real-world D-Bus glitches are rare; surfacing them
                 // as a backend error here is preferable to silently
                 // exposing host paths.
@@ -156,7 +156,7 @@ impl FileChooser {
                 // Save paths come back from the picker UI as
                 // `<currentDir>/<filename>` where filename is user-
                 // typed. Defense in depth against the path-traversal
-                // class Codex flagged: reject `..` / `.` components
+                // class: reject `..` and `.` components
                 // before handing the path to the Document Portal or
                 // the caller. The picker UI also rejects these in
                 // the input field, but the daemon revalidates so a
@@ -223,9 +223,9 @@ impl FileChooser {
 /// `writable` controls both the Document Portal permission list and
 /// which portal call we use: read-only / OpenFile flows need
 /// AddFull on existing files, write flows (Save*) need AddNamedFull
-/// because the target file may not exist yet — Codex review found
-/// that AddFull's underlying `open(path)` failed with ENOENT for
-/// new save targets, breaking the entire SaveFile sandbox path.
+/// because the target file may not exist yet. AddFull's underlying
+/// `open(path)` fails with ENOENT for a new save target, which
+/// breaks the entire SaveFile sandbox path.
 async fn build_uris_for_caller(
     paths: &[PathBuf],
     identity: &CallerIdentity,
@@ -297,7 +297,7 @@ fn success_results(
     if let Ok(owned) = Value::new(uris.to_vec()).try_to_owned() {
         map.insert(RESULT_URIS.to_string(), owned);
     }
-    // Codex P3: echo the user's selected filter back so callers with
+    // Echo the user's selected filter back so callers with
     // multiple filters can disambiguate which one confirmed.
     if let Some(filter) = current_filter {
         match options::filter_to_value(filter).and_then(|v| v.try_to_owned()) {
@@ -553,7 +553,7 @@ mod tests {
         assert_eq!(path_to_file_uri(&p), "file:///tmp/a%09b");
     }
 
-    /// Codex P2: `#`, `?`, `%` must be percent-encoded so they do not
+    /// `#`, `?` and `%` must be percent-encoded so they do not
     /// turn into URI fragment / query / partial-encoding markers in
     /// consumers.
     #[test]
@@ -566,8 +566,7 @@ mod tests {
         assert_eq!(path_to_file_uri(&p), "file:///tmp/p%25c.txt");
     }
 
-    /// Codex P2 follow-on: non-ASCII bytes percent-encode each UTF-8
-    /// byte. `ä` is U+00E4 → 0xC3 0xA4 → %C3%A4.
+    /// Non-ASCII percent-encodes each UTF-8 byte. `ä` is U+00E4 → 0xC3 0xA4 → %C3%A4.
     #[test]
     fn non_ascii_in_path() {
         let p = PathBuf::from("/home/user/Über.txt");
@@ -582,7 +581,7 @@ mod tests {
         assert_eq!(path_to_file_uri(&p), "file:///a/b/c");
     }
 
-    /// Codex H2: save-path validator rejects any `..` component, no
+    /// The save-path validator rejects any `..` component, no
     /// matter where it appears in the path. This is the trust
     /// boundary between picker-UI typed input and the Document
     /// Portal export.

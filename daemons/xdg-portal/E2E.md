@@ -60,9 +60,9 @@ flatpak install --user flathub org.kde.kdenlive
 2. Name the file something new (does NOT exist yet).
 3. **Expect:** picker accepts the new filename, save succeeds.
 4. Verify the file exists at the picked location.
-5. **Codex Sprint F regression check:** the old `AddFull`
-   path failed with ENOENT for non-existent targets; this
-   test is the proof that `AddNamedFull` is wired.
+5. **Regression check:** `AddFull` fails with ENOENT for a
+   non-existent target; this test is the proof that
+   `AddNamedFull` is wired.
 
 ### S4 - OpenURI passthrough (http(s))
 
@@ -90,7 +90,7 @@ busctl --user call org.freedesktop.portal.Desktop \
 **Expect:** D-Bus call returns response code 2 (OTHER) with
 an error message. Daemon log shows "OpenURI rejected scheme".
 
-### S6 - Sandboxed file:// path-traversal rejection (Codex Sprint F regression)
+### S6 - Sandboxed file:// path-traversal rejection
 
 Real Flatpak sandboxes don't ship `busctl` so this scenario is
 covered by unit tests rather than an end-to-end run:

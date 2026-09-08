@@ -396,8 +396,8 @@ mod tests {
     }
 
     /// Reserved characters in the filename are encoded so consumers
-    /// cannot mis-parse the URI. This is the same Codex P2 concern
-    /// that file_chooser handles for raw paths.
+    /// cannot mis-parse the URI, the same concern file_chooser
+    /// handles for raw paths.
     #[test]
     fn assemble_uri_reserved_chars_in_filename() {
         let mount = PathBuf::from("/run/user/1000/doc");

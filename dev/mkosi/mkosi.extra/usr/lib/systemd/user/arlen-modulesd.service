@@ -43,10 +43,9 @@ RestartSec=2
 # systemd creates `$XDG_CACHE_HOME/wasmtime/` (per-user services
 # resolve `$XDG_CACHE_HOME` to `~/.cache`) before the daemon starts,
 # which is exactly the path `wasmtime::Cache::from_file(None)`
-# expects. Codex S7 review: the previous `ReadWritePaths=
-# %h/.cache/wasmtime` made the service fail on first start when
-# the dir was absent because systemd treats `ReadWritePaths=`
-# entries as required paths during namespace setup.
+# NOT `ReadWritePaths=%h/.cache/wasmtime`, which makes the service
+# fail on first start when the dir is absent: systemd treats
+# `ReadWritePaths=` entries as required paths during namespace setup.
 ProtectSystem=strict
 ProtectHome=read-only
 CacheDirectory=wasmtime

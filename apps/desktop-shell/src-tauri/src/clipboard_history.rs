@@ -850,8 +850,8 @@ mod tests {
 
     #[test]
     fn push_updates_current_label_to_normal_after_sensitive() {
-        // Regression for the sticky-sensitive-label bug surfaced
-        // by Codex review: after a Sensitive SDK write followed
+        // Regression for the sticky-sensitive-label bug: after a
+        // Sensitive SDK write followed
         // by an external Normal copy, `current_label` must reflect
         // the actual current Wayland clipboard sensitivity, not
         // the last SDK label.

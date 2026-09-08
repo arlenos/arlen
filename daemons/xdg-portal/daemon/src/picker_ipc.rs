@@ -149,8 +149,8 @@ impl PickerIpcHandle {
 
     /// Wait up to `READY_TIMEOUT` for a picker-ui to connect. Returns
     /// quickly if one is already connected. Used by `submit` to
-    /// absorb the spawn → connect race that Codex review flagged
-    /// as a P1 source of spurious request failures.
+    /// absorb the spawn-to-connect race, which is otherwise a
+    /// source of spurious request failures.
     async fn wait_until_connected(&self) -> Result<()> {
         // Fast path: if a writer is already installed we are done.
         if self.inner.writer.lock().await.is_some() {
@@ -214,7 +214,7 @@ impl PickerIpcHandle {
     /// (FileChooser interface) translates that into a backend-failure
     /// D-Bus response.
     pub async fn submit(&self, request: PickerRequest) -> Result<oneshot::Receiver<PickerResponse>> {
-        // Codex P1: wait for the IPC handshake before reserving the
+        // Wait for the IPC handshake before reserving the
         // correlation slot, so a freshly-spawned picker that has not
         // yet connected does not turn a valid call into OTHER.
         self.wait_until_connected().await?;
@@ -381,10 +381,9 @@ async fn connection_task(stream: UnixStream, handle: PickerIpcHandle) {
 
     // Connection lost. A still-pending request at this point means
     // the picker disappeared without responding — that is a backend
-    // failure, not a user-initiated cancel. Codex flagged the
-    // earlier `Cancelled` synthesis here as the same kind of fake-
-    // user-cancel that the F1 stubs were caught doing. Synthesising
-    // `Error` keeps the trace honest.
+    // failure, not a user-initiated cancel. Synthesising `Cancelled`
+    // here would be the same fake user-cancel the F1 stubs were
+    // caught doing; `Error` keeps the trace honest.
     //
     // Orderly cancels never reach this code: respond() in the
     // picker UI sends a Cancelled frame BEFORE hide(), which
@@ -615,8 +614,7 @@ mod tests {
         assert!(handle.inner.pending.lock().await.is_empty());
     }
 
-    /// Codex E11 regression: when the picker disconnects with a
-    /// request still pending, the daemon must synthesise `Error`
+    /// When the picker disconnects with a request still pending, the daemon must synthesise `Error`
     /// (backend failure) rather than `Cancelled` (which would lie
     /// that the user dismissed the dialog).
     #[tokio::test]
@@ -669,8 +667,8 @@ mod tests {
         }
     }
 
-    /// Codex P1 regression: a submit started before the picker
-    /// connects must succeed once the picker connects within the
+    /// A submit started before the picker connects must succeed
+    /// once the picker connects within the
     /// readiness timeout. The fast path here covers a 50 ms-late
     /// picker — well within the 2 s budget — and verifies the
     /// notify pulse from the accept loop wakes the waiter.

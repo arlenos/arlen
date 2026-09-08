@@ -259,7 +259,7 @@ pub fn toggle_waypointer(app: AppHandle) {
 /// of timing. If a hidden-path call's 30ms-delayed apply thread
 /// is still in flight when a newer visible-path call arrives,
 /// the newer call drains first and the stale thread finds
-/// `None` and no-ops. Codex post-Sprint review HIGH-1 race fix.
+/// `None` and no-ops.
 #[tauri::command]
 pub fn set_query_and_show(app: AppHandle, query: String, mode: String) -> Result<(), String> {
     let prefilled = if mode.is_empty() {

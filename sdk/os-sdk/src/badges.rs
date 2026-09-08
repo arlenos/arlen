@@ -116,8 +116,8 @@ fn badge_to_proto(app_id: String, badge: BadgeKind) -> Result<BadgeSetPayload, E
             None,
         ),
         BadgeKind::Status { status, value } => {
-            // Codex Sprint-B-fat C10: enforce the badge
-            // wire-contract invariants at the SDK boundary so
+            // The badge wire-contract invariants are enforced
+            // at the SDK boundary so
             // shell + Knowledge-Graph consumers never see a
             // value attached to the wrong status.
             //
@@ -245,8 +245,8 @@ mod tests {
     async fn set_status_rejects_value_when_not_progress() {
         let emitter = MockEventEmitter::new();
         let b = Badges::new(emitter.clone(), "app");
-        // Codex C10: value attached to non-progress status
-        // must be rejected at the SDK boundary.
+        // A value attached to a non-progress status is rejected
+        // at the SDK boundary.
         for bad_status in [
             BadgeStatus::Success,
             BadgeStatus::Warning,

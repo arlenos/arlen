@@ -789,8 +789,7 @@ mod tests {
         assert!(matches!(change, AnnotationChange::Cleared { .. }));
     }
 
-    /// Regression for Sprint-A8 / Codex adversarial review
-    /// finding 1 (listener-registration race).
+    /// Regression for the listener-registration race.
     ///
     /// The Tauri plugin's two-step subscribe protocol relies on
     /// the SDK-side property that events arriving between

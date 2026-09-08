@@ -395,8 +395,7 @@ mod tests {
         assert_eq!(truncate_for_log(m), "hello");
     }
 
-    /// Codex adversarial-review finding 5: a multibyte codepoint
-    /// straddling LOG_MESSAGE_CAP would have made the old
+    /// A multibyte codepoint straddling LOG_MESSAGE_CAP makes a
     /// `&msg[..cap]` slice panic inside the host import, taking down
     /// the request task. We construct exactly that input and require
     /// the host method to return without unwinding.

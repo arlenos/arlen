@@ -96,10 +96,9 @@ impl<E: EventEmitter> Shortcuts<E> {
             // §6.4 Listing 13 implicitly assumes uniqueness
             // (each shortcut has its own action label).
             //
-            // Codex Sprint-B-fat C10: closes the silent
-            // misroute window where `set_state("save")`
-            // would land on whichever duplicate the shell
-            // happened to look up first.
+            // Duplicates open a silent misroute window where
+            // `set_state("save")` lands on whichever one the
+            // shell happened to look up first.
             let mut seen = std::collections::HashSet::new();
             for s in &shortcuts {
                 if s.action.is_empty() {

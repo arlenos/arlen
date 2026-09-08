@@ -39,9 +39,9 @@ pub enum CallerIdentity {
     /// sender header, `org.freedesktop.DBus` was unreachable, or
     /// PID-to-cgroup lookup failed. Authorization decisions that
     /// touch a security boundary (file:// access through the host)
-    /// must fail-closed for this state — Codex review found that
-    /// silently coalescing this into `Unconfined` would let a
-    /// transient D-Bus glitch waive the sandbox check.
+    /// must fail-closed for this state: silently coalescing it into
+    /// `Unconfined` would let a transient D-Bus glitch waive the
+    /// sandbox check.
     ///
     /// Also not constructed today, and that is worth knowing rather than
     /// assuming: the fail-closed guards written against it never fire, because

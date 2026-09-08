@@ -32,7 +32,7 @@ export interface WindowMatch {
 
 export interface WindowRule {
   /// Match criteria — must be present, the compositor parser
-  /// skips entries without it (Codex Sprint B review HIGH 2).
+  /// skips entries without it.
   match: WindowMatch;
   /// Force float or tile when the matcher hits.
   action: WindowRuleAction;
