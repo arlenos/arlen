@@ -69,6 +69,21 @@ function run(...paths) {
   );
 }
 
+// A WASM guest depends on the WIT through `wit_bindgen::generate!`, which names
+// the path in a macro and nowhere in its Cargo.toml. Adding three fields to
+// `search-result` on 8 September left `modules/unicode` unable to compile and this
+// gate said nothing, because a manifest grep cannot see that dependency. Pinned by
+// selection rather than by compiling: the cheap half is what rots.
+{
+  const r = spawnSync("bash", [CHECK, "--list", "sdk/module-sdk/wit/waypointer.wit"], {
+    encoding: "utf8",
+    cwd: ROOT,
+  });
+  const selected = (r.stdout || "").split("\n").map((l) => l.trim());
+  check("a WIT change reaches the guests that generate bindings from it", selected.includes("modules/unicode") && selected.includes("modules/man"));
+  check("and still reaches the cargo dependents", selected.includes("daemons/modulesd"));
+}
+
 // A cargo failure is not automatically a verdict about the change. On 8 September
 // this gate named forty-four crates as broken by a comment-only commit; the
 // machine had run out of disk, and every one of those cargo runs failed before it
