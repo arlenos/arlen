@@ -11,8 +11,23 @@ interface provider {
         /// before passing this to the shell so result IDs are globally
         /// unique even across modules with overlapping spaces.
         id: string,
+        /// What to show. Required even when `title-key` is set, so a module that
+        /// ships no catalogue is still a legal module and a missing locale still
+        /// renders something.
         title: string,
         description: option<string>,
+        /// A key into the module's OWN catalogue, resolved by the host in the
+        /// user's locale. Falls back to `title` when the key is absent, the
+        /// module ships no catalogue, or that catalogue has no entry for this
+        /// locale.
+        ///
+        /// Resolution is the host's on purpose: a module does not learn the
+        /// user's locale from this, and cannot decide what a locale means.
+        title-key: option<string>,
+        /// The same for `description`.
+        description-key: option<string>,
+        /// Arguments for the two keys, as a JSON object. Absent means none.
+        args: option<string>,
         /// Lucide icon name or absolute path (host resolves both).
         icon: option<string>,
         /// 0.0 to 1.0. Higher means more relevant. Host clamps.

@@ -17,5 +17,6 @@ pub mod files;
 pub mod graph;
 pub mod log;
 pub mod network;
+pub mod strings;
 
 pub use context::CapabilityContext;

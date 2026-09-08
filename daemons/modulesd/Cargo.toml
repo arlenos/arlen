@@ -18,6 +18,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# A module's own message catalogue, resolved host-side in the user's locale. The
+# same MF2 parser and formatter every Arlen surface uses, so a module's strings
+# are not a second format nobody else reads.
+arlen-i18n = { path = "../../sdk/i18n" }
 toml = "0.8"
 thiserror = "2"
 dirs = "6"
