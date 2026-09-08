@@ -267,11 +267,18 @@ fn write_toolkit_configs(
     write_guarded(&config.join("gtk-4.0/gtk.css"), &gtk4_css, GTK_MARKER, &mut report);
 
     // GTK 3 settings: which widget theme, icon set, cursor and font a GTK3 app
-    // uses. None of that is expressible in the override sheet above, and the
-    // theme name is what makes a widget theme reachable at all - GTK falls back
-    // to stock Adwaita for anything this file does not name. Same guard: a
-    // hand-authored settings.ini is left alone, because this one is a file
+    // uses. None of that is expressible in the override sheet above. Same guard:
+    // a hand-authored settings.ini is left alone, because this one is a file
     // people really do write themselves.
+    //
+    // NOT THE SELECTOR ON A MACHINE THAT HAS THE GNOME SCHEMAS, and that is
+    // measured rather than assumed. On 8 September a GTK3 probe under a correct
+    // file of ours resolved `gtk-theme-name='Adwaita'` and none of these values;
+    // GTK3 prefers `org.gnome.desktop.interface` whenever it is installed and
+    // falls back to the SCHEMA's default rather than to this file. Our image has
+    // those schemas, so the shell also names the theme there - see
+    // `InterfaceSelection`, which both writers render. This file is what a
+    // machine WITHOUT them reads, which is why it is still written.
     let selected = crate::gtk::installed_gtk_theme(&crate::gtk::GTK_THEME_CANDIDATES, &gtk_theme_dirs());
     // The icon set is named only when it is one, which is not the same as the
     // directory being there - see `installed_icon_theme`.
@@ -289,6 +296,13 @@ fn write_toolkit_configs(
     // the 7 September toolkit shot. libadwaita apps take the same answer through
     // the portal instead, and agreeing with ourselves in both channels is the
     // point.
+    //
+    // Re-measured on 8 September against the schema, because the GTK3 half of
+    // this turned out to be a fiction: GTK4 reads this file when the schema has
+    // nothing to say, and the SCHEMA WINS when it does. A probe with
+    // `font-name='Schema Font 9'` set there reported exactly that, with our
+    // file's font untouched on disk. So this is GTK4's fallback rather than its
+    // authority, and the authority is written by the shell.
     //
     // No theme name here, and the `None` is deliberate rather than a fallback:
     // Arlen ships no GTK4 widget theme and will not, because there is no stable
