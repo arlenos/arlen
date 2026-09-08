@@ -281,6 +281,8 @@ jobs:
           python3 dev/scripts/check-fixture-on-failure.py
           node dev/scripts/test-check-fixture-on-failure.mjs
           python3 dev/scripts/check-app-profiles.py
+          python3 dev/scripts/check-plugin-subscriptions.py
+          node dev/scripts/test-check-plugin-subscriptions.mjs
           python3 dev/scripts/check-profile-catalogue.py
           python3 dev/scripts/check-profile-principals.py
           node dev/scripts/test-check-profile-principals.mjs
