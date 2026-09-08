@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Tim Kicker
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-fixture-module-reaches-graph"
+version = "0.1.0"
+edition = "2021"
+description = "A test guest that CALLS the graph import, to prove an undeclared capability is absent rather than refused"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.35"
+
+[profile.release]
+opt-level = "s"
+strip = true
+lto = true
