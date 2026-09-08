@@ -17,10 +17,6 @@
     killProcess, formatBytes, type ProcessInfo,
   } from "$lib/stores/waypointerProcesses.js";
   import {
-    unicodeResults, updateUnicodeResults, clearUnicodeResults,
-    type UnicodeChar,
-  } from "$lib/stores/waypointerUnicode.js";
-  import {
     Command, CommandInput, CommandList,
     CommandGroup, CommandItem, CommandSeparator,
   } from "@arlen/ui-kit/components/ui/command/index.js";
@@ -339,7 +335,6 @@
     specialArg.set("");
     clearWindowResults();
     clearProcessResults();
-    clearUnicodeResults();
     clearSettingsResults();
     clearPowerResults();
     clearQuickActionResults();
@@ -544,19 +539,6 @@
     close();
   }
 
-  function copyUnicodeChar(uc: UnicodeChar) {
-    // Await the copy before closing. It used to fire and hide in the same tick,
-    // so a refused clipboard left the person with their PREVIOUS clipboard and
-    // no way to know - they find out at the paste, which is the worst place.
-    void navigator.clipboard
-      .writeText(uc.char_str)
-      .then(() => {
-        actionError.set(null);
-        close();
-      })
-      .catch(() => actionError.set("sh.wp.errCopy"));
-  }
-
   /// Map `PowerActionResult.id` to its lucide icon. The backend sets
   /// a freedesktop icon name on `SearchResult.icon` (`system-suspend`,
   /// `system-reboot`, …) but those aren't guaranteed to be present in
@@ -639,7 +621,20 @@
         const q = inputRef?.value ?? query;
         if (q === prev) return;
         prev = q;
-        const trimmed = q.trim();
+        let trimmed = q.trim();
+        let searchQuery = q;
+
+        // The `unicode ` keyword is a DOOR onto the module's `u:` search, not a
+        // second implementation of it. It was its own command, its own store and
+        // its own result section, so the same question answered differently
+        // depending on which way it was asked - and neither answer was wrong
+        // enough to look wrong. The keyword stays because it is more
+        // discoverable than a prefix and nobody should have to relearn what they
+        // already knew; what it does now is rewrite the query and fall through.
+        if (/^unicode\b/i.test(trimmed)) {
+          trimmed = `u:${trimmed.slice(7).trim()}`;
+          searchQuery = trimmed;
+        }
 
         // Detect special prefixes.
         if (trimmed.startsWith(">")) {
@@ -711,25 +706,6 @@
           return;
         }
 
-        // "unicode" keyword: character search.
-        if (trimmed.toLowerCase().startsWith("unicode")) {
-          const filter = trimmed.slice(7).trim();
-          specialMode.set("unicode");
-          specialArg.set(filter);
-          searchResults.set([]);
-          inlineResult.set(null);
-          if (filter) {
-            updateUnicodeResults(filter);
-          } else {
-            clearUnicodeResults();
-          }
-          const wrap = document.getElementById("wp-inline-wrap");
-          if (wrap) wrap.style.display = "none";
-          const listUni = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
-          if (listUni) listUni.style.display = "";
-          return;
-        }
-
         // URL detection: if it looks like a URL, show "Open URL".
         if (looksLikeUrl(trimmed)) {
           specialMode.set("url");
@@ -755,7 +731,6 @@
           searchResults.set([]);
           inlineResult.set(null);
           clearProcessResults();
-          clearUnicodeResults();
           const wrap = document.getElementById("wp-inline-wrap");
           if (wrap) wrap.style.display = "none";
           const listP = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
@@ -767,13 +742,12 @@
         specialMode.set(null);
         specialArg.set("");
         clearProcessResults();
-        clearUnicodeResults();
         // Restore list visibility.
         const listEl = document.querySelector("[data-slot='command-list']") as HTMLElement | null;
         if (listEl) listEl.style.display = "";
 
         // Search apps in Rust.
-        debouncedSearch(q);
+        debouncedSearch(searchQuery);
         // Evaluate math/units.
         if (trimmed.length < 2) {
           inlineResult.set(null);
@@ -961,7 +935,7 @@
           <div class="wp-empty">{$t($actionError)}</div>
         {/if}
 
-        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && $extensionResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
+        {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && $extensionResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
           <!-- Two different sentences, because they are two different facts.
                Every provider's failure leaves its store empty, which is also
                what finding nothing looks like, so without the count this said
@@ -1110,23 +1084,6 @@
                   fallbackIcon={Skull}
                   title={proc.name}
                   description={$t("sh.wp.procDetail", { pid: proc.pid, size: formatBytes(proc.memory_bytes, $locale) })}
-                />
-              </CommandItem>
-            {/each}
-          </CommandGroup>
-        {/if}
-
-        {#if $unicodeResults.length > 0}
-          <CommandGroup heading={$t("sh.wp.grp.unicode")}>
-            {#each $unicodeResults as uc (uc.codepoint)}
-              <CommandItem
-                value={`unicode-${uc.codepoint}`}
-                onSelect={() => copyUnicodeChar(uc)}
-              >
-                <WaypointerResult
-                  glyph={uc.char_str}
-                  title={uc.name}
-                  description={uc.codepoint_hex}
                 />
               </CommandItem>
             {/each}

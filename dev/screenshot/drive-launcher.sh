@@ -165,5 +165,28 @@ say "an installed extension's answer reaches the list" \
 say "and it is under its own heading, not among the applications" \
   "$(printf '%s' "$ext" | grep -qiE "Extensions|Erweiterungen" && echo 1 || echo 0)" "$ext"
 
+# THE KEYWORD IS A DOOR, NOT A SECOND ANSWER. `unicode ` used to be its own
+# command, its own store and its own section; it now rewrites to the module's
+# `u:` prefix and falls through. This discriminates: if the rewrite were gone the
+# old branch would set a special mode and never fan out, so the extensions
+# section would stay empty no matter what the fixture answers.
+cat > "$work/keyword.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+await wait(2500);
+const input = document.querySelector("input");
+if (!input) return JSON.stringify({ typed: false });
+const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+set.set.call(input, "unicode heart");
+input.dispatchEvent(new Event("input", { bubbles: true }));
+await wait(2000);
+return JSON.stringify({ typed: true, text: document.body.innerText.replace(/\s+/g, " ").trim().slice(0, 260) });
+JS
+kw=$("$here/shoot.sh" "http://localhost:$port/waypointer?searchmock=extensions" \
+  "$here/out/launcher-unicode-keyword.png" "$work/keyword.js" 2>&1 | sed -n 's/^inject result: //p')
+
+say "the unicode keyword reaches the same answer the prefix does" \
+  "$(printf '%s' "$kw" | grep -q '"typed":true' \
+     && printf '%s' "$kw" | grep -qi "HEAVY BLACK HEART" && echo 1 || echo 0)" "$kw"
+
 [ "$fail" = 0 ] && echo "the launcher says what its prefixes do, answers a search that found nothing, and shows what an extension found"
 exit "$fail"

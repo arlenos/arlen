@@ -430,7 +430,6 @@ const messages: Catalogs = {
     "sh.wp.grp.recentFiles": "Recent Files",
     "sh.wp.grp.windows": "Windows",
     "sh.wp.grp.processes": "Processes",
-    "sh.wp.grp.unicode": "Unicode",
     "sh.wp.grp.applications": "Applications",
     "sh.wp.grp.extensions": "Extensions",
     // What a quick action says once it has taken. The backend names the line and
@@ -1130,7 +1129,6 @@ const messages: Catalogs = {
     "sh.wp.grp.recentFiles": "Zuletzt benutzte Dateien",
     "sh.wp.grp.windows": "Fenster",
     "sh.wp.grp.processes": "Prozesse",
-    "sh.wp.grp.unicode": "Unicode",
     "sh.wp.grp.applications": "Programme",
     "sh.wp.grp.extensions": "Erweiterungen",
     "sh.toast.assistantDidNotOpen": "Der Assistent hat nicht geöffnet. {$why}",

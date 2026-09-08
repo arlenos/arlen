@@ -5,14 +5,13 @@
   export type { InlineEvalResult };
 
   /// Prefix-triggered modes: '>' shell, '#' manual, '?' web search,
-  /// plus the detected url / kill / unicode / projects modes.
+  /// plus the detected url / kill / projects modes.
   export type SpecialMode =
     | "shell"
     | "man"
     | "url"
     | "search"
     | "kill"
-    | "unicode"
     | "projects"
     | null;
 </script>
