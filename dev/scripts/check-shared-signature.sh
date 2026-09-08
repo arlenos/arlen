@@ -27,7 +27,35 @@
 #     dev/scripts/check-shared-signature.sh [changed-path...]
 #
 # With no arguments it reads the staged set, which is what the hook wants.
+#
+#     dev/scripts/check-shared-signature.sh --classify < cargo-output
+#
+# reads one crate's captured cargo output and answers `environment` or `code`.
+# It exists because this gate spent one run on 8 September blaming a commit for
+# breaking forty-four crates when the machine had simply run out of disk: cargo
+# failed, and the gate reported the only failure it knew how to describe. A check
+# that cannot tell "your change broke this" from "this could not be built at all"
+# is a surface saying something it never learned.
 set -uo pipefail
+
+# Did cargo fail because of the machine rather than the code?
+#
+# Narrow on purpose. Each pattern is a condition under which NO commit could have
+# compiled, so treating it as a verdict about the change is always wrong; anything
+# outside this list stays a code failure, because guessing the other way would let
+# a real break through.
+classify_failure() {
+    if grep -qE 'No space left on device|os error 28' -; then
+        echo environment
+    else
+        echo code
+    fi
+}
+
+if [ "${1:-}" = "--classify" ]; then
+    classify_failure
+    exit 0
+fi
 
 root=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 cd "$root" || exit 0
@@ -79,13 +107,29 @@ echo "shared crate changed (${!shared[*]}); checking ${#to_check[@]} affected cr
 export CXXFLAGS="${CXXFLAGS:-} -include cstdint"
 
 failed=()
+blocked=()
 for crate in "${!to_check[@]}"; do
     [ -f "$crate/Cargo.toml" ] || continue
     if ! out=$(cargo check --quiet --all-targets --manifest-path "$crate/Cargo.toml" 2>&1); then
+        if [ "$(printf '%s\n' "$out" | classify_failure)" = environment ]; then
+            blocked+=("$crate")
+            printf '%s\n' "$out" | grep -E 'No space left on device|os error 28' | head -2
+            # One is enough: the machine will not have fixed itself by the next
+            # crate, and forty more identical failures bury the one line that says
+            # what is actually wrong.
+            break
+        fi
         failed+=("$crate")
         printf '%s\n' "$out" | grep -E '^(error|warning: unused)' | head -5
     fi
 done
+
+if [ ${#blocked[@]} -ne 0 ]; then
+    echo
+    echo "the check could not run: the build failed on the machine, not on the change"
+    echo "(${blocked[*]} ran out of disk). Free space and run it again."
+    exit 1
+fi
 
 if [ ${#failed[@]} -ne 0 ]; then
     echo
