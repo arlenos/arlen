@@ -12,26 +12,18 @@
 //! It stages the shipped `manifest.toml` and the built component into a temp
 //! module directory and drives the manager the way the shell does.
 //!
-//! **It fails today, and that is the finding rather than a broken test.**
-//! Discovery, tier classification and enable all pass. Hosting does not, and
-//! BOTH ways of building a Rust guest fail, differently:
-//!
-//! * `wasm32-wasip2` - the target rustup gives you - links the standard
-//!   library, and the standard library imports WASI. Thirteen interfaces in
-//!   that build, all `wasi:cli/*` and `wasi:io/*` (stdio, exit, environment),
-//!   none of them filesystem or sockets. `modulesd`'s linker provides the four
-//!   `arlen:host/*` interfaces and nothing else, so instantiation is refused:
-//!   "component imports instance `wasi:io/poll@0.2.6`, but a matching
-//!   implementation was not found in the linker".
-//!
-//! * `wasm32-unknown-unknown` plus `wasm-tools component new` - what
-//!   `just module-unicode` builds - imports nothing at all and instantiates
-//!   cleanly. Then `init()` traps, at an unnamed wasm function, which is what
-//!   Rust's std does on a target where most of it aborts.
-//!
-//! So there is no way to write this module in Rust today that the daemon can
-//! run. Leave the test here and failing: it is the shortest statement of why
-//! the runtime has never hosted a guest.
+//! **WHAT THIS FILE SAID BEFORE, AND WHY IT WAS WRONG.** It concluded that no
+//! Rust guest the daemon can run could be written today: the `wasm32-wasip2`
+//! build imports thirteen `wasi:*` interfaces our linker does not provide, and
+//! the `wasm32-unknown-unknown` build "traps at an unnamed wasm function, which
+//! is what Rust's std does on a target where most of it aborts". The first half
+//! is true. The second was a guess, and it was the daemon's fault, not the
+//! guest's: `tier1.rs` printed the trap with anyhow's plain Display, which drops
+//! the source where wasmtime puts the reason. Printing the chain said
+//! `wasm trap: interrupt` - the HOST interrupting the guest, because epoch
+//! interruption was enabled while nothing ever set a store deadline or advanced
+//! the epoch, so every module was already past its deadline on its first
+//! instruction. Fixed on 8 September; this test is the thing that found it.
 //!
 //! `#[ignore]`d because it needs the component built first:
 //!
@@ -133,13 +125,46 @@ async fn the_first_module_is_discovered_hosted_and_answers_a_search() {
         other => panic!("expected results, got {other:?}"),
     }
 
-    // A name query. The in-process plugin answered this from a prebuilt index;
-    // the module scans, because the fuel budget is per call and has no
-    // allowance for one-time setup. Whether that fits in 1 M instructions is
-    // exactly what this asserts - a trap here is the finding, not a flake.
+}
+
+/// A name search, which is the open question rather than a passing check.
+///
+/// **It fails, and that is the finding.** The in-process plugin answers this
+/// from an index of every named codepoint, built once and reused. A module
+/// cannot: the fuel budget is per host call and has no allowance for one-time
+/// setup, so the guest walks the codepoint space on every keystroke and 1 M fuel
+/// does not reach `HEART`. Measured 8 September, with the daemon's error chain
+/// finally printed: `wasm trap: all fuel consumed by WebAssembly`.
+///
+/// Left asserting what an extension author should get rather than the trap they
+/// do get, on purpose. A test that asserted the trap would go green over a real
+/// gap and defend it; this one goes green the day the gap closes.
+///
+/// The gap is a capability question rather than a plumbing one, so it is
+/// recorded for the planner in `coder-reports.md`: a larger one-time budget for
+/// `init`, a persistent index in the instance the daemon already keeps between
+/// calls, or setup fuel paid once and refilled per call.
+#[tokio::test]
+#[ignore = "the open fuel finding; needs modules/unicode built, see the file header"]
+async fn a_name_search_should_not_have_to_rescan_the_codepoint_space() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::env::set_var("ARLEN_USER_MODULES_DIR", tmp.path());
+    stage(tmp.path());
+
+    let (tx, _rx) = broadcast::channel(16);
+    let manager: Arc<Manager> = Manager::new(tx).unwrap();
+    manager.discover().await;
+    let _ = manager
+        .handle_request(Request::SetEnabled {
+            id: "1".into(),
+            module_id: MODULE_ID.into(),
+            enabled: true,
+        })
+        .await;
+
     let resp = manager
         .handle_request(Request::WaypointerSearch {
-            id: "3".into(),
+            id: "2".into(),
             module_id: MODULE_ID.into(),
             query: "HEART".into(),
         })
