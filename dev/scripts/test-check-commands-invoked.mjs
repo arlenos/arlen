@@ -74,6 +74,55 @@ function run(root) {
   cleanup(root);
 }
 
+// A Tauri command does not cross an app boundary, and this is the case that was
+// wrong until 8 September: two apps register the same name, ONE of them calls it,
+// and the pooled matcher let that one call vouch for both. Really happened, twice
+// - `night_light_set` (shell + Settings, called from Settings) and `register_menu`
+// (shell + harness, called from harness).
+{
+  const root = mint("commands-invoked-per-app-");
+  for (const [app, frontend] of [["caller", 'invoke("shared_cmd");\n'], ["other", "// nothing\n"]]) {
+    const dir = join(root, "apps", app);
+    mkdirSync(join(dir, "src-tauri/src"), { recursive: true });
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(
+      join(dir, "src-tauri/src/lib.rs"),
+      "fn main() { builder.invoke_handler(tauri::generate_handler![\n  commands::shared_cmd,\n]); }\n",
+    );
+    writeFileSync(join(dir, "src/page.ts"), frontend);
+  }
+  const r = run(root);
+  check(
+    "one app's call does not vouch for another app's copy",
+    r.code === 1 && r.out.includes("other") && !r.out.includes("- caller:"),
+  );
+  cleanup(root);
+}
+
+// And the same for the marker: a name is not one command.
+{
+  const root = mint("commands-invoked-marker-scope-");
+  for (const [app, lib] of [
+    ["marked", "/// NO CALLER: explained here.\n#[tauri::command]\nfn shared_cmd() {}\n"],
+    ["unmarked", "#[tauri::command]\nfn shared_cmd() {}\n"],
+  ]) {
+    const dir = join(root, "apps", app);
+    mkdirSync(join(dir, "src-tauri/src"), { recursive: true });
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(
+      join(dir, "src-tauri/src/lib.rs"),
+      lib + "\nfn main() { builder.invoke_handler(tauri::generate_handler![\n  commands::shared_cmd,\n]); }\n",
+    );
+    writeFileSync(join(dir, "src/page.ts"), "// nothing\n");
+  }
+  const r = run(root);
+  check(
+    "a marker in one app does not answer for another",
+    r.code === 1 && r.out.includes("unmarked") && !r.out.includes("- marked:"),
+  );
+  cleanup(root);
+}
+
 // A command that answers for itself beside the code, which is where a reader
 // goes to ask. This is how an entry leaves the carried list.
 {
