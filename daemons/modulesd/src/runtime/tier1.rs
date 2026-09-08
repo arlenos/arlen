@@ -454,6 +454,51 @@ fn populate_linker(linker: &mut Linker<ModuleStore>) -> Result<()> {
 mod tests {
     use super::*;
 
+    /// The epoch deadline actually stops a guest that will not stop itself.
+    ///
+    /// A guard that never fires is the same as no guard, and this one spent
+    /// months in the opposite failure - it fired on every guest's first
+    /// instruction because nothing gave the store a deadline or advanced the
+    /// epoch. So both directions are now pinned: the module tests prove a real
+    /// guest runs and survives being idle, and this proves a spinning one is
+    /// still cut off.
+    ///
+    /// A core module rather than a component, and one tick rather than fifty:
+    /// the claim is about the ENGINE's epoch configuration and the store's trap
+    /// mode, which are the same either way, and a test that waited the full five
+    /// seconds would be a test people skip.
+    #[tokio::test]
+    async fn a_guest_that_will_not_stop_is_stopped() {
+        let runtime = Tier1Runtime::new().expect("runtime init");
+        let module = wasmtime::Module::new(
+            runtime.engine(),
+            r#"(module (func (export "spin") (loop br 0)))"#,
+        )
+        .expect("the spinner compiles");
+
+        let mut store = Store::new(runtime.engine(), ());
+        store.epoch_deadline_trap();
+        store.set_epoch_deadline(1);
+        // Fuel enough that it cannot be what stops this. The engine has
+        // `consume_fuel` on, so a store starts at zero and the first cut of this
+        // test trapped on fuel while claiming to be about the deadline - which is
+        // the same shape of wrong answer the whole morning has been about.
+        store.set_fuel(u64::MAX).expect("fuel");
+        let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+            .await
+            .expect("instantiate");
+        let spin = instance
+            .get_typed_func::<(), ()>(&mut store, "spin")
+            .expect("the export is there");
+
+        let err = spin.call_async(&mut store, ()).await.expect_err("must not return");
+        let reason = format!("{err:#}");
+        assert!(
+            reason.contains("interrupt"),
+            "the deadline is what stopped it, not something else: {reason}"
+        );
+    }
+
     #[tokio::test]
     async fn runtime_constructs_without_module() {
         let r = Tier1Runtime::new().expect("runtime init");
