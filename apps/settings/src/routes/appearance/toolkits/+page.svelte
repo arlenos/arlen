@@ -59,13 +59,13 @@
       <div class="tk-card" class:off={!tk.native && !on}>
         <div class="tk-head">
           <div class="tk-title">
-            <span class="tk-name">{tk.name}</span>
+            <span class="tk-name">{$t(tk.nameKey)}</span>
             <Badge variant={badge.tone}>{$t(badge.labelKey)}</Badge>
           </div>
           {#if tk.native}
             <span class="tk-always">{$t("s.tk.alwaysOn")}</span>
           {:else}
-            <Switch value={on} ariaLabel={$t("s.tk.applyTo", { name: tk.name })} onchange={(v) => setEnabled(tk.id, v)} />
+            <Switch value={on} ariaLabel={$t("s.tk.applyTo", { name: $t(tk.nameKey) })} onchange={(v) => setEnabled(tk.id, v)} />
           {/if}
         </div>
 
@@ -105,7 +105,7 @@
             <CollapsibleContent>
               <div class="ovr-body">
                 <div class="ovr-row">
-                  <span class="ovr-label">{$t("s.tk.accentFor", { name: tk.name })}</span>
+                  <span class="ovr-label">{$t("s.tk.accentFor", { name: $t(tk.nameKey) })}</span>
                   <span class="ovr-accent">
                     {#if hasAccentOverride($accentOverrides, tk.id)}
                       <button class="ovr-reset" type="button" aria-label={$t("s.tk.resetAccent")} title={$t("s.tk.backToTheme")} onclick={() => resetAccentOverride(tk.id)}>
@@ -121,12 +121,12 @@
                         type="color"
                         value={$accentOverrides[tk.id] ?? hubAccent}
                         oninput={(e) => setAccentOverride(tk.id, e.currentTarget.value)}
-                        aria-label={$t("s.tk.accentFor", { name: tk.name })}
+                        aria-label={$t("s.tk.accentFor", { name: $t(tk.nameKey) })}
                       />
                     </label>
                   </span>
                 </div>
-                <p class="ovr-note">{$t("s.tk.note", { name: tk.name })}</p>
+                <p class="ovr-note">{$t("s.tk.note", { name: $t(tk.nameKey) })}</p>
               </div>
             </CollapsibleContent>
           </Collapsible>
