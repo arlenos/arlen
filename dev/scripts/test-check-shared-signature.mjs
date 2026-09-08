@@ -69,5 +69,25 @@ function run(...paths) {
   );
 }
 
+// A cargo failure is not automatically a verdict about the change. On 8 September
+// this gate named forty-four crates as broken by a comment-only commit; the
+// machine had run out of disk, and every one of those cargo runs failed before it
+// read a line of the change. Both directions are pinned: a full disk must not be
+// read as a break, and a real type error must still be one.
+{
+  const classify = (text) =>
+    spawnSync("bash", [CHECK, "--classify"], { encoding: "utf8", cwd: ROOT, input: text })
+      .stdout.trim();
+  check(
+    "a full disk is the machine failing, not the change",
+    classify("error: failed to write to `/x/full.rmeta`: No space left on device (os error 28)\n") ===
+      "environment",
+  );
+  check(
+    "a type error is still the change",
+    classify("error[E0061]: this function takes 2 arguments but 1 was supplied\n") === "code",
+  );
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nthe selection holds");
 process.exit(failures ? 1 : 0);
