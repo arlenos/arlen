@@ -169,11 +169,57 @@ export const SYS_DEFAULTS: Record<string, string | number | boolean> = {
 export const overrides = writable<Record<string, string | number | boolean>>({});
 
 /// The effective values: an override wins, else the resolved default.
-export const effective = derived(overrides, ($o) => {
-  const out: Record<string, string | number | boolean> = { ...SYS_DEFAULTS };
+/// The active theme's own values, as the backend resolves them.
+///
+/// `SYS_DEFAULTS` above is a hardcoded copy of what the shipped theme happens to
+/// name, and a copy of a value is a value that drifts: the sound row said
+/// "Chime" until 19 August, naming a cue no resolver could find, because nothing
+/// compared the page's idea of the default against the theme's. `sdk/theme`
+/// resolves the real ones and `theme_resolved_sounds` hands them over - the same
+/// `SoundTokens` the notification daemon plays, so the page and the speaker
+/// agree by construction rather than by somebody remembering.
+///
+/// Empty until the read lands, and empty again if it fails: the hardcoded
+/// defaults stay as the floor, which is what the page showed before this
+/// existed. A failed read must not blank a row.
+const resolvedDefaults = writable<Record<string, string>>({});
+
+/// The value each field has right now: the theme's, unless overridden.
+export const effective = derived([overrides, resolvedDefaults], ([$o, $r]) => {
+  const out: Record<string, string | number | boolean> = { ...SYS_DEFAULTS, ...$r };
   for (const k of Object.keys($o)) out[k] = $o[k];
   return out;
 });
+
+/// The event key each `SoundBinding` carries, to the field name this store uses.
+const SOUND_FIELD_OF: Record<string, string> = {
+  notification: "sndNotification",
+  error: "sndError",
+  warning: "sndWarning",
+  action: "sndAction",
+  "device-added": "sndDeviceAdded",
+  "device-removed": "sndDeviceRemoved",
+};
+
+/// Read the active theme's resolved cue names.
+///
+/// Best-effort: a backend that will not answer leaves the hardcoded floor in
+/// place, and the page renders exactly as it did before.
+export async function loadResolvedSounds(): Promise<void> {
+  try {
+    const bindings = await invoke<Array<{ event: string; sound: string }>>(
+      "theme_resolved_sounds",
+    );
+    const out: Record<string, string> = {};
+    for (const b of bindings) {
+      const field = SOUND_FIELD_OF[b.event];
+      if (field && b.sound) out[field] = b.sound;
+    }
+    resolvedDefaults.set(out);
+  } catch (e) {
+    console.warn("[settings] resolved sounds unavailable:", e);
+  }
+}
 
 /// Whether a field is overridden.
 export function isOverridden(o: Record<string, string | number | boolean>, key: string): boolean {
