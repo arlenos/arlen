@@ -41,16 +41,11 @@ import re
 import sys
 from pathlib import Path
 
-# Events listened for with no sender, by app, with why. Every entry is a real
-# defect rather than a tolerated shape.
-CARRIED: dict[str, tuple[int, str]] = {
-    "settings": (
-        1,
-        "`arlen://shell-config-changed`: nothing emits it, and the shell config "
-        "it would announce is read on demand instead. Either the emit was never "
-        "written or the listener outlived it",
-    ),
-}
+# Events listened for with no sender, by app, with why. EMPTY, and it is meant to
+# stay that way: the two shapes this check was written for were both fixed the
+# day it landed, so an entry here is a defect somebody decided to carry rather
+# than a state the tree is in.
+CARRIED: dict[str, tuple[int, str]] = {}
 
 # The eleven-app half of the first carried list was ONE cause, and it is fixed:
 # an app publishes its top-bar menu through `sdk/tauri-plugin-shell`, the shell

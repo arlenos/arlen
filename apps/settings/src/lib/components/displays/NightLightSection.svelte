@@ -8,10 +8,15 @@
   /// dispatches the matching `arlen-shell-overlay` request. The
   /// compositor warms the screen within ~200ms.
   ///
-  /// We read the persisted state on mount and reflect later writes
-  /// from the compositor / shell via the existing
-  /// `arlen://shell-config-changed` event the shell emits when
-  /// shell.toml is rewritten.
+  /// We read the persisted state on mount and reflect later writes from the
+  /// shell - somebody flipping night light in Quick Settings while this page is
+  /// open - by watching the file they both use.
+  ///
+  /// `config:shell:changed`, from THIS app's own watcher. It listened for
+  /// `arlen://shell-config-changed` until 9 September, which the desktop shell
+  /// emits into its OWN webview: a Tauri event does not cross a process, so the
+  /// listener could never fire and the section showed the state it had at mount
+  /// for as long as it stayed open.
 
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -75,7 +80,7 @@
     // Watch the shared shell.toml for external writes (e.g. the
     // QuickSettings toggle in desktop-shell). Re-read instead of
     // patching because the watcher event payload is empty.
-    unlistenChanged = await listen("arlen://shell-config-changed", () => {
+    unlistenChanged = await listen("config:shell:changed", () => {
       reloadFromDisk();
     });
   });
