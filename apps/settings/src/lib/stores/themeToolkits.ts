@@ -50,7 +50,7 @@ export const TOOLKITS: Toolkit[] = [
 /// Whether the theme is actually in place for a toolkit, as opposed to what the
 /// toolkit could take. The badge says the ceiling; this says the floor.
 export interface ToolkitReach {
-  state: "ours" | "blocked" | "absent";
+  state: "ours" | "blocked" | "unselected" | "absent";
   /// The file in the way, when one is.
   blockedBy: string | null;
 }
@@ -70,7 +70,10 @@ export async function loadReach(): Promise<void> {
     // one, because the happy one renders as nothing at all.
     if (!tauriAvailable) {
       reach.set({
-        gtk3: { state: "ours", blockedBy: null },
+        // Two different unhappy states, because each renders a different
+        // sentence and the fixture is the only place either is looked at
+        // without a machine in that condition.
+        gtk3: { state: "unselected", blockedBy: "Adwaita" },
         gtk4: { state: "ours", blockedBy: null },
         qt: { state: "blocked", blockedBy: "qt6ct.conf" },
         terminal: { state: "ours", blockedBy: null },

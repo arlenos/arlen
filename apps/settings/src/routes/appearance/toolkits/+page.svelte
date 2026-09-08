@@ -75,7 +75,11 @@
              overwrite a config the person wrote - correctly - and then their
              file wins. Saying "full" over that is the claim this line exists to
              stop, and it names the file so nobody has to go looking. -->
-        {#if $reach[tk.id]?.state === "blocked"}
+        {#if $reach[tk.id]?.state === "unselected"}
+          <p class="tk-blocked">
+            {$t("s.toolkit.unselected", { name: $reach[tk.id].blockedBy ?? "" })}
+          </p>
+        {:else if $reach[tk.id]?.state === "blocked"}
           <p class="tk-blocked">
             {$t("s.toolkit.blocked", { file: $reach[tk.id].blockedBy ?? "" })}
           </p>
