@@ -80,24 +80,19 @@ CARRIED: dict[str, tuple[int, str]] = {
     ),
     "harness": (16, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - the marker is per-app, so ours on the other six does not answer for theirs"),
     "settings": (
-        8,
-        "seven belong to surfaces in arlen-ui's lane and two are theme readers. "
-        "The model picker's backend is four of them - `ai_models_list`, "
-        "`ai_defaults_set` and the `ai_uncensored_*` opt-in pair - and that page "
-        "renders a fixture today, so it is mid-build rather than missing. The "
-        "three `extensions_*` are the management surface the shell-extension "
-        "strand named, routed as a design job. `theme_resolved_terminal` names an "
-        "ANSI palette editor that belongs to the deferred Appearance strand, and "
-        "`theme_resolved_sounds` is a second path: the sound page already reads "
-        "cue names through the override model and previews through the daemon's "
-        "own resolver, so it is a deletion after somebody confirms that path is "
-        "complete. Answered since the scan: `theme_get`, `keybindings_get_defaults` "
-        "and `keybindings_get_all_conflicts` (deleted, each a second name for a "
-        "live command), `ai_activity_recent` (deleted - the activity home moved to "
-        "the harness by decision and it kept a reader of the whole ledger), "
-        "`settings_app_audit` and `theme_contrast_report` (both given their "
-        "sections) and `revoke_consent` (a consent can be released where it is "
-        "listed)"
+        7,
+        "all seven belong to surfaces in arlen-ui's lane. Four are the model "
+        "picker's backend - `ai_models_list`, `ai_defaults_set` and the "
+        "`ai_uncensored_*` opt-in pair - and that page renders a fixture today, "
+        "so it is mid-build rather than missing. Three are `extensions_*`, the "
+        "management surface the shell-extension strand named, routed as a design "
+        "job. Everything else the 8 September scan found here is answered: "
+        "`theme_get`, `keybindings_get_defaults`, `keybindings_get_all_conflicts` "
+        "and `ai_activity_recent` deleted; `settings_app_audit`, "
+        "`theme_contrast_report`, `revoke_consent`, `theme_resolved_sounds` and "
+        "`theme_resolved_terminal` given their readers - the last two were a "
+        "hardcoded copy of the theme's own values sitting where the resolver's "
+        "answer belonged"
     ),
     "store": (4, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - I do not write in their tree, so the marker the other apps carry is not mine to add here"),
 }

@@ -201,6 +201,34 @@ const SOUND_FIELD_OF: Record<string, string> = {
   "device-removed": "sndDeviceRemoved",
 };
 
+/// Read the active theme's resolved terminal palette.
+///
+/// The same story as the cues below it: `SYS_DEFAULTS` holds sixteen hardcoded
+/// ANSI hexes plus a foreground and a background, and the editor on the
+/// Appearance system page drew those rather than the theme's. Somebody picking a
+/// theme saw the house palette in the grid and a different one in their
+/// terminal.
+///
+/// Merged rather than replacing: the two resolved reads land independently.
+export async function loadResolvedTerminal(): Promise<void> {
+  try {
+    const p = await invoke<{ fg: string; bg: string; cursor: string; ansi: string[] }>(
+      "theme_resolved_terminal",
+    );
+    const out: Record<string, string> = {};
+    if (p.fg) out.termFg = p.fg;
+    if (p.bg) out.termBg = p.bg;
+    // Sixteen slots, and only as many as arrive: a shorter list leaves the rest
+    // on the floor below rather than blanking a swatch.
+    p.ansi.forEach((hex, i) => {
+      if (hex) out[`ansi${i}`] = hex;
+    });
+    resolvedDefaults.update((r) => ({ ...r, ...out }));
+  } catch (e) {
+    console.warn("[settings] resolved terminal palette unavailable:", e);
+  }
+}
+
 /// Read the active theme's resolved cue names.
 ///
 /// Best-effort: a backend that will not answer leaves the hardcoded floor in
