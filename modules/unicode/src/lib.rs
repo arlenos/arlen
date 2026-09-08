@@ -40,9 +40,55 @@ struct Unicode;
 /// of one number, and the manifest's is the one that binds.
 const MAX_RESULTS: usize = 20;
 
+/// Every named codepoint, built once in `init` and read by every `search`.
+///
+/// **This is what the one-time `init` budget is for.** Before 8 September the
+/// host handed `init` the same 1 M fuel a per-keystroke `search` gets, so a
+/// module could build nothing at startup that it did not have to rebuild on
+/// every keystroke - and a scan of the name space costs 200-400 M. The guest
+/// paid that on every letter typed and trapped. Now `init` gets its own budget,
+/// the store lives for the module's lifetime, and this lives in it.
+///
+/// **One buffer and a range per name, not forty thousand `String`s.** The first
+/// cut allocated a `String` per entry and then uppercased it into a second one,
+/// and cost between 800 M and 1 G fuel - past the budget the host grants. Two
+/// allocations per name is the whole difference; the names themselves are the
+/// same bytes either way.
+///
+/// No uppercasing either, and that is not a shortcut: every Unicode character
+/// name is uppercase ASCII by definition ("HEAVY BLACK HEART"), so the old
+/// `to_uppercase()` produced an identical string at the price of an allocation.
+/// The needle is uppercased once per query instead.
+struct Index {
+    /// Every name, concatenated.
+    text: String,
+    /// `(codepoint, start, end)` into `text`, in codepoint order.
+    spans: Vec<(u32, u32, u32)>,
+}
+
+static NAMES: std::sync::OnceLock<Index> = std::sync::OnceLock::new();
+
 impl Guest for Unicode {
     fn init() -> Result<(), String> {
-        Ok(())
+        // The whole assigned space, once. `char::from_u32` skips surrogates and
+        // `name` returns nothing for the unassigned, so what lands here is
+        // exactly the named codepoints - about forty thousand of them.
+        let mut text = String::with_capacity(1 << 20);
+        let mut spans = Vec::with_capacity(50_000);
+        for cp in 0x20..0x11_0000u32 {
+            let Some(ch) = char::from_u32(cp) else { continue };
+            let Some(name) = unicode_names2::name(ch) else { continue };
+            let start = text.len() as u32;
+            text.extend(name);
+            spans.push((cp, start, text.len() as u32));
+            // A separator, so a search over the whole buffer cannot match across
+            // two names. No Unicode name contains a newline, so it can never be
+            // part of a needle either.
+            text.push('\n');
+        }
+        NAMES
+            .set(Index { text, spans })
+            .map_err(|_| "the index was built twice".to_string())
     }
 
     fn search(query: String) -> Vec<SearchResult> {
@@ -58,23 +104,43 @@ impl Guest for Unicode {
             }
         }
 
-        // Name search. The in-process plugin builds an index of every named
-        // codepoint once and reuses it; a module cannot, because the fuel
-        // budget is per call and there is no allowance for one-time setup, so
-        // this walks the space each time and stops at the first MAX_RESULTS.
+        // Name search, over the index `init` built. What this used to do - walk
+        // the whole codepoint space per query - is what the module could not
+        // afford, and the index is why it now can.
         let needle = q.to_uppercase();
+        let Some(index) = NAMES.get() else {
+            // `init` is called before any search, so this is unreachable rather
+            // than a fallback. Answering nothing is the honest response to a
+            // state that should not exist: rescanning here would hide it.
+            return Vec::new();
+        };
+        // ONE search over the whole buffer, not one per name.
+        //
+        // Measured on 8 September: forty thousand `contains` calls cost more than
+        // 50 M fuel even with the index in hand, because each one pays a
+        // substring-searcher setup that dwarfs the twenty bytes it looks at. A
+        // single pass over the concatenated megabyte, then a binary search per
+        // hit to find which name it landed in, does the same work once.
         let mut out = Vec::new();
-        for cp in 0x20..0x1_1000_0u32 {
+        for (at, _) in index.text.match_indices(&needle) {
             if out.len() >= MAX_RESULTS {
                 break;
             }
-            let Some(ch) = char::from_u32(cp) else { continue };
-            let Some(name) = unicode_names2::name(ch) else { continue };
-            let name = name.to_string();
-            if name.contains(&needle) {
-                let relevance = if name.starts_with(&needle) { 0.9 } else { 0.5 };
-                out.push(hit(cp, ch, &name, relevance));
+            let at = at as u32;
+            // The span whose start is the last one at or before the match.
+            let i = match index.spans.binary_search_by_key(&at, |(_, start, _)| *start) {
+                Ok(i) => i,
+                Err(0) => continue,
+                Err(i) => i - 1,
+            };
+            let (cp, start, end) = index.spans[i];
+            if at >= end {
+                continue; // landed on a separator, which is not part of a name
             }
+            let Some(ch) = char::from_u32(cp) else { continue };
+            let name = &index.text[start as usize..end as usize];
+            let relevance = if at == start { 0.9 } else { 0.5 };
+            out.push(hit(cp, ch, name, relevance));
         }
         out.sort_by(|a, b| b.relevance.total_cmp(&a.relevance));
         out
