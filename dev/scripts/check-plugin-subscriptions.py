@@ -6,9 +6,16 @@
 
 WHY THIS EXISTS. `sdk/tauri-plugin-shell`'s `init` calls
 `spawn_action_invoked_consumer` UNCONDITIONALLY, and that consumer subscribes to
-`app.toolbar.action_invoked` and `app.shortcut.action_invoked` from inside the
-app's own process. So linking the plugin IS subscribing to those two - there is no
-line in the app's source that says so, and reading the app will never show it.
+`app.toolbar.action_invoked`, `app.shortcut.action_invoked` and
+`app.menu.action_invoked` from inside the app's own process. So linking the plugin
+IS subscribing to those three - there is no line in the app's source that says so,
+and reading the app will never show it.
+
+The menu topic joined the list on 9 September, and it is why the count went from
+two to three: eleven apps were listening for `arlen://menu-action` and nothing
+relayed it, so their top-bar menus were drawn and did nothing. The relay went into
+the plugin, which made the grant a CONSEQUENCE of linking rather than a choice -
+which is the only kind of thing this check may demand.
 
 An app whose permission profile does not name them loses both quietly. The bus
 filters the ungranted patterns out, `subscribe` still returns `Ok`, and the
@@ -50,7 +57,11 @@ import tomllib
 from pathlib import Path
 
 PLUGIN = "tauri-plugin-arlen-shell"
-REQUIRED = ("app.toolbar.action_invoked", "app.shortcut.action_invoked")
+REQUIRED = (
+    "app.toolbar.action_invoked",
+    "app.shortcut.action_invoked",
+    "app.menu.action_invoked",
+)
 PROFILE_DIR = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
 
 
@@ -70,6 +81,25 @@ def profile_for(root: Path, app: str) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def covered(topic: str, granted: list[str]) -> bool:
+    """Whether a granted list admits `topic`, by name or by a wildcard over it.
+
+    The bus reads a trailing `.*` as a prefix on a dot boundary, so a profile
+    granting `app.menu.*` has already granted `app.menu.action_invoked`. Demanding
+    the literal beside the family it belongs to would be this check asking for a
+    line that changes nothing, which is how a check teaches people to stop reading
+    it.
+    """
+    for entry in granted:
+        if not isinstance(entry, str):
+            continue
+        if entry == topic:
+            return True
+        if entry.endswith(".*") and topic.startswith(entry[:-1]):
+            return True
+    return False
 
 
 def main() -> int:
@@ -93,11 +123,11 @@ def main() -> int:
         granted = doc.get("event_bus", {}).get("subscribe")
         if granted is None:
             problems.append(
-                f"  - {app}: {profile.name} has no `[event_bus].subscribe`, so both patterns "
-                "the plugin subscribes for it are ungranted"
+                f"  - {app}: {profile.name} has no `[event_bus].subscribe`, so every pattern "
+                "the plugin subscribes for it is ungranted"
             )
             continue
-        missing = [p for p in REQUIRED if p not in granted]
+        missing = [p for p in REQUIRED if not covered(p, granted)]
         if missing:
             problems.append(f"  - {app}: {profile.name} does not grant {', '.join(missing)}")
 
@@ -113,7 +143,7 @@ def main() -> int:
 
     print(
         f"check-plugin-subscriptions: {len(apps)} app(s) link the plugin, "
-        "each granted both patterns it subscribes on their behalf"
+        "each granted every pattern it subscribes on their behalf"
     )
     return 0
 
