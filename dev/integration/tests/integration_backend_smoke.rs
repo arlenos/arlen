@@ -37,10 +37,10 @@ fn backend_stack_comes_up_hermetically() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("event-bus producer socket appears");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("event-bus consumer socket appears");
 
     // Knowledge daemon: subscribes to the consumer socket and binds its query
@@ -74,10 +74,10 @@ async fn a_clicked_menu_action_reaches_the_publishing_app() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
 
     // The app side: subscribe for this app's own menu actions.
@@ -137,10 +137,10 @@ async fn a_file_opened_event_lands_in_sqlite() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -215,10 +215,10 @@ async fn the_read_socket_denies_an_unprivileged_authority_query() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -268,10 +268,10 @@ async fn the_write_socket_refuses_an_unprivileged_relation_write() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -352,10 +352,10 @@ async fn a_granted_first_party_relation_write_lands_a_live_edge() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -467,10 +467,10 @@ async fn a_scoped_caller_may_read_its_granted_label() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -517,7 +517,7 @@ async fn a_property_map_is_a_filter_and_an_unlabelled_node_is_still_refused() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -566,10 +566,10 @@ async fn a_file_opened_promotes_to_a_readable_file_node() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -657,10 +657,10 @@ async fn a_file_opened_indexes_code_symbols_into_the_graph() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     // Capture the knowledge + code-indexer logs (knowledge is silent-default, so
     // force RUST_LOG) so a non-promotion is diagnosable: the dump-on-timeout below
@@ -763,10 +763,10 @@ async fn a_promoted_file_is_retrievable_by_keyword_under_scope() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -832,10 +832,10 @@ async fn provenance_read_flags_a_foreign_opener_without_naming_it() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -902,10 +902,10 @@ async fn a_connecting_app_sees_only_its_own_capability_grant() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -955,10 +955,10 @@ async fn a_promoted_file_materializes_into_a_capsule_slice() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -1027,10 +1027,10 @@ async fn revoke_narrows_a_target_profiles_read_scope() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -1093,10 +1093,10 @@ async fn a_signal_bearing_directory_is_detected_as_a_project() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -1147,7 +1147,7 @@ async fn the_audit_daemon_comes_up_hermetically() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
 
     stack
@@ -1156,10 +1156,10 @@ async fn the_audit_daemon_comes_up_hermetically() {
     // The sockets live under the `arlen/` subdir of the runtime root; the daemon
     // creates that dir when it binds.
     stack
-        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-ingest.sock")
         .expect("audit ingest socket appears");
     stack
-        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-read.sock")
         .expect("audit read socket appears");
 
     // Both sockets bound: the audit daemon is up, hermetic (key + ledger under the
@@ -1192,16 +1192,16 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
         .spawn("daemons/audit-daemon", "arlen-auditd", &[])
         .expect("spawn audit-daemon");
     stack
-        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-ingest.sock")
         .expect("audit ingest socket");
     stack
-        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-read.sock")
         .expect("audit read socket");
 
     let subject = "it.audit.probe";
@@ -1307,10 +1307,10 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -1322,10 +1322,10 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
         .spawn("daemons/audit-daemon", "arlen-auditd", &[])
         .expect("spawn audit-daemon");
     stack
-        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-ingest.sock")
         .expect("audit ingest socket");
     stack
-        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-read.sock")
         .expect("audit read socket");
 
     // The agent: behaviours from the in-tree fixture dir (debug override), and no
@@ -1433,10 +1433,10 @@ async fn the_engine_executor_does_not_silently_write_from_an_event_trigger() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -1448,7 +1448,7 @@ async fn the_engine_executor_does_not_silently_write_from_an_event_trigger() {
         .spawn("daemons/audit-daemon", "arlen-auditd", &[])
         .expect("spawn audit-daemon");
     stack
-        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-ingest.sock")
         .expect("audit ingest socket");
 
     // The engine uses the same ARLEN_AGENT_BEHAVIOURS override; the dummy pi paths
@@ -1535,10 +1535,10 @@ async fn a_window_focused_event_promotes_to_a_readable_app_node() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -1625,10 +1625,10 @@ async fn a_canary_operand_trips_the_gate_and_audits_a_policy_violation() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -1640,10 +1640,10 @@ async fn a_canary_operand_trips_the_gate_and_audits_a_policy_violation() {
         .spawn("daemons/audit-daemon", "arlen-auditd", &[])
         .expect("spawn audit-daemon");
     stack
-        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-ingest.sock")
         .expect("audit ingest socket");
     stack
-        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-read.sock")
         .expect("audit read socket");
 
     let behaviours = arlen_integration::repo_path("ai/ai-skills/behaviours");
@@ -1737,10 +1737,10 @@ async fn the_seeded_corpus_returns_different_membership_per_as_of_time() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
 
     // Seed the corpus into the stack graph BEFORE the daemon opens it (ladybug
@@ -1869,7 +1869,7 @@ async fn the_consent_broker_comes_up_hermetically() {
             .spawn("daemons/audit-daemon", "arlen-auditd", &[])
             .expect("spawn audit-daemon");
         stack
-            .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+            .wait_ready("arlen/audit-ingest.sock")
             .expect("audit ingest socket appears");
     }
 
@@ -1879,10 +1879,10 @@ async fn the_consent_broker_comes_up_hermetically() {
     // The broker binds both sockets under the `arlen/` subdir of the runtime root;
     // it creates that dir when it binds.
     stack
-        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-intake.sock")
         .expect("consent intake socket appears");
     stack
-        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-control.sock")
         .expect("consent control socket appears");
     // Both sockets bound: the broker is up + serving. Dropping `stack` tears it
     // down and removes the root.
@@ -1909,17 +1909,17 @@ async fn a_confirm_round_trips_through_the_consent_loop() {
             .spawn("daemons/audit-daemon", "arlen-auditd", &[])
             .expect("spawn audit-daemon");
         stack
-            .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+            .wait_ready("arlen/audit-ingest.sock")
             .expect("audit ingest socket appears");
     }
     stack
         .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
         .expect("spawn consent-broker");
     stack
-        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-intake.sock")
         .expect("consent intake socket appears");
     stack
-        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-control.sock")
         .expect("consent control socket appears");
 
     let intake = stack.consent_intake_socket();
@@ -2025,17 +2025,17 @@ async fn a_denied_confirm_relays_the_refusal() {
             .spawn("daemons/audit-daemon", "arlen-auditd", &[])
             .expect("spawn audit-daemon");
         stack
-            .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+            .wait_ready("arlen/audit-ingest.sock")
             .expect("audit ingest socket appears");
     }
     stack
         .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
         .expect("spawn consent-broker");
     stack
-        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-intake.sock")
         .expect("consent intake socket appears");
     stack
-        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-control.sock")
         .expect("consent control socket appears");
 
     let intake = stack.consent_intake_socket();
@@ -2173,17 +2173,17 @@ async fn a_remembered_grant_silently_admits_a_repeat_request() {
             .spawn("daemons/audit-daemon", "arlen-auditd", &[])
             .expect("spawn audit-daemon");
         stack
-            .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+            .wait_ready("arlen/audit-ingest.sock")
             .expect("audit ingest socket appears");
     }
     stack
         .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
         .expect("spawn consent-broker");
     stack
-        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-intake.sock")
         .expect("consent intake socket appears");
     stack
-        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-control.sock")
         .expect("consent control socket appears");
 
     let intake = stack.consent_intake_socket();
@@ -2262,19 +2262,19 @@ async fn a_resolved_decision_lands_in_the_audit_ledger() {
         .spawn("daemons/audit-daemon", "arlen-auditd", &[])
         .expect("spawn audit-daemon");
     stack
-        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-ingest.sock")
         .expect("audit ingest socket appears");
     stack
-        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-read.sock")
         .expect("audit read socket appears");
     stack
         .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
         .expect("spawn consent-broker");
     stack
-        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-intake.sock")
         .expect("consent intake socket appears");
     stack
-        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .wait_ready("arlen/consent-control.sock")
         .expect("consent control socket appears");
 
     let intake = stack.consent_intake_socket();
@@ -2382,10 +2382,10 @@ async fn an_enforcing_bus_delivers_only_the_subscribed_event_type() {
         )
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("event-bus producer socket appears");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("event-bus consumer socket appears");
 
     // Consumer registration is three newline-terminated lines: id, the
@@ -2492,10 +2492,10 @@ async fn an_event_for_another_uid_never_reaches_this_subscriber() {
         )
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("event-bus producer socket appears");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("event-bus consumer socket appears");
 
     // The emitter is this process, so the bus stamps its uid on every event it
@@ -2659,7 +2659,7 @@ async fn the_store_serves_a_distribution_app_as_present_but_not_installable() {
     // The store binds under the `arlen/` subdir of the runtime root, like the
     // audit daemon does, rather than at its top level.
     let socket = stack
-        .wait_socket("arlen/store.sock", Duration::from_secs(20))
+        .wait_ready("arlen/store.sock")
         .expect("store socket");
 
     let cards = match arlen_store_backend::client::request(
@@ -2724,10 +2724,10 @@ async fn a_delete_is_refused_when_the_ledger_cannot_record_it() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
@@ -2821,16 +2821,16 @@ async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
     stack
-        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-producer.sock")
         .expect("producer socket");
     stack
-        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .wait_ready("event-bus-consumer.sock")
         .expect("consumer socket");
     stack
         .spawn("daemons/audit-daemon", "arlen-auditd", &[])
         .expect("spawn audit-daemon");
     stack
-        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .wait_ready("arlen/audit-ingest.sock")
         .expect("audit ingest socket appears");
     stack
         .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
