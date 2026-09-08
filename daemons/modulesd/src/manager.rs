@@ -273,6 +273,7 @@ fn wit_to_proto_results(
     module_id: &str,
     wit_results: Vec<crate::runtime::wit::exports::arlen::waypointer::provider::SearchResult>,
     max_results: usize,
+    strings: Option<&arlen_i18n::Localizer>,
 ) -> Vec<WireSearchResult> {
     use crate::runtime::wit::exports::arlen::waypointer::provider::Action as WitAction;
     use crate::socket::protocol::SearchAction;
@@ -293,10 +294,28 @@ fn wit_to_proto_results(
                     data: cap_field(c.data),
                 },
             };
+            // The key wins where the module named one and its catalogue has it;
+            // the literal it also had to send is the answer everywhere else. The
+            // module is not told which happened, because it is not the module's
+            // decision.
+            let title = crate::host::strings::resolve(
+                strings,
+                r.title_key.as_deref(),
+                r.args.as_deref(),
+                &r.title,
+            );
+            let description = r.description.as_ref().map(|d| {
+                crate::host::strings::resolve(
+                    strings,
+                    r.description_key.as_deref(),
+                    r.args.as_deref(),
+                    d,
+                )
+            });
             WireSearchResult {
                 id: cap_field(r.id),
-                title: cap_field(r.title),
-                description: r.description.map(cap_field),
+                title: cap_field(title),
+                description: description.map(cap_field),
                 icon: r.icon.map(cap_field),
                 relevance: r.relevance.clamp(0.0, 1.0),
                 action,
@@ -351,6 +370,13 @@ pub struct Manager {
     /// than `RwLock` because writes (insert on first use) and reads
     /// (acquire) both happen on the hot path.
     network_permits: Mutex<HashMap<String, Arc<Semaphore>>>,
+    /// Each module's own message catalogue, read once.
+    ///
+    /// A search runs per keystroke, so reading a module's `i18n/` directory
+    /// inside it would put a file open on every letter typed. `None` under a key
+    /// means the module ships no catalogue, which is a fact worth caching too -
+    /// otherwise the modules WITHOUT one pay the lookup forever.
+    catalogues: Mutex<HashMap<String, Option<Arc<arlen_i18n::Localizer>>>>,
     /// S6 backend wiring + Codex S6 fix 3: each Tier 1 module gets
     /// its own `UnixGraphClient` and `UnixEventEmitter` so a
     /// cancelled mid-call cannot leave a stale frame on the shared
@@ -434,6 +460,7 @@ impl Manager {
             tier2,
             events_tx,
             network_permits: Mutex::new(HashMap::new()),
+            catalogues: Mutex::new(HashMap::new()),
             tier1_instances: RwLock::new(HashMap::new()),
             mcp_servers: Mutex::new(HashMap::new()),
             knowledge_socket,
@@ -1302,7 +1329,38 @@ impl Manager {
         // backtrace" learns nothing they can act on.
         .map_err(|trap| SearchFailure::Trap(format!("search trap: {trap:#}")))?;
 
-        Ok(wit_to_proto_results(module_id, wit_results, max_results))
+        let strings = self.catalogue_for(module_id).await;
+        Ok(wit_to_proto_results(
+            module_id,
+            wit_results,
+            max_results,
+            strings.as_deref(),
+        ))
+    }
+
+    /// This module's catalogue, read once and remembered.
+    ///
+    /// The locale is read at load time rather than per result: a session's
+    /// chosen language does not change under a running daemon, and reading the
+    /// config file per keystroke would be the same waste the cache exists to
+    /// avoid. A language change restarts the session, which is when this is read
+    /// again.
+    async fn catalogue_for(&self, module_id: &str) -> Option<Arc<arlen_i18n::Localizer>> {
+        if let Some(hit) = self.catalogues.lock().await.get(module_id) {
+            return hit.clone();
+        }
+        let root = {
+            let modules = self.modules.read().await;
+            modules.get(module_id).map(|e| e.record.root.clone())
+        };
+        let loaded = root
+            .and_then(|r| crate::host::strings::load(&r, &arlen_i18n::chosen_locale()))
+            .map(Arc::new);
+        self.catalogues
+            .lock()
+            .await
+            .insert(module_id.to_string(), loaded.clone());
+        loaded
     }
 
     async fn handle_execute(
@@ -3289,6 +3347,53 @@ mod tests {
     }
 
     #[test]
+    fn a_key_becomes_the_title_and_a_missing_one_keeps_the_literal() {
+        use crate::runtime::wit::exports::arlen::waypointer::provider::{
+            Action as WitAction, SearchResult as WitResult,
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("i18n")).unwrap();
+        std::fs::write(
+            dir.path().join("i18n/de.json"),
+            r#"{"m.hit": "Herz", "m.sub": "{$n} Treffer"}"#,
+        )
+        .unwrap();
+        let strings = crate::host::strings::load(dir.path(), "de").expect("a catalogue");
+
+        let raw = vec![
+            WitResult {
+                id: "a".into(),
+                title: "Heart".into(),
+                description: Some("1 hit".into()),
+                title_key: Some("m.hit".into()),
+                description_key: Some("m.sub".into()),
+                args: Some(r#"{"n": 1}"#.into()),
+                icon: None,
+                relevance: 1.0,
+                action: WitAction::Copy("x".into()),
+            },
+            WitResult {
+                id: "b".into(),
+                title: "Untranslated".into(),
+                description: None,
+                // A key the catalogue does not have: the literal stands.
+                title_key: Some("m.absent".into()),
+                description_key: None,
+                args: None,
+                icon: None,
+                relevance: 1.0,
+                action: WitAction::Copy("x".into()),
+            },
+        ];
+
+        let mapped = wit_to_proto_results("com.example.test", raw, 8, Some(&strings));
+        assert_eq!(mapped[0].title, "Herz");
+        assert_eq!(mapped[0].description.as_deref(), Some("1 Treffer"));
+        assert_eq!(mapped[1].title, "Untranslated");
+    }
+
+    #[test]
     fn cap_field_passes_short_strings_through() {
         let short = "hello world".to_string();
         assert_eq!(cap_field(short.clone()), short);
@@ -3357,7 +3462,7 @@ mod tests {
                 action: WitAction::Copy(format!("text-{i}")),
             })
             .collect();
-        let mapped = wit_to_proto_results("com.example.test", raw, 3);
+        let mapped = wit_to_proto_results("com.example.test", raw, 3, None);
         assert_eq!(mapped.len(), 3);
         assert!(mapped[0].relevance <= 1.0 && mapped[0].relevance >= 0.0);
         assert_eq!(mapped[1].relevance, 0.0); // negative clamped to 0
@@ -3406,7 +3511,7 @@ mod tests {
                 }),
             },
         ];
-        let mapped = wit_to_proto_results("m", raw, 8);
+        let mapped = wit_to_proto_results("m", raw, 8, None);
         use crate::socket::protocol::SearchAction;
         assert!(matches!(mapped[0].action, SearchAction::Copy { .. }));
         assert!(matches!(mapped[1].action, SearchAction::OpenUrl { .. }));
