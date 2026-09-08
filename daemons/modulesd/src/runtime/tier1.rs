@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use tokio::sync::Mutex;
 use wasmtime::component::{Component, Linker};
+use arlen_modules::ModuleCapabilities;
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 
 use os_sdk::{UnixEventEmitter, UnixGraphClient};
@@ -124,7 +125,8 @@ impl ModuleStore {
 /// spins up its own `Store`, which is cheap.
 pub struct Tier1Runtime {
     engine: Engine,
-    linker: Arc<Mutex<Linker<ModuleStore>>>,
+    // No shared linker any more: what a module may reach depends on its own
+    // manifest, so the linker is built per instantiation in `linker_for`.
 }
 
 /// Give a store its budgets for one call: fuel, and time.
@@ -224,12 +226,9 @@ impl Tier1Runtime {
                 .map_err(|e| DaemonError::Internal(format!("epoch ticker: {e}")))?;
         }
 
-        let mut linker = Linker::<ModuleStore>::new(&engine);
-        populate_linker(&mut linker)?;
 
         Ok(Self {
             engine,
-            linker: Arc::new(Mutex::new(linker)),
         })
     }
 
@@ -273,10 +272,11 @@ impl Tier1Runtime {
         &self.engine
     }
 
-    /// Hand out the linker for host-import registration. Caller holds
-    /// the lock for the duration of registration.
-    pub async fn linker(&self) -> tokio::sync::MutexGuard<'_, Linker<ModuleStore>> {
-        self.linker.lock().await
+    /// The linker one module gets, carrying only the imports it declared.
+    pub fn linker_for(&self, caps: &ModuleCapabilities) -> Result<Linker<ModuleStore>> {
+        let mut linker = Linker::<ModuleStore>::new(&self.engine);
+        populate_linker(&mut linker, caps)?;
+        Ok(linker)
     }
 
     /// Instantiate a freshly-compiled component against this runtime's
@@ -298,7 +298,9 @@ impl Tier1Runtime {
         graph_client: Arc<UnixGraphClient>,
         event_emitter: Arc<UnixEventEmitter>,
     ) -> Result<Tier1Instance> {
-        let linker = self.linker.lock().await;
+        // Built from THIS module's manifest, so an import it did not declare is
+        // not on it and the instantiate below fails rather than the call later.
+        let linker = self.linker_for(&ctx.capabilities)?;
         let mut store = self.create_store(ctx, graph_client, event_emitter);
         let provider = WaypointerProvider::instantiate_async(&mut store, component, &linker)
             .await
@@ -366,7 +368,7 @@ impl Tier1Runtime {
     ) -> Result<McpInstance> {
         use crate::runtime::wit::mcp::McpServer;
 
-        let linker = self.linker.lock().await;
+        let linker = self.linker_for(&ctx.capabilities)?;
         let mut store = self.create_store(ctx, graph_client, event_emitter);
         let provider = McpServer::instantiate_async(&mut store, component, &linker)
             .await
@@ -479,7 +481,7 @@ impl McpInstance {
 /// provided marker for "host data lives directly on the store and
 /// is `T` itself" — exactly our layout because every `Host` trait
 /// is implemented on `ModuleStore` directly.
-fn populate_linker(linker: &mut Linker<ModuleStore>) -> Result<()> {
+fn populate_linker(linker: &mut Linker<ModuleStore>, caps: &ModuleCapabilities) -> Result<()> {
     use crate::runtime::wit;
     use wasmtime::component::HasSelf;
 
@@ -487,14 +489,38 @@ fn populate_linker(linker: &mut Linker<ModuleStore>) -> Result<()> {
         store
     }
 
-    wit::arlen::host::graph::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
-        .map_err(|e| DaemonError::Internal(format!("link graph: {e}")))?;
-    wit::arlen::host::network::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
-        .map_err(|e| DaemonError::Internal(format!("link network: {e}")))?;
-    wit::arlen::host::events::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
-        .map_err(|e| DaemonError::Internal(format!("link events: {e}")))?;
-    wit::arlen::host::files::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
-        .map_err(|e| DaemonError::Internal(format!("link files: {e}")))?;
+    // WHAT IS NOT DECLARED IS NOT LINKED, which is what `host.wit`'s own header
+    // has claimed since the interfaces were written and what the daemon did not
+    // do until 8 September: one linker was built in `new()` with every import on
+    // it, every module instantiated against that, and an undeclared capability
+    // was refused at CALL time by a check inside each host function. A module
+    // could hold a function it was never allowed to use.
+    //
+    // Now the linker is per module and carries only what its manifest asked for,
+    // so an undeclared import is absent and the component does not instantiate.
+    // The runtime checks stay where they are: this decides whether a module may
+    // reach an interface at all, they decide which namespace, domain or path
+    // inside it - and a capability that is linked is not thereby unbounded.
+    if caps.graph.as_ref().is_some_and(|g| !g.read.is_empty() || !g.write.is_empty()) {
+        wit::arlen::host::graph::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+            .map_err(|e| DaemonError::Internal(format!("link graph: {e}")))?;
+    }
+    if caps.network.as_ref().is_some_and(|n| !n.allowed_domains.is_empty()) {
+        wit::arlen::host::network::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+            .map_err(|e| DaemonError::Internal(format!("link network: {e}")))?;
+    }
+    if caps
+        .event_bus
+        .as_ref()
+        .is_some_and(|e| !e.publish.is_empty() || !e.subscribe.is_empty())
+    {
+        wit::arlen::host::events::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+            .map_err(|e| DaemonError::Internal(format!("link events: {e}")))?;
+    }
+    if caps.files.as_ref().is_some_and(|f| !f.read.is_empty()) {
+        wit::arlen::host::files::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
+            .map_err(|e| DaemonError::Internal(format!("link files: {e}")))?;
+    }
     wit::arlen::host::log::add_to_linker::<_, HasSelf<ModuleStore>>(linker, host_getter)
         .map_err(|e| DaemonError::Internal(format!("link log: {e}")))?;
 
@@ -631,30 +657,42 @@ mod tests {
         }
     }
 
-    /// `Tier1Runtime::new` must call `populate_linker`. Verify by
-    /// repopulating: wasmtime rejects duplicate registration of the
-    /// same interface, so a second `populate_linker` call against the
-    /// same `Linker` errors with a duplicate-key message. If `new`
-    /// had skipped registration this second call would succeed.
+    /// An interface a module did not declare is not on its linker.
+    ///
+    /// Asserted by populating twice: wasmtime refuses a duplicate registration,
+    /// so a second call errors for an interface that IS on the linker and
+    /// succeeds for one that is not. That is the same trick the previous version
+    /// of this test used to prove `new()` had populated the shared linker; there
+    /// is no shared linker any more, and this is the claim that replaced it.
     #[tokio::test]
-    async fn populate_linker_is_idempotent_only_in_new() {
+    async fn an_undeclared_interface_is_not_on_the_linker() {
         let r = Tier1Runtime::new().expect("runtime init");
-        let mut linker = r.linker.lock().await;
-        let result = super::populate_linker(&mut linker);
-        assert!(
-            result.is_err(),
-            "second populate_linker must fail; first call already registered the host interfaces",
-        );
-        // Sanity-check the message names one of our four interfaces
-        // so this test does not silently green on an unrelated error
-        // (e.g. allocation failure).
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("link graph")
-                || err.contains("link network")
-                || err.contains("link events")
-                || err.contains("link log"),
-            "duplicate-registration error did not name a host interface: {err}",
-        );
+
+        // Nothing declared: only `log` is on the linker, so a second pass
+        // collides on log and on nothing else. Logging is unconditional by
+        // design - it goes to the daemon's own journal, not to the module's.
+        let empty = ModuleCapabilities::default();
+        let mut linker = r.linker_for(&empty).expect("linker for a module that asked for nothing");
+        let err = super::populate_linker(&mut linker, &empty)
+            .expect_err("log is always registered, so a second pass collides")
+            .to_string();
+        assert!(err.contains("link log"), "only log should be on this linker: {err}");
+        for absent in ["link graph", "link network", "link events", "link files"] {
+            assert!(!err.contains(absent), "{absent} must not be on an empty manifest's linker");
+        }
+
+        // Graph declared: it is on the linker, so the second pass collides.
+        let reader = ModuleCapabilities {
+            graph: Some(arlen_modules::GraphCapability {
+                read: vec!["system.File".into()],
+                write: Vec::new(),
+            }),
+            ..Default::default()
+        };
+        let mut linker = r.linker_for(&reader).expect("linker for a graph reader");
+        let err = super::populate_linker(&mut linker, &reader)
+            .expect_err("graph is on this linker, so registering it again must fail")
+            .to_string();
+        assert!(err.contains("link graph"), "the collision names the interface: {err}");
     }
 }
