@@ -7,7 +7,9 @@
 
 use std::path::Path;
 
-use arlen_theme::{apply::write_foreign_toolkit_configs, ArlenTheme, DARK_TOML, LIGHT_TOML};
+use arlen_theme::{
+    apply::write_foreign_toolkit_configs, wine::generate_wine_reg, ArlenTheme, DARK_TOML, LIGHT_TOML,
+};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -20,6 +22,13 @@ fn main() {
     };
     let theme = ArlenTheme::from_bundled(bundled).expect("the bundled theme resolves");
     let report = write_foreign_toolkit_configs(&theme, Path::new(&dir));
+    // Wine is per bottle and `apply` leaves it to `bottled`; here one document
+    // at 96 DPI is enough for a throwaway prefix to import and be looked at.
+    let wine = Path::new(&dir).join("wine.reg");
+    match std::fs::write(&wine, generate_wine_reg(&theme, 1.0)) {
+        Ok(()) => println!("wrote {}", wine.display()),
+        Err(e) => eprintln!("failed {}: {e}", wine.display()),
+    }
     for p in &report.written {
         println!("wrote {}", p.display());
     }

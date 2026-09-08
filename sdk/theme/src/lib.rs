@@ -698,10 +698,18 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
     let sem  = color_section.semantic.unwrap_or_default();
     let bord = color_section.border.unwrap_or_default();
 
+    // Whether the source authored the accent's siblings, asked BEFORE the
+    // options are consumed below. Rule A derives them from the accent when it
+    // did not, and an authored sibling always wins - see the block after the
+    // struct.
+    let authored_hover = sem.accent_hover.is_some();
+    let authored_pressed = sem.accent_pressed.is_some();
+    let dark = meta.variant.as_str() != "light";
+
     // Color resolution: each Option falls back to a hardcoded
     // default. Bundled themes are expected to set everything;
     // partial overlays can leave fields out.
-    let color = ColorTokens {
+    let mut color = ColorTokens {
         bg_shell:   color_or(bg.shell,   "bg.shell",   "#0a0a0a")?,
         bg_app:     color_or(bg.app,     "bg.app",     "#0f0f0f")?,
         bg_card:    color_or(bg.card,    "bg.card",    "#171717")?,
@@ -726,6 +734,31 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
         border_default: color_or(bord.default, "border.default", "#27272a")?,
         border_strong:  color_or(bord.strong,  "border.strong",  "#3f3f46")?,
     };
+
+    // RULE A, in the resolver, so every accent gets its siblings whatever set it.
+    //
+    // The fixed greys above are the right default for a THEME that omits them.
+    // They are the wrong answer for a person who picked a colour: the accent
+    // moves and the hover stays `#a1a1aa`, so the button lights up grey under a
+    // green accent. That is the "I picked a colour and half of it changed" shape,
+    // and it applied to every path that sets an accent without also setting the
+    // two siblings - which is every path a person has.
+    //
+    // Authored still wins, which is the contract `derive_hover_pressed` states:
+    // a theme that chose its own hover keeps it, and only the unauthored halves
+    // are derived. Doing it HERE rather than at an override site is what makes it
+    // reach `gtk.rs`, `qt.rs`, the terminal generator and the compositor, all of
+    // which consume the resolved theme and none of which see a later patch.
+    if !authored_hover || !authored_pressed {
+        let (hover, pressed) = color::derive_hover_pressed(color.accent, dark);
+        if !authored_hover {
+            color.accent_hover = hover;
+        }
+        if !authored_pressed {
+            color.accent_pressed = pressed;
+        }
+    }
+    let color = color;
 
     let r = f.radius.unwrap_or_default();
     let radius = RadiusTokens {
@@ -1007,13 +1040,43 @@ fn merge_terminal(
     }
 }
 
+/// Merge the semantic colours, and let a NEW accent invalidate the siblings it
+/// inherited.
+///
+/// The plain field merge is wrong here in a way that only shows up with a person
+/// in front of it. `accent_hover` and `accent_pressed` are authored by every
+/// bundled theme, so an overlay that sets `accent` alone - which is what every
+/// path a person has does - keeps the bundled indigo hover under their new
+/// colour. They pick green and the button still lights up indigo.
+///
+/// So an overlay that names `accent` and NOT a sibling drops the inherited
+/// sibling, and the resolver's Rule A derives it from the accent that actually
+/// won. An overlay that names both keeps both: choosing a hover explicitly is
+/// still how you get the one you want.
+fn merge_color_semantic_accent_aware(
+    under: Option<ColorSemanticFile>,
+    over: Option<ColorSemanticFile>,
+) -> Option<ColorSemanticFile> {
+    let Some(o) = over else { return under };
+    let Some(mut u) = under else { return Some(o) };
+    if o.accent.is_some() {
+        if o.accent_hover.is_none() {
+            u.accent_hover = None;
+        }
+        if o.accent_pressed.is_none() {
+            u.accent_pressed = None;
+        }
+    }
+    merge_color_semantic(Some(u), Some(o))
+}
+
 fn merge_color(under: Option<ColorSection>, over: Option<ColorSection>) -> Option<ColorSection> {
     match (under, over) {
         (None, x) | (x, None) => x,
         (Some(u), Some(o)) => Some(ColorSection {
             bg: merge_color_bg(u.bg, o.bg),
             fg: merge_color_fg(u.fg, o.fg),
-            semantic: merge_color_semantic(u.semantic, o.semantic),
+            semantic: merge_color_semantic_accent_aware(u.semantic, o.semantic),
             border: merge_color_border(u.border, o.border),
         }),
     }
@@ -1398,6 +1461,52 @@ accent = "#ff00ff"
         assert!((t.color.accent[0] - 1.0).abs() < 0.01);
         assert!((t.color.accent[1] - 0.0).abs() < 0.01);
         assert!((t.color.accent[2] - 1.0).abs() < 0.01);
+    }
+
+    /// A picked accent brings its own hover and pressed, rather than keeping
+    /// the bundled theme's.
+    ///
+    /// This is the half of "I picked a colour" that used to not happen. The
+    /// resolver's `accent_hover` default is a fixed grey, so a customization
+    /// that set only `semantic.accent` left the button lighting up grey under a
+    /// magenta accent - and every path a person has sets the accent alone.
+    #[test]
+    fn a_picked_accent_derives_its_own_hover_and_pressed() {
+        let custom = r##"
+[color.semantic]
+accent = "#ff00ff"
+"##;
+        let plain = ArlenTheme::from_bundled(SAMPLE_BUNDLED).expect("resolve");
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, None, Some(custom)).expect("resolve");
+        // Derived from the picked accent rather than left where the bundled
+        // theme had them, which is the whole point.
+        assert_ne!(t.color.accent_hover, plain.color.accent_hover);
+        assert_ne!(t.color.accent_pressed, plain.color.accent_pressed);
+        // Rule A moves lightness, so they are not the accent itself either.
+        assert_ne!(t.color.accent_hover, t.color.accent);
+        assert_ne!(t.color.accent_pressed, t.color.accent);
+        // NB not asserted: that a sibling keeps the accent's HUE. It does not
+        // for a fully saturated colour - Rule A nudges OKLCH lightness and the
+        // out-of-gamut result is component-clamped back into sRGB, which shifts
+        // hue. Magenta's hover comes out a light periwinkle. That is the
+        // documented behaviour of the clamp rather than a fault in this wiring,
+        // and it is in the report as a thing worth a look.
+    }
+
+    /// An authored sibling wins over the derivation, which is the contract
+    /// `derive_hover_pressed` states: a theme that chose its own hover keeps it.
+    #[test]
+    fn an_authored_hover_survives_the_derivation() {
+        let custom = r##"
+[color.semantic]
+accent = "#ff00ff"
+accent_hover = "#00ff00"
+"##;
+        let t = ArlenTheme::resolve(SAMPLE_BUNDLED, None, Some(custom)).expect("resolve");
+        assert!((t.color.accent_hover[1] - 1.0).abs() < 0.01, "the authored green stands");
+        assert!((t.color.accent_hover[0] - 0.0).abs() < 0.01);
+        // The unauthored half is still derived from the accent.
+        assert_ne!(t.color.accent_pressed, t.color.accent);
     }
 
     #[test]
