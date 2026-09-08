@@ -42,7 +42,6 @@
         ]);
       }
       if (cmd === "keybindings_get_conflicts") return Promise.resolve([]);
-      if (cmd === "keybindings_get_all_conflicts") return Promise.resolve([]);
       return Promise.reject("stub-host: no backend behind this window (" + cmd + ")");
     },
     transformCallback: function (cb) { return cb; },

@@ -361,7 +361,7 @@ pub fn brightness_step_relative(app: tauri::AppHandle, direction: i32) {
 /// Routed through `update_shell_config` so the load-modify-write is
 /// serialised against every other in-process writer (night-light
 /// commands, the frontend's full-replace path) under
-/// `WRITE_LOCK`. A bare `get_shell_config` + `save_shell_config`
+/// `WRITE_LOCK`. A bare read-modify-write through `get_shell_config`
 /// here would race those writers and silently drop their fields on
 /// every key press.
 ///

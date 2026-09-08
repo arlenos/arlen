@@ -14,6 +14,10 @@ use super::config::{config_get, config_reset, config_set, ConfigFile};
 // appearance store reads the same file through the generic config path
 // (`createConfigStore("appearance")`), which is the one every other config
 // surface uses. A second name for one read is a second thing to keep in step.
+//
+// NB grepping `theme_get` still finds a live call: the shared kit invokes
+// `plugin:arlen-shell|theme_get`, the SHELL PLUGIN's command of the same name and
+// a different registration namespace. That one is live and untouched.
 
 /// One resolved colour role for the Appearance preview and per-field override
 /// rows.

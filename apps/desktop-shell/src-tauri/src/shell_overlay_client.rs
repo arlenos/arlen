@@ -1378,6 +1378,13 @@ fn read_as_data_url(path: &str, mime: &str) -> Option<String> {
 }
 
 /// Diagnostic command: logs workspace data received from the Svelte store.
+///
+/// NO CALLER: the same debugging affordance as `frontend_log`, for the one piece
+/// of state that arrives through the Wayland client rather than an invoke. WebView
+/// DevTools cannot be opened on this desktop, so somebody diagnosing what the
+/// workspace store actually received routes it through here into the shell's
+/// stdout. Committed code does not call it, and a call left behind in committed
+/// code would be the thing to remove.
 #[tauri::command]
 pub fn debug_workspace_update(data: String) {
     log::info!("debug_workspace_update: {data}");
