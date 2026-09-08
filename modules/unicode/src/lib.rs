@@ -64,7 +64,54 @@ struct Index {
     text: String,
     /// `(codepoint, start, end)` into `text`, in codepoint order.
     spans: Vec<(u32, u32, u32)>,
+    /// Which names contain each three-letter sequence.
+    ///
+    /// **This is what makes a query fit the per-call budget.** Measured on 8
+    /// September: a substring search over the concatenated megabyte costs more
+    /// than 10 M fuel however it is written, because it is a megabyte of
+    /// comparisons and 1 M fuel is about ten milliseconds of work. With this, a
+    /// query looks at the few hundred names that could possibly match instead of
+    /// all forty thousand.
+    ///
+    /// One flat list, and where each bucket starts in it.
+    ///
+    /// Not a hash map and not a vector of vectors, and both were tried: hashing
+    /// 800000 insertions costs more than the index saves, and 59319 growing
+    /// `Vec`s put `init` over its budget on their own. Counting first and filling
+    /// once has no per-bucket allocation at all - `starts[b]..starts[b + 1]` is
+    /// the bucket.
+    entries: Vec<u32>,
+    starts: Vec<u32>,
 }
+
+/// The alphabet a Unicode name is written in, mapped to a small dense range.
+///
+/// A-Z, 0-9, space and hyphen cover every character name; anything else lands in
+/// the last slot rather than being dropped, so an unexpected byte costs recall
+/// on one bucket instead of losing a name.
+const SYMBOLS: usize = 39;
+
+fn symbol(b: u8) -> usize {
+    match b {
+        b'A'..=b'Z' => (b - b'A') as usize,
+        b'0'..=b'9' => 26 + (b - b'0') as usize,
+        b' ' => 36,
+        b'-' => 37,
+        _ => 38,
+    }
+}
+
+/// The bucket a three-byte sequence belongs to.
+fn trigram(w: &[u8]) -> usize {
+    symbol(w[0]) * SYMBOLS * SYMBOLS + symbol(w[1]) * SYMBOLS + symbol(w[2])
+}
+
+/// The shortest name query the index can answer.
+///
+/// Two letters would put a fifth of the corpus in one bucket and cost more to
+/// verify than it saves, and a one or two letter query is not a name search
+/// anybody means. The codepoint path is unaffected: `U+41` still works.
+const MIN_NAME_QUERY: usize = 3;
 
 static NAMES: std::sync::OnceLock<Index> = std::sync::OnceLock::new();
 
@@ -81,13 +128,34 @@ impl Guest for Unicode {
             let start = text.len() as u32;
             text.extend(name);
             spans.push((cp, start, text.len() as u32));
-            // A separator, so a search over the whole buffer cannot match across
-            // two names. No Unicode name contains a newline, so it can never be
-            // part of a needle either.
+            // A separator, so nothing can match across two names.
             text.push('\n');
         }
+
+        // Then the trigram buckets, counted first and filled once.
+        let buckets = SYMBOLS * SYMBOLS * SYMBOLS;
+        let bytes = text.as_bytes();
+        let mut starts = vec![0u32; buckets + 1];
+        for (_, start, end) in &spans {
+            for w in bytes[*start as usize..*end as usize].windows(MIN_NAME_QUERY) {
+                starts[trigram(w) + 1] += 1;
+            }
+        }
+        for b in 0..buckets {
+            starts[b + 1] += starts[b];
+        }
+        let mut entries = vec![0u32; starts[buckets] as usize];
+        let mut at = starts.clone();
+        for (i, (_, start, end)) in spans.iter().enumerate() {
+            for w in bytes[*start as usize..*end as usize].windows(MIN_NAME_QUERY) {
+                let b = trigram(w);
+                entries[at[b] as usize] = i as u32;
+                at[b] += 1;
+            }
+        }
+
         NAMES
-            .set(Index { text, spans })
+            .set(Index { text, spans, entries, starts })
             .map_err(|_| "the index was built twice".to_string())
     }
 
@@ -114,32 +182,45 @@ impl Guest for Unicode {
             // state that should not exist: rescanning here would hide it.
             return Vec::new();
         };
-        // ONE search over the whole buffer, not one per name.
+        // The rarest of the query's trigrams decides which names to look at.
         //
-        // Measured on 8 September: forty thousand `contains` calls cost more than
-        // 50 M fuel even with the index in hand, because each one pays a
-        // substring-searcher setup that dwarfs the twenty bytes it looks at. A
-        // single pass over the concatenated megabyte, then a binary search per
-        // hit to find which name it landed in, does the same work once.
+        // Every name that contains the needle contains every one of its
+        // trigrams, so any single bucket is a superset of the answer and the
+        // smallest one is the cheapest superset. Then each candidate is verified
+        // with a real substring test, so the bucket is a filter and never the
+        // answer.
+        if needle.len() < MIN_NAME_QUERY {
+            return Vec::new();
+        }
+        let bytes = needle.as_bytes();
+        let mut best: &[u32] = &[];
+        let mut first = true;
+        for w in bytes.windows(MIN_NAME_QUERY) {
+            let b = trigram(w);
+            let list = &index.entries[index.starts[b] as usize..index.starts[b + 1] as usize];
+            if first || list.len() < best.len() {
+                best = list;
+                first = false;
+            }
+        }
         let mut out = Vec::new();
-        for (at, _) in index.text.match_indices(&needle) {
+        let mut seen = u32::MAX;
+        for i in best {
+            // A name lands in its bucket once per occurrence of the trigram, so
+            // the same name can appear twice in a row; the list is built in name
+            // order, so one comparison is enough to skip the repeat.
+            if *i == seen {
+                continue;
+            }
+            seen = *i;
             if out.len() >= MAX_RESULTS {
                 break;
             }
-            let at = at as u32;
-            // The span whose start is the last one at or before the match.
-            let i = match index.spans.binary_search_by_key(&at, |(_, start, _)| *start) {
-                Ok(i) => i,
-                Err(0) => continue,
-                Err(i) => i - 1,
-            };
-            let (cp, start, end) = index.spans[i];
-            if at >= end {
-                continue; // landed on a separator, which is not part of a name
-            }
-            let Some(ch) = char::from_u32(cp) else { continue };
+            let (cp, start, end) = index.spans[*i as usize];
             let name = &index.text[start as usize..end as usize];
-            let relevance = if at == start { 0.9 } else { 0.5 };
+            let Some(at) = name.find(&needle) else { continue };
+            let Some(ch) = char::from_u32(cp) else { continue };
+            let relevance = if at == 0 { 0.9 } else { 0.5 };
             out.push(hit(cp, ch, name, relevance));
         }
         out.sort_by(|a, b| b.relevance.total_cmp(&a.relevance));
