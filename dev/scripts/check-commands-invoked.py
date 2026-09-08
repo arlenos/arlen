@@ -80,7 +80,7 @@ CARRIED: dict[str, tuple[int, str]] = {
     ),
     "harness": (16, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - the marker is per-app, so ours on the other six does not answer for theirs"),
     "settings": (
-        9,
+        8,
         "seven belong to surfaces in arlen-ui's lane and two are theme readers. "
         "The model picker's backend is four of them - `ai_models_list`, "
         "`ai_defaults_set` and the `ai_uncensored_*` opt-in pair - and that page "

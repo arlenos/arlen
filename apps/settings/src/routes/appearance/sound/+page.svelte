@@ -24,6 +24,7 @@
     setSys,
     resetSys,
     loadSys,
+    loadResolvedSounds,
     sysWriteFailed,
     SOUND_EVENTS,
     previewSound,
@@ -58,6 +59,10 @@
     // The cue names theme.toml already overrides, so an earlier launch's edit
     // shows as set instead of the page opening on the theme's own defaults.
     void loadSys();
+    // And the theme's own defaults, resolved by the backend rather than copied
+    // into this app: an unoverridden row now shows the cue the notification
+    // daemon would actually play, not a name somebody typed into a constant.
+    void loadResolvedSounds();
   });
 
   async function play(eventKey: string, name: string) {
