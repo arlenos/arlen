@@ -44,6 +44,25 @@ const EPOCH_TICK: std::time::Duration = std::time::Duration::from_millis(100);
 /// call rather than executing instructions.
 const EPOCH_DEADLINE_TICKS: u64 = 50;
 
+/// The one-time budget `init` gets, which is not the per-call one.
+///
+/// **Ruled on 8 September, and the reasoning is what makes the number make
+/// sense.** `search` runs per keystroke with a person waiting, so 1 M - about ten
+/// milliseconds of work - is right for it and stays. `init` is called once, off
+/// that path, with nobody waiting, and until now `refuel` handed it the same
+/// constant: a module could not build anything at startup that it did not have
+/// to rebuild on every keystroke.
+///
+/// 500 M rather than a doubling, because a doubling answers nothing: the first
+/// real guest measured a single scan of the Unicode name space at 200-400 M. An
+/// index built here lives in the store for the module's lifetime, so it is paid
+/// once and every later `search` reads it.
+///
+/// This is not a way around the search budget. The wall-clock deadline covers
+/// `init` unchanged at five seconds, and a guest that hangs in a host call is
+/// stopped by that rather than by fuel.
+pub const INIT_FUEL_BUDGET: u64 = 500_000_000;
+
 /// Default fuel budget per host call. One million Wasmtime fuel units
 /// is roughly ten milliseconds of typical numeric work; modules that
 /// exceed it trap and are counted toward crash recovery, so a runaway
@@ -117,6 +136,16 @@ pub struct Tier1Runtime {
 /// step unless it is the same line.
 pub fn refuel(store: &mut Store<ModuleStore>) {
     let _ = store.set_fuel(DEFAULT_FUEL_BUDGET);
+    store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
+}
+
+/// The same, with the one-time budget `init` is allowed.
+///
+/// Time is unchanged: `init` gets the same five seconds every call does, because
+/// the thing that budget exists to stop - a guest wedged in a host call - is not
+/// something a bigger fuel allowance should buy its way out of.
+pub fn refuel_for_init(store: &mut Store<ModuleStore>) {
+    let _ = store.set_fuel(INIT_FUEL_BUDGET);
     store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
 }
 
@@ -274,6 +303,7 @@ impl Tier1Runtime {
         // Init with wall-clock timeout. Modules that block forever
         // inside init (e.g. via a slow host call that fuel cannot
         // catch) get trapped here rather than wedging the daemon.
+        refuel_for_init(&mut store);
         let init_result = tokio::time::timeout(
             INIT_TIMEOUT,
             provider
@@ -283,7 +313,12 @@ impl Tier1Runtime {
         .await;
 
         match init_result {
-            Ok(Ok(Ok(()))) => Ok(Tier1Instance { store, provider }),
+            Ok(Ok(Ok(()))) => {
+                // Back to the per-call budget the moment init is done: the large
+                // one is for building, not for the first search after it.
+                refuel(&mut store);
+                Ok(Tier1Instance { store, provider })
+            }
             Ok(Ok(Err(module_err))) => Err(DaemonError::WasmTrap {
                 module_id: module_id.to_string(),
                 reason: format!("init returned error: {module_err}"),
@@ -333,6 +368,9 @@ impl Tier1Runtime {
             })?;
         drop(linker);
 
+        // The same one-time budget as the waypointer path: an MCP server that
+        // needs to build something at startup has the same reason to.
+        refuel_for_init(&mut store);
         let init_result = tokio::time::timeout(
             INIT_TIMEOUT,
             provider
@@ -342,7 +380,10 @@ impl Tier1Runtime {
         .await;
 
         match init_result {
-            Ok(Ok(Ok(()))) => Ok(McpInstance { store, provider }),
+            Ok(Ok(Ok(()))) => {
+                refuel(&mut store);
+                Ok(McpInstance { store, provider })
+            }
             Ok(Ok(Err(module_err))) => Err(DaemonError::WasmTrap {
                 module_id: module_id.to_string(),
                 reason: format!("init returned error: {module_err}"),
