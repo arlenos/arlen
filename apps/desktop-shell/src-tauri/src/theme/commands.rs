@@ -279,6 +279,18 @@ fn select_interface(selection: &arlen_theme::gtk::InterfaceSelection) {
     if let Some(font) = &selection.font {
         set_string("font-name", font);
     }
+    // NOT `accent-color`, and that is a decision rather than an omission. The key
+    // exists in this schema (checked on the image as well as here) but it is an
+    // ENUM of nine names - blue, teal, green, yellow, orange, red, pink, purple,
+    // slate - so it cannot carry a colour. Our accent is an arbitrary sRGB
+    // triple; the bundled dark theme's is near-white, which is none of those.
+    // Writing the nearest name would tint every GTK4 app with a colour nobody
+    // chose, which is worse than the app keeping its own default, and it is
+    // exactly the kind of mapping this project hands to arlen-ui rather than
+    // inventing while building. The exact accent already reaches apps that ask
+    // through the portal's `org.freedesktop.appearance accent-color`, which is a
+    // (ddd) and says what we mean.
+    //
     // The schema's own vocabulary for the same bit `settings.ini` spells
     // `gtk-application-prefer-dark-theme`.
     set_string(
