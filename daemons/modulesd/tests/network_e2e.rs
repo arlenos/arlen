@@ -48,11 +48,12 @@ fn record_for(id: &str) -> ModuleRecord {
 }
 
 fn mock_capabilities(host: &str) -> arlen_modules::ModuleCapabilities {
-    let mut caps = arlen_modules::ModuleCapabilities::default();
-    caps.network = Some(arlen_modules::NetworkCapability {
-        allowed_domains: vec![host.into()],
-    });
-    caps
+    arlen_modules::ModuleCapabilities {
+        network: Some(arlen_modules::NetworkCapability {
+            allowed_domains: vec![host.into()],
+        }),
+        ..Default::default()
+    }
 }
 
 #[tokio::test]
