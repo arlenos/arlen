@@ -6,8 +6,12 @@
   /// live preview as the Colours page (the preview corners round live as you drag).
   /// Rich by structure, not omission (appearance-surface.md).
   ///
-  /// Mock-vs-live: reads a fixture; the per-radius / window-corner / spacing
-  /// overrides need the theme.toml override backend (flagged for the coder).
+  /// Mock-vs-live: STILL A FIXTURE. Every slider here moves a local store and
+  /// writes nothing, and the numbers are the house defaults rather than this
+  /// machine's. The backend for eleven of the sixteen fields exists now
+  /// (`theme_resolved_metrics` / `theme_set_metric`); the reasons the other five
+  /// are a separate job, and why wiring only eleven would be worse than this, are
+  /// in `$lib/stores/themeGeometry.ts`.
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
