@@ -50,7 +50,7 @@ CARRIED: dict[str, tuple[int, str]] = {
     "desktop-shell": (17, "the 8 September scan, less `waypointer_search` and the two toggle commands `quick_action_run` had already superseded. What is left splits three ways: the six `qs_layout_*` writers (a SECOND writer for a file Settings already edits through `config_set` - which side owns the layout's invariants is a decision, not a deletion), the three-command global-menu registry (nothing registers a menu), and features with no UI at all"),
     "files": (2, "the 8 September scan"),
     "harness": (10, "the 8 September scan; arlen-ui's app, so theirs to answer"),
-    "settings": (16, "the 8 September scan; the extensions and theme readers are the clusters worth taking first"),
+    "settings": (15, "the 8 September scan, less `theme_list_fonts` which answered for itself. What is left: the three `extensions_*` commands (the backend of the management surface the shell-extension work named, so a strand rather than a loose end), four theme readers, `theme_set_accent` (which writes a DIFFERENT key in a different file from the picker that is live - see the report), and the keybinding and ai readers"),
     "store": (2, "the 8 September scan; arlen-ui's app, so theirs to answer"),
     "system-monitor": (1, "the 8 September scan"),
 }

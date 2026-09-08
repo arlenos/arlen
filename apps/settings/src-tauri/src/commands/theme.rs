@@ -633,8 +633,16 @@ fn is_known_metric(key: &str) -> bool {
     theme_resolved_metrics().is_ok_and(|m| m.contains_key(key))
 }
 
-/// The system's installed font families via `fc-list`, deduplicated and sorted,
-/// for the Appearance font pickers (replacing the fixed short list). Each
+/// The system's installed font families via `fc-list`, deduplicated and sorted.
+///
+/// NO CALLER: the interface picker deliberately offers a short curated list
+/// instead, and the reason is measured rather than lazy - the typography page
+/// says it beside the control: this host has 18 monospaced families and 372 in
+/// total, and 372 in a popover with no search is worse to use than a short list
+/// that may not resolve. The MONO picker does read the machine
+/// (`theme_list_mono_fonts`), because 18 is a list a person can scan. This one
+/// waits for a picker with a search field. The note is here as well as there
+/// because a reader arriving from the uncalled-command scan lands on this side. Each
 /// `fc-list` line is one font file's family names; the primary (first
 /// comma-separated) name is taken and a `BTreeSet` dedupes and sorts. Returns an
 /// empty list if fontconfig is unavailable, so the picker degrades to whatever
