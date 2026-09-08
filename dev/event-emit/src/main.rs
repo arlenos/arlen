@@ -17,14 +17,22 @@
 //! discards. So this now subscribes before it emits and waits to see its own
 //! event come back around, and says nothing at all about success until it does.
 //!
+//! IT ALSO STANDS IN FOR THE SHELL. `--menu` emits `app.menu.action_invoked`,
+//! which is what the desktop-shell puts on the bus when somebody picks an item
+//! from an app's menu. Eleven apps draw a menu whose clicks come back to them
+//! over that topic and nothing but a unit test had ever put one on the wire, so
+//! there was no way to answer "does clicking it make the app do the thing"
+//! without a display and a shell. With this, a headless drive can.
+//!
 //! Usage: `arlen-event-emit <absolute-path> [app-id]`
+//!        `arlen-event-emit --menu <app-id> <action>`
 //! Sockets: `ARLEN_PRODUCER_SOCKET` / `ARLEN_CONSUMER_SOCKET`, else `/run/arlen/`.
-//! Session: `ARLEN_SESSION_ID` must name the session the open belongs to.
+//! Session: `ARLEN_SESSION_ID` must name the session the event belongs to.
 //! Exit 0 on a CONFIRMED event, 2 on bad args or no session, 1 on emit failure
 //! or on an event that never came back.
 
 use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
-use os_sdk::proto::FileOpenedPayload;
+use os_sdk::proto::{FileOpenedPayload, ShortcutActionInvokedPayload};
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use prost::Message;
 use std::time::Duration;
@@ -46,11 +54,25 @@ const REGISTRATION_SETTLE: Duration = Duration::from_millis(200);
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut args = std::env::args().skip(1);
-    let Some(path) = args.next() else {
-        eprintln!("usage: arlen-event-emit <absolute-path> [app-id]");
+    let Some(first) = args.next() else {
+        usage();
         std::process::exit(2);
     };
-    let app_id = args.next().unwrap_or_else(|| "dogfood".to_string());
+
+    // Two modes, and the file one keeps the bare shape it always had so its
+    // existing callers are untouched.
+    let mode = if first == "--menu" {
+        let (Some(app_id), Some(action)) = (args.next(), args.next()) else {
+            usage();
+            std::process::exit(2);
+        };
+        Mode::Menu { app_id, action }
+    } else {
+        Mode::FileOpened {
+            path: first,
+            app_id: args.next().unwrap_or_else(|| "dogfood".to_string()),
+        }
+    };
 
     // CHECKED HERE, not left to the SDK's log line. `UnixEventEmitter::new` reads
     // the session id and refuses to invent one when it is missing - correct, and
@@ -65,8 +87,8 @@ async fn main() {
              and the bus would refuse it (missing required field: origin)."
         );
         eprintln!(
-            "A file open belongs to a session and the id is not something this tool \
-             may invent. Name it:  ARLEN_SESSION_ID=dogfood arlen-event-emit {path}"
+            "An event belongs to a session and the id is not something this tool \
+             may invent. Name it:  ARLEN_SESSION_ID=dogfood arlen-event-emit ..."
         );
         std::process::exit(2);
     }
@@ -84,7 +106,7 @@ async fn main() {
     // moment an event arrives, so a consumer that registers afterwards has already
     // missed it - the same ordering the integration suite had to learn.
     let mut inbox = match UnixEventConsumer::new(consumer.clone())
-        .subscribe(vec!["file.opened".to_string()])
+        .subscribe(vec![mode.topic().to_string()])
         .await
     {
         Ok(rx) => rx,
@@ -105,33 +127,50 @@ async fn main() {
     // for something that cannot be observed.
     tokio::time::sleep(REGISTRATION_SETTLE).await;
 
-    // flags 0 == a plain read-open (O_RDONLY); promotion only keys off the path.
-    let payload = FileOpenedPayload {
-        path: path.clone(),
-        app_id,
-        flags: 0,
-    }
-    .encode_to_vec();
+    let payload = match &mode {
+        // flags 0 == a plain read-open (O_RDONLY); promotion only keys off the path.
+        Mode::FileOpened { path, app_id } => FileOpenedPayload {
+            path: path.clone(),
+            app_id: app_id.clone(),
+            flags: 0,
+        }
+        .encode_to_vec(),
+        // An empty `window_id` is what the shell sends for a menu click: the menu
+        // belongs to the focused app, not to one of its windows, and the plugin's
+        // menu relay carries only `{app_id, action}` onward.
+        Mode::Menu { app_id, action } => ShortcutActionInvokedPayload {
+            app_id: app_id.clone(),
+            action: action.clone(),
+            window_id: String::new(),
+        }
+        .encode_to_vec(),
+    };
 
     let emitter = UnixEventEmitter::new(producer);
-    if let Err(e) = emitter.emit("file.opened", payload).await {
+    if let Err(e) = emitter.emit(mode.topic(), payload).await {
         eprintln!("emit failed: {e}");
         std::process::exit(1);
     }
 
-    // Match on the path rather than the event id: the SDK mints the id inside
+    // Match on the content rather than the event id: the SDK mints the id inside
     // `emit`, so the caller never learns it. Another producer emitting the same
-    // path in the same three seconds would satisfy this, which on a dev injector
+    // thing in the same three seconds would satisfy this, which on a dev injector
     // is a trade worth making for a confirmation that is otherwise impossible.
     let confirmed = tokio::time::timeout(CONFIRM_WAIT, async {
         while let Some(event) = inbox.recv().await {
-            if event.r#type != "file.opened" {
+            if event.r#type != mode.topic() {
                 continue;
             }
-            if let Ok(p) = FileOpenedPayload::decode(&event.payload[..]) {
-                if p.path == path {
-                    return Some(event.origin);
+            let mine = match &mode {
+                Mode::FileOpened { path, .. } => FileOpenedPayload::decode(&event.payload[..])
+                    .is_ok_and(|p| p.path == *path),
+                Mode::Menu { app_id, action } => {
+                    ShortcutActionInvokedPayload::decode(&event.payload[..])
+                        .is_ok_and(|p| p.app_id == *app_id && p.action == *action)
                 }
+            };
+            if mine {
+                return Some(event.origin);
             }
         }
         None
@@ -140,7 +179,7 @@ async fn main() {
 
     match confirmed {
         Ok(Some(origin)) => {
-            println!("delivered file.opened path={path} origin={origin}");
+            println!("delivered {} origin={origin}", mode.describe());
         }
         Ok(None) => {
             eprintln!("the bus closed the subscription before the event came back");
@@ -148,8 +187,9 @@ async fn main() {
         }
         Err(_) => {
             eprintln!(
-                "file.opened path={path} was written to the socket but never came back \
-                 within {}s: the bus accepted the bytes and dropped the event.",
+                "{} was written to the socket but never came back within {}s: \
+                 the bus accepted the bytes and dropped the event.",
+                mode.describe(),
                 CONFIRM_WAIT.as_secs()
             );
             eprintln!(
@@ -159,4 +199,36 @@ async fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// Which event this run puts on the bus.
+enum Mode {
+    /// The sensor's event: a file was opened, which promotion turns into a graph.
+    FileOpened { path: String, app_id: String },
+    /// The shell's event: somebody picked an item from an app's menu.
+    Menu { app_id: String, action: String },
+}
+
+impl Mode {
+    fn topic(&self) -> &'static str {
+        match self {
+            Mode::FileOpened { .. } => "file.opened",
+            Mode::Menu { .. } => "app.menu.action_invoked",
+        }
+    }
+
+    /// What to call this event in a line a person reads.
+    fn describe(&self) -> String {
+        match self {
+            Mode::FileOpened { path, .. } => format!("file.opened path={path}"),
+            Mode::Menu { app_id, action } => {
+                format!("app.menu.action_invoked app={app_id} action={action}")
+            }
+        }
+    }
+}
+
+fn usage() {
+    eprintln!("usage: arlen-event-emit <absolute-path> [app-id]");
+    eprintln!("       arlen-event-emit --menu <app-id> <action>");
 }
