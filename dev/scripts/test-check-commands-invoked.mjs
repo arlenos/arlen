@@ -74,6 +74,45 @@ function run(root) {
   cleanup(root);
 }
 
+// A command that answers for itself beside the code, which is where a reader
+// goes to ask. This is how an entry leaves the carried list.
+{
+  const root = mint("commands-invoked-marked-");
+  const app = join(root, "apps/example");
+  mkdirSync(join(app, "src-tauri/src"), { recursive: true });
+  mkdirSync(join(app, "src"), { recursive: true });
+  writeFileSync(
+    join(app, "src-tauri/src/lib.rs"),
+    "/// NO CALLER: the surface it belongs to has not been built.\n" +
+      "#[tauri::command]\nfn later() {}\n\n" +
+      "fn main() { builder.invoke_handler(tauri::generate_handler![\n  commands::later,\n]); }\n",
+  );
+  writeFileSync(join(app, "src/page.ts"), "// nothing\n");
+  check("a command that says why nothing calls it passes", run(root).code === 0);
+  cleanup(root);
+}
+
+// And the marker has to be the command's own, not a neighbour's.
+{
+  const root = mint("commands-invoked-neighbour-");
+  const app = join(root, "apps/example");
+  mkdirSync(join(app, "src-tauri/src"), { recursive: true });
+  mkdirSync(join(app, "src"), { recursive: true });
+  writeFileSync(
+    join(app, "src-tauri/src/lib.rs"),
+    "/// NO CALLER: this one is explained.\n#[tauri::command]\nfn later() {}\n\n" +
+      "/// This one is not.\n#[tauri::command]\nfn forgotten() {}\n\n" +
+      "fn main() { builder.invoke_handler(tauri::generate_handler![\n  commands::later,\n  commands::forgotten,\n]); }\n",
+  );
+  writeFileSync(join(app, "src/page.ts"), "// nothing\n");
+  const r = run(root);
+  check(
+    "a marker does not cover the command next to it",
+    r.code === 1 && r.out.includes("forgotten") && !r.out.includes("later,"),
+  );
+  cleanup(root);
+}
+
 {
   const r = run(ROOT);
   check("and the repo itself passes", r.code === 0 && /command\(s\) across/.test(r.out));

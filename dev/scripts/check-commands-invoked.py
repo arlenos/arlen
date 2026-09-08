@@ -23,9 +23,13 @@ demanded the literal call shape would report live commands as dead. The cost of
 being generous is that a name mentioned only in a comment counts; the benefit is
 that every finding is real.
 
-THE CARRIED LIST is the same mechanism as the sibling checks and for the same
-reason: it MAY SHRINK and MAY NOT GROW. An entry is a claim that a command is
-deliberately unreachable, which is a thing to decide rather than to inherit.
+TWO WAYS TO BE EXCUSED, and the first is the one to prefer. A command whose own
+doc comment carries a `NO CALLER:` line and a reason is answered where a reader
+will find it - beside the code, in the same place they would go to ask. The
+carried list below is for the rest, and it MAY SHRINK and MAY NOT GROW: an entry
+there is a claim that a command is deliberately unreachable, which is a thing to
+decide rather than to inherit. A central table of fifty reasons is a table nobody
+reads; the marker is how an entry leaves it.
 
 Shown to fail before being trusted: `dev/scripts/test-check-commands-invoked.mjs`.
 
@@ -46,11 +50,15 @@ CARRIED: dict[str, tuple[int, str]] = {
     "desktop-shell": (17, "the 8 September scan, less `waypointer_search` and the two toggle commands `quick_action_run` had already superseded. What is left splits three ways: the six `qs_layout_*` writers (a SECOND writer for a file Settings already edits through `config_set` - which side owns the layout's invariants is a decision, not a deletion), the three-command global-menu registry (nothing registers a menu), and features with no UI at all"),
     "files": (2, "the 8 September scan"),
     "harness": (10, "the 8 September scan; arlen-ui's app, so theirs to answer"),
-    "screenshot": (1, "the 8 September scan; region capture, which is a shipped feature nobody's UI reaches"),
     "settings": (16, "the 8 September scan; the extensions and theme readers are the clusters worth taking first"),
     "store": (2, "the 8 September scan; arlen-ui's app, so theirs to answer"),
     "system-monitor": (1, "the 8 September scan"),
 }
+
+# A command explains its own absence with this in its doc comment, followed by
+# the reason. Explicit rather than a fuzzy match on "no caller today": a marker a
+# reader can grep is worth more than a phrase a scanner guesses at.
+SELF_EXCUSED = re.compile(r"NO CALLER:")
 
 FRONTEND_ROOTS = ("apps", "sdk/ui-kit")
 FRONTEND_SUFFIXES = (".ts", ".svelte", ".js")
@@ -73,6 +81,19 @@ def frontend_strings(root: Path) -> set[str]:
     return names
 
 
+def self_excused(root: Path) -> set[str]:
+    """Commands whose own doc comment says why nothing calls them."""
+    out: set[str] = set()
+    for src in (root / "apps").rglob("src-tauri/src/**/*.rs"):
+        text = src.read_text(errors="replace")
+        for m in re.finditer(r"#\[tauri::command\][^\n]*\n\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)", text):
+            # The doc block immediately above the attribute.
+            head = text[: m.start()].rsplit("\n\n", 1)[-1]
+            if SELF_EXCUSED.search(head):
+                out.add(m.group(1))
+    return out
+
+
 def registered(lib: Path) -> list[str]:
     """The command names in this app's `generate_handler![...]`."""
     text = lib.read_text(errors="replace")
@@ -90,7 +111,7 @@ def registered(lib: Path) -> list[str]:
 
 def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
-    called = frontend_strings(root)
+    called = frontend_strings(root) | self_excused(root)
 
     apps = 0
     total = 0
@@ -130,7 +151,11 @@ def main() -> int:
         return 1
 
     carried = sum(n for n, _ in CARRIED.values())
-    print(f"check-commands-invoked: {total} command(s) across {apps} app(s), {carried} carried")
+    excused = len(self_excused(root))
+    print(
+        f"check-commands-invoked: {total} command(s) across {apps} app(s), "
+        f"{carried} carried, {excused} answered where they are written"
+    )
     return 0
 
 
