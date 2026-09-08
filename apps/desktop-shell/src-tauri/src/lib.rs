@@ -559,8 +559,6 @@ pub fn run() {
             projects::deactivate_focus,
             projects::get_focus_state,
             system_toggles::get_toggle_status,
-            system_toggles::toggle_caffeine,
-            system_toggles::toggle_recording,
             notifications::notification_dismiss,
             notifications::notification_invoke_action,
             notifications::notification_mark_read,
