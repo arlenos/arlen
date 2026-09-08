@@ -27,6 +27,16 @@ and telling which does is more than a grep can say. A rule that guessed there
 would produce false demands for a grant an app does not use, and the fastest way
 to get a check ignored is to have it ask for grants nobody needs.
 
+ONE PLUGIN, AND THAT IS THE WHOLE CLASS TODAY. Checked on 8 September: of the four
+plugins in `sdk/`, only this one subscribes at all - `tauri-plugin-clipboard`,
+`-menu` and `-portal` have no `.subscribe(` call site between them, and this one
+has exactly one. So the rule below is not a sample of a bigger problem, it is the
+problem. If a second plugin ever grows a consumer, this check is where its
+patterns go, and the count in the passing line is what will look wrong first.
+
+The plugin's OTHER background job, the theme watcher, needs no grant: it reads
+through the plugin's own `theme_get` command rather than the bus.
+
 Shown to fail before being trusted: `dev/scripts/test-check-plugin-subscriptions.mjs`.
 
 Usage: check-plugin-subscriptions.py [repo-root]
