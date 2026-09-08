@@ -1058,19 +1058,31 @@ pub async fn forget_network(ssid: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Connect to a hidden WiFi network with SSID and password.
+/// Connect to a hidden WiFi network by typing its name.
 ///
-/// Carries the same world-readable-argv exposure as
-/// [`connect_wifi_password`], for the same reason and with the same fix: see
-/// that function's note. Both close together or neither does.
+/// The password is OPTIONAL because a hidden network need not be secured. Hiding
+/// the SSID and securing the network are two separate switches on a router, and
+/// requiring a password here would refuse the combination outright - the person
+/// would be told their open network needs a key it does not have. An empty string
+/// is treated as no password for the same reason: the form cannot tell the
+/// difference and nmcli would take it as a key and fail.
+///
+/// Carries the same world-readable-argv exposure as [`connect_wifi_password`]
+/// when a password IS given, for the same reason and with the same fix: see that
+/// function's note. Both close together or neither does.
 #[tauri::command]
-pub async fn connect_hidden_network(ssid: String, password: String) -> Result<(), String> {
+pub async fn connect_hidden_network(
+    ssid: String,
+    password: Option<String>,
+) -> Result<(), String> {
+    let mut args = vec!["dev", "wifi", "connect", ssid.as_str()];
+    let key = password.unwrap_or_default();
+    if !key.is_empty() {
+        args.extend(["password", key.as_str()]);
+    }
+    args.extend(["hidden", "yes"]);
     let output = tokio::process::Command::new("nmcli")
-        .args([
-            "dev", "wifi", "connect", &ssid,
-            "password", &password,
-            "hidden", "yes",
-        ])
+        .args(&args)
         .output()
         .await
         .map_err(|e| {

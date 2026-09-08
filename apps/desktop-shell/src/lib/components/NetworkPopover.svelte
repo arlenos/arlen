@@ -13,7 +13,7 @@
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import {
     Wifi, WifiOff, Cable, Plane, Lock, Check, RefreshCw,
-    ChevronRight, Shield, Trash2, Copy, Info,
+    ChevronRight, Shield, Trash2, Copy, Info, EyeOff,
   } from "lucide-svelte";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
@@ -46,6 +46,13 @@
   let connectingTo = $state<string | null>(null);
   let showPasswordFor = $state<string | null>(null);
   let passwordInput = $state("");
+  /// The "Join a hidden network" form. A hidden network is not in the scan - the
+  /// router does not broadcast its name - so the only way in is typing it, and
+  /// until now there was nowhere to type. Its own two fields rather than borrowing
+  /// the password form's, so backing out of one does not half-fill the other.
+  let hiddenOpen = $state(false);
+  let hiddenSsid = $state("");
+  let hiddenPassword = $state("");
   // `null` means the read did not answer, and it is a third thing from on and off.
   // These used to default to false and true with their reads swallowing, so a
   // NetworkManager that never replied rendered as a definite claim about the
@@ -62,6 +69,7 @@
       pollStatus(); loadNetworks(); loadVpns();
     } else {
       showPasswordFor = null; passwordInput = ""; error = null; connDetails = null;
+      hiddenOpen = false; hiddenSsid = ""; hiddenPassword = "";
     }
   });
 
@@ -131,6 +139,26 @@
       await invoke("connect_wifi_password", { ssid: showPasswordFor, password: passwordInput });
       showPasswordFor = null; passwordInput = "";
     } catch { error = "sh.net.errPassword"; }
+    connectingTo = null; await pollStatus(); await loadNetworks(true);
+  }
+  /// Join a network that does not announce itself.
+  ///
+  /// The password is optional on purpose: hiding the name and securing the network
+  /// are two separate switches on a router, and a form that insisted on a key
+  /// would refuse an open hidden network outright. The name is not optional -
+  /// there is nothing to connect to without it - so Connect stays disabled until
+  /// one is typed rather than failing afterwards with a sentence about the radio.
+  async function handleHiddenSubmit() {
+    const ssid = hiddenSsid.trim();
+    if (!ssid) return;
+    connectingTo = ssid;
+    try {
+      await invoke("connect_hidden_network", {
+        ssid,
+        password: hiddenPassword ? hiddenPassword : null,
+      });
+      hiddenOpen = false; hiddenSsid = ""; hiddenPassword = "";
+    } catch { error = "sh.net.errHidden"; }
     connectingTo = null; await pollStatus(); await loadNetworks(true);
   }
   /// Both copies say when they did not happen.
@@ -319,7 +347,20 @@
       <Separator class="opacity-10" />
     {/if}
 
-    {#if showPasswordFor}
+    {#if hiddenOpen}
+      <div class="pw-section">
+        <span class="pw-title">{$t("sh.net.hiddenTitle")}</span>
+        <input class="pw-input" bind:value={hiddenSsid} placeholder={$t("sh.net.hiddenName")}
+          onkeydown={(e) => { if (e.key === "Enter") handleHiddenSubmit(); }} />
+        <input type="password" class="pw-input" bind:value={hiddenPassword} placeholder={$t("sh.net.hiddenPassword")}
+          onkeydown={(e) => { if (e.key === "Enter") handleHiddenSubmit(); }} />
+        <div class="pw-actions">
+          <button class="pw-btn" onclick={(e) => { e.stopPropagation(); hiddenOpen = false; }}>{$t("sh.net.cancel")}</button>
+          <button class="pw-btn pw-btn-primary" disabled={!hiddenSsid.trim()}
+            onclick={(e) => { e.stopPropagation(); handleHiddenSubmit(); }}>{$t("sh.net.connect")}</button>
+        </div>
+      </div>
+    {:else if showPasswordFor}
       <div class="pw-section">
         <span class="pw-title">{$t("sh.net.connectTo", { name: showPasswordFor })}</span>
         <input type="password" class="pw-input" bind:value={passwordInput} placeholder={$t("sh.net.password")}
@@ -357,6 +398,12 @@
           <div class="net-empty">{$t("sh.net.noNetworks")}</div>
         {/each}
       </div>
+      <!-- Under the list, because that is where a person looks after failing to
+           find their network in it - which for a hidden one they always will. -->
+      <button class="net-hidden-entry" onclick={(e) => { e.stopPropagation(); hiddenOpen = true; }}>
+        <EyeOff size={14} strokeWidth={1.5} />
+        <span>{$t("sh.net.hidden")}</span>
+      </button>
     {/if}
 
     {#if status?.connection_type === "ethernet" && status.connected}
@@ -417,6 +464,10 @@
      time any sweep opened this panel; `.net-loading` is its sibling one branch
      away, in a state the sweep did not happen to render. */
   .net-loading { padding: 20px; text-align: center; opacity: 0.5; font-size: var(--text-xs); }
+  /* The list's own row rhythm (8px 10px, 6px radius, 0.1s) so it reads as the
+     last entry rather than a control bolted under one. */
+  .net-hidden-entry { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: 6px; font-size: var(--text-xs); opacity: 0.7; transition: background 0.1s, opacity 0.1s; }
+  .net-hidden-entry:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); opacity: 1; }
 
   .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-2xs); opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .net-refresh { width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; padding: 0; }
