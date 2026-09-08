@@ -131,6 +131,9 @@ impl ThemeState {
                 path.display()
             );
         }
+        if let Some(selection) = &report.selection {
+            select_interface(selection);
+        }
     }
 
     /// Reconcile the runtime theme broadcast to the current selection.
@@ -180,6 +183,82 @@ impl ThemeState {
         &self.config_path
     }
 }
+
+/// The GSettings schema GTK reads its interface choices from.
+const INTERFACE_SCHEMA: &str = "org.gnome.desktop.interface";
+
+/// Name the theme in `org.gnome.desktop.interface`, because the file does not.
+///
+/// **This is the step that makes the GTK3 widget theme reach a GTK3 app**, and it
+/// was missing. Measured on 8 September: with our `gtk-3.0/settings.ini` in
+/// place and correct, a GTK3 probe resolves `gtk-theme-name='Adwaita'`,
+/// `gtk-font-name='Adwaita Sans 11'` - not one value from the file arrives.
+/// GTK3 prefers this schema whenever it is installed, and with no value set it
+/// uses the schema's own default, which silently beats the file. Forcing
+/// `GTK_THEME=Arlen` gave the correct sheet, so the theme was always right;
+/// nothing was selecting it. Setting `gtk-theme` here made the same probe answer
+/// `Arlen` and paint our `#f5f5f7`.
+///
+/// The schemas are on our image (37 of them compiled, this one among them), so
+/// this is not a developer-host quirk. `settings.ini` is still written: it is
+/// what a system WITHOUT these schemas reads, and the two now render the same
+/// `InterfaceSelection` rather than deciding separately.
+///
+/// Absent schema, absent key and a read-only backend are all normal outcomes
+/// rather than faults - a machine that does not have this vocabulary is served
+/// by the file - so each is logged and skipped rather than raised.
+fn select_interface(selection: &arlen_theme::gtk::InterfaceSelection) {
+    use gtk::gio;
+    use gtk::prelude::SettingsExt;
+
+    let Some(source) = gio::SettingsSchemaSource::default() else {
+        log::info!("theme apply: no GSettings schema source, so settings.ini is the only reader");
+        return;
+    };
+    let Some(schema) = source.lookup(INTERFACE_SCHEMA, true) else {
+        log::info!("theme apply: {INTERFACE_SCHEMA} is not installed, so settings.ini is the only reader");
+        return;
+    };
+    let settings = gio::Settings::new(INTERFACE_SCHEMA);
+
+    // Only the keys this schema version actually has. `color-scheme` arrived in
+    // gsettings-desktop-schemas 42 and `font-name` has been there forever, so
+    // asking rather than assuming keeps an older system from a G_SETTINGS abort:
+    // writing a key a schema does not declare is fatal in GIO, not an error.
+    let mut set_string = |key: &str, value: &str| {
+        if !schema.has_key(key) {
+            log::info!("theme apply: {INTERFACE_SCHEMA} has no {key}, left alone");
+            return;
+        }
+        if let Err(e) = settings.set_string(key, value) {
+            log::warn!("theme apply: could not set {key}: {e}");
+        }
+    };
+
+    if let Some(name) = &selection.gtk_theme {
+        set_string("gtk-theme", name);
+    }
+    if let Some(icons) = &selection.icon_theme {
+        set_string("icon-theme", icons);
+    }
+    set_string("cursor-theme", &selection.cursor_theme);
+    set_string("font-name", &selection.font);
+    // The schema's own vocabulary for the same bit `settings.ini` spells
+    // `gtk-application-prefer-dark-theme`.
+    set_string(
+        "color-scheme",
+        if selection.dark { "prefer-dark" } else { "prefer-light" },
+    );
+    if schema.has_key("cursor-size") {
+        if let Err(e) = settings.set_int("cursor-size", selection.cursor_size as i32) {
+            log::warn!("theme apply: could not set cursor-size: {e}");
+        }
+    }
+    // Push the writes through the backend before returning: dconf batches them,
+    // and the shell may be about to hand over to apps that read the schema.
+    gio::Settings::sync();
+}
+
 
 /// The per-user runtime path the shell broadcasts the resolved theme to, so
 /// every other Arlen app's theme consumer can read the live theme without
@@ -476,6 +555,44 @@ pub fn reset_theme(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The key GTK3 actually reads gets our theme's name in it.
+    ///
+    /// `#[ignore]`d because it writes real GSettings, so it needs a private
+    /// config home and its own session bus or it would edit the developer's
+    /// desktop. Run it, because the bug this closes was invisible for exactly as
+    /// long as nobody did:
+    ///
+    /// ```text
+    /// XDG_CONFIG_HOME=$(mktemp -d) dbus-run-session -- \
+    ///   cargo test -p arlen-desktop-shell --lib select_interface -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "writes GSettings; needs a private XDG_CONFIG_HOME and dbus-run-session"]
+    fn select_interface_names_the_theme_in_the_schema_gtk_reads() {
+        use gtk::gio;
+        use gtk::prelude::SettingsExt;
+
+        let selection = arlen_theme::gtk::InterfaceSelection {
+            gtk_theme: Some("Arlen".into()),
+            icon_theme: None,
+            cursor_theme: "default".into(),
+            cursor_size: 24,
+            font: "Inter Variable 14px".into(),
+            dark: true,
+        };
+        select_interface(&selection);
+
+        let settings = gio::Settings::new(INTERFACE_SCHEMA);
+        assert_eq!(settings.string("gtk-theme"), "Arlen");
+        assert_eq!(settings.string("color-scheme"), "prefer-dark");
+        assert_eq!(settings.string("font-name"), "Inter Variable 14px");
+        assert_eq!(settings.int("cursor-size"), 24);
+        // The icon theme was None, so the key keeps whatever it had: naming a set
+        // this machine does not have would make it LESS iconned, which is the
+        // same rule the settings file follows.
+        assert_ne!(settings.string("icon-theme"), "");
+    }
 
     /// The startup reconcile has to actually produce the files, and the one that
     /// matters most is the settings file: without it a GTK3 app never finds the

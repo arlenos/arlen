@@ -113,6 +113,16 @@ pub struct ApplyReport {
     pub skipped_foreign: Vec<PathBuf>,
     /// Per-file write errors (path + message).
     pub errors: Vec<(PathBuf, String)>,
+    /// What this run decided the interface should be, once the machine had been
+    /// looked at.
+    ///
+    /// Carried out rather than left inside because `settings.ini` is not the
+    /// only reader of these six decisions: measured on 8 September, GTK3 takes
+    /// its theme from `org.gnome.desktop.interface` whenever those schemas are
+    /// installed and IGNORES the file entirely - and they are on our image, so
+    /// the file alone selects nothing. The second writer needs the same answer
+    /// rather than its own copy of the detection, which is what this field is.
+    pub selection: Option<crate::gtk::InterfaceSelection>,
 }
 
 impl ApplyReport {
@@ -267,6 +277,7 @@ fn write_toolkit_configs(
     // directory being there - see `installed_icon_theme`.
     let icons = crate::gtk::installed_icon_theme(&gtk_theme.icons.theme, &icon_theme_dirs())
         .then_some(gtk_theme.icons.theme.as_str());
+    report.selection = Some(crate::gtk::interface_selection(gtk_theme, selected, icons));
     let ini = crate::gtk::generate_gtk_settings_ini(gtk_theme, selected, icons);
     write_guarded(&config.join("gtk-3.0/settings.ini"), &ini, INI_MARKER, &mut report);
 
