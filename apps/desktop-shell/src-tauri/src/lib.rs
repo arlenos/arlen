@@ -406,7 +406,6 @@ pub fn run() {
             modulesd_commands::modulesd_list_modules,
             modulesd_commands::mint_iframe,
             modulesd_commands::module_host_call,
-            modulesd_commands::modulesd_set_enabled,
             modulesd_commands::retry_module,
             // theme::get_surface_tokens removed (legacy, no frontend consumers)
             shell_overlay_client::context_menu_activate,
