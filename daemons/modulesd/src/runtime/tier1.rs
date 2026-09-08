@@ -508,6 +508,49 @@ mod tests {
         let _ = r.engine();
     }
 
+    /// The memory cap is armed, not merely configured.
+    ///
+    /// Third of the three budgets, and it is here for what happened to the other
+    /// two: the epoch deadline was configured and never given a value, so it
+    /// fired on every guest's first instruction, and the same store's fuel starts
+    /// at zero unless somebody sets it. A limit that is built and never installed
+    /// looks identical from the outside to one that works.
+    ///
+    /// `memory.grow` past the cap returns -1 rather than trapping, which is the
+    /// wasm semantic: the guest is told it cannot have the pages and decides what
+    /// to do. A guest that ignores the answer traps on its own access.
+    ///
+    /// Checked against its own control rather than trusted: with the cap raised
+    /// to 512 MB the same call returns 1, the previous page count, so the -1 is
+    /// the limiter answering and not the request failing for some other reason.
+    #[tokio::test]
+    async fn a_guest_cannot_grow_past_the_memory_cap() {
+        let r = Tier1Runtime::new().expect("runtime init");
+        let graph = Arc::new(UnixGraphClient::new("/tmp/arlen-test-knowledge.sock"));
+        let events = Arc::new(UnixEventEmitter::new("/tmp/arlen-test-events.sock"));
+        let mut store = r.create_store(
+            CapabilityContext::empty("com.example.test"),
+            graph,
+            events,
+        );
+
+        // 2000 pages is 128 MB, twice the cap.
+        let module = wasmtime::Module::new(
+            r.engine(),
+            r#"(module (memory 1) (func (export "grow") (result i32) i32.const 2000 memory.grow))"#,
+        )
+        .expect("the grower compiles");
+        let instance = wasmtime::Instance::new_async(&mut store, &module, &[])
+            .await
+            .expect("instantiate");
+        let grow = instance
+            .get_typed_func::<(), i32>(&mut store, "grow")
+            .expect("the export is there");
+
+        let answer = grow.call_async(&mut store, ()).await.expect("grow returns");
+        assert_eq!(answer, -1, "the cap refused the pages rather than handing them over");
+    }
+
     #[tokio::test]
     async fn create_store_carries_capability_context() {
         let r = Tier1Runtime::new().unwrap();
