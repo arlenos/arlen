@@ -416,7 +416,10 @@ pub async fn get_project_for_app(app_id: String) -> Result<Option<ProjectInfo>, 
 }
 
 /// Get a single project by ID.
-#[tauri::command]
+/// NOT a `#[tauri::command]`, and it stopped being one on 8 September. No frontend
+/// invoked it; its one caller is `intent_ipc`, which resolves a project for an
+/// incoming intent and calls this directly. A command attribute on a function no
+/// frontend reaches says the frontend may reach it.
 pub async fn get_project(project_id: String) -> Result<Option<Project>, String> {
     let id_esc = project_id.replace('\'', "\\'");
     let result = match graph_query(&format!(
