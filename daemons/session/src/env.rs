@@ -339,6 +339,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_session_is_named_arlen_because_two_subsystems_route_on_it() {
+        // Not decoration and not only a label. Two things key off this exact
+        // value and both fail SILENTLY without it:
+        //
+        //   * the portal frontend routes a FileChooser or Screenshot call to our
+        //     backend by matching `UseIn=arlen` in the `.portal` file against
+        //     this variable, so a different value means no portal backend at all;
+        //   * the shell writes the interface schema (the widget theme, the
+        //     cursor, the font) only in an Arlen session, because those keys
+        //     belong to the live desktop rather than to a config directory - so a
+        //     different value means every GTK app is in stock Adwaita and nothing
+        //     says why.
+        //
+        // Neither would fail a build, and the second was measured on 8 September:
+        // GTK3 takes its theme from `org.gnome.desktop.interface`, not from the
+        // settings file we write.
+        assert_eq!(
+            session_env("s-1", "").get("XDG_CURRENT_DESKTOP").map(String::as_str),
+            Some("arlen")
+        );
+    }
+
+    #[test]
     fn a_language_is_exported_only_when_the_machine_generated_it() {
         let have = vec!["en_US.UTF-8".to_string(), "de_DE.UTF-8".to_string()];
 
