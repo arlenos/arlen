@@ -25,7 +25,7 @@
 
   const LINES = [
     "The focus mode you had set could not be restored.",
-    "Could not read your Quick Settings layout.",
+    "Your Quick Settings layout cannot be read.",
     "That panel could not be opened.",
     "The theme file could not be read, so this is the built-in one.",
   ];
