@@ -24,8 +24,8 @@
     hfSearch,
     uncensoredConfirmSeen,
     tierPicks,
-    tierMeta,
-    taskLabel,
+    tierNoteKey,
+    taskLabelKey,
     loadModels,
     startDownload,
     cancelDownload,
@@ -82,8 +82,11 @@
     if (fit) parts.push(fit);
     return parts.join(", ");
   }
-  function pickMeta(m: Model, tier: Tier): string {
-    const parts: string[] = [tierMeta(tier).label];
+  // The tier is said once, as the row's description; the meta carries the
+  // size and the fit. It used to open with the tier word as well, so a pick
+  // read "Fast on your machine." over "Fast, 2.3 GB".
+  function pickMeta(m: Model): string {
+    const parts: string[] = [];
     if (m.sizeGb != null) parts.push(`${m.sizeGb.toFixed(1)} GB`);
     const fit = fitPhrase(m);
     if (fit) parts.push(fit);
@@ -118,12 +121,14 @@
         {#each TIERS as tier (tier)}
           {@const m = picks[tier]}
           {#if m}
-            <Row label={m.name} id={`pick-${tier}`}>
+            <!-- The tier's one line under the pick, so "Fast" and "Best quality"
+                 in the meta below mean something on the page itself. -->
+            <Row label={m.name} description={$t(tierNoteKey(tier))} id={`pick-${tier}`}>
               {#snippet control()}
                 {@render action(m)}
               {/snippet}
               {#snippet below()}
-                {@render info(m, pickMeta(m, tier))}
+                {@render info(m, pickMeta(m))}
               {/snippet}
             </Row>
           {/if}
@@ -181,7 +186,10 @@
   <div class="info">
     <p class="meta">{meta}</p>
     <span class="tags">
-      {#each m.tasks as task (task)}<Badge variant="outline">{taskLabel(task)}</Badge>{/each}
+      {#each m.tasks as task (task)}
+        {@const key = taskLabelKey(task)}
+        <Badge variant="outline">{key ? $t(key) : task}</Badge>
+      {/each}
       {#if m.uncensored}
         <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
       {/if}

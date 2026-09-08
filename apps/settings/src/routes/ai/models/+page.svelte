@@ -26,7 +26,7 @@
     installedModels,
     availableModels,
     roleMeta,
-    taskLabel,
+    taskLabelKey,
     modelById,
     loadModels,
     setRole,
@@ -71,12 +71,12 @@
     <Section label={$t("s.mdl.active")} class="span-full">
       {#each ROLES as role (role)}
         {@const rm = roleMeta(role)}
-        <Row label={rm.label} description={rm.description} id={`role-${role}`}>
+        <Row label={$t(rm.labelKey)} description={$t(rm.descriptionKey)} id={`role-${role}`}>
           {#snippet control()}
             <PopoverSelect
               value={$roles[role]}
               options={roleOptions}
-              ariaLabel={$t("s.mdl.roleModel", { role: rm.label })}
+              ariaLabel={$t("s.mdl.roleModel", { role: $t(rm.labelKey) })}
               onchange={(v) => setRole(role, v)}
               renderLabel={modelOption as never}
             />
@@ -108,7 +108,10 @@
               <div class="info">
                 <p class="meta">{installedMeta(m)}</p>
                 <span class="tags">
-                  {#each m.tasks as task (task)}<Badge variant="outline">{taskLabel(task)}</Badge>{/each}
+                  {#each m.tasks as task (task)}
+                    {@const key = taskLabelKey(task)}
+                    <Badge variant="outline">{key ? $t(key) : task}</Badge>
+                  {/each}
                   {#if m.uncensored}
                     <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
                   {/if}

@@ -71,38 +71,43 @@ export interface Download {
   status: "downloading" | "verifying" | "complete" | "error";
 }
 
-const TASK_LABELS: Record<string, string> = {
-  general: "Everyday",
-  coding: "Coding",
-  writing: "Writing",
-  reasoning: "Reasoning",
+// The words for tasks, tiers and roles live in the catalogue, not here: these
+// tables carry KEYS, spelled out so the key gate can read them (a composed
+// `s.mdl.task.${task}` is invisible to it). Until 8 September they were English
+// sentences, and a German page read six English labels and five English lines.
+const TASK_LABEL_KEYS: Record<string, string> = {
+  general: "s.mdl.task.general",
+  coding: "s.mdl.task.coding",
+  writing: "s.mdl.task.writing",
+  reasoning: "s.mdl.task.reasoning",
 };
 
-/// A plain label for a task tag.
-export function taskLabel(task: string): string {
-  return TASK_LABELS[task] ?? task;
+/// The catalogue key for a task tag, or null for a tag the catalogue has no
+/// word for (the surface then shows the tag itself rather than a key).
+export function taskLabelKey(task: string): string | null {
+  return TASK_LABEL_KEYS[task] ?? null;
 }
 
-const TIER_LABELS: Record<Tier, { label: string; note: string }> = {
-  fast: { label: "Fast", note: "Snappy on your machine, lighter answers." },
-  balanced: { label: "Balanced", note: "The sweet spot for most people." },
-  quality: { label: "Best quality", note: "The strongest that still runs well." },
+const TIER_NOTE_KEYS: Record<Tier, string> = {
+  fast: "s.mdl.tier.fast",
+  balanced: "s.mdl.tier.balanced",
+  quality: "s.mdl.tier.quality",
 };
 
-/// The label and one-line note for a tier.
-export function tierMeta(tier: Tier): { label: string; note: string } {
-  return TIER_LABELS[tier];
+/// The catalogue key for a tier's one line, the sentence under a pick.
+export function tierNoteKey(tier: Tier): string {
+  return TIER_NOTE_KEYS[tier];
 }
 
-const ROLE_META: Record<Role, { label: string; description: string }> = {
-  query: { label: "Chat", description: "Answers your questions." },
-  agent: { label: "Background work", description: "Runs the tasks you have turned on." },
-  title: { label: "Chat titles", description: "Names new chats. A small local model is plenty." },
+const ROLE_KEYS: Record<Role, { labelKey: string; descriptionKey: string }> = {
+  query: { labelKey: "s.mdl.role.query.label", descriptionKey: "s.mdl.role.query.desc" },
+  agent: { labelKey: "s.mdl.role.agent.label", descriptionKey: "s.mdl.role.agent.desc" },
+  title: { labelKey: "s.mdl.role.title.label", descriptionKey: "s.mdl.role.title.desc" },
 };
 
-/// The label and description for a role row.
-export function roleMeta(role: Role): { label: string; description: string } {
-  return ROLE_META[role];
+/// The catalogue keys for a role row's label and description.
+export function roleMeta(role: Role): { labelKey: string; descriptionKey: string } {
+  return ROLE_KEYS[role];
 }
 
 /// The whole catalogue (local curated + connected cloud), the hardware line, the
