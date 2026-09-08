@@ -26,6 +26,7 @@
     resetSys,
     resetTerminal,
     loadSys,
+    loadResolvedTerminal,
     sysWriteFailed,
     installedCursorThemes,
     installedIconThemes,
@@ -38,6 +39,11 @@
     // What `theme.toml` already holds, so a value set on an earlier launch is
     // shown as set instead of the page opening on the theme's own defaults.
     void loadSys();
+    // And what the theme's own defaults ARE, resolved by the backend. The grid
+    // drew a hardcoded copy of the house palette before this, so a person on
+    // another theme saw one set of colours here and a different set in their
+    // terminal.
+    void loadResolvedTerminal();
   });
 
   // What this machine actually has. `undefined` is "not read yet" and `null` is
