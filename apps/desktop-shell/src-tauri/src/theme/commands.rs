@@ -184,6 +184,18 @@ impl ThemeState {
     }
 }
 
+/// Whether `XDG_CURRENT_DESKTOP` names an Arlen session.
+///
+/// The variable is a COLON-SEPARATED list by specification and desktops really do
+/// ship more than one entry, so a substring test would match `arlen-something`
+/// and an equality test would miss `arlen:GNOME`. Case-insensitive for the same
+/// reason the portal's own routing is.
+fn is_arlen_session(value: &str) -> bool {
+    value
+        .split(':')
+        .any(|entry| entry.trim().eq_ignore_ascii_case("arlen"))
+}
+
 /// The GSettings schema GTK reads its interface choices from.
 const INTERFACE_SCHEMA: &str = "org.gnome.desktop.interface";
 
@@ -210,6 +222,26 @@ const INTERFACE_SCHEMA: &str = "org.gnome.desktop.interface";
 fn select_interface(selection: &arlen_theme::gtk::InterfaceSelection) {
     use gtk::gio;
     use gtk::prelude::SettingsExt;
+
+    // ONLY IN AN ARLEN SESSION, and this guard is not caution for its own sake.
+    // Unlike every file this apply writes, a GSettings key carries no marker and
+    // is not scoped to a config directory: it is the live desktop's. A developer
+    // running `just dev` on their own machine would have had their GTK theme,
+    // cursor and font changed system-wide by starting our shell, with nothing
+    // saying so and nothing to put back. We own the interface settings of an
+    // Arlen session, not of whatever desktop somebody runs this inside.
+    //
+    // `daemons/session/src/env.rs` sets `XDG_CURRENT_DESKTOP=arlen`, and it is
+    // also the key the portal routes on, so this is the same identity the rest of
+    // the system already uses rather than a new one invented here.
+    let session = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    if !is_arlen_session(&session) {
+        log::info!(
+            "theme apply: not an Arlen session (XDG_CURRENT_DESKTOP={session:?}), \
+             leaving the interface schema alone"
+        );
+        return;
+    }
 
     let Some(source) = gio::SettingsSchemaSource::default() else {
         log::info!("theme apply: no GSettings schema source, so settings.ini is the only reader");
@@ -568,9 +600,24 @@ mod tests {
     /// long as nobody did:
     ///
     /// ```text
-    /// XDG_CONFIG_HOME=$(mktemp -d) dbus-run-session -- \
+    /// XDG_CONFIG_HOME=$(mktemp -d) XDG_CURRENT_DESKTOP=arlen dbus-run-session -- \
     ///   cargo test -p arlen-desktop-shell --lib select_interface -- --ignored --nocapture
     /// ```
+    #[test]
+    fn only_an_arlen_session_owns_the_interface_schema() {
+        assert!(is_arlen_session("arlen"));
+        assert!(is_arlen_session("Arlen"));
+        // The variable is a list, and a session may name more than one desktop.
+        assert!(is_arlen_session("arlen:GNOME"));
+        assert!(is_arlen_session("GNOME:arlen"));
+        // Somebody else's desktop is not ours to reconfigure, and a name that
+        // merely starts the same is somebody else's.
+        assert!(!is_arlen_session(""));
+        assert!(!is_arlen_session("sway"));
+        assert!(!is_arlen_session("arlen-lite"));
+        assert!(!is_arlen_session("GNOME:KDE"));
+    }
+
     #[test]
     #[ignore = "writes GSettings; needs a private XDG_CONFIG_HOME and dbus-run-session"]
     fn select_interface_names_the_theme_in_the_schema_gtk_reads() {
