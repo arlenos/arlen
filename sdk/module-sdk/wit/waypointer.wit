@@ -76,6 +76,7 @@ interface action {
 
 world waypointer-provider {
     import arlen:host/graph@0.1.0;
+    import arlen:host/files@0.1.0;
     import arlen:host/network@0.1.0;
     import arlen:host/events@0.1.0;
     import arlen:host/log@0.1.0;
@@ -84,6 +85,7 @@ world waypointer-provider {
 
 world waypointer-action {
     import arlen:host/graph@0.1.0;
+    import arlen:host/files@0.1.0;
     import arlen:host/network@0.1.0;
     import arlen:host/events@0.1.0;
     import arlen:host/log@0.1.0;

@@ -112,6 +112,14 @@ pub fn describe(caps: &ModuleCapabilities) -> CapabilitySummary {
             grants.push("set your clipboard".to_string());
         }
     }
+    if let Some(files) = &caps.files {
+        if !files.read.is_empty() {
+            // The prefixes, not the word "filesystem". A person agreeing to
+            // "read files" has agreed to nothing they can picture; a person
+            // agreeing to "read files under /usr/share/man" has.
+            grants.push(format!("read files under {}", files.read.join(", ")));
+        }
+    }
     if let Some(bus) = &caps.event_bus {
         if !bus.subscribe.is_empty() {
             grants.push(format!("observe {} events", bus.subscribe.join(", ")));
@@ -223,10 +231,32 @@ async fn request(socket: &Path, body: &RequestBody) -> Result<IntakeResult, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arlen_modules::{ClipboardCapability, GraphCapability, NetworkCapability};
+    use arlen_modules::{ClipboardCapability, FilesCapability, GraphCapability, NetworkCapability};
 
     fn caps() -> ModuleCapabilities {
         ModuleCapabilities::default()
+    }
+
+    #[test]
+    fn reading_files_asks_and_names_the_prefixes() {
+        let mut c = caps();
+        c.files = Some(FilesCapability {
+            read: vec!["/usr/share/man".into(), "/usr/share/dict".into()],
+        });
+        let d = describe(&c);
+        assert!(d.needs_consent(), "a module that reads files must be asked about");
+        assert!(
+            d.grants.iter().any(|g| g == "read files under /usr/share/man, /usr/share/dict"),
+            "the prefixes are the grant, not the word filesystem: {:?}",
+            d.grants
+        );
+    }
+
+    #[test]
+    fn declaring_no_prefixes_grants_nothing() {
+        let mut c = caps();
+        c.files = Some(FilesCapability { read: Vec::new() });
+        assert!(!describe(&c).needs_consent(), "an empty list is not a request");
     }
 
     /// Approving the empty set is not a decision, it is friction.
