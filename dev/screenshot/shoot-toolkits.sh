@@ -65,6 +65,29 @@ fi
 # sees what 1a just built rather than whatever is installed on the host.
 (cd "$root/sdk/theme" && env XDG_DATA_HOME="$work/data" \
   cargo run -q --example emit -- "$variant" "$work/config") || exit 1
+# 1c. And the step the SHELL does after writing those files, which this harness
+# did not: name the theme in `org.gnome.desktop.interface`.
+#
+# Without it the GTK3 leg of this picture tested nothing. Measured on 8
+# September: with a correct `settings.ini` in place, a GTK3 app resolves
+# `gtk-theme-name='Adwaita'` and paints stock, because GTK3 prefers this schema
+# whenever it is installed and falls back to its DEFAULT rather than to the
+# file. So every GTK3 window this script has ever produced was Adwaita wearing
+# our `@define-color` overrides, and the line below said "Arlen via
+# settings.ini" over it.
+#
+# Private by construction: the value lands in `$work/config/dconf/user` because
+# XDG_CONFIG_HOME points there, and the write needs a session bus of its own, so
+# neither can touch the developer's desktop.
+if [ -n "$gtk3_built" ] && command -v gsettings >/dev/null 2>&1; then
+  scheme_value="prefer-light"
+  [ "$variant" = dark ] && scheme_value="prefer-dark"
+  XDG_CONFIG_HOME="$work/config" dbus-run-session -- sh -c \
+    "gsettings set org.gnome.desktop.interface gtk-theme 'Arlen';
+     gsettings set org.gnome.desktop.interface color-scheme '$scheme_value'" \
+    >/dev/null 2>&1 || echo "!! could not set the interface schema, so the GTK3 leg renders stock" >&2
+fi
+
 # qt6ct needs to be told to use the scheme; apply.rs deliberately leaves that
 # choice to the user (their qt6ct.conf may carry other settings), so here the
 # harness makes it.
@@ -149,5 +172,5 @@ WAYLAND_DISPLAY="$wd" grim "$out"; rc=$?
 for l in arlen gtk4 gtk3 qt6 gtk4plain; do
   if [ -s "$work/$l.log" ]; then echo "-- $l.log:"; tail -3 "$work/$l.log"; fi
 done
-echo "shot rc=$rc -> $out (gtk3: ${gtk3_theme:-${gtk3_built:-stock Adwaita} via settings.ini}, scheme: $scheme)"
+echo "shot rc=$rc -> $out (gtk3: ${gtk3_theme:-${gtk3_built:-stock Adwaita} via the interface schema}, scheme: $scheme)"
 exit $rc
