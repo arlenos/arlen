@@ -14,6 +14,8 @@
 # needs no rebuild. Without it, the `settings.ini` that same apply writes names
 # no theme at all - it omits `gtk-theme-name` when none is installed - and every
 # GTK3 app on the image, our own Tauri windows included, renders stock Adwaita.
+# NB the settings file is not what SELECTS it either - see the override above -
+# but the same sentence holds: without this phase there is nothing to select.
 #
 # dart-sass comes from npm: Debian ships `sassc`, which is libsass, and libsass
 # never implemented the `@use` module system this source is written in. Build-time
@@ -33,6 +35,13 @@ dev/scripts/build-gtk3-theme.sh "$DESTDIR/usr/share/themes"
 # The theme is only reachable if the sheet is actually there: `installed_gtk_theme`
 # counts a directory only when it holds `gtk-3.0/gtk.css`, so an empty directory
 # would leave the settings file silently naming nothing. Fail the build instead.
+#
+# And since 8 September this check is load-bearing for a second reason: the image
+# ships `99-arlen.gschema.override`, which names 'Arlen' as the DEFAULT widget
+# theme unconditionally, because that is the value GTK3 actually reads. A build
+# that shipped the override without the sheet would name a theme that is not
+# there, and GTK would fall back to Adwaita with nothing saying why. The two are
+# kept true by this exit.
 sheet="$DESTDIR/usr/share/themes/Arlen/gtk-3.0/gtk.css"
 if [ ! -s "$sheet" ]; then
     echo "!! the GTK3 theme did not compile; refusing to ship a theme directory with no sheet" >&2
