@@ -91,11 +91,13 @@ fi
 # The licence job, which lives in a DIFFERENT workflow and was therefore invisible
 # to everything above. `run-ci-gates.sh` derives its list from `ci.yml`; `reuse
 # lint` runs from `license.yml`, so a commit could break licensing and the only
-# reader was CI. It did, twice in one night. Best-effort: without `reuse` on PATH
-# the script says so and the commit proceeds.
-if [ -x "$root/dev/scripts/reuse-lint.sh" ]; then
+# reader was CI. It did, twice in one night. Both halves of that job are echoed,
+# each best-effort: an absent tool is reported rather than passed over, and the
+# staged names go in so the dependency half is skipped for a commit that touches
+# no manifest.
+if [ -x "$root/dev/scripts/license-job.sh" ]; then
     if ! env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE \
-            bash "$root/dev/scripts/reuse-lint.sh"; then
+            bash "$root/dev/scripts/license-job.sh" $(git diff --cached --name-only); then
         echo >&2
         echo "pre-commit: the licence job is red, so this commit would land broken." >&2
         echo "Fix it, or pass --no-verify if you know why it is wrong." >&2
