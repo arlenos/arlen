@@ -1,23 +1,24 @@
-//! AI Activity read command (P9 read-only transparency surface).
+//! What the ledger records about ONE APP, for its own settings page.
 //!
-//! Thin wrapper over the shared recent-activity reader in `audit-proto`
-//! (`ReadClient::recent`) — the same source the AI harness app's activity
-//! timeline uses, so the tail-seek logic and the frontend entry shape
-//! live in one place (`audit_proto::activity`). It reads the Structural
-//! tier (content-free, never Forensic) over the daemon's read socket.
+//! Thin wrapper over the shared reader in `audit-proto`, so the tail-seek logic
+//! and the frontend entry shape live in one place (`audit_proto::activity`). It
+//! reads the Structural tier (content-free, never Forensic) over the daemon's
+//! read socket.
 //!
-//! Read-only and advisory: a missing or unreachable daemon yields an
-//! empty `available = false` page (the reader never errors), so the page
-//! still renders instead of failing.
+//! Read-only and advisory: a missing or unreachable daemon yields an empty
+//! `available = false` page (the reader never errors), so the page still renders
+//! instead of failing - and says which of the two it is, because a record that
+//! could not be read is not a record of nothing.
+//!
+//! THE UNFILTERED READ IS NOT HERE ANY MORE. An `ai_activity_recent` sat beside
+//! this until 9 September, for a Settings AI Activity view that does not exist:
+//! the AI page's own first paragraph says reviewing what the AI did lives in the
+//! harness, one activity home and one config home. The harness has its own copy
+//! of that command with its own callers. This one had none, and a second reader
+//! of the whole ledger, in the app that decided not to show it, is a door left in
+//! a wall nobody uses.
 
 use audit_proto::{read_socket_path, ActivityPage, ReadClient};
-
-/// Read the most recent `limit` audit entries, newest first, for the
-/// Settings AI Activity view.
-#[tauri::command]
-pub async fn ai_activity_recent(limit: u64) -> ActivityPage {
-    ReadClient::new(read_socket_path()).recent(limit).await
-}
 
 /// What the ledger records about one app, for its own settings page.
 ///

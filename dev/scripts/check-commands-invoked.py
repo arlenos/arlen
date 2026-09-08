@@ -79,7 +79,26 @@ CARRIED: dict[str, tuple[int, str]] = {
         "path to something a live one already reaches"
     ),
     "harness": (16, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - the marker is per-app, so ours on the other six does not answer for theirs"),
-    "settings": (10, "the 8 September scan, re-measured per-app, less `theme_get`, `keybindings_get_defaults` and `keybindings_get_all_conflicts` (all deleted - each a second name for something a live command already returns) `settings_app_audit` (an app's page shows what it did, beside what it may reach) `theme_contrast_report` (the accessibility page audits the active appearance) and `revoke_consent` (a consent line on the privacy surface can be released now). The three `extensions_*` commands are the backend of the management surface the shell-extension strand named, so a strand rather than a loose end; three theme readers; and the ai/keybinding readers"),
+    "settings": (
+        9,
+        "seven belong to surfaces in arlen-ui's lane and two are theme readers. "
+        "The model picker's backend is four of them - `ai_models_list`, "
+        "`ai_defaults_set` and the `ai_uncensored_*` opt-in pair - and that page "
+        "renders a fixture today, so it is mid-build rather than missing. The "
+        "three `extensions_*` are the management surface the shell-extension "
+        "strand named, routed as a design job. `theme_resolved_terminal` names an "
+        "ANSI palette editor that belongs to the deferred Appearance strand, and "
+        "`theme_resolved_sounds` is a second path: the sound page already reads "
+        "cue names through the override model and previews through the daemon's "
+        "own resolver, so it is a deletion after somebody confirms that path is "
+        "complete. Answered since the scan: `theme_get`, `keybindings_get_defaults` "
+        "and `keybindings_get_all_conflicts` (deleted, each a second name for a "
+        "live command), `ai_activity_recent` (deleted - the activity home moved to "
+        "the harness by decision and it kept a reader of the whole ledger), "
+        "`settings_app_audit` and `theme_contrast_report` (both given their "
+        "sections) and `revoke_consent` (a consent can be released where it is "
+        "listed)"
+    ),
     "store": (4, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - I do not write in their tree, so the marker the other apps carry is not mine to add here"),
 }
 
