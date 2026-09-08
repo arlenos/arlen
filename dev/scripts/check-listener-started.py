@@ -47,14 +47,13 @@ SUBSCRIBES = re.compile(r"\blisten\s*<[^>]*>\s*\(|\blisten\s*\(|addEventListener
 # Exports that start a listener nothing calls, with why and what would end it.
 # MAY SHRINK, MAY NOT GROW without a reason: an entry is a claim that a feed is
 # deliberately dark, which is a thing to decide rather than to inherit.
-NOT_STARTED: dict[str, str] = {
-    "installListener": (
-        "the Tier 2 module-worker pool. Turned off at the call site with its own "
-        "note: installing it at Waypointer mount made the card stretch to fill a "
-        "layer-shell window anchored to all four edges. FALSE WHEN the worker pool "
-        "is wired from a dedicated route"
-    ),
-}
+# EMPTY, and it was one entry until 8 September: the Tier 2 module-worker pool,
+# dark behind a note saying its listener made the launcher card stretch to fill
+# the window. The claim was measured rather than inherited - with a worker
+# mounted the card is the same size to the pixel - so the caller is on and the
+# entry is gone. An entry that outlives the thing it describes is the reason this
+# list may shrink and may not grow.
+NOT_STARTED: dict[str, str] = {}
 
 
 def sources() -> list[Path]:
