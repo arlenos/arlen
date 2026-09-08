@@ -90,7 +90,15 @@ async fn connect_and_consume(
                         // paused: leaving it unread would stall the bus for every
                         // other consumer, which is a different failure from the
                         // one the switch asks for.
-                        if !paused.load(std::sync::atomic::Ordering::Relaxed) {
+                        // Excluded before admitted, not filtered at read: the
+                        // row in Settings says "nothing these apps do is
+                        // recorded", so the event must not reach the store at
+                        // all. Dropping it later would leave the thing the
+                        // person asked not to keep sitting in a database, which
+                        // is the promise broken quietly instead of loudly.
+                        if !paused.load(std::sync::atomic::Ordering::Relaxed)
+                            && !excluded(&event)
+                        {
                             admit(&mut buffer, event);
                         }
                         if buffer.len() >= BATCH_SIZE_THRESHOLD {
@@ -124,6 +132,34 @@ async fn connect_and_consume(
 /// Admit an event into the ring buffer, applying the three-tier backpressure
 /// policy when the buffer is at capacity.
 ///
+/// Whether the user's timeline rules exclude this event from the store.
+///
+/// Only the two kinds that carry an app or a path are decoded, and that bound is
+/// honest rather than lazy: those are the events the promotion pipeline turns
+/// into a File or an App, which is what a person means by "recorded". A payload
+/// that will not decode is NOT excluded - failing open here keeps an
+/// unrecognised producer visible instead of quietly dropping it, and the pause
+/// switch above is the control that stops everything.
+fn excluded(event: &Event) -> bool {
+    match event.r#type.as_str() {
+        "file.opened" => match crate::proto::FileOpenedPayload::decode(event.payload.as_slice()) {
+            Ok(p) => crate::timeline_config::is_excluded(&p.app_id, &p.path),
+            Err(_) => false,
+        },
+        "file.written" => match crate::proto::FileWrittenPayload::decode(event.payload.as_slice()) {
+            Ok(p) => crate::timeline_config::is_excluded(&p.app_id, &p.path),
+            Err(_) => false,
+        },
+        "window.focused" => {
+            match crate::proto::WindowFocusedPayload::decode(event.payload.as_slice()) {
+                Ok(p) => crate::timeline_config::is_excluded(&p.app_id, ""),
+                Err(_) => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 /// Tier 1: check if the incoming event is a duplicate of one already in the buffer.
 ///         If so, update the existing event's timestamp and discard the new one.
 /// Tier 2: if no duplicate, drop the lowest-value event in the buffer.
