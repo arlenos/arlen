@@ -214,10 +214,37 @@ test-consumers crate="":
     fi
     if [ -z "$list" ]; then echo "nothing depends on that"; exit 0; fi
     echo "$list" | wc -l | xargs printf '%s consumer(s) to test\n'
+    # A consumer that does not compile and did not before you got here, so a run
+    # that reported it as YOUR failure would be crying wolf - and a recipe that
+    # cries wolf is one nobody runs. Its Rust is in no CI matrix (a Tauri host
+    # needs webkit headers the runner lacks), so nothing has built it since
+    # `ArlenTheme::load` and `::panda` were removed on 3 May. `sdk/ui-kit` is
+    # arlen-ui's lane and not ours to fix.
+    #
+    # `apps/text-editor/src-tauri` was on this list for about ten minutes:
+    # `check-crate-coverage.py`'s header records it as not compiling on 25 August,
+    # the first run of the check below found it green, and the check said so. That
+    # is the whole reason the passing case is loud.
+    known_broken="sdk/ui-kit/src-tauri"
     status=0
     for c in $list; do
         echo "== test $c =="
-        "{{ROOT}}/dev/check-crate.sh" test "$c" || status=1
+        if "{{ROOT}}/dev/check-crate.sh" test "$c"; then
+            # A crate on the list that now builds means the list is stale, and a
+            # stale exemption is how a real failure gets waved through later. Say
+            # so loudly rather than silently enjoying the fix.
+            case " $known_broken " in
+                *" $c "*)
+                    echo "!! $c builds again - drop it from known_broken in this recipe"
+                    status=1
+                    ;;
+            esac
+        else
+            case " $known_broken " in
+                *" $c "*) echo ">> $c was already broken before this change (known)" ;;
+                *) status=1 ;;
+            esac
+        fi
     done
     # Every consumer runs before the failure is reported: stopping at the first
     # one tells you about a single crate when the answer you want is which of
