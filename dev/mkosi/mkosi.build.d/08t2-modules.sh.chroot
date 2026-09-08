@@ -1,0 +1,74 @@
+#!/bin/sh
+# Phase 8t2 (CHROOT): the modules the runtime hosts. Without this the module
+# runtime ships and finds nothing.
+#
+# WHY IT IS HERE NOW. `modulesd` reads `/usr/share/arlen/modules` (`manifest.rs:49`)
+# and, before this step, nothing on the image ever wrote there. So the daemon
+# started, discovered an empty directory, and the shell's `WaypointerSearchAll`
+# got an empty aggregate on every keystroke - the exact shape phase 8t's own
+# header argues against, one layer up: the runtime looked healthy and the feature
+# was simply absent. Two modules exist in the tree, both tested against the real
+# daemon, and neither reached a booted machine.
+#
+# TWO BUILD STEPS, and the second is not optional. `wasm32-unknown-unknown` emits
+# a core module; the component model is what carries the WIT world, so
+# `wasm-tools component new` has to wrap it or `Component::new` refuses the bytes.
+# `wasm-tools` is a cargo install into the persistent build cache, the same deal
+# as rustup above it: paid once, not per build.
+#
+# The manifest and the i18n catalogue ship beside the component because the
+# daemon reads both from the module's own directory - capabilities from
+# `manifest.toml` at discovery, and `i18n/<locale>.json` when it resolves a
+# result's key. A staging that copied only the wasm would give a module that runs
+# and answers in English whatever the session language is.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-modules"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+export PATH="$CARGO_HOME/bin:$PATH"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+
+rustup target add wasm32-unknown-unknown
+if [ ! -x "$CARGO_HOME/bin/wasm-tools" ]; then
+    echo ">> cargo install wasm-tools into the build cache"
+    cargo install wasm-tools --locked
+fi
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+
+# `<dir>:<crate-name>:<module id>`. The id is the manifest's and is what the
+# daemon keys the directory by, so the two must agree; `check-modules-on-image.py`
+# reads the manifest rather than trusting this line.
+modules="
+modules/unicode:arlen_module_unicode:core.unicode
+modules/man:arlen_module_man:core.man
+"
+
+for m in $modules; do
+    dir=$(echo "$m" | cut -d: -f1)
+    crate=$(echo "$m" | cut -d: -f2)
+    id=$(echo "$m" | cut -d: -f3)
+    echo ">> build $id ($dir)"
+    cargo build --release --target wasm32-unknown-unknown --manifest-path "$dir/Cargo.toml"
+    wasm-tools component new \
+        "$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/$crate.wasm" \
+        -o "$CARGO_TARGET_DIR/$id.wasm"
+
+    dest="$DESTDIR/usr/share/arlen/modules/$id"
+    install -Dm644 "$CARGO_TARGET_DIR/$id.wasm" "$dest/module.wasm"
+    install -Dm644 "$dir/manifest.toml" "$dest/manifest.toml"
+    for catalogue in "$dir"/i18n/*.json; do
+        [ -f "$catalogue" ] || continue
+        install -Dm644 "$catalogue" "$dest/i18n/$(basename "$catalogue")"
+    done
+done
+
+echo ">> staged the modules into /usr/share/arlen/modules"

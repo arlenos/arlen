@@ -86,11 +86,6 @@ NOT_PROVIDED: dict[str, str] = {
         "are no shipped defaults to ship - but it means the layer is untested, and the "
         "first component that relies on one will find out at runtime"
     ),
-    "share:modules": (
-        "the system-wide module directory (modulesd, Phase 7B). No first-party module "
-        "exists to install, and both readers handle an absent directory, so an empty tree "
-        "is the honest state rather than a missing install"
-    ),
     "share:wallpaper": (
         "the distro default wallpaper manifest (`/usr/share/arlen/wallpaper/default.toml`, "
         "the wallpaper daemon's fallback when the user has set none). The image installs "
