@@ -306,7 +306,11 @@ async fn toggle_night_light(app: AppHandle) -> Result<&'static str, String> {
         .map_err(|e| format!("read shell config: {e}"))?;
     let new_enabled = !cfg.night_light.enabled;
 
-    // Same dispatch path the QuickSettings panel uses.
+    // The one dispatch path there is. The comment here used to say "the same path
+    // the QuickSettings panel uses", which stopped being true when the panel moved
+    // to tiles: nothing in the frontend invokes `night_light_set` any more, so
+    // this is its only caller and it is why the function survived the command
+    // registration being dropped.
     let sender = app
         .try_state::<std::sync::Arc<crate::shell_overlay_client::ShellOverlaySender>>()
         .ok_or_else(|| "shell-overlay sender not available".to_string())?;
