@@ -24,7 +24,7 @@
 # `app.presence.clear` is not asserted here - what is asserted is that the app
 # declares `auto_clear=on-blur`, which is the part this window owns.
 #
-# Run: dev/screenshot/drive-text-editor-graph.sh [text-editor] [viewers] [pdf]
+# Run: dev/screenshot/drive-text-editor-graph.sh [text-editor] [viewers] [pdf] [files]
 #
 # Build with `tauri build --no-bundle`; a plain `cargo build --release` leaves the
 # binary pointing at devUrl.
@@ -241,6 +241,58 @@ JS
     "$(printf '%s' "$pwatched" | grep -q 'presence.set.*"pages": "3"' && echo 1 || echo 0)" "$pwatched"
 else
   echo "  --   no pdf binary at $reader, so its half was not driven"
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# THE FILE MANAGER, which has the most to say of any app here: it is where the
+# gap between a trace and a history is widest. The sensor sees the syscalls a
+# copy makes and cannot see that they were ONE copy somebody asked for.
+#
+# The op is driven the way `drive-menu-relay.sh` drives it - a real menu click on
+# the bus - so the record under test is one an actual press produced.
+manager="${4:-$root/target/release/arlen-files}"
+if [ -x "$manager" ]; then
+  fwork="$HOME/arlen-drive-graph-files"
+  rm -rf "$fwork"; mkdir -p "$fwork"
+  printf 'anything\n' > "$fwork/a-file.txt"
+
+  ARLEN_SESSION_ID=drive "$emit" --watch "app." 40 > "$work/watch-files.log" 2>&1 &
+  fwatcher=$!
+  sleep 1
+  ( for _ in $(seq 1 10); do
+      sleep 3
+      ARLEN_SESSION_ID=drive "$emit" --menu dev.arlen.files file.new_folder >> "$work/emit-files.log" 2>&1
+      [ -n "$(find "$fwork" -mindepth 1 -maxdepth 1 -type d -not -name '.*' 2>/dev/null)" ] && break
+    done ) &
+  clicker=$!
+  cat > "$work/p-files.js" <<'JS'
+await new Promise(r => setTimeout(r, 33000));
+return "held";
+JS
+  # HOME at the fixture, the way the menu-relay drive does it: the file manager
+  # opens at whatever the backend calls home, so this puts the window where the
+  # click has to land and keeps a mis-navigated new folder out of the real one.
+  SHOOT_INJECT="$work/p-files.js" \
+    SHOOT_APP_ENV="XDG_RUNTIME_DIR=$work/run;ARLEN_RUNTIME_DIR=$work/run;ARLEN_SESSION_ID=drive;HOME=$fwork" \
+    "$here/shoot-app.sh" "$manager" "$here/out/files-graph.png" > "$work/shoot-files.log" 2>&1
+  wait "$clicker"
+  wait "$fwatcher"
+  fwatched=$(cat "$work/watch-files.log")
+
+  say "the file manager says where the person is" \
+    "$(printf '%s' "$fwatched" | grep -q "^saw app.presence.set .*activity=browsing" && echo 1 || echo 0)" "$fwatched"
+  say "and names the folder in front of them" \
+    "$(printf '%s' "$fwatched" | grep -q "presence.set.*subject=$fwork" && echo 1 || echo 0)" "$fwatched"
+  # THE OP. A new folder really appeared on disk, and the graph was told it was
+  # one thing somebody did rather than a mkdir.
+  say "a new folder that landed is a moment on the timeline" \
+    "$(printf '%s' "$fwatched" | grep -q "^saw app.timeline.record .*type=new_folder" && echo 1 || echo 0)" "$fwatched"
+  say "and the folder is really there" \
+    "$([ -n "$(find "$fwork" -mindepth 1 -maxdepth 1 -type d -not -name '.*' 2>/dev/null)" ] && echo 1 || echo 0)" \
+    "$(ls -a "$fwork")"
+  rm -rf "$fwork"
+else
+  echo "  --   no files binary at $manager, so its half was not driven"
 fi
 
 if [ "$fail" = 0 ]; then

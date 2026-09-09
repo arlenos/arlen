@@ -26,6 +26,7 @@
   import { focusedController, toggleSplit } from "$lib/stores/panes";
   import { homePath } from "$lib/stores/places";
   import { initTopbar, shellPresent } from "$lib/stores/topbar";
+  import { initGraphInput } from "$lib/stores/graphInput";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { onMount } from "svelte";
@@ -56,6 +57,9 @@
 
   onMount(() => {
     void initTopbar();
+    // What this window tells the GRAPH, which is a different audience from the
+    // topbar above and reached whether or not a shell is running.
+    void initGraphInput();
     // Live-reskin on a desktop-wide theme switch (GAP-20).
     void initArlenTheme();
     void initArlenLocale();

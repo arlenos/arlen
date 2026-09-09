@@ -142,6 +142,30 @@ publish = [
     # why. That is the failure this line exists to prevent, written before the
     # cutover rather than after it.
     "app.toolbar.breadcrumb",
+
+    # WHAT THIS WINDOW TELLS THE KNOWLEDGE GRAPH ABOUT ITSELF, in the same change
+    # as the code that publishes it - never after. It writes into the graph, and
+    # a graph input a person cannot see or switch off is the thing this system
+    # exists not to build. Revoking these three lines is how somebody turns it off.
+    #
+    #   presence.set   - `browsing` and the FOLDER in front of the person, while
+    #                    the window has focus
+    #   presence.clear - on blur, because the claim stops being true
+    #   timeline.record - the copy, move, rename, duplicate, trash, delete or new
+    #                    folder the backend CONFIRMED, with the path the result
+    #                    ended up at and how many files it was
+    #
+    # The sensor sees the syscalls a copy makes. It cannot see that they were ONE
+    # copy somebody asked for, how many files it was, or that two hundred unlinks
+    # at 14:03 were a deliberate clear-out rather than a cache expiring - which is
+    # the difference between a trace and a history, and the reason this app has
+    # the most to say here of any in the tree.
+    #
+    # PATHS ONLY. No file's contents are read for this, let alone published, and
+    # a path is already what the sensor records for every open.
+    "app.presence.set",
+    "app.presence.clear",
+    "app.timeline.record",
 ]
 subscribe = [
     "app.menu.*",
