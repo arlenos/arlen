@@ -7,6 +7,7 @@
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { recordOp } from "./graphInput";
+import { publishTrashBadge } from "./trashBadge";
 import { activeController } from "$lib/stores/tabs";
 import { type RenameRule } from "$lib/bulk-rename";
 
@@ -161,6 +162,10 @@ export async function runOp(
     // copy somebody asked for, how many files it was, or that two hundred
     // unlinks were a deliberate clear-out. A refused op is not a moment.
     void recordOp(kind, src, dst);
+    // The launcher's Trash row carries a count, and this is one of the two
+    // things that moves it. Not gated on `kind === "trash"`: a permanent delete
+    // of a trashed entry runs through here as `delete` and takes it out again.
+    if (kind === "trash" || kind === "delete") void publishTrashBadge();
     if (kind === "trash") opDone.set({ key: "f.done.trash", count: src.length });
     else if (kind === "delete") opDone.set({ key: "f.done.delete", count: src.length });
     else opDone.set(null);

@@ -6,6 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { FileEntry } from "@arlen/ui-kit/components/browser";
+import { publishTrashBadge } from "./trashBadge";
 
 /// Restore one trashed entry to its recorded original location (the backend
 /// reanchors it to the FM root, rename-on-conflict). A Trash `FileEntry` carries
@@ -17,11 +18,16 @@ export async function restoreFromTrash(entry: FileEntry): Promise<void> {
     trashedName: entry.restore_token,
     originalPath: entry.full_path,
   });
+  // The launcher's Trash row is one shorter. After the await, so a restore that
+  // failed does not move a count that did not move.
+  void publishTrashBadge();
 }
 
 /// Permanently empty the trash; returns the number of entries cleared.
 export async function emptyTrash(): Promise<number> {
-  return invoke<number>("files_trash_empty");
+  const cleared = await invoke<number>("files_trash_empty");
+  void publishTrashBadge();
+  return cleared;
 }
 
 /// Permanently delete one trashed entry, bypassing restore. A non-trash entry
@@ -29,4 +35,5 @@ export async function emptyTrash(): Promise<number> {
 export async function deletePermanently(entry: FileEntry): Promise<void> {
   if (!entry.restore_token) return;
   await invoke("files_trash_delete", { trashedName: entry.restore_token });
+  void publishTrashBadge();
 }
