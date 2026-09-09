@@ -164,19 +164,6 @@ SKIP = ("/harness/", "/store/", "node_modules")
 # doing when it was re-proved on 9 August. A file that grows a new one fails,
 # and a file whose count drops asks to have its number lowered.
 KNOWN: dict[str, tuple[int, str]] = {
-    "apps/settings/src/lib/stores/themes.ts": (
-        1,
-        "setActiveTheme's SECOND call - the live re-apply through `set_theme`. "
-        "The persist above it already reverts the grid and raises "
-        "`themeChangeFailed`, so the choice itself is never claimed falsely; "
-        "this half is the shell bridge, and the theme IS in force from the next "
-        "start. What a person still does not learn is that the desktop around "
-        "them has not picked it up yet, which wants a second state and a "
-        "sentence rather than a revert. The entry this replaced described "
-        "`installThemeFile`, where a cancelled picker and a failed install "
-        "arrived as one exception; the host now answers `Ok(null)` for a cancel "
-        "and the window says why an install did not happen"
-    ),
     "apps/settings/src/lib/stores/models.ts": (
         3,
         "setRole, startDownload, cancelDownload - arlen-ui's model picker is live "
