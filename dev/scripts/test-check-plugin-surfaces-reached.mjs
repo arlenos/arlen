@@ -148,6 +148,22 @@ console.log("check-plugin-surfaces-reached:");
 }
 
 {
+  // THE CENSUS HAS TO SHRINK. A carried entry whose command gains a producer is
+  // a line saying something is not done about something that is, and that is
+  // where the next unreached one would hide.
+  const carried = CARRIED[0];
+  const root = tree({
+    ...plugin(),
+    "apps/thing/src/lib/x.ts": `await invoke("plugin:arlen-shell|${carried}");\n`,
+  });
+  const r = run(root);
+  r.code === 1 && r.out.includes("has a producer now")
+    ? ok("a carried surface that gains a producer has to leave the census")
+    : bad("a carried surface that gains a producer has to leave the census", `got ${r.code}: ${r.out}`);
+  cleanup(root);
+}
+
+{
   const root = tree({});
   const r = run(root);
   r.code === 2 ? ok("a tree with no plugin is a non-run") : bad("a tree with no plugin is a non-run", `got ${r.code}`);
