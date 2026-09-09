@@ -661,6 +661,13 @@
         const q = inputRef?.value ?? query;
         if (q === prev) return;
         prev = q;
+        // A refusal is about the thing that just failed, and typing is moving on.
+        // It used to survive a new query because the four actions that could
+        // refuse all CLOSED the launcher, so nobody ever saw one over a fresh
+        // search; keeping the window open on a failure - which is the point of
+        // saying anything at all - made a stale sentence reachable, so it goes
+        // when the question changes.
+        actionError.set(null);
         let trimmed = q.trim();
         let searchQuery = q;
 
