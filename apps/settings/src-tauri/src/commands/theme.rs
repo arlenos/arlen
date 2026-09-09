@@ -274,7 +274,7 @@ pub async fn theme_export() -> Result<Option<String>, String> {
     // so Export was a button that thought for a moment and left nothing behind.
     // The file name comes from the active theme id, which is what the person
     // will look for.
-    let Some(dest) = crate::commands::picker::save_theme_file(&format!("{id}.toml")).await else {
+    let Some(dest) = crate::commands::picker::save_theme_file(&format!("{id}.toml")).await? else {
         return Ok(None);
     };
     std::fs::write(&dest, text).map_err(|e| format!("write theme: {e}"))?;

@@ -168,7 +168,7 @@ pub async fn pick_theme_file() -> Option<String> {
 /// so the button ran, took a moment, and left nothing behind. A file the person
 /// can find is the whole point of an export, and asking them where is the only
 /// honest way to decide that.
-pub async fn save_theme_file(suggested_name: &str) -> Option<String> {
+pub async fn save_theme_file(suggested_name: &str) -> Result<Option<String>, String> {
     let options = SaveFileOptions {
         title: Some("Save the theme".to_string()),
         current_name: Some(suggested_name.to_string()),
@@ -181,15 +181,23 @@ pub async fn save_theme_file(suggested_name: &str) -> Option<String> {
         ..SaveFileOptions::default()
     };
     match api::save_file(options).await {
-        Ok(PickerResult::Picked { uris }) => uris.first().and_then(|u| uri_to_path(u)),
-        Ok(PickerResult::Cancelled) => None,
+        // A picked URI that will not map to a path is not a save location, and
+        // saying "cancelled" about it would be the same conflation this whole
+        // change is about.
+        Ok(PickerResult::Picked { uris }) => match uris.first().and_then(|u| uri_to_path(u)) {
+            Some(path) => Ok(Some(path)),
+            None => Err("the chosen place is not a file this app can write".to_string()),
+        },
+        Ok(PickerResult::Cancelled) => Ok(None),
         Err(e) => {
-            // No legacy fallback, deliberately: the read pickers have one because
-            // a machine with no portal can still be asked to OPEN something, and
-            // there is no kdialog-shaped save helper here to mirror. A refusal
-            // reaches the window as "nowhere to save it", which is true.
+            // NOT `None`, which would read as a cancel - I wrote it that way
+            // first, one layer under the conflation I had just removed. No
+            // legacy fallback either: the read pickers have one because a
+            // machine with no portal can still be asked to OPEN something, and
+            // there is no kdialog-shaped save helper here to mirror. So this is
+            // a real failure and the window says so.
             log::warn!("portal save_file failed: {e}");
-            None
+            Err(format!("no save dialog is available: {e}"))
         }
     }
 }
