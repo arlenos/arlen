@@ -34,7 +34,7 @@
 //! Usage: `arlen-event-emit <absolute-path> [app-id]`
 //!        `arlen-event-emit --menu <app-id> <action>`
 //!        `arlen-event-emit --shortcut <app-id> <action>`
-//!        `arlen-event-emit --watch <pattern> [seconds]`
+//!        `arlen-event-emit --watch <pattern> [seconds] [stop-after-n]`
 //! Sockets: `ARLEN_PRODUCER_SOCKET` / `ARLEN_CONSUMER_SOCKET`, else `/run/arlen/`.
 //! Session: `ARLEN_SESSION_ID` must name the session the event belongs to.
 //! Exit 0 on a CONFIRMED event, 2 on bad args or no session, 1 on emit failure
@@ -81,7 +81,8 @@ async fn main() {
             std::process::exit(2);
         };
         let seconds: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(10);
-        watch(pattern, Duration::from_secs(seconds)).await;
+        let until: Option<usize> = args.next().and_then(|s| s.parse().ok());
+        watch(pattern, Duration::from_secs(seconds), until).await;
         return;
     }
 
@@ -279,7 +280,14 @@ impl Mode {
 /// wire is the difference between "mail published something" and "mail published
 /// the number that is actually unread". Everything else reports its length,
 /// which still separates delivery from silence.
-async fn watch(pattern: String, window: Duration) {
+/// `until` stops as soon as that many events have arrived, with the window as a
+/// ceiling rather than a schedule. Without it a drive pays its whole window in
+/// wall clock, which is a real cost where the window has to be generous: under
+/// the headless driver a page's timers run about six times slower than the
+/// clock, so a drive that waits twenty seconds in the page waits two minutes
+/// outside it, and the window has to cover the slow case. Sized for the slow
+/// case and stopped by the count, a drive is as fast as the run it got.
+async fn watch(pattern: String, window: Duration, until: Option<usize>) {
     let consumer = os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock")
         .to_string_lossy()
         .into_owned();
@@ -340,6 +348,9 @@ async fn watch(pattern: String, window: Duration) {
                 _ => format!("{} bytes", event.payload.len()),
             };
             println!("saw {} {}", event.r#type, detail);
+            if until.is_some_and(|n| seen >= n) {
+                break;
+            }
         }
     })
     .await;
@@ -353,5 +364,5 @@ fn usage() {
     eprintln!("usage: arlen-event-emit <absolute-path> [app-id]");
     eprintln!("       arlen-event-emit --menu <app-id> <action>");
     eprintln!("       arlen-event-emit --shortcut <app-id> <action>");
-    eprintln!("       arlen-event-emit --watch <pattern> [seconds]");
+    eprintln!("       arlen-event-emit --watch <pattern> [seconds] [stop-after-n]");
 }
