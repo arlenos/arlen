@@ -10,8 +10,16 @@
 //!
 //! Routes through the Event Bus: `record` emits `app.timeline.record`.
 //! The Knowledge Daemon promotes the event into a UserAction node with
-//! category `"timeline"`, action `<type>`, subject `<label>`. Metadata
-//! stays in the SQLite event log so the graph stays lightweight.
+//! category `"timeline"`, action `<type>`, subject `<subject>`. The LABEL
+//! and the metadata stay in the SQLite event log so the graph stays
+//! lightweight.
+//!
+//! That line said `subject <label>` until 9 September, and the daemon followed
+//! it - which contradicted the `subject` field's own doc below and meant the
+//! PATH an app recorded never reached the graph at all. A save of
+//! `/home/tim/notes.md` arrived as a node whose subject was the word "saved".
+//! The field-level doc is the contract an app reads, so the daemon was changed
+//! to match it and this header was wrong rather than the other way round.
 
 use std::collections::HashMap;
 use std::future::Future;
