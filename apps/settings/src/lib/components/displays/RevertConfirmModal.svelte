@@ -111,7 +111,13 @@
       await saveCurrent();
       onClose();
     } catch (err) {
-      error = String(err);
+      // A KEY, like the two sentences above it. This drew `String(err)` into the
+      // alert body, so somebody whose display change would not stick met the
+      // config writer's own words - in a dialogue that is counting down to undo
+      // the change behind them. What they need is the consequence, and the
+      // countdown is still running while they read it.
+      console.warn("settings: keeping the display change failed", err);
+      error = $t("s.revert.keepFailed");
       busy = false;
     }
   }
@@ -126,7 +132,12 @@
       // modal on success or release the busy lock on failure.
       pendingRevertId = id;
     } catch (err) {
-      error = String(err);
+      // The same outcome the apply-result branch above words: the revert did not
+      // go through and the live config is still the new one, so the sentence is
+      // the same sentence. This one refused before the request was even sent, and
+      // it used to answer with the writer's own words.
+      console.warn("settings: the display revert did not start", err);
+      error = $t("s.revert.failed");
       busy = false;
     }
   }
