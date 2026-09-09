@@ -214,7 +214,7 @@
 
 <!-- The identity head is the page's hero; a Page title above it would just
      repeat the name. -->
-<Page>
+<Page title={bottle?.appName ?? bottle?.id ?? $t("s.wa.title")} description={bottle ? subline(bottle) : undefined} back={{ href: "/windows-apps", label: $t("s.wa.title") }}>
   <SectionGrid>
     {#if $winApps.mocked}
       <Notice tone="neutral" class="span-full" text={$t("s.wa.mocked")} />
@@ -266,26 +266,24 @@
         <p class="quiet">{$t("s.wa.notFound")}</p>
       </Section>
     {:else}
-      <div class="head span-full">
-        <AppAvatar appId={bottle.appId ?? bottle.id} label={bottle.appName ?? bottle.id} size={48} />
-        <div class="head-text">
-          <span class="head-name">{bottle.appName ?? bottle.id}</span>
-          <span class="head-meta">{subline(bottle)}</span>
-        </div>
-        <div class="head-actions">
-          <!-- Disabled, not hidden, while nothing is picked: the button is the
-               page's primary action and the line beside the name says why it
-               waits. -->
-          <Button
-            variant="default"
-            size="sm"
-            disabled={!bottle.hasProgram}
-            onclick={() => bottle && launchApp(bottle.id)}
-          >
-            {$t("s.wa.launchApp")}
-          </Button>
-        </div>
-      </div>
+      <Section class="span-full">
+        <Row label={bottle.appName ?? bottle.id} description={subline(bottle)}>
+          {#snippet leading()}<AppAvatar appId={bottle.appId ?? bottle.id} label={bottle.appName ?? bottle.id} size={32} />{/snippet}
+          {#snippet control()}
+            <!-- Disabled, not hidden, while nothing is picked: the button is the
+                 page's primary action and the line beside the name says why it
+                 waits. -->
+            <Button
+              variant="default"
+              size="sm"
+              disabled={!bottle.hasProgram}
+              onclick={() => bottle && launchApp(bottle.id)}
+            >
+              {$t("s.wa.launchApp")}
+            </Button>
+          {/snippet}
+        </Row>
+      </Section>
 
       <!-- An install started from this window runs in the installer's own
            window, and nothing says when it is done; the page says what is
@@ -681,35 +679,6 @@
   .lead .quiet {
     flex: 1;
     min-width: 0;
-  }
-
-  /* Identity head: the app's mark and name anchor the page; the launch sits
-     pinned to the right like a desktop detail view, not an inline link. */
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-  .head-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    min-width: 0;
-  }
-  .head-name {
-    font-size: var(--text-lg);
-    font-weight: 600;
-    color: var(--foreground);
-  }
-  .head-meta {
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .head-actions {
-    margin-inline-start: auto;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
   }
 
   /* A drive letter the way the Windows app sees it: a fixed-width mark, so

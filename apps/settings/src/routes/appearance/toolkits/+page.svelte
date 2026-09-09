@@ -59,7 +59,7 @@
   }
 </script>
 
-<Page title={$t("s.tk.title")} description={$t("s.tk.desc")}>
+<Page back={{ href: "/appearance", label: $t("s.nav.appearance") }} title={$t("s.tk.title")} description={$t("s.tk.desc")}>
   <SectionGrid>
     <Section label={$t("s.tk.reaches")} class="span-full">
       {#each TOOLKITS as tk (tk.id)}

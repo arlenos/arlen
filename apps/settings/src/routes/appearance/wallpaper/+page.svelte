@@ -41,7 +41,7 @@
   ]);
 </script>
 
-<Page title={$t("s.wallpaper.title")} description={$t("s.wallpaper.desc")}>
+<Page back={{ href: "/appearance", label: $t("s.nav.appearance") }} title={$t("s.wallpaper.title")} description={$t("s.wallpaper.desc")}>
   <SectionGrid>
     <Section label={$t("s.wallpaper.choose")}>
       <div class="wp-inset">

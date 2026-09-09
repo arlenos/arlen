@@ -1,7 +1,7 @@
 <script lang="ts">
   import "../app.css";
   import { page } from "$app/stores";
-  import { goto } from "$app/navigation";
+  import { afterNavigate, beforeNavigate, goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -95,6 +95,25 @@
     menuAction.set(null);
     if (a === "view.search") requestSearchFocus();
     else if (a.startsWith("go.")) void navigateTo(a.slice(3) as PanelId);
+  });
+
+  /// The content scroller is a div, not the window, so the router's own scroll
+  /// memory never sees it: stepping back through the kit's door (design-system.md
+  /// §6.9) would land on the parent scrolled to the top. Remember each route's
+  /// scroll on the way out and put it back when a step back arrives.
+  const scrollMemory = new Map<string, number>();
+  beforeNavigate(({ from }) => {
+    const scroller = document.querySelector(".overflow-y-auto");
+    if (from && scroller) scrollMemory.set(from.url.pathname, scroller.scrollTop);
+  });
+  afterNavigate(({ to, type }) => {
+    if (type !== "popstate" || !to) return;
+    const top = scrollMemory.get(to.url.pathname);
+    if (top === undefined) return;
+    requestAnimationFrame(() => {
+      const scroller = document.querySelector(".overflow-y-auto");
+      if (scroller) scroller.scrollTop = top;
+    });
   });
 
   onMount(() => {

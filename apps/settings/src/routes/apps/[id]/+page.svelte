@@ -137,35 +137,29 @@
   }
 </script>
 
-<!-- The identity head is the page's hero; a Page title above it would just
-     repeat the name. -->
-<Page>
+<!-- The head is the kit's: the name as the title, the origin as the line
+     under it, the door back to the list above it (design-system.md §6.9). The
+     identity row keeps the avatar and the one action. -->
+<Page title={label} description={metaLine || undefined} back={{ href: "/apps", label: $t("s.nav.apps") }}>
   <SectionGrid>
     {#if mocked}
       <p class="note span-full">{$t("s.apps.sample")}</p>
     {/if}
 
-    <div class="head span-full">
-      <AppAvatar {appId} {label} size={48} />
-      <div class="head-text">
-        <span class="head-name">{label}</span>
-        {#if label !== appId}
-          <span class="head-id">{appId}</span>
-        {/if}
-        {#if metaLine}
-          <span class="head-meta">{metaLine}</span>
-        {/if}
-      </div>
-      <div class="head-actions">
-        <!-- Open is gone rather than disabled. Settings has no way to launch
-             another app - no shell IPC, no spawn - so the control could never do
-             anything, and a button that can never work is chrome wearing a
-             control's clothes. The launcher opens apps. -->
-        <Button variant="outline" size="sm" onclick={() => askUninstall(label)}>
-          {$t("s.apps.uninstall")}
-        </Button>
-      </div>
-    </div>
+    <Section class="span-full">
+      <Row label={label} description={label !== appId ? appId : undefined}>
+        {#snippet leading()}<AppAvatar {appId} {label} size={32} />{/snippet}
+        {#snippet control()}
+          <!-- Open is gone rather than disabled. Settings has no way to launch
+               another app - no shell IPC, no spawn - so the control could never do
+               anything, and a button that can never work is chrome wearing a
+               control's clothes. The launcher opens apps. -->
+          <Button variant="outline" size="sm" onclick={() => askUninstall(label)}>
+            {$t("s.apps.uninstall")}
+          </Button>
+        {/snippet}
+      </Row>
+    </Section>
 
     {#if uninstallError}
       <p class="uninstall-error span-full" role="alert">{uninstallError}</p>
@@ -315,39 +309,6 @@
     margin: 0;
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-
-  /* Identity head: the app's mark and name anchor the page; the actions sit
-     pinned to the right like a desktop detail view, not inline links. */
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-  .head-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    min-width: 0;
-  }
-  .head-name {
-    font-size: var(--text-lg);
-    font-weight: 600;
-    color: var(--foreground);
-  }
-  .head-id {
-    font-size: var(--text-xs);
-    color: var(--color-fg-secondary, #a1a1aa);
-  }
-  .head-meta {
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .head-actions {
-    margin-inline-start: auto;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
   }
 
   /* The unverified banner qualifies everything below it, so it sits above

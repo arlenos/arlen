@@ -79,7 +79,7 @@
   const volumePercent = $derived(cfg ? Math.round(cfg.volume * 100) : 0);
 </script>
 
-<Page
+<Page back={{ href: "/appearance", label: $t("s.nav.appearance") }}
   title={$t("s.snd.title")}
   description={$t("s.snd.desc")}
 >

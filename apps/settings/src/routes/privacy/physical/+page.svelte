@@ -97,7 +97,7 @@
   }
 </script>
 
-<Page title={$t("s.sent.title")} description={$t("s.sent.desc")}>
+<Page back={{ href: "/privacy", label: $t("s.nav.privacy") }} title={$t("s.sent.title")} description={$t("s.sent.desc")}>
   <SectionGrid>
     {#if $sentinelMocked}
       <Notice tone="neutral" class="span-full" text={$t("s.sent.sample")} />

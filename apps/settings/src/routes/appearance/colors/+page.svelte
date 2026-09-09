@@ -59,7 +59,7 @@
   }
 </script>
 
-<Page
+<Page back={{ href: "/appearance", label: $t("s.nav.appearance") }}
   title={$t("s.col.title")}
   description={$t("s.col.desc")}
 >
