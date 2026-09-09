@@ -1501,7 +1501,7 @@ async fn files_open(path: String) -> Result<(), String> {
     let abs = abs(&path);
     match arlen_launch_contract::open_path(&abs)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| launch_transport_problem(&e))?
     {
         arlen_launch_contract::LaunchOutcome::Started { .. } => {}
         // The shell asked instead of opening: a Windows executable, which is a
@@ -1525,6 +1525,32 @@ async fn files_open(path: String) -> Result<(), String> {
     }
     announce_file_opened(&path).await;
     Ok(())
+}
+
+/// A failure to REACH the launch service, as something the window can say.
+///
+/// Every refusal on this path reaches the window as the contract's own tagged
+/// JSON, so the sentence is written where the reader's language is known. A
+/// transport failure fell past that through `to_string()`, and the status bar
+/// showed `This did not open: launch socket i/o: No such file or directory (os
+/// error 2)` - a half-translated sentence with an errno on the end. Seen in a
+/// drive's screenshot; the assertion above it passed, because the window did say
+/// something.
+///
+/// An absent or refused socket is a STATE, not an error code: nothing is
+/// answering. It gets the same treatment as the outcomes. Any other transport
+/// failure keeps the raw string, which is still better than silence - that is the
+/// `openFailure` store's own rule and it stands.
+fn launch_transport_problem(e: &arlen_launch_contract::WireError) -> String {
+    if let arlen_launch_contract::WireError::Io(io) = e {
+        if matches!(
+            io.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+        ) {
+            return r#"{"outcome":"service_unavailable"}"#.to_string();
+        }
+    }
+    e.to_string()
 }
 
 /// A launch outcome as something to show a person.

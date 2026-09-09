@@ -31,6 +31,7 @@ const messages: Catalogs = {
     "f.open.packagedWrong": "{$what} is installed wrong, so it could not be started.",
     "f.open.didNotStart": "{$what} did not start.",
     "f.open.refused": "The shell refused to open this.",
+    "f.open.noService": "The shell is not answering, so nothing opened this.",
     "f.open.failed": "This did not open: {$what}",
     "f.done.trash":
       ".input {$count :number}\n.match $count\none {{Moved to Trash. Ctrl+Z puts it back.}}\n* {{Moved {$count} items to Trash. Ctrl+Z puts them back.}}",
@@ -423,6 +424,7 @@ const messages: Catalogs = {
     "f.open.packagedWrong": "{$what} ist falsch installiert und konnte nicht gestartet werden.",
     "f.open.didNotStart": "{$what} ist nicht gestartet.",
     "f.open.refused": "Die Shell hat das Öffnen abgelehnt.",
+    "f.open.noService": "Die Shell antwortet nicht, deshalb wurde nichts geöffnet.",
     "f.open.failed": "Das wurde nicht geöffnet: {$what}",
     "f.done.trash":
       ".input {$count :number}\n.match $count\none {{In den Papierkorb verschoben. Strg+Z legt es zurück.}}\n* {{{$count} Einträge in den Papierkorb verschoben. Strg+Z legt sie zurück.}}",

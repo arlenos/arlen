@@ -240,14 +240,20 @@ JS
 got=$(SHOOT_INJECT="$work/.noopen.js" "$here/shoot-app.sh" "$app" "$here/out/files-no-handler.png" 2>&1 \
   | sed -n 's/^inject result: //p')
 # WHAT it says depends on where it runs, and both answers are honest. Under this
-# harness there is no shell, so the launch socket is not there and the window says
-# so verbatim ("This did not open: launch socket i/o: Connection refused"). On the
-# image the shell answers and it reads "Nothing on this machine is set up to open
-# application/pdf files" - photographed on 21 August in `first-run/18`. What the
-# case holds is the thing that was missing until then: the refusal REACHES the
-# person instead of being caught and dropped.
+# harness there is no shell, so nothing answers the launch socket and the window
+# says the shell is not answering. On the image the shell answers and it reads
+# "Nothing on this machine is set up to open application/pdf files" - photographed
+# on 21 August in `first-run/18`. What the case holds is the thing that was missing
+# until then: the refusal REACHES the person instead of being caught and dropped.
 say "a file that will not open says so instead of doing nothing" \
-  "$(printf '%s' "$got" | grep -qE "is set up to open|did not open" && echo 1 || echo 0)" "$got"
+  "$(printf '%s' "$got" | grep -qE "is set up to open|not answering|did not open" && echo 1 || echo 0)" "$got"
+# AND IT SAYS IT IN WORDS. This used to read `This did not open: launch socket
+# i/o: No such file or directory (os error 2)` - the case above passed on it,
+# because the window did say something, and only the screenshot showed what. An
+# errno in a status bar is the host's words in front of a person, and on this path
+# every other refusal is already a sentence the app owns.
+say "and not by handing over an errno" \
+  "$(printf '%s' "$got" | grep -qiE "os error|i/o:|errno" && echo 0 || echo 1)" "$got"
 
 [ "$fail" = 0 ] && echo "a folder that opens, a rename and a delete that reach the disk, an undo that restores it, a search that goes deeper than the folder, and a refusal that says why"
 exit "$fail"
