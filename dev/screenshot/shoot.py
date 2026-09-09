@@ -48,6 +48,13 @@ def rq(base, method, path, body=None):
 #: run several times slower than on a real screen, and short enough that a
 #: selector which is simply wrong still fails the run promptly.
 #:
+#: THE OTHER RUNNER ALREADY DID THIS. `render-wide.py` has polled for a late
+#: selector since the shell's notifications applet refused once in a 108-surface
+#: sweep and passed by hand a minute later - its `OPEN_WAIT` carries that story in
+#: its own comment. This path never learned it, so the same flake was still live
+#: on every `::selector` row a route walk carried, and the two runners disagreed
+#: about a question they both answer. They are both five seconds now.
+#:
 #: `ARLEN_OPEN_TIMEOUT` overrides it, and it exists for one reader: the control
 #: sets it to 0 to put the old behaviour back - a single attempt the moment the
 #: settle ends - and requires the control page to fail there. A control that
