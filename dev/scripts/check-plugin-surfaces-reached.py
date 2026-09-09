@@ -32,8 +32,9 @@ WHY A CARRIED CENSUS RATHER THAN A RED. Whether an unreached command is a featur
 somebody has to finish, a second path to something a live one already does, or a
 delete is the planner's call, and a check that goes red on twenty-two of them
 teaches people to skip it. So each is carried WITH what is true about it today,
-and the rule that keeps it a queue rather than a hole is that a NEW unreached
-command fails.
+and two rules keep it a queue rather than a hole: a NEW unreached command fails,
+and a carried one that GAINS a producer fails until its line comes out. Mail took
+the badge line out on 9 September by publishing its unread count.
 
 Run: dev/scripts/check-plugin-surfaces-reached.py [root]
 """
@@ -61,8 +62,6 @@ NOT_A_PRODUCER = "desktop-shell"
 #: case, because "nobody calls it" is not the interesting half.
 CARRIED: dict[str, str] = {
     # ── The shell draws these and nothing fills them ──────────────────
-    "badges_set": "the shell keeps a per-app badge and renders the focused app's beside its name; no app publishes one, and mail already counts its unread mail for its own rail",
-    "badges_clear": "pairs with badges_set",
     "ambient_set": "the shell keeps a per-app ambient effect (ambient-api.md); no app publishes one",
     "ambient_clear": "pairs with ambient_set",
     "shortcuts_register": "the shell keeps the focused app's shortcut list and the waypointer lists it (shortcuts-api.md, app_shortcuts.rs); no app registers one",
@@ -154,6 +153,7 @@ def main() -> int:
         return 2
 
     unreached: list[str] = []
+    answered: list[str] = []
     reached = 0
     for command in commands:
         who: set[str] = set()
@@ -167,6 +167,11 @@ def main() -> int:
                     who.add(owner)
         if who:
             reached += 1
+            if command in CARRIED:
+                answered.append(
+                    f"  - {command}: reached now by {', '.join(sorted(who))}, and the census "
+                    f"still says it is not."
+                )
         elif command not in CARRIED:
             unreached.append(
                 f"  - {command}: the plugin registers it and no app or kit control calls it. "
@@ -180,6 +185,15 @@ def main() -> int:
         for c in sorted(stale):
             print(f"  - {c}")
         print("\nTake it out; a census that outlives its subject is not a record of anything.")
+        return 1
+
+    if answered:
+        print("A carried surface has a producer now:\n")
+        print("\n".join(answered))
+        print(
+            "\nTake the entry out. A census that keeps a line about something "
+            "somebody already did is where the next unreached one hides."
+        )
         return 1
 
     if unreached:
