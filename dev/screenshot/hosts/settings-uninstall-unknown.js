@@ -53,8 +53,15 @@
       var open = byText("Deinstallieren");
       if (open) { open.click(); stage = 1; }
     } else if (stage === 1) {
-      var confirm = byText("Entfernen");
-      if (confirm) { confirm.click(); return; }
+      // NOT `byText("Entfernen")`. The kit's confirm dialog renders cancel then
+      // confirm inside `[aria-labelledby=confirm-dialog-title]`, so the last
+      // button in it is the confirm whatever the label says. This looked for a
+      // word that stopped being the label - `s.priv.remove` is "Widerrufen" - and
+      // the fixture pressed Uninstall and then waited for a button that was never
+      // going to appear.
+      var dialog = document.querySelector('[aria-labelledby="confirm-dialog-title"]');
+      var buttons = dialog ? dialog.querySelectorAll("button") : [];
+      if (buttons.length) { buttons[buttons.length - 1].click(); return; }
     }
     if (tries++ < 90) setTimeout(tick, 100);
   }
