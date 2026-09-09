@@ -3,8 +3,25 @@
  * Event Bus events forwarded by the Rust backend. The shell
  * maintains state for every (app, window) pair that has
  * emitted; only the focused window's slot renders in the top
- * bar. Multi-window apps see distinct toolbars per window — no
- * last-emit-wins between sibling windows of the same app.
+ * bar.
+ *
+ * THE PER-WINDOW HALF DOES NOT WORK TODAY, and this header said
+ * the opposite until 9 September ("Multi-window apps see
+ * distinct toolbars per window — no last-emit-wins between
+ * sibling windows"). The two halves of the key come from
+ * different namespaces: the app publishes `window.label()`, its
+ * own Tauri webview label, and `focusedToolbarKey` computes the
+ * compositor's toplevel id. Those are not the same string and
+ * do not become one, so the exact lookup below essentially
+ * never hits and the FALLBACK — any state under the focused app
+ * — is what renders. Which is last-emit-wins between sibling
+ * windows, the thing this comment promised it was not.
+ *
+ * Nothing here can close that on its own: the shell would need
+ * the app's webview label alongside the toplevel it belongs to,
+ * which is a protocol question rather than a store one. What is
+ * fixed is the consequence that WAS in reach — see
+ * `forgetToolbarApp`.
  *
  * Mutually-exclusive variants (Quick Actions / Breadcrumb /
  * Progress) — setting one drops the others for that (app,
@@ -13,7 +30,7 @@
  * See `docs/architecture/topbar-toolbar.md`.
  */
 
-import { derived, writable, type Readable } from "svelte/store";
+import { derived, get, writable, type Readable } from "svelte/store";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { activeWindow } from "./windows";
 import { activeAppId } from "./activeApp";
@@ -91,6 +108,41 @@ function clearProgress(appId: string, windowId: string) {
     next.delete(key);
     return { byKey: next };
   });
+}
+
+/// Drop everything one app published, across every window it had.
+///
+/// The teardown an app that died never got to send. `toolbar_clear` exists on
+/// the plugin and nothing calls it, and an app that crashes or is killed could
+/// not call it anyway - so the shell reclaims on OBSERVED ABSENCE instead, the
+/// same rule the knowledge daemon uses for an unclosed presence and the same one
+/// `forgetApp` applies to the badge, shortcut and ambient stores.
+///
+/// This store was the one those four missed, and it leaks differently because it
+/// is keyed per (app, WINDOW): its entries survive the window that made them, so
+/// a webview label an app reuses - `main`, across a restart - would hand a fresh
+/// window the previous instance's toolbar, drawn before the new one has
+/// published anything. Dropping by app takes those with it, which is why this is
+/// keyed on the app half rather than trying to match the window half: the
+/// `windowId` is the SOURCE APP's own webview label, opaque to the shell and not
+/// comparable with anything in its window list.
+export function forgetToolbarApp(appId: string): void {
+  internal.update((s) => {
+    const prefix = `${appId}\x1f`;
+    const doomed = [...s.byKey.keys()].filter((k) => k.startsWith(prefix));
+    if (doomed.length === 0) return s;
+    const next = new Map(s.byKey);
+    for (const k of doomed) next.delete(k);
+    return { byKey: next };
+  });
+}
+
+/// Which apps this store currently holds a toolbar for. The lifetime watcher
+/// reads it to decide what has outlived its windows; nothing else should.
+export function appsWithToolbar(): string[] {
+  const ids = new Set<string>();
+  for (const k of get(internal).byKey.keys()) ids.add(k.split("\x1f")[0]);
+  return [...ids];
 }
 
 interface QuickActionsEvent {
@@ -196,11 +248,19 @@ export const focusedToolbarKey: Readable<ToolbarKey | null> = derived(
  * when no key is focused or no state has been emitted for it.
  *
  * Falls back to ANY state for the focused app if the exact
- * (appId, windowId) miss — covers the legacy producer case
- * where `windowId` is empty, and the case where the SDK's
- * webview-label differs from the shell's toplevel-id (most
- * single-webview-per-window apps coincide, but third-party
- * Tauri apps may not).
+ * (appId, windowId) miss. That was written as a safety net for
+ * the legacy empty-`windowId` producer and for a label that
+ * differs from the toplevel id; measured, it is the normal
+ * path, because the SDK sends a webview label and this store is
+ * asked with a compositor toplevel id. "Most single-webview-
+ * per-window apps coincide" is not true of two identifiers
+ * minted by different systems.
+ *
+ * So it is doing real work and must stay until the two names
+ * can be matched — without it every toolbar in the system goes
+ * dark. It is also why a stale entry is not merely stored but
+ * RENDERED, which is what makes `forgetToolbarApp` a visible
+ * fix rather than housekeeping.
  */
 export const focusedToolbar: Readable<ToolbarSlot> = derived(
   [internal, focusedToolbarKey],

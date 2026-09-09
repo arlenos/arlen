@@ -65,11 +65,11 @@ CARRIED: dict[str, str] = {
     "ambient_set": "the shell keeps a per-app ambient effect (ambient-api.md); no app publishes one",
     "ambient_clear": "pairs with ambient_set",
     "shortcuts_set_state": "the diff update for one entry's badge or enabled flag; the file manager registers a list and has nothing to diff on it, so this waits on a producer that does",
-    "shortcuts_clear": "the teardown for a registered list; granted to the file manager with the register, but nothing takes its list down - the same reason `menu_unregister` sits here",
+    "shortcuts_clear": "the teardown for a registered list, and it is UNREACHED BY DESIGN now rather than waiting for a caller: an app that crashes or is killed never gets to send a teardown, so the shell reclaims per-app state on observed window absence (`appStateLifetime.ts`, the same rule the knowledge daemon uses for an unclosed presence). A live app replaces its list by registering again. So the only thing this command could add is a way to take the list down while staying open, which nothing wants yet - whether it survives is a delete question, not a producer one",
     "toolbar_set_progress": "the toolbar's progress bar; the file manager draws its own progress zone instead, which is the second-path question rather than a hole",
     "toolbar_clear_progress": "pairs with toolbar_set_progress",
-    "toolbar_clear": "nothing takes its toolbar down; the two producers replace theirs by setting it again",
-    "menu_unregister": "nothing takes its menu down either, for the same reason - a re-register replaces the tree, and a menu is only drawn while its app is focused",
+    "toolbar_clear": "same answer as `shortcuts_clear`: the two producers replace theirs by setting it again, and a producer that goes away is reclaimed by the lifetime watcher - the toolbar was the per-app store that watcher missed until 9 September, which mattered because `focusedToolbar` falls back to ANY state under the focused app, so a left-behind entry rendered rather than merely sat there",
+    "menu_unregister": "the same shape again - a re-register replaces the tree, a menu is only drawn while its app is focused, and a menu whose app has gone is dropped by the lifetime watcher rather than by the app remembering to say so",
     # ── The knowledge daemon promotes these and nothing sends them ────
     #
     # Presence and timeline came off this list on 9 September: the text editor
