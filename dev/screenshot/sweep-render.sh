@@ -274,10 +274,17 @@ for width in $widths; do
       [ -n "$open" ] && hostargs+=(--open "$open")
       # A run that refuses prints no `[...]` line at all, so `got` is empty and the
       # loop below reports it as a route that did not answer - loud, not clean.
-      got="$("$here/headless.sh" "${hostargs[@]}" 2>/dev/null | answer)"
+      #
+      # THE WHOLE OUTPUT IS KEPT, not just the answer line. It used to be piped
+      # straight into `answer`, so a refusal left `got` empty and the failure line
+      # read `did not answer overlapping-text:` with nothing after the colon - the
+      # reason had been printed and thrown away one pipe earlier. `answer` only
+      # ever takes the `[...]` line, so carrying stderr through it costs nothing.
+      raw="$("$here/headless.sh" "${hostargs[@]}" 2>&1)"
+      got="$(printf '%s\n' "$raw" | answer)"
     else
-      got="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/$probe.js" "$width" 2>&1 \
-        | sed -n 's/^inject result: //p')"
+      raw="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/$probe.js" "$width" 2>&1)"
+      got="$(printf '%s\n' "$raw" | sed -n 's/^inject result: //p')"
     fi
     case "$got" in
       "["*"]")
@@ -298,7 +305,17 @@ for width in $widths; do
         # A route that did not render is not a clean route, which is the false
         # green this family of checks keeps finding its way back into.
         clean=0
-        echo "  FAIL $spec${host:+@@$host} did not answer $probe: $got"
+        # And say WHY, in the run's own words. An empty `got` is the common case -
+        # the probe refused or the driver died before printing an answer - and the
+        # line used to end at the colon, which told a reader the reading failed and
+        # nothing about what failed. The last two non-empty lines of the run are
+        # where the refusal or the traceback lands.
+        why="$got"
+        if [ -z "$why" ]; then
+          why="$(printf '%s\n' "$raw" | grep -v '^[[:space:]]*$' | tail -2 | tr '\n' ' ')"
+        fi
+        [ -z "$why" ] && why="the probe printed nothing at all"
+        echo "  FAIL $spec${host:+@@$host} did not answer $probe: $why"
         fail=1
         ;;
     esac
