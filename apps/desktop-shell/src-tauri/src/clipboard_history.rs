@@ -605,9 +605,11 @@ fn run_watcher(
         }
         let source_app_id = focused_app_id(window_list).unwrap_or_default();
         if let Some(entry) = history.push(content, source_app_id) {
-            // Frontend can watch this event to refresh the panel in
-            // real time. Omitted from the MVP frontend but cheap to
-            // emit regardless.
+            // The panel listens for this since 9 September. It is the only
+            // signal that a NEW copy landed - `arlen://clipboard-changed` is
+            // emitted by the delete and clear commands, so a panel hearing only
+            // that one refreshed after its own edits and never after somebody
+            // copied something in another window.
             let _ = app.emit("arlen://clipboard-added", &entry);
         }
     }
