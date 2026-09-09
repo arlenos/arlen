@@ -74,8 +74,21 @@ ATTRS = (
 )
 ATTR = re.compile(r'\b(?:' + "|".join(map(re.escape, ATTRS)) + r')="((?:[^"\\]|\\.){8,})"')
 RETURN = re.compile(r'\breturn\s+"((?:[^"\\]|\\.){8,})"')
-NAME = r"\w*(?:error|message|msg|reason|hint|note|label|title|text|placeholder|summary|caption|description|desc)\w*"
+#: `notice`, `warning`, `banner` and `status` joined the list on 9 September, after
+#: `capsuleNotice` in Settings carried `Could not revoke that share: ${e}` to the
+#: surface that answers who can still read a slice of somebody's graph. "Notice"
+#: does not contain "note", so the name never matched - the list is a list of the
+#: words its authors happened to have used.
+NAME = (
+    r"\w*(?:error|message|msg|reason|hint|note|notice|warning|banner|status|label"
+    r"|title|text|placeholder|summary|caption|description|desc)\w*"
+)
 ASSIGN = re.compile(r"\b(?:" + NAME + r')\s*=\s*"((?:[^"\\]|\\.){8,})"', re.I)
+#: THE SAME NAMES WRITTEN INTO A SVELTE STORE. `ASSIGN` wants an `=` and `FIELD` a
+#: `:`, and a store takes neither: `capsuleNotice.set("...")` is how half the
+#: sentences in this tree reach a surface, and both patterns looked straight past
+#: it.
+STORE_SET = re.compile(r"\b(?:" + NAME + r')\.set\(\s*"((?:[^"\\]|\\.){8,})"', re.I)
 #: THE SAME NAMES AS AN OBJECT FIELD, which `ASSIGN` cannot see: it wants an `=`,
 #: and a catalogue of rows is written with a `:`. That is how the two brightness
 #: rows in Settings carried an English sentence into a German page - `label` next
@@ -159,7 +172,7 @@ def scan(path: Path) -> list[tuple[int, str]]:
         if any(a <= start < b for a, b in skip):
             continue
         seen: set[str] = set()
-        for match in (*ATTR.finditer(line), *RETURN.finditer(line), *ASSIGN.finditer(line), *FIELD.finditer(line)):
+        for match in (*ATTR.finditer(line), *RETURN.finditer(line), *ASSIGN.finditer(line), *FIELD.finditer(line), *STORE_SET.finditer(line)):
             value = match.group(1)
             if value in seen or not prose(value):
                 continue
