@@ -28,6 +28,7 @@
   import { initTopbar, shellPresent } from "$lib/stores/topbar";
   import { initGraphInput } from "$lib/stores/graphInput";
   import { publishShortcuts } from "$lib/stores/shortcuts";
+  import { publishTrashBadge } from "$lib/stores/trashBadge";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { onMount } from "svelte";
@@ -80,6 +81,11 @@
       // has to re-register or the waypointer keeps whichever language was
       // active when this window started.
       void publishShortcuts(tr);
+      // And the count on its Trash row, which the list itself cannot carry: a
+      // register replaces the whole list, so a number that changes on its own
+      // is what `setState` is for. Published after the list because it names an
+      // entry the list has to have registered first.
+      void publishTrashBadge();
       void setWindowTitle(tr("f.app.title"));
     });
     // The template list lands after startup; the New submenu rides it.
