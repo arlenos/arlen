@@ -210,12 +210,17 @@ pub async fn extensions_observed(
         .find(|e| e.id == id && format!("{:?}", e.kind).to_lowercase() == kind.to_lowercase())
         .ok_or_else(|| format!("no {kind} named {id} is installed"))?;
 
-    // The ledger records an ACTOR id, which is not always the inventory's id.
+    // The ledger records an ACTOR id, which is not always the inventory's id -
+    // and when there is none, WHY there is none differs by kind. A module is not
+    // audited at all; a bridge is audited under the daemon that submitted its
+    // writes, with the bridge named in `node_types`. One sentence for both said
+    // "Shell modules are not audited" over a bridge, which is false.
     let Some(actor) = audit_actor(target) else {
-        return Ok(all_unmeasured(
-            &target.capabilities,
-            NotMeasuredReason::ActorUnknown,
-        ));
+        let reason = match target.kind {
+            ExtensionKind::Bridge => NotMeasuredReason::NotAttributed,
+            _ => NotMeasuredReason::ActorUnknown,
+        };
+        return Ok(all_unmeasured(&target.capabilities, reason));
     };
     let report = arlen_monitor_reads::access::app_access(
         &ReadClient::new(read_socket_path()),

@@ -68,6 +68,20 @@ pub enum NotMeasuredReason {
     /// it. Crediting those entries here would also answer a different question -
     /// "the AI used this module", not "this module did something".
     ActorUnknown,
+    /// The extension's actions ARE audited, and not under a name an actor-keyed
+    /// aggregation can find.
+    ///
+    /// Bridges are the case, and they are a different fact from a module's.
+    /// A bridge's writes are recorded fail-closed by the knowledge daemon before
+    /// the row lands, so the entries exist - but the ledger's `actor` is the
+    /// kernel-attested peer that SUBMITTED them, which is `knowledge`, and the
+    /// bridge appears in `node_types` instead. `bridge.<namespace>` is its
+    /// delegated write identity and no entry's actor ever equals it.
+    ///
+    /// Split from [`Self::ActorUnknown`] on 10 September because they were sharing
+    /// a sentence: "Shell modules are not audited" is true of a module and false
+    /// of a bridge, and a bridge row was reading it.
+    NotAttributed,
     /// The ledger reports itself tampered. It may still answer, but an attacker
     /// who can edit it can remove exactly the entries that would have shown use,
     /// so absence of evidence is worth nothing here.
