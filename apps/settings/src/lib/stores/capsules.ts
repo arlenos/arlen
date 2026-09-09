@@ -89,7 +89,13 @@ const MOCK_CAPSULES: Capsule[] = [
 /// is the graph's answer under a host; the fixture is the vite path only.
 export const capsules = writable<Capsule[]>([]);
 export const capsulesLoaded = writable(false);
-/// A transient error surfaced if a revoke did not reach the daemon.
+/// The message id for a revoke that did not reach the daemon, or null.
+///
+/// A KEY, not a sentence. This held `Could not revoke that share: ${String(e)}`
+/// - an English literal finished with a stringified Rust error, on the surface
+/// that answers who can still read a slice of somebody's graph. It also reached
+/// nothing: the row went back and the reason went into a store with no reader,
+/// so a refused revoke showed the share still listed and said nothing at all.
 export const capsuleNotice = writable<string | null>(null);
 
 /// Load the active capsules. Live: `list_capsules`; fixture under vite.
@@ -135,6 +141,7 @@ export async function revokeCapsule(id: string): Promise<void> {
     handle = list.find((x) => x.id === id)?.handle ?? "";
     return list.filter((x) => x.id !== id);
   });
+  capsuleNotice.set(null);
   try {
     await invoke("revoke_capsule", { handle });
   } catch (e) {
@@ -144,7 +151,8 @@ export async function revokeCapsule(id: string): Promise<void> {
     // daemon to refuse, so the optimistic drop stands.
     if (tauriAvailable) {
       capsules.set(previous);
-      capsuleNotice.set(`Could not revoke that share: ${String(e)}`);
+      console.warn("settings: revoking a share failed", e);
+      capsuleNotice.set("s.priv.revokeFailed");
     }
   }
 }

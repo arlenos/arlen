@@ -50,6 +50,7 @@
   import {
     capsules,
     capsulesLoaded,
+    capsuleNotice,
     capsulesMocked,
     capsulesUnavailable,
     loadCapsules,
@@ -297,6 +298,12 @@
               {/if}
             {/each}
           </div>
+          <!-- A refused revoke put the row back; without this it went back
+               silently, which on this surface reads as a share the person just
+               tried to stop and which is still live for no stated reason. -->
+          {#if $capsuleNotice}
+            <p class="note" role="alert">{$t($capsuleNotice)}</p>
+          {/if}
           {#if $capsulesMocked}
             <!-- Invented shares read as data actually sent out and still readable. -->
             <p class="note">{$t("s.priv.sampleShares")}</p>
