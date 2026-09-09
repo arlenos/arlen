@@ -9,6 +9,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { tauriAvailable } from "$lib/tauri";
+  import { freeName } from "$lib/freeName";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { AboutDialog } from "@arlen/ui-kit/components/ui/about-dialog";
@@ -260,10 +261,16 @@
   };
 
   async function newFolder() {
-    const ok = await runOp("new_folder", [$t("f.newFolder.default")], currentPath());
+    // The next free placeholder, not the bare one. Two presses in a row used to
+    // answer "Something with that name is already there, so nothing was
+    // changed" - a true sentence about a name the person never chose. The
+    // backend's refusal is right and stays; what changes is that this app stops
+    // handing it a name it can already see is taken.
+    const name = freeName($t("f.newFolder.default"), entries.map((e) => e.name));
+    const ok = await runOp("new_folder", [name], currentPath());
     if (ok) {
       await tick();
-      renamingName = $t("f.newFolder.default");
+      renamingName = name;
     }
   }
 
@@ -272,7 +279,13 @@
   /// confines it). The link is named "Link to <name>"; refresh so it shows.
   async function createLink() {
     if (selected.length !== 1) return;
-    const name = $t("f.link.to", { name: selected[0].name });
+    // Same rule as the new folder above: this name is the app's, not the
+    // person's, so a second link to the same file counts on rather than
+    // refusing.
+    const name = freeName(
+      $t("f.link.to", { name: selected[0].name }),
+      entries.map((e) => e.name),
+    );
     const target = joinPath(currentPath(), selected[0].name);
     try {
       await invoke("files_symlink", { parent: currentPath(), name, target });
