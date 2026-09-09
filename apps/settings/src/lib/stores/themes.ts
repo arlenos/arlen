@@ -104,35 +104,63 @@ export async function setActiveTheme(id: string): Promise<void> {
   }
 }
 
-/// Install a theme from a file on disk (a validated copy into the themes dir).
-/// Install a theme from a file on disk (the daemon validates + copies it into the
+/// What the last import or export did, or null when nothing has been tried.
+///
+/// THREE BUTTONS SAID NOTHING, WHATEVER HAPPENED. Each of them swallowed every
+/// outcome in a bare `catch`, with a comment naming the two harmless ones - no
+/// Tauri, or a cancelled picker - and the third, a theme file that would not
+/// read or would not install, went the same way. A person picked a file and the
+/// window did not change; the only difference between a broken theme and a
+/// change of mind was that neither said anything.
+///
+/// Cancelling is now `Ok(null)` from the host rather than an error, so this
+/// carries only the two things worth saying: where an export went, and why an
+/// import did not happen.
+export type ThemeActionResult =
+  | { kind: "exported"; path: string }
+  | { kind: "failed"; key: string };
+
+export const themeAction = writable<ThemeActionResult | null>(null);
+
+/// Install a theme from a file on disk (the host validates + copies it into the
 /// themes dir), then reload the list.
 export async function installThemeFile(): Promise<void> {
+  themeAction.set(null);
   try {
-    await invoke("theme_install_file");
+    const installed = await invoke<unknown | null>("theme_install_file");
+    // `null` is a cancelled picker: nothing happened and nothing is said.
+    if (installed === null) return;
     await loadThemes();
-  } catch {
-    // No Tauri (dev), or the user cancelled the picker.
+  } catch (e) {
+    console.warn("settings: installing a theme failed", e);
+    themeAction.set({ kind: "failed", key: "s.appr.installFailed" });
   }
 }
 
 /// Import a community scheme (base16 / Catppuccin) via the inbound adapters, then
 /// reload the list.
 export async function importScheme(kind: "base16" | "catppuccin"): Promise<void> {
+  themeAction.set(null);
   try {
-    await invoke("theme_import_scheme", { kind });
+    const imported = await invoke<unknown | null>("theme_import_scheme", { kind });
+    if (imported === null) return;
     await loadThemes();
-  } catch {
-    // No Tauri (dev), or the user cancelled the picker.
+  } catch (e) {
+    console.warn("settings: importing a scheme failed", e);
+    themeAction.set({ kind: "failed", key: "s.appr.importFailed" });
   }
 }
 
-/// Export the active theme plus the user's overrides as a single shareable
-/// ArlenThemeFile (the daemon flattens + writes it).
+/// Export the active theme plus the user's overrides as one shareable
+/// ArlenThemeFile, written wherever the person chooses.
 export async function exportTheme(): Promise<void> {
+  themeAction.set(null);
   try {
-    await invoke("theme_export");
-  } catch {
-    // No Tauri (dev), or the user cancelled the save dialog.
+    const path = await invoke<string | null>("theme_export");
+    if (path === null) return;
+    themeAction.set({ kind: "exported", path });
+  } catch (e) {
+    console.warn("settings: exporting the theme failed", e);
+    themeAction.set({ kind: "failed", key: "s.appr.exportFailed" });
   }
 }

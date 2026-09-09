@@ -254,8 +254,9 @@ fn merge_toml(base: &mut toml::Value, over: &toml::Value) {
 /// (the "Generate Theme From Current Settings" flow). The importer resolves any
 /// `extends` and defaults unset dimensions, so the file is a valid theme; the
 /// caller's save flow renames it (the export keeps the base `[meta]`).
+/// `Ok(None)` when the person cancelled the save, which is not a failure.
 #[tauri::command]
-pub fn theme_export() -> Result<String, String> {
+pub async fn theme_export() -> Result<Option<String>, String> {
     let id = get_active_theme_id()?;
     let base =
         active_theme_content(&id).ok_or_else(|| format!("active theme '{id}' not found"))?;
@@ -268,7 +269,16 @@ pub fn theme_export() -> Result<String, String> {
             merge_toml(&mut merged, &over);
         }
     }
-    toml::to_string_pretty(&merged).map_err(|e| format!("serialize theme: {e}"))
+    let text = toml::to_string_pretty(&merged).map_err(|e| format!("serialize theme: {e}"))?;
+    // AND SOMEWHERE TO PUT IT. This returned the text and the window dropped it,
+    // so Export was a button that thought for a moment and left nothing behind.
+    // The file name comes from the active theme id, which is what the person
+    // will look for.
+    let Some(dest) = crate::commands::picker::save_theme_file(&format!("{id}.toml")).await else {
+        return Ok(None);
+    };
+    std::fs::write(&dest, text).map_err(|e| format!("write theme: {e}"))?;
+    Ok(Some(dest))
 }
 
 /// The resolved non-colour metrics of the active appearance (radius, spacing,
@@ -1072,15 +1082,21 @@ fn install_theme_content(content: &str) -> Result<ThemeSummary, String> {
 
 /// Install a theme from a user-picked `.toml` file: pick, validate, copy into
 /// `~/.local/share/arlen/themes/{id}.toml`. Returns the installed theme's summary
-/// so the gallery can add it without a full reload. Errors (no file / invalid
-/// theme) distinguish a cancel from a bad file by the message.
+/// so the gallery can add it without a full reload. `Ok(None)` is a cancelled
+/// picker; an `Err` is a file that would not read or would not install.
 #[tauri::command]
-pub async fn theme_install_file() -> Result<ThemeSummary, String> {
-    let src = crate::commands::picker::pick_theme_file()
-        .await
-        .ok_or_else(|| "no file selected".to_string())?;
+pub async fn theme_install_file() -> Result<Option<ThemeSummary>, String> {
+    // CANCELLING IS NOT A FAILURE. This returned `Err("no file selected")`, which
+    // the window could only tell from a real failure by reading the message - the
+    // shape this tree refuses everywhere else, and the reason its own doc had to
+    // say "distinguish a cancel from a bad file by the message". `Ok(None)` says
+    // it in the type, so the window can stay silent for a change of mind and
+    // speak for a broken file.
+    let Some(src) = crate::commands::picker::pick_theme_file().await else {
+        return Ok(None);
+    };
     let content = std::fs::read_to_string(&src).map_err(|e| format!("read theme: {e}"))?;
-    install_theme_content(&content)
+    install_theme_content(&content).map(Some)
 }
 
 /// Map a catppuccin flavor name to its enum (case-insensitive).
@@ -1127,7 +1143,7 @@ pub async fn theme_import_scheme(
     kind: String,
     flavor: Option<String>,
     accent: Option<String>,
-) -> Result<ThemeSummary, String> {
+) -> Result<Option<ThemeSummary>, String> {
     let theme_toml = match kind.as_str() {
         "catppuccin" => {
             let flavor = parse_flavor(flavor.as_deref().unwrap_or("mocha"))
@@ -1137,9 +1153,10 @@ pub async fn theme_import_scheme(
             arlen_theme::catppuccin::adapt_catppuccin(flavor, accent)
         }
         "base16" => {
-            let src = crate::commands::picker::pick_scheme_file()
-                .await
-                .ok_or_else(|| "no scheme selected".to_string())?;
+            // Cancelling is not a failure; see `theme_install_file`.
+            let Some(src) = crate::commands::picker::pick_scheme_file().await else {
+                return Ok(None);
+            };
             let text = std::fs::read_to_string(&src).map_err(|e| format!("read scheme: {e}"))?;
             let scheme = arlen_theme::base16::parse_scheme(&text)
                 .map_err(|e| format!("not a base16 scheme: {e}"))?;
@@ -1147,7 +1164,7 @@ pub async fn theme_import_scheme(
         }
         other => return Err(format!("unknown scheme kind: {other}")),
     };
-    install_theme_content(&theme_toml)
+    install_theme_content(&theme_toml).map(Some)
 }
 
 #[cfg(test)]
