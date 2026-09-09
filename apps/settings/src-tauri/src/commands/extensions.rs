@@ -234,16 +234,23 @@ const ACTIVITY_WINDOW: u64 = 500;
 /// The actor id an extension's audited actions carry, or `None` when that is not
 /// established for its kind.
 ///
-/// An app audits under its own id. A bridge audits under `bridge.<namespace>`
-/// while the inventory rows it under the bare namespace, so the prefix is
-/// reapplied here. A module's actor is not settled - host calls are audited, but
-/// which id they carry has never been pinned - and guessing would produce an empty
-/// answer indistinguishable from restraint.
+/// An app audits under its own id. A module's actor is not settled - host calls
+/// are audited, but which id they carry has never been pinned - and guessing
+/// would produce an empty answer indistinguishable from restraint.
+///
+/// A bridge is the same case, which this said otherwise until it was checked. The
+/// ledger's `actor` is the kernel-attested peer that SUBMITTED the entry
+/// (`ingest/mod.rs`), and a bridge submits nothing: its writes are audited by the
+/// knowledge daemon, so those entries carry actor `knowledge` and name the bridge
+/// in `node_types` instead. `bridge.<namespace>` is the delegated write identity,
+/// which no entry's actor ever equals - so asking for it returned an empty answer
+/// that read as a bridge doing nothing. It gets the same `None` the module gets,
+/// for the same reason, until the aggregation is keyed on something a bridge's
+/// entries actually carry.
 fn audit_actor(extension: &Extension) -> Option<String> {
     match extension.kind {
         ExtensionKind::App => Some(extension.id.clone()),
-        ExtensionKind::Bridge => Some(format!("bridge.{}", extension.id)),
-        ExtensionKind::Module => None,
+        ExtensionKind::Bridge | ExtensionKind::Module => None,
     }
 }
 
