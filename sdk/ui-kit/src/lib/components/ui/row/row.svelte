@@ -3,12 +3,24 @@
   /// right, with an optional inline preview between them, and an optional
   /// full-width `below` area for wide controls (a list, a chip editor) that
   /// do not fit the right-aligned control slot.
+  ///
+  /// A row can be overridden: its value was set on top of something that
+  /// would otherwise decide it (a theme, a default). Then an accent bar sits
+  /// in the left gutter (the modified mark) and a reset control appears
+  /// before the control to fall back. The control always shows the resolved
+  /// value at full contrast; there is never a greyed placeholder for what the
+  /// fallback would be.
   import type { Snippet } from "svelte";
+  import { RotateCcw } from "@lucide/svelte";
+  import { IconAction } from "../icon-action";
+  import { kt } from "../../../i18n/messages.kit";
 
   let {
     label,
     id: rowId,
     description,
+    overridden = false,
+    onreset,
     leading,
     control,
     preview,
@@ -18,6 +30,11 @@
     /// Optional anchor id for deep-link scroll-to-setting.
     id?: string;
     description?: string;
+    /// True when the value is set on top of a fallback (shows the bar and,
+    /// with `onreset`, the reset control).
+    overridden?: boolean;
+    /// Fall back to the value the override replaced.
+    onreset?: () => void;
     /// Optional leading visual before the label (a logo, badge, or rank), for
     /// rows that need an icon column the bare label/control layout lacks.
     leading?: Snippet;
@@ -28,7 +45,7 @@
   } = $props();
 </script>
 
-<div class="row" id={rowId}>
+<div class="row" class:overridden id={rowId}>
   <div class="row-main">
     {#if leading}
       <div class="leading">{@render leading()}</div>
@@ -45,6 +62,13 @@
       </div>
     {/if}
     <div class="control">
+      {#if overridden && onreset}
+        <span class="reset">
+          <IconAction label={$kt("k.row.reset", { name: label })} size="compact" onclick={onreset}>
+            <RotateCcw size={13} strokeWidth={2} />
+          </IconAction>
+        </span>
+      {/if}
       {@render control?.()}
     </div>
   </div>
@@ -57,12 +81,24 @@
 
 <style>
   .row {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.625rem;
     /* Top/bottom uses the row spacing token; horizontal stays fixed at 1rem
        to give the label a reliable left edge regardless of token overrides. */
     padding: var(--space-row, 0.75rem) 1rem;
+  }
+
+  /* The modified mark: a bar in the left gutter, the accent at rest. */
+  .row.overridden::before {
+    content: "";
+    position: absolute;
+    inset-block: 0.5rem;
+    inset-inline-start: 0;
+    width: 2px;
+    border-radius: var(--radius-full);
+    background: var(--color-accent, var(--foreground));
   }
 
   .row-main {
@@ -111,6 +147,24 @@
   .preview,
   .control {
     flex-shrink: 0;
+  }
+
+  /* The reset sits before the control and only shows itself when the row is
+     pointed at or focused within, so a page of overrides does not become a
+     page of undo buttons. */
+  .control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+  .reset {
+    display: inline-flex;
+    opacity: 0;
+    transition: opacity var(--duration-fast, 120ms) var(--ease-default, ease);
+  }
+  .row:hover .reset,
+  .row:focus-within .reset {
+    opacity: 1;
   }
 
   /* The row-control register: every box-shaped field inside a Row's control
