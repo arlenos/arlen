@@ -200,7 +200,7 @@
     height: var(--height-control, 30px);
     margin-inline-end: 2px;
     border: none;
-    border-radius: var(--radius-input, 6px);
+    border-radius: var(--radius-input, 8px);
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
   }

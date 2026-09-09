@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Check that a height fallback anywhere is the height token.
+"""Check that a height or radius fallback anywhere is its token.
 
 A component writes `height: var(--height-control, 30px)`, and the fallback is
 what renders where the token is not defined. Both halves are a statement about
@@ -29,8 +29,14 @@ import re
 import sys
 from pathlib import Path
 
-TOKEN = re.compile(r"^\s*(--height-[a-z-]+):\s*(\d+)px;", re.M)
-USE = re.compile(r"var\((--height-[a-z-]+),\s*(\d+)px\)")
+#: The named registers this checks: the height ladder and the radius ladder.
+#: Both are a fixed set of numbers the design decides once, which is what makes a
+#: disagreeing fallback a drift rather than a local choice. The generic
+#: `--radius-sm/md/lg/xl` aliases are deliberately NOT in it - they are the
+#: shadcn-derived back-compat names and a component using one is already saying
+#: it does not mean the Arlen register.
+TOKEN = re.compile(r"^\s*(--(?:height|radius)-(?:chip|button|input|card|modal|[a-z-]*)):\s*(\d+)px;", re.M)
+USE = re.compile(r"var\((--(?:height|radius)-[a-z-]+),\s*(\d+)px\)")
 
 
 def main() -> int:
@@ -76,7 +82,7 @@ def main() -> int:
         )
         return 1
 
-    print(f"check-size-fallbacks: {checked} height fallback(s) across the kit, the apps "
+    print(f"check-size-fallbacks: {checked} height and radius fallback(s) across the kit, the apps "
         "and the daemons; each is its token")
     return 0
 
