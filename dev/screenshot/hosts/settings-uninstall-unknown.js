@@ -50,6 +50,12 @@
   var stage = 0;
   function tick() {
     if (stage === 0) {
+      // The opener still goes by its word, and that is a knowing exception: this
+      // page has exactly one button reading `Deinstallieren` and nothing
+      // structural to tell it from the rest. It is the remaining exposure of the
+      // class that broke five fixtures on 10 September, and an id on that button
+      // would close it - the page is another lane's, so this says so rather than
+      // reaching in.
       var open = byText("Deinstallieren");
       if (open) { open.click(); stage = 1; }
     } else if (stage === 1) {
