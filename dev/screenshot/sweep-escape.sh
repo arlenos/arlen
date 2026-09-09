@@ -57,6 +57,21 @@ shift
 # only render when there is something to show and a no-backend shell has nothing.
 # Their host scripts supply it. Without the suffix those four rows would have read
 # as a broken selector for as long as nobody looked.
+#
+# WITH NO SELECTORS the set is chosen from the ROUTE the base URL already names,
+# so what has been driven stays driven rather than living in whoever's shell
+# history ran it. Three settings dialogs are here for a specific reason: the
+# window-rule dialog is the surface this whole probe was written for - it shipped
+# with its Escape handler on its own backdrop, which never receives the key - and
+# it now passes, which is a fact worth being able to re-establish in one command
+# rather than by remembering a selector.
+case "$base" in
+  */workspaces|*/workspaces?*)
+    [ "$#" -eq 0 ] && set -- '.footer button' ;;
+  */keyboard/shortcuts|*/keyboard/shortcuts?*)
+    [ "$#" -eq 0 ] && set -- '[data-action=add-custom]' '[data-action=reset-all]' ;;
+esac
+
 if [ "$#" -eq 0 ]; then
   set -- \
     '[data-applet-id=quick-settings]' \
