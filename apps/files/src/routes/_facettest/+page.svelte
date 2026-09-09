@@ -114,7 +114,7 @@
   }
   .frame {
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    border-radius: var(--radius-card, 10px);
+    border-radius: var(--radius-card, 12px);
     overflow: hidden;
     background: var(--background);
   }

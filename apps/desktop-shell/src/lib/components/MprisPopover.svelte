@@ -145,7 +145,7 @@
     width: 56px;
     height: 56px;
     flex-shrink: 0;
-    border-radius: var(--radius-card, 8px);
+    border-radius: var(--radius-card, 12px);
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
     overflow: hidden;

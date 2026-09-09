@@ -412,7 +412,7 @@
     min-height: var(--height-control, 30px);
     padding: 0.125rem 0.5rem;
     border: 1px solid var(--border);
-    border-radius: var(--radius-input, 6px);
+    border-radius: var(--radius-input, 8px);
     background: var(--input, transparent);
     font-size: var(--text-xs);
     color: var(--foreground);

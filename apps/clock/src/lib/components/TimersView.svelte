@@ -123,7 +123,7 @@
     text-align: center;
     color: var(--color-fg-primary);
     outline: none;
-    border-radius: var(--radius-input, 6px);
+    border-radius: var(--radius-input, 8px);
   }
   .ti-digit:focus {
     background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
