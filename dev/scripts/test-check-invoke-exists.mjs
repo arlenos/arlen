@@ -45,7 +45,7 @@ function check(name, ok, detail) {
 /// `calls` are the command names the frontend invokes; `handlers` the ones its
 /// host registers. Minted and cleaned through `lib/fixture.mjs`, so the delete
 /// cannot be handed a path this function did not create.
-function gateOver(calls, handlers, app = "clock") {
+function gateOver(calls, handlers, app = "clock", extra = "") {
   const dir = mint("arlen-invoke-gate-");
   try {
     const src = path.join(dir, "apps", app, "src", "lib");
@@ -61,7 +61,8 @@ function gateOver(calls, handlers, app = "clock") {
     writeFileSync(
       path.join(src, "probe.ts"),
       `import { invoke } from "@tauri-apps/api/core";\n` +
-        calls.map((c) => `export const p_${c} = () => invoke("${c}");\n`).join(""),
+        calls.map((c) => `export const p_${c} = () => invoke("${c}");\n`).join("") +
+        extra,
       "utf8",
     );
     writeFileSync(
@@ -133,6 +134,33 @@ console.log("invoke-exists:");
   const r = gateOver(["mail_sender_person"], [], "clock");
   check("but the same name from another app still is one", r.code === 1,
         r.out.trim().split("\n")[0]);
+}
+
+{
+  // `invoke(cond ? "a" : "b")` written inline. It is neither a literal right
+  // after the paren nor a bare identifier, so it used to fall between the two
+  // patterns and read as no call at all - in BOTH directions, which is the half
+  // that costs: a typo in either branch throws for every user with the gate
+  // green. The system-monitor process list is the one site in the tree.
+  const body =
+    `export const pick = (flat: boolean) =>\n` +
+    `  invoke<string[]>(flat ? "list_processes" : "list_app_rows");\n`;
+  const r = gateOver([], ["list_processes", "list_app_rows"], "clock", body);
+  check("both branches of an inline ternary count as calls", r.code === 0,
+        r.out.trim().split("\n")[0]);
+  check("and neither reads as registered-but-uncalled",
+        !/list_processes|list_app_rows/.test(r.out), r.out.trim().split("\n").pop());
+}
+
+{
+  // The direction that makes it strict rather than informational: one branch
+  // names a command nothing registers, and every press that takes it throws.
+  const body =
+    `export const pick = (flat: boolean) =>\n` +
+    `  invoke<string[]>(flat ? "list_processes" : "list_app_rows_typo");\n`;
+  const r = gateOver([], ["list_processes", "list_app_rows"], "clock", body);
+  check("a misspelt branch is caught", r.code === 1, r.out.trim().split("\n")[0]);
+  check("and the finding names it", r.out.includes("list_app_rows_typo"));
 }
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
