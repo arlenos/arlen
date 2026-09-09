@@ -59,6 +59,15 @@ const messages: Catalogs = {
     "te.lens.toggle": "Toggle the lens",
     "te.lens.provenance": "Where it came from",
     "te.pv.verb.openedIn": "opened in",
+    // The sample's own two rows. They have no backend counterpart - nothing
+    // writes "started by" into the graph - but a sample rendered in English
+    // inside a German panel is the thing this app refuses everywhere else, and
+    // the panel was doing exactly that: two English rows above one German one.
+    "te.pv.sample.startedBy": "Started by",
+    "te.pv.sample.draftedBy": "A section drafted by",
+    "te.pv.sample.you": "you",
+    "te.pv.sample.assistant": "the assistant",
+    "te.pv.sample.process": "a process",
     "te.lens.related": "Related",
     "te.lens.related.empty": "Nothing references this file yet.",
     "te.lens.provenance.empty": "Nothing recorded about where this file came from.",
@@ -134,6 +143,11 @@ const messages: Catalogs = {
     "te.lens.toggle": "Lens umschalten",
     "te.lens.provenance": "Woher es kommt",
     "te.pv.verb.openedIn": "geöffnet in",
+    "te.pv.sample.startedBy": "Begonnen von",
+    "te.pv.sample.draftedBy": "Ein Abschnitt entworfen von",
+    "te.pv.sample.you": "dir",
+    "te.pv.sample.assistant": "der Assistenz",
+    "te.pv.sample.process": "einem Prozess",
     "te.lens.related": "Verwandt",
     "te.lens.related.empty": "Nichts verweist bisher auf diese Datei.",
     "te.lens.provenance.empty": "Nichts aufgezeichnet dar\u00fcber, woher diese Datei kommt.",

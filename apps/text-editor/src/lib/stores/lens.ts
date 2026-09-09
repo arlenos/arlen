@@ -81,15 +81,18 @@ interface LensState {
 
 const FIXTURE = {
   provenance: [
-    { relation: "Started by", actor: "you", origin: "user" as Provenance, when_ms: SAMPLE_NOW - 21 * DAY, fidelity: "resolved" as Fidelity },
-    { relation: "A section drafted by", actor: "the assistant", origin: "agent" as Provenance, when_ms: SAMPLE_NOW - DAY, fidelity: "resolved" as Fidelity },
+    { relation: "te.pv.sample.startedBy", actor: "te.pv.sample.you", origin: "user" as Provenance, when_ms: SAMPLE_NOW - 21 * DAY, fidelity: "resolved" as Fidelity },
+    { relation: "te.pv.sample.draftedBy", actor: "te.pv.sample.assistant", origin: "agent" as Provenance, when_ms: SAMPLE_NOW - DAY, fidelity: "resolved" as Fidelity },
     // The message id the BACKEND sends for this row, not a phrase of its own.
     // `steps_from_rows` emits exactly one relation, `te.pv.verb.openedIn`, so a
-    // sample that said "Last opened by" showed wording the feature never uses -
-    // and, being a phrase rather than a key, showed it in English whatever the
-    // reader's language. The two rows above have no backend counterpart at all;
-    // see the report for that.
-    { relation: "te.pv.verb.openedIn", actor: "a process", origin: "graph" as Provenance, when_ms: SAMPLE_NOW - 12 * 60_000, fidelity: "pid" as Fidelity },
+    // sample that said "Last opened by" showed wording the feature never uses.
+    //
+    // The two rows above have no backend counterpart, and until a German render
+    // was photographed they were English PHRASES for that reason - which put two
+    // English rows above this German one in the same panel. Having no backend
+    // counterpart is a reason for a sample key rather than a reason for no key.
+    // The actors are sample text too, and carry the case their verb needs.
+    { relation: "te.pv.verb.openedIn", actor: "te.pv.sample.process", origin: "graph" as Provenance, when_ms: SAMPLE_NOW - 12 * 60_000, fidelity: "pid" as Fidelity },
   ],
   related: [
     { file: "roadmap.md", ref: "roadmap", snippet: "…the editor lands after the compositor work, see the notes in this file for the lens design…" },
