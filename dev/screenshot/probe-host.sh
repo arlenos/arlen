@@ -73,8 +73,18 @@ JS
 # in ten, so the state check compared the page against "MESA-EGL: warning: Ensure
 # your X server supports DRI3" and refused a surface that was fine. A probe's
 # answer is on stdout; the noise is not this check's business.
+# AND NOT `tail -1`, which is what this did until 10 September. The renderer
+# prints the probe's answer and THEN `wrote <path>` for the screenshot, so the
+# last line is the filename - and this check compared every fixture's German
+# sentence against `wrote /tmp/probe-host-XXXX.png`. It never matched, so this
+# tool refused every fixture in the tree including the ones that do reach their
+# state: `monitor-live-tick` was refused here while the render sweep, reading the
+# same page a line higher, found its `15,8`. A guard stuck closed is safer than
+# one stuck open and it is still broken, and this is why twenty host fixtures are
+# referenced by nothing - the tool for running them said no every time.
 seen="$("$here/headless.sh" --url "$base/?locale=$locale" --out "$shot" --width "$width" \
-  --settle "$settle" --host-script "$script" --probe-file "$state" 2>/dev/null | tail -1)"
+  --settle "$settle" --host-script "$script" --probe-file "$state" 2>/dev/null \
+  | grep -v '^wrote ' | tail -1)"
 case "$seen" in
   *"$want"*) ;;
   *)
@@ -86,4 +96,5 @@ case "$seen" in
 esac
 
 "$here/headless.sh" --url "$base/?locale=$locale" --out "$shot" --width "$width" \
-  --settle "$settle" --host-script "$script" --probe-file "$probe" 2>/dev/null | tail -1
+  --settle "$settle" --host-script "$script" --probe-file "$probe" 2>/dev/null \
+  | grep -v '^wrote ' | tail -1
