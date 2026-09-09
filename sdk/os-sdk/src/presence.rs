@@ -75,8 +75,21 @@ pub struct PresenceParams {
     pub activity: String,
     /// Free-form subject — typically a file path, document name, or URL.
     pub subject: String,
-    /// Optional project context. Empty inherits Focus Mode's active
-    /// project (resolved on the daemon side).
+    /// Optional project context.
+    ///
+    /// NOT RESOLVED AND NOT STORED, and this line said the opposite until
+    /// 9 September: "Empty inherits Focus Mode's active project (resolved on the
+    /// daemon side)". The knowledge daemon does not consume `focus.activated` at
+    /// all and has no notion of an active project, and `UserAction` has no
+    /// project column for one to land in - `promote_presence_set` reads
+    /// `activity` and `subject` and nothing else. So a value set here rides along
+    /// into the SQLite event row with the metadata and reaches no graph node,
+    /// and an empty one inherits nothing.
+    ///
+    /// What the old sentence would need: the daemon subscribing to the focus
+    /// events the shell already publishes, a project field on the node, and a
+    /// decision about which wins when an app names one AND a focus is active.
+    /// Until then this is context in the event log rather than a link.
     ///
     /// `#[serde(default)]`, and it was missing until 9 September. Serde requires
     /// every field it is not told to default - `Option` included - so a caller
