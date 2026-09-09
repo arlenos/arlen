@@ -179,16 +179,21 @@ await new Promise((r) => setTimeout(r, 2500));
 return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 400);
 JS
 )
+  # THE WORDS AND THE NOTICE, not the wording of the notice. This asked for the
+  # phrase "without its layout", which both fallback sentences carried until 6
+  # September, when `9ec56019c` cut five sentences that narrated the screen back -
+  # a reader looking at unlaid-out text does not need to be told it is unlaid-out
+  # text. The app was right and this case was three days stale, failing on a
+  # correct window; these drives run by hand, so nothing said so.
   say "a page it cannot draw still shows the words" \
-    "$(printf '%s' "$words" | grep -q "without its layout" \
+    "$(printf '%s' "$words" | grep -q "nothing installed that can draw" \
        && printf '%s' "$words" | grep -q "Chapter one begins here" && echo 1 || echo 0)" "$words"
 
-  # AND NAMES THE RIGHT CAUSE. "without its layout" is the tail BOTH sentences
-  # share, so the check above passes whichever the reader shows - it did, on both
-  # sides of the fix, which is how a stale worker went unnoticed. What separates
-  # them is the half that says why: this machine has no engine, said once for the
-  # document, rather than "this page could not be drawn" repeated per page, which
-  # is true and the wrong cause.
+  # AND NAMES THE RIGHT CAUSE, which is the half that separates the two
+  # sentences: this machine has no engine, said once for the document, rather
+  # than "this page could not be drawn" repeated per page - true, and the wrong
+  # cause. The case above shares the same phrase now that the tail is gone, so
+  # this one carries the discrimination on its own: it is the `!` that matters.
   say "and says the machine has no engine rather than blaming the page" \
     "$(printf '%s' "$words" | grep -q "nothing installed that can draw" \
        && ! printf '%s' "$words" | grep -q "This page could not be drawn" \
