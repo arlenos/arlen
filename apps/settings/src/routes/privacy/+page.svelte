@@ -21,6 +21,7 @@
   import { onMount } from "svelte";
   import { loadSensing } from "$lib/stores/sensing";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
@@ -201,7 +202,7 @@
       <!-- Said before any grant is read: this list invents access that does not
            exist AND omits access that does, and it is the surface a user trusts
            to answer "what can reach my data". -->
-      <p class="note span-full">{$t("s.priv.sample")}</p>
+      <Notice tone="neutral" class="span-full" text={$t("s.priv.sample")} />
     {/if}
 
     <div class="span-full">
@@ -312,7 +313,7 @@
           {/if}
           {#if $capsulesMocked}
             <!-- Invented shares read as data actually sent out and still readable. -->
-            <p class="note">{$t("s.priv.sampleShares")}</p>
+            <Notice tone="neutral" text={$t("s.priv.sampleShares")} />
           {:else if $capsulesUnavailable}
             <p class="note">{$t("s.priv.sharesUnavailable")}</p>
           {/if}

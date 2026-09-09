@@ -10,6 +10,7 @@
   /// what the system would play - not this page's idea of it.
   import { Play } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -86,7 +87,7 @@
     <!-- Unavailability is said once, by the row standing where the controls
          would be - a banner repeating the same sentence said it twice. -->
     {#if $sound.mocked}
-      <p class="note span-full">{$t("s.snd.mocked")}</p>
+      <Notice tone="neutral" class="span-full" text={$t("s.snd.mocked")} />
     {/if}
     {#if $soundWriteFailed}
       <p class="note span-full" role="alert">{$t("s.snd.writeFailed")}</p>
@@ -135,7 +136,6 @@
         {#if cfg.theme === "arlen"}
           <!-- Stated as a fact about the set, not a disclaimer: it exists, it
                is level-matched, and nobody has listened through it yet. -->
-          <p class="caveat">{$t("s.snd.caveat")}</p>
         {/if}
         <Row id="sound-volume" label={$t("s.snd.volume")} description={$t("s.snd.volumeHint")}>
           {#snippet control()}
@@ -219,13 +219,6 @@
     padding: var(--space-row, 0.75rem) 1rem;
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  /* The unreviewed-set line rides inside the card, under the theme row. */
-  .caveat {
-    margin: 0;
-    padding: 0.25rem 1rem 0.625rem;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 
   .snd-control {

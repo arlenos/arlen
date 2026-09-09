@@ -16,6 +16,7 @@
   import { goto } from "$app/navigation";
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { grants, grantsLoaded, grantsMocked, grantsError, byApp, loadGrants } from "$lib/stores/grants";
@@ -46,7 +47,7 @@
 <Page title={$t("s.apps.title")} description={$t("s.apps.desc")}>
   <SectionGrid>
     {#if $grantsMocked}
-      <p class="note span-full">{$t("s.apps.sample")}</p>
+      <Notice tone="neutral" class="span-full" text={$t("s.apps.sample")} />
     {/if}
 
     <!-- The installed read failed while the ledger answered. The list below is

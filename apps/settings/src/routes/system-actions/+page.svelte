@@ -11,13 +11,13 @@
   /// compositor picks the default again. Reset-all confirms first.
 
   import { onMount } from "svelte";
-  import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
   import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
   import { mark } from "@arlen/ui-kit/i18n";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -85,9 +85,12 @@
   title={$t("s.sysact.title")}
   description={$t("s.sysact.desc")}
 >
-  <ConfigUnavailable error={$compositor.error} />
   <ConfigWriteFailed failed={$compositor.writeFailed} />
   <SectionGrid>
+    {#if $compositor.error}
+      <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
+    {/if}
+    <fieldset class="unreadable-gate" disabled={$compositor.error !== null}>
   {#if modifiedCount > 0}
     <div class="header-actions span-full">
       <span class="modified-badge">
@@ -144,6 +147,7 @@
       {#snippet sh()}<code>/bin/sh -c</code>{/snippet}
     </Rich>
   </div>
+    </fieldset>
   </SectionGrid>
 </Page>
 

@@ -77,7 +77,6 @@
           ariaLabel={$t("s.wallpaper.fit")}
           onchange={(v) => setScale(v as WallpaperScale)}
         />
-        <p class="wp-note">{$t("s.wallpaper.comingSoon")}</p>
       </div>
     </Section>
   </SectionGrid>

@@ -16,6 +16,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -261,6 +262,10 @@
   description={$t("s.kbd.desc")}
 >
   <SectionGrid>
+    {#if loadError}
+      <Notice tone="error" class="span-full" text={$t("s.kbd.loadFailed")} />
+    {/if}
+    <fieldset class="unreadable-gate" disabled={loadError !== null}>
   <!-- Navigation card pointing at the shortcut editor. Hash anchors
        the Keyboard category so users landing here from a `Configure
        switch shortcut` link see the relevant bindings. -->
@@ -272,23 +277,8 @@
     {#snippet icon()}<KeyboardIcon size={20} strokeWidth={1.75} />{/snippet}
   </LinkCard>
 
-  {#if loadError}
-    <div
-      class="span-full rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-      title={loadError}
-    >
-      {$t("s.kbd.loadFailed")}
-    </div>
-  {/if}
-
   {#if lastError}
-    <div
-      role="alert"
-      class="span-full rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-      title={lastError}
-    >
-      {$t("s.kbd.saveFailed")}
-    </div>
+    <Notice tone="error" class="span-full" text={$t("s.kbd.saveFailed")} />
   {/if}
 
   <Section label={$t("s.kbd.layouts")}>
@@ -450,5 +440,6 @@
       {/snippet}
     </Row>
   </Section>
+    </fieldset>
   </SectionGrid>
 </Page>

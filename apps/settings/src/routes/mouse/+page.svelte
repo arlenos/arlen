@@ -5,6 +5,7 @@
   import { onMount } from "svelte";
   import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -31,6 +32,10 @@
   description={$t("s.mouse.desc")}
 >
   <SectionGrid>
+    {#if $mouse.error}
+      <Notice tone="error" class="span-full" text={$mouse.errorKind === "write" ? $t("s.err.notSaved") : $t("s.err.readPaused")} />
+    {/if}
+    <fieldset class="unreadable-gate" disabled={$mouse.error !== null && $mouse.errorKind !== "write"}>
     <Section label={$t("s.mouse.behavior")} class="span-full">
       <Row
         label={$t("s.mouse.accel")}
@@ -93,11 +98,7 @@
       </Row>
     </Section>
 
-    {#if $mouse.error}
-      <div class="span-full error-box" title={$mouse.error}>
-        {$mouse.errorKind === "write" ? $t("s.err.notSaved") : $t("s.err.readPaused")}
-      </div>
-    {/if}
+    </fieldset>
   </SectionGrid>
 </Page>
 
@@ -116,13 +117,5 @@
     font-variant-numeric: tabular-nums;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .error-box {
-    padding: 0.75rem;
-    border-radius: var(--radius-chip);
-    border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
-    background: color-mix(in srgb, var(--destructive) 10%, transparent);
-    font-size: var(--text-sm);
-    color: var(--destructive);
   }
 </style>

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
-  import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
   import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   /// Workspaces & Tiling settings page (Sprint B).
   ///
@@ -11,6 +10,7 @@
 
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -107,9 +107,12 @@
   title={$t("s.ws.title")}
   description={$t("s.ws.desc")}
 >
-  <ConfigUnavailable error={$compositor.error} />
   <ConfigWriteFailed failed={$compositor.writeFailed} />
   <SectionGrid>
+    {#if $compositor.error}
+      <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
+    {/if}
+    <fieldset class="unreadable-gate" disabled={$compositor.error !== null}>
     <Section label={$t("s.ws.layout")}>
     <Row
       label={$t("s.ws.direction")}
@@ -225,6 +228,7 @@
       </AddRemoveList>
     </div>
   </Section>
+    </fieldset>
   </SectionGrid>
 </Page>
 

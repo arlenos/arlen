@@ -323,3 +323,14 @@ textarea,
 .row-control {
   width: var(--width-row-control, 200px);
 }
+
+/* The gate under a "cannot be read" notice: every native control inside is
+   disabled at once, and the fieldset itself leaves no box behind
+   (design-system.md §6.10). */
+fieldset.unreadable-gate {
+  display: contents;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
