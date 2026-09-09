@@ -52,7 +52,7 @@ export const TOOLKITS: Toolkit[] = [
   { id: "gtk4", nameKey: "s.toolkit.name.gtk4", coverage: "colours", noteKey: "s.toolkit.note.gtk4", prereqKey: null },
   { id: "qt", nameKey: "s.toolkit.name.qt", coverage: "colours", noteKey: "s.toolkit.note.qt", prereqKey: "s.toolkit.prereq.qt" },
   { id: "terminal", nameKey: "s.toolkit.name.terminal", coverage: "full", noteKey: "s.toolkit.note.terminal", prereqKey: null },
-  { id: "wine", nameKey: "s.toolkit.name.wine", coverage: "best-effort", noteKey: "s.toolkit.note.wine", prereqKey: "s.toolkit.prereq.wine" },
+  { id: "wine", nameKey: "s.toolkit.name.wine", coverage: "best-effort", noteKey: "s.toolkit.note.wine", prereqKey: null },
 ];
 
 /// Whether the theme is actually in place for a toolkit, as opposed to what the
@@ -92,8 +92,7 @@ export async function loadReach(): Promise<void> {
 
 /// Whether each detectable prerequisite is met, per toolkit id. Empty until
 /// read. A toolkit with no entry has nothing to detect, and its line is a status
-/// rather than a condition - Wine's "Experimental" is true whatever is
-/// installed.
+/// rather than a condition.
 export const prereqs = writable<Record<string, boolean>>({});
 
 /// Ask the backend which prerequisites this machine meets. Read-only.
