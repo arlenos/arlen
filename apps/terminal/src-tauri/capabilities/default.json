@@ -21,6 +21,8 @@
     "arlen-shell:allow-toolbar-set-quick-actions",
     "arlen-shell:allow-menu-register",
     "arlen-shell:allow-presence-set",
-    "arlen-shell:allow-presence-clear"
+    "arlen-shell:allow-presence-clear",
+    "arlen-shell:allow-ambient-set",
+    "arlen-shell:allow-ambient-clear"
   ]
 }

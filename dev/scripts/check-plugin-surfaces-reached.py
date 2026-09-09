@@ -62,8 +62,6 @@ NOT_A_PRODUCER = "desktop-shell"
 #: case, because "nobody calls it" is not the interesting half.
 CARRIED: dict[str, str] = {
     # ── The shell draws these and nothing fills them ──────────────────
-    "ambient_set": "the shell keeps a per-app ambient effect (ambient-api.md) and the consumer end is finished - overlay, global disable, auto-clear pruner, intensity clamped twice. No app publishes one, and the sharper fact found on 9 September is that no app is GRANTED one either: `ambient_set` appears in no capability file in the tree, so this is not a producer somebody forgot to write, it is a surface nothing has ever been allowed to reach. Which app should have it is a permission decision, so it waits on one",
-    "ambient_clear": "pairs with ambient_set",
     "shortcuts_clear": "the teardown for a registered list, and it is UNREACHED BY DESIGN now rather than waiting for a caller: an app that crashes or is killed never gets to send a teardown, so the shell reclaims per-app state on observed window absence (`appStateLifetime.ts`, the same rule the knowledge daemon uses for an unclosed presence). A live app replaces its list by registering again. So the only thing this command could add is a way to take the list down while staying open, which nothing wants yet - whether it survives is a delete question, not a producer one",
     "toolbar_set_progress": "the toolbar's progress bar; the file manager draws its own progress zone instead, which is the second-path question rather than a hole",
     "toolbar_clear_progress": "pairs with toolbar_set_progress",
