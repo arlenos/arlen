@@ -1758,3 +1758,31 @@ pub async fn theme_toolkit_set_enabled(id: String, on: bool) -> Result<(), Strin
     }
     config_set(ConfigFile::Appearance, path, serde_json::Value::Bool(false)).await
 }
+
+/// Clear every appearance override this machine holds, back to the theme's own
+/// values.
+///
+/// The Appearance overview's "reset all" had no backend: it set six frontend
+/// stores to empty and wrote nothing, so the summary went to zero, the machine
+/// kept every override, and the next resolve put them all back. A button that
+/// says it undid something has to have undone it.
+///
+/// Three channels, because that is where the overrides actually live:
+/// `theme.toml` IS the customization layer, so removing the file is exactly
+/// "no per-field overrides" rather than a guess at which tables to strip; the
+/// `[overrides]` table in `appearance.toml` holds the accent, the font scale and
+/// the radius intensity; `[toolkits]` holds the per-toolkit switches.
+///
+/// **`[accessibility]` is deliberately left alone.** Reduce-motion reads as a
+/// theme override on the Motion page - it does zero the durations - but it is a
+/// statement about whether somebody can use the machine comfortably, not about
+/// how it looks, and a button that resets the look must not switch it off. The
+/// consequence is visible and is the honest one: after a reset, a machine with
+/// reduce-motion on still reports that one.
+#[tauri::command]
+pub fn theme_reset_overrides() -> Result<(), String> {
+    // The whole file: the customization layer holds overrides and nothing else.
+    config_reset(ConfigFile::Customization, None)?;
+    config_reset(ConfigFile::Appearance, Some("overrides".into()))?;
+    config_reset(ConfigFile::Appearance, Some("toolkits".into()))
+}

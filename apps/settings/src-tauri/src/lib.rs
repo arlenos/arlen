@@ -165,6 +165,7 @@ pub fn run() {
             commands::theme::theme_toolkit_override_set,
             commands::theme::theme_toolkit_enabled,
             commands::theme::theme_toolkit_set_enabled,
+            commands::theme::theme_reset_overrides,
             commands::theme::get_available_themes,
             commands::values::settings_resolve_options,
             commands::layouts::settings_keyboard_layouts,
