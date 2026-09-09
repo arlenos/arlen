@@ -12,15 +12,28 @@
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { alsoRun } from "$lib/childProps.js";
   import { activePopover, togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
-  import { nowPlaying, playPause, loadNowPlaying } from "$lib/stores/nowPlaying.js";
+  import { nowPlaying, playPause, loadNowPlaying, initNowPlaying } from "$lib/stores/nowPlaying.js";
 
-  /// Load on mount and poll, the same shape as the battery and network
-  /// indicators: the applet hides itself when nothing is registered, so a poll
-  /// that finds no player costs a hidden element rather than an empty one.
+  /// Load once, then follow the shell's own monitor, with a slow poll behind it.
+  ///
+  /// Unlike the battery and network indicators this one has a live source: the
+  /// MPRIS monitor already emits the full state every second and nothing was
+  /// listening, so the applet polled a fresh D-Bus connection every three
+  /// seconds for an answer that had just been delivered. The poll is kept and
+  /// slowed to fifteen seconds, because the monitor gives up silently when the
+  /// session bus is missing at startup and an applet with no other source would
+  /// sit empty for the session without ever noticing.
   onMount(() => {
     void loadNowPlaying();
-    const poll = setInterval(() => void loadNowPlaying(), 3000);
-    return () => clearInterval(poll);
+    const poll = setInterval(() => void loadNowPlaying(), 15000);
+    let unlisten: (() => void) | null = null;
+    void initNowPlaying().then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      clearInterval(poll);
+      unlisten?.();
+    };
   });
 
   const isOpen = $derived($activePopover === "mpris");

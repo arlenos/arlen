@@ -443,6 +443,12 @@ pub fn mpris_pin(id: Option<String>) {
 /// Poll the session bus and emit `mpris://now-playing` so the applet tracks the
 /// live state. MPRIS emits `PropertiesChanged`, but a short poll is simpler and
 /// robust across players that under-report; the emit carries the full payload.
+///
+/// The applet listens for it since 9 September, and until then this sentence was
+/// a description of nobody. Nothing in the tree had ever subscribed: the applet
+/// polled `mpris_now_playing` on its own three-second timer, which opens a fresh
+/// session-bus connection each time to ask what this long-lived one had answered
+/// a second earlier. Two pollers, and the surface showed the older answer.
 pub fn start_monitor(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let Ok(conn) = Connection::session().await else {
