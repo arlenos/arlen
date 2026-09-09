@@ -78,7 +78,14 @@ SURFACES=(
   "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
   "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes"
   "pdf /"
-  "screenshot /"
+  # The landing page is the floating thumbnail, and the app's actual work
+  # surface - the annotate stage with its palette, swatches and text tool - is
+  # one click behind it (`phase` starts at "thumbnail" and only `onAnnotate`
+  # moves it). So this row was `/` alone until 10 September and the app read as
+  # swept while nothing but a 220px thumbnail had ever been probed. `.thumb-btn`
+  # is the first of the three action buttons, which is Annotate; the thumbnail
+  # wrapper itself also fires it, but a button is what a person presses.
+  "screenshot /|/::.thumb-btn"
   # THE OTHER NINETEEN, and they were missing for the reason this header keeps
   # naming: the list IS the coverage. Settings has 38 route pages and this row
   # held 17, so more of the app went unprobed than probed - every Appearance
