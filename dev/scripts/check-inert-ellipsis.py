@@ -59,6 +59,9 @@ def main() -> int:
         if base.is_dir():
             files += sorted(base.rglob("*.svelte"))
     files = [f for f in files if "node_modules" not in f.parts]
+    if not files:
+        print("check-inert-ellipsis: no Svelte source found, so the scan is pointed wrong")
+        return 1
     hits = 0
     for f in files:
         for selector, decls in findings(f.read_text(encoding="utf-8", errors="replace")):

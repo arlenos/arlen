@@ -72,16 +72,22 @@ def tracked(root: Path) -> list[Path]:
     return [p for p in root.rglob("*") if p.is_file()]
 
 
-def offenders(root: Path) -> tuple[list[tuple[str, int]], int]:
-    """The offenders, and how many source files were read to find them.
+def offenders(root: Path) -> tuple[list[tuple[str, int]], int, int]:
+    """The offenders, how many source files were read, and how many files the
+    walk saw at all.
 
-    The count is printed for the reason every other check here prints one: a
-    clean line over nothing and a clean line over four thousand files read the
-    same, and only one of them is coverage.
+    The read count is printed for the reason every other check here prints one:
+    a clean line over nothing and a clean line over four thousand files read the
+    same, and only one of them is coverage. The third number separates the two
+    ways of reading nothing - a tree with files, none of them source, is a real
+    tree this has nothing to say about; a tree with no files is a walk that
+    reached nothing.
     """
     found = []
     read = 0
+    seen = 0
     for path in tracked(root):
+        seen += 1
         if path.suffix not in SOURCE or not path.is_file():
             continue
         read += 1
@@ -96,11 +102,19 @@ def offenders(root: Path) -> tuple[list[tuple[str, int]], int]:
             continue
         line = data[: data.index(b"\0")].count(b"\n") + 1
         found.append((rel, line))
-    return sorted(found), read
+    return sorted(found), read, seen
 
 
 def main() -> int:
-    bad, read = offenders(ROOT)
+    bad, read, seen = offenders(ROOT)
+    # A walk that saw no file at all is pointed wrong, and it printed the same
+    # "0 source file(s) read" line a clean pass prints. Keyed on files seen and
+    # not on source files read: a tree that holds files but no source is a real
+    # tree with nothing here to judge, and refusing there would call one of this
+    # check's own control cases broken.
+    if seen == 0:
+        print("check-text-is-text: no file was read at all, so the scan is pointed wrong")
+        return 1
     if not bad:
         # The count is part of the result: a clean run over a tree that carries
         # two known files says something different from a clean run over none.
