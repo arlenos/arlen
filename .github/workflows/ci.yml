@@ -448,6 +448,8 @@ jobs:
           node dev/scripts/test-check-fixture-answers-whole.mjs
           python3 dev/scripts/check-fixture-owns-its-text.py
           node dev/scripts/test-check-fixture-owns-its-text.mjs
+          python3 dev/scripts/check-fixture-expect-still-said.py
+          node dev/scripts/test-check-fixture-expect-still-said.mjs
           python3 dev/scripts/check-listener-started.py
           node dev/scripts/test-check-listener-started.mjs
           python3 dev/scripts/check-default-handlers.py
