@@ -13,6 +13,7 @@
   import { openDocument, openError, openTarget, loadInitialFile, saveProblemKey } from "$lib/stores/document";
   import { onMount } from "svelte";
   import { initAppMenu, menuAction } from "$lib/menu";
+  import { publishPresence, recordSave } from "$lib/graphInput";
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
   import { t, dir } from "$lib/i18n/messages";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
@@ -159,6 +160,10 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
       // save compares against.
       openDocument.set({ ...target, content: draft, stamp });
       savedAt = Date.now();
+      // The moment the work landed, on the timeline. HERE and not beside the
+      // press: a save that the host refused is not a moment, and the graph is
+      // meant to hold what happened rather than what was attempted.
+      void recordSave(target.path, draft.length, language);
     } catch (e) {
       // Its own state, not an error string: this is a question for the person
       // rather than a failure, and it has an answer they can give.
@@ -226,6 +231,32 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   onMount(() => {
     void initAppMenu();
     void loadInitialFile();
+    // PRESENCE IS EPHEMERAL, so somebody has to end it. The SDK emits and leaves
+    // the WHEN to the app; for an editor it is the window losing focus, after
+    // which "currently editing this" is a claim nobody can stand behind. The
+    // payload carries the same intent as a hint, so a future shell-side
+    // auto-clear and this agree instead of racing.
+    let stop: (() => void) | null = null;
+    void getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused) void publishPresence($openDocument?.path ?? null, language);
+        else void publishPresence(null, language);
+      })
+      .then((un) => {
+        stop = un;
+      })
+      .catch(() => {
+        // No toplevel (vite): nothing to lose focus, so nothing to clear.
+      });
+    return () => stop?.();
+  });
+
+  /// What this window is doing, while it is doing it. Re-published when the file
+  /// or its language changes; the editor is the only thing that knows a path is
+  /// being EDITED rather than read, which is the whole reason this surface
+  /// exists.
+  $effect(() => {
+    void publishPresence($openDocument?.path ?? null, language);
   });
 
   // The lens tracks whichever file is open, and is given the PATH when there is

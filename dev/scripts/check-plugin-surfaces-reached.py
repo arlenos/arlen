@@ -72,9 +72,10 @@ CARRIED: dict[str, str] = {
     "toolbar_clear": "nothing takes its toolbar down; the two producers replace theirs by setting it again",
     "menu_unregister": "nothing takes its menu down either, for the same reason - a re-register replaces the tree, and a menu is only drawn while its app is focused",
     # ── The knowledge daemon promotes these and nothing sends them ────
-    "presence_set": "promoted into a UserAction node by the knowledge daemon (promotion.rs `app.presence.set`); no app says what it is doing",
-    "presence_clear": "pairs with presence_set, and the daemon promotes it too",
-    "timeline_record": "promoted by the knowledge daemon (`app.timeline.record`); no app records anything",
+    #
+    # Presence and timeline came off this list on 9 September: the text editor
+    # publishes what it is editing and records the saves that land, so the
+    # annotations below are what is left of the graph's dark app-level input.
     "annotation_set": "promoted into an Annotation node (`app.annotation.set`); no app annotates",
     "annotation_clear": "pairs with annotation_set, promoted as `app.annotation.cleared`",
     "annotation_get": "the read side of the same surface",
