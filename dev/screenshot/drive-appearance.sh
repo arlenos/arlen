@@ -85,12 +85,20 @@ return Promise.all([
   inv("theme_system_overrides"),
   inv("theme_color_overrides"),
   inv("theme_resolved_palette"),
+  inv("theme_resolved_terminal"),
 ])
-  .then(([sys, col, pal]) => {
+  .then(([sys, col, pal, term]) => {
     const by = {};
     for (const r of pal) by[r.role] = r.hex;
     return JSON.stringify({
       ansi1: sys.ansi1,
+      // The slot NEXT TO the overridden one, as the resolver has it. Read rather
+      // than assumed: the page used to draw a hardcoded copy of the shipped
+      // theme here and now draws what the resolver answers, so a colour written
+      // into this script would be a third copy and the first to go stale. It
+      // already did - this check pinned `#16a34a` and failed against a correct
+      // window once the page started telling the truth.
+      ansi2Resolved: term.ansi[2],
       accent: col.accent,
       resolved_accent: by.accent,
       hover: by.accent_hover,
@@ -183,7 +191,11 @@ echo ">> derived siblings: $(sed -n 's/.*\("hover":"[^"]*"\).*/\1/p' "$work/run2
 # And rendered, not merely returned. The live preview draws the resolved palette,
 # so the second swatch of the ANSI strip is the value that came back - a page that
 # stored the override and drew the theme's own colour would pass every check above.
-python3 - "$out/appearance-system-persisted.png" <<'PY'
+# The resolver's own answer for the untouched slot, lifted out of the read the
+# second launch already made, and handed to the pixel check as an argument.
+ansi2=$(sed -n 's/.*"ansi2Resolved":"\([^"]*\)".*/\1/p' "$work/run2.log" | head -1)
+[ -n "$ansi2" ] || { echo "!! the page did not say what the untouched slot resolves to" >&2; exit 1; }
+python3 - "$out/appearance-system-persisted.png" "$ansi2" <<'PY'
 import sys
 from PIL import Image
 im = Image.open(sys.argv[1]).convert("RGB")
@@ -192,8 +204,18 @@ im = Image.open(sys.argv[1]).convert("RGB")
 red, green = im.getpixel((322, 280)), im.getpixel((360, 280))
 if red != (255, 0, 85):
     raise SystemExit(f"!! the preview's red swatch is {red}, not the overridden #ff0055")
-if green != (22, 163, 74):
-    raise SystemExit(f"!! the neighbouring green moved to {green}; an override must be slot-exact")
+# The neighbour is compared against what the app itself resolved a moment ago,
+# passed in as an argument, rather than a colour written here. A literal was a
+# third copy of the palette and the first to go stale: this pinned `#16a34a`,
+# which is what the page DREW while it was showing a hardcoded copy of the
+# shipped theme, and failed the day the page started showing the resolver's own
+# answer. What the case means is that overriding one slot moves no other, and
+# that is what it asks now.
+want = tuple(int(sys.argv[2][i:i + 2], 16) for i in (1, 3, 5))
+if green != want:
+    raise SystemExit(
+        f"!! the neighbouring green is {green}, not the resolved {sys.argv[2]}; "
+        "an override must be slot-exact")
 print(f">> preview: red {red} is the override, green {green} is untouched")
 PY
 
