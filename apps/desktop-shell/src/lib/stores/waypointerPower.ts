@@ -18,6 +18,7 @@
 
 import { writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { raiseRefusal } from "$lib/shellAction";
 
 /// Mirrors the Rust `SearchResult` struct. Kept minimal — the Svelte
 /// side only reads `id`, `title`, `description`, `icon`; the whole
@@ -75,6 +76,11 @@ export async function invokePowerAction(
     try {
         await invoke("waypointer_execute", { result });
     } catch (e) {
+        // The most consequential of these to lose: somebody pressed Shut down,
+        // the launcher went away and the machine stayed on. The greeter answers
+        // that case with the non-event AND the state that now holds, and this
+        // borrows the same sentence.
         console.warn("[waypointer] power execute failed:", e);
+        raiseRefusal("sh.wp.errPower");
     }
 }

@@ -3,6 +3,7 @@
 /// in .svelte route files.
 
 import { invoke } from "@tauri-apps/api/core";
+import { raiseRefusal } from "$lib/shellAction";
 
 export interface AppEntry {
     /// The id the launcher and the permission system key on. Passed back on
@@ -31,8 +32,18 @@ export async function searchApps(query: string): Promise<AppEntry[]> {
     return invoke<AppEntry[]>("search_apps", { query });
 }
 
-export function launchApp(exec: string, appId?: string) {
-    invoke("launch_app", { exec, appId: appId ?? null });
+/// Launch, and say so if it did not.
+///
+/// The launcher closes on this - correctly, since a person who pressed an app
+/// wants the app - so the refusal cannot render here: it goes to the top bar
+/// through `raiseRefusal`, the way the quick actions already do. It used to be a
+/// fire-and-forget `invoke`, so an app that failed to start left an empty
+/// desktop and no sentence anywhere, which is the launcher's most-used action
+/// failing in its quietest possible way.
+export function launchApp(exec: string, appId?: string, appName?: string) {
+    invoke("launch_app", { exec, appId: appId ?? null }).catch(() =>
+        raiseRefusal("sh.wp.errLaunch", { app: appName ?? appId ?? exec }),
+    );
 }
 
 export async function evaluateInput(input: string): Promise<WaypointerResult | null> {
