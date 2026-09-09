@@ -502,6 +502,8 @@ jobs:
           node dev/scripts/test-check-menu-shortcuts-bound.mjs
           python3 dev/scripts/check-plugin-surfaces-reached.py
           node dev/scripts/test-check-plugin-surfaces-reached.mjs
+          python3 dev/scripts/check-promoted-fields.py
+          node dev/scripts/test-check-promoted-fields.mjs
           python3 dev/scripts/check-born-translatable.py
           node dev/scripts/test-check-born-translatable.mjs
           python3 dev/scripts/check-inert-ellipsis.py
