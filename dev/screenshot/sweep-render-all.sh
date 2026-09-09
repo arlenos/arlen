@@ -75,7 +75,14 @@ SURFACES=(
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest"
   "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
-  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
+  # THE THREE REFUSALS, added 10 September once `probe-host.sh` could run them at
+  # all. Each was built, gated and referenced by nothing: an archive that failed,
+  # a draft that would not save, an attachment that would not be written. All
+  # three reach their state on the landing route and drive their own gesture, so
+  # they need no selector - and in a German run the sweep now requires the
+  # sentence each one declares, which is what makes the row worth more than a
+  # picture.
+  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash|/@@mail-refuses-archive|/@@mail-refuses-draft|/@@mail-refuses-attachment-save"
   "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes"
   "pdf /"
   # The landing page is the floating thumbnail, and the app's actual work
