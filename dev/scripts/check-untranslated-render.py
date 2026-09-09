@@ -104,10 +104,6 @@ KNOWN: dict[str, tuple[int, str]] = {
     # draws nothing. Eleven carried instances became three. Every one that was
     # kept has been read at the line named below; a number nobody re-derives
     # reserves room for a new instance to arrive unreported.
-    "apps/settings/src/routes/keyboard/shortcuts/+page.svelte": (
-        1,
-        "arlen-ui's app; `{lastError}` is the body of the alert at :308",
-    ),
     "apps/settings/src/lib/components/displays/RevertConfirmModal.svelte": (
         1,
         "arlen-ui's app; `{error}` is the body of the alert at :152",

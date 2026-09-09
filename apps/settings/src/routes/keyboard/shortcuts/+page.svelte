@@ -55,6 +55,13 @@
   let editingEntry = $state<KeybindingEntry | null>(null);
   let capturing = $state(false);
   let addOpen = $state(false);
+  /// The message id for the last shortcut write that did not happen, or null.
+  ///
+  /// A KEY, not the exception. This held `String(e)` and the alert drew it raw,
+  /// so somebody whose shortcut would not save met whatever the config writer
+  /// threw, in English. `keybindings_set` fails when the file will not read or
+  /// will not be written - a conflict is caught by this page before it asks - so
+  /// what is worth saying is which verb did not happen; the detail goes to the log.
   let lastError = $state<string | null>(null);
 
   /// Categories that are currently open. Starts with window + workspace
@@ -135,7 +142,8 @@
       lastError = null;
       await setBinding(entry.action, combo);
     } catch (e) {
-      lastError = String(e);
+      console.warn("settings: setting a shortcut failed", e);
+      lastError = "s.sc.notChanged";
     }
   }
 
@@ -149,7 +157,8 @@
       lastError = null;
       await resetOne(entry.action);
     } catch (e) {
-      lastError = String(e);
+      console.warn("settings: resetting a shortcut failed", e);
+      lastError = "s.sc.notReset";
     }
   }
 
@@ -162,7 +171,8 @@
         await setBinding(entry.action, null);
       }
     } catch (e) {
-      lastError = String(e);
+      console.warn("settings: removing a shortcut failed", e);
+      lastError = "s.sc.notRemoved";
     }
   }
 
@@ -177,7 +187,8 @@
       lastError = null;
       await addCustom(binding, action);
     } catch (e) {
-      lastError = String(e);
+      console.warn("settings: adding a shortcut failed", e);
+      lastError = "s.sc.notAdded";
     }
   }
 
@@ -227,7 +238,8 @@
         }
       }
     } catch (e) {
-      lastError = String(e);
+      console.warn("settings: resetting a shortcut failed", e);
+      lastError = "s.sc.notReset";
     } finally {
       pendingReset = null;
     }
@@ -305,7 +317,7 @@
       role="alert"
       class="rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
     >
-      {lastError}
+      {$t(lastError)}
     </div>
   {/if}
 
