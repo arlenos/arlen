@@ -75,22 +75,30 @@
 (function () {
   var tries = 0;
   var stage = 0;
+  // NOT BY THE BUTTON'S WORDS. This used to look for a button reading
+  // `Entfernen`, on the row and again in the dialog. The copy was reworded to
+  // `Widerrufen` and the fixture stopped reaching its state - silently, because
+  // the tool that would have said so was refusing every fixture until 10
+  // September. A fixture keyed on a translated string breaks every time the
+  // wording improves, which is the opposite of what a fixture is for.
+  //
+  // The structure is what is stable: `button.remove` is the row's own control,
+  // and the confirm is the LAST button inside the dialog the kit renders
+  // (`confirm-dialog.svelte`: cancel then confirm, in that order, both inside
+  // `[aria-labelledby=confirm-dialog-title]`).
   function tick() {
     if (stage === 0) {
-      var all = document.querySelectorAll("button.remove");
-      for (var i = 0; i < all.length; i++) {
-        if ((all[i].textContent || "").trim() === "Entfernen") {
-          all[i].click();
-          stage = 1;
-          break;
-        }
+      var row = document.querySelector("button.remove");
+      if (row) {
+        row.click();
+        stage = 1;
       }
     } else if (stage === 1) {
-      var all = document.querySelectorAll("button");
-      for (var i = 0; i < all.length; i++) {
-        var b = all[i];
-        if (b.classList.contains("remove")) continue;
-        if ((b.textContent || "").trim() === "Entfernen") { b.click(); return; }
+      var dialog = document.querySelector('[aria-labelledby="confirm-dialog-title"]');
+      var buttons = dialog ? dialog.querySelectorAll("button") : [];
+      if (buttons.length) {
+        buttons[buttons.length - 1].click();
+        return;
       }
     }
     if (tries++ < 90) setTimeout(tick, 100);
