@@ -287,14 +287,20 @@ const mem = [...document.querySelectorAll("button,li,[role=option],[role=tab]")]
   .find(e => /^\s*(memory|arbeitsspeicher|speicher)\b/i.test((e.textContent || "").trim()));
 if (mem) { mem.click(); await wait(2000); }
 const text = (document.body.innerText || "").replace(/\s+/g, " ").trim();
+// TESTED HERE, not by grepping the excerpt below. `line` is a slice for the
+// reader, and the slice is what broke the case: the match starts at the first
+// digit on the pane, so 110 characters ended mid-phrase at "GB in us" and the
+// check for "GB in use" failed against a pane that said it. An excerpt is for
+// looking at; a probe reports its own findings.
 const line = (text.match(/[0-9][^-]*GB in use[^|]{0,80}/) || [null])[0];
 return JSON.stringify({ line: line ? line.slice(0, 110) : null,
+  hasUsage: /GB in use/.test(text),
   hasMeter: /Memory pressure: (none|some waiting|thrashing|not measured)/.test(text) });
 JS
 got=$(drive "$probes/p-pressure.js" sysmon-pressure.png)
 say "the memory pane says how full it is AND whether anything is waiting on it" \
   "$(printf '%s' "$got" | grep -q '"hasMeter":true' \
-     && printf '%s' "$got" | grep -q 'GB in use' && echo 1 || echo 0)" "$got"
+     && printf '%s' "$got" | grep -q '"hasUsage":true' && echo 1 || echo 0)" "$got"
 
 # The CPU pane's load line. Worth a case of its own because of HOW it was broken:
 # `LoadAverage` shipped `per_core` while the frontend read `perCore`, since serde
