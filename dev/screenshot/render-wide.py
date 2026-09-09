@@ -423,7 +423,16 @@ class Render:
             return
         print(value)
         self.status = 0
-        self.app.quit()
+        # AND THE PICTURE, which this used not to take. `--out` is required, a
+        # probe run supplied one, and nothing was written to it - so the caller
+        # was left with whatever happened to be at that path. On 9 September that
+        # was a screenshot of the same page from the day before, read as current,
+        # and a report went out describing controls the page does not have. The
+        # file's own docstring already warns about the sibling of this: a tool
+        # that answers a different question than the one typed and looks right
+        # doing it. Answering the probe AND writing the shot costs one frame and
+        # removes the trap.
+        self.snapshot()
 
     def run_axe(self):
         """Inject axe-core into the rendered page and report what it finds.
