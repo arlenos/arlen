@@ -123,9 +123,11 @@ const SEL = "a[href], area[href], button, input, select, textarea, summary, [tab
 const out = [];
 let examined = 0;
 let unmeasured = 0;
+let matched = 0;
 const restore = document.activeElement;
 
 for (const el of document.querySelectorAll(SEL)) {
+  matched++;
   // Not focusable, not this probe's business: a disabled control, a negative
   // tabindex (reachable by script, never by Tab), an inert subtree.
   if (el.disabled) continue;
@@ -222,8 +224,20 @@ for (const el of document.querySelectorAll(SEL)) {
 // those were found in `dev/scripts` in September. A page a keyboard cannot enter
 // is a finding in its own right, and a probe that looked at nothing needs to say
 // so rather than be counted as coverage.
+//
+// TWO DIFFERENT FACTS, and the first wording said only one of them. A sweep run
+// on 10 September reported the launcher's refusal state as keyboard-less; two
+// standalone runs of this probe against the same fixture found its input and
+// reported it normally. The page had not painted yet - under a sweep three
+// renders run back to back and a first paint slips - and "no control takes
+// keyboard focus" reads like a finding against the markup when it is a finding
+// about the timing. So say which one it is: nothing matched the selector at all
+// is a page that is not there yet, and everything matched being skipped is a
+// page whose controls are each off-tab, hidden or inside a composite widget.
 if (examined === 0 && unmeasured === 0) {
-  out.push("no control on this page takes keyboard focus");
+  out.push(matched === 0
+    ? "nothing on this page matches the focusable selector - a page that has not painted yet looks like this"
+    : matched + " element(s) can take focus and every one was skipped: disabled, off-tab, hidden, or a composite widget that rings its active descendant");
 }
 if (unmeasured > 0) {
   out.push(
