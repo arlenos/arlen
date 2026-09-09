@@ -265,4 +265,16 @@ if grep -q '#00ddaa' "$XDG_CONFIG_HOME/arlen/theme.toml"; then
     exit 1
 fi
 
+# WHAT THIS DRIVE CANNOT REACH: the three theme buttons above the overrides.
+# Install and Import open a portal file dialog and Export opens a portal SAVE
+# dialog, and a headless run has nowhere to show one - the call stays pending, so
+# a probe sees the press and no answer. Measured on 9 September: pressing Export
+# under this harness returned nothing for twelve seconds because the dialog was
+# waiting for somebody. Pointing the app at a dead session bus does not help
+# either; then it has no bus at all and the window never comes up.
+#
+# So the line those buttons write - where the export went, or why an import did
+# not happen - rests on the types and on reading the code. A case that pressed
+# them would hang, or assert nothing and look like it had.
+
 echo "PASS: an appearance edit reaches the file, survives the process, renders and clears"
