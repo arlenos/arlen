@@ -214,8 +214,16 @@
     padding: 8px 10px;
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
+  /* WRAPS, and the chips below it already did. The row is selectors then a
+     spacer then Save and Clear, and without wrapping a narrow pane pushed the
+     two buttons past the edge of a container with `overflow: hidden` - so they
+     were not merely cramped, they were gone. Measured by the render sweep at
+     720px on 9 September: Save cut 69px sideways, Clear 132px. The spacer still
+     pushes them right while the row fits on one line, and drops them onto the
+     next when it does not. */
   .facet-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
   }
@@ -227,7 +235,7 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 10px;
     border: 1px solid var(--control-border);
     background: var(--control-bg);
