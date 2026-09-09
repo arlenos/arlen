@@ -166,6 +166,23 @@ publish = [
     "app.presence.set",
     "app.presence.clear",
     "app.timeline.record",
+
+    # THE LAUNCHER'S LIST OF THIS APP'S VERBS. The waypointer has listed the
+    # focused app's shortcuts since it was written and no app published any, so
+    # a surface promising the app's own actions was empty on every window in the
+    # tree. This is the first one to fill it.
+    #
+    # `app.shortcut.register` is the full-replace emit; `app.shortcut.cleared`
+    # is its teardown, granted with it rather than a boot behind. NOT
+    # `app.shortcut.state_changed`: that is the diff-update for a badge or an
+    # enabled flag, this app sends none, and a grant for a topic with no caller
+    # is a wider profile for nothing.
+    #
+    # The subscribe side already had `app.shortcut.action_invoked`, which is how
+    # a click comes back - and it comes back as the SAME action strings the menu
+    # uses, so both surfaces land in one dispatcher.
+    "app.shortcut.register",
+    "app.shortcut.cleared",
 ]
 subscribe = [
     "app.menu.*",

@@ -64,9 +64,8 @@ CARRIED: dict[str, str] = {
     # ── The shell draws these and nothing fills them ──────────────────
     "ambient_set": "the shell keeps a per-app ambient effect (ambient-api.md); no app publishes one",
     "ambient_clear": "pairs with ambient_set",
-    "shortcuts_register": "the shell keeps the focused app's shortcut list and the waypointer lists it (shortcuts-api.md, app_shortcuts.rs); no app registers one",
-    "shortcuts_set_state": "the diff update for a registered list, so it waits on the register",
-    "shortcuts_clear": "pairs with shortcuts_register",
+    "shortcuts_set_state": "the diff update for one entry's badge or enabled flag; the file manager registers a list and has nothing to diff on it, so this waits on a producer that does",
+    "shortcuts_clear": "the teardown for a registered list; granted to the file manager with the register, but nothing takes its list down - the same reason `menu_unregister` sits here",
     "toolbar_set_progress": "the toolbar's progress bar; the file manager draws its own progress zone instead, which is the second-path question rather than a hole",
     "toolbar_clear_progress": "pairs with toolbar_set_progress",
     "toolbar_clear": "nothing takes its toolbar down; the two producers replace theirs by setting it again",

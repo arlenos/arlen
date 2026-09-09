@@ -27,6 +27,7 @@
   import { homePath } from "$lib/stores/places";
   import { initTopbar, shellPresent } from "$lib/stores/topbar";
   import { initGraphInput } from "$lib/stores/graphInput";
+  import { publishShortcuts } from "$lib/stores/shortcuts";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { onMount } from "svelte";
@@ -74,6 +75,11 @@
     // while every surface outside this window said "Files".
     const stopMenu = t.subscribe((tr) => {
       void publishAppMenu(tr, get(templates));
+      // The launcher's list of this app's verbs, on the same subscription and
+      // for the same reason: the shell holds no catalogue, so a locale switch
+      // has to re-register or the waypointer keeps whichever language was
+      // active when this window started.
+      void publishShortcuts(tr);
       void setWindowTitle(tr("f.app.title"));
     });
     // The template list lands after startup; the New submenu rides it.
