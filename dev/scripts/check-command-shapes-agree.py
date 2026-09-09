@@ -101,6 +101,9 @@ def main() -> int:
                     tuple(sorted(args)), set()
                 ).add(component(path))
 
+    if files == 0:
+        print("check-command-shapes-agree: no Rust source found, so the scan is pointed wrong")
+        return 1
     shared = sum(1 for v in shapes.values() if len(v) > 1 or sum(len(w) for w in v.values()) > 1)
     bad: list[str] = []
     carried = 0

@@ -14,12 +14,16 @@ with an explicit "so the scan is pointed wrong" refusal.
 
 MEASURED RATHER THAN ASSUMED, on 10 September: every `check-*.py` was run against
 an empty tree with the usual top-level directories and nothing in them. 125
-refused. 27 said everything was fine.
+refused. 27 said everything was fine, and those 27 are now closed - eleven of
+them because they never read the given tree at all (`ROOT` hardcoded to the
+script's own repo, so an empty directory made them scan the repository and answer
+about that), and six of those eleven already had the refusal written and
+unreachable behind a counter that could never be zero.
 
 WHAT IT DOES. Runs each check against an empty temp tree and requires a non-zero
 exit. That is the whole rule: a check that read nothing has nothing to vouch for.
 
-WHAT IT CANNOT SEE, and why the carried list is a queue rather than a hole: a
+WHAT IT CANNOT SEE, and why an empty carried list is not the whole story: a
 check may still be vacuous on a tree that is NOT empty - one whose file glob
 stopped matching after a rename, say - and no meta-check can tell that from a
 tree with nothing to find. This closes the crude half. The other half is why each
@@ -33,21 +37,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-#: Checks that pass on an empty tree, measured 10 September. Every one is a
-#: defect of the same shape - a scan that found nothing and said nothing about
-#: it - and the list comes down as they are fixed. A NEW name here fails.
-CARRIED: set[str] = {
-    "check-command-shapes-agree.py",
-    "check-controls-do-not-write-the-tree.py",
-    "check-controls-exist.py",
-    "check-dbus-call-arity.py",
-    "check-fabricated-verdict.py",
-    "check-fixture-answers-whole.py",
-    "check-headless-render.py",
-    "check-invoke-exists.py",
-    "check-message-placeholders.py",
-    "check-socket-tiers.py",
-}
+#: Checks that pass on an empty tree. Empty since 10 September: every one of the
+#: 27 was fixed rather than carried. It stays as a list rather than a boolean so
+#: a check that cannot honestly refuse can be named with its reason - but the bar
+#: is now that nothing is on it, and an addition is a claim somebody has to argue.
+CARRIED: set[str] = set()
 
 #: This check itself, which is exempt by construction: pointed at an empty tree
 #: it finds no checks to run, and the refusal it would need is the one it is

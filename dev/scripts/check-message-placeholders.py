@@ -40,15 +40,25 @@ BARE = re.compile(r"(?<!\{)\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}")
 SKIP = {"node_modules", ".svelte-kit", "dist", "build", "target", ".vite"}
 
 
-def catalogues(root: pathlib.Path) -> list[pathlib.Path]:
+def catalogues(root: pathlib.Path) -> tuple[list[pathlib.Path], int]:
+    """The catalogues to read, and how many the walk found before the skips.
+
+    The second number separates the two ways of reading nothing. A tree whose
+    only catalogue sits under a build directory is a real tree this deliberately
+    does not read - its own control asserts that and expects the "0 catalogue(s)"
+    line. A tree with no catalogue anywhere is a walk that reached nothing.
+    """
     out = []
+    found = 0
     for base in ("apps", "sdk"):
         d = root / base
         if not d.is_dir():
             continue
         for pattern in ("messages*.ts", "messages*.js"):
-            out += [f for f in sorted(d.rglob(pattern)) if not SKIP & set(f.parts)]
-    return out
+            hits = sorted(d.rglob(pattern))
+            found += len(hits)
+            out += [f for f in hits if not SKIP & set(f.parts)]
+    return out, found
 
 
 def findings(text: str) -> list[tuple[int, str, str]]:
@@ -64,7 +74,10 @@ def findings(text: str) -> list[tuple[int, str, str]]:
 
 
 def main() -> int:
-    files = catalogues(ROOT)
+    files, found = catalogues(ROOT)
+    if found == 0:
+        print("check-message-placeholders: no catalogue found, so the scan is pointed wrong")
+        return 1
     hits = 0
     for f in files:
         for line, key, name in findings(f.read_text(encoding="utf-8", errors="replace")):

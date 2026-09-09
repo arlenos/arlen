@@ -128,6 +128,12 @@ def findings_in(raw: str) -> list[tuple[int, str, str]]:
 
 def main() -> int:
     controls = sorted(SCRIPTS.glob("test-*.mjs")) if SCRIPTS.is_dir() else []
+    if not controls:
+        print(
+            "check-controls-do-not-write-the-tree: no controls found, so the scan "
+            "is pointed wrong"
+        )
+        return 1
     bad: list[str] = []
     carried = 0
     for p in controls:

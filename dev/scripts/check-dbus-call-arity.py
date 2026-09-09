@@ -209,6 +209,9 @@ def methods(body: str) -> dict[str, int]:
 
 def main() -> int:
     files = sources()
+    if not files:
+        print("check-dbus-call-arity: no sources found, so the scan is pointed wrong")
+        return 1
     # (interface, wire member) -> how many arguments a caller sends.
     served: dict[tuple[str, str], int] = {}
     for p in files:

@@ -66,6 +66,9 @@ def main() -> int:
     )
     if PROBES.is_dir():
         checks += sorted(p for p in PROBES.iterdir() if p.suffix == ".js")
+    if not checks:
+        print("check-controls-exist: no checks found, so the scan is pointed wrong")
+        return 1
     missing = [c for c in checks if not any(p.exists() for p in controls_for(c))]
     for c in missing:
         if c.parent == PROBES:

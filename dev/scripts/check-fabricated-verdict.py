@@ -125,6 +125,9 @@ def findings_in(text: str) -> list[str]:
 
 def main() -> int:
     files = sources()
+    if not files:
+        print("check-fabricated-verdict: no sources found, so the scan is pointed wrong")
+        return 1
     bad: list[str] = []
     carried = 0
     for p in files:

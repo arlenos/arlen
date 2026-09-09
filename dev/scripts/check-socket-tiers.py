@@ -79,10 +79,12 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
     problems: list[str] = []
     checked = 0
+    read = 0
 
     for path in sorted(root.rglob("*.rs")):
         if any(s in str(path) for s in SKIP):
             continue
+        read += 1
         try:
             text = path.read_text(errors="replace")
         except OSError:
@@ -115,6 +117,14 @@ def main() -> int:
         print("  On a booted session this dials a path nothing binds, while the log")
         print("  says it is connecting. Use os_sdk::runtime::socket_path, or add the")
         print("  $XDG_RUNTIME_DIR/arlen tier between the pin and /run/arlen.")
+        return 1
+
+    # Keyed on Rust files read, not resolvers found: a tree with sources and no
+    # socket resolver in them is a real tree with nothing here to judge, and
+    # four of this check's own control cases are exactly that. A tree with no
+    # Rust in it at all is a walk that reached nothing.
+    if read == 0:
+        print("check-socket-tiers: no Rust source found, so the scan is pointed wrong")
         return 1
 
     print(f"check-socket-tiers: {checked} socket resolver(s), each with the per-user tier")
