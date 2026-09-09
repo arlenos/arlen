@@ -93,7 +93,6 @@ KNOWN_MODULES: dict[str, str] = {
         "a shadcn barrel the shell does not import from - components take the deep "
         "path. Retires when the barrel is the import route or is removed"
     ),
-    "apps/settings/src/lib/components/ui/index.ts": (
         "the same shadcn barrel, same story, in Settings"
     ),
     "apps/desktop-shell/src/lib/modules/index.ts": (
