@@ -945,6 +945,20 @@
         />
       </div>
 
+      <!-- OUTSIDE THE LIST, and that is the whole point of moving it here. It
+           used to render inside `CommandList`, and an inline result HIDES that
+           list - `list.style.display = "none"` in the evaluate handler, when
+           there are no app rows behind the card. So a copy that failed set this
+           store, rendered this sentence, and put it in a container nobody could
+           see: the launcher stayed open showing the result with no word about
+           the refusal, which is the same silence the store was added to end.
+           Measured on 10 September through `waypointer-refuses-copy`: the text
+           was in the DOM (`Das ließ sich nicht kopieren.`) with zero client
+           rects. -->
+      {#if $actionError}
+        <div class="wp-empty wp-action-error">{$t($actionError)}</div>
+      {/if}
+
       <CommandList
         class="wp-list {kbActive ? 'wp-kb-active' : ''} {$askMode ? 'wp-hidden' : ''}"
         bind:ref={listRef}
@@ -952,9 +966,6 @@
         <!-- CommandEmpty is unusable with shouldFilter={false} because
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
-        {#if $actionError}
-          <div class="wp-empty">{$t($actionError)}</div>
-        {/if}
 
         {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && $extensionResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
           <!-- Two different sentences, because they are two different facts.
@@ -1463,6 +1474,13 @@
   /* Row anatomy and the inline-preview card live in
      waypointer/WaypointerResult.svelte and
      waypointer/WaypointerInlinePreview.svelte. */
+
+  /* Tighter than the empty-state it shares a class with: this one sits above the
+     list rather than filling it, and 1.5rem of padding for one sentence pushed
+     the results down the card. */
+  .wp-action-error {
+    padding: 0.5rem 1rem;
+  }
 
   .wp-empty {
     padding: 1.5rem 1rem;
