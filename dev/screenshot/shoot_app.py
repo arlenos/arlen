@@ -38,6 +38,12 @@ import urllib.error
 ENTER = ""
 
 
+# Milliseconds an injected probe may run before the driver gives up. Two minutes:
+# long enough for a probe that has to hold still while something outside the
+# webview acts on the app, short enough that a genuinely hung script still ends.
+SCRIPT_TIMEOUT_MS = 120_000
+
+
 def rq(base, method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
@@ -349,6 +355,18 @@ def main():
         opts["args"] = args.app_arg
     caps = {"capabilities": {"alwaysMatch": {"tauri:options": opts}}}
     sid = rq(base, "POST", "/session", caps)["value"]["sessionId"]
+
+    # HOW LONG AN INJECTED PROBE MAY RUN. WebDriver's default script timeout is
+    # 30 seconds, and a probe that waits longer than that does not merely lose its
+    # own answer: the driver returns HTTP 500 and the run goes on to take no
+    # picture at all, which reads as a screenshot step that failed rather than as
+    # a probe that ran too long. The menu-relay drive lost both of its pictures
+    # that way while every one of its assertions passed, because the assertions
+    # were about the disk and the pictures were about nobody having looked.
+    #
+    # Raised rather than made a knob: no probe here wants to hang forever, and the
+    # ceiling that matters is the shell `timeout` around the whole run.
+    rq(base, "POST", f"/session/{sid}/timeouts", {"script": SCRIPT_TIMEOUT_MS})
     exit_code = 0
     try:
         time.sleep(args.settle)

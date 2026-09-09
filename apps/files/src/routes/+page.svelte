@@ -366,6 +366,7 @@
 
   // The topbar menu lives in the shell; a click there travels back over
   // the Event Bus and the host forwards it as `arlen://menu-action`.
+  const APP_ID = "dev.arlen.files";
   let unlistenMenu: UnlistenFn | null = null;
 
   /// Run a topbar-menu action. Action ids mirror the menu published in
@@ -507,9 +508,17 @@
     if (get(tabs).length === 0) newTab(get(homePath));
     if (tauriAvailable) {
       void loadTemplates();
-      unlistenMenu = await listen<{ action: string }>(
+      // The superset payload the plugin relays, `{app_id, action}`, and the
+      // same id check the other ten listeners make. The plugin already drops
+      // another app's click before it reaches a webview, so this is the second
+      // lock rather than the only one - but this app was the one declaring a
+      // payload shape the wire stopped having when its own consumer went away.
+      unlistenMenu = await listen<{ app_id: string; action: string }>(
         "arlen://menu-action",
-        (e) => void runMenuAction(e.payload.action),
+        (e) => {
+          if (e.payload.app_id !== APP_ID) return;
+          void runMenuAction(e.payload.action);
+        },
       );
     }
   });
