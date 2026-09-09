@@ -59,6 +59,14 @@ impl AutoClear {
 /// Mirrors the foundation §354 surface. `activity` and `subject` are
 /// the only required fields: project inherits from Focus Mode if empty,
 /// metadata defaults to empty, auto_clear defaults to `Manual`.
+///
+/// THOSE DEFAULTS ARE REAL NOW. They were written here as prose and not as
+/// `#[serde(default)]`, so this struct in fact required all five - and the TS
+/// wrapper declares three of them optional. A frontend sending the documented
+/// minimum got a deserialize error out of `presence_set`, which every app in the
+/// tree discards, because a window that cannot reach the bus is still a window.
+/// The file manager published `browsing` with no metadata, nothing arrived, and
+/// nothing anywhere said why; a drive watching the wire is what found it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresenceParams {
     /// Activity verb. Spec recommends one of "editing", "reading",
@@ -69,12 +77,20 @@ pub struct PresenceParams {
     pub subject: String,
     /// Optional project context. Empty inherits Focus Mode's active
     /// project (resolved on the daemon side).
+    ///
+    /// `#[serde(default)]`, and it was missing until 9 September. Serde requires
+    /// every field it is not told to default - `Option` included - so a caller
+    /// that left this out got a deserialize error rather than a `None`, which is
+    /// the opposite of what the three doc lines here promise.
+    #[serde(default)]
     pub project: Option<String>,
     /// Optional structured metadata. Free-form key/value pairs that
     /// stay in the SQLite event log; the graph node only carries
     /// activity + subject.
+    #[serde(default)]
     pub metadata: HashMap<String, String>,
     /// Auto-clear policy. Defaults to `Manual` when omitted.
+    #[serde(default)]
     pub auto_clear: Option<AutoClear>,
 }
 
@@ -209,6 +225,32 @@ mod tests {
         // the daemon distinguish "never auto-clear" from "auto-clear on
         // blur" without an extra wrapper type.
         assert_eq!(p.auto_clear, "");
+    }
+
+    /// THE JSON A WEBVIEW SENDS, which is the shape nothing tested.
+    ///
+    /// Every other test here builds the struct in Rust and so never crosses the
+    /// deserialize boundary the plugin command actually sits on. The TS wrapper
+    /// declares `project`, `metadata` and `auto_clear` optional and the doc above
+    /// promises defaults for all three; serde required them anyway.
+    #[test]
+    fn the_documented_minimum_deserialises() {
+        let minimum = r#"{"activity":"browsing","subject":"/home/tim/Documents"}"#;
+        let p: PresenceParams = serde_json::from_str(minimum).expect("the documented minimum");
+        assert_eq!(p.activity, "browsing");
+        assert_eq!(p.project, None);
+        assert!(p.metadata.is_empty());
+        assert!(p.auto_clear.is_none());
+    }
+
+    /// And the shape the apps that DO carry context send, so the default does not
+    /// quietly swallow a real value.
+    #[test]
+    fn a_full_payload_still_deserialises() {
+        let full = r#"{"activity":"editing","subject":"/a.rs","metadata":{"language":"rust"},"auto_clear":"on-blur"}"#;
+        let p: PresenceParams = serde_json::from_str(full).expect("a full payload");
+        assert_eq!(p.metadata.get("language").map(String::as_str), Some("rust"));
+        assert!(matches!(p.auto_clear, Some(AutoClear::OnBlur)));
     }
 
     #[tokio::test]
