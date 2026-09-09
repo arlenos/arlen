@@ -75,6 +75,29 @@ publish = [
     # The pair the same helper emits on teardown. Nothing calls it yet; when
     # something does, the grant is already here rather than one boot behind.
     "app.menu.unregistered",
+
+    # WHAT THIS WINDOW TELLS THE KNOWLEDGE GRAPH ABOUT ITSELF. The daemon has
+    # promoted these into UserAction nodes since they were written and, until the
+    # text editor on 9 September, no app in the tree had ever sent one - so the
+    # graph's app-level input was dark and the only thing feeding it was the
+    # sensor's view of processes and files.
+    #
+    # The grant is here in the SAME change as the code that publishes, never
+    # after it: these write into the graph, and a graph input a person cannot see
+    # or switch off is the thing this system exists not to build. Revoking the
+    # three lines below is how somebody turns it off.
+    #
+    # WHAT IS ACTUALLY SENT:
+    #   presence.set   - `viewing` or `listening`, the open file's PATH and its
+    #                    kind, while the window has focus
+    #   presence.clear - on blur, because the claim stops being true
+    #   timeline.record - `print`, and only for a print the portal SENT; a
+    #                    cancelled or refused one is not a moment
+    # The picture, the sound and their contents never leave, and the path is
+    # already what the sensor records for every open.
+    "app.presence.set",
+    "app.presence.clear",
+    "app.timeline.record",
 ]
 subscribe = [
     "app.menu.*",

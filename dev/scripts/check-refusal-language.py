@@ -149,11 +149,15 @@ ACKNOWLEDGED = {
     # blank, and the branches swapped so the reasoned sentence is the positive
     # arm. Re-read a fourth time: the excuse still holds, and it holds slightly
     # better - the fall-through now covers one more way of having nothing to say.
-    "apps/viewers/src/routes/+page.svelte:589": (
+    # Re-keyed a fifth time on 9 September (589/593 -> 614/618) when the window
+    # gained its presence publish above these lines. The code under them did not
+    # move: both arms still sit under `hasReason`, and re-reading them is the
+    # whole reason this list is keyed by line rather than by file.
+    "apps/viewers/src/routes/+page.svelte:614": (
         "guarded by `hasReason`: an internal-looking or blank error falls to "
         "`v.couldNotOpenNamedUnknown`. The named arm of the same sentence"
     ),
-    "apps/viewers/src/routes/+page.svelte:593": (
+    "apps/viewers/src/routes/+page.svelte:618": (
         "guarded by `hasReason`: an internal-looking or blank error falls to "
         "`v.couldNotOpenUnknown`. `readsAsInternal` underneath it is the third "
         "copy of that predicate, which is the argument for its home being the kit"

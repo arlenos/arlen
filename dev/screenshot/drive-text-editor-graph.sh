@@ -24,7 +24,7 @@
 # `app.presence.clear` is not asserted here - what is asserted is that the app
 # declares `auto_clear=on-blur`, which is the part this window owns.
 #
-# Run: dev/screenshot/drive-text-editor-graph.sh [path-to-arlen-text-editor]
+# Run: dev/screenshot/drive-text-editor-graph.sh [path-to-arlen-text-editor] [path-to-arlen-viewers]
 #
 # Build with `tauri build --no-bundle`; a plain `cargo build --release` leaves the
 # binary pointing at devUrl.
@@ -54,6 +54,17 @@ say() {
   local name="$1" ok="$2" got="$3"
   if [ "$ok" = 1 ]; then echo "  ok   $name"; else echo "  FAIL $name"; echo "       $got"; fail=1; fi
 }
+
+# ONE AT A TIME. The runtime dir is a fixed path (a socket has to fit in
+# `sun_path`, so it cannot be a mktemp under a long checkout), which means a
+# second run wipes the first one's state and binds a bus at the same address -
+# and the two runs then read each other's events. That happened once and the
+# output was a confusing half-failure that looked like a product defect. A live
+# socket is the evidence somebody else is already here.
+if [ -S "$work/run/arlen/event-bus-producer.sock" ] && pgrep -f "$(basename "$0")" | grep -qv "^$$\$"; then
+  echo "another run of this drive is live (socket at $work/run/arlen); wait for it" >&2
+  exit 2
+fi
 
 rm -rf "$work"
 mkdir -p "$work/run/arlen" "$here/out"
@@ -126,6 +137,45 @@ say "and the timeline names the same file" \
 # knowledge app's own timeline stores a message id for exactly this reason.
 say "and words nothing, so a German reader is not handed an English one" \
   "$(printf '%s' "$watched" | grep -q "timeline.record.*label=saved" && echo 1 || echo 0)" "$watched"
+
+# ─────────────────────────────────────────────────────────────────────
+# THE VIEWER, on the same two surfaces and with a different verb. Kept in this
+# file rather than a second one because the thing under test is the SURFACE, and
+# the interesting assertion is that two apps say DIFFERENT things through it: an
+# editor edits, a viewer views, and a graph that could not tell them apart would
+# be back to what the sensor already knew.
+viewer="${2:-$root/target/release/arlen-viewers}"
+if [ -x "$viewer" ]; then
+  picture="$work/shot.png"
+  # A REAL PNG, from base64 rather than hand-rolled bytes. The first version of
+  # this fixture had a wrong IDAT checksum, so the viewer never decoded it,
+  # `loaded` stayed null and the presence went out with no kind - which the
+  # assertion below then correctly failed on. A fixture that cannot be opened
+  # tests the failure path by accident.
+  base64 -d > "$picture" <<'B64'
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
+B64
+
+  ARLEN_SESSION_ID=drive "$emit" --watch "app.presence." 25 > "$work/watch-viewer.log" 2>&1 &
+  vwatcher=$!
+  sleep 1
+  cat > "$work/p-viewer.js" <<'JS'
+await new Promise(r => setTimeout(r, 12000));
+return "held";
+JS
+  SHOOT_APP_ARGS="$picture" SHOOT_INJECT="$work/p-viewer.js"     SHOOT_APP_ENV="XDG_RUNTIME_DIR=$work/run;ARLEN_RUNTIME_DIR=$work/run;ARLEN_SESSION_ID=drive"     "$here/shoot-app.sh" "$viewer" "$here/out/viewer-graph.png" > "$work/shoot-viewer.log" 2>&1
+  wait "$vwatcher"
+  vwatched=$(cat "$work/watch-viewer.log")
+
+  say "the viewer says it is viewing, and the editor said editing" \
+    "$(printf '%s' "$vwatched" | grep -q "^saw app.presence.set .*activity=viewing" && echo 1 || echo 0)" "$vwatched"
+  say "and names the picture it was given" \
+    "$(printf '%s' "$vwatched" | grep -q "subject=$picture" && echo 1 || echo 0)" "$vwatched"
+  say "and the kind, so a reader need not infer it from the extension" \
+    "$(printf '%s' "$vwatched" | grep -q 'presence.set.*"kind": "image"' && echo 1 || echo 0)" "$vwatched"
+else
+  echo "  --   no viewers binary at $viewer, so its half was not driven"
+fi
 
 if [ "$fail" = 0 ]; then
   echo "an app tells the graph what it is doing and what it finished"

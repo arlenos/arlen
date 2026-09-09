@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@arlen/tauri-plugin-shell": "file:../../sdk/tauri-plugin-shell",
     "@lucide/svelte": "^1.8.0",
     "@tauri-apps/api": "^2"
   },

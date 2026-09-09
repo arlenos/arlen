@@ -19,6 +19,9 @@
     "arlen-shell:allow-theme-get",
     "arlen-shell:allow-locale-get",
     "arlen-shell:allow-print-file",
-    "arlen-shell:allow-menu-register"
+    "arlen-shell:allow-menu-register",
+    "arlen-shell:allow-presence-set",
+    "arlen-shell:allow-presence-clear",
+    "arlen-shell:allow-timeline-record"
   ]
 }

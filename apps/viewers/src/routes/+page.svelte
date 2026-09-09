@@ -9,6 +9,8 @@
   /// the mock `?demo=` path the screenshot harness drives. `?w=&h=` size a fixed
   /// window so a headless full-page shot is exactly that window.
   import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { publishPresence, recordPrint } from "$lib/graphInput";
   import { invoke } from "@tauri-apps/api/core";
   import { page } from "$app/state";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
@@ -116,8 +118,26 @@
     else if (a === "go.previous") void step("previous");
   });
 
+  /// What this window is showing, while it is showing it. Re-published when the
+  /// file or its kind changes; only this window knows a path was being LOOKED AT
+  /// rather than read by something.
+  $effect(() => {
+    void publishPresence(currentPath, loaded?.kind ?? "");
+  });
+
   onMount(async () => {
     void initAppMenu();
+    // PRESENCE IS EPHEMERAL, so somebody has to end it: the SDK emits and leaves
+    // the WHEN to the app, and for a viewer it is the window losing focus. The
+    // payload carries the same intent as a hint so a future shell-side auto-clear
+    // and this agree rather than race.
+    void getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        void publishPresence(focused ? currentPath : null, loaded?.kind ?? "");
+      })
+      .catch(() => {
+        // No toplevel (vite): nothing to lose focus, so nothing to clear.
+      });
     if (pinnedState === "load-error") {
       loadError = "decode-image: unsupported JPEG progressive scan";
       return;
@@ -406,6 +426,11 @@
     printStatus = $t("v.printing");
     try {
       const r = await invoke<{ outcome: string }>("plugin:arlen-shell|print_file", { path: currentPath });
+      // A SENT print is a moment; a cancelled or refused one is not, and
+      // recording it would put something in somebody's history that did not
+      // happen. `print_file` waits for the portal's answer, so this is the
+      // outcome rather than a guess.
+      if (r.outcome === "sent") void recordPrint(currentPath, loaded?.kind ?? "");
       printStatus =
         r.outcome === "sent"
           ? $t("v.printSent", { name })
