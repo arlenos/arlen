@@ -186,7 +186,22 @@ got=$(page Searches knowledge-searches.png)
 say "the searches page answers without claiming a read failed" \
   "$(case "$got" in ""|REFUSED:*) echo 0;; *) printf '%s' "$got" | grep -qiE "could not|cannot|failed" && echo 0 || echo 1;; esac)" "$got"
 
+# GERMAN, on the page whose sentence was rewritten this morning and read only in
+# English. Six apps have had a defect that only the German render showed, and this
+# app is mostly sentences about what the graph does and does not hold. The locale
+# comes from `locale.toml` beside the app rather than a `?locale=`, so the case
+# says the same thing about a release build as about this one.
+printf '[locale]\nui = "de"\n' > "$work/config/arlen/locale.toml"
+got=$(page Bibliothek knowledge-library-de.png)
+say "the library page is reachable under its German name" \
+  "$(arrived "$got" && echo 1 || echo 0)" "$got"
+# Both halves: the German sentence present AND the English one gone. The first
+# alone passes on a catalogue that is only half adopted.
+say "and it says where a bridged source comes from, in German" \
+  "$(printf '%s' "$got" | grep -q "Brücken kommen aus dem Store" \
+     && ! printf '%s' "$got" | grep -q "No sources bridged" && echo 1 || echo 0)" "$got"
+
 if [ "$fail" = 0 ]; then
-  echo "every page answered from a real graph, and none of them claimed a failure"
+  echo "every page answered from a real graph, none of them claimed a failure, and the German one says so in German"
 fi
 exit "$fail"
