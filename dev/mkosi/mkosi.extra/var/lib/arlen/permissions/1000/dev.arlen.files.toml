@@ -182,7 +182,11 @@ publish = [
     # a click comes back - and it comes back as the SAME action strings the menu
     # uses, so both surfaces land in one dispatcher.
     "app.shortcut.register",
-    "app.shortcut.cleared",
+    # `app.shortcut.cleared` was here until 9 September and came out with the
+    # capability that produced it: nothing takes a shortcut list down while the
+    # window stays open, and a window that goes is reclaimed by the shell on
+    # observed absence rather than by the app remembering to say so. It comes
+    # back in the change that needs it.
 
     # The count on the launcher's Trash row. `shell.shortcuts` has a second half
     # the registered list cannot express: `setState` moves ONE entry's badge

@@ -23,7 +23,6 @@
     "arlen-shell:allow-presence-clear",
     "arlen-shell:allow-timeline-record",
     "arlen-shell:allow-shortcuts-register",
-    "arlen-shell:allow-shortcuts-set-state",
-    "arlen-shell:allow-shortcuts-clear"
+    "arlen-shell:allow-shortcuts-set-state"
   ]
 }
