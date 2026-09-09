@@ -97,5 +97,26 @@ JS
 say "a typed command runs and its output comes back" \
   "$(printf '%s' "$typed" | grep -qE "echoed=[2-9]" && echo 1 || echo 0)" "$typed"
 
+# WHAT IS STILL NOT DRIVEN HERE, so nobody spends the hour I did finding out.
+#
+# THE URL LINKS. `links.ts` detects them and has 16 tests; `registerLinks` is
+# called on every terminal right after `t.open(host)`, so the provider and the
+# `linkHandler` are wired. What no test covers is the hover: xterm only asks a
+# link provider anything when the mouse moves over the screen, and a synthetic
+# `mousemove` dispatched at the row's own coordinates - on the row, on
+# `.xterm-screen`, both - produced no link decoration and no anchor. That is a
+# statement about the probe, NOT about the app: xterm tracks the pointer through
+# listeners of its own and a dispatched event does not reach that path. Settling
+# it needs a real pointer, which means the WebDriver Actions API rather than a
+# `dispatchEvent`, or the `linkHandler` reached directly through a test build.
+# Left undriven rather than asserted wrongly - a case that fails for the
+# harness's reason is worse than no case.
+#
+# NO GERMAN CASE, deliberately. Everything in this window is the shell's output
+# and the block chrome around it; the app's own sentences live in the session
+# sidebar, which is collapsed here. A `?locale=de` run would assert almost
+# nothing, so the language axis for this app belongs to a drive that opens the
+# sidebar.
+
 [ "$fail" = 0 ] && echo "the terminal runs what it is told and shows the answer"
 exit "$fail"
