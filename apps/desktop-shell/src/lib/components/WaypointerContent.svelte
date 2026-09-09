@@ -558,7 +558,11 @@
   }
 
   function webSearchAction(query: string) {
-    void actOrSay(() => webSearch(query), "sh.wp.errOpenUrl");
+    // Its own sentence, not the link one. A web search does open a URL, so
+    // sharing `errOpenUrl` was defensible and still wrong to read: the person
+    // typed a question, not a link, and being told "that link could not be
+    // opened" describes something they did not do.
+    void actOrSay(() => webSearch(query), "sh.wp.errSearch");
   }
 
   /// Map `PowerActionResult.id` to its lucide icon. The backend sets
