@@ -40,7 +40,6 @@ CARRIED: set[str] = {
     "check-app-names-agree.py",
     "check-behaviour-tools.py",
     "check-child-props-order.py",
-    "check-closed-unanswered.py",
     "check-command-shapes-agree.py",
     "check-controls-do-not-write-the-tree.py",
     "check-controls-exist.py",
@@ -71,9 +70,11 @@ CARRIED: set[str] = {
 #: asking of everybody else - handled below rather than by an entry.
 SELF = "check-checks-refuse-empty.py"
 
-#: Long enough for the slowest check to read a tree with nothing in it. A check
-#: that hangs on an empty tree is its own finding and shows up as a timeout.
-TIMEOUT_S = 30
+#: Long enough for the slowest check to read a tree with nothing in it. Generous
+#: because the pre-commit hook runs the whole gate set at once: at 30s this was
+#: measuring how busy the machine was, and a contended check that crossed it got
+#: reported as a verdict it never gave.
+TIMEOUT_S = 120
 
 
 def main() -> int:
@@ -93,6 +94,7 @@ def main() -> int:
 
         vacuous: list[str] = []
         fixed: list[str] = []
+        hung: list[str] = []
         for script in scripts:
             if script.name == SELF:
                 continue
@@ -103,13 +105,28 @@ def main() -> int:
                     timeout=TIMEOUT_S,
                 )
             except subprocess.TimeoutExpired:
-                vacuous.append(f"{script.name} (hung on an empty tree)")
+                # Not a verdict. A check that did not finish never answered the
+                # question this gate asks, so it is reported as what it is
+                # rather than folded in with the ones that answered "clean".
+                hung.append(script.name)
                 continue
             if done.returncode == 0:
                 if script.name not in CARRIED:
                     vacuous.append(script.name)
             elif script.name in CARRIED:
                 fixed.append(script.name)
+
+    if hung:
+        print("Checks that did not answer within the time budget:\n")
+        for name in sorted(hung):
+            print(f"  - {name}")
+        print(
+            "\n  This says nothing about whether they refuse an empty tree - they"
+            "\n  never got that far. Either the check is genuinely stuck on a tree"
+            "\n  with nothing in it, or it is slow enough that the budget measured"
+            "\n  the machine. Run it alone against an empty tree to tell which."
+        )
+        return 1
 
     if vacuous:
         print("Checks that call an empty tree clean:\n")
