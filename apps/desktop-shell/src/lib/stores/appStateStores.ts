@@ -293,6 +293,13 @@ interface AmbientSlot {
   render: AmbientRender;
   /** Unix ms timestamp when the effect should auto-clear, or null. */
   expiresAt: number | null;
+  /**
+   * When this effect was set. The pick below needs it: a `Map`
+   * keeps insertion order, and re-setting an existing key keeps
+   * its ORIGINAL position, so "the last one set" is not
+   * "the last one in the map".
+   */
+  setAt: number;
 }
 
 const ambientInternal = writable<{ byApp: Map<string, AmbientSlot> }>({
@@ -307,6 +314,7 @@ function applyAmbientSet(e: AmbientSetEvent) {
   const slot: AmbientSlot = {
     render: { effect, color, intensity: e.intensity, speed },
     expiresAt: e.autoClearMs > 0 ? Date.now() + e.autoClearMs : null,
+    setAt: Date.now(),
   };
   ambientInternal.update((s) => {
     const next = new Map(s.byApp);
@@ -323,20 +331,41 @@ function applyAmbientCleared(e: AmbientClearedEvent) {
   });
 }
 
-export const focusedAmbient: Readable<AmbientRender | null> = derived(
-  [ambientInternal, activeAppId],
-  ([$internal, $appId]) => {
-    const appId = $appId;
-    if (!appId) return null;
-    const slot = $internal.byApp.get(appId);
-    if (!slot) return null;
-    if (slot.expiresAt !== null && Date.now() > slot.expiresAt) {
-      // Lazy-expire on read; the periodic prune below also
-      // catches it for entries belonging to non-focused apps.
-      return null;
-    }
-    return slot.render;
-  },
+/// The effect on screen right now, and whose it is.
+///
+/// **Not the focused app's**, and that changed on 9 September. `ambient-api.md`
+/// FA1 used to render only for the focused app, which meant the tint appeared
+/// exactly when it had nothing to add - a focused window says its own state
+/// better than a wash of colour - and stayed silent exactly when it did. Both
+/// examples the API cites (a build running, tests failing) are things you want to
+/// know while looking somewhere else. Ambient is peripheral awareness or it is
+/// nothing.
+///
+/// **The most recently SET one wins**, not the first or the focused. One overlay
+/// can show one effect, and the honest tie-break is recency: the app that just
+/// said something is the one with news. In practice there is rarely a contest,
+/// because the grant is the real bound - a tint is something a person hands to
+/// one app at a time.
+///
+/// Carries the app id because a person seeing a tint has to be able to find out
+/// whose it is. That is the attribution half of the same ruling.
+export function pickLiveAmbient(
+  byApp: Map<string, AmbientSlot>,
+  now: number,
+): { appId: string; render: AmbientRender } | null {
+  let best: { appId: string; slot: AmbientSlot } | null = null;
+  for (const [appId, slot] of byApp) {
+    // Lazy-expire on read; the periodic prune below catches the rest.
+    if (slot.expiresAt !== null && now > slot.expiresAt) continue;
+    if (!best || slot.setAt >= best.slot.setAt) best = { appId, slot };
+  }
+  return best ? { appId: best.appId, render: best.slot.render } : null;
+}
+
+/// The live effect, or null. What the overlay draws.
+export const liveAmbient: Readable<{ appId: string; render: AmbientRender } | null> = derived(
+  ambientInternal,
+  ($internal) => pickLiveAmbient($internal.byApp, Date.now()),
 );
 
 // ── Init ────────────────────────────────────────────────────────
