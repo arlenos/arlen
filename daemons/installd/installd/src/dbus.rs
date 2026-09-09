@@ -560,6 +560,14 @@ impl InstallDaemon {
     // ── Signals ──────────────────────────────────────────────────────────
 
     /// Emitted when a job makes progress.
+    ///
+    /// **Nothing subscribes to it today, and unlike `ConsentRequired` that is an
+    /// absence rather than a decision.** Both surfaces that run jobs take the id
+    /// and wait: Settings waits for `JobCompleted` on a removal, and the store
+    /// returns the id and shows nothing until it re-lists. So a real percentage
+    /// with a status string is emitted for every install, several times, and is
+    /// dropped - a progress bar needs no new backend, only a listener. Found by
+    /// sweeping D-Bus signals against their receivers on 9 September.
     #[zbus(signal)]
     pub async fn job_progress(
         signal_ctxt: &zbus::object_server::SignalEmitter<'_>,
