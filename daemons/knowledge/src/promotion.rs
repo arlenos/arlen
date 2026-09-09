@@ -1,4 +1,5 @@
 use crate::graph::GraphHandle;
+use crate::identity::process_alive;
 use crate::project::ProjectStore;
 use crate::proto::{
     AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
@@ -11,6 +12,7 @@ use crate::utils::escape_cypher;
 use anyhow::Result;
 use prost::Message;
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time;
 use tracing::{debug, error, info, warn};
@@ -169,12 +171,92 @@ fn session_of(origin: &str) -> &str {
     }
 }
 
+/// Close a presence whose window is gone, and say the end was inferred.
+///
+/// PRESENCE IS AN INTERVAL - a set and a later clear - and a window that goes
+/// away without clearing leaves one with no end at all, so the graph says
+/// "still editing that file" for ever. A killed process cannot say anything, and
+/// no hook inside the app can change that, so the close belongs here.
+///
+/// OBSERVED ABSENCE, NOT A TIMER. The same principle `access_grants` already
+/// uses: ask whether the process is there. A TTL would invent a constant nobody
+/// can defend, be wrong for exactly its length, and cannot tell a quiet app from
+/// a gone one.
+///
+/// AND IT SAYS THE END IS A BOUND. Seeing that a process is gone does not tell
+/// you WHEN it went, so the close is stamped with the moment the absence was
+/// observed and marked `inferred`. The graph then holds a true statement - this
+/// ended at or before this moment, and nobody said exactly when - rather than a
+/// precise end it made up. A reader asking how long a document was open gets a
+/// bound and can tell that it is one. Do not drop that flag for tidiness.
+///
+/// Idempotent: the row's id is derived from the set it closes, so a later pass
+/// finds the app already closed and writes nothing.
+pub(crate) async fn close_orphaned_presences(graph: &GraphHandle, now: i64) -> Result<usize> {
+    let rows = graph
+        .query_rows(
+            "MATCH (u:UserAction) WHERE u.category = 'presence' \
+             RETURN u.app_id, u.action, u.pid, u.timestamp ORDER BY u.timestamp"
+                .to_string(),
+        )
+        .await?;
+
+    // The LATEST presence row per app decides: a clear means the interval is
+    // closed and there is nothing to do; anything else is an open one.
+    let mut latest: HashMap<String, (String, i64, i64)> = HashMap::new();
+    for row in &rows.rows {
+        let app = row[0].as_str().to_string();
+        if app.is_empty() {
+            // A row from before this column existed. It cannot be paired with
+            // anything, so it cannot be closed either - and inventing an app id
+            // for it would be worse than leaving it.
+            continue;
+        }
+        latest.insert(app, (row[1].as_str().to_string(), row[2].as_i64(), row[3].as_i64()));
+    }
+
+    let mut closed = 0usize;
+    for (app, (action, pid, at)) in latest {
+        // A pid outside `u32` is not a pid this machine ever handed out, so it
+        // cannot be checked and must not be treated as gone.
+        let Ok(pid_u32) = u32::try_from(pid) else {
+            continue;
+        };
+        if action == "clear" || pid <= 0 || process_alive(pid_u32) {
+            continue;
+        }
+        let app_esc = escape_cypher(&app);
+        let id_esc = escape_cypher(&format!("presence-ended:{app}:{at}"));
+        graph
+            .write(format!(
+                "MERGE (u:UserAction {{id: '{id_esc}'}})
+                 SET u.category = 'presence',
+                     u.action   = 'clear',
+                     u.subject  = '{app_esc}',
+                     u.app_id   = '{app_esc}',
+                     u.inferred = true,
+                     u.timestamp = {now}"
+            ))
+            .await?;
+        closed += 1;
+        debug!(app_id = %app, pid, "closed a presence whose process is gone");
+    }
+    Ok(closed)
+}
+
 async fn run_pass(
     pool: &SqlitePool,
     graph: &GraphHandle,
     project_store: &ProjectStore,
     promote_threshold: usize,
 ) -> Result<()> {
+    // BEFORE the early return below: a window that went away produces no events,
+    // so a sweep that only ran when there were some would never see the one case
+    // it exists for.
+    if let Err(e) = close_orphaned_presences(graph, crate::time::now().0).await {
+        warn!(error = %e, "could not close presences whose windows are gone");
+    }
+
     let hwm = read_hwm(pool).await?;
 
     // Fetch unprocessed events ordered by timestamp, including the payload.
@@ -280,7 +362,7 @@ async fn run_pass(
                 promote_network_connection(graph, id, timestamp, payload).await
             }
             "app.presence.set" => {
-                promote_presence_set(graph, id, timestamp, payload).await
+                promote_presence_set(graph, id, timestamp, pid, payload).await
             }
             "app.presence.clear" => {
                 promote_presence_clear(graph, id, timestamp, payload).await
@@ -1202,12 +1284,21 @@ async fn promote_presence_set(
     graph: &GraphHandle,
     event_id: &str,
     timestamp: &i64,
+    pid: &i64,
     payload: &[u8],
 ) -> Result<()> {
     let p = PresenceSetPayload::decode(payload)?;
     let id_esc = escape_cypher(event_id);
     let activity_esc = escape_cypher(&p.activity);
     let subject_esc = escape_cypher(&p.subject);
+    // THE APP AND ITS PROCESS, which this row did not carry until 9 September.
+    // Without the app id nothing pairs a set with its clear, so two apps'
+    // intervals could not be told apart; without the pid the daemon cannot see
+    // that a window went away without clearing, which is how an interval ends up
+    // with no end. `inferred` is false here because this end - when it comes -
+    // will be a reported one unless the sweep has to guess it.
+    let app_esc = escape_cypher(&p.app_id);
+    let pid = *pid;
 
     graph
         .write(format!(
@@ -1215,6 +1306,9 @@ async fn promote_presence_set(
              SET u.category = 'presence',
                  u.action   = '{activity_esc}',
                  u.subject  = '{subject_esc}',
+                 u.app_id   = '{app_esc}',
+                 u.pid      = {pid},
+                 u.inferred = false,
                  u.timestamp = {timestamp}"
         ))
         .await?;
@@ -1244,6 +1338,8 @@ async fn promote_presence_clear(
              SET u.category = 'presence',
                  u.action   = 'clear',
                  u.subject  = '{app_esc}',
+                 u.app_id   = '{app_esc}',
+                 u.inferred = false,
                  u.timestamp = {timestamp}"
         ))
         .await?;
@@ -2731,11 +2827,99 @@ mod shell_event_tests {
         };
         let bytes = encode_presence_set(&payload);
 
-        promote_presence_set(&graph, "evt-presence-1", &1_000_000, &bytes)
+        promote_presence_set(&graph, "evt-presence-1", &1_000_000, &4242, &bytes)
             .await
             .unwrap();
 
         assert_eq!(count_user_actions_by_category(&graph, "presence").await, 1);
+    }
+
+    /// A window that went away leaves an interval the daemon has to close.
+    ///
+    /// Nobody can close it from inside the app: a killed process says nothing.
+    /// So the sweep asks whether the process is there, and 1 is init - alive on
+    /// every machine this will ever run on, which is what makes the negative
+    /// case below a real one rather than a coincidence.
+    #[tokio::test]
+    async fn a_presence_whose_process_is_gone_is_closed_and_marked_inferred() {
+        let (graph, _tmp) = setup().await;
+        // A pid this machine cannot have handed out and cannot be running.
+        let gone = 4_194_303_i64;
+        graph
+            .write(format!(
+                "CREATE (u:UserAction {{id: 'set-1', category: 'presence', action: 'editing', \
+                 subject: '/a.rs', app_id: 'dev.arlen.text-editor', pid: {gone}, \
+                 inferred: false, timestamp: 1000}})"
+            ))
+            .await
+            .unwrap();
+
+        let closed = close_orphaned_presences(&graph, 9_000).await.unwrap();
+        assert_eq!(closed, 1);
+
+        let rows = graph
+            .query_rows(
+                "MATCH (u:UserAction) WHERE u.action = 'clear' \
+                 RETURN u.app_id, u.inferred, u.timestamp"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.rows.len(), 1);
+        assert_eq!(rows.rows[0][0].as_str(), "dev.arlen.text-editor");
+        // THE FLAG IS THE POINT. Seeing that a process is gone does not say when
+        // it went, so the row states a bound rather than a reported moment.
+        assert!(rows.rows[0][1].as_bool());
+        assert_eq!(rows.rows[0][2].as_i64(), 9_000);
+
+        // And a second pass writes nothing: the id is derived from the set it
+        // closes, so the app reads as closed rather than as newly orphaned.
+        assert_eq!(close_orphaned_presences(&graph, 9_999).await.unwrap(), 0);
+    }
+
+    /// A presence whose process is STILL THERE is left alone, which is the half
+    /// that stops this sweep from being a timer with extra steps.
+    #[tokio::test]
+    async fn a_presence_whose_process_is_alive_is_left_open() {
+        let (graph, _tmp) = setup().await;
+        graph
+            .write(
+                "CREATE (u:UserAction {id: 'set-1', category: 'presence', action: 'editing', \
+                 subject: '/a.rs', app_id: 'dev.arlen.text-editor', pid: 1, inferred: false, \
+                 timestamp: 1000})"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(close_orphaned_presences(&graph, 9_000).await.unwrap(), 0);
+    }
+
+    /// An app that cleared its own presence is closed already, and the reported
+    /// end must not be replaced by an inferred one.
+    #[tokio::test]
+    async fn a_presence_the_app_cleared_itself_is_not_closed_again() {
+        let (graph, _tmp) = setup().await;
+        let gone = 4_194_303_i64;
+        graph
+            .write(format!(
+                "CREATE (u:UserAction {{id: 'set-1', category: 'presence', action: 'editing', \
+                 subject: '/a.rs', app_id: 'dev.arlen.mail', pid: {gone}, inferred: false, \
+                 timestamp: 1000}})"
+            ))
+            .await
+            .unwrap();
+        graph
+            .write(
+                "CREATE (u:UserAction {id: 'clear-1', category: 'presence', action: 'clear', \
+                 subject: 'dev.arlen.mail', app_id: 'dev.arlen.mail', inferred: false, \
+                 timestamp: 2000})"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(close_orphaned_presences(&graph, 9_000).await.unwrap(), 0);
     }
 
     #[tokio::test]

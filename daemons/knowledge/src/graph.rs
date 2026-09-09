@@ -630,12 +630,25 @@ fn create_schema(conn: &Connection) -> Result<()> {
     .map_err(|e| anyhow!("create Event table: {e}"))?;
 
     conn.query(
+        // `app_id`, `pid` and `inferred` are here in the CREATE rather than
+        // added later, per the rule above: a node table is never ALTERed.
+        //
+        // WHY A PRESENCE ROW NEEDS THEM. Presence is an INTERVAL - a set and a
+        // later clear, which a reader pairs to answer "what was open at two".
+        // Nothing paired them: the set row carried the app only in a log line, so
+        // two apps' presences could not be told apart, and a window that goes
+        // away without clearing left an interval with no end at all. `pid` is how
+        // the daemon can see that the process is gone; `inferred` is how the row
+        // says the end is a BOUND rather than a reported moment.
         "CREATE NODE TABLE IF NOT EXISTS UserAction(
             id        STRING,
             category  STRING,
             action    STRING,
             subject   STRING,
             timestamp INT64,
+            app_id    STRING,
+            pid       INT64,
+            inferred  BOOLEAN,
             PRIMARY KEY(id)
         )",
     )
