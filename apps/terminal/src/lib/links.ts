@@ -176,3 +176,44 @@ export function cellAt(line: LogicalLine, offset: number): CellPosition {
     y: line.firstRow + Math.floor(offset / line.cols) + 1,
   };
 }
+
+/// One link as xterm wants it: a range in grid cells, the text, and what to do.
+///
+/// Structurally `ILink` from `@xterm/xterm`, written out rather than imported so
+/// this module stays free of the terminal package and its tests need no DOM. The
+/// component passes these straight to `callback`.
+export interface LinkOnRow {
+  /// Inclusive cell range, both ends one-based.
+  range: { start: CellPosition; end: CellPosition };
+  /// The URL, as the link handler will receive it.
+  text: string;
+  /// Called when somebody clicks it.
+  activate: () => void;
+}
+
+/// Every link on the logical line that row `bufferLineNumber` belongs to.
+///
+/// THE ADAPTER, extracted so it can be tested. The pure halves under it -
+/// finding the URLs, joining wrapped rows, mapping an offset to a cell - had
+/// sixteen tests between them while the ten lines that JOIN them had none, and
+/// they are where the off-by-ones live: xterm counts this row from one and the
+/// buffer from zero, and a span ends one past its last character while a range
+/// wants the cell that character sits in. A drive cannot reach this either, since
+/// the WebGL renderer draws link underlines into the canvas and leaves no DOM.
+///
+/// `undefined` rather than an empty array when there is nothing, which is what
+/// xterm asks for.
+export function linksOnRow(
+  buffer: BufferLike,
+  bufferLineNumber: number,
+  onActivate: (url: string) => void,
+): LinkOnRow[] | undefined {
+  const line = logicalLine(buffer, bufferLineNumber - 1);
+  if (!line) return undefined;
+  const links = findLinks(line.text).map((span) => ({
+    range: { start: cellAt(line, span.start), end: cellAt(line, span.end - 1) },
+    text: span.url,
+    activate: () => onActivate(span.url),
+  }));
+  return links.length > 0 ? links : undefined;
+}

@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { findLinks, logicalLine, cellAt, type BufferLike, type LineLike } from "./links";
+import {
+  findLinks,
+  logicalLine,
+  cellAt,
+  linksOnRow,
+  type BufferLike,
+  type LineLike,
+} from "./links";
 
 describe("findLinks", () => {
   it("finds a bare URL in a line of output", () => {
@@ -116,5 +123,63 @@ describe("a wrapped URL", () => {
     expect(cellAt(line!, link.start)).toEqual({ x: 1, y: 1 });
     // The last character sits in the fifth column of the third row.
     expect(cellAt(line!, link.end - 1)).toEqual({ x: 5, y: 3 });
+  });
+});
+
+describe("linksOnRow", () => {
+  /// xterm counts the row it asks about from one and its buffer from zero. Off by
+  /// one here means every link is attributed to its neighbour, and the two halves
+  /// this joins are each correct on their own, so nothing below it would notice.
+  it("takes the row number xterm passes, not a buffer index", () => {
+    const b = buffer(40, [{ text: "nothing here" }, { text: "go to https://a.example/x" }]);
+    expect(linksOnRow(b, 1, () => {})).toBeUndefined();
+    const found = linksOnRow(b, 2, () => {});
+    expect(found?.[0].text).toBe("https://a.example/x");
+  });
+
+  /// The range is inclusive of the last character, and a `LinkSpan` ends one PAST
+  /// it. Getting that wrong makes the underline reach a cell into the next word,
+  /// and the click target with it.
+  it("ends the range on the URL's last cell, not the one after", () => {
+    const b = buffer(40, [{ text: "see https://a.example/x done" }]);
+    const [link] = linksOnRow(b, 1, () => {})!;
+    expect(link.range.start).toEqual({ x: 5, y: 1 });
+    // "see " is four cells, the URL nineteen: cells 5..23.
+    expect(link.range.end).toEqual({ x: 23, y: 1 });
+  });
+
+  /// The whole reason the provider reads a LOGICAL line: a URL split across two
+  /// rows is one link whose range crosses the row boundary, not a click on its
+  /// first half.
+  it("carries a wrapped URL across the row it breaks on", () => {
+    const b = buffer(8, [
+      { text: "https://" },
+      { text: "example.", wrapped: true },
+      { text: "com/page", wrapped: true },
+    ]);
+    const [link] = linksOnRow(b, 2, () => {})!;
+    expect(link.text).toBe("https://example.com/page");
+    expect(link.range.start).toEqual({ x: 1, y: 1 });
+    expect(link.range.end).toEqual({ x: 8, y: 3 });
+  });
+
+  /// `undefined`, not an empty array: that is what xterm asks a provider for when
+  /// it has nothing, and an empty array is a different answer to it.
+  it("answers undefined when the line holds no link and when there is no line", () => {
+    expect(linksOnRow(buffer(20, [{ text: "just words" }]), 1, () => {})).toBeUndefined();
+    expect(linksOnRow(buffer(20, [{ text: "x" }]), 9, () => {})).toBeUndefined();
+  });
+
+  /// The activate closure carries its OWN url. Two links on one line sharing a
+  /// captured variable is the classic loop bug, and it would send every click to
+  /// the last address on the row.
+  it("gives each link its own url to open", () => {
+    const opened: string[] = [];
+    const b = buffer(60, [{ text: "a http://one.example/1 b https://two.example/2" }]);
+    const found = linksOnRow(b, 1, (u) => opened.push(u))!;
+    expect(found).toHaveLength(2);
+    found[1].activate();
+    found[0].activate();
+    expect(opened).toEqual(["https://two.example/2", "http://one.example/1"]);
   });
 });

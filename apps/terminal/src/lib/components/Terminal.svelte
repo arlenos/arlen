@@ -23,7 +23,7 @@
     terminalConfigSet,
     openUrl,
   } from "$lib/contract";
-  import { findLinks, logicalLine, cellAt } from "$lib/links";
+  import { linksOnRow } from "$lib/links";
   import { matchZoom, zoomStep, type ZoomAction } from "$lib/zoom";
   import { get } from "svelte/store";
   // Aliased: `t` is the local xterm instance throughout the mount, and the store
@@ -519,21 +519,12 @@
       activate: (_event, text) => open(text),
     };
     t.registerLinkProvider({
+      // The whole body is `linksOnRow`, which lives beside the pure halves it
+      // joins so a test can reach it: the row-numbering and range off-by-ones are
+      // in the joining, and neither a unit test of the parts nor a drive could
+      // see them - the WebGL renderer draws link underlines into the canvas.
       provideLinks(bufferLineNumber, callback) {
-        // xterm counts the row from one here and from zero on the buffer.
-        const line = logicalLine(t.buffer.active, bufferLineNumber - 1);
-        if (!line) {
-          callback(undefined);
-          return;
-        }
-        const links: ILink[] = findLinks(line.text).map((span) => ({
-          // `end` is one past the last character; the range wants the cell that
-          // character sits in.
-          range: { start: cellAt(line, span.start), end: cellAt(line, span.end - 1) },
-          text: span.url,
-          activate: () => open(span.url),
-        }));
-        callback(links.length > 0 ? links : undefined);
+        callback(linksOnRow(t.buffer.active, bufferLineNumber, open) as ILink[] | undefined);
       },
     });
   }
