@@ -6,6 +6,7 @@
 
 import { writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { raiseRefusal } from "$lib/shellAction";
 import { get } from "svelte/store";
 import { locale } from "@arlen/ui-kit/i18n";
 
@@ -106,5 +107,12 @@ export async function openSettingsDeepLink(
   panel: string,
   anchor?: string,
 ): Promise<void> {
-  await invoke("settings_open_deep_link", { panel, anchor: anchor ?? null });
+  // CAUGHT HERE, because the caller does not await it: the launcher fires this
+  // and closes, so a rejection was an unhandled promise and the person got a
+  // window that never appeared with nothing said.
+  try {
+    await invoke("settings_open_deep_link", { panel, anchor: anchor ?? null });
+  } catch {
+    raiseRefusal("sh.wp.errSettings");
+  }
 }

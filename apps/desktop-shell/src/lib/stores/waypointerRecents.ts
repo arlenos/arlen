@@ -16,6 +16,7 @@
 
 import { writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { raiseRefusal } from "$lib/shellAction";
 import type { AppEntry } from "./waypointerActions.js";
 
 export interface RecentFile {
@@ -76,9 +77,12 @@ export function recordAppLaunch(exec: string): void {
 /// Open a recent file via the system's default handler. Fire-and-
 /// forget; the Waypointer closes before we'd see any error.
 export function openRecentFile(path: string): void {
-    invoke("open_recent_file", { path }).catch((e) =>
-        console.warn("[waypointer] open_recent_file failed:", e),
-    );
+    // A console line is not an answer. The launcher closes on this, so the
+    // sentence goes to the top bar - the same channel the quick actions use.
+    invoke("open_recent_file", { path }).catch((e) => {
+        console.warn("[waypointer] open_recent_file failed:", e);
+        raiseRefusal("sh.wp.errOpenFile");
+    });
 }
 
 /// Clear both stores. Called when the Waypointer hides so the next
