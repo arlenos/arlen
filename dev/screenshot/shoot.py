@@ -27,6 +27,7 @@ layout.
 import argparse
 import base64
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -40,6 +41,18 @@ def rq(base, method, path, body=None):
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
+
+
+#: How long to wait for an `--open` selector to appear before refusing. Long
+#: enough for a list that renders after hydration under Xvfb, where page timers
+#: run several times slower than on a real screen, and short enough that a
+#: selector which is simply wrong still fails the run promptly.
+#:
+#: `ARLEN_OPEN_TIMEOUT` overrides it, and it exists for one reader: the control
+#: sets it to 0 to put the old behaviour back - a single attempt the moment the
+#: settle ends - and requires the control page to fail there. A control that
+#: cannot restore the fault is not evidence that the fix does anything.
+OPEN_TIMEOUT = float(os.environ.get("ARLEN_OPEN_TIMEOUT", "5.0"))
 
 
 def main():
@@ -124,16 +137,32 @@ def main():
             sys.exit(5)
 
         if args.open_selector:
-            clicked = rq(base, "POST", f"/session/{sid}/execute/sync", {
-                "script": "const el = document.querySelector(arguments[0]);"
-                          " if (!el) return false; el.click(); return true;",
-                "args": [args.open_selector],
-            })["value"]
-            # Say so rather than carry on: a selector that matches nothing means the
-            # rest of the run reports on a page that never opened, which is the
-            # exact shape of every false green this harness has produced.
+            # POLLED, not one attempt. `--settle` waits a fixed time after load and
+            # then this asked once, so a control the app renders a tick later - a
+            # list built from a store, a rail that populates after hydration - was
+            # a coin toss. It showed up as the same row failing on one width and
+            # passing on the next: the mail sweep refused `#folder-trash` at 1280px
+            # on 10 September and had refused `#folder-archive` at the same width an
+            # hour earlier. Page timers run several times slower under Xvfb, so a
+            # bigger fixed sleep is the wrong shape and a poll is the right one.
+            #
+            # The refusal is UNCHANGED when the selector never appears - that
+            # property is what keeps a run that opened nothing from reporting on the
+            # page behind it, and it is why this waits rather than clicking blind.
+            deadline = time.monotonic() + OPEN_TIMEOUT
+            clicked = False
+            while True:
+                clicked = rq(base, "POST", f"/session/{sid}/execute/sync", {
+                    "script": "const el = document.querySelector(arguments[0]);"
+                              " if (!el) return false; el.click(); return true;",
+                    "args": [args.open_selector],
+                })["value"]
+                if clicked or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.1)
             if not clicked:
-                print(f"open selector matched nothing: {args.open_selector}", file=sys.stderr)
+                print(f"open selector matched nothing after {OPEN_TIMEOUT:g}s:"
+                      f" {args.open_selector}", file=sys.stderr)
                 sys.exit(3)
             time.sleep(args.after)
         if args.drive:
