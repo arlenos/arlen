@@ -16,7 +16,7 @@
   import { Mail, Reply, Forward, Archive, Trash2, FileText, Undo2 } from "@lucide/svelte";
   import { t } from "$lib/i18n/messages";
   import { initAppMenu, menuAction } from "$lib/menu";
-  import { menuNoteFor } from "$lib/menuGuard";
+  import { menuNoteFor, type MenuNote } from "$lib/menuGuard";
   import { displayName, threadKey } from "$lib/wording";
   import {
     SidebarProvider,
@@ -81,7 +81,7 @@
   /// What a menu pick that does not apply here said, as a catalogue key. It is
   /// a notice about a press rather than a property of the mailbox, so the same
   /// rule the write refusals follow applies: the next move clears it.
-  let menuNote = $state<string | null>(null);
+  let menuNote = $state<MenuNote | null>(null);
 
   // The shell menu's dispatch. A pick that does not apply in this state says so
   // rather than being dropped (`menuGuard.ts` holds the rule and its tests); the
@@ -599,7 +599,7 @@
              finally sits is arlen-ui's call. -->
         {#if menuNote}
           <div class="pane-note">
-            <Notice tone="neutral" text={$t(menuNote)} />
+            <Notice tone="neutral" text={$t(menuNote.key, { action: $t(menuNote.label) })} />
           </div>
         {/if}
         {#if $writeFailed}
