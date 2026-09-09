@@ -33,6 +33,15 @@ gains a topic, or a surface that gains a command, has to be added here - and
 `test-check-publish-grants.mjs` fails if the table names a command the plugin
 does not have.
 
+WHAT IT DOES NOT COVER, and why that half is a sweep rather than a rule. Daemons
+and the shell publish too, and they have no capability file to diff against - the
+only source for what they emit is the Rust, and a scan of `.emit("...")` misses
+the ones that write the envelope to the producer socket by hand, which is how
+the shell emits `permission.changed`. A gate that silently skips a topic gives
+worse than no answer. Swept by hand on 9 September instead: every daemon with a
+shipped profile (auditd, calendard, code-indexer, knowledge, modulesd, powerd)
+and the shell declare everything they emit, so the class was app-side only.
+
 WHAT IT DOES NOT CHECK. Whether the app SHOULD have the grant: that is the
 enrollment decision, and an app granted a surface it never uses is
 `check-plugin-surfaces-reached`'s question. This one only says the two halves
