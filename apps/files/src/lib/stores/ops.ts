@@ -6,6 +6,7 @@
 
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { recordOp } from "./graphInput";
 import { activeController } from "$lib/stores/tabs";
 import { type RenameRule } from "$lib/bulk-rename";
 
@@ -155,6 +156,11 @@ export async function runOp(
   try {
     await invoke("files_op", { kind, src, dst: dst ?? null, policy: policy ?? null });
     opError.set(null);
+    // The moment it landed, on the timeline. HERE and not beside the press: the
+    // sensor sees the syscalls a copy makes and cannot see that they were ONE
+    // copy somebody asked for, how many files it was, or that two hundred
+    // unlinks were a deliberate clear-out. A refused op is not a moment.
+    void recordOp(kind, src, dst);
     if (kind === "trash") opDone.set({ key: "f.done.trash", count: src.length });
     else if (kind === "delete") opDone.set({ key: "f.done.delete", count: src.length });
     else opDone.set(null);
