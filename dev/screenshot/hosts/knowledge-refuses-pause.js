@@ -60,12 +60,13 @@
 // accepted" rather than "nobody pressed anything".
 (function () {
   var tries = 0;
+  // BY ITS CLASS. This used to look for a button whose label starts with
+  // `Pausieren`, which is a sentence the catalogue owns and would have stopped
+  // matching the day somebody wrote a better word - the way five sibling
+  // fixtures did on 10 September, silently. `button.tl-pause` is the timeline's
+  // own control (`TimelineView.svelte`) and there is exactly one.
   function tick() {
-    var hit = null;
-    document.querySelectorAll("button").forEach(function (b) {
-      var n = (b.getAttribute("aria-label") || b.textContent || "").trim();
-      if (!hit && n.indexOf("Pausieren") === 0) hit = b;
-    });
+    var hit = document.querySelector("button.tl-pause");
     if (hit) { hit.click(); return; }
     if (tries++ < 90) setTimeout(tick, 100);
   }
