@@ -14,17 +14,34 @@
 //! and it is force-required after reboot, after a bounded time window, and after
 //! too many failed attempts. A convenience factor can never cross that line.
 //!
-//! **NO PRODUCTION CALLER RUNS THE TIER DECISION YET.** `authenticate` and
-//! `evaluate` are invoked only by this crate's own tests; the greeter links this
-//! crate for `greetd_client` alone and logs in through greetd directly, and there
-//! is no lock-screen surface in the tree. So the boundary above is enforced in
-//! code that nothing calls, which is a different thing from enforced.
+//! **THE GREETER RUNS `evaluate` SINCE 9 SEPTEMBER**, and holds a `SessionState`
+//! across attempts - which is what this note used to say was missing. The
+//! decision is taken at the one instant it can be a gate: greetd separates
+//! proving the credential from starting the session, so the greeter asks after
+//! `Authenticated` and before `start_session`, and a refusal cancels.
 //!
-//! Worth stating because the sentence above - "enforced HERE, in code, not in any
-//! UI" - reads as a description of a running system, and a reader has no other way
-//! to tell. Mechanism before trigger, like `knowledge::lifecycle`: the missing
-//! piece is a surface that holds a `SessionState` across attempts and hands it
-//! back, not a line in here.
+//! **WHAT THAT DOES AND DOES NOT DO, because the difference matters more than
+//! the wiring.** At the greeter the session is cold and a password is strong, so
+//! the outcome is always `KeyRelease` today - and `KeyRelease` and `WarmUnlock`
+//! lead to the same call. **Nothing in this tree acts on the distinction**: the
+//! home key is released by greetd's own PAM stack (systemd-homed) as a side
+//! effect of authenticating, not because this crate said `KeyRelease`. So the
+//! key boundary is currently enforced by PAM being the only path, not by the
+//! tier.
+//!
+//! What the greeter's wiring DOES buy: the failure count now advances across
+//! attempts, and there is one place - not several - where a factor is weighed
+//! before a session starts. **The tier has never refused anything**, because the
+//! only factor that reaches it is a password, which is strong. The convenience
+//! factors have no backend (`greeter_factor_begin` answers `not-connected` to
+//! everything), so `StrongAuthRequired` is unreachable today.
+//!
+//! The tier becomes load-bearing when there is a warm session to unlock WITHOUT
+//! re-running PAM - which is the lock screen, and that surface does not exist.
+//!
+//! `authenticate` still has no production caller: the greeter cannot use it,
+//! because greetd owns the PAM conversation and calling it would verify the
+//! credential a second time.
 
 pub mod audit;
 pub mod auth;
