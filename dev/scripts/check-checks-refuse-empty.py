@@ -37,22 +37,16 @@ from pathlib import Path
 #: defect of the same shape - a scan that found nothing and said nothing about
 #: it - and the list comes down as they are fixed. A NEW name here fails.
 CARRIED: set[str] = {
-    "check-child-props-order.py",
     "check-command-shapes-agree.py",
     "check-controls-do-not-write-the-tree.py",
     "check-controls-exist.py",
     "check-dbus-call-arity.py",
-    "check-dialog-named.py",
     "check-fabricated-verdict.py",
     "check-fixture-answers-whole.py",
     "check-headless-render.py",
-    "check-id-references.py",
-    "check-inert-ellipsis.py",
     "check-invoke-exists.py",
     "check-message-placeholders.py",
-    "check-rail-landmark.py",
     "check-socket-tiers.py",
-    "check-text-is-text.py",
 }
 
 #: This check itself, which is exempt by construction: pointed at an empty tree

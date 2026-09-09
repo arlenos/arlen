@@ -45,6 +45,13 @@ def main() -> int:
         base = ROOT / r
         if base.is_dir():
             files += sorted(base.rglob("*.svelte"))
+    # Before the exclusions, not after: a tree whose only Svelte file is one
+    # this deliberately skips is a real tree with nothing to judge, and
+    # refusing there would call two of its own control cases broken. What is
+    # not a real tree is one the walk found no Svelte in at all.
+    if not files:
+        print("check-rail-landmark: no Svelte source found, so the scan is pointed wrong")
+        return 1
     other_lane = {("apps", "harness"), ("apps", "store")}
     files = [
         f
