@@ -116,16 +116,18 @@ pub async fn revoke_consent(grant_id: String) -> Result<String, String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn socket_default_and_override() {
-        // The default is the packaged system path; the env var wins for dev / a
-        // per-user socket layout.
-        std::env::remove_var("ARLEN_DAEMON_SOCKET");
-        assert_eq!(knowledge_socket(), "/run/arlen/knowledge.sock");
-        std::env::set_var("ARLEN_DAEMON_SOCKET", "/run/user/1000/arlen/knowledge.sock");
-        assert_eq!(knowledge_socket(), "/run/user/1000/arlen/knowledge.sock");
-        std::env::remove_var("ARLEN_DAEMON_SOCKET");
-    }
+    // `socket_default_and_override` lived here and was deleted on 9 September. It
+    // asserted that `knowledge_socket()` answers `/run/arlen/knowledge.sock` when
+    // no env var pins one - which is only true where `XDG_RUNTIME_DIR` is unset.
+    // It is unset in a CI container and set on every desktop, so the test passed
+    // in CI and failed for anyone who ran the suite locally, which is the worst
+    // way round: the machine nobody watches says yes and the machine somebody is
+    // working on says no.
+    //
+    // It was also testing another crate's rule through this one. The resolution
+    // order lives in `os_sdk::runtime::resolve`, which is pure and has five tests
+    // covering every branch of it - including the two this one confused. Nothing
+    // here owns that behaviour, so nothing here should assert it.
 
     #[test]
     fn revoke_reach_parses_the_closed_enum() {
