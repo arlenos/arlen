@@ -554,6 +554,13 @@ def main() -> int:
         for p in (ROOT / "daemons").glob("*/*")
         if (p / "package.json").exists() and (p / "src-tauri").is_dir()
     )
+    # Keyed on frontends found, not on plugin handlers or findings: a fixture
+    # tree with an app and no `sdk/tauri-plugin-shell` is a real tree this
+    # answers about, and four of this check's own control cases are exactly
+    # that. A tree with no frontend at all is a walk that reached nothing.
+    if not apps:
+        print("check-invoke-exists: no frontend found, so the scan is pointed wrong")
+        return 1
 
     # Commands the SHARED KIT invokes, read once and offered to every app.
     #

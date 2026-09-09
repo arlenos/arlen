@@ -107,6 +107,9 @@ def offenders(root: Path) -> tuple[list[tuple[str, int]], int, int]:
 
 def main() -> int:
     bad, read, naming = offenders(ROOT / "dev")
+    if read == 0:
+        print("check-headless-render: no script under dev/ was read, so the scan is pointed wrong")
+        return 1
     if not bad:
         print(
             f"{read} script(s) under dev/ read, {naming} of them invoke the renderer, "

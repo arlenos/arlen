@@ -296,6 +296,9 @@ def main() -> int:
     carried = 0
     bad: list[str] = []
     hosts = sorted(HOSTS.glob("*.js"))
+    if not hosts:
+        print("check-fixture-answers-whole: no host fixtures found, so the scan is pointed wrong")
+        return 1
     for path in hosts:
         text = path.read_text(encoding="utf-8", errors="replace")
         for branch in BRANCH.finditer(text):
