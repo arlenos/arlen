@@ -10,7 +10,7 @@
   import { AppWindow } from "lucide-svelte";
   import type { WorkspaceInfo } from "$lib/stores/workspaces.js";
   import type { DragEngine } from "$lib/workspace/drag.svelte.js";
-  import { truncateTitle } from "$lib/workspace/format.js";
+  import { cardTitle } from "$lib/workspace/format.js";
   import WindowCardMenu from "./WindowCardMenu.svelte";
 
   let {
@@ -96,7 +96,7 @@
           />
         {/if}
         <span class="window-card-title">
-          {truncateTitle(title, appId)}
+          {cardTitle(title, appId)}
         </span>
       </button>
     {/snippet}
