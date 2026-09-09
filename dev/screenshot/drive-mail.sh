@@ -240,5 +240,33 @@ say "launched with no message, it names the place it looked for mail" \
 say "and does not offer an account this machine has no way to connect" \
   "$(case "$bare" in ""|REFUSED:*) echo 0;; *) printf '%s' "$bare" | grep -qiE "account|konto" && echo 0 || echo 1;; esac)" "$bare"
 
+# GERMAN. Six apps had a defect that only the German render showed, so it is a
+# case here rather than something somebody remembers to look at - and this window
+# is mostly sentences ABOUT a message, which is exactly the kind of prose that
+# gets written once in English and never read again. The release binary takes its
+# language from `locale.toml`, not from a URL: the `?locale=` hook is compiled out
+# of a production build.
+cfg="$fix/config-de"
+mkdir -p "$cfg/arlen"
+printf '[locale]\nui = "de"\n' > "$cfg/arlen/locale.toml"
+de=$(XDG_CONFIG_HOME="$cfg" SHOOT_APP_ARGS="$fix/invoice.eml" SHOOT_INJECT="$fix/probe.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/mail-de.png" 2>&1 | sed -n 's/^inject result: //p')
+
+# The three notices are the app's whole voice here. If one of them is still
+# English the reader is being told, in a language they did not choose, that the
+# message is trying something.
+say "the German build says the divergence notice in German" \
+  "$(printf '%s' "$de" | grep -qiE "unterscheiden|abweich" && echo 1 || echo 0)" "$de"
+# Both halves: the German marker is there AND the English one is not. The first
+# alone passes on a window that shows both, which is what a half-adopted
+# catalogue looks like.
+say "and the sender is still marked as a claim, in German" \
+  "$(printf '%s' "$de" | grep -q "nicht geprüft" \
+     && ! printf '%s' "$de" | grep -q "as written by the sender" && echo 1 || echo 0)" "$de"
+# The one thing that must NOT be translated: the words the two parts differ by,
+# and the header name. They are quoted evidence, not prose.
+say "and the differing words are quoted, not translated" \
+  "$(printf '%s' "$de" | grep -q "evil-collector.example" && echo 1 || echo 0)" "$de"
+
 [ "$fail" = 0 ] && echo "the window says what the message is doing, including the half it will not show, and an empty one says where to get a message"
 exit "$fail"
