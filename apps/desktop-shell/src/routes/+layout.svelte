@@ -57,6 +57,7 @@
   import { watchForPrints } from "$lib/stores/printDialog.js";
   import { watchJobs } from "$lib/stores/jobs.js";
   import { initToolbarStore } from "$lib/stores/toolbarStore";
+  import { initAppStateLifetime } from "$lib/stores/appStateLifetime";
   import { initAppStateStores } from "$lib/stores/appStateStores";
 
   // Which window this document is, read straight off the Tauri host object: the
@@ -264,6 +265,11 @@
       initToastBridge(),
       initToolbarStore(),
       initAppStateStores(),
+      // AFTER the stores it prunes, so it never runs against ones that have not
+      // been armed. It drops a menu, a shortcut list, a badge or an ambient
+      // effect once its app has no windows left - observed absence rather than a
+      // timer, the same rule the knowledge daemon uses for an unclosed presence.
+      initAppStateLifetime(),
     ];
 
     // Two listeners that resolve to their own disposer rather than returning

@@ -21,7 +21,7 @@
  * See `docs/architecture/{shortcuts,badges,ambient}-api.md`.
  */
 
-import { derived, writable, type Readable } from "svelte/store";
+import { derived, get, writable, type Readable } from "svelte/store";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { activeAppId } from "./activeApp";
 
@@ -345,6 +345,54 @@ export const focusedAmbient: Readable<AmbientRender | null> = derived(
  * Wire Tauri-event listeners + the auto-clear pruner. Returns
  * a disposer matching the +layout init pattern.
  */
+/// Forget everything this app published, because it has no windows any more.
+///
+/// PER-APP STATE OUTLIVES ITS APP. These three stores are keyed by app id and
+/// nothing ever removed an entry except the app itself saying so - which a
+/// window that crashed, was killed or logged out never gets to do. The comment
+/// at the top of this file called that "stale entries from exited apps clear via
+/// the same TTL / process-exit cleanup deferred for all per-app stores"; this is
+/// that cleanup, and it is not a TTL.
+///
+/// OBSERVED ABSENCE, the same rule the knowledge daemon now uses on the other
+/// side of the fence for an unclosed presence: not a timer that is wrong for
+/// exactly its length and cannot tell a quiet app from a gone one, but the
+/// question "is it still there". The shell's own instrument for that is its
+/// window list rather than a pid.
+///
+/// Idempotent: an app with nothing stored is a no-op, so the caller may say this
+/// as often as it likes.
+export function forgetApp(appId: string): void {
+  shortcutsInternal.update((s) => {
+    if (!s.byApp.has(appId)) return s;
+    const next = new Map(s.byApp);
+    next.delete(appId);
+    return { byApp: next };
+  });
+  badgesInternal.update((s) => {
+    if (!s.byApp.has(appId)) return s;
+    const next = new Map(s.byApp);
+    next.delete(appId);
+    return { byApp: next };
+  });
+  ambientInternal.update((s) => {
+    if (!s.byApp.has(appId)) return s;
+    const next = new Map(s.byApp);
+    next.delete(appId);
+    return { byApp: next };
+  });
+}
+
+/// What these stores currently hold something for. The lifetime watcher reads it
+/// to decide what has outlived its windows; nothing else should need it.
+export function appsWithState(): string[] {
+  const ids = new Set<string>();
+  for (const k of get(shortcutsInternal).byApp.keys()) ids.add(k);
+  for (const k of get(badgesInternal).byApp.keys()) ids.add(k);
+  for (const k of get(ambientInternal).byApp.keys()) ids.add(k);
+  return [...ids];
+}
+
 export function initAppStateStores(): () => void {
   const unlistens: UnlistenFn[] = [];
   const tasks = [
