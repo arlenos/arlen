@@ -17,12 +17,16 @@ export function fullLabel(ws: WorkspaceInfo, i: number): string {
   return ws.name.trim() || `Workspace ${i + 1}`;
 }
 
-/// Card title: the window title (app id as fallback), hard-truncated
-/// with an ellipsis so a card never wraps.
-export function truncateTitle(title: string, appId: string): string {
-  const source = title.trim() || appId || "";
-  if (source.length <= 10) return source;
-  return source.slice(0, 9) + "…";
+/// Card title: the window title, with the app id as fallback.
+///
+/// It is NOT cut to a character count here. The card is 60px wide and
+/// its label ellipses in CSS at the real pixel boundary, which is the
+/// only place that knows the font; a 10-character cap is a measurement
+/// of English that then gets ellipsed a second time, spending one glyph
+/// on an ellipsis nobody sees. The full name is on the button's title
+/// and aria-label, so the visible ellipsis costs the reader nothing.
+export function cardTitle(title: string, appId: string): string {
+  return title.trim() || appId || "";
 }
 
 /// Caps the cards shown per workspace column: up to six render
