@@ -263,6 +263,28 @@ was wrong rather than the app:
 Read the failing detail line before believing the app is broken: it prints the
 window's whole text, and the answer is usually in it.
 
+## Watching an app put something on the bus
+
+The other half of `--menu`. `arlen-event-emit --watch <pattern> [seconds]`
+subscribes and prints `saw <type> <detail>` for everything that arrives, so a
+drive can assert on the WIRE rather than on a screen. That matters for the shell
+surfaces an app publishes into - badges, presence, timeline - because the render
+end of those needs a focused window and therefore a compositor, while the app's
+own half of the contract is fully observable here.
+
+Two things a drive has to give the app, and the second is the one that cost a
+run. `XDG_RUNTIME_DIR`, so the plugin's emitter finds the same bus; and
+**`ARLEN_SESSION_ID`**, because an event belongs to a session and
+`UnixEventEmitter::new` refuses to invent an id. It reports the miss through
+`tracing`, which in a webview host goes nowhere at all - so an app with no
+session id publishes nothing and says nothing about it. `arlen-session` mints one
+per login and `arlen-run` forwards it into every confined app, so a real window
+always has one. `drive-mail-badge.sh` ran green with the mailbox on screen and no
+badge on the wire until it was given one.
+
+Subscribe BEFORE starting the app. The bus fans out to whoever is registered when
+an event arrives, and an app publishes its first badge as soon as its data lands.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the

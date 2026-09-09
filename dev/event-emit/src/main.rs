@@ -24,15 +24,23 @@
 //! there was no way to answer "does clicking it make the app do the thing"
 //! without a display and a shell. With this, a headless drive can.
 //!
+//! IT ALSO LISTENS. `--watch` subscribes to a pattern and prints what arrives,
+//! which is the other half of the same problem: eleven apps CONSUME from the bus
+//! and twenty-one shell surfaces are meant to PUBLISH onto it, and until now the
+//! only way to find out whether an app really put something on the wire was to
+//! run a shell and look at a screen. A drive can now assert on the wire itself,
+//! which is where the app's half of the contract ends.
+//!
 //! Usage: `arlen-event-emit <absolute-path> [app-id]`
 //!        `arlen-event-emit --menu <app-id> <action>`
+//!        `arlen-event-emit --watch <pattern> [seconds]`
 //! Sockets: `ARLEN_PRODUCER_SOCKET` / `ARLEN_CONSUMER_SOCKET`, else `/run/arlen/`.
 //! Session: `ARLEN_SESSION_ID` must name the session the event belongs to.
 //! Exit 0 on a CONFIRMED event, 2 on bad args or no session, 1 on emit failure
 //! or on an event that never came back.
 
 use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
-use os_sdk::proto::{FileOpenedPayload, ShortcutActionInvokedPayload};
+use os_sdk::proto::{BadgeSetPayload, FileOpenedPayload, ShortcutActionInvokedPayload};
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use prost::Message;
 use std::time::Duration;
@@ -61,6 +69,18 @@ async fn main() {
 
     // Two modes, and the file one keeps the bare shape it always had so its
     // existing callers are untouched.
+    // Listening is its own thing: it emits nothing, so none of the session and
+    // producer machinery below applies to it and it returns from here.
+    if first == "--watch" {
+        let Some(pattern) = args.next() else {
+            usage();
+            std::process::exit(2);
+        };
+        let seconds: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(10);
+        watch(pattern, Duration::from_secs(seconds)).await;
+        return;
+    }
+
     let mode = if first == "--menu" {
         let (Some(app_id), Some(action)) = (args.next(), args.next()) else {
             usage();
@@ -228,7 +248,53 @@ impl Mode {
     }
 }
 
+/// Subscribe to `pattern` and print every event that arrives, until `window`
+/// runs out. Exit 0 if at least one did, 1 if none.
+///
+/// One line per event, `saw <type> <detail>`, so a shell drive can grep for the
+/// fact it is about. The DETAIL is decoded per topic and only where a drive has
+/// needed it: a badge carries an app id and a count, and reading those off the
+/// wire is the difference between "mail published something" and "mail published
+/// the number that is actually unread". Everything else reports its length,
+/// which still separates delivery from silence.
+async fn watch(pattern: String, window: Duration) {
+    let consumer = os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock")
+        .to_string_lossy()
+        .into_owned();
+    let mut inbox = match UnixEventConsumer::new(consumer.clone())
+        .subscribe(vec![pattern.clone()])
+        .await
+    {
+        Ok(rx) => rx,
+        Err(e) => {
+            eprintln!("cannot subscribe to {pattern} on {consumer}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let mut seen = 0usize;
+    let _ = tokio::time::timeout(window, async {
+        while let Some(event) = inbox.recv().await {
+            seen += 1;
+            let detail = if event.r#type == "app.badge.set" {
+                match BadgeSetPayload::decode(&event.payload[..]) {
+                    Ok(p) => format!("app_id={} variant={} count={}", p.app_id, p.variant, p.count),
+                    Err(e) => format!("undecodable BadgeSetPayload: {e}"),
+                }
+            } else {
+                format!("{} bytes", event.payload.len())
+            };
+            println!("saw {} {}", event.r#type, detail);
+        }
+    })
+    .await;
+    if seen == 0 {
+        eprintln!("nothing matched {pattern} in {}s", window.as_secs());
+        std::process::exit(1);
+    }
+}
+
 fn usage() {
     eprintln!("usage: arlen-event-emit <absolute-path> [app-id]");
     eprintln!("       arlen-event-emit --menu <app-id> <action>");
+    eprintln!("       arlen-event-emit --watch <pattern> [seconds]");
 }
