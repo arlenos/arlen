@@ -38,6 +38,7 @@
     themesError,
     activeThemeId,
     themeChangeFailed,
+    themeNotAppliedLive,
     loadThemes,
     setActiveTheme,
     installThemeFile,
@@ -112,6 +113,12 @@
          not written anywhere. -->
     {#if $themeChangeFailed}
       <p class="note span-full" role="alert">{$t("s.appr.themeChangeFailed")}</p>
+    {/if}
+    <!-- Saved, but the desktop around this window kept the old one. Not an
+         alert: nothing went wrong with the choice, and it takes effect on its
+         own; a person just cannot see that from a screen that did not change. -->
+    {#if $themeNotAppliedLive}
+      <p class="note span-full" role="status">{$t("s.appr.themeNotAppliedLive")}</p>
     {/if}
     <div class="grid span-full">
       {#each $themes as theme (theme.id)}

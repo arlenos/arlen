@@ -30,6 +30,19 @@ export const activeThemeId = writable<string>("arlen-dark");
 /// True when the theme could not be persisted, so the grid still marks the one
 /// that is actually in force rather than the one that was clicked.
 export const themeChangeFailed = writable(false);
+
+/// True when the theme was SAVED but the running desktop did not take it up.
+///
+/// The two halves of picking a theme fail differently and used to look the same
+/// from here: the persist is the choice, and reverts the grid when it fails; the
+/// live re-apply is the shell bridge, and its failure was swallowed with a
+/// comment saying the choice is in force from the next start. True, and nothing
+/// said it - so a person clicked a theme, saw the tick move, saw their desktop
+/// stay as it was, and had no way to tell that from a click that did nothing.
+///
+/// Not a revert: the choice IS saved, and moving the tick back would be the lie
+/// in the other direction.
+export const themeNotAppliedLive = writable(false);
 export const themesLoaded = writable(false);
 
 /// True when the theme list could not be read in a real session.
@@ -84,6 +97,7 @@ export async function setActiveTheme(id: string): Promise<void> {
   const before = get(activeThemeId);
   activeThemeId.set(id);
   themeChangeFailed.set(false);
+  themeNotAppliedLive.set(false);
   try {
     // The persist is what makes the choice real; it must succeed on its own.
     await theme.setValue("theme.active", id);
@@ -97,10 +111,14 @@ export async function setActiveTheme(id: string): Promise<void> {
   }
   try {
     await invoke("set_theme", { id });
-  } catch {
+  } catch (e) {
     // Persisted but not re-applied live. The choice IS in force from the next
     // start, so the grid stays on it - this half is the shell bridge, not the
-    // decision.
+    // decision. Said rather than swallowed: what a person sees is a desktop that
+    // did not change, and "it will, from the next start" is the only part of
+    // that they cannot work out for themselves.
+    console.warn("settings: the theme was saved but not applied live", e);
+    themeNotAppliedLive.set(true);
   }
 }
 
