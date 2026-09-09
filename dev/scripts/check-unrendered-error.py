@@ -105,18 +105,6 @@ def is_read_in(name: str, markup: str) -> bool:
 #: the next reader can disagree with the decision rather than rediscover the
 #: finding.
 ACKNOWLEDGED: dict[str, str] = {
-    # NOT argued for - recorded, and its owner should read it. `apps/settings` is
-    # arlen-ui's app and this lane does not edit it. `capsuleNotice` is written by
-    # `revokeCapsule`'s catch and read by nothing, under a comment that says the
-    # row "goes back and says why". The row does go back. The why goes into this
-    # store. So a refused revoke shows a share the person just tried to stop,
-    # still listed, with nothing said - on the surface that answers who can read a
-    # slice of their graph.
-    "settings:capsuleNotice": (
-        "arlen-ui's app; reported to its owner rather than edited from this lane. "
-        "A refused capsule revoke restores the row and says nothing, which on this "
-        "surface reads as a share that is still live for no stated reason"
-    ),
     "desktop-shell:themeError": (
         "A theme that fails to load leaves the shell drawing with its built-in "
         "tokens, which is visible without being told. The only place to surface "
