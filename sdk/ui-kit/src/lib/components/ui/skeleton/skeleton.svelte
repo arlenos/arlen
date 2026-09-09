@@ -2,17 +2,16 @@
   /// Skeleton placeholder.
   ///
   /// Pulse-animated rounded rectangle that occupies the same
-  /// shape as eventual content. Used by the QuickSettings layout
-  /// editor to stand in for live tile data (slider tracks, chart
+  /// shape as eventual content. Used where a layout is shown
+  /// without its data (the Quick Settings editor) to stand in for live tile data (slider tracks, chart
   /// regions, etc.) so the preview communicates "this is layout,
   /// not a state snapshot" without flickering as background-data
   /// arrives.
   ///
-  /// Theme-aware via shell tokens: bg follows `--color-fg-shell`
-  /// at low opacity, so it reads correctly in dark / light /
+  /// Follows `--foreground` at low opacity, so it reads in dark, light and
   /// monochrome themes without per-mode CSS.
   import type { HTMLAttributes } from "svelte/elements";
-  import { cn } from "$lib/utils";
+  import { cn } from "../../../utils";
 
   type Props = HTMLAttributes<HTMLDivElement> & {
     class?: string;
@@ -29,7 +28,7 @@
 
 <style>
   .arlen-skeleton {
-    background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
     border-radius: var(--radius-chip);
     animation: arlen-skeleton-pulse 1.8s ease-in-out infinite;
   }
