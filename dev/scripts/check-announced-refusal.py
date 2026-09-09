@@ -124,7 +124,18 @@ def if_blocks(markup: str, flag: str) -> list[str]:
     return [markup[start:end] for _, start, end in outer]
 
 
-ANNOUNCED = re.compile(r'role="alert"|aria-live=')
+#: What counts as announcing, in the markup.
+#:
+#: The third form is a COMPUTED role, and it is here because the kit writes one.
+#: `Notice` renders `role={tone === "error" ? "alert" : "status"}` - it announces
+#: exactly when it is a refusal and stays quiet when it is a fact - and a pattern
+#: that only knew the literal reported every page using it as silent. On
+#: 9 September that was the extensions detail, whose revoke refusal is a
+#: `<Notice tone="error">` and was correct all along. This check cannot evaluate
+#: the expression, so it accepts a role that CAN be `alert`; over-accepting there
+#: is the cheaper mistake, because the check's own header says a gate with false
+#: positives teaches people to add exceptions.
+ANNOUNCED = re.compile(r'role="alert"|aria-live=|role=\{[^}]*"alert"')
 
 #: Anything rendered at all. A block that draws no text has nothing to announce.
 RENDERS = re.compile(r"\{\s*\$?t\(|\{\s*\$?\w+\s*\}|>[^<>{}]*[A-Za-z]{2}[^<>{}]*<")
