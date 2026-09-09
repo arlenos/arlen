@@ -38,20 +38,37 @@
 
   const open = $derived($activePopover === "clipboard");
 
-  // Fresh snapshot per open, stale filter never shown; while open, a change
-  // to the ring buffer (a new copy, an SDK delete) refreshes the list.
+  // Fresh snapshot per open, stale filter never shown; while open, a change to
+  // the ring buffer refreshes the list.
+  //
+  // BOTH NAMES, and until 9 September only one of them was here - which left the
+  // half a person is most likely to see. `arlen://clipboard-changed` is emitted
+  // by `clipboard_delete_entry` and `clipboard_clear_all`, so the panel
+  // refreshed after IT changed something. A new copy arriving from another
+  // window is `arlen://clipboard-added`, emitted by the watcher with the entry,
+  // and nothing listened for it: open the panel, copy something elsewhere, and
+  // the list stayed exactly as it was. The comment here said "a new copy"
+  // refreshed it, which is how it went unnoticed.
+  const CHANGES = ["arlen://clipboard-changed", "arlen://clipboard-added"];
   $effect(() => {
     if (!open) return;
     query = "";
     confirmClear = false;
     void loadClipboardPanel();
-    let unlisten: UnlistenFn | undefined;
-    void listen("arlen://clipboard-changed", () => void loadClipboardPanel())
-      .then((u) => (unlisten = u))
-      .catch(() => {
-        // No event bridge under vite; the fixture does not change anyway.
-      });
-    return () => unlisten?.();
+    const unlisteners: UnlistenFn[] = [];
+    for (const name of CHANGES) {
+      // Re-read rather than fold the payload in: the added event carries one
+      // entry and the panel renders a filtered, capped view of the ring, so a
+      // prepend would be a second copy of rules that live one file over.
+      void listen(name, () => void loadClipboardPanel())
+        .then((u) => unlisteners.push(u))
+        .catch(() => {
+          // No event bridge under vite; the fixture does not change anyway.
+        });
+    }
+    return () => {
+      for (const u of unlisteners) u();
+    };
   });
 
   async function pick(entry: ClipboardPanelEntry) {
