@@ -273,6 +273,14 @@
     background: var(--color-bg-input, var(--background));
     color: var(--foreground);
     font-size: var(--text-sm);
+    /* NO FOCUS RING, and it is the same argument `command-input.svelte` makes for
+       the one other ringless input in the kit: this control is the whole widget
+       while it exists. Rename focuses it on open (`inputRef.focus()`), commits on
+       blur, and disappears - so it is never on screen unfocused, and a ring would
+       be a permanent frame round the only place the keyboard can be. Written down
+       because a reader finding `outline: none` with nothing after it has no way to
+       tell a decision from an oversight, and that is exactly what the timeline's
+       saved-search field turned out to be on 10 September. */
     outline: none;
   }
 
