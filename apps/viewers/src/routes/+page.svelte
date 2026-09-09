@@ -84,6 +84,22 @@
     );
   }
 
+  /// Whether the failure came with a reason worth showing.
+  ///
+  /// A BLANK one is not, and it used to reach the screen anyway: the window said
+  /// "a-one.png could not be opened:" and then stopped, because the sentence with
+  /// the `{$reason}` hole was picked whenever the message was not recognisably
+  /// internal, and an empty string is not recognisably anything. Photographed on
+  /// 9 September while the picture decoder was missing.
+  ///
+  /// The app already has the sentence for this - `couldNotOpenNamedUnknown` -
+  /// and it was one condition away. Separate from `readsAsInternal` rather than
+  /// folded into it: that predicate has copies in other apps and means something
+  /// narrower, and widening one copy is how three of them stop agreeing.
+  function hasReason(message: string): boolean {
+    return message.trim() !== "" && !readsAsInternal(message);
+  }
+
   function basename(p: string): string {
     return p.split("/").filter(Boolean).pop() ?? p;
   }
@@ -569,13 +585,13 @@
          take - the window simply stops showing anything. -->
     <p role="alert">
       {#if failedName}
-        {readsAsInternal(loadError)
-          ? $t("v.couldNotOpenNamedUnknown", { name: failedName })
-          : $t("v.couldNotOpenNamed", { name: failedName, reason: loadError })}
+        {hasReason(loadError)
+          ? $t("v.couldNotOpenNamed", { name: failedName, reason: loadError })
+          : $t("v.couldNotOpenNamedUnknown", { name: failedName })}
       {:else}
-        {readsAsInternal(loadError)
-          ? $t("v.couldNotOpenUnknown")
-          : $t("v.couldNotOpen", { reason: loadError })}
+        {hasReason(loadError)
+          ? $t("v.couldNotOpen", { reason: loadError })
+          : $t("v.couldNotOpenUnknown")}
       {/if}
     </p>
   </main>

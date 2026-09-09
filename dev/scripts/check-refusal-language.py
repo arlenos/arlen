@@ -142,14 +142,21 @@ ACKNOWLEDGED = {
     # internal-looking error still falls to the unknown-reason wording. The
     # brittleness is doing its job: this is the third edit above these lines and
     # the third forced re-read, which is the whole argument for keying on a line.
-    "apps/viewers/src/routes/+page.svelte:574": (
-        "guarded by `readsAsInternal`: an internal-looking error falls to "
+    # 574/578 until 9 Sep, when a BLANK reason turned out to reach the screen: an
+    # empty string is not recognisably internal, so the sentence with the hole in
+    # it was chosen and the window said "a-one.png could not be opened:" and
+    # stopped. The guard is now `hasReason`, which is `readsAsInternal` plus the
+    # blank, and the branches swapped so the reasoned sentence is the positive
+    # arm. Re-read a fourth time: the excuse still holds, and it holds slightly
+    # better - the fall-through now covers one more way of having nothing to say.
+    "apps/viewers/src/routes/+page.svelte:589": (
+        "guarded by `hasReason`: an internal-looking or blank error falls to "
         "`v.couldNotOpenNamedUnknown`. The named arm of the same sentence"
     ),
-    "apps/viewers/src/routes/+page.svelte:578": (
-        "guarded by `readsAsInternal`: an internal-looking error falls to "
-        "`v.couldNotOpenUnknown`. The third copy of that predicate, which is the "
-        "argument for its home being the kit"
+    "apps/viewers/src/routes/+page.svelte:593": (
+        "guarded by `hasReason`: an internal-looking or blank error falls to "
+        "`v.couldNotOpenUnknown`. `readsAsInternal` underneath it is the third "
+        "copy of that predicate, which is the argument for its home being the kit"
     ),
 }
 
