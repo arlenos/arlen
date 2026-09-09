@@ -37,7 +37,10 @@ export interface Extension {
 export type Observation =
   | { state: "observed"; actions: number; lastMicros: number }
   | { state: "notObserved" }
-  | { state: "notMeasured"; reason: "noFeed" | "ledgerUnavailable" | "actorUnknown" };
+  | {
+      state: "notMeasured";
+      reason: "noFeed" | "ledgerUnavailable" | "actorUnknown" | "notAttributed";
+    };
 
 /// One declared capability with what was seen of it.
 export interface DeclaredCapability {
