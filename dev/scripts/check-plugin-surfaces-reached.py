@@ -82,8 +82,18 @@ CARRIED: dict[str, str] = {
     "annotation_subscribe_prepare": "one third of `annotations.onChanged`, which nothing subscribes to",
     "annotation_subscribe_start": "one third of `annotations.onChanged`",
     "annotation_unsubscribe": "one third of `annotations.onChanged`",
-    # ── Neither end reached ───────────────────────────────────────────
-    "spatial_hint": "a placement hint for a window; no producer and no consumer found in the tree, unlike the two groups above",
+    # ── Inert on purpose, and the only one that is ────────────────────
+    #
+    # I called this the deletion candidate before reading the module, which was
+    # the wrong way round. `os_sdk::spatial` is a DELIBERATE forward-compatible
+    # stub: it quotes the foundation paper - "Until then, `shell.spatial` calls
+    # are accepted and silently ignored" - and exists so an app can declare a
+    # placement hint today and need no source change when the compositor
+    # extension lands. `Spatial::hint` does not even emit; the module says which
+    # topic it will use when it does. Its consumer is the compositor, which is a
+    # separate repo with its own agent, so "no consumer in this tree" was never
+    # evidence of anything.
+    "spatial_hint": "an intentional inert stub (os_sdk/spatial.rs quotes the paper: calls are accepted and silently ignored until the compositor extension lands, which is a separate repo); it does not emit, so there is nothing here to reach",
 }
 
 
