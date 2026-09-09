@@ -299,9 +299,15 @@ for width in $widths; do
       fail=1
       continue
     fi
+    # BY SHAPE, not by position. `lib/host-state.js` answers as a one-element array
+    # like every probe, and the line is found with the same `^\[` the probes use -
+    # because "the last line" is a MESA driver warning one run in ten, and this
+    # check then reported the graphics driver as the page's own words. Two of
+    # calendar's rows failed that way on 10 September before the reader was fixed
+    # on both sides.
     seen="$("$here/headless.sh" --url "$url" --out "$shot" --width "$width" \
       --host-script "$here/hosts/$host.js" --probe-file "$here/lib/host-state.js" \
-      ${open:+--open "$open"} 2>/dev/null | grep -v '^wrote ' | tail -1)"
+      ${open:+--open "$open"} 2>/dev/null | grep -E '^\[' | tail -1)"
     case "$seen" in
       *"$want"*) ;;
       *)
