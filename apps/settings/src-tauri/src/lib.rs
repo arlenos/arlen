@@ -191,6 +191,7 @@ pub fn run() {
             commands::picker::settings_pick_path,
             commands::extensions::extensions_list,
             commands::extensions::extensions_revoke,
+            commands::extensions::extensions_revoke_plan,
             commands::extensions::extensions_observed,
             commands::modules::modules_set_enabled,
             commands::modules::modules_uninstall,

@@ -80,7 +80,10 @@ CARRIED: dict[str, tuple[int, str]] = {
     ),
     "harness": (16, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - the marker is per-app, so ours on the other six does not answer for theirs"),
     "settings": (
-        4,
+        5,
+        "`extensions_revoke_plan`, ordered by the planner on 9 September so the "
+        "extensions page can say what a revoke will refuse BEFORE the press rather "
+        "than after it; the page is arlen-ui's and the control lands there. Plus "
         "the model picker's backend - `ai_models_list`, `ai_defaults_set` and the "
         "`ai_uncensored_*` opt-in pair - in arlen-ui's lane, and that page renders "
         "a fixture today, so it is mid-build rather than missing. The three "

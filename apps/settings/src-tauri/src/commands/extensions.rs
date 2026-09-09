@@ -115,6 +115,84 @@ pub async fn extensions_revoke(id: String, kind: String) -> Result<RevokeReport,
     Ok(report)
 }
 
+/// What a revoke would do, answered before the press.
+///
+/// The same three lists `RevokeReport` comes back with, and deliberately the
+/// same words - `refuses` is built by the function the runner uses, so the plan
+/// cannot promise something the press then refuses.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokePlanView {
+    /// What pressing would give up, in the user's words.
+    pub revokes: Vec<String>,
+    /// What it cannot take back, and why. Empty is the common answer.
+    pub refuses: Vec<String>,
+    /// What it does not undo, whatever happens.
+    pub residue: Vec<String>,
+}
+
+/// Plan an extension's revoke without running any of it.
+///
+/// **The page could already show the cost, and it was blind in two directions.**
+/// It reads the DECLARED labels, which is right by construction and cannot see a
+/// blanket `network.allow_all` (a grant the strict-narrowing gate cannot shrink
+/// one domain at a time) or a system-tier enrolment (where the file this narrows
+/// is overridden by one in `/var/lib`). Both surfaced as a FAILURE after the
+/// press, which is the wrong moment to learn that a thing cannot be done.
+///
+/// **What it deliberately does not predict.** A reach the app declared essential
+/// comes back `Required` from the daemon, and nothing on disk says which those
+/// are - the field does not exist yet, so the refusal is inert-by-absence. A
+/// plan that guessed at it would be inventing a refusal; this one stays quiet
+/// and the press still reports it if it happens.
+///
+/// Reads only: it loads profiles and lists grants, and calls no revoke.
+#[tauri::command]
+pub async fn extensions_revoke_plan(id: String, kind: String) -> Result<RevokePlanView, String> {
+    use arlen_extensions::revoke::RevokeStep;
+
+    let rows = extensions_list().await?;
+    let target = rows
+        .iter()
+        .find(|e| e.id == id && format!("{:?}", e.kind).to_lowercase() == kind.to_lowercase())
+        .ok_or_else(|| format!("no {kind} named {id} is installed"))?;
+
+    let plan = arlen_extensions::revoke::plan(target);
+    let mut view = RevokePlanView {
+        revokes: Vec::new(),
+        refuses: Vec::new(),
+        residue: plan.residue.clone(),
+    };
+    for step in &plan.steps {
+        match step {
+            RevokeStep::NarrowProfile { app_id, capabilities } => {
+                let Some(profile) = load_profile(app_id) else {
+                    // The same sentence the runner would produce, because it is
+                    // the same fact: without a profile there is nothing to narrow
+                    // and the press would say so too.
+                    view.refuses.push(format!("{app_id} has no readable profile"));
+                    continue;
+                };
+                view.refuses
+                    .extend(narrowing_refusals(app_id, &profile, capabilities));
+                view.revokes.extend(
+                    arlen_extensions::revoke::resolve_reaches(&profile, capabilities)
+                        .iter()
+                        .map(describe),
+                );
+            }
+            RevokeStep::DropConsentGrants { module_id } => {
+                view.revokes
+                    .push(format!("the consent {module_id} was granted at run time"));
+            }
+            RevokeStep::RemoveNamespaceGrant { namespace } => {
+                view.revokes.push(format!("{namespace} can no longer write"));
+            }
+        }
+    }
+    Ok(view)
+}
+
 /// What one extension was actually seen doing locally, per declared capability.
 ///
 /// The counterpart to the capability list: that says what it MAY do, this says
@@ -192,6 +270,35 @@ async fn run_step(step: &arlen_extensions::revoke::RevokeStep, report: &mut Revo
     }
 }
 
+/// What a profile narrowing cannot take back, known WITHOUT running it.
+///
+/// Both cases are decidable from the profile alone, which is the whole reason
+/// this is a function rather than two lines inside the runner: a blanket
+/// `network.allow_all`, which the strict-narrowing gate cannot shrink one domain
+/// at a time, and a system-tier enrolment, where the file this narrows is
+/// overridden by one in `/var/lib` and what the app may do is unchanged.
+///
+/// Called by the runner AND by the plan, so the sentence a person reads before
+/// pressing is the same one they would have read after. A plan that says
+/// something different from what the press does is worse than no plan.
+fn narrowing_refusals(
+    app_id: &str,
+    profile: &arlen_permissions::PermissionProfile,
+    capabilities: &[String],
+) -> Vec<String> {
+    let mut out = arlen_extensions::revoke::unrevocable(profile, capabilities);
+    if arlen_permissions::system_permissions_dir()
+        .join(format!("{app_id}.toml"))
+        .exists()
+    {
+        out.push(format!(
+            "{app_id} is enrolled at the system tier, which overrides the profile this \
+             narrows - what it may do is unchanged until the system profile is changed"
+        ));
+    }
+    out
+}
+
 /// Narrow an app's profile, one concrete grant at a time.
 async fn narrow_profile(app_id: &str, capabilities: &[String], report: &mut RevokeReport) {
     use arlen_permissions::revoke::{RevokeInitiator, RevokeOutcome, RevokeReach};
@@ -201,27 +308,12 @@ async fn narrow_profile(app_id: &str, capabilities: &[String], report: &mut Revo
         return;
     };
     // Named before anything runs, so a grant nothing can narrow is reported as
-    // such rather than looking like a silent success.
+    // such rather than looking like a silent success. The narrowing still runs
+    // under a system-tier enrolment: it is not useless, it is what takes effect
+    // if the system profile is ever removed.
     report
         .failed
-        .extend(arlen_extensions::revoke::unrevocable(&profile, capabilities));
-
-    // A system-tier profile wins outright over the user one (`load_tiered`), and
-    // the daemon's revoke narrows the USER file. So for an app enrolled at the
-    // system tier - anything apt-installed - this narrowing changes nothing that
-    // is enforced, and reporting each reach as revoked would tell the user they
-    // had taken away an authority the app still holds. Say so once, up front, and
-    // still perform the narrowing: it is not useless, it is what takes effect if
-    // the system profile is ever removed.
-    if arlen_permissions::system_permissions_dir()
-        .join(format!("{app_id}.toml"))
-        .exists()
-    {
-        report.failed.push(format!(
-            "{app_id} is enrolled at the system tier, which overrides the profile this \
-             narrows - what it may do is unchanged until the system profile is changed"
-        ));
-    }
+        .extend(narrowing_refusals(app_id, &profile, capabilities));
 
     let client = os_sdk::UnixGraphClient::new(knowledge_socket());
     for reach in arlen_extensions::revoke::resolve_reaches(&profile, capabilities) {
