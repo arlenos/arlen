@@ -113,11 +113,20 @@
                moved in, so a screen saying "Nothing is being captured" still
                carried an enabled Stop. -->
           <Button variant="outline" size="sm" id="stop" onclick={stop}>{$t("mt.stop")}</Button>
+          <!-- INSIDE THE BRANCH TOO, by the same argument one line up, and it sat
+               outside for the same reason Stop did. Transcribe is an offer to
+               change how a recording is made; after a refused capture there is no
+               recording to change. `startCapture` turns it on at the top of the
+               call, before the host has answered, so a window saying "Nothing is
+               being captured" carried a switch reading ON beside that sentence -
+               seen in a screenshot on 9 September. Recording and transcribing are
+               different consents in this app, which is exactly why the second one
+               must not appear to be armed when the first did not happen. -->
+          <label class="transcribe">
+            <Switch value={$transcribe} size="sm" ariaLabel={$t("mt.transcribe")} onchange={(v) => transcribe.set(v)} />
+            {$t("mt.transcribe")}
+          </label>
         {/if}
-        <label class="transcribe">
-          <Switch value={$transcribe} size="sm" ariaLabel={$t("mt.transcribe")} onchange={(v) => transcribe.set(v)} />
-          {$t("mt.transcribe")}
-        </label>
 
       </div>
     {/snippet}
