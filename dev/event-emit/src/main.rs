@@ -33,6 +33,7 @@
 //!
 //! Usage: `arlen-event-emit <absolute-path> [app-id]`
 //!        `arlen-event-emit --menu <app-id> <action>`
+//!        `arlen-event-emit --shortcut <app-id> <action>`
 //!        `arlen-event-emit --watch <pattern> [seconds]`
 //! Sockets: `ARLEN_PRODUCER_SOCKET` / `ARLEN_CONSUMER_SOCKET`, else `/run/arlen/`.
 //! Session: `ARLEN_SESSION_ID` must name the session the event belongs to.
@@ -84,12 +85,16 @@ async fn main() {
         return;
     }
 
-    let mode = if first == "--menu" {
+    let mode = if first == "--menu" || first == "--shortcut" {
         let (Some(app_id), Some(action)) = (args.next(), args.next()) else {
             usage();
             std::process::exit(2);
         };
-        Mode::Menu { app_id, action }
+        if first == "--shortcut" {
+            Mode::Shortcut { app_id, action }
+        } else {
+            Mode::Menu { app_id, action }
+        }
     } else {
         Mode::FileOpened {
             path: first,
@@ -161,12 +166,17 @@ async fn main() {
         // An empty `window_id` is what the shell sends for a menu click: the menu
         // belongs to the focused app, not to one of its windows, and the plugin's
         // menu relay carries only `{app_id, action}` onward.
-        Mode::Menu { app_id, action } => ShortcutActionInvokedPayload {
-            app_id: app_id.clone(),
-            action: action.clone(),
-            window_id: String::new(),
+        // An empty `window_id` broadcasts to every webview of the named app,
+        // which is what both surfaces send: a menu and a launcher entry belong
+        // to the app rather than to one of its windows.
+        Mode::Menu { app_id, action } | Mode::Shortcut { app_id, action } => {
+            ShortcutActionInvokedPayload {
+                app_id: app_id.clone(),
+                action: action.clone(),
+                window_id: String::new(),
+            }
+            .encode_to_vec()
         }
-        .encode_to_vec(),
     };
 
     let emitter = UnixEventEmitter::new(producer);
@@ -187,7 +197,7 @@ async fn main() {
             let mine = match &mode {
                 Mode::FileOpened { path, .. } => FileOpenedPayload::decode(&event.payload[..])
                     .is_ok_and(|p| p.path == *path),
-                Mode::Menu { app_id, action } => {
+                Mode::Menu { app_id, action } | Mode::Shortcut { app_id, action } => {
                     ShortcutActionInvokedPayload::decode(&event.payload[..])
                         .is_ok_and(|p| p.app_id == *app_id && p.action == *action)
                 }
@@ -230,6 +240,11 @@ enum Mode {
     FileOpened { path: String, app_id: String },
     /// The shell's event: somebody picked an item from an app's menu.
     Menu { app_id: String, action: String },
+    /// The launcher's event: somebody picked one of the app's registered
+    /// shortcuts out of the waypointer. Same payload as a menu click and a
+    /// different topic, because it is a different surface - and the apps use the
+    /// same action strings on both, so this is how a drive checks that.
+    Shortcut { app_id: String, action: String },
 }
 
 impl Mode {
@@ -237,6 +252,7 @@ impl Mode {
         match self {
             Mode::FileOpened { .. } => "file.opened",
             Mode::Menu { .. } => "app.menu.action_invoked",
+            Mode::Shortcut { .. } => "app.shortcut.action_invoked",
         }
     }
 
@@ -244,6 +260,9 @@ impl Mode {
     fn describe(&self) -> String {
         match self {
             Mode::FileOpened { path, .. } => format!("file.opened path={path}"),
+            Mode::Shortcut { app_id, action } => {
+                format!("app.shortcut.action_invoked app={app_id} action={action}")
+            }
             Mode::Menu { app_id, action } => {
                 format!("app.menu.action_invoked app={app_id} action={action}")
             }
@@ -316,5 +335,6 @@ async fn watch(pattern: String, window: Duration) {
 fn usage() {
     eprintln!("usage: arlen-event-emit <absolute-path> [app-id]");
     eprintln!("       arlen-event-emit --menu <app-id> <action>");
+    eprintln!("       arlen-event-emit --shortcut <app-id> <action>");
     eprintln!("       arlen-event-emit --watch <pattern> [seconds]");
 }

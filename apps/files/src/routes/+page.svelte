@@ -368,6 +368,7 @@
   // the Event Bus and the host forwards it as `arlen://menu-action`.
   const APP_ID = "dev.arlen.files";
   let unlistenMenu: UnlistenFn | null = null;
+  let unlistenShortcut: UnlistenFn | null = null;
 
   /// Run a topbar-menu action. Action ids mirror the menu published in
   /// `publish_app_menu` (src-tauri/src/lib.rs); each maps to the same
@@ -520,9 +521,24 @@
           void runMenuAction(e.payload.action);
         },
       );
+      // THE SAME ACTIONS FROM THE LAUNCHER. `shell.shortcuts` puts this app's
+      // verbs in the waypointer while it is focused, and the shell dispatches a
+      // click back as `arlen://app-action` - a different event from the menu's
+      // because it is a different surface, but deliberately the same action
+      // STRINGS, so both land in the one dispatcher this app already has
+      // (`shortcuts-api.md`: "Same `action` string in both calls keeps the
+      // dispatch path unified"). The toolbar's own clicks arrive here too and
+      // are handled in `topbar.ts`, which is why an action it does not know is
+      // ignored rather than an error.
+      unlistenShortcut = await listen<{ action: string }>("arlen://app-action", (e) => {
+        void runMenuAction(e.payload.action);
+      });
     }
   });
-  onDestroy(() => unlistenMenu?.());
+  onDestroy(() => {
+    unlistenMenu?.();
+    unlistenShortcut?.();
+  });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
