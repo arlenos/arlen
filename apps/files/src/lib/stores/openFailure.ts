@@ -57,6 +57,11 @@ export function launchProblem(raw: string): OpenFailure {
       return { key: "f.open.didNotStart", what: String(outcome.app_id ?? "") };
     case "refused":
       return { key: "f.open.refused", what: "" };
+    // Not an outcome of a launch - nothing was reached to have one. The host
+    // sends it in the same shape so it can be said in the reader's language
+    // rather than arriving as an errno.
+    case "service_unavailable":
+      return { key: "f.open.noService", what: "" };
     default:
       return { key: "f.open.failed", what: raw };
   }
