@@ -18,6 +18,8 @@
     "core:window:allow-close",
     "arlen-shell:allow-theme-get",
     "arlen-shell:allow-locale-get",
-    "arlen-shell:allow-menu-register"
+    "arlen-shell:allow-menu-register",
+    "arlen-shell:allow-badges-set",
+    "arlen-shell:allow-badges-clear"
   ]
 }

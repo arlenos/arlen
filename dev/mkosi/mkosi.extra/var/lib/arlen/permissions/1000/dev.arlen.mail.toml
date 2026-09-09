@@ -70,6 +70,20 @@ publish = [
     # The pair the same helper emits on teardown. Nothing calls it yet; when
     # something does, the grant is already here rather than one boot behind.
     "app.menu.unregistered",
+    # THE UNREAD COUNT, in the top bar's badge slot beside the app name. Mail is
+    # the first app in the tree to publish a badge at all - the slot has been
+    # drawn and empty since it was built - and the grant lands with the producer
+    # rather than after it, so under enforcement the badge either works or is
+    # absent for a reason a person can read here.
+    #
+    # A COUNT IS NOT PROMOTED. `badges-api.md` FA3 has the knowledge daemon
+    # record error and warning badges into the graph and deliberately not
+    # count-only ones, so this publishes a number to a screen and writes nothing
+    # into anybody's history. Worth saying in the profile, because the topic name
+    # is the same one the promoted kinds use and a reader checking what this app
+    # puts into the graph should not have to go and find that out.
+    "app.badge.set",
+    "app.badge.cleared",
 ]
 subscribe = [
     "app.menu.*",
