@@ -56,9 +56,22 @@ pub struct MenuItem {
     /// Whether the item is rendered disabled.
     #[serde(default, skip_serializing_if = "is_false")]
     pub disabled: bool,
-    /// Whether the item shows a check mark.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub checked: bool,
+    /// Whether the item is a CHECKBOX, and if so whether it is ticked.
+    ///
+    /// Three states, not two, and the third is the one that was missing. `None`
+    /// is a plain command; `Some(true)` is a ticked box; `Some(false)` is a box
+    /// that is EMPTY - a toggle the reader can see is currently off. The shell
+    /// draws a checkbox for any item that carries the field at all and indents
+    /// the whole group to match, so an unchecked toggle that arrives without it
+    /// renders as an ordinary command and stops looking like something you can
+    /// turn on.
+    ///
+    /// This was a `bool` skipped when false until 9 September, which meant
+    /// exactly that: meetings' Transcribe entry has a live checkbox, it starts
+    /// ticked, and the moment somebody turned it off the tick did not clear -
+    /// the box disappeared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked: Option<bool>,
     /// The item kind.
     #[serde(rename = "type")]
     pub kind: MenuItemKind,
@@ -79,7 +92,7 @@ impl MenuItem {
             action: action.into(),
             shortcut: None,
             disabled: false,
-            checked: false,
+            checked: None,
             kind: MenuItemKind::Item,
             children: Vec::new(),
         }
@@ -92,9 +105,18 @@ impl MenuItem {
             action: String::new(),
             shortcut: None,
             disabled: false,
-            checked: false,
+            checked: None,
             kind: MenuItemKind::Separator,
             children: Vec::new(),
+        }
+    }
+
+    /// A CHECKBOX item, ticked or not. Distinct from [`MenuItem::item`]: an
+    /// unticked box is still a box, and the shell needs to be told so.
+    pub fn check(label: impl Into<String>, action: impl Into<String>, checked: bool) -> Self {
+        Self {
+            checked: Some(checked),
+            ..Self::item(label, action)
         }
     }
 
@@ -105,7 +127,7 @@ impl MenuItem {
             action: String::new(),
             shortcut: None,
             disabled: false,
-            checked: false,
+            checked: None,
             kind: MenuItemKind::Submenu,
             children,
         }
@@ -264,6 +286,50 @@ mod tests {
         assert_eq!(v["items"][0]["items"][1]["type"], "separator");
         assert_eq!(v["items"][0]["items"][2]["type"], "submenu");
         assert_eq!(v["items"][0]["items"][2]["children"][0]["action"], "file.recent.0");
+    }
+
+    /// An UNCHECKED checkbox has to reach the shell as a checkbox.
+    ///
+    /// The shell decides between a command and a toggle by whether the field is
+    /// there at all, so a `false` that is skipped on the wire arrives as a plain
+    /// item. Meetings' Transcribe starts ticked and is the tree's only live
+    /// checkbox, which is why nobody saw it: turning the toggle off did not
+    /// clear the tick, it removed the box.
+    #[tokio::test]
+    async fn an_unticked_checkbox_still_arrives_as_a_checkbox() {
+        let emitter = MockEventEmitter::new();
+        let menu = Menu::new(emitter.clone(), "org.example.app");
+        menu.register(vec![MenuGroup::new(
+            "View",
+            vec![
+                MenuItem::check("Transcribe", "view.transcribe", false),
+                MenuItem::check("Line numbers", "view.lines", true),
+                MenuItem::item("Reload", "view.reload"),
+            ],
+        )])
+        .await
+        .unwrap();
+
+        let events = emitter.emitted().await;
+        let v: serde_json::Value = serde_json::from_slice(&events[0].payload).unwrap();
+        let items = &v["items"][0]["items"];
+        assert_eq!(items[0]["checked"], serde_json::Value::Bool(false));
+        assert_eq!(items[1]["checked"], serde_json::Value::Bool(true));
+        // And a plain command carries no field, so the shell does not draw it a
+        // box it never asked for.
+        assert!(items[2].get("checked").is_none());
+    }
+
+    /// The other direction, which is the hop that actually dropped it: an app
+    /// sends this JSON to the shell plugin, which deserializes into these types
+    /// and re-serializes onto the bus.
+    #[test]
+    fn a_false_checked_survives_a_deserialize_and_serialize_round_trip() {
+        let sent = r#"{"label":"Transcribe","action":"view.transcribe","checked":false,"type":"item"}"#;
+        let item: MenuItem = serde_json::from_str(sent).unwrap();
+        assert_eq!(item.checked, Some(false));
+        let back = serde_json::to_value(&item).unwrap();
+        assert_eq!(back["checked"], serde_json::Value::Bool(false));
     }
 
     #[tokio::test]
