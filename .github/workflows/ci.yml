@@ -458,6 +458,8 @@ jobs:
           node dev/scripts/test-check-plugin-grants.mjs
           python3 dev/scripts/check-publish-grants.py
           node dev/scripts/test-check-publish-grants.mjs
+          python3 dev/scripts/check-grants-exercised.py
+          node dev/scripts/test-check-grants-exercised.mjs
           python3 dev/scripts/check-plugin-command-grants.py
           node dev/scripts/test-check-plugin-command-grants.mjs
           python3 dev/scripts/check-daemon-stop.py
