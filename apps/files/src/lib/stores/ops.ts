@@ -125,6 +125,23 @@ function busyLabel(kind: OpKind, count: number): OpMessage {
 /// different sentences because only one of them can be taken back.
 export const opDone = writable<{ key: string; count: number } | null>(null);
 
+/// Whether a name collision in this kind is a QUESTION or an answer.
+///
+/// `files_op` reads the conflict policy in its copy and move arms and nowhere
+/// else. `new_folder`, `rename` and `duplicate` are create-exactly-this ops,
+/// and the core says so in as many words: they never auto-resolve a collision. The chooser fired for all of them anyway, so making
+/// a second folder called "New folder" offered Skip, Keep both and Replace, and
+/// each of the three re-ran the same op with a policy nothing reads, failed the
+/// same way, and landed in the red bar - three dead buttons, one of them named
+/// for destroying the folder that was already there. Those kinds get the plain
+/// sentence instead, which is the true one: the name is taken and nothing changed.
+///
+/// Seen in a screenshot rather than caught by a check: every button "worked" in
+/// the sense that it returned.
+export function offersConflictChoice(kind: OpKind): boolean {
+  return kind === "copy" || kind === "move";
+}
+
 export async function runOp(
   kind: OpKind,
   src: string[],
@@ -149,7 +166,7 @@ export async function runOp(
     // not a message - hung on the exact English wording of a Rust error. Rewording
     // it, or translating it, would have silently turned the choice into a red bar.
     const bag = problemBag(e);
-    if (bag?.problem === "already-exists" && !policy) {
+    if (bag?.problem === "already-exists" && !policy && offersConflictChoice(kind)) {
       conflict.set({
         name: String(bag.name ?? "") || src.map((s) => s.split("/").pop()).join(", "),
         retry: (chosen) => {
