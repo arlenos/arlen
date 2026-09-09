@@ -1,279 +1,279 @@
 <script lang="ts">
-  /// Extensions panel.
+  /// Everything that extends this system, on one surface
+  /// (shell-extension-model.md: apps, shell modules and bridges as facets of one
+  /// list, never three UIs). Each row: what it is, where it came from, whether
+  /// it is running, what it may reach; the row leads to the thing's own page,
+  /// where the reach is read against what the machine saw and can be taken back.
   ///
-  /// Lists modules discovered in `/usr/share/arlen/modules/` (system)
-  /// and `~/.local/share/arlen/modules/` (user), merged with the
-  /// enabled/disabled state from `~/.config/arlen/modules.toml`.
-  ///
-  /// The shell reads the same `modules.toml`, so a toggle here shows a
-  /// "restart required" banner — the change is persisted immediately
-  /// but the shell has to be restarted to actually load or unload the
-  /// module at runtime.
-
+  /// The kind is a facet, not a lane: the three share exactly the questions this
+  /// page answers, and what they do not share belongs on the detail page. The
+  /// reach filter is exhaustive because every source emits the one vocabulary
+  /// (`contracts/extensions`), which is the whole reason this can be one list.
   import { onMount } from "svelte";
-  import { RefreshCw, Puzzle, Info, ExternalLink } from "lucide-svelte";
+  import { goto } from "$app/navigation";
+  import { AppWindow, Puzzle, Cable, ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
-  import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Input } from "@arlen/ui-kit/components/ui/input";
-  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
+  import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { Badge } from "@arlen/ui-kit/components/ui/badge";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
-  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
-  import { mark } from "@arlen/ui-kit/i18n/rich";
-  import ModuleCard from "$lib/components/appearance/ModuleCard.svelte";
-  import { modules, moduleGroups } from "$lib/stores/modules";
-
-  /// Where installd drops bundled modules and where users can drop
-  /// their own. Shown verbatim in the empty state so the user knows
-  /// exactly where to put new modules.
-  const USER_MODULES_DIR = "~/.local/share/arlen/modules/";
-  /// Link to the module-system spec shipped with the repo. When the
-  /// Arlen docs site goes live this should flip to the canonical URL.
-  const MODULES_DOCS =
-    "https://github.com/arlenos/docs/blob/main/architecture/module-system.md";
-
-  let filter = $state("");
+  import {
+    extensions,
+    inventoryState,
+    inventoryMocked,
+    loadExtensions,
+    reaches,
+    type Extension,
+    type ExtensionKind,
+    type Reach,
+  } from "$lib/stores/extensions";
+  import { capChip, healthReadout, originLine } from "$lib/extensionWords";
 
   onMount(() => {
-    modules.load();
+    void loadExtensions();
   });
 
-  // Filter each group in-place based on the search query.
-  const filteredGroups = $derived.by(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return $moduleGroups;
-    return $moduleGroups
-      .map((g) => ({
-        id: g.id,
-        label: g.label,
-        items: g.items.filter(
-          (m) =>
-            m.name.toLowerCase().includes(q) ||
-            m.id.toLowerCase().includes(q) ||
-            m.description.toLowerCase().includes(q),
-        ),
-      }))
-      .filter((g) => g.items.length > 0);
-  });
+  let pivot = $state<"all" | ExtensionKind>("all");
+  let query = $state("");
+  let reach = $state<Reach>("any");
 
-  const total = $derived($modules.data.length);
-  const enabledCount = $derived(
-    $modules.data.filter((m) => m.enabled).length,
-  );
+  const KINDS: ExtensionKind[] = ["app", "module", "bridge"];
+  const ICONS = { app: AppWindow, module: Puzzle, bridge: Cable } as const;
+  const SECTION_KEYS = { app: "s.ext.kind.apps", module: "s.ext.kind.modules", bridge: "s.ext.kind.bridges" } as const;
+  const EMPTY_KEYS = { app: "s.ext.none.apps", module: "s.ext.none.modules", bridge: "s.ext.none.bridges" } as const;
+
+  const pivotOptions = $derived([
+    { value: "all", label: $t("s.ext.pivot.all") },
+    { value: "app", label: $t("s.ext.kind.apps") },
+    { value: "module", label: $t("s.ext.kind.modules") },
+    { value: "bridge", label: $t("s.ext.kind.bridges") },
+  ]);
+  const reachOptions = $derived([
+    { value: "any", label: $t("s.ext.reach.any") },
+    { value: "network", label: $t("s.ext.reach.network") },
+    { value: "filesystem", label: $t("s.ext.reach.filesystem") },
+    { value: "graph", label: $t("s.ext.reach.graph") },
+    { value: "clipboard", label: $t("s.ext.reach.clipboard") },
+    { value: "notifications", label: $t("s.ext.reach.notifications") },
+    { value: "system", label: $t("s.ext.reach.system") },
+  ]);
+
+  const visible = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    return $extensions.filter(
+      (e) =>
+        (pivot === "all" || e.kind === pivot) &&
+        (reach === "any" || e.capabilities.some((c) => reaches(c, reach))) &&
+        (!q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q)),
+    );
+  });
+  const shownKinds = $derived(pivot === "all" ? KINDS : [pivot]);
+  const filtering = $derived(query.trim() !== "" || reach !== "any");
+
+  function open(e: Extension) {
+    void goto(`/extensions/${e.kind}/${encodeURIComponent(e.id)}`);
+  }
 </script>
 
-<Page
-  title={$t("s.ext.title")}
-  description={$t("s.ext.desc")}
->
+<Page title={$t("s.ext.title")} description={$t("s.ext.desc")}>
   <SectionGrid>
-  <div class="span-full ext-column">
-  <div class="ext-toolbar">
-    <IconAction label={$t("s.ext.rescan")} onclick={() => modules.load()}>
-      <RefreshCw size={14} strokeWidth={2} />
-    </IconAction>
-  </div>
+    {#if $inventoryMocked}
+      <Notice tone="neutral" class="span-full" text={$t("s.ext.sample")} />
+    {/if}
+    {#if $inventoryState === "unreadable"}
+      <Notice tone="error" class="span-full" text={$t("s.ext.unreadable")} />
+    {/if}
 
-  {#if $modules.restartRequired}
-    <div class="banner">
-      <Info size={12} strokeWidth={2.25} />
-      <span>
-        {$t("s.ext.restart")}
-      </span>
-      <Button variant="ghost" size="sm" onclick={() => modules.dismissRestartBanner()}>
-        {$t("s.ext.dismiss")}
-      </Button>
-    </div>
-  {/if}
-
-  {#if $modules.loading && $modules.data.length === 0}
-    <div class="status">{$t("s.ext.scanning")}</div>
-  {:else if $modules.error}
-    <div class="error" title={$modules.error}>{$t("s.ext.error")}</div>
-  {:else if total === 0}
-    <div class="empty">
-      <div class="empty-icon">
-        <Puzzle size={28} strokeWidth={1.5} />
+    <div class="tools span-full">
+      <SegmentedControl
+        options={pivotOptions}
+        value={pivot}
+        ariaLabel={$t("s.ext.pivotAria")}
+        onchange={(v) => (pivot = v as "all" | ExtensionKind)}
+      />
+      <div class="tools-right">
+        <SearchField id="ext-search" bind:value={query} placeholder={$t("s.ext.search")} aria-label={$t("s.ext.search")} />
+        <PopoverSelect
+          value={reach}
+          options={reachOptions}
+          ariaLabel={$t("s.ext.reachAria")}
+          onchange={(v) => (reach = v as Reach)}
+        />
       </div>
-      <h2>{$t("s.ext.noModules")}</h2>
-      <p>
-        <Rich text={$t("s.ext.install", { cmd: mark("cmd"), dir: mark("dir") })}>
-          {#snippet cmd()}<code>forage install</code>{/snippet}
-          {#snippet dir()}<code>{USER_MODULES_DIR}</code>{/snippet}
-        </Rich>
-      </p>
-      <a
-        class="empty-link"
-        href={MODULES_DOCS}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {$t("s.ext.learn")}
-        <ExternalLink size={12} strokeWidth={2} />
-      </a>
-    </div>
-  {:else}
-    <div class="summary">
-      <span>{$t("s.ext.summary", { enabled: enabledCount, total })}</span>
     </div>
 
-    <div class="search-wrap">
-      <Input placeholder={$t("s.ext.filter")} bind:value={filter} />
-    </div>
-
-    <div class="groups">
-      {#each filteredGroups as group (group.id)}
-        <Section label={group.label}>
-          <div class="group-inner">
-            {#each group.items as m (m.id)}
-              <ModuleCard
-                module={m}
-                onToggle={(enabled) => modules.setEnabled(m.id, enabled)}
-                onUninstall={() => modules.uninstall(m.id)}
-              />
+    {#if $inventoryState === "loading"}
+      <p class="quiet span-full">{$t("s.ext.loading")}</p>
+    {:else}
+      {#each shownKinds as kind (kind)}
+        {@const rows = visible.filter((e) => e.kind === kind)}
+        {@const Icon = ICONS[kind]}
+        <!-- The kind heading only when kinds sit side by side; under a pivot the
+             pivot already says it. -->
+        <Section label={pivot === "all" ? $t(SECTION_KEYS[kind]) : undefined} class="span-full">
+          {#if rows.length === 0}
+            <p class="quiet in-card">{filtering ? $t("s.ext.noMatch") : $t(EMPTY_KEYS[kind])}</p>
+          {:else}
+            {#each rows as e (e.kind + ":" + e.id)}
+              {@const health = healthReadout(e.health, $t)}
+              <!-- The whole row leads to the extension's page (the /apps list
+                   pattern): a stretched button underneath carries the click. -->
+              <div class="ext-row">
+                <button type="button" class="ext-go" aria-label={e.name} onclick={() => open(e)}></button>
+                <span class="ext-icon"><Icon size={16} strokeWidth={1.75} /></span>
+                <span class="ext-text">
+                  <span class="ext-name">{e.name}</span>
+                  <span class="ext-origin">{originLine(e, $t)}</span>
+                  {#if e.capabilities.length > 0}
+                    <span class="ext-caps">
+                      {#each e.capabilities as cap (cap)}
+                        <Badge variant="outline">{capChip(cap, $t)}</Badge>
+                      {/each}
+                    </span>
+                  {:else}
+                    <span class="ext-caps ext-nothing">{$t("s.ext.cap.none")}</span>
+                  {/if}
+                </span>
+                <span class="ext-health" class:away={health.posture === "away"}>
+                  <span class="found" data-posture={health.posture} aria-hidden="true"></span>
+                  {health.text}
+                </span>
+                <span class="ext-chev"><ChevronRight size={14} strokeWidth={2} /></span>
+              </div>
             {/each}
-          </div>
+          {/if}
         </Section>
       {/each}
-
-      {#if filter && filteredGroups.length === 0}
-        <div class="empty small">
-          <Rich text={$t("s.ext.noMatch", { term: mark("term") })}>
-            {#snippet term()}<strong>{filter}</strong>{/snippet}
-          </Rich>
-        </div>
-      {/if}
-    </div>
-  {/if}
-  </div>
+    {/if}
   </SectionGrid>
 </Page>
 
 <style>
-  /* Single-column flow inside the grid (cap + centring come from SectionGrid). */
-  .ext-column {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .ext-toolbar {
-    display: flex;
-    justify-content: flex-end;
-  }
-  .banner {
+  .tools {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0.6rem 0.75rem;
-    margin-bottom: 1rem;
-    border-radius: var(--radius-input);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
-    color: var(--color-accent);
-    font-size: var(--text-xs);
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
-  .banner span {
+  /* The pivot keeps its width; the search and the filter take the rest and
+     drop under it when the rest is under 18rem, so at 720 nothing overlaps. */
+  .tools > :global(:first-child) {
+    flex-shrink: 0;
+  }
+  .tools-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 18rem;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+  .tools-right :global(.sf) {
+    flex: 1 1 auto;
+    max-width: 16rem;
+  }
+  .quiet {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .quiet.in-card {
+    padding: var(--space-row, 0.75rem) 1rem;
+  }
+  .ext-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: var(--space-row, 0.75rem) 1rem;
+  }
+  .ext-row + .ext-row {
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  .ext-row:hover {
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  }
+  .ext-go {
+    position: absolute;
+    inset: 0;
+    border: none;
+    background: transparent;
+    border-radius: inherit;
+  }
+  .ext-go:focus-visible {
+    outline: 2px solid var(--color-accent, var(--foreground));
+    outline-offset: -2px;
+  }
+  .ext-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .ext-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
     flex: 1;
+    min-width: 0;
+  }
+  .ext-name {
+    font-size: var(--text-sm);
+    font-weight: 500;
     color: var(--foreground);
   }
-
-  .summary {
+  .ext-origin {
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    margin-bottom: 0.5rem;
   }
-
-  .search-wrap {
-    margin-bottom: 1rem;
-  }
-
-  .groups {
+  .ext-caps {
     display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
   }
-  .group-inner {
-    padding: 0.625rem;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+  .ext-nothing {
+    font-size: var(--text-2xs);
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
-
-  .status {
-    font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .error {
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-input);
-    border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
-    background: color-mix(in srgb, var(--color-error) 10%, transparent);
-    color: var(--color-error);
-    font-size: var(--text-sm);
-  }
-
-  .empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 0.75rem;
-    padding: 3rem 1rem;
-    border-radius: var(--radius-card);
-    border: 1px dashed color-mix(in srgb, var(--foreground) 15%, transparent);
-    background: color-mix(in srgb, var(--foreground) 2%, transparent);
-  }
-  .empty.small {
-    padding: 1.25rem;
+  /* The health as a value in the house dot family; the row's own controls
+     (nothing yet) would sit above the stretched button, this readout is inert. */
+  .ext-health {
+    position: relative;
+    flex-shrink: 0;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .empty-icon {
-    width: 56px;
-    height: 56px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    color: var(--color-accent);
-  }
-  .empty h2 {
-    margin: 0;
-    font-size: var(--text-base);
-    font-weight: 600;
-    color: var(--foreground);
-  }
-  .empty p {
-    margin: 0;
-    max-width: 32rem;
-    font-size: var(--text-xs);
-    line-height: 1.55;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
-  .empty code {
-    font-family: var(--font-mono);
-    font-size: var(--text-2xs);
-    padding: 0.05rem 0.3rem;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  .ext-health.away {
+    color: var(--color-warning);
   }
-  .empty strong {
-    color: var(--foreground);
+  .found {
+    display: inline-block;
+    vertical-align: middle;
+    margin-inline-end: 0.45rem;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-chip, 4px);
   }
-  .empty-link {
+  .found[data-posture="ours"] {
+    background: var(--color-success);
+  }
+  .found[data-posture="off"] {
+    background: color-mix(in srgb, var(--foreground) 35%, transparent);
+  }
+  .found[data-posture="away"] {
+    background: var(--color-warning);
+  }
+  .found[data-posture="unknown"] {
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--foreground) 40%, transparent);
+  }
+  .ext-chev {
+    flex-shrink: 0;
     display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--text-xs);
-    color: var(--color-accent);
-    text-decoration: none;
-    padding: 0.3rem 0.6rem;
-    border-radius: var(--radius-chip);
-    transition: background-color 120ms ease;
-  }
-  .empty-link:hover {
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
 </style>
