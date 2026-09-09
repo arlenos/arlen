@@ -23,6 +23,7 @@
 /// seen go - never for one that has simply not appeared yet.
 
 import { get } from "svelte/store";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { windows } from "./windows";
 import { resolvePermissionId } from "./activeApp";
 import { forgetApp, appsWithState } from "./appStateStores";
@@ -36,6 +37,37 @@ import { forgetToolbarApp, appsWithToolbar } from "./toolbarStore";
 /// to drop. `seen` is carried by the caller and grows as windows appear.
 export function outlived(stored: string[], live: Set<string>, seen: Set<string>): string[] {
   return stored.filter((id) => seen.has(id) && !live.has(id));
+}
+
+/// Give up what an app published the moment its permissions change.
+///
+/// The other half of the same idea, and the one a PERSON can reach. Observed
+/// absence handles an app that went away; this handles an app that is still
+/// there and may no longer do the thing. Revoking `ambient` from an app left its
+/// tint on the screen until it exited, which made the grant - the one instrument
+/// somebody has for a running effect - not actually take it back.
+///
+/// Everything that app published goes, not only the surface that changed. The
+/// shell does not read capability files and should not start: whatever the app
+/// still may publish, it publishes again, and until then the screen holds
+/// nothing it cannot account for. The same shape as the knowledge daemon marking
+/// an app's grants stale rather than working out which ones survived.
+export function initPermissionForget(): () => void {
+  let unlisten: UnlistenFn | null = null;
+  void listen<{ appId?: string }>("arlen://permission-changed", (e) => {
+    const id = e.payload?.appId;
+    if (!id) return;
+    forgetApp(id);
+    forgetMenu(id);
+    forgetToolbarApp(id);
+  })
+    .then((fn) => {
+      unlisten = fn;
+    })
+    .catch(() => {
+      // No host: nothing publishes here either.
+    });
+  return () => unlisten?.();
 }
 
 /// Watch the window list and forget what has outlived it.
