@@ -39,16 +39,24 @@ export async function evaluateInput(input: string): Promise<WaypointerResult | n
     return invoke<WaypointerResult | null>("evaluate_waypointer_input", { input });
 }
 
-export function executeShellCommand(command: string, inTerminal: boolean) {
-    invoke("execute_shell_command", { command, inTerminal });
+/// The three that ACT, and they return their promise on purpose.
+///
+/// They used to be fire-and-forget `void` calls, and the launcher closed on the
+/// same tick it made them - so a command that could not start, a URL that would
+/// not open or a search that never left said nothing, on the one surface that
+/// had already gone. The module-result branch in `WaypointerContent` had learnt
+/// this and awaited its own three; these four callers had not. Returning the
+/// promise is what lets a caller keep the window open and say so.
+export function executeShellCommand(command: string, inTerminal: boolean): Promise<unknown> {
+    return invoke("execute_shell_command", { command, inTerminal });
 }
 
-export function openUrl(url: string) {
+export function openUrl(url: string): Promise<unknown> {
     const full = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-    invoke("open_url", { url: full });
+    return invoke("open_url", { url: full });
 }
 
-export function webSearch(query: string) {
+export function webSearch(query: string): Promise<unknown> {
     const encoded = encodeURIComponent(query);
-    invoke("open_url", { url: `https://duckduckgo.com/?q=${encoded}` });
+    return invoke("open_url", { url: `https://duckduckgo.com/?q=${encoded}` });
 }
