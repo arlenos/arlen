@@ -71,6 +71,15 @@ pub const ACCENT_FOREGROUND_SENTINEL: &str = "$foreground";
 /// Manages bundled and user-installed themes.
 pub struct ThemeLoader {
     user_dir: Option<PathBuf>,
+    /// Where the customization layer lives.
+    ///
+    /// Held rather than looked up per load, and that is the difference between
+    /// a loader a test can drive and one that reads whoever is running it. The
+    /// per-toolkit resolve made this matter: `[override.gtk]` decides what goes
+    /// into a generated `gtk.css`, so a test that writes toolkit files while the
+    /// loader reads the DEVELOPER's `~/.config/arlen/theme.toml` is asserting
+    /// against their desktop.
+    customization_path: PathBuf,
 }
 
 impl ThemeLoader {
@@ -79,7 +88,10 @@ impl ThemeLoader {
         let user_dir = dirs::data_dir()
             .map(|d| d.join("arlen").join("themes"))
             .filter(|d| d.is_dir());
-        Ok(Self { user_dir })
+        Ok(Self {
+            user_dir,
+            customization_path: ArlenTheme::user_customization_path(),
+        })
     }
 
     /// Create a loader with an explicit user-themes directory
@@ -87,7 +99,19 @@ impl ThemeLoader {
     pub fn new_with_user_dir(user_dir: PathBuf) -> Result<Self, ThemeError> {
         Ok(Self {
             user_dir: Some(user_dir).filter(|d| d.is_dir()),
+            customization_path: ArlenTheme::user_customization_path(),
         })
+    }
+
+    /// Read the customization layer from `path` instead of the default.
+    ///
+    /// The shell knows its own config directory - it was handed one - so it says
+    /// which `theme.toml` it means rather than asking `dirs` and hoping the two
+    /// agree. Under a test they do not: the config dir is a temp one and `dirs`
+    /// answers with the developer's home.
+    pub fn with_customization_path(mut self, path: PathBuf) -> Self {
+        self.customization_path = path;
+        self
     }
 
     /// Get the bundled theme bytes for the given id.
@@ -157,10 +181,10 @@ impl ThemeLoader {
             }
         };
 
-        // 3. ~/.config/arlen/theme.toml customization.
-        let custom_path = ArlenTheme::user_customization_path();
-        let customization = if custom_path.exists() {
-            Some(std::fs::read_to_string(&custom_path)?)
+        // 3. The customization layer (`theme.toml`), from wherever this loader
+        // was told it lives.
+        let customization = if self.customization_path.exists() {
+            Some(std::fs::read_to_string(&self.customization_path)?)
         } else {
             None
         };

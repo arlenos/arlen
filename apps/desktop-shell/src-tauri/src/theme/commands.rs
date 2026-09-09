@@ -38,7 +38,13 @@ impl ThemeState {
         let user_themes_dir = data_dir.join("themes");
         let _ = std::fs::create_dir_all(&user_themes_dir);
 
-        let loader = ThemeLoader::new_with_user_dir(user_themes_dir)?;
+        // The customization layer lives beside the appearance config, and the
+        // shell says so rather than letting the loader ask `dirs` - which
+        // answers with the developer's home under a test that was handed a temp
+        // config dir, so the toolkit files it writes would carry whatever
+        // override that person happens to have.
+        let loader = ThemeLoader::new_with_user_dir(user_themes_dir)?
+            .with_customization_path(config_dir.join("theme.toml"));
 
         let config_path = config_dir.join("appearance.toml");
         let config = if config_path.exists() {
@@ -688,6 +694,54 @@ mod tests {
         // this machine does not have would make it LESS iconned, which is the
         // same rule the settings file follows.
         assert_ne!(settings.string("icon-theme"), "");
+    }
+
+    /// A per-toolkit override has to reach the toolkit it names, and only that
+    /// one. This is the case the whole `[override.*]` channel exists for and
+    /// nothing tested it end to end: the resolver has unit tests, the precedence
+    /// rule has unit tests, and until this ran nobody had checked that the colour
+    /// somebody set for GTK is the colour in the file a GTK app reads.
+    ///
+    /// It could not have run before either. The loader read `dirs::config_dir()`
+    /// for the customization layer, so a test handed a temp config dir was still
+    /// resolving against the developer's own `theme.toml`.
+    #[test]
+    fn a_gtk_override_lands_in_the_gtk_sheet_and_nowhere_else() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let config_dir = tmp.path().join("arlen");
+        std::fs::create_dir_all(&config_dir).expect("config dir");
+        // A colour no bundled theme uses, so finding it anywhere is evidence
+        // rather than coincidence.
+        std::fs::write(
+            config_dir.join("theme.toml"),
+            "[override.gtk.color.semantic]\naccent = \"#00ff7f\"\n",
+        )
+        .expect("customization");
+
+        let state = ThemeState::new(config_dir, tmp.path().join("data")).expect("state");
+        let theme = ArlenTheme::from_bundled(arlen_theme::DARK_TOML).expect("resolve");
+        state.write_toolkit_files(&theme);
+
+        let gtk = std::fs::read_to_string(tmp.path().join("gtk-3.0/gtk.css")).expect("gtk sheet");
+        assert!(
+            gtk.to_lowercase().contains("00ff7f"),
+            "the GTK override did not reach the sheet a GTK app reads:\n{gtk}"
+        );
+
+        // And the sibling spokes keep the shared theme. An override that leaked
+        // into all of them would pass a test that only looked at GTK, and it
+        // would be the whole point of the channel undone.
+        let qt = std::fs::read_to_string(tmp.path().join("qt6ct/colors/arlen.conf")).expect("qt");
+        assert!(
+            !qt.to_lowercase().contains("00ff7f"),
+            "the GTK override diverged Qt as well:\n{qt}"
+        );
+        let term =
+            std::fs::read_to_string(tmp.path().join("kitty/arlen-colors.conf")).expect("terminal");
+        assert!(
+            !term.to_lowercase().contains("00ff7f"),
+            "the GTK override diverged the terminal as well:\n{term}"
+        );
     }
 
     /// The startup reconcile has to actually produce the files, and the one that
