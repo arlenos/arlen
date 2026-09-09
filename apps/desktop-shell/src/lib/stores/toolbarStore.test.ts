@@ -21,7 +21,8 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
-const { focusedToolbar, focusedToolbarKey, initToolbarStore } = await import("./toolbarStore");
+const { focusedToolbar, focusedToolbarKey, initToolbarStore, forgetToolbarApp, appsWithToolbar } =
+  await import("./toolbarStore");
 
 const ACTIONS = [{ icon: "save", action: "save", tooltip: "Save", toggle: false, active: false }];
 const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -73,5 +74,45 @@ describe("focusedToolbar", () => {
     });
     await settle();
     expect(get(focusedToolbar).kind).toBe("none");
+  });
+
+  /// The teardown an app that died never got to send. `toolbar_clear` is on the
+  /// plugin and nothing calls it; an app that is killed could not call it
+  /// anyway, so the shell reclaims on observed absence instead.
+  it("forgets every window an app published under, not just the focused one", async () => {
+    for (const windowId of ["main", "second"]) {
+      handlers["arlen://toolbar-quick-actions"]?.({
+        payload: { appId: "dev.arlen.knowledge", windowId, actions: ACTIONS },
+      });
+    }
+    handlers["arlen://toolbar-quick-actions"]?.({
+      payload: { appId: "dev.arlen.files", windowId: "main", actions: ACTIONS },
+    });
+    await settle();
+    expect(appsWithToolbar().sort()).toEqual(["dev.arlen.files", "dev.arlen.knowledge"]);
+
+    forgetToolbarApp("dev.arlen.knowledge");
+    await settle();
+    expect(appsWithToolbar()).toEqual(["dev.arlen.files"]);
+
+    // And the gone app cannot lend a toolbar to a window that opens later. The
+    // fallback below `focusedToolbar` returns ANY state under the focused app,
+    // so an entry left behind is not merely stored, it renders.
+    activeWindow.set({ app_id: "arlen-knowledge", id: "w9" });
+    activeAppId.set("dev.arlen.knowledge");
+    await settle();
+    expect(get(focusedToolbar).kind).toBe("none");
+  });
+
+  it("leaves another app's toolbar alone", async () => {
+    handlers["arlen://toolbar-quick-actions"]?.({
+      payload: { appId: "dev.arlen.files", windowId: "main", actions: ACTIONS },
+    });
+    await settle();
+    forgetToolbarApp("dev.arlen.knowledge");
+    activeWindow.set({ app_id: "arlen-files", id: "w3" });
+    activeAppId.set("dev.arlen.files");
+    await settle();
+    expect(get(focusedToolbar).kind).toBe("quick-actions");
   });
 });

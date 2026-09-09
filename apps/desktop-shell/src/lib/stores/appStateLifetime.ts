@@ -1,7 +1,7 @@
 /// Drop what an app published once it has no windows left.
 ///
 /// THE PROBLEM. The shell keeps per-app state - a menu, a shortcut list, a
-/// badge, an ambient effect - keyed by the app's permission id, and nothing ever
+/// badge, an ambient effect, a toolbar - keyed by the app's permission id, and nothing ever
 /// removed an entry except the app itself saying so. An app that crashes, is
 /// killed or goes away with the session never gets to say so, and
 /// `badges-api.md` FA4 named the gap and deferred it ("stale entries from exited
@@ -27,6 +27,7 @@ import { windows } from "./windows";
 import { resolvePermissionId } from "./activeApp";
 import { forgetApp, appsWithState } from "./appStateStores";
 import { forgetMenu, appsWithMenus } from "./menus";
+import { forgetToolbarApp, appsWithToolbar } from "./toolbarStore";
 
 /// Which apps have outlived their windows.
 ///
@@ -60,10 +61,15 @@ export function initAppStateLifetime(): () => void {
       // answered anything. Dropping on it would clear the whole board on the
       // first tick.
       if (live.size === 0 && $windows.length > 0) return;
-      const stale = outlived([...appsWithState(), ...appsWithMenus()], live, seen);
+      const stale = outlived(
+        [...appsWithState(), ...appsWithMenus(), ...appsWithToolbar()],
+        live,
+        seen,
+      );
       for (const id of stale) {
         forgetApp(id);
         forgetMenu(id);
+        forgetToolbarApp(id);
         seen.delete(id);
       }
     })();
