@@ -138,7 +138,7 @@
     align-items: center;
     justify-content: center;
     gap: 0.3rem;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     margin-top: 0.5rem;
     border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
     border-radius: var(--radius-input);

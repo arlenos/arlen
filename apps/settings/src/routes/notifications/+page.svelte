@@ -805,7 +805,7 @@
     margin-inline-start: auto;
     display: inline-flex;
     align-items: center;
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     padding: 0 0.5rem;
     background: none;
     border: 1px solid var(--color-border);

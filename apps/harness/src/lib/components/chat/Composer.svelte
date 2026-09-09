@@ -393,7 +393,7 @@
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    min-height: var(--height-control, 28px);
+    min-height: var(--height-control, 30px);
     padding: 0 0.5rem;
     border: none;
     background: transparent;

@@ -96,7 +96,7 @@
     align-items: center;
     gap: 0.125rem;
     width: 100%;
-    height: calc(var(--height-control-prominent, 36px) * var(--greeter-scale, 1));
+    height: calc(var(--height-control-prominent, 38px) * var(--greeter-scale, 1));
     padding: 0 0.25rem 0 0.75rem;
     border-radius: var(--radius-input);
     /* The inline icon buttons hug the field's inside, so their corners

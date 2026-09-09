@@ -470,7 +470,7 @@
   .net-hidden-entry:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); opacity: 1; }
 
   .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-2xs); opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-  .net-refresh { width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; padding: 0; }
+  .net-refresh { width: var(--height-control-compact, 26px); height: var(--height-control-compact, 26px); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; padding: 0; }
   .net-refresh:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
 
   .net-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }

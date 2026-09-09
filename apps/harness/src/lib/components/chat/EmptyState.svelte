@@ -93,7 +93,7 @@
   .starter {
     display: inline-flex;
     align-items: center;
-    min-height: var(--height-control, 28px);
+    min-height: var(--height-control, 30px);
     padding: 0 0.75rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-button);

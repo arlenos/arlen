@@ -61,14 +61,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     border-radius: var(--radius-chip);
     overflow: hidden;
   }
   .mod-indicator :global(iframe) {
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     pointer-events: auto;
   }
 </style>

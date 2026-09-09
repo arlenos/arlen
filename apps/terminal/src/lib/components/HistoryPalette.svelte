@@ -220,7 +220,7 @@
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
   .hp-chips :global(.hp-chip) {
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     padding: 0 7px;
     border: 1px solid var(--control-border);
     border-radius: var(--radius-chip);

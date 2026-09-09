@@ -165,7 +165,7 @@
     align-items: center;
     gap: 0.375rem;
     max-width: 100%;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 0.5rem;
     border: none;
     border-radius: var(--radius-button);

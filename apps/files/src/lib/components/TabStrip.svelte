@@ -67,7 +67,7 @@
   .ts-tab {
     display: inline-flex;
     align-items: center;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);

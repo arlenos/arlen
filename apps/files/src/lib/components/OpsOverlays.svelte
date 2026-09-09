@@ -136,7 +136,7 @@
     overflow-wrap: anywhere;
   }
   .op-dismiss {
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     padding: 0 8px;
     border: 1px solid var(--control-border);
     border-radius: var(--radius-chip);

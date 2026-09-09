@@ -167,8 +167,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     flex-shrink: 0;
     border: none;
     border-radius: var(--radius-input);

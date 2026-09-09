@@ -70,7 +70,7 @@
   }
   .stream-empty-btn {
     margin-top: 8px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 12px;
     border-radius: var(--radius-input);
     border: 1px solid var(--control-border);

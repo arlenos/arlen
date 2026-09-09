@@ -74,7 +74,7 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    min-height: var(--height-control, 28px);
+    min-height: var(--height-control, 30px);
     padding: 0 var(--space-card, 1rem);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-input);

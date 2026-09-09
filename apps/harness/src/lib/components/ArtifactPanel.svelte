@@ -160,8 +160,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
+    width: var(--height-control-compact, 26px);
+    height: var(--height-control-compact, 26px);
     border: none;
     border-radius: var(--radius-chip);
     background: transparent;

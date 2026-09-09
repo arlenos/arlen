@@ -111,7 +111,7 @@
   .wp-unicode-char {
     font-size: var(--text-xl);
     line-height: 1;
-    width: var(--height-control-compact, 24px);
+    width: var(--height-control-compact, 26px);
     text-align: center;
     flex-shrink: 0;
   }

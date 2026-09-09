@@ -262,7 +262,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     padding: 0 0.5rem;
     border: none;
     background: transparent;

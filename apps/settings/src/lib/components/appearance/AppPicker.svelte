@@ -200,7 +200,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 0.25rem 0 0.5rem;
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);

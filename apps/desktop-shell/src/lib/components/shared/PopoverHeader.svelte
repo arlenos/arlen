@@ -76,8 +76,8 @@
     white-space: nowrap;
   }
   .pop-settings-btn {
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
+    width: var(--height-control-compact, 26px);
+    height: var(--height-control-compact, 26px);
     display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);

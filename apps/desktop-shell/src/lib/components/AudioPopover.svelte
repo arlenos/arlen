@@ -257,7 +257,7 @@
   /* Volume row */
   .vol-row { display: flex; align-items: center; gap: 8px; }
   .vol-icon-btn {
-    width: var(--height-control, 28px); height: var(--height-control, 28px); display: flex; align-items: center; justify-content: center;
+    width: var(--height-control, 30px); height: var(--height-control, 30px); display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     padding: 0; flex-shrink: 0;
@@ -292,7 +292,7 @@
   .apps-list { display: flex; flex-direction: column; gap: 6px; }
   .app-row { display: flex; align-items: center; gap: 6px; }
   .app-icon {
-    width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center;
+    width: var(--height-control-compact, 26px); height: var(--height-control-compact, 26px); display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     border-radius: var(--radius-chip); flex-shrink: 0;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);

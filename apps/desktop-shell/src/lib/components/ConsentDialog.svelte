@@ -617,7 +617,7 @@
        it is the sentence saying how to answer an irreversible delete, and the
        card is a modal with room. The file is named in the list above as well, so
        a long name costs height here and loses nothing. */
-    min-height: var(--height-control-prominent, 36px);
+    min-height: var(--height-control-prominent, 38px);
     padding: 0.375rem 0.625rem;
     border: 1px solid color-mix(in srgb, var(--color-error) 45%, transparent);
     border-radius: var(--radius-input);

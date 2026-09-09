@@ -214,7 +214,7 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 11px;
     border: 1px solid var(--control-border);
     background: var(--control-bg);

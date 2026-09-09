@@ -213,7 +213,7 @@
   }
   .qs-preview-tail {
     grid-column: span 2;
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
   }
 
   .qs-preview-pinned {

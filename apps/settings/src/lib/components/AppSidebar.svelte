@@ -353,8 +353,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     flex-shrink: 0;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-fg-app) 8%, transparent);

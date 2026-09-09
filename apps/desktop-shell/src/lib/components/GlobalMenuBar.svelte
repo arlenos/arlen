@@ -246,7 +246,7 @@
   .menubar-trigger {
     display: flex;
     align-items: center;
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     padding: 0 8px;
     border: none;
     background: transparent;

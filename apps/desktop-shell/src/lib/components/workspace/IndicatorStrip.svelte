@@ -69,7 +69,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     min-width: 32px;
     padding: 0 10px;
     border-radius: var(--radius-card);
@@ -120,8 +120,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
+    width: var(--height-control-compact, 26px);
+    height: var(--height-control-compact, 26px);
     padding: 0;
     border: none;
     background: transparent;
