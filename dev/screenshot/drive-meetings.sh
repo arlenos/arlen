@@ -121,6 +121,32 @@ say "and that page says nothing is being captured rather than showing a recorder
   "$(printf '%s' "$after" | grep -qE "Nothing is being captured|Es wird nichts aufgenommen" \
      && echo 1 || echo 0)" "$after"
 
-rm -rf "$run" "$run2" "$probe" "$press" 2>/dev/null
-[ "$fail" = 0 ] && echo "the meetings app says what is wrong, not just that something is"
+# GERMAN. This window is nothing but sentences about what is not happening -
+# which service is down, that nothing is being captured, why the recorder is not
+# there - and that is the prose that gets written once in English. Six apps have
+# had a defect only the German render showed. The release binary takes its
+# language from `locale.toml`, not from a URL.
+run3="$(mktemp -d)"
+mkdir -p "$run3/config/arlen"
+printf '[locale]\nui = "de"\n' > "$run3/config/arlen/locale.toml"
+de=$(env XDG_STATE_HOME="$run3/state" XDG_DATA_HOME="$run3/data" XDG_CONFIG_HOME="$run3/config" \
+  XDG_RUNTIME_DIR="$run3" HOME="$run3" \
+  SHOOT_INJECT="$probe" "$here/shoot-app.sh" "$app" "$here/out/meetings-de.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+# Both halves: the German refusal present AND the English one gone. The first
+# alone passes on a catalogue that is only half adopted.
+# Matched on the noun, not on "läuft nicht": German splits the verb, so the
+# sentence reads "läuft auf diesem Rechner nicht" and a grep for the two words
+# together fails on a window that is perfectly translated. It did, first try.
+say "the German build says which service is down, in German" \
+  "$(printf '%s' "$de" | grep -q "Besprechungsdienst" \
+     && ! printf '%s' "$de" | grep -q "service is not running" && echo 1 || echo 0)" "$de"
+# The one control the window offers. A button left in English over a German
+# refusal is the shape a half-adopted catalogue takes.
+say "and the one control it offers is German too" \
+  "$(printf '%s' "$de" | grep -q "Start a meeting" && echo 0 || echo 1)" "$de"
+
+rm -rf "$run" "$run2" "$run3" "$probe" "$press" 2>/dev/null
+[ "$fail" = 0 ] && echo "the meetings app says what is wrong, not just that something is, in the reader's language"
 exit "$fail"
