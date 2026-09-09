@@ -118,4 +118,19 @@
 
   <!-- MUST NOT be reported: an anchor with no href is not a control. -->
   <a class="silent-link">Not a link</a>
+
+    <!-- A composite widget: one tab stop, the cursor on a descendant. The probe
+         must not report the container - the ring is on the row the
+         activedescendant names. Added 9 September after the file manager's
+         browser came back as a finding on three routes, correctly ringed all
+         along. -->
+    <div id="composite" role="application" tabindex="0" aria-activedescendant="composite-row"
+         style="outline: none; padding: 4px; border: 1px solid #444">
+      <div id="composite-row" style="outline: 1px solid #7aa2f7">the cursored row</div>
+    </div>
+
+    <!-- And the half that must still be a finding: an activedescendant naming an
+         id that is not here is a widget whose focus is nowhere. -->
+    <div id="dangling" role="application" tabindex="0" aria-activedescendant="not-on-this-page"
+         style="outline: none; padding: 4px; border: 1px solid #444">nothing points at a row</div>
 </body>
