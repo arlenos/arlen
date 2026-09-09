@@ -69,7 +69,7 @@
     resetTypo,
     load as loadTypography,
   } from "$lib/stores/themeTypography";
-  import { overrideSummary, resetAll } from "$lib/stores/themeOverrides";
+  import { overrideSummary, resetAll, loadSummary } from "$lib/stores/themeOverrides";
 
   onMount(() => {
     void loadThemes();
@@ -79,7 +79,26 @@
     // Same reason for the text-size row: it shows the resolved theme's size, not
     // a default that happens to match.
     void loadTypography();
+    // The "my customisations" list below counts what the MACHINE holds. Its
+    // stores are otherwise filled only by opening the page that owns each one,
+    // so without this the section read "nothing changed yet" over a theme.toml
+    // full of overrides and only became true after walking all five.
+    void loadSummary();
   });
+
+  /// Set when a reset was refused. The button says it undid everything, so a
+  /// failure that only reached the console would leave a person believing it.
+  let resetFailed = $state(false);
+
+  async function onResetAll() {
+    resetFailed = false;
+    try {
+      await resetAll();
+    } catch (e) {
+      console.warn("appearance: reset all failed", e);
+      resetFailed = true;
+    }
+  }
 
   const CUSTOMISE = [
     { href: "/appearance/wallpaper", titleKey: "s.appr.card.wallpaper", descKey: "s.appr.card.wallpaper.desc", icon: Image },
@@ -209,10 +228,13 @@
         {/each}
         <div class="reset-all">
           <span class="reset-total">{$t("s.appr.totalCount", { count: $overrideSummary.total })}</span>
-          <Button variant="outline" size="sm" onclick={() => resetAll()}>
+          <Button variant="outline" size="sm" onclick={onResetAll}>
             <RotateCcw size={13} strokeWidth={2} /> {$t("s.appr.resetAll")}
           </Button>
         </div>
+        {#if resetFailed}
+          <p class="note" role="alert">{$t("s.appr.resetFailed")}</p>
+        {/if}
       {/if}
     </Section>
   </SectionGrid>

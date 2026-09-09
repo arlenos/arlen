@@ -80,15 +80,15 @@ CARRIED: dict[str, tuple[int, str]] = {
     ),
     "harness": (16, "the 8 September scan; arlen-ui's app, so theirs to answer, `frontend_log` included - the marker is per-app, so ours on the other six does not answer for theirs"),
     "settings": (
-        7,
-        "all seven belong to surfaces in arlen-ui's lane. Four are the model "
-        "picker's backend - `ai_models_list`, `ai_defaults_set` and the "
-        "`ai_uncensored_*` opt-in pair - and that page renders a fixture today, "
-        "so it is mid-build rather than missing. Three are `extensions_*`, the "
-        "management surface the shell-extension strand named, routed as a design "
-        "job. Everything else the 8 September scan found here is answered: "
-        "`theme_get`, `keybindings_get_defaults`, `keybindings_get_all_conflicts` "
-        "and `ai_activity_recent` deleted; `settings_app_audit`, "
+        4,
+        "the model picker's backend - `ai_models_list`, `ai_defaults_set` and the "
+        "`ai_uncensored_*` opt-in pair - in arlen-ui's lane, and that page renders "
+        "a fixture today, so it is mid-build rather than missing. The three "
+        "`extensions_*` came out on 9 September when the management surface landed "
+        "and called them, which is what the number dropping is for. Everything the "
+        "8 September scan found is now answered: `theme_get`, "
+        "`keybindings_get_defaults`, `keybindings_get_all_conflicts` and "
+        "`ai_activity_recent` deleted; `settings_app_audit`, "
         "`theme_contrast_report`, `revoke_consent`, `theme_resolved_sounds` and "
         "`theme_resolved_terminal` given their readers - the last two were a "
         "hardcoded copy of the theme's own values sitting where the resolver's "

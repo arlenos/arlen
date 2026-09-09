@@ -134,10 +134,16 @@ export const accentOverrides = writable<Record<string, string>>({});
 /// only decisions somebody made, so a row with no entry is on.
 export async function loadEnabled(): Promise<void> {
   if (!tauriAvailable) return;
-  const state = await invoke<Record<string, boolean>>("theme_toolkit_enabled");
-  const off: Record<string, boolean> = {};
-  for (const [id, on] of Object.entries(state)) if (!on) off[id] = true;
-  disabled.set(off);
+  try {
+    const state = await invoke<Record<string, boolean>>("theme_toolkit_enabled");
+    const off: Record<string, boolean> = {};
+    for (const [id, on] of Object.entries(state)) if (!on) off[id] = true;
+    disabled.set(off);
+  } catch {
+    // Nothing readable. Leave the store rather than claim every toolkit is on,
+    // which is the answer a switch would then render as fact - the same rule the
+    // colour and system readers follow.
+  }
 }
 
 /// Read the per-toolkit accents the theme file holds. Both GTK rows report the
@@ -145,7 +151,12 @@ export async function loadEnabled(): Promise<void> {
 /// stylesheets are generated from it.
 export async function loadOverrides(): Promise<void> {
   if (!tauriAvailable) return;
-  accentOverrides.set(await invoke<Record<string, string>>("theme_toolkit_overrides"));
+  try {
+    accentOverrides.set(await invoke<Record<string, string>>("theme_toolkit_overrides"));
+  } catch {
+    // Same rule: an unreadable file is not evidence that no toolkit has its own
+    // accent, and the reset affordance beside the row would render it as one.
+  }
 }
 
 /// Whether the theme is applied to a toolkit.
