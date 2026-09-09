@@ -42,9 +42,20 @@
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: function () {} };
 })();
 
-// Drive it: press Uninstall, then confirm. By the button's own words, because
-// neither carries a test id and the catalogue is German here - which is also
-// what the EXPECT line reads.
+// Drive it: press Uninstall, then confirm.
+//
+// THE OPENER IS STILL FOUND BY ITS WORDS and the confirm is not, and the
+// difference is deliberate. There is exactly one button on this page reading
+// `Deinstallieren` and nothing structural to tell it from the rest; the dialog's
+// confirm, on the other hand, is the last button inside the kit's confirm dialog
+// (`confirm-dialog.svelte`: cancel then confirm, both inside
+// `[aria-labelledby=confirm-dialog-title]`).
+//
+// It used to look for `Entfernen` there, and that stopped matching when the
+// label became `s.priv.remove` - "Widerrufen" in German - so the fixture pressed
+// Uninstall and never confirmed. Silently, because the tool that would have said
+// so was refusing every fixture in the tree until 10 September. A gesture keyed
+// on a translated string breaks every time the copy improves.
 (function () {
   function byText(words) {
     var all = document.querySelectorAll("button");
@@ -60,8 +71,9 @@
       var open = byText("Deinstallieren");
       if (open) { open.click(); stage = 1; }
     } else if (stage === 1) {
-      var confirm = byText("Entfernen");
-      if (confirm) { confirm.click(); return; }
+      var dialog = document.querySelector('[aria-labelledby="confirm-dialog-title"]');
+      var buttons = dialog ? dialog.querySelectorAll("button") : [];
+      if (buttons.length) { buttons[buttons.length - 1].click(); return; }
     }
     if (tries++ < 90) setTimeout(tick, 100);
   }
