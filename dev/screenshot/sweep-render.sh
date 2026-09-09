@@ -279,6 +279,40 @@ for width in $widths; do
     *) url="$base$path?locale=$locale" ;;
   esac
   clean=1
+  # A HOST ROW HAS TO REACH ITS STATE FIRST, and until 10 September this path did
+  # not ask. `probe-host.sh` has checked it since the day `files-refuses-op`
+  # dispatched `contextmenu` at an ancestor, opened no menu, refused nothing, and
+  # answered clean for weeks - but the sweep runs host rows through its own
+  # branch, which only ran the probes. A fixture that stops reaching its state
+  # renders the ordinary page, and four probes come back empty, and the row reads
+  # `ok`.
+  #
+  # ONLY IN GERMAN, because that is what the fixtures declare: every `// EXPECT:`
+  # in `hosts/` is the German sentence. In an English run there is nothing to
+  # compare against and the check is skipped rather than guessed - so `de` is the
+  # run that verifies its fixtures and `en` is the run that does not, which is
+  # worth knowing before reading an `en` sweep as proof.
+  if [ -n "$host" ] && [ "$locale" = "de" ]; then
+    want="$(sed -n 's|^// EXPECT: *||p' "$here/hosts/$host.js" | head -1)"
+    if [ -z "$want" ]; then
+      echo "  FAIL $spec@@$host declares no '// EXPECT: <text>' line"
+      fail=1
+      continue
+    fi
+    seen="$("$here/headless.sh" --url "$url" --out "$shot" --width "$width" \
+      --host-script "$here/hosts/$host.js" --probe-file "$here/lib/host-state.js" \
+      ${open:+--open "$open"} 2>/dev/null | grep -v '^wrote ' | tail -1)"
+    case "$seen" in
+      *"$want"*) ;;
+      *)
+        echo "  FAIL $spec@@$host never reached its state; it says it should show:"
+        echo "       $want"
+        echo "       the page read: $(printf '%s' "$seen" | head -c 200)"
+        fail=1
+        continue
+        ;;
+    esac
+  fi
   # The host rows get the container-ring probe as well; a route walk has nothing
   # focused for it to read.
   row_probes="$probes"
