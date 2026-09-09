@@ -90,6 +90,30 @@ say "with the service running it stops saying that" \
 say "and the app is still a clock rather than a blank window" \
   "$(printf '%s' "$withd" | grep -q "Alarms|Timers|Focus|Stopwatch|World" && echo 1 || echo 0)" "$withd"
 
-rm -rf "$run" "$run2" "$probe"
-[ "$fail" = 0 ] && echo "the clock knows whether anything is keeping its time"
+# GERMAN. Every sentence in this window is one the app writes about itself - which
+# service is missing, that alarms do not wake a sleeping machine, what adding one
+# gets you - and that is the prose that gets written once in English. Six apps
+# have had a defect only the German render showed. `dev/screenshot/README.md` has
+# the recipe and the two traps; the release binary reads `locale.toml`, since the
+# `?locale=` hook is compiled out.
+run3="$(mktemp -d)"
+mkdir -p "$run3/config/arlen"
+printf '[locale]\nui = "de"\n' > "$run3/config/arlen/locale.toml"
+de=$(env XDG_STATE_HOME="$run3/state" XDG_DATA_HOME="$run3/data" XDG_CONFIG_HOME="$run3/config" \
+  XDG_RUNTIME_DIR="$run3" HOME="$run3" \
+  dbus-run-session -- env SHOOT_INJECT="$probe" \
+  "$here/shoot-app.sh" "$app" "$here/out/clock-de.png" 2>&1 | sed -n 's/^inject result: //p')
+
+# The tab strip is the app's own vocabulary and the first thing a reader meets.
+say "the five faces are named in German" \
+  "$(printf '%s' "$de" | grep -qE "Wecker|Kurzzeit|Fokus|Stoppuhr|Welt" \
+     && ! printf '%s' "$de" | grep -q "Stopwatch" && echo 1 || echo 0)" "$de"
+# And the sentence under them. Matched on a noun rather than a verb phrase:
+# German splits the verb, so "läuft nicht" is not what a correct window says.
+say "and the missing service is named in German too" \
+  "$(printf '%s' "$de" | grep -qE "Uhrendienst|Weckdienst|Dienst" \
+     && ! printf '%s' "$de" | grep -q "clock service is not running" && echo 1 || echo 0)" "$de"
+
+rm -rf "$run" "$run2" "$run3" "$probe"
+[ "$fail" = 0 ] && echo "the clock knows whether anything is keeping its time, and says so in the reader's language"
 exit "$fail"
