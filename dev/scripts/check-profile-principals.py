@@ -31,7 +31,7 @@ import importlib.util
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[2]
 PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
 SIBLING = ROOT / "dev/scripts/check-admitted-ids-exist.py"
 

@@ -35,7 +35,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 BROKER = ROOT / "daemons/config-broker/src/state.rs"
 SETTINGS = ROOT / "apps/settings/src-tauri/src/commands/config.rs"
 
@@ -87,6 +87,18 @@ OWNED = {
 
 
 def main() -> int:
+    # Both sources are single named files, so a tree without them is a scan
+    # pointed at the wrong place - not a machine whose defaults disagree. Said
+    # here rather than left to a read_text traceback, which exits non-zero for
+    # the right reason while telling the reader the wrong thing.
+    for named in (BROKER, SETTINGS):
+        if not named.is_file():
+            print(
+                f"check-master-switch-defaults: nothing to read at {named}, "
+                "so the scan is pointed wrong",
+                file=sys.stderr,
+            )
+            return 2
     shipped, default = broker_shipped(), default_ai()
     bad = []
     for name, floor in OWNED.items():

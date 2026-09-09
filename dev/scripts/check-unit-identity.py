@@ -31,7 +31,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 UNITS = ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/system"
 USER_UNITS = ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/user"
 RESOLVER = ROOT / "sdk/permissions/src/unit_identity.rs"
