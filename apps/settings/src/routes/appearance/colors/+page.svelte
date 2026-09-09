@@ -22,7 +22,7 @@
     CollapsibleTrigger,
     CollapsibleContent,
   } from "@arlen/ui-kit/components/ui/collapsible";
-  import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
   import {
     COLOR_ROLES,
@@ -93,9 +93,9 @@
 
       <Section label={$t("s.col.section")}>
         {#each common as role (role.key)}
-          <OverrideRow
+          <Row
             label={$t(role.label)}
-            hint={$t(role.hint)}
+            description={$t(role.hint)}
             overridden={isOverridden($overrides, role.key)}
             onreset={() => resetColorOverride(role.key)}
             id={`color-${role.key}`}
@@ -103,7 +103,7 @@
             {#snippet control()}
               {@render colorControl(role)}
             {/snippet}
-          </OverrideRow>
+          </Row>
         {/each}
       </Section>
 
@@ -115,9 +115,9 @@
         <CollapsibleContent>
           <Section>
             {#each full as role (role.key)}
-              <OverrideRow
+              <Row
                 label={$t(role.label)}
-                hint={$t(role.hint)}
+                description={$t(role.hint)}
                 overridden={isOverridden($overrides, role.key)}
                 onreset={() => resetColorOverride(role.key)}
                 id={`color-${role.key}`}
@@ -125,7 +125,7 @@
                 {#snippet control()}
                   {@render colorControl(role)}
                 {/snippet}
-              </OverrideRow>
+              </Row>
             {/each}
           </Section>
         </CollapsibleContent>
@@ -256,7 +256,7 @@
     position: relative;
     width: 1.5rem;
     height: 1.5rem;
-    border-radius: var(--radius-button, 6px);
+    border-radius: var(--radius-button);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
     overflow: hidden;
   }
@@ -279,7 +279,7 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: var(--text-xs);
     padding: 0.3125rem 0.5rem;
-    border-radius: var(--radius-input, 8px);
+    border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
     color: var(--foreground);

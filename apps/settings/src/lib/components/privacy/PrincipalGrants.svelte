@@ -8,6 +8,8 @@
   /// `showHead` off drops the identity row where the page above already names
   /// the app.
   import { ChevronRight } from "lucide-svelte";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { sensing } from "$lib/stores/sensing";
   import { familyGroups, type Principal, type ScopeLine } from "$lib/stores/grants";
   import { familyIcon } from "./familyIcons";
@@ -60,15 +62,11 @@
         <span class="object" class:dim={line.own}>
           {line.object}
           {#if line.detail.length > 0}
-            <button
-              type="button"
-              class="expand"
-              class:open={expanded.has(line.key)}
-              aria-label={$t("s.priv.showDetail")}
-              onclick={() => toggle(line.key)}
-            >
-              <ChevronRight size={13} strokeWidth={2} />
-            </button>
+            <span class="expand" class:open={expanded.has(line.key)}>
+              <IconAction label={$t("s.priv.showDetail")} size="compact" active={expanded.has(line.key)} onclick={() => toggle(line.key)}>
+                <ChevronRight size={13} strokeWidth={2} />
+              </IconAction>
+            </span>
           {/if}
         </span>
         <span class="prov" class:dim={line.own}>{$t(line.provenance.id, line.provenance.params)}</span>
@@ -83,14 +81,15 @@
                per-line "Required" marker would just repeat it down the column. -->
           <span class="remove-off"></span>
         {:else if line.revoke.enabled}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             class="remove"
             aria-label={$t("s.priv.removeLineAria", { what: line.text })}
             onclick={() => onRemoveScope(principal.label, line)}
           >
             {$t("s.priv.remove")}
-          </button>
+          </Button>
         {:else}
           <span class="remove-off">{revokeLabel(line)}</span>
         {/if}
@@ -114,7 +113,7 @@
       {#if !principal.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
       <span class="p-spacer"></span>
       {#if onRemoveAll}
-        <button type="button" class="remove" onclick={() => onRemoveAll?.(principal)}>{$t("s.priv.removeAll")}</button>
+        <Button variant="ghost" size="xs" class="remove" onclick={() => onRemoveAll?.(principal)}>{$t("s.priv.removeAll")}</Button>
       {/if}
     </div>
   {/if}
@@ -270,26 +269,10 @@
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 
-  /* "Remove" is quiet by default and firms up on hover; a calm tidy action, not
-     an alarm. */
-  .remove {
+  /* Remove sits at the end of its line; the kit button carries its own look. */
+  :global(.remove) {
     justify-self: end;
     flex-shrink: 0;
-    border: none;
-    background: transparent;
-    padding: 0.125rem 0.25rem;
-    font-size: var(--text-xs);
-    font-weight: 500;
-    /* The secondary token, not a 45% fade. THIS is the Remove the privacy page
-       actually renders - the page has a `.remove` of its own and I corrected
-       that one first, matching on the class name instead of checking which file
-       put the element there. Twenty-one of them, each the only way to take a
-       permission back. */
-    color: var(--color-fg-secondary, #a1a1aa);
-    transition: color var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  .remove:hover {
-    color: var(--color-error, #dc2626);
   }
   /* A stated reason where a Remove cannot be: required, system-managed, or a
      reach without an exact revoke descriptor yet. Quiet, not an action. */
@@ -304,20 +287,7 @@
 
   .expand {
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.125rem;
-    height: 1.125rem;
-    border: none;
-    border-radius: var(--radius-chip, 4px);
-    background: transparent;
-    color: var(--color-fg-secondary, #a1a1aa);
-    transition:
-      color var(--duration-micro, 100ms) var(--ease-out, ease),
-      transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  .expand:hover {
-    color: var(--foreground);
+    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .expand.open {
     transform: rotate(90deg);

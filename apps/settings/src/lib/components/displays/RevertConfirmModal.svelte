@@ -287,25 +287,25 @@
     height: 4px;
     appearance: none;
     border: none;
-    border-radius: 2px;
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--color-fg-app) 10%, transparent);
     overflow: hidden;
   }
 
   .bar::-webkit-progress-bar {
     background: color-mix(in srgb, var(--color-fg-app) 10%, transparent);
-    border-radius: 2px;
+    border-radius: var(--radius-chip);
   }
 
   .bar::-webkit-progress-value {
     background: var(--color-accent);
-    border-radius: 2px;
+    border-radius: var(--radius-chip);
     transition: width 200ms linear;
   }
 
   .bar::-moz-progress-bar {
     background: var(--color-accent);
-    border-radius: 2px;
+    border-radius: var(--radius-chip);
   }
 
   .error {

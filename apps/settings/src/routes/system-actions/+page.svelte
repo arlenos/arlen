@@ -22,7 +22,7 @@
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
-  import { CommandStringEditor } from "$lib/components/ui/command-string-editor";
+  import CommandStringEditor from "$lib/components/system-actions/CommandStringEditor.svelte";
   import {
     compositor,
     SYSTEM_ACTIONS,
@@ -210,6 +210,6 @@
     font-size: 0.7rem;
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
     padding: 0.1rem 0.35rem;
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
   }
 </style>

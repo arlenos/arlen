@@ -140,7 +140,7 @@
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
     padding: 0 8px;
-    border-radius: var(--radius-full, 9999px);
+    border-radius: var(--radius-full);
     line-height: 1.7;
     font-variant-numeric: tabular-nums;
   }

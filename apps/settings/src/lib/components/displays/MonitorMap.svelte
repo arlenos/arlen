@@ -307,7 +307,7 @@
   .empty code {
     background: color-mix(in srgb, var(--color-fg-app) 10%, transparent);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-chip);
     font-family: ui-monospace, monospace;
     font-size: 0.8em;
   }

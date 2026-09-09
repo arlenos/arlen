@@ -16,7 +16,6 @@
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
   import {
     overrides,
     effective,
@@ -157,9 +156,9 @@
     <Section label={$t("s.sys.allSounds")} class="span-full">
       {#each SOUND_EVENTS as ev (ev.key)}
         {@const silenced = eventSilenced(cfg, ev.key)}
-        <OverrideRow
+        <Row
           label={$t(ev.label)}
-          hint={$t(ev.hint)}
+          description={$t(ev.hint)}
           overridden={isOverridden($overrides, ev.key)}
           onreset={() => resetSys(ev.key)}
           id={`sound-${ev.key}`}
@@ -202,7 +201,7 @@
               {/if}
             </span>
           {/snippet}
-        </OverrideRow>
+        </Row>
       {/each}
     </Section>
   </SectionGrid>
@@ -246,7 +245,7 @@
     width: 24px;
     height: 24px;
     border: 1px solid var(--color-border-default, #2a2a2a);
-    border-radius: 6px;
+    border-radius: var(--radius-input);
     background: transparent;
     color: var(--color-fg-secondary, #a3a3a3);
   }

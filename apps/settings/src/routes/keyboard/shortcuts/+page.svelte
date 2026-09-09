@@ -270,11 +270,11 @@
     <Button variant="outline" data-action="add-custom" onclick={() => (addOpen = true)}>
       <Plus class="me-1 h-4 w-4" /> {$t("s.sc.addCustom")}
     </Button>
-    <Button variant="ghost" data-action="reset-all" onclick={() => (pendingReset = "all")}>
+    <Button variant="outline" size="sm" data-action="reset-all" onclick={() => (pendingReset = "all")}>
       {$t("s.sc.resetAll")}
     </Button>
     <Button
-      variant="ghost"
+      variant="outline" size="sm"
       data-action="use-defaults"
       onclick={() => (pendingReset = "builtin")}
       title={$t("s.sc.useDefaultsHint")}
@@ -282,7 +282,7 @@
       {$t("s.sc.useDefaults")}
     </Button>
     <Button
-      variant="ghost"
+      variant="outline" size="sm"
       onclick={() => (pendingReset = "modules")}
       title={$t("s.sc.resetModulesHint")}
     >

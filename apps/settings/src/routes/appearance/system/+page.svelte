@@ -16,7 +16,7 @@
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import { onMount } from "svelte";
   import {
     overrides,
@@ -77,9 +77,9 @@
     <div class="editor span-full">
     <div class="controls">
       <Section label={$t("s.sys.cursor")}>
-        <OverrideRow
+        <Row
           label={$t("s.sys.theme")}
-          hint={$t("s.sys.cursorThemeHint")}
+          description={$t("s.sys.cursorThemeHint")}
           overridden={isOverridden($overrides, "cursorTheme")}
           onreset={() => resetSys("cursorTheme")}
           id="sys-cursorTheme"
@@ -101,10 +101,10 @@
               <PopoverSelect value={String($effective.cursorTheme)} options={sysOptions(cursors, $t)} ariaLabel={$t("s.sys.cursorTheme")} onchange={(v) => setSys("cursorTheme", v)} />
             {/if}
           {/snippet}
-        </OverrideRow>
-        <OverrideRow
+        </Row>
+        <Row
           label={$t("s.sys.size")}
-          hint={$t("s.sys.sizeHint")}
+          description={$t("s.sys.sizeHint")}
           overridden={isOverridden($overrides, "cursorSize")}
           onreset={() => resetSys("cursorSize")}
           id="sys-cursorSize"
@@ -112,13 +112,13 @@
           {#snippet control()}
             <ValueSlider value={cursorSize} min={16} max={48} step={2} unit="px" ariaLabel={$t("s.sys.cursorSize")} onchange={(v) => setSys("cursorSize", v)} />
           {/snippet}
-        </OverrideRow>
+        </Row>
       </Section>
 
       <Section label={$t("s.sys.icons")}>
-        <OverrideRow
+        <Row
           label={$t("s.sys.theme")}
-          hint={$t("s.sys.iconHint")}
+          description={$t("s.sys.iconHint")}
           overridden={isOverridden($overrides, "iconTheme")}
           onreset={() => resetSys("iconTheme")}
           id="sys-iconTheme"
@@ -135,29 +135,31 @@
               <PopoverSelect value={iconTheme} options={sysOptions(icons, $t)} ariaLabel={$t("s.sys.iconTheme")} onchange={(v) => setSys("iconTheme", v)} />
             {/if}
           {/snippet}
-        </OverrideRow>
+        </Row>
       </Section>
 
       <Section label={$t("s.sys.terminal")}>
         <div class="term-editor">
           <div class="term-grid">
             {#each ANSI_META as a (a.key)}
-              <label
-                class="ts-swatch"
-                class:overridden={isOverridden($overrides, a.key)}
-                style={`background:${$effective[a.key]}`}
-                title={$t(a.label)}
-              >
-                <input type="color" value={String($effective[a.key])} oninput={(e) => setSys(a.key, e.currentTarget.value)} aria-label={$t(a.label)} />
+              <label class="ts-cell">
+                <span
+                  class="ts-swatch"
+                  class:overridden={isOverridden($overrides, a.key)}
+                  style={`background:${$effective[a.key]}`}
+                >
+                  <input type="color" value={String($effective[a.key])} oninput={(e) => setSys(a.key, e.currentTarget.value)} aria-label={$t(a.label)} />
+                </span>
+                <span class="ts-name">{$t(a.label)}</span>
               </label>
             {/each}
           </div>
           <div class="term-fgbg">
-            <label class="ts-swatch wide" class:overridden={isOverridden($overrides, "termFg")} style={`background:${termFg}`} title={$t("s.sys.foreground")}>
+            <label class="ts-swatch wide" class:overridden={isOverridden($overrides, "termFg")} style={`background:${termFg}`}>
               <input type="color" value={termFg} oninput={(e) => setSys("termFg", e.currentTarget.value)} aria-label={$t("s.sys.termFg")} />
             </label>
             <span class="fgbg-label">{$t("s.sys.text")}</span>
-            <label class="ts-swatch wide" class:overridden={isOverridden($overrides, "termBg")} style={`background:${termBg}`} title={$t("s.sys.background")}>
+            <label class="ts-swatch wide" class:overridden={isOverridden($overrides, "termBg")} style={`background:${termBg}`}>
               <input type="color" value={termBg} oninput={(e) => setSys("termBg", e.currentTarget.value)} aria-label={$t("s.sys.termBg")} />
             </label>
             <span class="fgbg-label">{$t("s.sys.background")}</span>
@@ -279,12 +281,29 @@
     display: grid;
     grid-template-columns: repeat(8, 1fr);
     gap: 0.375rem;
-    max-width: 22rem;
+    max-width: 34rem;
+  }
+  .ts-cell > .ts-swatch {
+    width: 100%;
+    aspect-ratio: 1;
+  }
+  .ts-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+  .ts-name {
+    font-size: var(--text-2xs);
+    line-height: 1.2;
+    text-align: center;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .ts-swatch {
     position: relative;
     height: 1.75rem;
-    border-radius: var(--radius-button, 6px);
+    border-radius: var(--radius-button);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
     overflow: hidden;
   }
@@ -337,7 +356,7 @@
     flex-direction: column;
     gap: 0.25rem;
     padding: 0.75rem;
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: var(--text-xs);
@@ -351,7 +370,7 @@
   .tp-swatchrow span {
     flex: 1;
     height: 0.5rem;
-    border-radius: 2px;
+    border-radius: var(--radius-chip);
   }
 
   .sys-indicators {
@@ -359,7 +378,7 @@
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
@@ -383,7 +402,7 @@
     justify-content: center;
     width: 1.75rem;
     height: 1.75rem;
-    border-radius: var(--radius-button, 6px);
+    border-radius: var(--radius-button);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }

@@ -22,7 +22,7 @@
     CollapsibleTrigger,
     CollapsibleContent,
   } from "@arlen/ui-kit/components/ui/collapsible";
-  import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
   import { effective as colorsEffective } from "$lib/stores/themeColors";
   import {
@@ -71,9 +71,9 @@
     <div class="editor span-full">
     <div class="controls">
       <Section label={$t("s.md.motion")}>
-        <OverrideRow
+        <Row
           label={$t("s.md.reduce")}
-          hint={$t("s.md.reduceHint")}
+          description={$t("s.md.reduceHint")}
           overridden={isOverridden($overrides, "reduceMotion")}
           onreset={() => resetMd("reduceMotion")}
           id="md-reduceMotion"
@@ -81,10 +81,10 @@
           {#snippet control()}
             <Switch value={reduce} ariaLabel={$t("s.md.reduceMotion")} onchange={(v) => setMd("reduceMotion", v)} />
           {/snippet}
-        </OverrideRow>
-        <OverrideRow
+        </Row>
+        <Row
           label={$t("s.md.speed")}
-          hint={$t("s.md.speedHint")}
+          description={$t("s.md.speedHint")}
           overridden={isOverridden($overrides, "durationNormal")}
           onreset={() => resetMd("durationNormal")}
           id="md-durationNormal"
@@ -100,16 +100,16 @@
               onchange={(v) => setMd("durationNormal", v)}
             />
           {/snippet}
-        </OverrideRow>
+        </Row>
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
             <ChevronRight size={15} strokeWidth={2} />
             {$t("s.md.allDurations")}
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <OverrideRow
+            <Row
               label={$t("s.md.fast")}
-              hint={$t("s.md.fastHint")}
+              description={$t("s.md.fastHint")}
               overridden={isOverridden($overrides, "durationFast")}
               onreset={() => resetMd("durationFast")}
               id="md-durationFast"
@@ -117,10 +117,10 @@
               {#snippet control()}
                 <ValueSlider value={Number($effective.durationFast)} min={40} max={300} step={20} unit="ms" ariaLabel={$t("s.md.fast")} onchange={(v) => setMd("durationFast", v)} />
               {/snippet}
-            </OverrideRow>
-            <OverrideRow
+            </Row>
+            <Row
               label={$t("s.md.slow")}
-              hint={$t("s.md.slowHint")}
+              description={$t("s.md.slowHint")}
               overridden={isOverridden($overrides, "durationSlow")}
               onreset={() => resetMd("durationSlow")}
               id="md-durationSlow"
@@ -128,12 +128,12 @@
               {#snippet control()}
                 <ValueSlider value={Number($effective.durationSlow)} min={200} max={800} step={20} unit="ms" ariaLabel={$t("s.md.slow")} onchange={(v) => setMd("durationSlow", v)} />
               {/snippet}
-            </OverrideRow>
+            </Row>
           </CollapsibleContent>
         </Collapsible>
-        <OverrideRow
+        <Row
           label={$t("s.md.easing")}
-          hint={$t("s.md.easingHint")}
+          description={$t("s.md.easingHint")}
           overridden={isOverridden($overrides, "easing")}
           onreset={() => resetMd("easing")}
           id="md-easing"
@@ -141,13 +141,13 @@
           {#snippet control()}
             <SegmentedControl value={easing} options={$easingPresets} ariaLabel={$t("s.md.easingAria")} onchange={(v) => setMd("easing", v)} />
           {/snippet}
-        </OverrideRow>
+        </Row>
       </Section>
 
       <Section label={$t("s.md.depth")}>
-        <OverrideRow
+        <Row
           label={$t("s.md.shadows")}
-          hint={$t("s.md.shadowsHint")}
+          description={$t("s.md.shadowsHint")}
           overridden={isOverridden($overrides, "shadow")}
           onreset={() => resetMd("shadow")}
           id="md-shadow"
@@ -155,10 +155,10 @@
           {#snippet control()}
             <SegmentedControl value={shadow} options={$shadowPresets} ariaLabel={$t("s.md.shadows")} onchange={(v) => setMd("shadow", v)} />
           {/snippet}
-        </OverrideRow>
-        <OverrideRow
+        </Row>
+        <Row
           label={$t("s.md.blur")}
-          hint={$t("s.md.blurHint")}
+          description={$t("s.md.blurHint")}
           overridden={isOverridden($overrides, "blurEnabled")}
           onreset={() => resetMd("blurEnabled")}
           id="md-blurEnabled"
@@ -166,7 +166,7 @@
           {#snippet control()}
             <Switch value={blur} ariaLabel={$t("s.md.blur")} onchange={(v) => setMd("blurEnabled", v)} />
           {/snippet}
-        </OverrideRow>
+        </Row>
       </Section>
     </div>
 
@@ -236,7 +236,7 @@
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   }
@@ -249,7 +249,7 @@
     display: block;
     height: 1.25rem;
     padding: 0;
-    border-radius: var(--radius-full, 9999px);
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
   }
   .ms-dot {
@@ -259,7 +259,7 @@
     display: block;
     width: 1.25rem;
     height: 1.25rem;
-    border-radius: var(--radius-full, 9999px);
+    border-radius: var(--radius-full);
     background: var(--color-accent, var(--foreground));
   }
 
@@ -269,7 +269,7 @@
     display: flex;
     justify-content: center;
     padding: 1.25rem 0.5rem;
-    border-radius: var(--radius-input, 8px);
+    border-radius: var(--radius-input);
     background: linear-gradient(
       120deg,
       color-mix(in srgb, var(--color-accent, var(--foreground)) 22%, transparent),
@@ -278,7 +278,7 @@
   }
   .ds-card {
     padding: 0.625rem 1.5rem;
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--foreground) 12%, transparent);
     color: var(--foreground);
     font-size: var(--text-xs);

@@ -11,7 +11,6 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import {
-    Check,
     Upload,
     Sparkles,
     Download,
@@ -31,8 +30,8 @@
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { SwatchGrid, Swatch } from "@arlen/ui-kit/components/ui/swatch-grid";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
-  import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
   import {
     themes,
     themesError,
@@ -139,34 +138,34 @@
     {#if $themeNotAppliedLive}
       <p class="note span-full" role="status">{$t("s.appr.themeNotAppliedLive")}</p>
     {/if}
-    <div class="grid span-full">
-      {#each $themes as theme (theme.id)}
-        {@const active = theme.id === $activeThemeId}
-        <button type="button" class="theme-card" class:active aria-pressed={active} onclick={() => setActiveTheme(theme.id)}>
-          <span class="preview" style={`background:${theme.swatch[0]}`} aria-hidden="true">
-            <span class="pv-window" style={`background:${theme.swatch[1]}`}>
-              <span class="pv-accent" style={`background:${theme.swatch[2]}`}></span>
-              <span class="pv-dots">
-                <span class="pv-dot" style={`background:${theme.swatch[4]}`}></span>
-                <span class="pv-dot" style={`background:${theme.swatch[3]}`}></span>
+    <div class="span-full">
+      <SwatchGrid min="11rem" label={$t("s.appr.theme")}>
+        {#each $themes as theme (theme.id)}
+          {@const active = theme.id === $activeThemeId}
+          <Swatch label={theme.name} {active} activeText={$t("s.appr.active")} onclick={() => setActiveTheme(theme.id)}>
+            {#snippet preview()}
+              <span class="pv" style={`background:${theme.swatch[0]}`}>
+                <span class="pv-window" style={`background:${theme.swatch[1]}`}>
+                  <span class="pv-accent" style={`background:${theme.swatch[2]}`}></span>
+                  <span class="pv-dots">
+                    <span class="pv-dot" style={`background:${theme.swatch[4]}`}></span>
+                    <span class="pv-dot" style={`background:${theme.swatch[3]}`}></span>
+                  </span>
+                </span>
               </span>
-            </span>
-          </span>
-          <span class="card-foot">
-            <span class="name">{theme.name}</span>
-            {#if active}<span class="active-mark"><Check size={13} strokeWidth={2.5} /> {$t("s.appr.active")}</span>{/if}
-          </span>
-        </button>
-      {/each}
+            {/snippet}
+          </Swatch>
+        {/each}
+      </SwatchGrid>
     </div>
     <div class="actions span-full">
-      <Button variant="ghost" class="justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground" onclick={() => installThemeFile()}>
+      <Button variant="outline" size="sm" onclick={() => installThemeFile()}>
         <Upload size={15} strokeWidth={1.75} /> {$t("s.appr.install")}
       </Button>
-      <Button variant="ghost" class="justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground" onclick={() => importScheme("base16")}>
+      <Button variant="outline" size="sm" onclick={() => importScheme("base16")}>
         <Sparkles size={15} strokeWidth={1.75} /> {$t("s.appr.import")}
       </Button>
-      <Button variant="ghost" class="justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground" onclick={() => exportTheme()}>
+      <Button variant="outline" size="sm" onclick={() => exportTheme()}>
         <Download size={15} strokeWidth={1.75} /> {$t("s.appr.export")}
       </Button>
       <!-- What the last one did. Nothing at all after a cancelled picker, which
@@ -184,7 +183,7 @@
     </div>
 
     <Section label={$t("s.appr.quick")} class="span-full">
-      <OverrideRow label={$t("s.appr.accent")} hint={$t("s.appr.accentHint")} overridden={isColOv($coloursOv, "accent")} onreset={() => resetColorOverride("accent")} id="quick-accent">
+      <Row label={$t("s.appr.accent")} description={$t("s.appr.accentHint")} overridden={isColOv($coloursOv, "accent")} onreset={() => resetColorOverride("accent")} id="quick-accent">
         {#snippet control()}
           <span class="cf">
             <label class="cf-swatch" style={`background:${accent}`} title={$t("s.appr.pickAccent")}>
@@ -192,17 +191,17 @@
             </label>
           </span>
         {/snippet}
-      </OverrideRow>
-      <OverrideRow label={$t("s.appr.round")} hint={$t("s.appr.roundHint")} overridden={isGeomOv($geomOv, "intensity")} onreset={() => resetGeom("intensity")} id="quick-roundness">
+      </Row>
+      <Row label={$t("s.appr.round")} description={$t("s.appr.roundHint")} overridden={isGeomOv($geomOv, "intensity")} onreset={() => resetGeom("intensity")} id="quick-roundness">
         {#snippet control()}
           <ValueSlider value={roundness} min={0} max={200} step={5} unit="%" ariaLabel={$t("s.appr.round")} onchange={(v) => setGeom("intensity", v / 100)} />
         {/snippet}
-      </OverrideRow>
-      <OverrideRow label={$t("s.appr.textSize")} hint={$t("s.appr.textSizeHint")} overridden={isTypoOv($typoOv, "sizeBase")} onreset={() => resetTypo("sizeBase")} id="quick-textsize">
+      </Row>
+      <Row label={$t("s.appr.textSize")} description={$t("s.appr.textSizeHint")} overridden={isTypoOv($typoOv, "sizeBase")} onreset={() => resetTypo("sizeBase")} id="quick-textsize">
         {#snippet control()}
           <ValueSlider value={textSize} min={12} max={18} step={1} unit="px" ariaLabel={$t("s.appr.textSize")} onchange={(v) => setTypo("sizeBase", v)} />
         {/snippet}
-      </OverrideRow>
+      </Row>
     </Section>
 
     <div class="cust-label span-full">{$t("s.appr.customise")}</div>
@@ -259,36 +258,7 @@
     padding: 0 0.25rem 0.25rem;
   }
 
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-    gap: 0.75rem;
-  }
-  .theme-card {
-    display: flex;
-    flex-direction: column;
-    padding: 0;
-    text-align: start;
-    border-radius: var(--radius-card, 12px);
-    border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
-    overflow: hidden;
-    transition:
-      border-color var(--duration-fast, 150ms) var(--ease-out, ease),
-      background var(--duration-fast, 150ms) var(--ease-out, ease);
-  }
-  .theme-card:hover {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-  }
-  .theme-card.active {
-    border-color: color-mix(in srgb, var(--color-accent, var(--foreground)) 70%, transparent);
-  }
-  .theme-card:focus-visible {
-    outline: 2px solid var(--color-accent, var(--foreground));
-    outline-offset: 2px;
-  }
-  .preview {
+  .pv {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -301,12 +271,13 @@
     width: 68%;
     height: 58%;
     padding: 0 0.5rem;
-    border-radius: var(--radius-input, 8px);
+    /* Inside the swatch's preview: the tile's inner radius (nested rule). */
+    border-radius: var(--swatch-inner);
   }
   .pv-accent {
     width: 2rem;
     height: 0.6rem;
-    border-radius: var(--radius-button, 6px);
+    border-radius: var(--radius-button);
   }
   .pv-dots {
     display: inline-flex;
@@ -315,28 +286,8 @@
   .pv-dot {
     width: 0.4rem;
     height: 0.4rem;
-    border-radius: var(--radius-full, 9999px);
+    border-radius: var(--radius-full);
     opacity: 0.85;
-  }
-  .card-foot {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.625rem 0.75rem;
-  }
-  .name {
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--foreground);
-  }
-  .active-mark {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--color-success, #16a34a);
   }
   .actions {
     display: flex;
@@ -366,7 +317,7 @@
     position: relative;
     width: 1.75rem;
     height: 1.75rem;
-    border-radius: var(--radius-button, 6px);
+    border-radius: var(--radius-button);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
     overflow: hidden;
   }

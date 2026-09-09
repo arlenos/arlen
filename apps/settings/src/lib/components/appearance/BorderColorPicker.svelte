@@ -136,7 +136,7 @@
   .pill-dot {
     width: 12px;
     height: 12px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset;
   }
 
