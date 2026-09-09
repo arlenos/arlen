@@ -1045,6 +1045,17 @@ impl UnixGraphClient {
     /// Fetch one meeting note's list metadata + action items by id, via the
     /// daemon's `0x0C` meeting read op. `None` for an unknown id. Same admission as
     /// [`meetings_list`](Self::meetings_list).
+    ///
+    /// **Nothing calls it, and the app that looks like it should does not need
+    /// to.** The meetings app holds the note document itself - transcript, action
+    /// items and all, in `note_store.rs` - so it reads a detail locally and uses
+    /// only [`meetings_list`](Self::meetings_list) from here. This op exists for a
+    /// reader that is NOT the meetings app: something answering "what did we
+    /// decide in the sync" without opening the app, which is the AI engine's
+    /// shape and is not built. `MeetingDetail` has the same two mentions and no
+    /// third. Found by sweeping this client's methods against their callers on
+    /// 9 September; recorded rather than deleted, because whether a cross-app
+    /// meeting read stays is a design call.
     pub async fn meeting_get(&self, id: &str) -> Result<Option<MeetingDetail>, QueryError> {
         let json = serde_json::to_vec(&serde_json::json!({ "op": "get", "id": id }))
             .map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
