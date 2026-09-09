@@ -216,11 +216,10 @@ pub async fn extensions_observed(
     // writes, with the bridge named in `node_types`. One sentence for both said
     // "Shell modules are not audited" over a bridge, which is false.
     let Some(actor) = audit_actor(target) else {
-        let reason = match target.kind {
-            ExtensionKind::Bridge => NotMeasuredReason::NotAttributed,
-            _ => NotMeasuredReason::ActorUnknown,
-        };
-        return Ok(all_unmeasured(&target.capabilities, reason));
+        return Ok(all_unmeasured(
+            &target.capabilities,
+            not_measured_reason(target.kind),
+        ));
     };
     let report = arlen_monitor_reads::access::app_access(
         &ReadClient::new(read_socket_path()),
@@ -228,6 +227,20 @@ pub async fn extensions_observed(
     )
     .await;
     Ok(observed_vs_declared(&target.capabilities, &report, &actor))
+}
+
+/// Why an extension with no actor is unmeasured, which differs by kind.
+///
+/// A module is not audited at all - `modulesd` takes no audit dependency, and the
+/// one audited path names the AI as actor with the module as subject. A bridge IS
+/// audited: the knowledge daemon records every entity write fail-closed before the
+/// row lands, under its own attested name with the bridge in `node_types`. Sharing
+/// one reason put "Shell modules are not audited" on bridge rows.
+fn not_measured_reason(kind: ExtensionKind) -> NotMeasuredReason {
+    match kind {
+        ExtensionKind::Bridge => NotMeasuredReason::NotAttributed,
+        _ => NotMeasuredReason::ActorUnknown,
+    }
 }
 
 /// How many recent audit entries to aggregate over. A window rather than all of
@@ -428,6 +441,54 @@ fn load_profile(app_id: &str) -> Option<arlen_permissions::PermissionProfile> {
     // overlay the system profile overrides. What may be revoked has to be computed
     // from the profile that is actually in force.
     arlen_permissions::load_profile(app_id).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arlen_extensions::Health;
+
+    fn extension(kind: ExtensionKind) -> Extension {
+        Extension {
+            id: "x".to_string(),
+            name: "X".to_string(),
+            kind,
+            capabilities: vec!["network".to_string()],
+            provenance: None,
+            health: Health::Unknown,
+        }
+    }
+
+    /// An app audits under its own id, so the aggregation can find it.
+    #[test]
+    fn an_app_is_asked_for_by_its_own_id() {
+        assert_eq!(audit_actor(&extension(ExtensionKind::App)), Some("x".to_string()));
+    }
+
+    /// Neither of the other two has an actor, and they must not: the ledger keys
+    /// on the peer that SUBMITTED an entry, and asking for a name no entry
+    /// carries comes back empty, which reads as an extension that did nothing.
+    #[test]
+    fn a_module_and_a_bridge_have_no_actor_to_ask_for() {
+        assert_eq!(audit_actor(&extension(ExtensionKind::Module)), None);
+        assert_eq!(audit_actor(&extension(ExtensionKind::Bridge)), None);
+    }
+
+    /// And they say DIFFERENT things about why, which is the whole point of the
+    /// split: "not audited" is true of a module and false of a bridge, whose
+    /// writes the knowledge daemon records under its own name. One sentence for
+    /// both put a false one on every bridge row for a day.
+    #[test]
+    fn a_bridge_is_unattributed_where_a_module_is_unaudited() {
+        assert_eq!(
+            not_measured_reason(ExtensionKind::Bridge),
+            NotMeasuredReason::NotAttributed
+        );
+        assert_eq!(
+            not_measured_reason(ExtensionKind::Module),
+            NotMeasuredReason::ActorUnknown
+        );
+    }
 }
 
 /// The knowledge daemon's socket, matching its bind.
