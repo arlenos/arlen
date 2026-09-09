@@ -17,6 +17,18 @@
 	data-slot="command-input-wrapper"
 >
 	<Search class="size-4 shrink-0" style="color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent);" />
+	<!-- NO FOCUS RING, and it is the one input in the kit without one, so here is
+	     why before somebody adds it or reports it again. `Input` rings on
+	     `:focus-visible`; this one is `outline-hidden` like upstream shadcn's,
+	     because a palette opens WITH this focused and nothing else in it is
+	     focusable until the arrow keys move a cursor into the list - the ring
+	     would be a permanent frame round the only place the keyboard can be.
+
+	     `no-focus-ring.js` reports it, on the terminal's history and quick-connect
+	     palettes at every width. The probe is not wrong: it cannot know that this
+	     input is the whole widget. Left as it is rather than silenced, and this
+	     comment is the answer to the finding. If the house rule turns out to be
+	     that every input rings, this is the single place to change. -->
 	<CommandPrimitive.Input
 		bind:ref
 		bind:value
