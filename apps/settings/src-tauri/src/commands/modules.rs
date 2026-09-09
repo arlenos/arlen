@@ -370,7 +370,16 @@ pub fn modules_list() -> Vec<ModuleSummary> {
 /// unreachable. A fallback would be the bypass this exists to close, and with
 /// the runtime down the toggle would not take effect anyway.
 ///
-/// Returns `true` so the frontend can show a "restart required" banner.
+/// Returns `true`, which the surface currently reads as "show a restart-required
+/// banner". That claim does not hold any more and the value is kept only so the
+/// change lands with the surface rather than under it. Nothing needs a restart:
+/// modulesd flips `enabled` in memory, revokes every live iframe nonce, and
+/// starts or stops the module's MCP server in the same call
+/// (`manager.rs::handle_set_enabled`); waypointer dispatch filters on `enabled`
+/// per keystroke (`handle_search_all`), so a disabled module stops answering on
+/// the next one; and the shell's two module consumers - the top-bar indicator
+/// slot and the waypointer's iframe workers - both re-pull on a 30-second tick.
+/// So the worst case is half a minute, not a session.
 #[tauri::command]
 pub async fn modules_set_enabled(id: String, enabled: bool) -> Result<bool, String> {
     use modulesd_proto::{client, Request, Response};
