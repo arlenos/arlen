@@ -11,6 +11,7 @@
   /// Every empty-looking state is a DIFFERENT state and says so; a page that
   /// will not render says so where the page would be, with its words below.
   import { onMount } from "svelte";
+  import { publishPresence } from "$lib/graphInput";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import {
@@ -228,9 +229,26 @@
     else if (a === "go.last" && $doc) goTo($doc.pages);
   });
 
+  /// What this window is reading, while it is reading it. Only this window knows
+  /// a path was being READ rather than opened by something, and how long the
+  /// document is - a hundred-page report and a one-page receipt are the same
+  /// `openat` to a kernel probe.
+  $effect(() => {
+    void publishPresence($doc?.path ?? null, $doc?.pages ?? 0);
+  });
+
   onMount(() => {
     void openLaunched();
     void initAppMenu();
+    // PRESENCE IS EPHEMERAL, so somebody has to end it: the SDK emits and leaves
+    // the WHEN to the app, and for a reader it is the window losing focus.
+    void getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        void publishPresence(focused ? ($doc?.path ?? null) : null, $doc?.pages ?? 0);
+      })
+      .catch(() => {
+        // No toplevel (vite): nothing to lose focus, so nothing to clear.
+      });
   });
 
   const title = $derived($doc ? $doc.path.split("/").pop() : null);

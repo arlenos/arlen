@@ -24,7 +24,7 @@
 # `app.presence.clear` is not asserted here - what is asserted is that the app
 # declares `auto_clear=on-blur`, which is the part this window owns.
 #
-# Run: dev/screenshot/drive-text-editor-graph.sh [path-to-arlen-text-editor] [path-to-arlen-viewers]
+# Run: dev/screenshot/drive-text-editor-graph.sh [text-editor] [viewers] [pdf]
 #
 # Build with `tauri build --no-bundle`; a plain `cargo build --release` leaves the
 # binary pointing at devUrl.
@@ -47,7 +47,11 @@ done
 require_fresh "$bus" "$root/daemons/event-bus/src" || exit 2
 require_fresh "$emit" "$root/dev/event-emit/src" || exit 2
 
-cleanup() { [ -n "$bus_pid" ] && kill "$bus_pid" 2>/dev/null; return 0; }
+cleanup() {
+  [ -n "$bus_pid" ] && kill "$bus_pid" 2>/dev/null
+  rm -f "$work.lock"
+  return 0
+}
 trap cleanup EXIT
 
 say() {
@@ -59,15 +63,21 @@ say() {
 # `sun_path`, so it cannot be a mktemp under a long checkout), which means a
 # second run wipes the first one's state and binds a bus at the same address -
 # and the two runs then read each other's events. That happened once and the
-# output was a confusing half-failure that looked like a product defect. A live
-# socket is the evidence somebody else is already here.
-if [ -S "$work/run/arlen/event-bus-producer.sock" ] && pgrep -f "$(basename "$0")" | grep -qv "^$$\$"; then
-  echo "another run of this drive is live (socket at $work/run/arlen); wait for it" >&2
+# output was a confusing half-failure that looked like a product defect.
+#
+# A PID IN A LOCK FILE, not the presence of the socket: the socket FILE outlives
+# the run (the trap kills the bus, the inode stays), so a stale one refused a
+# perfectly good run the first time this guard was written. The question is
+# whether a process is still here, and a pid answers it.
+lock="$work.lock"
+if [ -f "$lock" ] && kill -0 "$(cat "$lock" 2>/dev/null)" 2>/dev/null; then
+  echo "another run of this drive is live (pid $(cat "$lock")); wait for it" >&2
   exit 2
 fi
 
 rm -rf "$work"
 mkdir -p "$work/run/arlen" "$here/out"
+echo "$$" > "$lock"
 sample="$work/sample.rs"
 printf 'fn main() {\n    println!("before");\n}\n' > "$sample"
 
@@ -175,6 +185,62 @@ JS
     "$(printf '%s' "$vwatched" | grep -q 'presence.set.*"kind": "image"' && echo 1 || echo 0)" "$vwatched"
 else
   echo "  --   no viewers binary at $viewer, so its half was not driven"
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# THE PDF READER, which publishes presence and deliberately no timeline record.
+# The third verb through the same surface, and the one whose metadata the sensor
+# could never reach: a hundred-page report and a one-page receipt are the same
+# `openat` to a kernel probe, so the LENGTH is the assertion that matters here.
+reader="${3:-$root/target/release/arlen-pdf-app}"
+if [ -x "$reader" ]; then
+  doc="$work/three.pdf"
+  # A real three-page PDF, written as a literal rather than through a library so
+  # the file the reader opens is the file this script describes - the same reason
+  # `drive-pdf.sh` builds its own.
+  python3 - "$doc" <<'PYPDF'
+import sys
+pages = 3
+objs, page_ids = {}, []
+n = 4
+for _ in range(pages):
+    page_ids.append(n)
+    objs[n] = f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents {n+1} 0 R /Resources << /Font << /F1 3 0 R >> >> >>"
+    body = b"BT /F1 12 Tf 20 100 Td (page) Tj ET"
+    objs[n + 1] = f"<< /Length {len(body)} >>\nstream\n{body.decode()}\nendstream"
+    n += 2
+objs[1] = "<< /Type /Catalog /Pages 2 0 R >>"
+objs[2] = "<< /Type /Pages /Kids [" + " ".join(f"{i} 0 R" for i in page_ids) + f"] /Count {pages} >>"
+objs[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+out, offsets = b"%PDF-1.4\n", {}
+for k in sorted(objs):
+    offsets[k] = len(out)
+    out += f"{k} 0 obj\n{objs[k]}\nendobj\n".encode()
+start = len(out)
+out += f"xref\n0 {max(objs)+1}\n0000000000 65535 f \n".encode()
+for k in sorted(objs):
+    out += f"{offsets[k]:010d} 00000 n \n".encode()
+out += f"trailer\n<< /Size {max(objs)+1} /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n".encode()
+open(sys.argv[1], "wb").write(out)
+PYPDF
+
+  ARLEN_SESSION_ID=drive "$emit" --watch "app.presence." 25 > "$work/watch-pdf.log" 2>&1 &
+  pwatcher=$!
+  sleep 1
+  cat > "$work/p-pdf.js" <<'JS'
+await new Promise(r => setTimeout(r, 12000));
+return "held";
+JS
+  SHOOT_APP_ARGS="$doc" SHOOT_INJECT="$work/p-pdf.js"     SHOOT_APP_ENV="XDG_RUNTIME_DIR=$work/run;ARLEN_RUNTIME_DIR=$work/run;ARLEN_SESSION_ID=drive"     "$here/shoot-app.sh" "$reader" "$here/out/pdf-graph.png" > "$work/shoot-pdf.log" 2>&1
+  wait "$pwatcher"
+  pwatched=$(cat "$work/watch-pdf.log")
+
+  say "the reader says it is reading, a third verb through the same surface" \
+    "$(printf '%s' "$pwatched" | grep -q "^saw app.presence.set .*activity=reading" && echo 1 || echo 0)" "$pwatched"
+  say "and how long the document is, which no kernel probe can see" \
+    "$(printf '%s' "$pwatched" | grep -q 'presence.set.*"pages": "3"' && echo 1 || echo 0)" "$pwatched"
+else
+  echo "  --   no pdf binary at $reader, so its half was not driven"
 fi
 
 if [ "$fail" = 0 ]; then
