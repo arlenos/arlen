@@ -293,6 +293,16 @@ tints and the fast one does not. Asserting only the slow case would pass on a
 terminal that washes the whole screen every time somebody types `ls`, which is
 the failure that surface is one step away from at all times.
 
+**Give it a count when the window has to be generous.**
+`--watch <pattern> <seconds> <stop-after-n>` returns as soon as that many events
+have arrived, with the seconds as a ceiling rather than a schedule. It matters
+more than it sounds: under Xvfb plus WebKitWebDriver a page's timers run about
+six times slower than the clock, so a probe that waits twenty seconds waits two
+minutes outside, and a window sized by hand either expires mid-flight or costs
+its whole length. Three hand-sized windows were tried on the ambient drive and
+each one expired with the effect in the air - the bus log showed it received,
+dispatched, and the consumer gone in the same millisecond.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the

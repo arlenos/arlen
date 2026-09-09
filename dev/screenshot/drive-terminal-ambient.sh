@@ -24,6 +24,10 @@
 # driven through a real shell: the marks fire, the wait is honoured, and what
 # lands on the wire is a slow accent pulse under this app's id.
 #
+# IT TAKES ABOUT FOUR MINUTES. Most of that is the page's own timers under the
+# headless driver rather than anything this script waits for; see the watch
+# window's comment below.
+#
 # Run: dev/screenshot/drive-terminal-ambient.sh [path-to-arlen-terminal]
 #
 # Build with `tauri build --no-bundle`; the capability that admits `ambient_set`
@@ -78,7 +82,18 @@ for _ in $(seq 1 20); do [ -S "$producer" ] && break; sleep 0.5; done
 
 # Subscribe BEFORE the app starts: the bus fans out to whoever is registered when
 # an event arrives, so a watcher that registers late has already missed it.
-ARLEN_SESSION_ID=drive "$emit" --watch "app.ambient." 45 > "$work/watch.log" 2>&1 &
+# A GENEROUS CEILING AND A COUNT, rather than a window sized by guesswork. Under
+# Xvfb plus WebKitWebDriver this probe's twenty seconds of `setTimeout` waiting
+# takes about two MINUTES of wall clock - the page's timers are dilated by
+# roughly six - so the window has to cover the slow case. Three windows sized by
+# hand (45s, 120s, 300s) each expired with an effect in flight, and the bus log
+# showed the same shape every time: the event received, dispatched, and the
+# consumer gone in the same millisecond. A watcher that stops before the app has
+# done the thing reports a silent app, which is the most expensive kind of green.
+#
+# So: ten minutes as a ceiling, and stop at the two events this drive is about.
+# The run costs what it actually took rather than what the ceiling allows.
+ARLEN_SESSION_ID=drive "$emit" --watch "app.ambient." 600 2 > "$work/watch.log" 2>&1 &
 watcher=$!
 sleep 1
 
@@ -116,19 +131,19 @@ for (let i = 0; i < 40; i++) {
 }
 // Well past the wait, so a terminal that tinted for the fast one has already
 // said so on the wire before the slow one starts.
-await wait(7000);
+await wait(6500);
 
 type("sleep 8");
 enter();
 // Past the threshold and past the command, so the take-down is on the wire too.
-await wait(14000);
+await wait(12000);
 const text = rows().replace(/\s+/g, " ").trim();
 return JSON.stringify({ fast: (text.match(/fastmarker/g) ?? []).length, tail: text.slice(-120) });
 JS
 
 got=$(SHOOT_APP_ENV="XDG_RUNTIME_DIR=$work/run;ARLEN_RUNTIME_DIR=$work/run;ARLEN_SESSION_ID=drive" \
   SHOOT_INJECT="$work/probe.js" SHOOT_INJECT_SETTLE=3 \
-  "$here/shoot-app.sh" "$app" "$here/out/terminal-ambient.png" "" 45 2>&1 \
+  "$here/shoot-app.sh" "$app" "$here/out/terminal-ambient.png" "" 280 2>&1 \
   | sed -n 's/^inject result: //p')
 
 wait "$watcher"
