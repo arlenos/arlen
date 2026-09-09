@@ -5,8 +5,11 @@ description: How a mechanical check earns its place in an Arlen repo - what make
 
 # A check nobody can see fail is an assertion, not a check
 
-There are 151 of them in `~/Repositories/arlen/dev/scripts`. The ones that earn their place share a shape, and
-the ones that got switched off shared a different one. This is that shape, learned by getting it wrong.
+There are about a hundred and sixty of them in `~/Repositories/arlen/dev/scripts` - 161 counted on 10
+September, and the count is written loosely on purpose: it said 151 for long enough to be wrong, and a number
+a reader half-trusts is worse than a range they can check in one command
+(`ls dev/scripts/check-*.{py,sh,mjs} | wc -l`). The ones that earn their place share a shape, and the ones
+that got switched off shared a different one. This is that shape, learned by getting it wrong.
 
 ## When a check is worth writing
 
