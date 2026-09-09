@@ -81,6 +81,32 @@ publish = [
     # grant means no registration, and the terminal's menu is absent.
     "app.menu.registered",
     "app.menu.unregistered",
+
+    # WHAT THIS WINDOW TELLS THE KNOWLEDGE GRAPH ABOUT ITSELF, in the same change
+    # as the code that publishes it - never after. Revoking these two lines is how
+    # somebody turns it off.
+    #
+    #   presence.set   - `shell`, the ACTIVE SESSION'S WORKING DIRECTORY and
+    #                    whether that session is still alive, while the window
+    #                    has focus
+    #   presence.clear - on blur, because the claim stops being true
+    #
+    # A DIRECTORY, AND DELIBERATELY NOT A COMMAND, which is the whole decision in
+    # this file. A shell history is the single most revealing record a desktop
+    # keeps: a command line carries arguments, hostnames, ticket numbers and
+    # sometimes a secret somebody typed by mistake. The sensor sees an `execve`;
+    # this window sees the whole line, and publishing the difference is the one
+    # place in this tree where saying more would make the system worse. The
+    # directory is the same class of fact every other app publishes and one the
+    # sensor's file events already cover.
+    #
+    # If a command-level record is ever wanted it is a consent question and a
+    # design decision, not something that should arrive by widening this list.
+    #
+    # NO `app.timeline.record` either: a command finishing is a moment, and it is
+    # exactly the moment whose subject would have to be the command.
+    "app.presence.set",
+    "app.presence.clear",
     # The quick actions this app pushes into the shell's top bar. `topbar.ts`
     # calls `toolbar.setQuickActions`, and `os-sdk/src/toolbar.rs` carries that as
     # `app.toolbar.quick_actions` from THIS process - the emit is the terminal's
