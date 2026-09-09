@@ -36,7 +36,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    border-radius: var(--radius-chip, 4px);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }

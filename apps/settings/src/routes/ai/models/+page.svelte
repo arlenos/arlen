@@ -121,7 +121,7 @@
           </Row>
         {/each}
         <Button
-          variant="ghost"
+          variant="outline"
           class="w-full justify-start gap-2 px-4 font-normal text-muted-foreground hover:text-foreground"
           onclick={() => importModel()}
         >

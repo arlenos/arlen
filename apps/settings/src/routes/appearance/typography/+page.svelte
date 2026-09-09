@@ -21,7 +21,7 @@
     CollapsibleTrigger,
     CollapsibleContent,
   } from "@arlen/ui-kit/components/ui/collapsible";
-  import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
   import FontSelect from "$lib/components/appearance/FontSelect.svelte";
   import { effective as colorsEffective } from "$lib/stores/themeColors";
@@ -66,9 +66,9 @@
     <div class="editor span-full">
     <div class="controls">
       <Section label={$t("s.typo.fonts")}>
-        <OverrideRow
+        <Row
           label={$t("s.typo.interface")}
-          hint={$t("s.typo.interfaceHint")}
+          description={$t("s.typo.interfaceHint")}
           overridden={isOverridden($overrides, "fontSans")}
           onreset={() => resetTypo("fontSans")}
           id="typo-fontSans"
@@ -81,10 +81,10 @@
               onchange={(v) => setTypo("fontSans", v)}
             />
           {/snippet}
-        </OverrideRow>
-        <OverrideRow
+        </Row>
+        <Row
           label={$t("s.typo.mono")}
-          hint={$t("s.typo.monoHint")}
+          description={$t("s.typo.monoHint")}
           overridden={isOverridden($overrides, "fontMono")}
           onreset={() => resetTypo("fontMono")}
           id="typo-fontMono"
@@ -111,13 +111,13 @@
               />
             {/if}
           {/snippet}
-        </OverrideRow>
+        </Row>
       </Section>
 
       <Section label={$t("s.typo.size")}>
-        <OverrideRow
+        <Row
           label={$t("s.typo.baseSize")}
-          hint={$t("s.typo.baseSizeHint")}
+          description={$t("s.typo.baseSizeHint")}
           overridden={isOverridden($overrides, "sizeBase")}
           onreset={() => resetTypo("sizeBase")}
           id="typo-sizeBase"
@@ -133,10 +133,10 @@
               onchange={(v) => setTypo("sizeBase", v)}
             />
           {/snippet}
-        </OverrideRow>
-        <OverrideRow
+        </Row>
+        <Row
           label={$t("s.typo.lineHeight")}
-          hint={$t("s.typo.lineHeightHint")}
+          description={$t("s.typo.lineHeightHint")}
           overridden={isOverridden($overrides, "lineHeight")}
           onreset={() => resetTypo("lineHeight")}
           id="typo-lineHeight"
@@ -151,7 +151,7 @@
               onchange={(v) => setTypo("lineHeight", v)}
             />
           {/snippet}
-        </OverrideRow>
+        </Row>
       </Section>
 
       <Collapsible class="expander">
@@ -162,9 +162,9 @@
         <CollapsibleContent>
           <Section>
             {#each WEIGHTS as w (w.key)}
-              <OverrideRow
+              <Row
                 label={$t(w.labelKey)}
-                hint={$t(w.hintKey)}
+                description={$t(w.hintKey)}
                 overridden={isOverridden($overrides, w.key)}
                 onreset={() => resetTypo(w.key)}
                 id={`typo-${w.key}`}
@@ -179,7 +179,7 @@
                     onchange={(v) => setTypo(w.key, v)}
                   />
                 {/snippet}
-              </OverrideRow>
+              </Row>
             {/each}
           </Section>
         </CollapsibleContent>
@@ -256,7 +256,7 @@
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.875rem 1rem;
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
     color: var(--foreground);

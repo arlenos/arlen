@@ -248,7 +248,7 @@
   .dot {
     width: 6px;
     height: 6px;
-    border-radius: var(--radius-chip, 4px);
+    border-radius: var(--radius-chip);
     flex-shrink: 0;
   }
   .dot.ok {

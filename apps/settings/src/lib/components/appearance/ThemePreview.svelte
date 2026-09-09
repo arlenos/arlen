@@ -92,7 +92,7 @@
     padding: 1rem;
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     box-shadow: var(--shadow-card, none);
   }
   .pv-copy {
@@ -114,11 +114,13 @@
     flex-wrap: wrap;
     gap: 0.5rem;
   }
+  /* Nested rule: the list sits 1rem inside the card, so its corner is the
+     card's minus that inset, never below the chip radius. */
   .pv-list {
     display: flex;
     flex-direction: column;
     border: 1px solid var(--border);
-    border-radius: var(--radius-input, 8px);
+    border-radius: max(var(--radius-chip), calc(var(--radius-card) - 1rem));
     overflow: hidden;
   }
   .pv-item {

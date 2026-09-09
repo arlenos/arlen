@@ -24,7 +24,7 @@
     CollapsibleTrigger,
     CollapsibleContent,
   } from "@arlen/ui-kit/components/ui/collapsible";
-  import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import ThemePreview from "$lib/components/appearance/ThemePreview.svelte";
   import { effective as colorsEffective } from "$lib/stores/themeColors";
   import {
@@ -112,9 +112,9 @@
 
       <Section label={$t("s.geom.gaps")}>
         {@render sliderRow(field("gap"))}
-        <OverrideRow
+        <Row
           label={$t("s.geom.smart")}
-          hint={$t("s.geom.smartHint")}
+          description={$t("s.geom.smartHint")}
           overridden={$smartGapsOverridden}
           onreset={resetSmartGaps}
           id="geom-smart-gaps"
@@ -122,7 +122,7 @@
           {#snippet control()}
             <Switch value={$smartGaps} ariaLabel={$t("s.geo.smartGaps")} onchange={toggleSmartGaps} />
           {/snippet}
-        </OverrideRow>
+        </Row>
       </Section>
     </div>
 
@@ -152,9 +152,9 @@
 
 <!-- One slider field with the shared override language. -->
 {#snippet sliderRow(f: GeomField)}
-  <OverrideRow
+  <Row
     label={$t(f.label)}
-    hint={f.hint ? $t(f.hint) : ""}
+    description={f.hint ? $t(f.hint) : ""}
     overridden={isOverridden($overrides, f.key)}
     onreset={() => resetGeom(f.key)}
     id={`geom-${f.key}`}
@@ -170,7 +170,7 @@
         onchange={(v) => onSlide(f, v)}
       />
     {/snippet}
-  </OverrideRow>
+  </Row>
 {/snippet}
 
 <style>
@@ -225,12 +225,12 @@
     display: flex;
     height: 3.5rem;
     padding: 0.375rem;
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
   }
   .gs-tiling span {
     flex: 1;
-    border-radius: var(--radius-button, 6px);
+    border-radius: var(--radius-button);
     background: color-mix(in srgb, var(--foreground) 12%, transparent);
   }
 

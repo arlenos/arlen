@@ -386,7 +386,7 @@
     position: relative;
     width: 1.75rem;
     height: 1.75rem;
-    border-radius: var(--radius-button, 6px);
+    border-radius: var(--radius-button);
     border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
     overflow: hidden;
   }
@@ -412,7 +412,7 @@
     min-height: var(--height-control, 30px);
     padding: 0.125rem 0.5rem;
     border: 1px solid var(--border);
-    border-radius: var(--radius-input, 8px);
+    border-radius: var(--radius-input);
     background: var(--input, transparent);
     font-size: var(--text-xs);
     color: var(--foreground);
@@ -423,7 +423,7 @@
   }
   .keybind kbd {
     padding: 0.0625rem 0.3125rem;
-    border-radius: var(--radius-chip, 4px);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     font-family: var(--font-mono, monospace);
     font-size: var(--text-2xs);

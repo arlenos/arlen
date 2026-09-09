@@ -552,7 +552,7 @@
     align-items: center;
     gap: 1rem;
     padding: 0.625rem 0.75rem 0.625rem 1rem;
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
     background: var(--popover, var(--card, #1f1f23));
     box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.3));

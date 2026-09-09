@@ -182,7 +182,7 @@
           {@render jobRow(job)}
         {/each}
         <div class="foot">
-          <Button variant="ghost" size="sm" onclick={clearCompleted}>{$t("s.pr.clearFinished")}</Button>
+          <Button variant="outline" size="sm" onclick={clearCompleted}>{$t("s.pr.clearFinished")}</Button>
         </div>
       {/if}
     </Section>
@@ -198,7 +198,7 @@
     {#snippet control()}
       <span class="ctl">
         <Button
-          variant="ghost"
+          variant="outline"
           size="icon-sm"
           aria-label={$t("s.pr.printOptions")}
           aria-expanded={expanded === p.name}
@@ -239,7 +239,7 @@
             />
           </label>
           <div class="opt-actions">
-            <Button variant="ghost" size="sm" onclick={() => testPage(p.name)}>{$t("s.pr.testPage")}</Button>
+            <Button variant="outline" size="sm" onclick={() => testPage(p.name)}>{$t("s.pr.testPage")}</Button>
           </div>
         </div>
       {/if}
@@ -256,9 +256,9 @@
       <span class="ctl">
         <span class="job-state" data-state={job.state}>{jobStateText(job)}</span>
         {#if job.state === "processing" || job.state === "pending"}
-          <Button variant="ghost" size="sm" onclick={() => cancelJob(job.printer, job.id)}>{$t("s.pr.cancel")}</Button>
+          <Button variant="outline" size="sm" onclick={() => cancelJob(job.printer, job.id)}>{$t("s.pr.cancel")}</Button>
         {:else if job.state === "held" || job.state === "stopped"}
-          <Button variant="ghost" size="sm" onclick={() => retryJob(job.id)}>{$t("s.pr.resume")}</Button>
+          <Button variant="outline" size="sm" onclick={() => retryJob(job.id)}>{$t("s.pr.resume")}</Button>
         {/if}
       </span>
     {/snippet}

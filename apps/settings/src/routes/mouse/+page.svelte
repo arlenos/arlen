@@ -119,7 +119,7 @@
   }
   .error-box {
     padding: 0.75rem;
-    border-radius: var(--radius-chip, 4px);
+    border-radius: var(--radius-chip);
     border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
     background: color-mix(in srgb, var(--destructive) 10%, transparent);
     font-size: var(--text-sm);

@@ -20,7 +20,7 @@
   /// custom ghosts. Pointer events give us full control. The
   /// orchestrator (PanelPreview) owns the drag-state machine and
   /// passes the relevant handlers as props.
-  import { Skeleton } from "$lib/components/ui/skeleton";
+  import { Skeleton } from "@arlen/ui-kit/components/ui/skeleton";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import {
     Brain,

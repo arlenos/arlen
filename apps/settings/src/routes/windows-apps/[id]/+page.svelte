@@ -689,7 +689,7 @@
     justify-content: center;
     min-width: 2rem;
     padding: 0.125rem 0.375rem;
-    border-radius: var(--radius-chip, 4px);
+    border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     font-family: var(--font-mono, monospace);
     font-size: var(--text-xs);
