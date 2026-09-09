@@ -2,7 +2,13 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// EXPECT: Nicht gespeichert
+// EXPECT: Diese Suche wurde nicht gespeichert
+//
+// The sentence, not a fragment of an older one. This said `Nicht gespeichert`
+// with a capital N, and the surface says `Diese Suche wurde nicht gespeichert.` -
+// the same words mid-sentence, so the substring check missed on the case alone.
+// It went unnoticed because `probe-host.sh` was refusing every fixture for an
+// unrelated reason until 10 September: two faults, one of them hiding the other.
 //
 // A runtime where a search RUNS and saving it is refused.
 //
