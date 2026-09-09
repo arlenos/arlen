@@ -138,7 +138,10 @@ sweep for days.
 command line contains the pattern you just typed - so `pkill -f sweep.sh` from a shell running `sweep.sh` kills
 that shell, and the tool reports the death as a bare exit code 144 with no explanation. Use `fuser -k -n tcp
 <port>` for a server, `pkill <name>` (no `-f`) for a process by name, or `kill <pid>` from a `ps` you just read.
-This bit three times in one day, twice after the rule had been written down.
+This bit three times in one day, twice after the rule had been written down - and three times again on 10
+September, every one of them `pkill -f <port>` to stop a vite server. That shape is the trap: a port number
+looks like it could not possibly match anything else, and it matches the shell you are typing in, because the
+number is in the command line. `fuser -k -n tcp <port>` is one character longer.
 
 ## Reading the picture
 
