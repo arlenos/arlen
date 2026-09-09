@@ -24,7 +24,7 @@
 # `app.presence.clear` is not asserted here - what is asserted is that the app
 # declares `auto_clear=on-blur`, which is the part this window owns.
 #
-# Run: dev/screenshot/drive-text-editor-graph.sh [text-editor] [viewers] [pdf] [files]
+# Run: dev/screenshot/drive-text-editor-graph.sh [text-editor] [viewers] [pdf] [files] [meetings]
 #
 # Build with `tauri build --no-bundle`; a plain `cargo build --release` leaves the
 # binary pointing at devUrl.
@@ -293,6 +293,48 @@ JS
   rm -rf "$fwork"
 else
   echo "  --   no files binary at $manager, so its half was not driven"
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# THE MEETINGS APP, and this one asserts a SILENCE. Its presence would be the
+# richest in the tree - being in a meeting touches no file, so a sensor cannot
+# come near it - but on this host `meeting_start_capture` refuses, because the
+# ASR engine is not provisioned. The window is honest about that: it says nothing
+# is being captured.
+#
+# So the thing to check is that the GRAPH is told the same. Nothing must go into
+# somebody's history saying they were in a meeting the machine could not record,
+# and a presence published off a hopeful assumption rather than off the surface's
+# own claim would do exactly that. This is the same rule as everywhere else in
+# the tree, applied to the one surface where the cost of getting it wrong is a
+# false memory rather than a wrong pixel.
+meetings="${5:-$root/target/release/arlen-meetings}"
+if [ -x "$meetings" ]; then
+  ARLEN_SESSION_ID=drive "$emit" --watch "app.presence." 30 > "$work/watch-meet.log" 2>&1 &
+  mwatcher=$!
+  sleep 1
+  cat > "$work/p-meet.js" <<'JS'
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+await wait(2500);
+const btn = document.querySelector("#start-meeting");
+if (btn) btn.click();
+await wait(18000);
+const text = (document.body.innerText || "").replace(/\s+/g, " ").trim();
+return JSON.stringify({ route: location.pathname, text: text.slice(0, 160) });
+JS
+  mgot=$(SHOOT_INJECT="$work/p-meet.js" \
+    SHOOT_APP_ENV="XDG_RUNTIME_DIR=$work/run;ARLEN_RUNTIME_DIR=$work/run;ARLEN_SESSION_ID=drive" \
+    "$here/shoot-app.sh" "$meetings" "$here/out/meetings-graph.png" 2>&1 \
+    | sed -n 's/^inject result: //p')
+  wait "$mwatcher"
+  mwatched=$(cat "$work/watch-meet.log")
+
+  say "the capture route is reached, so the window had its chance to claim one" \
+    "$(printf '%s' "$mgot" | grep -q '"route":"/capture"' && echo 1 || echo 0)" "$mgot"
+  say "and with no engine to record with, no meeting is claimed to the graph" \
+    "$(printf '%s' "$mwatched" | grep -q "activity=meeting" && echo 0 || echo 1)" "$mwatched"
+else
+  echo "  --   no meetings binary at $meetings, so its half was not driven"
 fi
 
 if [ "$fail" = 0 ]; then

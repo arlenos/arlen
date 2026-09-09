@@ -23,7 +23,11 @@
     stopCapture,
     captureUnavailable,
     stopFailed,
+    currentId,
+    capturing,
   } from "$lib/stores/meeting";
+  import { isCapturing, publishPresence } from "$lib/graphInput";
+  import { onDestroy } from "svelte";
 
   // DEV only, and refused in a build: the refused-stop line cannot be reached by
   // hand. Reaching it needs a capture that started (so a backend) and then a stop
@@ -40,6 +44,26 @@
     }
     void startCapture();
   });
+
+  /// WHILE A MICROPHONE IS ON, the graph is told so. This is the presence a
+  /// sensor comes least close to: being in a meeting touches no file at all, so
+  /// without this an hour of somebody's day is simply missing from their own
+  /// history.
+  ///
+  /// Off POSITIVE EVIDENCE that a capture started, not off the absence of a
+  /// refusal - see `isCapturing`. The red dot's branch still reads the other way
+  /// and shows for the moment before a refusal lands, which is a pixel about to
+  /// be replaced rather than a durable claim; it is written up in the report
+  /// rather than restructured here, because that branch would need a sentence
+  /// for a state the surface does not currently name.
+  $effect(() => {
+    void publishPresence(isCapturing($capturing), $currentId, $transcribe);
+  });
+
+  // Leaving the capture route ends the claim, whether the stop worked or the
+  // person navigated away - the surface is gone either way, and a presence that
+  // outlives its window is the thing this is meant to prevent.
+  onDestroy(() => void publishPresence(false, null, false));
 
   let notesEl = $state<HTMLTextAreaElement | null>(null);
   $effect(() => {
