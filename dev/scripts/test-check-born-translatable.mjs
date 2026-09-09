@@ -167,6 +167,35 @@ console.log("check-born-translatable:");
 }
 
 {
+  // A SENTENCE WRITTEN INTO A STORE, which is how half of them reach a surface.
+  // `capsuleNotice.set("Could not revoke that share: ...")` in Settings was
+  // matched by nothing: the assignment pattern wants an `=`, the field pattern a
+  // `:`, and "Notice" does not contain "note", so the name missed as well.
+  const root = tree({
+    "apps/x/src/lib/stores/s.ts":
+      'export const capsuleNotice = writable(null);\nexport function fail() { capsuleNotice.set("That share could not be stopped."); }\n',
+  });
+  const r = run(root);
+  r.code === 1
+    ? ok("a sentence written into a store is caught")
+    : bad("a sentence written into a store is caught", r.out);
+  cleanup(root);
+}
+
+{
+  // And the same store taking a message KEY is not prose, so it stays quiet.
+  const root = tree({
+    "apps/x/src/lib/stores/s.ts":
+      'export function fail() { capsuleNotice.set("s.priv.revokeFailed"); }\n',
+  });
+  const r = run(root);
+  r.code === 0
+    ? ok("a store taking a message id is not prose")
+    : bad("a store taking a message id is not prose", r.out);
+  cleanup(root);
+}
+
+{
   // A run that looked at nothing must refuse, not pass.
   const root = tree({});
   const r = run(root);
