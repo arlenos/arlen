@@ -3,12 +3,12 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Check that a kit component's height fallback is the height token.
+"""Check that a height fallback anywhere is the height token.
 
-A kit component writes `height: var(--height-control, 30px)`, and the fallback is
+A component writes `height: var(--height-control, 30px)`, and the fallback is
 what renders where the token is not defined. Both halves are a statement about
-the same number, written in two files, and on 9 September all forty of them
-disagreed: every fallback was exactly 2px under its token, which is what happens
+the same number, written in two files, and on 9 September all one hundred
+and nineteen of them disagreed: every fallback was exactly 2px under its token, which is what happens
 when the height register is raised once and the components are not.
 
 WHY IT MATTERS EVEN WHERE THE TOKEN IS ALWAYS THERE. Today every app and the
@@ -36,8 +36,8 @@ USE = re.compile(r"var\((--height-[a-z-]+),\s*(\d+)px\)")
 def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
     css = root / "sdk/ui-kit/src/app.css"
-    lib = root / "sdk/ui-kit/src/lib"
-    if not css.is_file() or not lib.is_dir():
+    trees = [root / "sdk/ui-kit/src/lib", root / "apps", root / "daemons"]
+    if not css.is_file() or not trees[0].is_dir():
         print("check-size-fallbacks: no kit stylesheet or component tree, so the scan is pointed wrong")
         return 1
 
@@ -48,7 +48,14 @@ def main() -> int:
 
     checked = 0
     problems: list[str] = []
-    for path in sorted(lib.rglob("*.svelte")):
+    paths = [
+        path
+        for tree in trees
+        if tree.is_dir()
+        for path in sorted(tree.rglob("*.svelte"))
+        if not any(part in str(path) for part in ("node_modules", "/build/", "/.svelte-kit/"))
+    ]
+    for path in paths:
         for m in USE.finditer(path.read_text(errors="replace")):
             name, fallback = m.group(1), int(m.group(2))
             if name not in tokens:
@@ -69,7 +76,8 @@ def main() -> int:
         )
         return 1
 
-    print(f"check-size-fallbacks: {checked} height fallback(s) in the kit; each is its token")
+    print(f"check-size-fallbacks: {checked} height fallback(s) across the kit, the apps "
+        "and the daemons; each is its token")
     return 0
 
 

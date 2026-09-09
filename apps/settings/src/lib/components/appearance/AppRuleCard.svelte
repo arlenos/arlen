@@ -154,7 +154,7 @@
     gap: 8px;
     flex: 1;
     min-width: 0;
-    height: var(--height-control-prominent, 36px);
+    height: var(--height-control-prominent, 38px);
     padding: 0 0.5rem 0 0.6rem;
     background: transparent;
     border: none;
@@ -231,7 +231,7 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    min-height: var(--height-control, 28px);
+    min-height: var(--height-control, 30px);
   }
   .row-label {
     flex: 1;

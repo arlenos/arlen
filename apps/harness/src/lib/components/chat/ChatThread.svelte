@@ -209,8 +209,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
     background: var(--color-bg-card);

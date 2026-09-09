@@ -96,7 +96,7 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 16px;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
     font-size: var(--text-xs);

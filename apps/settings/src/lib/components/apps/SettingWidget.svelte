@@ -409,7 +409,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    min-height: var(--height-control, 28px);
+    min-height: var(--height-control, 30px);
     padding: 0.125rem 0.5rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-input, 6px);

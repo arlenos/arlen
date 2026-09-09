@@ -41,7 +41,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 0.5rem;
     border: none;
     border-radius: var(--radius-input);

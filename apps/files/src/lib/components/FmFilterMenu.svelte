@@ -147,7 +147,7 @@
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 10px;
     border: 1px solid var(--control-border);
     background: var(--control-bg);

@@ -146,7 +146,7 @@
   .tray-item.attention { background: color-mix(in srgb, var(--color-fg-shell) 5%, transparent); }
 
   .tray-item-icon {
-    width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center;
+    width: var(--height-control-compact, 26px); height: var(--height-control-compact, 26px); display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     border-radius: var(--radius-chip); font-size: var(--text-2xs); font-weight: 600; flex-shrink: 0;
   }

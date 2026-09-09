@@ -147,8 +147,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: var(--height-control, 28px);
-        height: var(--height-control, 28px);
+        width: var(--height-control, 30px);
+        height: var(--height-control, 30px);
         border: none;
         border-radius: var(--radius-input);
         background: transparent;

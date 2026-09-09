@@ -284,7 +284,7 @@
   }
   :global(.skeleton-status) {
     /* Mocks the real tile strip (BaseTile: min-height --height-control). */
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     width: 100%;
   }
   :global(.skeleton-slider) {
@@ -312,8 +312,8 @@
     opacity: 0.6;
   }
   :global(.footer-avatar) {
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     border-radius: var(--radius-card);
     flex-shrink: 0;
   }
@@ -329,8 +329,8 @@
     margin-inline-start: auto;
   }
   :global(.footer-action) {
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
+    width: var(--height-control-compact, 26px);
+    height: var(--height-control-compact, 26px);
     border-radius: var(--radius-input);
   }
 </style>

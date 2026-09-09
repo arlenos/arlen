@@ -192,7 +192,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     font-size: var(--text-xs);
     color: var(--foreground);
     white-space: nowrap;

@@ -102,7 +102,7 @@
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 6px;
     border: none;
     background: transparent;
