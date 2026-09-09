@@ -70,6 +70,13 @@ case "$base" in
     [ "$#" -eq 0 ] && set -- '.footer button' ;;
   */keyboard/shortcuts|*/keyboard/shortcuts?*)
     [ "$#" -eq 0 ] && set -- '[data-action=add-custom]' '[data-action=reset-all]' ;;
+  # The reset-to-defaults confirm. `button[data-slot=button]` rather than an id
+  # because the page has none, and it is unambiguous: of the six visible buttons
+  # on that route five are window chrome and the sidebar rail, and this is the
+  # only one the kit's Button renders. Read off the DOM, like every selector in
+  # `sweep-render-all.sh`, not guessed.
+  */appearance/quicksettings|*/appearance/quicksettings?*)
+    [ "$#" -eq 0 ] && set -- 'button[data-slot=button]' ;;
 esac
 
 if [ "$#" -eq 0 ]; then
