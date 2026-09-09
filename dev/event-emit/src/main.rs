@@ -40,7 +40,10 @@
 //! or on an event that never came back.
 
 use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
-use os_sdk::proto::{BadgeSetPayload, FileOpenedPayload, ShortcutActionInvokedPayload};
+use os_sdk::proto::{
+    BadgeSetPayload, FileOpenedPayload, PresenceSetPayload, ShortcutActionInvokedPayload,
+    TimelineRecordPayload,
+};
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use prost::Message;
 use std::time::Duration;
@@ -275,13 +278,30 @@ async fn watch(pattern: String, window: Duration) {
     let _ = tokio::time::timeout(window, async {
         while let Some(event) = inbox.recv().await {
             seen += 1;
-            let detail = if event.r#type == "app.badge.set" {
-                match BadgeSetPayload::decode(&event.payload[..]) {
+            let detail = match event.r#type.as_str() {
+                "app.badge.set" => match BadgeSetPayload::decode(&event.payload[..]) {
                     Ok(p) => format!("app_id={} variant={} count={}", p.app_id, p.variant, p.count),
                     Err(e) => format!("undecodable BadgeSetPayload: {e}"),
-                }
-            } else {
-                format!("{} bytes", event.payload.len())
+                },
+                // Presence and timeline are what an app tells the graph about
+                // itself, so the interesting part is never that something was
+                // published - it is WHAT. A drive that only asserted delivery
+                // would pass on a window claiming to edit the wrong file.
+                "app.presence.set" => match PresenceSetPayload::decode(&event.payload[..]) {
+                    Ok(p) => format!(
+                        "app_id={} activity={} subject={} auto_clear={} metadata={:?}",
+                        p.app_id, p.activity, p.subject, p.auto_clear, p.metadata
+                    ),
+                    Err(e) => format!("undecodable PresenceSetPayload: {e}"),
+                },
+                "app.timeline.record" => match TimelineRecordPayload::decode(&event.payload[..]) {
+                    Ok(p) => format!(
+                        "app_id={} type={} label={} subject={} metadata={:?}",
+                        p.app_id, p.r#type, p.label, p.subject, p.metadata
+                    ),
+                    Err(e) => format!("undecodable TimelineRecordPayload: {e}"),
+                },
+                _ => format!("{} bytes", event.payload.len()),
             };
             println!("saw {} {}", event.r#type, detail);
         }
