@@ -70,6 +70,27 @@ publish = [
     "app.menu.registered",
     # The pair the same helper emits on teardown. Nothing calls it yet.
     "app.menu.unregistered",
+
+    # WHAT THIS WINDOW TELLS THE KNOWLEDGE GRAPH ABOUT ITSELF, in the same change
+    # as the code that publishes it - never after. It writes into the graph, and
+    # a graph input a person cannot see or switch off is the thing this system
+    # exists not to build. Revoking these two lines is how somebody turns it off.
+    #
+    #   presence.set   - `reading`, the open document's PATH and its LENGTH,
+    #                    while the window has focus
+    #   presence.clear - on blur, because the claim stops being true
+    #
+    # NO `app.timeline.record`, and the absence is the decision rather than an
+    # omission: the editor records a save and the viewer a print because each is
+    # a completed moment, and a reader has none. Opening the document is what the
+    # sensor already saw and reaching page forty is the middle of something, not
+    # an event. A grant for a topic this app has no honest use for would be a
+    # wider profile for nothing.
+    #
+    # The document's contents never leave, and the path is already what the
+    # sensor records for every open.
+    "app.presence.set",
+    "app.presence.clear",
 ]
 subscribe = [
     "app.toolbar.action_invoked",
