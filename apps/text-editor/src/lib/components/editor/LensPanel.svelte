@@ -68,10 +68,12 @@
         <div class="prov-step">
           <span class="prov-dot" data-origin={originClass(step)} aria-hidden="true"></span>
           <div class="prov-body">
-            <!-- The relation is a message id when it comes from the backend and
-                 a phrase in the fixture; `$t` returns the key unchanged when it
-                 is not one, so both render without a second code path. -->
-            <div class="prov-what">{$t(step.relation)} <span class="prov-actor">{step.actor}</span></div>
+            <!-- Both halves are message ids when the app wrote them and data
+                 when the graph did; `$t` returns anything that is not a key
+                 unchanged, so an app id, a person's name and a sample phrase all
+                 render without a second code path. The actor was raw, which is
+                 how "the assistant" stayed English in a German panel. -->
+            <div class="prov-what">{$t(step.relation)} <span class="prov-actor">{$t(step.actor)}</span></div>
             <div class="prov-when">{whenWords(step.when_ms)}</div>
           </div>
         </div>

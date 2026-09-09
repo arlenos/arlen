@@ -194,5 +194,38 @@ say "launched with no file, it says the document is an example" \
 say "and offers no save over it" \
   "$(case "$bare" in ""|REFUSED:*) echo 0;; *) printf '%s' "$bare" | grep -qE 'Save|Speichern' && echo 0 || echo 1;; esac)" "$bare"
 
+# GERMAN. The lens panel beside the text is almost entirely sentences the app
+# writes about a file - where it came from, what mentions it, what project it is
+# in, and the caveat saying the sample is a sample. That is the prose that gets
+# written once in English and never looked at again, and six apps have had a
+# defect only the German render showed. The release binary takes its language
+# from `locale.toml`, not from a URL: the `?locale=` hook is compiled out.
+cfg="$work/config-de"
+mkdir -p "$cfg/arlen"
+printf '[locale]\nui = "de"\n' > "$cfg/arlen/locale.toml"
+cat > "$work/p-de.js" <<'JS'
+await new Promise(r => setTimeout(r, 2500));
+return (document.body.innerText || "").replace(/\s+/g, " ").trim().slice(0, 600);
+JS
+de=$(XDG_CONFIG_HOME="$cfg" SHOOT_APP_ARGS="$work/sample.rs" SHOOT_INJECT="$work/p-de.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/editor-de.png" 2>&1 | sed -n 's/^inject result: //p')
+
+# The caveat first: it is the one sentence that must never be missed, because it
+# is what stops the sample reading as this file's real neighbourhood.
+say "the German build says the lens caveat in German" \
+  "$(printf '%s' "$de" | grep -qi "Beispiel" \
+     && ! printf '%s' "$de" | grep -q "Example context" && echo 1 || echo 0)" "$de"
+say "and the lens headings with it" \
+  "$(printf '%s' "$de" | grep -qiE "Woher|Verwandt|Projekt" \
+     && ! printf '%s' "$de" | grep -q "WHERE IT CAME FROM" && echo 1 || echo 0)" "$de"
+# THE ROWS, not only the headings. Two of the three sample provenance rows were
+# English phrases rather than message ids - because they have no backend
+# counterpart, which is a reason for a sample key and not a reason for none - so
+# a German panel carried "Started by you" and "A section drafted by the
+# assistant" above "geöffnet in". Headings alone would have passed on that.
+say "and the sample's own rows, verbs and actors both" \
+  "$(printf '%s' "$de" | grep -q "Begonnen von dir" \
+     && ! printf '%s' "$de" | grep -qE "Started by|the assistant" && echo 1 || echo 0)" "$de"
+
 [ "$fail" = 0 ] && echo "a real buffer over a real file, a find panel, a save that lands on disk, and a sample that says it is one"
 exit "$fail"
