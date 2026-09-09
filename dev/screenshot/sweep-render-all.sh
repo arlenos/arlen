@@ -78,9 +78,9 @@ SURFACES=(
   # surfaces a person opens most often on this window had never been through a
   # render probe either. Same gap as the axe table, found the same way: by
   # putting the two lists side by side.
-  "desktop-shell /|/consent|/waypointer|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest|/?menumock|/@@shell-workspace-overlay"
+  "desktop-shell /|/consent|/waypointer|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest|/?menumock|/@@shell-workspace-overlay|/_jobstest@@shell-jobs-refuse-cancel|/_jobstest@@shell-jobs-failed-install"
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest"
-  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest"
+  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest|/@@greeter-refuses-login"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]|/@@knowledge-refuses-pause|/@@knowledge-refuses-search-save"
   # THE THREE REFUSALS, added 10 September once `probe-host.sh` could run them at
   # all. Each was built, gated and referenced by nothing: an archive that failed,
@@ -90,7 +90,7 @@ SURFACES=(
   # sentence each one declares, which is what makes the row worth more than a
   # picture.
   "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash|/@@mail-refuses-archive|/@@mail-refuses-draft|/@@mail-refuses-attachment-save"
-  "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes"
+  "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes|/capture@@meetings-refuses-stop"
   "pdf /"
   # The landing page is the floating thumbnail, and the app's actual work
   # surface - the annotate stage with its palette, swatches and text tool - is
