@@ -40,6 +40,7 @@
   } from "$lib/terminal-theme";
   import { applyBlockHover, renderBlockResult } from "$lib/block-chrome";
   import { classifyMark, parseExitCode } from "$lib/block-marks";
+  import { commandAmbient, publishAmbient } from "$lib/commandAmbient";
   import "$lib/block-chrome.css";
   import BlockContextMenu from "./BlockContextMenu.svelte";
 
@@ -285,10 +286,18 @@
       const mark = classifyMark(data);
       if (mark === "prompt-start") onPromptStart();
       else if (mark === "exec-start") {
+        // The desktop's slow pulse for a command that outlasts somebody's
+        // patience. Armed here and taken down at command-end; see
+        // `commandAmbient.ts` for why it waits rather than firing on every
+        // command.
+        ambientDriver.started();
         execStartMs = Date.now();
         // Output begins on the row past the command echo (the current cursor row).
         execStartLine = t.buffer.active.baseY + t.buffer.active.cursorY;
-      } else if (mark === "command-end") onCommandEnd(data);
+      } else if (mark === "command-end") {
+        ambientDriver.ended();
+        onCommandEnd(data);
+      }
       // Return false so xterm's other handlers still run; the engine parses its
       // own raw copy of the PTY stream, so this never starves its block parser.
       return false;
@@ -696,7 +705,23 @@
     return true;
   }
 
+  // The desktop pulse for a long-running command. One per window: the shell keeps
+  // one ambient effect per app, so a second terminal window publishing its own
+  // would be the same slot written twice - which is correct behaviour (whichever
+  // command is running most recently is the one worth saying) rather than a
+  // conflict to resolve here.
+  const ambientDriver = commandAmbient(
+    publishAmbient,
+    (fn, ms) => window.setTimeout(fn, ms),
+    (handle) => window.clearTimeout(handle),
+  );
+
   onDestroy(() => {
+    // A window that goes away with a command still running would otherwise leave
+    // the desktop pulsing for something nobody can see. The shell reclaims it on
+    // observed absence too, but only once the window list catches up, and the
+    // app knows first.
+    ambientDriver.dispose();
     unlistenFrame?.();
     unlistenA11y?.();
     resizeObserver?.disconnect();
