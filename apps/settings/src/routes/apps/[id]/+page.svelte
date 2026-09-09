@@ -12,6 +12,7 @@
   import { page } from "$app/stores";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -143,7 +144,7 @@
 <Page title={label} description={metaLine || undefined} back={{ href: "/apps", label: $t("s.nav.apps") }}>
   <SectionGrid>
     {#if mocked}
-      <p class="note span-full">{$t("s.apps.sample")}</p>
+      <Notice tone="neutral" class="span-full" text={$t("s.apps.sample")} />
     {/if}
 
     <Section class="span-full">
@@ -304,11 +305,6 @@
     margin: 0;
     font-size: var(--text-sm);
     color: var(--destructive);
-  }
-  .note {
-    margin: 0;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
   /* The unverified banner qualifies everything below it, so it sits above

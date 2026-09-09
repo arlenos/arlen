@@ -8,6 +8,7 @@
   import { onMount } from "svelte";
   import { ExternalLink, ShieldOff } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -106,7 +107,7 @@
 >
   <SectionGrid>
     {#if $modelsMocked}
-      <p class="sample span-full">{$t("s.mdl.sample")}</p>
+      <Notice tone="neutral" class="span-full" text={$t("s.mdl.sample")} />
     {/if}
 
     <div class="search span-full">
@@ -252,12 +253,6 @@
 />
 
 <style>
-  .sample {
-    margin: 0;
-    font-size: var(--text-2xs);
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
   .search {
     padding: 0 0.25rem;
   }

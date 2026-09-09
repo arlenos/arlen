@@ -10,6 +10,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { RefreshCw, ExternalLink, Info, Bug, FileText } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -31,13 +32,17 @@
 
   let info = $state<SystemInfo | null>(null);
   let loading = $state(false);
+  /// The read failed: the page says so instead of loading forever.
+  let failed = $state(false);
 
   async function refresh() {
     loading = true;
     try {
       info = await invoke<SystemInfo>("about_get_system_info");
+      failed = false;
     } catch (e) {
       console.warn("about_get_system_info failed:", e);
+      failed = true;
     } finally {
       loading = false;
     }
@@ -92,6 +97,8 @@
             {/snippet}
           </Row>
         {/each}
+      {:else if failed}
+        <div class="in-card"><Notice tone="error" text={$t("s.about.servicesUnavailable")} /></div>
       {:else}
         <Row label={$t("s.about.loading")} id="daemon-loading">
           {#snippet control()}<span class="meta">…</span>{/snippet}
@@ -144,6 +151,9 @@
 </Page>
 
 <style>
+  .in-card {
+    padding: var(--space-row, 0.75rem) 1rem;
+  }
   .meta {
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);

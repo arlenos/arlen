@@ -20,6 +20,7 @@
   /// your own jobs, and all of it works.
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -91,7 +92,7 @@
   function notReady(p: Printer): boolean {
     return p.state !== "idle";
   }
-  /// The quiet meta line: transport (USB / Network · host), the state word only
+  /// The quiet meta line: transport (USB / Network, host), the state word only
   /// when it isn't the resting "Ready" (the dot already says ready), and the
   /// "Default" marker on exactly the default printer (the only per-row hint of
   /// which is default - the dropdown above is where you change it).
@@ -100,11 +101,11 @@
     if (p.destination === "local") parts.push(transportOf(p.uri));
     else {
       const host = hostOf(p.uri);
-      parts.push(host ? `Network · ${host}` : "Network");
+      parts.push(host ? `Network, ${host}` : "Network");
     }
     if (notReady(p)) parts.push(PRINTER_STATE_LABEL[p.state]);
     if ($printers.defaultName === p.name) parts.push("Default");
-    return parts.join(" · ");
+    return parts.join(", ");
   }
 
   /// The printer options for the "Default printer" selector.
@@ -129,13 +130,9 @@
 <Page title={$t("s.pr.title")} description={$t("s.pr.desc")}>
   <SectionGrid>
     {#if $printers.mocked}
-      <p class="note">
-        {$t("s.pr.mocked")}
-      </p>
+      <Notice tone="neutral" class="span-full" text={$t("s.pr.mocked")} />
     {:else if $printers.unavailable}
-      <p class="note">
-        {$t("s.pr.unavailable")}
-      </p>
+      <Notice tone="error" class="span-full" text={$t("s.pr.unavailable")} />
     {/if}
     <!-- A default change, an option change or a job action that did not reach
          the print service. It used to add "so nothing about your printers

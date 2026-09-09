@@ -14,7 +14,6 @@
   /// Knowledge app.
 
   import { onMount } from "svelte";
-  import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
   import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
@@ -28,6 +27,7 @@
     FolderClock,
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -136,9 +136,12 @@
   title={$t("s.know.title")}
   description={$t("s.know.desc")}
 >
-  <ConfigUnavailable error={$graph.error} />
   <ConfigWriteFailed failed={$graph.writeFailed} />
   <SectionGrid>
+    {#if $graph.error}
+      <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
+    {/if}
+    <fieldset class="unreadable-gate" disabled={$graph.error !== null}>
     <Section label={$t("s.know.status")}>
       {#if error}
         <!-- Same as the AI page: Refresh is a button, and the Row it draws into
@@ -316,6 +319,7 @@
         {/snippet}
       </Row>
     </Section>
+    </fieldset>
   </SectionGrid>
 </Page>
 

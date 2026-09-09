@@ -19,6 +19,7 @@
     MoreHorizontal,
   } from "@lucide/svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -48,6 +49,16 @@
 
 <Page title={$t("s.topbar.title")} description={$t("s.topbar.desc")}>
   <SectionGrid>
+    {#if $topbar.error}
+      <Notice tone="error" class="span-full" text={$t("s.topbar.readFailed")} />
+    {/if}
+    <!-- A refused SAVE, which is not the line above. This path deliberately
+         keeps the arrangement you dragged rather than snapping it back, so the
+         screen and the bar now disagree - and the second sentence is the half
+         no arrangement of rows can show, since the bar is another window. -->
+    {#if $topbar.writeFailed}
+      <Notice tone="error" class="span-full" text={$t("s.topbar.notSaved")} />
+    {/if}
     <Section label={$t("s.topbar.preview")} class="span-full">
       <div class="tb-preview" aria-label={$t("s.topbar.previewAria")}>
         <span class="tb-pv-left">Arlen</span><!-- product name, not translated -->
@@ -86,18 +97,6 @@
       {/if}
     </Section>
 
-    {#if $topbar.error}
-      <div class="span-full tb-error" title={$topbar.error}>
-        {$t("s.topbar.readFailed")}
-      </div>
-    {/if}
-    <!-- A refused SAVE, which is not the line above. This path deliberately
-         keeps the arrangement you dragged rather than snapping it back, so the
-         screen and the bar now disagree - and the second sentence is the half
-         no arrangement of rows can show, since the bar is another window. -->
-    {#if $topbar.writeFailed}
-      <div class="span-full tb-error">{$t("s.topbar.notSaved")}</div>
-    {/if}
   </SectionGrid>
 </Page>
 
@@ -188,13 +187,5 @@
     font-size: var(--text-2xs);
     color: var(--color-fg-secondary, #a1a1aa);
     font-variant-numeric: tabular-nums;
-  }
-  .tb-error {
-    padding: 0.75rem;
-    border-radius: var(--radius-chip);
-    border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
-    background: color-mix(in srgb, var(--destructive) 10%, transparent);
-    font-size: var(--text-sm);
-    color: var(--destructive);
   }
 </style>

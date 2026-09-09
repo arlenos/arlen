@@ -7,6 +7,7 @@
   import { onMount } from "svelte";
   import { HardDrive, Trash2, Upload, CirclePlus, ShieldOff } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -59,7 +60,7 @@
       <!-- Above the hardware line, because the summary below it is an invented
            claim about THIS machine and the list marks models installed that are
            not. Both drive real decisions. -->
-      <p class="sample span-full">{$t("s.mdl.sample")}</p>
+      <Notice tone="neutral" class="span-full" text={$t("s.mdl.sample")} />
     {/if}
     {#if $hardware}
       <div class="hw span-full">
@@ -158,12 +159,6 @@
 {/snippet}
 
 <style>
-  .sample {
-    margin: 0;
-    font-size: var(--text-2xs);
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
   .hw {
     display: flex;
     align-items: center;

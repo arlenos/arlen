@@ -13,6 +13,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { tauriAvailable } from "$lib/tauri";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -207,6 +208,9 @@
   description={$t("s.prov.desc")}
 >
   <SectionGrid>
+    {#if !tauriAvailable}
+      <Notice tone="neutral" class="span-full" text={$t("s.prov.sample")} />
+    {/if}
     <Section class="span-full">
       {#each $providers as p (p.id)}
         {@render row(p)}

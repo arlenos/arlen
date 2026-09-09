@@ -7,6 +7,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import KeybindingRow from "$lib/components/settings/KeybindingRow.svelte";
   import ReadOnlyKeybindingRow from "$lib/components/settings/ReadOnlyKeybindingRow.svelte";
@@ -313,12 +314,7 @@
   {/if}
 
   {#if lastError}
-    <div
-      role="alert"
-      class="rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-    >
-      {$t(lastError)}
-    </div>
+    <Notice tone="error" text={$t(lastError)} />
   {/if}
 
   <!-- ABOVE THE LIST, because the list is not empty when the read fails. The
@@ -334,9 +330,7 @@
   {#if $keybindings.loading}
     <div class="text-sm text-muted-foreground">{$t("s.sc.loading")}</div>
   {:else if $keybindings.error}
-    <div class="text-sm text-destructive" role="alert" title={$keybindings.error}>
-      {$t("s.sc.unavailable")}
-    </div>
+    <Notice tone="error" text={$t("s.sc.unavailable")} />
   {:else if Object.keys(filtered).length === 0}
     <div class="text-sm text-muted-foreground">
       {query ? $t("s.sc.noMatch", { q: query }) : $t("s.sc.none")}

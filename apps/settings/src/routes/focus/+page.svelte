@@ -10,10 +10,10 @@
   /// second editor for the same keys.
 
   import { onMount } from "svelte";
-  import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
   import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   import { AppWindow, FolderSearch } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -93,9 +93,12 @@
   title={$t("s.focus.title")}
   description={$t("s.focus.desc")}
 >
-  <ConfigUnavailable error={$shell.error} />
   <ConfigWriteFailed failed={$shell.writeFailed} />
   <SectionGrid>
+    {#if $shell.error}
+      <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
+    {/if}
+    <fieldset class="unreadable-gate" disabled={$shell.error !== null}>
     <Section label={$t("s.focus.topBar")}>
     <Row
       label={$t("s.focus.showProject")}
@@ -174,6 +177,7 @@
       {/snippet}
     </Row>
     </Section>
+    </fieldset>
   </SectionGrid>
 </Page>
 

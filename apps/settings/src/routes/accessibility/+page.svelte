@@ -9,9 +9,9 @@
   /// notify-watcher applies the change within ~100 ms.
 
   import { onMount } from "svelte";
-  import ConfigUnavailable from "$lib/components/ConfigUnavailable.svelte";
   import ConfigWriteFailed from "$lib/components/ConfigWriteFailed.svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -117,9 +117,12 @@
        first version of this line named only the compositor store, so a filter
        read that failed left the inverted and colour-filter rows showing defaults
        with nothing said. -->
-  <ConfigUnavailable error={$compositor.error ?? $screenFilter.error} />
   <ConfigWriteFailed failed={$compositor.writeFailed || $screenFilter.writeFailed} />
   <SectionGrid>
+    {#if $compositor.error ?? $screenFilter.error}
+      <Notice tone="error" class="span-full" text={$t("s.config.unavailable")} />
+    {/if}
+    <fieldset class="unreadable-gate" disabled={($compositor.error ?? $screenFilter.error) !== null}>
     <Section label={$t("s.a11y.magnifier")}>
     <Row
       label={$t("s.a11y.mouseZoom")}
@@ -245,6 +248,7 @@
       {/each}
     {/if}
   </Section>
+    </fieldset>
   </SectionGrid>
 </Page>
 

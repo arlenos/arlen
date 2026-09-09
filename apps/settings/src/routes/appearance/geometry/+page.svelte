@@ -69,83 +69,15 @@
   description={$t("s.geom.desc")}
 >
   <SectionGrid>
-    <!-- The page draws the house values and its sliders write nothing. Said here
-         rather than only in a source comment: a person reading numbers on a
-         settings page takes them for their own. -->
+    <!-- The page waits: nothing here writes, so nothing here is offered
+         (design-system.md §6.10). The preview stays, since it is the one thing
+         that is true. -->
     <Notice tone="neutral" class="span-full" text={$t("s.geom.notApplied")} />
-    <div class="editor span-full">
-    <div class="controls">
-      <Section label={$t("s.geom.round")}>
-        {@render sliderRow(field("intensity"))}
-        <Collapsible class="expander">
-          <CollapsibleTrigger class="exp-trigger">
-            <ChevronRight size={15} strokeWidth={2} />
-            {$t("s.geom.allRadii")}
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            {#each roundnessFull as f (f.key)}
-              {@render sliderRow(f)}
-            {/each}
-          </CollapsibleContent>
-        </Collapsible>
-      </Section>
-
-      <Section label={$t("s.geom.window")}>
-        {@render sliderRow(field("window_corner"))}
-        {@render sliderRow(field("border_width"))}
-      </Section>
-
-      <Section label={$t("s.geom.spacing")}>
-        {@render sliderRow(field("density"))}
-        <Collapsible class="expander">
-          <CollapsibleTrigger class="exp-trigger">
-            <ChevronRight size={15} strokeWidth={2} />
-            {$t("s.geom.allSteps")}
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            {#each spacingFull as f (f.key)}
-              {@render sliderRow(f)}
-            {/each}
-          </CollapsibleContent>
-        </Collapsible>
-      </Section>
-
-      <Section label={$t("s.geom.gaps")}>
-        {@render sliderRow(field("gap"))}
-        <Row
-          label={$t("s.geom.smart")}
-          description={$t("s.geom.smartHint")}
-          overridden={$smartGapsOverridden}
-          onreset={resetSmartGaps}
-          id="geom-smart-gaps"
-        >
-          {#snippet control()}
-            <Switch value={$smartGaps} ariaLabel={$t("s.geo.smartGaps")} onchange={toggleSmartGaps} />
-          {/snippet}
-        </Row>
-      </Section>
-    </div>
-
-    <aside class="preview-col">
-      <div class="preview-sticky">
-        <span class="preview-label">{$t("s.geom.preview")}</span>
-        <div style={previewRadiusVars($effective)}>
-          <ThemePreview colors={$colorsEffective} />
-        </div>
-        <div class="geom-samples">
-          <div
-            class="gs-window"
-            style={`border-radius:${$effective.window_corner}px; border-width:${Math.max($effective.border_width, 1)}px; opacity:${$effective.border_width === 0 ? 0.45 : 1}`}
-          >
-            {$t("s.geom.winCorners")}
-          </div>
-          <div class="gs-tiling" style={`gap:${Math.max($effective.gap, 1)}px`}>
-            <span></span>
-            <span></span>
-          </div>
-        </div>
+    <div class="preview span-full">
+      <span class="preview-label">{$t("s.geom.preview")}</span>
+      <div style={previewRadiusVars($effective)}>
+        <ThemePreview colors={$colorsEffective} />
       </div>
-    </aside>
     </div>
   </SectionGrid>
 </Page>
@@ -174,22 +106,6 @@
 {/snippet}
 
 <style>
-  .editor {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-  .controls {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    min-width: 0;
-  }
-  .preview-sticky {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
   .preview-label {
     font-size: var(--text-2xs);
     font-weight: 600;
@@ -198,41 +114,7 @@
     color: var(--color-fg-secondary, #a1a1aa);
     padding-inline-start: 0.125rem;
   }
-  .preview-col {
-    order: -1;
-  }
 
-  /* Shape samples for window corners + tiling gaps, which the app strip can't
-     show on its own. */
-  .geom-samples {
-    display: flex;
-    gap: 0.5rem;
-  }
-  .gs-window {
-    flex: 1;
-    display: flex;
-    align-items: flex-end;
-    padding: 0.5rem;
-    height: 3.5rem;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    border-style: solid;
-    border-color: color-mix(in srgb, var(--color-accent, var(--foreground)) 55%, transparent);
-  }
-  .gs-tiling {
-    flex: 1;
-    display: flex;
-    height: 3.5rem;
-    padding: 0.375rem;
-    border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--foreground) 5%, transparent);
-  }
-  .gs-tiling span {
-    flex: 1;
-    border-radius: var(--radius-button);
-    background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  }
 
   /* The expander triggers (class rides the Collapsible root, so global). */
   :global(.exp-trigger) {

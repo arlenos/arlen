@@ -64,13 +64,10 @@
   description={$t("s.md.desc")}
 >
   <SectionGrid>
-    <!-- The page draws the house values and its sliders write nothing. Said here
-         rather than only in a source comment: a person reading numbers on a
-         settings page takes them for their own. -->
+    <!-- The page waits for the theme writes: only Reduce motion writes, so only
+         it is offered (design-system.md §6.10). The preview stays. -->
     <Notice tone="neutral" class="span-full" text={$t("s.md.notApplied")} />
-    <div class="editor span-full">
-    <div class="controls">
-      <Section label={$t("s.md.motion")}>
+      <Section label={$t("s.md.motion")} class="span-full">
         <Row
           label={$t("s.md.reduce")}
           description={$t("s.md.reduceHint")}
@@ -82,143 +79,15 @@
             <Switch value={reduce} ariaLabel={$t("s.md.reduceMotion")} onchange={(v) => setMd("reduceMotion", v)} />
           {/snippet}
         </Row>
-        <Row
-          label={$t("s.md.speed")}
-          description={$t("s.md.speedHint")}
-          overridden={isOverridden($overrides, "durationNormal")}
-          onreset={() => resetMd("durationNormal")}
-          id="md-durationNormal"
-        >
-          {#snippet control()}
-            <ValueSlider
-              value={durNormal}
-              min={60}
-              max={400}
-              step={20}
-              unit="ms"
-              ariaLabel={$t("s.md.speed")}
-              onchange={(v) => setMd("durationNormal", v)}
-            />
-          {/snippet}
-        </Row>
-        <Collapsible class="expander">
-          <CollapsibleTrigger class="exp-trigger">
-            <ChevronRight size={15} strokeWidth={2} />
-            {$t("s.md.allDurations")}
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <Row
-              label={$t("s.md.fast")}
-              description={$t("s.md.fastHint")}
-              overridden={isOverridden($overrides, "durationFast")}
-              onreset={() => resetMd("durationFast")}
-              id="md-durationFast"
-            >
-              {#snippet control()}
-                <ValueSlider value={Number($effective.durationFast)} min={40} max={300} step={20} unit="ms" ariaLabel={$t("s.md.fast")} onchange={(v) => setMd("durationFast", v)} />
-              {/snippet}
-            </Row>
-            <Row
-              label={$t("s.md.slow")}
-              description={$t("s.md.slowHint")}
-              overridden={isOverridden($overrides, "durationSlow")}
-              onreset={() => resetMd("durationSlow")}
-              id="md-durationSlow"
-            >
-              {#snippet control()}
-                <ValueSlider value={Number($effective.durationSlow)} min={200} max={800} step={20} unit="ms" ariaLabel={$t("s.md.slow")} onchange={(v) => setMd("durationSlow", v)} />
-              {/snippet}
-            </Row>
-          </CollapsibleContent>
-        </Collapsible>
-        <Row
-          label={$t("s.md.easing")}
-          description={$t("s.md.easingHint")}
-          overridden={isOverridden($overrides, "easing")}
-          onreset={() => resetMd("easing")}
-          id="md-easing"
-        >
-          {#snippet control()}
-            <SegmentedControl value={easing} options={$easingPresets} ariaLabel={$t("s.md.easingAria")} onchange={(v) => setMd("easing", v)} />
-          {/snippet}
-        </Row>
       </Section>
-
-      <Section label={$t("s.md.depth")}>
-        <Row
-          label={$t("s.md.shadows")}
-          description={$t("s.md.shadowsHint")}
-          overridden={isOverridden($overrides, "shadow")}
-          onreset={() => resetMd("shadow")}
-          id="md-shadow"
-        >
-          {#snippet control()}
-            <SegmentedControl value={shadow} options={$shadowPresets} ariaLabel={$t("s.md.shadows")} onchange={(v) => setMd("shadow", v)} />
-          {/snippet}
-        </Row>
-        <Row
-          label={$t("s.md.blur")}
-          description={$t("s.md.blurHint")}
-          overridden={isOverridden($overrides, "blurEnabled")}
-          onreset={() => resetMd("blurEnabled")}
-          id="md-blurEnabled"
-        >
-          {#snippet control()}
-            <Switch value={blur} ariaLabel={$t("s.md.blur")} onchange={(v) => setMd("blurEnabled", v)} />
-          {/snippet}
-        </Row>
-      </Section>
-    </div>
-
-    <aside class="preview-col">
-      <div class="preview-sticky">
-        <span class="preview-label">{$t("s.md.preview")}</span>
-        <ThemePreview colors={$colorsEffective} />
-
-        <div class="md-sample">
-          <span class="ms-caption">{reduce ? $t("s.md.capMotionReduced") : $t("s.md.capMotion")}</span>
-          <span class="ms-track">
-            <span
-              class="ms-dot"
-              style={`transition:${reduce ? "none" : `left ${durNormal}ms ${easingBezier(easing)}`}; left: ${pos && !reduce ? "calc(100% - 1.25rem)" : "0"}`}
-            ></span>
-          </span>
-        </div>
-
-        <div class="md-sample md-depth">
-          <span class="ms-caption">{$t("s.md.capDepth")}</span>
-          <span class="ds-stage">
-            <span
-              class="ds-card"
-              style={`box-shadow:${shadowCss(shadow)}; ${blur ? "backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);" : ""}`}
-            >
-              {$t("s.md.card")}
-            </span>
-          </span>
-        </div>
-      </div>
-    </aside>
+    <div class="preview span-full">
+      <span class="preview-label">{$t("s.md.preview")}</span>
+      <ThemePreview colors={$colorsEffective} />
     </div>
   </SectionGrid>
 </Page>
 
 <style>
-  .editor {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-  .controls {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    min-width: 0;
-  }
-  .preview-sticky {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
   .preview-label {
     font-size: var(--text-2xs);
     font-weight: 600;
@@ -227,62 +96,8 @@
     color: var(--color-fg-secondary, #a1a1aa);
     padding-inline-start: 0.125rem;
   }
-  .preview-col {
-    order: -1;
-  }
 
-  .md-sample {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--foreground) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
-  }
-  .ms-caption {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
-  .ms-track {
-    position: relative;
-    display: block;
-    height: 1.25rem;
-    padding: 0;
-    border-radius: var(--radius-full);
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-  }
-  .ms-dot {
-    position: absolute;
-    top: 0;
-    left: 0;
-    display: block;
-    width: 1.25rem;
-    height: 1.25rem;
-    border-radius: var(--radius-full);
-    background: var(--color-accent, var(--foreground));
-  }
 
-  /* The depth sample: a floating card over a soft ground so the shadow + frost
-     read. */
-  .md-depth .ds-stage {
-    display: flex;
-    justify-content: center;
-    padding: 1.25rem 0.5rem;
-    border-radius: var(--radius-input);
-    background: linear-gradient(
-      120deg,
-      color-mix(in srgb, var(--color-accent, var(--foreground)) 22%, transparent),
-      color-mix(in srgb, var(--foreground) 10%, transparent)
-    );
-  }
-  .ds-card {
-    padding: 0.625rem 1.5rem;
-    border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--foreground) 12%, transparent);
-    color: var(--foreground);
-    font-size: var(--text-xs);
-  }
 
   /* The expander trigger (class rides the Collapsible root, so global). */
   :global(.exp-trigger) {

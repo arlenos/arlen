@@ -402,7 +402,7 @@
         <LiveRegion message={$t("s.ai.statusUnavailable")} assertive />
         <Row label={$t("s.ai.statusUnavailable")} description={$t("s.ai.statusUnavailable.desc")} id="ai-status-error">
           {#snippet control()}
-            <span title={statusError}><AlertCircle size={16} class="ai-error-icon" /></span>
+            <span><AlertCircle size={16} class="ai-error-icon" /></span>
           {/snippet}
         </Row>
       {:else}

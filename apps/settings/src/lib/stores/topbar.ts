@@ -56,8 +56,10 @@ export async function load(): Promise<void> {
   try {
     const items = await invoke<TopbarItem[]>("topbar_items");
     topbar.update((s) => ({ ...s, items, error: null }));
-  } catch {
-    topbar.update((s) => ({ ...s, writeFailed: true }));
+  } catch (e) {
+    // A failed READ is not a refused save: the page says the arrangement
+    // cannot be read, not that the person's change was lost.
+    topbar.update((s) => ({ ...s, error: String(e) }));
   }
 }
 
