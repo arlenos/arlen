@@ -401,6 +401,16 @@
     color: var(--color-fg-primary);
     outline: none;
   }
+  /* `outline: none` with nothing put back left this input taking keyboard focus
+     and looking identical - the one field in the save row, so a person tabbing to
+     it had no way to tell they were in it. Found on 10 September by the
+     no-focus-ring probe over `knowledge-refuses-search-save`, a state no route
+     reaches and nothing had ever rendered. The ring is the accent, the way the
+     kit's own input rings and the way the timeline scrub in this app does. */
+  .se-save-name:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-accent, var(--color-fg-primary)) 70%, transparent);
+    outline-offset: 1px;
+  }
 
   .se-empty {
     margin: 0.75rem 0 0;
