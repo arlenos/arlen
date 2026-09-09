@@ -21,6 +21,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 const mod = await import("./appStateStores");
+const { pickLiveAmbient } = mod;
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 /// Start every listener the module offers, whatever they are called, so the test
@@ -55,6 +56,90 @@ describe("the per-app surfaces", () => {
     await settle();
     expect(get(mod.focusedShortcuts)).toHaveLength(0);
     expect(get(mod.focusedBadge)).toBeNull();
-    expect(get(mod.focusedAmbient)).toBeNull();
+  });
+
+  /// The one surface that is deliberately NOT about the focused app any more.
+  /// A shortcut list and a badge belong to the window in front of you; an
+  /// ambient effect is the opposite - it is worth showing precisely while you
+  /// are looking somewhere else, which is what dropping FA1's focused-only
+  /// clause was for.
+  it("keeps showing an ambient effect while its app is not the focused one", async () => {
+    handlers["arlen://ambient-set"]?.({
+      payload: {
+        appId: "dev.arlen.terminal",
+        effect: 1,
+        color: 1,
+        intensity: 0.2,
+        speed: 1,
+        autoClearMs: 0,
+      },
+    });
+    activeAppId.set("dev.arlen.files");
+    await settle();
+    expect(get(mod.liveAmbient)?.appId).toBe("dev.arlen.terminal");
+
+    activeAppId.set(null);
+    await settle();
+    expect(get(mod.liveAmbient)?.appId).toBe("dev.arlen.terminal");
+  });
+
+  it("stops showing it when its app clears it", async () => {
+    handlers["arlen://ambient-set"]?.({
+      payload: {
+        appId: "dev.arlen.terminal",
+        effect: 1,
+        color: 1,
+        intensity: 0.2,
+        speed: 1,
+        autoClearMs: 0,
+      },
+    });
+    await settle();
+    handlers["arlen://ambient-cleared"]?.({ payload: { appId: "dev.arlen.terminal" } });
+    await settle();
+    expect(get(mod.liveAmbient)).toBeNull();
+  });
+});
+
+describe("pickLiveAmbient", () => {
+  const slot = (setAt: number, expiresAt: number | null = null) => ({
+    render: {
+      effect: "pulse" as const,
+      color: "accent" as const,
+      intensity: 0.2,
+      speed: "slow" as const,
+    },
+    expiresAt,
+    setAt,
+  });
+
+  /// One overlay can show one effect, and the honest tie-break is recency: the
+  /// app that just said something is the one with news. Insertion order will not
+  /// do it - a Map keeps a re-set key in its ORIGINAL position, so the app that
+  /// spoke first would keep the screen for as long as it kept speaking.
+  it("shows the most recently set effect, not the first", () => {
+    const byApp = new Map([
+      ["a", slot(100)],
+      ["b", slot(200)],
+    ]);
+    expect(pickLiveAmbient(byApp, 300)?.appId).toBe("b");
+    byApp.set("a", slot(400));
+    expect(pickLiveAmbient(byApp, 500)?.appId).toBe("a");
+  });
+
+  it("passes over one that has expired", () => {
+    const byApp = new Map([
+      ["a", slot(100, 150)],
+      ["b", slot(50)],
+    ]);
+    expect(pickLiveAmbient(byApp, 200)?.appId).toBe("b");
+  });
+
+  it("says nothing when every effect has expired", () => {
+    expect(pickLiveAmbient(new Map([["a", slot(100, 150)]]), 200)).toBeNull();
+  });
+
+  it("says nothing when nothing is set", () => {
+    expect(pickLiveAmbient(new Map(), 1)).toBeNull();
   });
 });

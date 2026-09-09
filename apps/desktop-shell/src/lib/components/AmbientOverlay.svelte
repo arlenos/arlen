@@ -1,14 +1,17 @@
 <!--
   Ambient overlay — fixed-position pseudo-background div that
-  pulses or tints in response to the focused app's
-  shell.ambient state. Mounted once at the root layout level.
+  pulses or tints in response to a running app's shell.ambient
+  state. NOT the focused app's: the focused-only rule was
+  dropped on 9 September because it made the tint appear
+  exactly when the app's own window already said it, and stay
+  silent when it did not. Mounted once at the root layout level.
   pointer-events: none, z-index: 1 (above background, below
   the topbar at z=95 and any popover at z=100).
 
   See `docs/architecture/ambient-api.md`.
 -->
 <script lang="ts">
-  import { focusedAmbient } from "$lib/stores/appStateStores";
+  import { liveAmbient } from "$lib/stores/appStateStores";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
 
@@ -59,8 +62,8 @@
   }
 </script>
 
-{#if ambientGloballyEnabled && $focusedAmbient}
-  {@const a = $focusedAmbient}
+{#if ambientGloballyEnabled && $liveAmbient}
+  {@const a = $liveAmbient.render}
   <div
     class="ambient-overlay"
     class:ambient-pulse={a.effect === "pulse"}
