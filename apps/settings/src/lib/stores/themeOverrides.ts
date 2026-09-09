@@ -12,7 +12,7 @@
 /// count in front of a reset that does nothing is still a surface saying
 /// something the machine never learned.
 
-import { derived } from "svelte/store";
+import { derived, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
 import { overrides as colours, loadColorOverrides } from "./themeColors";
@@ -56,13 +56,45 @@ export const overrideSummary = derived(
   },
 );
 
+/// Whether the summary could not be read, as opposed to being empty.
+///
+/// The two look identical and mean opposite things. Every loader below swallows
+/// its own failure and leaves its store alone - correctly, so a page does not
+/// blank its rows over an unreadable file - but a summary built from stores that
+/// all quietly failed counts zero and renders "Nothing changed yet", which is a
+/// statement about the machine made without asking it.
+///
+/// And the failure is not hypothetical. `theme.toml` is one file; a malformed
+/// one makes every override read fail at once, and it is the same file whose
+/// unparseability takes the whole theme down. So the person whose theme just
+/// broke would open this page, be told they had customised nothing, and have
+/// nothing to click.
+export const summaryUnread = writable(false);
+
 /// Fill every counted store from the machine, so the summary is about this
 /// desktop rather than about which pages happen to have been opened.
 ///
 /// Each loader is the page's own, not a second reader written here: a summary
 /// with its own idea of where an override lives drifts from the page it links
 /// to, and a drifted count is worse than no count because it is believed.
+///
+/// One read is made directly first, as the probe. The loaders cannot report
+/// failure - they are built not to - so the only way to tell an empty answer
+/// from an unanswered one is to ask something once and watch. The colour
+/// overrides are the right question because they read the same `theme.toml` the
+/// summary is about.
 export async function loadSummary(): Promise<void> {
+  // Under vite there is no host and every read throws, which is a dev condition
+  // rather than a broken machine. The empty state is the one worth rendering
+  // there; `loadReach` treats its own vite case the same way.
+  if (!tauriAvailable) return;
+  try {
+    await invoke("theme_color_overrides");
+    summaryUnread.set(false);
+  } catch {
+    summaryUnread.set(true);
+    return;
+  }
   await Promise.all([
     loadColorOverrides(),
     loadTypography(),

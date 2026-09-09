@@ -69,7 +69,7 @@
     resetTypo,
     load as loadTypography,
   } from "$lib/stores/themeTypography";
-  import { overrideSummary, resetAll, loadSummary } from "$lib/stores/themeOverrides";
+  import { overrideSummary, resetAll, loadSummary, summaryUnread } from "$lib/stores/themeOverrides";
 
   onMount(() => {
     void loadThemes();
@@ -216,7 +216,13 @@
     </div>
 
     <Section label={$t("s.appr.mine")} class="span-full">
-      {#if $overrideSummary.total === 0}
+      {#if $summaryUnread}
+        <!-- Not the empty line. An unreadable `theme.toml` fails every override
+             read at once, and it is the same file whose unparseability takes the
+             theme down - so the person whose desktop just broke must not be told
+             they had changed nothing. -->
+        <p class="note">{$t("s.appr.unread")}</p>
+      {:else if $overrideSummary.total === 0}
         <p class="empty">{$t("s.appr.empty")}</p>
       {:else}
         {#each $overrideSummary.pages.filter((p) => p.count > 0) as p (p.key)}
