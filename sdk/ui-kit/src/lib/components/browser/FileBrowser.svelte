@@ -566,6 +566,28 @@
     container-name: browser;
   }
 
+  /* WHERE THE FOCUS SHOWS, and it is two answers because the widget has two
+     states. Normally this is a composite: one tab stop, and the cursored row
+     carries the ring (`.file-row.focused`), which is why the container suppresses
+     its own - a second ring round the whole pane is the defect
+     `container-focus-ring.js` exists to catch.
+
+     With no rows there is no row to cursor, and the pane was then a tab stop
+     that showed nothing at all: the render sweep found it on 9 September in the
+     file manager's error state, where the message says the folder could not be
+     read and a keyboard user has no sign of where they are. So the container
+     rings itself only while nothing inside is cursored. */
+  .file-browser:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-accent, var(--primary)) 55%, transparent);
+    outline-offset: -2px;
+  }
+  /* `:global` because the row is another component's class, so Svelte's
+     scoped-CSS pruner cannot see it from here and drops the rule as unused -
+     which would leave the container ringing over a cursored row. */
+  .file-browser:focus-visible:has(:global(.file-row.focused)) {
+    outline: none;
+  }
+
   .fb-marquee {
     position: absolute;
     z-index: 2;

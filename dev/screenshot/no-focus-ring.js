@@ -131,6 +131,22 @@ for (const el of document.querySelectorAll(SEL)) {
   if (el.disabled) continue;
   if (el.tabIndex < 0) continue;
   if (el.closest("[inert]") || el.closest("[aria-hidden='true']")) continue;
+  // A COMPOSITE WIDGET SHOWS ITS FOCUS ON THE DESCENDANT, not on itself. A grid,
+  // a listbox or a tree takes one tab stop and moves a cursor inside it with the
+  // arrow keys; `aria-activedescendant` names where that cursor is, and the ring
+  // belongs on that row. Reporting the container would be asking for a second
+  // ring round the whole pane, which is the finding the SIBLING probe
+  // (`container-focus-ring.js`) exists to raise.
+  //
+  // The file manager's browser is the case: `role="application"`, one tabindex,
+  // and `.file-row.focused` outlines the cursored row. Reported on three of its
+  // routes on 9 September, all three correct.
+  //
+  // The attribute has to NAME something. An activedescendant pointing at an id
+  // that is not on the page is a widget whose focus is nowhere, which is the
+  // defect this probe is for rather than an excuse from it.
+  const active = el.getAttribute("aria-activedescendant");
+  if (active && document.getElementById(active)) continue;
   const cs = getComputedStyle(el);
   if (cs.visibility === "hidden" || cs.display === "none") continue;
   const r = el.getBoundingClientRect();
