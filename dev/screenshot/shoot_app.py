@@ -72,6 +72,36 @@ def type_keys(base, sid, text):
        {"actions": [{"type": "key", "id": "kbd", "actions": actions}]})
 
 
+def hover(base, sid, expr):
+    """Move the real pointer to the viewport point `expr` evaluates to.
+
+    A DISPATCHED `mousemove` is not enough for everything. xterm.js asks its link
+    providers only from listeners it attached itself, and a synthetic event does
+    not enter that path - a probe that dispatched one on the row, on the screen
+    element and at the row own coordinates saw no link at all, which reads exactly
+    like a terminal whose links do not work.
+
+    `expr` is JavaScript returning `{x, y}` in viewport coordinates, NOT a CSS
+    selector, and that is the whole point. Both element-shaped routes were tried
+    first and the driver refuses them: a pointer move with an element origin runs
+    the interactability check, and asking for the element rect runs it too, so a
+    terminal row answers `element not interactable` either way - the row layer is
+    not what the pointer hits, the screen element above it is. The page can
+    measure the pixel it means; the driver only has to go there.
+    """
+    point = rq(base, "POST", f"/session/{sid}/execute/sync",
+               {"script": f"return ({expr});", "args": []})["value"]
+    if not isinstance(point, dict) or "x" not in point or "y" not in point:
+        raise SystemExit(f"--hover did not return a point: {point!r}")
+    rq(base, "POST", f"/session/{sid}/actions", {"actions": [{
+        "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+        "actions": [
+            {"type": "pointerMove", "duration": 60, "origin": "viewport",
+             "x": int(point["x"]), "y": int(point["y"])},
+            {"type": "pause", "duration": 200},
+        ]}]})
+
+
 def find_element(base, sid, css):
     """Find one element by CSS selector; return its W3C element reference."""
     res = rq(base, "POST", f"/session/{sid}/element",
@@ -324,6 +354,11 @@ def main():
                          "app somewhere (a route, an open dialog) and the second "
                          "ask about what is there, which one call cannot do "
                          "because navigating discards the script's return")
+    ap.add_argument("--hover", default=None,
+                    help="JavaScript returning {x, y} in viewport coordinates; the "
+                         "real pointer moves there just before the LAST --inject "
+                         "runs. For anything a dispatched event cannot reach - the "
+                         "page sees a pointer from the driver, not from a script.")
     ap.add_argument("--inject-settle", type=float, default=2.5,
                     help="seconds between repeated --inject runs")
     ap.add_argument("--grab-x", action="store_true",
@@ -493,9 +528,14 @@ def main():
             exit_code = 0 if ok else 1
             if not args.out:
                 return exit_code
-        for n, path in enumerate(args.inject or []):
+        injects = args.inject or []
+        for n, path in enumerate(injects):
             if n:
                 time.sleep(args.inject_settle)
+            # Before the LAST one, so an earlier inject can put the thing on
+            # screen and the last one can read what hovering it did.
+            if args.hover and n == len(injects) - 1:
+                hover(base, sid, args.hover)
             with open(path) as f:
                 script = f.read()
             # Same endpoint and the same `inject result:` line as `shoot.py`, so

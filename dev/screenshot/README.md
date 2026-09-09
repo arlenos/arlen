@@ -201,6 +201,33 @@ PNG after the numbers said something alarming:
 - **`text-overflow: ellipsis` does nothing on a flex or grid box**, so a
   declaration that reads like a design decision can be a hard cut mid-glyph.
 
+## Moving a real pointer
+
+`SHOOT_HOVER` takes JavaScript returning `{x, y}` in viewport coordinates and moves
+the driver's own pointer there, just before the last `--inject` runs:
+
+```sh
+SHOOT_INJECT=type.js:read.js \
+SHOOT_HOVER='(() => { const r = document.querySelector("[data-mark]").getBoundingClientRect();
+                      return { x: r.left + r.width * 0.15, y: r.top + r.height / 2 }; })()' \
+  dev/screenshot/shoot-app.sh "$app" out/x.png
+```
+
+An earlier inject puts the thing on screen and marks it; the last one reads what
+hovering did.
+
+**Why JS and not a CSS selector.** Both element-shaped routes were tried and the
+driver refuses them for anything layered: a pointer move with an element origin
+runs the interactability check, and asking for the element rect runs it too, so an
+xterm row answers `element not interactable` either way - the row layer is not
+what the pointer hits. The page can measure the pixel it means; the driver only
+has to go there.
+
+**And know what a hover can prove.** A canvas or WebGL renderer draws its own
+hover state, so there is no DOM for a probe to find however the pointer arrived.
+That is what makes the terminal link case unreachable from here, and it is a
+property of the renderer rather than of the feature.
+
 ## Reading a window in German
 
 Six apps have had a defect that only the German render showed - a column sized to

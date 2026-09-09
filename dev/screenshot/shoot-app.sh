@@ -57,6 +57,7 @@ export SHOOT_LOCALE="${SHOOT_LOCALE:-}"
 export SHOOT_APP_ENV="${SHOOT_APP_ENV:-}"
 # A file to launch the app on, colon-separated for more than one argument.
 export SHOOT_APP_ARGS="${SHOOT_APP_ARGS:-}"
+export SHOOT_HOVER="${SHOOT_HOVER:-}"
 # The binary is an argument here, so building it is the caller's job - but its age
 # is not their memory. On 6 August the compositor harness screenshotted a binary
 # six weeks old and reported a pass, so any harness that runs a prebuilt artifact
@@ -275,6 +276,13 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
     for f in "${injects[@]}"; do args+=(--inject "$f"); done
   fi
   [ -n "${SHOOT_INJECT_SETTLE:-}" ] && args+=(--inject-settle "$SHOOT_INJECT_SETTLE")
+  # A real pointer at a point the page measures, just before the last inject. For
+  # the things a dispatched mousemove cannot reach; the link providers in xterm
+  # are the case this was written for. JS returning {x, y}, not a selector - the
+  # driver refuses to interact with a terminal row at all. No apostrophes in here:
+  # this whole block is the payload of a single-quoted bash -c and one would
+  # close it.
+  [ -n "${SHOOT_HOVER:-}" ] && args+=(--hover "$SHOOT_HOVER")
   python3 "$SHOOT_HERE/shoot_app.py" "${args[@]}"
 '
 
