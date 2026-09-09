@@ -1266,7 +1266,19 @@ async fn promote_timeline_record(
     let p = TimelineRecordPayload::decode(payload)?;
     let id_esc = escape_cypher(event_id);
     let type_esc = escape_cypher(&p.r#type);
-    let label_esc = escape_cypher(&p.label);
+    // THE SUBJECT, NOT THE LABEL, and the two docs in `os-sdk/src/timeline.rs`
+    // disagreed about which. The field's own doc is the contract an app reads -
+    // "Subject of the event - typically a file path... Becomes the `subject`
+    // field on the resulting UserAction" - and the module header said
+    // `subject <label>`. The code followed the header, so the PATH an app
+    // recorded never reached the graph at all: a save of `/home/tim/notes.md`
+    // arrived as a node whose subject was the word "saved", and "what did I
+    // save" had no answer. Found on 9 September by an integration scenario that
+    // queried for the path an app had just recorded.
+    //
+    // The label stays in the SQLite event row with the metadata, exactly as the
+    // presence handler leaves its own extras there.
+    let subject_esc = escape_cypher(&p.subject);
     // Use ended_at when present (duration event), otherwise started_at,
     // and finally fall back to the wall-clock timestamp from the
     // Event envelope. This keeps timeline queries time-ordered by the
@@ -1284,12 +1296,12 @@ async fn promote_timeline_record(
             "MERGE (u:UserAction {{id: '{id_esc}'}})
              SET u.category = 'timeline',
                  u.action   = '{type_esc}',
-                 u.subject  = '{label_esc}',
+                 u.subject  = '{subject_esc}',
                  u.timestamp = {ts}"
         ))
         .await?;
 
-    debug!(event_id, app_id = %p.app_id, label = %p.label, "promoted app.timeline.record");
+    debug!(event_id, app_id = %p.app_id, subject = %p.subject, "promoted app.timeline.record");
     Ok(())
 }
 
@@ -2671,6 +2683,41 @@ mod shell_event_tests {
         assert_eq!(none.rows[0][0].as_i64(), 0, "an empty action is not promoted");
     }
 
+    /// The node has to carry what the record was ABOUT.
+    ///
+    /// This promoted the LABEL into the node's subject, so an app recording a
+    /// save of `/home/tim/notes.md` produced a node whose subject was the word
+    /// "saved" and the path was dropped entirely. Every app that records
+    /// anything sends a path there; none of them could be asked about
+    /// afterwards.
+    #[tokio::test]
+    async fn timeline_record_carries_the_subject_it_was_about() {
+        let (graph, _tmp) = setup().await;
+        let payload = TimelineRecordPayload {
+            app_id: "com.example.editor".into(),
+            label: "saved".into(),
+            subject: "/home/tim/notes.md".into(),
+            r#type: "save".into(),
+            started_at: 0,
+            ended_at: 0,
+            metadata: HashMap::new(),
+        };
+        let bytes = encode_timeline(&payload);
+
+        promote_timeline_record(&graph, "evt-timeline-1", &1_000_000, &bytes)
+            .await
+            .unwrap();
+
+        let rows = graph
+            .query_rows(
+                "MATCH (u:UserAction {id: 'evt-timeline-1'}) RETURN u.subject, u.action".to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.rows[0][0].as_str(), "/home/tim/notes.md");
+        assert_eq!(rows.rows[0][1].as_str(), "save");
+    }
+
     #[tokio::test]
     async fn presence_set_creates_user_action() {
         let (graph, _tmp) = setup().await;
@@ -2744,7 +2791,20 @@ mod shell_event_tests {
         let row = rs.rows.first().expect("user action created");
         assert_eq!(row[0].as_i64(), 9_500_000); // ended_at wins
         assert_eq!(row[1].as_str(), "build");
-        assert_eq!(row[2].as_str(), "Build succeeded");
+        // THE PAYLOAD'S SUBJECT, not its label. This asserted `"Build succeeded"`
+        // until 9 September, which pinned a behaviour two other docs contradicted:
+        // `TimelineParams.subject` says in as many words that it "Becomes the
+        // `subject` field on the resulting UserAction", and the proto calls it a
+        // file path or project name. The consequence was that the PATH an app
+        // recorded never reached the graph, so "what did I save" had no answer -
+        // found by an integration scenario querying for the path an app had just
+        // recorded. The label stays in the SQLite event row with the metadata.
+        //
+        // The assertion was incidental here: this test is about `ended_at`
+        // winning the timestamp, and it happened to check the subject on the way
+        // past. `timeline_record_carries_the_subject_it_was_about` is where the
+        // rule now lives deliberately.
+        assert_eq!(row[2].as_str(), "coffeeshop");
     }
 
     #[tokio::test]

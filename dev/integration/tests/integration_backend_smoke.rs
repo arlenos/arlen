@@ -612,6 +612,171 @@ async fn a_file_opened_promotes_to_a_readable_file_node() {
     }
 }
 
+/// IT-1 app-level input: a presence an APP publishes becomes a readable
+/// UserAction node.
+///
+/// The other promotion scenarios all start from the SENSOR - a `file.opened` the
+/// kernel probe would have produced. This one starts where six apps now start:
+/// `shell.presence`, which the daemon has promoted since it was written while
+/// nothing sent one. Between 9 September's producers and this, the whole path is
+/// covered end to end - but the apps' half was only ever checked ON THE WIRE (a
+/// drive watching the bus), and the daemon's half only in its own unit tests.
+/// This is the join, and it is the one place a mismatch between the two would
+/// show: a payload field the promotion does not read, or a label the read scope
+/// cannot name, looks fine from either side alone.
+///
+/// Asserts the ACTIVITY comes back, not merely that a node exists. `editing` is
+/// the thing the sensor could never have known, so a node with the right subject
+/// and an empty action would be the failure worth catching.
+#[tokio::test]
+#[ignore = "needs the built daemons and a FUSE-capable host"]
+async fn an_app_published_presence_promotes_to_a_readable_user_action() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // UNPRIVILEGED, or the grant below proves nothing: a FirstParty caller skips
+    // the read-scope gate entirely, so the node would come back whether or not
+    // `system.UserAction` was ever granted - and "readable under the seeded
+    // scope" is half of what this scenario claims.
+    stack.as_unprivileged();
+    stack
+        .seed_read_profile(&["system.UserAction.id", "system.UserAction.subject", "system.UserAction.action"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_ready("event-bus-producer.sock")
+        .expect("producer socket");
+    stack
+        .wait_ready("event-bus-consumer.sock")
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let subject = "/work/it/presence.rs";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let query =
+        format!("MATCH (u:UserAction {{subject: '{subject}'}}) RETURN u.action LIMIT 1");
+    // Re-emitted each round for the same reason the file scenario re-emits: the
+    // writer's subscription races the first emit, and promotion is keyed by the
+    // event id so repeats cost one row each rather than corrupting anything.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let payload = proto::PresenceSetPayload {
+            app_id: "integration-test".to_string(),
+            activity: "editing".to_string(),
+            subject: subject.to_string(),
+            project: String::new(),
+            auto_clear: "on-blur".to_string(),
+            metadata: Default::default(),
+        }
+        .encode_to_vec();
+        emitter
+            .emit("app.presence.set", payload)
+            .await
+            .expect("emit app.presence.set");
+        if let Ok(rows) = client.query_rows(&query).await {
+            if let Some(row) = rows.first() {
+                let action = row.get("u.action").and_then(|v| v.as_str()).unwrap_or_default();
+                assert_eq!(
+                    action, "editing",
+                    "the node was promoted but lost the activity the app published"
+                );
+                return;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "an app.presence.set never promoted to a readable UserAction within 60s"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// IT-1 app-level input, the other surface: a timeline record an APP writes
+/// becomes a readable UserAction node.
+///
+/// The sibling of the presence scenario above, and it exists separately because
+/// the two promote through different handlers and carry different fields. This
+/// one asserts the TYPE comes back as the action - `save` rather than `editing` -
+/// which is the join that would break if the daemon read `label` where the app
+/// sends `type`, or the other way round. Both sides look correct alone in that
+/// case; only this says whether they agree.
+#[tokio::test]
+#[ignore = "needs the built daemons and a FUSE-capable host"]
+async fn an_app_written_timeline_record_promotes_to_a_readable_user_action() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // UNPRIVILEGED, or the grant below proves nothing: a FirstParty caller skips
+    // the read-scope gate entirely, so the node would come back whether or not
+    // `system.UserAction` was ever granted - and "readable under the seeded
+    // scope" is half of what this scenario claims.
+    stack.as_unprivileged();
+    stack
+        .seed_read_profile(&["system.UserAction.id", "system.UserAction.subject", "system.UserAction.action"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_ready("event-bus-producer.sock")
+        .expect("producer socket");
+    stack
+        .wait_ready("event-bus-consumer.sock")
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let subject = "/work/it/recorded.rs";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let query =
+        format!("MATCH (u:UserAction {{subject: '{subject}'}}) RETURN u.action LIMIT 1");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        // A POINT-IN-TIME record: both stamps left at zero, which is what a save
+        // is and what the type's own doc describes. It is also the shape that
+        // could not be sent at all until the `#[serde(default)]` fix earlier
+        // today, so sending it here keeps that closed.
+        let payload = proto::TimelineRecordPayload {
+            app_id: "integration-test".to_string(),
+            label: "saved".to_string(),
+            subject: subject.to_string(),
+            r#type: "save".to_string(),
+            started_at: 0,
+            ended_at: 0,
+            metadata: Default::default(),
+        }
+        .encode_to_vec();
+        emitter
+            .emit("app.timeline.record", payload)
+            .await
+            .expect("emit app.timeline.record");
+        if let Ok(rows) = client.query_rows(&query).await {
+            if let Some(row) = rows.first() {
+                let action = row.get("u.action").and_then(|v| v.as_str()).unwrap_or_default();
+                assert_eq!(
+                    action, "save",
+                    "the node was promoted but did not carry the type the app recorded"
+                );
+                return;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "an app.timeline.record never promoted to a readable UserAction within 60s"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
 /// IT-1 sensor pipeline (CG-R1): a `file.opened` for a real `.rs` file drives the
 /// full code-graph chain end-to-end - code-indexer consumes the event, tree-sitter
 /// parses the file ON DISK, emits a `code.indexed` event, and the knowledge
