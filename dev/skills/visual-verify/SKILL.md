@@ -34,6 +34,7 @@ Everything is in `~/Repositories/arlen/dev/`.
 | Does any text collide, overflow or lose its focus ring, in German, at three widths? | `dev/screenshot/sweep-render.sh <base-url> de <path…>` |
 | …across every app? | `dev/screenshot/sweep-render-all.sh [locale] [app]` |
 | Does axe pass, with real colour-contrast numbers? | `dev/screenshot/sweep-axe.sh [width] [app]` (add `--axe` to `headless.sh` for one page) |
+| Does Escape close what a click opened? | `dev/screenshot/sweep-escape.sh <base-url> [selector…]` - with no selectors it runs the set for the route the URL names |
 | What does this app do when every backend call fails? | `dev/screenshot/shoot-no-backend.sh <app> [route] [out.png]` |
 | …across every app? | `dev/screenshot/sweep-no-backend.sh [width] [app]` |
 | What does a REFUSAL look like - a state no route reaches? | a host fixture plus `dev/screenshot/probe-host.sh <host> <base> <probe.js> [width] [locale]` |
@@ -46,15 +47,34 @@ with a real screen size (`xvfb-run -a` alone gives 640×480), the host session c
 and a window manager (or `fullscreen()` is never granted, the surface stays at 200px and the render refuses with
 no file). Calling `render-wide.py` yourself skips all three; a gate refuses a commit that does.
 
-## The four probes, and what each one is blind to
+## The probes, and what each one is blind to
 
-`dev/screenshot/*.js`, passed with `--probe-file`, or run over a whole table by the sweeps.
+`dev/screenshot/*.js`, passed with `--probe-file`, or run over a whole table by the sweeps. This heading said
+"the four probes" over a list of five, and `container-focus-ring.js` was in neither the count nor the list -
+which is the small way a document stops being read: the number and the list disagreed, and a reader counting
+files found more than both.
+
+Four run on every route the render sweep walks:
 
 - `clipped-text.js` - an element outgrew its own box.
 - `clipped-by-parent.js` - an ancestor that clips cut a child sideways.
 - `overlapping-text.js` - two elements painted in the same place.
 - `no-focus-ring.js` - a control takes keyboard focus and looks no different.
-- `escape-dismisses.js` - a dismissible thing does not answer Escape.
+
+A fifth runs only on host rows, where something is focused for it to read:
+
+- `container-focus-ring.js` - a composite widget rings itself instead of the descendant its
+  `aria-activedescendant` names.
+
+And one asks a question a still picture cannot, so it has its own sweep rather than a column:
+
+- `escape-dismisses.js` - a dismissible thing does not answer Escape. It presses the key and reports what was
+  open before and after, so `sweep-escape.sh` reads the verdict rather than the sweep's usual empty-is-clean
+  rule. It exists because a Settings dialog once mounted its handler on its own backdrop, which never receives
+  the key - and reading the file was not enough to see it.
+
+`open-clicked.js` is in the same directory and is not one of these: it reads whether a `--open` click landed,
+for the sweep's own control, and judges nothing about a route.
 
 They ask genuinely different questions and a layout change can pass any two. They are also all blind to
 legibility: `overflow-wrap: anywhere` clears every one of them and renders a name one letter per line.
@@ -83,8 +103,9 @@ text, and remember `--open` clicks before the probe runs.
 
 ## Sweeps are the coverage, so what is missing from them is invisible
 
-The tables in `sweep-render-all.sh` and `sweep-axe.sh` are the list of what gets looked at. A surface not in
-them is unmeasured, not clean - a mail sweep once reported "0 violations" having swept nothing at all.
+The tables in `sweep-render-all.sh`, `sweep-axe.sh` and `sweep-escape.sh` are the list of what gets looked
+at. A surface not in them is unmeasured, not clean - a mail sweep once reported "0 violations" having swept
+nothing at all.
 
 Three shapes that a route walk cannot reach on its own, all of which had real defects behind them:
 
