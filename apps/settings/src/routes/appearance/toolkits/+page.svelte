@@ -93,9 +93,10 @@
 
 <style>
   /* The readout: a dot of the house family (6px on the chip radius, as the
-     privacy readout draws its findings) and one clause. Success is quiet,
-     a file or a theme in the way is the warning tone, an unwritten output the
-     ring. */
+     privacy readout draws its findings) and a VALUE, not a sentence - "In
+     place", "Adwaita selected" - because a sentence here pushed the label
+     column aside (Tim, 9 September). Success is quiet, a file or a theme in
+     the way is the warning tone, an unwritten output the ring. */
   .readout {
     display: inline-flex;
     align-items: center;
