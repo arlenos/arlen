@@ -183,6 +183,14 @@ publish = [
     # uses, so both surfaces land in one dispatcher.
     "app.shortcut.register",
     "app.shortcut.cleared",
+
+    # The count on the launcher's Trash row. `shell.shortcuts` has a second half
+    # the registered list cannot express: `setState` moves ONE entry's badge
+    # without re-sending the list, which is what a number that changes on its own
+    # needs. Landed 9 September with its Tauri capability and without this line -
+    # found by the sweep that became `check-publish-grants`, and it is the exact
+    # shape the breadcrumb comment above warns about.
+    "app.shortcut.state_changed",
 ]
 subscribe = [
     "app.menu.*",
