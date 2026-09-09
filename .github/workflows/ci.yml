@@ -265,6 +265,8 @@ jobs:
           node dev/scripts/test-check-tauri-events-heard.mjs
           python3 dev/scripts/check-settings-keys-read.py
           node dev/scripts/test-check-settings-keys-read.mjs
+          python3 dev/scripts/check-socket-tiers.py
+          node dev/scripts/test-check-socket-tiers.mjs
           node dev/scripts/test-check-invoke-exists.mjs
           python3 dev/scripts/check-optimistic-write.py
           python3 dev/scripts/check-closed-unanswered.py

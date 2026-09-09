@@ -12,11 +12,18 @@
 use arlen_permissions::revoke::{RestoreReach, RevokeInitiator, RevokeReach, RevokedReach};
 use os_sdk::graph::{GrantView, UnixGraphClient};
 
-/// The knowledge daemon's read socket. `ARLEN_DAEMON_SOCKET` overrides it (dev and
-/// per-user socket layouts); the default is the system path the packaged daemon
-/// binds.
+/// The knowledge daemon's read socket, through the shared resolver.
+///
+/// This read `ARLEN_DAEMON_SOCKET` and then fell straight to `/run/arlen`, which
+/// is two misses at once: the socket answers to two env names and the daemon is a
+/// user service, so on a booted session it binds under `$XDG_RUNTIME_DIR/arlen/`
+/// and `arlen-session` pins neither name. The App-access panel and its revoke
+/// would have dialled a path nothing binds. `knowledge_socket_path` is where both
+/// facts live once - it was written after the same miss cost six resolvers.
 fn knowledge_socket() -> String {
-    std::env::var("ARLEN_DAEMON_SOCKET").unwrap_or_else(|_| "/run/arlen/knowledge.sock".to_string())
+    os_sdk::runtime::knowledge_socket_path()
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// The whole-system capability grant list for the App-access panel.

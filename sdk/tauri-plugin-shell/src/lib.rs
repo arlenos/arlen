@@ -119,12 +119,40 @@ pub struct ShellState {
 
 impl ShellState {
     fn new(default_app_id: &str) -> Self {
-        let producer_socket = std::env::var("ARLEN_PRODUCER_SOCKET")
-            .unwrap_or_else(|_| "/run/arlen/event-bus-producer.sock".to_string());
-        let consumer_socket = std::env::var("ARLEN_CONSUMER_SOCKET")
-            .unwrap_or_else(|_| "/run/arlen/event-bus-consumer.sock".to_string());
-        let daemon_socket = std::env::var("ARLEN_DAEMON_SOCKET")
-            .unwrap_or_else(|_| "/run/arlen/knowledge.sock".to_string());
+        // THE SHARED RESOLVER, not a hand-written env-or-/run pair.
+        //
+        // These three read env-or-`/run/arlen/…` and skipped the tier in between,
+        // which is the one that matters: the event bus binds through
+        // `os_sdk::runtime::socket_path`, so on a booted session it is at
+        // `$XDG_RUNTIME_DIR/arlen/`, and `arlen-session` deliberately pins none of
+        // these variables - a test in `daemons/session` asserts it does not,
+        // because pinning here would override the per-user resolution for every
+        // process in the session.
+        //
+        // So every app carrying this plugin dialled `/run/arlen/…`, where nothing
+        // binds. That is the whole app side of the bus: publishing a menu,
+        // receiving the click back, the toolbar, the shortcut relay, the graph
+        // read. `theme.rs` in this same crate already used the shared resolver,
+        // which is what made it look like an oversight rather than a decision.
+        //
+        // The knowledge socket answers to two names and `knowledge_socket_path`
+        // is where that wart is handled once; six resolvers reading only one of
+        // them is the bug it was written for.
+        let producer_socket = os_sdk::runtime::socket_path(
+            "ARLEN_PRODUCER_SOCKET",
+            "event-bus-producer.sock",
+        )
+        .to_string_lossy()
+        .into_owned();
+        let consumer_socket = os_sdk::runtime::socket_path(
+            "ARLEN_CONSUMER_SOCKET",
+            "event-bus-consumer.sock",
+        )
+        .to_string_lossy()
+        .into_owned();
+        let daemon_socket = os_sdk::runtime::knowledge_socket_path()
+            .to_string_lossy()
+            .into_owned();
         // The app's bus identity. `ARLEN_APP_ID` wins (a launcher can pin it);
         // otherwise the Tauri bundle identifier, which is the app's Wayland
         // toplevel app_id the shell correlates the toolbar/menu slot against. The
