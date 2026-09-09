@@ -40,6 +40,16 @@
   let pivot = $state<"all" | ExtensionKind>("all");
   let query = $state("");
   let reach = $state<Reach>("any");
+  /// Pivot, search and filter survive a step back from a detail page
+  /// (design-system.md §6.9).
+  export const snapshot = {
+    capture: () => ({ pivot, query, reach }),
+    restore: (v: { pivot: "all" | ExtensionKind; query: string; reach: Reach }) => {
+      pivot = v.pivot;
+      query = v.query;
+      reach = v.reach;
+    },
+  };
 
   const KINDS: ExtensionKind[] = ["app", "module", "bridge"];
   const ICONS = { app: AppWindow, module: Puzzle, bridge: Cable } as const;

@@ -100,7 +100,7 @@
   }
 </script>
 
-<Page
+<Page back={{ href: "/ai/models", label: $t("s.nav.aiModels") }}
   title={$t("s.mdl.get")}
   description={$t("s.mdl.get.desc")}
 >

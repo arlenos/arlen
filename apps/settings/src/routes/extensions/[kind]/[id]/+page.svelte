@@ -119,15 +119,15 @@
 </script>
 
 {#if !kind}
-  <Page title={$t("s.ext.title")}>
+  <Page back={{ href: "/extensions", label: $t("s.nav.extensions") }} title={$t("s.ext.title")}>
     <SectionGrid><Notice tone="error" class="span-full" text={$t("s.ext.notFound")} /></SectionGrid>
   </Page>
 {:else if $inventoryState === "loading"}
-  <Page title={$t("s.ext.title")}>
+  <Page back={{ href: "/extensions", label: $t("s.nav.extensions") }} title={$t("s.ext.title")}>
     <SectionGrid><p class="quiet span-full">{$t("s.ext.loading")}</p></SectionGrid>
   </Page>
 {:else if !ext}
-  <Page title={$t("s.ext.title")}>
+  <Page back={{ href: "/extensions", label: $t("s.nav.extensions") }} title={$t("s.ext.title")}>
     <SectionGrid>
       <Notice tone="error" class="span-full" text={$t("s.ext.notFound")} />
       <div class="span-full"><Button variant="outline" size="sm" onclick={() => goto("/extensions")}>{$t("s.ext.backToList")}</Button></div>
@@ -137,7 +137,7 @@
   {@const Icon = ICONS[ext.kind]}
   {@const health = healthReadout(ext.health, $t)}
   {@const why = failureReason(ext.health)}
-  <Page title={ext.name} description={originLine(ext, $t)}>
+  <Page back={{ href: "/extensions", label: $t("s.nav.extensions") }} title={ext.name} description={originLine(ext, $t)}>
     <SectionGrid>
       {#if $inventoryMocked}
         <Notice tone="neutral" class="span-full" text={$t("s.ext.sample")} />

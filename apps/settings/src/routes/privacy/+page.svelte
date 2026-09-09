@@ -71,6 +71,12 @@
   // one row in the same model - the anti-Recall story). "By capability" is the
   // second lens, grouping by what an app can reach.
   let pivot = $state<"app" | "capability">("app");
+  /// The pivot survives a step back from a sub-route (design-system.md §6.9:
+  /// the door returns the parent with its state, not fresh).
+  export const snapshot = {
+    capture: () => pivot,
+    restore: (v: "app" | "capability") => (pivot = v),
+  };
   const PIVOTS = $derived([
     { value: "app", label: $t("s.priv.byApp") },
     { value: "capability", label: $t("s.priv.byCapability") },
