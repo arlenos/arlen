@@ -75,7 +75,10 @@
       <div class="job" class:paused={j.state === "paused"} class:err={isError(j)} class:done={j.state === "done"}>
         <div class="job-top">
           <span class="job-avatar">{avatarLetter(j.appLabel)}</span>
-          <span class="job-title">{j.title}</span>
+          <!-- The title ellipses in a panel this narrow (a German one already
+               does at 720), and it is what tells two copies apart, so it is
+               also the hover title - the same answer the window cards give. -->
+          <span class="job-title" title={j.title}>{j.title}</span>
           <span class="job-actions">
             {#if j.suspendable && j.state === "running"}
               <button class="job-btn" aria-label={$t("sh.job.pause")} title={$t("sh.job.pause")} onclick={() => pauseJob(j.id)}><Pause size={14} strokeWidth={2} /></button>
