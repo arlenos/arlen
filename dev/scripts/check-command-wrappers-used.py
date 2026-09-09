@@ -36,6 +36,16 @@ from pathlib import Path
 # than a tolerated shape: each wants the same answer as a dark command, which is
 # call it or delete it.
 CARRIED: dict[str, tuple[int, str]] = {
+    "settings": (
+        2,
+        "`setAccentOverride` and `resetAccentOverride`, the per-toolkit accent "
+        "writers. Their command and their read half are wired and the Toolkits "
+        "page loads the accent on mount; what is missing is the control, which "
+        "was removed on 9 September because it wrote to a fixture store and is "
+        "arlen-ui's to put back now that it has a backend. Carried rather than "
+        "excused for the same reason the terminal entry is: a gap awaiting a "
+        "surface, and it comes out the moment the row has a colour on it",
+    ),
     "terminal": (
         1,
         "`readCapability`, whose own doc says there is nowhere yet to put the "

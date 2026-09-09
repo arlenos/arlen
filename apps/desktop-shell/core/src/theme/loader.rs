@@ -110,6 +110,20 @@ impl ThemeLoader {
     ///    via the `customization` arg — we read it here from the
     ///    standard path.
     pub fn load(&self, id: &str) -> Result<ArlenTheme, ThemeError> {
+        self.load_for(id, None)
+    }
+
+    /// The same load, resolved AS ONE TOOLKIT'S GENERATOR SEES IT: the shared
+    /// theme plus that toolkit's `[override.<toolkit>]` block.
+    ///
+    /// A theme with no override for `toolkit` resolves identically, so this is
+    /// safe to call for every generator - which is what lets the apply step ask
+    /// per toolkit rather than deciding whether an override exists first.
+    pub fn load_for(
+        &self,
+        id: &str,
+        toolkit: Option<arlen_theme::Toolkit>,
+    ) -> Result<ArlenTheme, ThemeError> {
         // 1. User theme overlay. Read first so a non-bundled theme can
         // declare which bundled variant it extends.
         let user_overlay = if let Some(ref dir) = self.user_dir {
@@ -151,11 +165,19 @@ impl ThemeLoader {
             None
         };
 
-        ArlenTheme::resolve(
-            bundled,
-            user_overlay.as_deref(),
-            customization.as_deref(),
-        )
+        match toolkit {
+            Some(tk) => ArlenTheme::resolve_toolkit(
+                bundled,
+                user_overlay.as_deref(),
+                customization.as_deref(),
+                tk,
+            ),
+            None => ArlenTheme::resolve(
+                bundled,
+                user_overlay.as_deref(),
+                customization.as_deref(),
+            ),
+        }
         .map_err(|e| ThemeError::Resolve {
             path: format!("active={id}"),
             source: e,
@@ -283,10 +305,59 @@ pub fn resolve_theme(
     loader: &ThemeLoader,
     config: &AppearanceConfig,
 ) -> Result<ArlenTheme, ThemeError> {
-    let theme = loader.load(&config.theme.active)?;
-    let theme = apply_overrides(theme, &config.overrides);
+    resolve_theme_for(loader, config, None)
+}
+
+/// The same pipeline, as one toolkit's generator sees it.
+///
+/// **The accent has two claimants here and the more specific one wins.** The
+/// toolkit override is a theme-FILE layer, so a naive chain would then let
+/// `appearance.toml`'s accent - which the Appearance page writes and which is
+/// applied after the file layers - paint straight over it, and a person who gave
+/// GTK its own accent would watch it have no effect for the single reason that
+/// they had also picked an accent at all. That is the common case, not the
+/// corner. So when the toolkit's override declares an accent, the global one is
+/// dropped for that toolkit and nothing else about it changes: radius intensity,
+/// the font scale and the accessibility pass all still apply.
+///
+/// Detected by comparing the two resolves rather than by re-reading the file,
+/// because the file-reading rule lives in the resolver and a second copy of it
+/// here would drift - and a drifted copy does not throw, it silently ignores an
+/// override somebody set.
+pub fn resolve_theme_for(
+    loader: &ThemeLoader,
+    config: &AppearanceConfig,
+    toolkit: Option<arlen_theme::Toolkit>,
+) -> Result<ArlenTheme, ThemeError> {
+    let theme = loader.load_for(&config.theme.active, toolkit)?;
+    let mut overrides = config.overrides.clone();
+    if toolkit.is_some() {
+        let shared = loader.load(&config.theme.active)?;
+        if toolkit_accent_wins(&shared, &theme, &overrides) {
+            overrides.accent = None;
+        }
+    }
+    let theme = apply_overrides(theme, &overrides);
     let theme = apply_accessibility(theme, &config.accessibility);
     Ok(theme)
+}
+
+/// Whether this toolkit's own accent should displace `appearance.toml`'s.
+///
+/// True only when there is a global accent to displace AND the toolkit's resolve
+/// actually came out with a different accent than the shared one - which is the
+/// evidence that its `[override.<toolkit>]` block said something about the
+/// accent, read from the resolve rather than from a second reading of the file.
+///
+/// Pure so the precedence rule can be tested without a theme file on the
+/// machine, which the loader's own path would need: it reads the real
+/// `~/.config/arlen/theme.toml`.
+pub fn toolkit_accent_wins(
+    shared: &ArlenTheme,
+    toolkit: &ArlenTheme,
+    overrides: &UserOverrides,
+) -> bool {
+    overrides.accent.is_some() && toolkit.color.accent != shared.color.accent
 }
 
 // ---------------------------------------------------------------------------
@@ -443,5 +514,56 @@ mod tests {
         assert_eq!(result.motion.duration_fast,   "0ms");
         assert_eq!(result.motion.duration_normal, "0ms");
         assert_eq!(result.motion.duration_slow,   "0ms");
+    }
+}
+
+#[cfg(test)]
+mod toolkit_precedence_tests {
+    use super::*;
+
+    fn bundled() -> ArlenTheme {
+        ArlenTheme::from_bundled(arlen_theme::DARK_TOML).expect("bundled dark resolves")
+    }
+
+    /// The case the rule exists for. Somebody picks an accent on the Appearance
+    /// page - the common thing to do - and then gives GTK its own. Without this
+    /// the global accent is applied after the file layers and paints straight
+    /// over the GTK block, so the second choice does nothing and the reason is
+    /// invisible: it works for anyone who never touched the first control.
+    #[test]
+    fn a_toolkit_with_its_own_accent_keeps_it_over_the_global_one() {
+        let shared = bundled();
+        let mut gtk = bundled();
+        gtk.color.accent = [0.1, 0.8, 0.3, 1.0];
+        let overrides = UserOverrides {
+            accent: Some("#ff0000".into()),
+            ..Default::default()
+        };
+        assert!(toolkit_accent_wins(&shared, &gtk, &overrides));
+    }
+
+    /// And the other side of it, which is what keeps the rule from being a way
+    /// to lose the accent everywhere: a toolkit that said nothing about the
+    /// accent takes the global one like every other surface.
+    #[test]
+    fn a_toolkit_that_said_nothing_still_takes_the_global_accent() {
+        let overrides = UserOverrides {
+            accent: Some("#ff0000".into()),
+            ..Default::default()
+        };
+        assert!(!toolkit_accent_wins(&bundled(), &bundled(), &overrides));
+    }
+
+    /// No global accent, nothing to displace. Stated because the function reads
+    /// as "does the toolkit win", and the honest answer with no contest is no.
+    #[test]
+    fn with_no_global_accent_there_is_nothing_to_displace() {
+        let mut gtk = bundled();
+        gtk.color.accent = [0.1, 0.8, 0.3, 1.0];
+        assert!(!toolkit_accent_wins(
+            &bundled(),
+            &gtk,
+            &UserOverrides::default()
+        ));
     }
 }

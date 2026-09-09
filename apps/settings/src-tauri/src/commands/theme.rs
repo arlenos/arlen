@@ -1589,3 +1589,172 @@ pub async fn sound_preview(name: String) -> Result<String, String> {
         SoundResolution::NotFound => Ok("not-found".into()),
     }
 }
+
+// ── Per-toolkit overrides ────────────────────────────────────────────────────
+
+/// The `[override.<toolkit>]` table a Toolkits-page row writes into.
+///
+/// `None` for a row that has no override to give, which is what keeps this from
+/// being a general write into the theme file.
+///
+/// **GTK 3 and GTK 4 share one table, and that is the file's shape rather than a
+/// shortcut here.** The theme file has `[override.gtk]`, one block for the GTK
+/// spoke, and both stylesheets are generated from it - so the two page rows
+/// cannot diverge and a value set on either is the value both take. Mapping them
+/// to separate tables would mean inventing a `[override.gtk4]` the resolver does
+/// not read, which is the failure mode this whole strand exists to stop.
+///
+/// The Arlen row has no override for a different reason: it is not a spoke. The
+/// theme IS what Arlen's own surfaces draw, so an override for it would be an
+/// override of the thing being overridden, and the row that wants a different
+/// accent there is the Appearance page's accent.
+fn toolkit_override_table(id: &str) -> Option<&'static str> {
+    match id {
+        "gtk3" | "gtk4" => Some("gtk"),
+        "qt" => Some("qt"),
+        "terminal" => Some("terminal"),
+        "wine" => Some("wine"),
+        _ => None,
+    }
+}
+
+/// The per-toolkit accent overrides `theme.toml` currently holds, keyed by the
+/// Toolkits page's own row ids.
+///
+/// A BACKEND read for the same reason [`theme_color_overrides`] is one: the page
+/// must open on what is actually set, and inverting the row-to-table mapping on
+/// the frontend would be a second copy of the rule in another language. Both GTK
+/// rows report the one GTK value, because that is what both will take.
+#[tauri::command]
+pub fn theme_toolkit_overrides() -> Result<std::collections::BTreeMap<String, String>, String> {
+    let doc = config_get(ConfigFile::Customization, Some("override".into()))?;
+    let mut out = std::collections::BTreeMap::new();
+    let Some(tables) = doc.as_object() else {
+        return Ok(out); // absent or not a table: nothing is overridden
+    };
+    // Driven from the row ids, so this cannot report a key the setter could not
+    // have written.
+    for id in ["gtk3", "gtk4", "qt", "terminal", "wine"] {
+        let Some(table) = toolkit_override_table(id) else { continue };
+        if let Some(hex) = tables
+            .get(table)
+            .and_then(|t| t.get("color"))
+            .and_then(|c| c.get("semantic"))
+            .and_then(|s| s.get("accent"))
+            .and_then(|v| v.as_str())
+        {
+            out.insert(id.to_string(), hex.to_string());
+        }
+    }
+    Ok(out)
+}
+
+/// Give one toolkit its own accent, or clear it back to the shared one.
+///
+/// The channel is the customization layer's `[override.<toolkit>]` table, per
+/// `theme-system.md` §9b, and not a patch applied after resolution. The reason is
+/// the same one the global accent has: a colour the SDK resolver cannot see never
+/// reaches the generator that writes the toolkit's file, so a post-resolve patch
+/// would change the picker and nothing else.
+///
+/// **Three fields are written, not one.** `accent_hover` and `accent_pressed` are
+/// separate tokens in the schema, and the generators use them - Qt's `LinkVisited`
+/// is `accent_pressed`, GTK's named colours carry all three. Writing only the
+/// accent would leave a toolkit with a new accent and the old theme's hover and
+/// pressed beside it, which reads as a rendering bug rather than a choice. They
+/// are derived with the same Rule A the theme importers use, so an overridden
+/// toolkit gets the sibling states an authored theme would have had.
+#[tauri::command]
+pub async fn theme_toolkit_override_set(id: String, accent: Option<String>) -> Result<(), String> {
+    let table = toolkit_override_table(&id)
+        .ok_or_else(|| format!("{id} takes no per-toolkit override"))?;
+    let base = format!("override.{table}.color.semantic");
+    let Some(accent) = accent else {
+        // Clear all three together. Leaving a derived sibling behind would give
+        // the toolkit a hover state belonging to an accent it no longer has.
+        for field in ["accent", "accent_hover", "accent_pressed"] {
+            config_reset(ConfigFile::Customization, Some(format!("{base}.{field}")))?;
+        }
+        return Ok(());
+    };
+    // Parsed rather than pattern-matched, like `theme_set_color`: the resolver
+    // drops a value it cannot read, so an unparseable colour would save, do
+    // nothing, and leave the row showing a colour no toolkit ever took.
+    let Some(rgba) = arlen_theme::parse_hex(&accent) else {
+        return Err(format!("{accent:?} is not a colour"));
+    };
+    let dark = resolve_active_theme()?.meta.variant == arlen_theme::ThemeVariant::Dark;
+    let (hover, pressed) = arlen_theme::color::derive_hover_pressed(rgba, dark);
+    for (field, hex) in [
+        ("accent", accent.clone()),
+        ("accent_hover", arlen_theme::gtk::rgba_to_hex(hover)),
+        ("accent_pressed", arlen_theme::gtk::rgba_to_hex(pressed)),
+    ] {
+        config_set(
+            ConfigFile::Customization,
+            format!("{base}.{field}"),
+            serde_json::Value::String(hex),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Whether the theme is applied to each foreign toolkit, keyed by the Toolkits
+/// page's row ids. A row with no entry is on.
+///
+/// Read from `appearance.toml` rather than defaulted on the frontend, for the
+/// reason the switch itself exists: a page that opens every row on "on" and only
+/// learns otherwise when somebody flips something shows a machine's state
+/// incorrectly for exactly the person who changed it.
+#[tauri::command]
+pub fn theme_toolkit_enabled() -> Result<std::collections::BTreeMap<String, bool>, String> {
+    let doc = config_get(ConfigFile::Appearance, Some("toolkits".into()))?;
+    let mut out = std::collections::BTreeMap::new();
+    let Some(table) = doc.as_object() else {
+        return Ok(out); // absent: nothing has been switched off
+    };
+    for id in THEMED_SPOKES {
+        if let Some(on) = table.get(*id).and_then(|v| v.as_bool()) {
+            out.insert((*id).to_string(), on);
+        }
+    }
+    Ok(out)
+}
+
+/// The toolkits this switch governs: the ones the shell's apply writes files
+/// for.
+///
+/// Not every row on the page. `arlen` is the theme itself rather than a target,
+/// and `wine` is written per bottle by `bottled` rather than by the apply - a
+/// bottle wears the theme or it does not, one prefix at a time, so a single
+/// on/off here would be a switch for something this command cannot reach.
+const THEMED_SPOKES: &[&str] = &["gtk3", "gtk4", "qt", "terminal"];
+
+/// Switch a toolkit's theming on or off.
+///
+/// On is the absence of a decision, so switching back on CLEARS the entry rather
+/// than writing `true`: the file then records only what somebody chose, and a
+/// row that was never touched reads the same as one turned back on - which it
+/// is.
+///
+/// Off is not only "stop writing". The next apply also takes back the files that
+/// STEER the toolkit at us (the GTK sheet and settings file, the `qt*ct.conf`
+/// that selects our scheme, the terminal configs that include our palette), each
+/// removed only when it carries our own marker. The Arlen-named palette files
+/// stay: somebody who followed the page's prerequisite line and added an include
+/// to a config they wrote themselves has a file that breaks if the palette
+/// vanishes, and an off switch may not break a hand-written config. So off ends
+/// everything Arlen steers, and an include a person wrote themselves keeps
+/// pointing at the palette until they take it out.
+#[tauri::command]
+pub async fn theme_toolkit_set_enabled(id: String, on: bool) -> Result<(), String> {
+    if !THEMED_SPOKES.contains(&id.as_str()) {
+        return Err(format!("{id} has no theming switch here"));
+    }
+    let path = format!("toolkits.{id}");
+    if on {
+        return config_reset(ConfigFile::Appearance, Some(path));
+    }
+    config_set(ConfigFile::Appearance, path, serde_json::Value::Bool(false)).await
+}

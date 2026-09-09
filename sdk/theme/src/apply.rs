@@ -215,7 +215,7 @@ pub fn toolkit_reach(config_dir: &Path) -> std::collections::BTreeMap<String, To
 /// written, skipped, or failed.
 pub fn write_foreign_toolkit_configs(theme: &ArlenTheme, config_dir: &Path) -> ApplyReport {
     // No per-toolkit divergence: every target sees the same resolved theme.
-    write_toolkit_configs(theme, theme, theme, theme, config_dir)
+    write_toolkit_configs(theme, theme, theme, theme, &[], config_dir)
 }
 
 /// Override-aware apply: resolve each toolkit's theme (the shared theme plus
@@ -239,21 +239,118 @@ pub fn write_foreign_toolkit_configs_with_overrides(
     let gtk = ArlenTheme::resolve_toolkit(bundled, user_theme, customization, Toolkit::Gtk)?;
     let qt = ArlenTheme::resolve_toolkit(bundled, user_theme, customization, Toolkit::Qt)?;
     let term = ArlenTheme::resolve_toolkit(bundled, user_theme, customization, Toolkit::Terminal)?;
-    Ok(write_toolkit_configs(&base, &gtk, &qt, &term, config_dir))
+    Ok(write_toolkit_configs(&base, &gtk, &qt, &term, &[], config_dir))
+}
+
+/// One foreign-toolkit spoke the apply writes for, named as the Toolkits page
+/// names its rows.
+///
+/// GTK 3 and GTK 4 are separate here although they share one `[override.gtk]`
+/// table, and the asymmetry is the files' rather than a slip: the two versions
+/// read different files, so switching one off is expressible, while a theme file
+/// has a single GTK override block, so diverging one from the other is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Spoke {
+    /// GTK 3 apps (`gtk-3.0/`).
+    Gtk3,
+    /// GTK 4 / libadwaita apps (`gtk-4.0/`).
+    Gtk4,
+    /// Qt apps (`qt6ct` / `qt5ct`).
+    Qt,
+    /// Terminal emulators (alacritty / kitty / foot).
+    Terminal,
+}
+
+impl Spoke {
+    /// The page's row id for this spoke.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Gtk3 => "gtk3",
+            Self::Gtk4 => "gtk4",
+            Self::Qt => "qt",
+            Self::Terminal => "terminal",
+        }
+    }
+
+    /// The spoke a row id names, or `None` for a row that is not one of ours
+    /// (`arlen` is native and `wine` is not written from here).
+    pub fn from_id(id: &str) -> Option<Self> {
+        [Self::Gtk3, Self::Gtk4, Self::Qt, Self::Terminal]
+            .into_iter()
+            .find(|s| s.id() == id)
+    }
+}
+
+/// Remove a file we wrote, leaving anybody else's alone.
+///
+/// The mirror of [`write_guarded`] and it uses the same evidence: a file whose
+/// first line is not our marker was not written by us, so a switch-off must not
+/// delete it. An absent file is not an error - turning off a spoke that was
+/// never written is a no-op, and should be silent rather than reported.
+fn remove_guarded(path: &Path, report: &mut ApplyReport) {
+    match std::fs::read_to_string(path) {
+        Ok(existing) if existing.starts_with(GTK_MARKER) || existing.starts_with(INI_MARKER) => {
+            if let Err(e) = std::fs::remove_file(path) {
+                report.errors.push((path.to_path_buf(), e.to_string()));
+            }
+        }
+        // Somebody else's file, or none. Either way, nothing to take away.
+        _ => {}
+    }
+}
+
+/// The files a switched-off spoke gives up.
+///
+/// **Only the ones that STEER the toolkit**, never the Arlen-named palette files
+/// beside them. A person who followed the Toolkits page's own prerequisite line
+/// and added `include arlen-colors.conf` to a `kitty.conf` they wrote themselves
+/// has a config that breaks if the palette disappears, and breaking somebody's
+/// hand-written file is not a thing an off switch may do. So off removes every
+/// file of ours that points a toolkit at the theme, and leaves the palette
+/// sitting there unread. The consequence is worth stating on the row: an include
+/// the person wrote themselves keeps working until they take it out, because it
+/// is theirs.
+fn steering_files(spoke: Spoke) -> &'static [&'static str] {
+    match spoke {
+        Spoke::Gtk3 => &["gtk-3.0/gtk.css", "gtk-3.0/settings.ini"],
+        Spoke::Gtk4 => &["gtk-4.0/gtk.css", "gtk-4.0/settings.ini"],
+        Spoke::Qt => &["qt6ct/qt6ct.conf", "qt5ct/qt5ct.conf"],
+        Spoke::Terminal => &["alacritty/alacritty.toml", "kitty/kitty.conf", "foot/foot.ini"],
+    }
 }
 
 /// Write every foreign-toolkit theme file, each section from its own resolved
 /// theme so a per-toolkit override diverges only that target. `base_theme` backs
 /// the non-toolkit outputs (the sound-name map).
-fn write_toolkit_configs(
+///
+/// Public because the string-based entry point above is not the only caller that
+/// needs per-toolkit divergence. The desktop shell resolves a theme through its
+/// own chain - `appearance.toml`'s accent and radius-intensity overrides, then
+/// the accessibility settings - none of which the resolver here knows about, so
+/// it cannot hand this crate the source strings and get the same answer back. It
+/// resolves each toolkit itself and calls this. Until it did, `[override.gtk]`
+/// was read by the resolver, written by Settings, and reached no file on the
+/// machine: the shell's apply used the no-divergence entry point.
+pub fn write_toolkit_configs(
     base_theme: &ArlenTheme,
     gtk_theme: &ArlenTheme,
     qt_theme: &ArlenTheme,
     term_theme: &ArlenTheme,
+    off: &[Spoke],
     config_dir: &Path,
 ) -> ApplyReport {
     let mut report = ApplyReport::default();
     let config = config_dir;
+    let on = |spoke: Spoke| !off.contains(&spoke);
+    // Give back what a switched-off spoke was steering, before writing anything
+    // else. Done here rather than at the switch so the state on disk follows
+    // from the setting every time the theme is applied, including the run after
+    // a machine was off when the switch was flipped.
+    for spoke in off {
+        for file in steering_files(*spoke) {
+            remove_guarded(&config.join(file), &mut report);
+        }
+    }
 
     // GTK 3 + 4: gtk.css is the direct override file (fixed name), guarded
     // against clobbering a foreign file. The libadwaita/adw-gtk3
@@ -261,10 +358,14 @@ fn write_toolkit_configs(
     // Not one sheet for both: GTK3's parser has no custom properties and
     // answers the `--window-radius` block with an error every app logs at
     // startup, so it gets the colours and GTK4 gets the colours plus the radius.
-    let gtk3_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk3_css(gtk_theme));
-    let gtk4_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk_css(gtk_theme));
-    write_guarded(&config.join("gtk-3.0/gtk.css"), &gtk3_css, GTK_MARKER, &mut report);
-    write_guarded(&config.join("gtk-4.0/gtk.css"), &gtk4_css, GTK_MARKER, &mut report);
+    if on(Spoke::Gtk3) {
+        let gtk3_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk3_css(gtk_theme));
+        write_guarded(&config.join("gtk-3.0/gtk.css"), &gtk3_css, GTK_MARKER, &mut report);
+    }
+    if on(Spoke::Gtk4) {
+        let gtk4_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk_css(gtk_theme));
+        write_guarded(&config.join("gtk-4.0/gtk.css"), &gtk4_css, GTK_MARKER, &mut report);
+    }
 
     // GTK 3 settings: which widget theme, icon set, cursor and font a GTK3 app
     // uses. None of that is expressible in the override sheet above. Same guard:
@@ -295,9 +396,15 @@ fn write_toolkit_configs(
     {
         selection.font = None;
     }
-    let ini = crate::gtk::generate_gtk_settings_ini(&selection);
-    report.selection = Some(selection.clone());
-    write_guarded(&config.join("gtk-3.0/settings.ini"), &ini, INI_MARKER, &mut report);
+    if on(Spoke::Gtk3) {
+        let ini = crate::gtk::generate_gtk_settings_ini(&selection);
+        // Carried out only when GTK3 is on, because its one consumer beyond this
+        // file is the gsettings writer that NAMES our widget theme system-wide.
+        // Reporting it for a switched-off spoke would leave the file gone and the
+        // theme still selected, which is the loudest half of the two.
+        report.selection = Some(selection.clone());
+        write_guarded(&config.join("gtk-3.0/settings.ini"), &ini, INI_MARKER, &mut report);
+    }
 
     // GTK 4 reads its OWN settings file and none of GTK 3's, so without this a
     // GTK4 app took our colours and the system's icons, cursor and font. Measured
@@ -322,12 +429,15 @@ fn write_toolkit_configs(
     // The same answer minus the theme name, rather than a second derivation of
     // it: the two files must not be able to disagree about the font or the
     // cursor.
-    let mut gtk4_selection = selection;
-    gtk4_selection.gtk_theme = None;
-    let gtk4_ini = crate::gtk::generate_gtk_settings_ini(&gtk4_selection);
-    write_guarded(&config.join("gtk-4.0/settings.ini"), &gtk4_ini, INI_MARKER, &mut report);
+    if on(Spoke::Gtk4) {
+        let mut gtk4_selection = selection;
+        gtk4_selection.gtk_theme = None;
+        let gtk4_ini = crate::gtk::generate_gtk_settings_ini(&gtk4_selection);
+        write_guarded(&config.join("gtk-4.0/settings.ini"), &gtk4_ini, INI_MARKER, &mut report);
+    }
 
     // Qt: the colour scheme, Arlen-named, for qt6ct and qt5ct.
+    if on(Spoke::Qt) {
     let qt_conf = crate::qt::generate_qt_conf(qt_theme);
     write_owned(&config.join("qt6ct/colors/arlen.conf"), &qt_conf, &mut report);
     write_owned(&config.join("qt5ct/colors/arlen.conf"), &qt_conf, &mut report);
@@ -351,8 +461,10 @@ fn write_toolkit_configs(
         let select = crate::qt::generate_qt_select_conf(&scheme.to_string_lossy(), icons);
         write_guarded(&config.join(dir).join(file), &select, INI_MARKER, &mut report);
     }
+    }
 
     // Terminals: Arlen-named colour files the user's config imports.
+    if on(Spoke::Terminal) {
     write_owned(
         &config.join("alacritty/arlen-colors.toml"),
         &crate::terminal::generate_alacritty_toml(term_theme),
@@ -394,6 +506,8 @@ fn write_toolkit_configs(
         INI_MARKER,
         &mut report,
     );
+    }
+
     // The theme's per-event sound-name map, for the Notification Daemon to merge
     // into its sound config (it owns playback; the user's notifications.toml
     // overrides still win). Arlen-owned, overwritten freely.
@@ -782,4 +896,85 @@ accent = "#00ff00"
             ToolkitReach::Blocked(tmp.path().join("gtk-3.0/settings.ini"))
         );
     }
+
+    /// A switched-off spoke gets no files, and the ones beside it still do. The
+    /// pair matters: a switch that quietly took the whole apply with it would
+    /// pass a test that only looked at the spoke it turned off.
+    #[test]
+    fn a_switched_off_spoke_is_not_written_and_its_neighbours_are() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let t = theme();
+        write_toolkit_configs(&t, &t, &t, &t, &[Spoke::Qt], tmp.path());
+
+        assert!(
+            !tmp.path().join("qt6ct/qt6ct.conf").exists(),
+            "Qt was switched off and its selection file was written anyway"
+        );
+        assert!(
+            !tmp.path().join("qt6ct/colors/arlen.conf").exists(),
+            "Qt was switched off and its palette was written anyway"
+        );
+        assert!(
+            tmp.path().join("gtk-3.0/gtk.css").is_file(),
+            "switching Qt off took GTK3 with it"
+        );
+        assert!(
+            tmp.path().join("kitty/arlen-colors.conf").is_file(),
+            "switching Qt off took the terminals with it"
+        );
+    }
+
+    /// Switching a spoke off after it was written takes back the files that
+    /// STEER it, and leaves the palette beside them. The palette is the half a
+    /// hand-written include points at, and removing it would break a config
+    /// somebody else wrote - see `steering_files`.
+    #[test]
+    fn switching_off_takes_back_the_steering_files_and_leaves_the_palette() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let t = theme();
+        write_toolkit_configs(&t, &t, &t, &t, &[], tmp.path());
+        assert!(tmp.path().join("kitty/kitty.conf").is_file(), "no include to take back");
+
+        write_toolkit_configs(&t, &t, &t, &t, &[Spoke::Terminal], tmp.path());
+        assert!(
+            !tmp.path().join("kitty/kitty.conf").exists(),
+            "the include we wrote still points kitty at the theme"
+        );
+        assert!(
+            tmp.path().join("kitty/arlen-colors.conf").is_file(),
+            "the palette was removed; an include somebody wrote themselves now names a missing file"
+        );
+    }
+
+    /// And it takes back only OUR files. Somebody else's `kitty.conf` is theirs,
+    /// switch or no switch: the apply already refuses to overwrite it, and
+    /// deleting what it would not overwrite would be the worse half of the same
+    /// mistake.
+    #[test]
+    fn switching_off_never_removes_a_file_somebody_else_wrote() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let theirs = tmp.path().join("kitty/kitty.conf");
+        std::fs::create_dir_all(theirs.parent().unwrap()).expect("mkdir");
+        std::fs::write(&theirs, "font_size 12\n").expect("write");
+
+        let t = theme();
+        write_toolkit_configs(&t, &t, &t, &t, &[Spoke::Terminal], tmp.path());
+        assert_eq!(
+            std::fs::read_to_string(&theirs).expect("read"),
+            "font_size 12\n"
+        );
+    }
+
+    /// The row id is the name on both sides of the bridge, so the mapping has to
+    /// round-trip - and a row that is not a spoke has to answer `None` rather
+    /// than land on one.
+    #[test]
+    fn a_row_id_names_at_most_one_spoke() {
+        for spoke in [Spoke::Gtk3, Spoke::Gtk4, Spoke::Qt, Spoke::Terminal] {
+            assert_eq!(Spoke::from_id(spoke.id()), Some(spoke));
+        }
+        assert_eq!(Spoke::from_id("arlen"), None);
+        assert_eq!(Spoke::from_id("wine"), None);
+    }
+
 }
