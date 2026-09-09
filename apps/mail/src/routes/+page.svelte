@@ -16,6 +16,7 @@
   import { Mail, Reply, Forward, Archive, Trash2, FileText, Undo2 } from "@lucide/svelte";
   import { t } from "$lib/i18n/messages";
   import { initAppMenu, menuAction } from "$lib/menu";
+  import { menuNoteFor } from "$lib/menuGuard";
   import { displayName, threadKey } from "$lib/wording";
   import {
     SidebarProvider,
@@ -77,15 +78,22 @@
     | { problem: "other" };
   let failure = $state<Failure | null>(null);
 
-  // The shell menu's dispatch. Reply/forward no-op with nothing open, the
-  // same guard their toolbar twins carry; the writes are gated once more here,
-  // because a menu registered while the mailbox was still loading may outlive
-  // the answer.
+  /// What a menu pick that does not apply here said, as a catalogue key. It is
+  /// a notice about a press rather than a property of the mailbox, so the same
+  /// rule the write refusals follow applies: the next move clears it.
+  let menuNote = $state<string | null>(null);
+
+  // The shell menu's dispatch. A pick that does not apply in this state says so
+  // rather than being dropped (`menuGuard.ts` holds the rule and its tests); the
+  // writes are gated once more here, because a menu registered while the mailbox
+  // was still loading may outlive the answer.
   $effect(() => {
     const a = $menuAction;
     if (!a) return;
     menuAction.set(null);
     if (a.startsWith("message.") && !$mailboxWritable) return;
+    menuNote = menuNoteFor(a, { selectedCount: selected.size, reading: reading !== null });
+    if (menuNote) return;
     if (a === "message.new") newMessage();
     else if (a === "message.reply") reply();
     else if (a === "message.forward") forward();
@@ -93,6 +101,7 @@
     else if (a === "message.delete") deleteSelected();
     else if (a.startsWith("go.")) selectFolder(a.slice(3));
   });
+
 
   onMount(() => {
     void initAppMenu();
@@ -248,6 +257,7 @@
     // not a property of the mailbox, so leaving it up over the NEXT message
     // would attach it to one it was never about.
     writeFailed.set(null);
+    menuNote = null;
     selected = new Set([id]);
     fileOpen = false;
     composing = false;
@@ -258,6 +268,7 @@
   /// and the reading pane steps back to the count.
   function selectionChanged(sel: Set<string>): void {
     writeFailed.set(null);
+    menuNote = null;
     selected = sel;
     fileOpen = false;
     composing = false;
@@ -586,6 +597,11 @@
              the state; this is the non-event, which no arrangement of rows can
              say by itself. Same treatment as the other pane notes; where it
              finally sits is arlen-ui's call. -->
+        {#if menuNote}
+          <div class="pane-note">
+            <Notice tone="neutral" text={$t(menuNote)} />
+          </div>
+        {/if}
         {#if $writeFailed}
           <div class="pane-note" role="alert">
             <Notice
