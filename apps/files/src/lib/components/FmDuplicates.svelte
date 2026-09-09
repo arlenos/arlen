@@ -151,6 +151,10 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    /* The rows below query this width. Same rule the browser states for itself:
+       a narrow pane drops the metadata columns instead of crushing the names. */
+    container-type: inline-size;
+    container-name: duplist;
   }
 
   .dup-state {
@@ -264,6 +268,37 @@
     padding: 0 8px;
     border-radius: var(--radius-input);
   }
+  /* WHAT GOES FIRST WHEN THE PANE IS NARROW, and it is not the name.
+
+     The fixed columns come to 18.5rem before a single flexible one is served -
+     a size at 5rem and a modified date at 8rem - so at 720px the two `2fr`
+     columns were left about 36px each and the file name rendered in 23 pixels.
+     Measured by the render sweep on 9 September: `span.name "inn-sunset.jpg"
+     wide-ellipsed 23<95`, which is a name column showing no name.
+
+     A duplicate list is READ by name and by folder; the date is how you choose
+     between two of them once you have found them, and the size is equal across
+     a duplicate group by definition - it is the least useful column on this
+     particular table. So the date goes first and the size second, and the two
+     that carry the identity keep their width. The file browser next door states
+     the same rule for the same reason. */
+  @container duplist (max-width: 40rem) {
+    .row {
+      grid-template-columns: 5.5rem minmax(0, 2fr) minmax(0, 2fr) 5rem;
+    }
+    .mod {
+      display: none;
+    }
+  }
+  @container duplist (max-width: 30rem) {
+    .row {
+      grid-template-columns: 5.5rem minmax(0, 2fr) minmax(0, 2fr);
+    }
+    .size {
+      display: none;
+    }
+  }
+
   .row:hover {
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
   }
