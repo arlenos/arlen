@@ -26,6 +26,8 @@
   import { initAppMenu, menuAction } from "$lib/menu";
   import { openQuickConnect } from "$lib/stores/remoteConnections";
   import { initTopbar } from "$lib/topbar";
+  import { sessions, activeSessionId } from "$lib/stores/sessions";
+  import { publishPresence } from "$lib/graphInput";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { dir, t } from "$lib/i18n/messages";
@@ -49,6 +51,15 @@
     if (a === "session.new") newSession();
     else if (a === "session.connect") openQuickConnect();
     else if (a === "view.history") historyPaletteOpen.update((open) => !open);
+  });
+
+  /// WHERE SOMEBODY IS WORKING, while they are working there. The subject is the
+  /// active session's directory and deliberately never the command line - see
+  /// `graphInput.ts` for why this app is the one with the most tempting thing to
+  /// publish and the strongest reason not to.
+  $effect(() => {
+    const s = $sessions.find((x) => x.id === $activeSessionId);
+    void publishPresence(s?.cwd ?? null, s?.status ?? "");
   });
 
   onMount(() => {

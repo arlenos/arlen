@@ -24,7 +24,7 @@
 # `app.presence.clear` is not asserted here - what is asserted is that the app
 # declares `auto_clear=on-blur`, which is the part this window owns.
 #
-# Run: dev/screenshot/drive-text-editor-graph.sh [text-editor] [viewers] [pdf] [files] [meetings]
+# Run: dev/screenshot/drive-text-editor-graph.sh [text-editor] [viewers] [pdf] [files] [meetings] [terminal]
 #
 # Build with `tauri build --no-bundle`; a plain `cargo build --release` leaves the
 # binary pointing at devUrl.
@@ -335,6 +335,42 @@ JS
     "$(printf '%s' "$mwatched" | grep -q "activity=meeting" && echo 0 || echo 1)" "$mwatched"
 else
   echo "  --   no meetings binary at $meetings, so its half was not driven"
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# THE TERMINAL, and the assertion here is mostly about what is NOT on the wire.
+# This is the app with the most tempting thing to publish: a command line carries
+# arguments, hostnames, ticket numbers and sometimes a secret somebody typed by
+# mistake. It publishes the session's DIRECTORY and never the command, and the
+# only way to check a negative like that is to run a command with a word nothing
+# else would say and then look at everything that crossed the bus.
+term="${6:-$root/target/release/arlen-terminal}"
+if [ -x "$term" ]; then
+  secret="zqxjkv-not-on-the-wire"
+  ARLEN_SESSION_ID=drive "$emit" --watch "app." 30 > "$work/watch-term.log" 2>&1 &
+  twatcher=$!
+  sleep 1
+  SHOOT_EXEC="echo $secret" SHOOT_EXPECT="$secret" \
+    SHOOT_APP_ENV="XDG_RUNTIME_DIR=$work/run;ARLEN_RUNTIME_DIR=$work/run;ARLEN_SESSION_ID=drive" \
+    "$here/shoot-app.sh" "$term" "" > "$work/shoot-term.log" 2>&1
+  ran=$?
+  # The window has to stay up long enough for the watcher's window to close over
+  # it; the exec run exits as soon as the assertion is made.
+  wait "$twatcher"
+  twatched=$(cat "$work/watch-term.log")
+
+  say "the terminal really ran the command" "$([ "$ran" = 0 ] && echo 1 || echo 0)" \
+    "$(tail -3 "$work/shoot-term.log")"
+  say "and says somebody is at a shell" \
+    "$(printf '%s' "$twatched" | grep -q "^saw app.presence.set .*activity=shell" && echo 1 || echo 0)" "$twatched"
+  say "naming a directory, which is the same class of fact the sensor already has" \
+    "$(printf '%s' "$twatched" | grep -qE "presence.set .*activity=shell subject=/" && echo 1 || echo 0)" "$twatched"
+  # THE ONE THAT MATTERS. Nothing this window saw the person type may be on the
+  # bus, and a word nothing else would ever say is how that is checked.
+  say "and no word from the command line reaches the bus" \
+    "$(printf '%s' "$twatched" | grep -q "$secret" && echo 0 || echo 1)" "$twatched"
+else
+  echo "  --   no terminal binary at $term, so its half was not driven"
 fi
 
 if [ "$fail" = 0 ]; then
