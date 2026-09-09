@@ -43,6 +43,7 @@
     installThemeFile,
     importScheme,
     exportTheme,
+    themeAction,
   } from "$lib/stores/themes";
   import {
     overrides as coloursOv,
@@ -142,6 +143,18 @@
       <Button variant="ghost" class="justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground" onclick={() => exportTheme()}>
         <Download size={15} strokeWidth={1.75} /> {$t("s.appr.export")}
       </Button>
+      <!-- What the last one did. Nothing at all after a cancelled picker, which
+           is a change of mind rather than an outcome; the house register
+           otherwise - neutral for the export that landed, error for the file
+           that would not read. All three buttons used to say nothing whatever
+           happened, so a broken theme and a change of mind looked the same. -->
+      {#if $themeAction}
+        <p class="action-note" class:failed={$themeAction.kind === "failed"} role="status">
+          {$themeAction.kind === "exported"
+            ? $t("s.appr.exported", { path: $themeAction.path })
+            : $t($themeAction.key)}
+        </p>
+      {/if}
     </div>
 
     <Section label={$t("s.appr.quick")} class="span-full">
@@ -295,6 +308,19 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     padding: 0 0.25rem;
+  }
+
+  /* The house register for a fact beside content: neutral for what happened,
+     the error colour only for what did not. Full width so it sits under the
+     row of buttons rather than beside the last one. */
+  .action-note {
+    flex-basis: 100%;
+    margin: 0.15rem 0 0;
+    font-size: var(--text-sm);
+    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
+  }
+  .action-note.failed {
+    color: var(--color-error);
   }
 
   .cf {

@@ -12,7 +12,7 @@ use std::path::Path;
 use std::process::Command;
 
 use tauri_plugin_arlen_portal::{
-    api, FileFilter, FilterPattern, PickFileOptions, PickerError, PickerResult,
+    api, FileFilter, FilterPattern, PickFileOptions, PickerError, PickerResult, SaveFileOptions,
 };
 
 /// Open a directory picker and return the selected absolute path,
@@ -155,6 +155,40 @@ pub async fn pick_theme_file() -> Option<String> {
         }
         Err(e) => {
             log::warn!("portal pick_file failed: {e}");
+            None
+        }
+    }
+}
+
+/// Choose where to write an exported theme. Portal first, like every other
+/// picker here; `None` when the person cancelled.
+///
+/// THE EXPORT HAD NOWHERE TO GO. `theme_export` computed a self-contained theme
+/// TOML and handed it back as a string, and the window threw the string away -
+/// so the button ran, took a moment, and left nothing behind. A file the person
+/// can find is the whole point of an export, and asking them where is the only
+/// honest way to decide that.
+pub async fn save_theme_file(suggested_name: &str) -> Option<String> {
+    let options = SaveFileOptions {
+        title: Some("Save the theme".to_string()),
+        current_name: Some(suggested_name.to_string()),
+        filters: vec![FileFilter {
+            name: "Arlen themes".to_string(),
+            patterns: vec![FilterPattern::Glob {
+                pattern: "*.toml".to_string(),
+            }],
+        }],
+        ..SaveFileOptions::default()
+    };
+    match api::save_file(options).await {
+        Ok(PickerResult::Picked { uris }) => uris.first().and_then(|u| uri_to_path(u)),
+        Ok(PickerResult::Cancelled) => None,
+        Err(e) => {
+            // No legacy fallback, deliberately: the read pickers have one because
+            // a machine with no portal can still be asked to OPEN something, and
+            // there is no kdialog-shaped save helper here to mirror. A refusal
+            // reaches the window as "nowhere to save it", which is true.
+            log::warn!("portal save_file failed: {e}");
             None
         }
     }
