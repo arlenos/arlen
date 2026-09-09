@@ -86,15 +86,28 @@
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: function () {} };
 })();
 
-// Drive it: press the saved layout's Anwenden. The modal counts down from 15, so
-// the shot has to be taken well inside that; the driver fires as soon as the
-// button exists rather than on a timer.
+// Drive it: press the apply button in the display page's action row. The modal
+// counts down from 15, so the shot has to be taken well inside that; the driver
+// fires as soon as the button exists rather than on a timer.
+//
+// BY POSITION, not by the word. This pressed a button reading `Anwenden`, and
+// that is a sentence the catalogue owns - five sibling fixtures broke on
+// 10 September because the word they pressed had been improved to something
+// else, silently. The saved-layout row's apply is the FIRST button in
+// `.row-actions` (`displays/ProfileSection.svelte`: apply, then rename, then the
+// rest), and the enabled check stays because that button is disabled on the
+// layout that is already current.
+//
+// The first attempt at this used `.action-row button`, which is the display
+// page's own apply for a dirty draft - a different button on the same page, and
+// the fixture stopped reaching its state. Written down because the two are easy
+// to confuse from the markup alone.
 (function () {
   var tries = 0;
   function tick() {
-    var all = document.querySelectorAll("button");
+    var all = document.querySelectorAll(".row-actions button");
     for (var i = 0; i < all.length; i++) {
-      if ((all[i].textContent || "").trim() === "Anwenden" && !all[i].disabled) {
+      if (!all[i].disabled) {
         all[i].click();
         return;
       }
