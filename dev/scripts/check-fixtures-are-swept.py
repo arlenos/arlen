@@ -77,8 +77,13 @@ def main() -> int:
             f"    when the state is behind a click, which `probe-host.sh` cannot do."
         )
 
+    # Counted against the fixtures that exist, not against raw `@@` matches: the
+    # table's own prose says `@@host` when it explains the suffix, and counting
+    # that read as "40 named" over 39 fixtures - a summary line one higher than
+    # the thing it was summarising.
+    matched = sum(1 for f in fixtures if f.stem in named)
     print(
-        f"{len(fixtures)} host fixture(s); {len(named)} named by the sweep table,"
+        f"{len(fixtures)} host fixture(s); {matched} named by the sweep table,"
         f" {carried} carried with a reason."
         " Whether a named row actually REACHES its state is the sweep's own answer,"
         " every German run."
