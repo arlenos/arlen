@@ -65,8 +65,15 @@ PORT=$(( 6100 + ($$ % 60) * 40 ))
 # segments included (`/apps/dev.arlen.notes`, `/meeting/abc`, `/windows-apps/b1`
 # and the three `/extensions/<kind>/<id>` rows are the `[id]` routes).
 SURFACES=(
-  "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event"
-  "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
+  # THE REFUSAL ROWS (`@@host`) were added on 10 September, when `probe-host.sh`
+  # started working again and the fixtures could be placed at all. Each names a
+  # state no route reaches - a colour that would not save, an alarm the clock
+  # service never got, a file that would not decode, a save that failed - and each
+  # was built, gated and then run by nothing. A German run requires the sentence
+  # the fixture declares before the probes read the page; an English one renders
+  # the state and cannot check it.
+  "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event|/@@calendar-refuses-recolour"
+  "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world|/@@clock-refuses-alarm"
   # The two panels open from the bar and this row carried no click, so the two
   # surfaces a person opens most often on this window had never been through a
   # render probe either. Same gap as the axe table, found the same way: by
@@ -103,10 +110,10 @@ SURFACES=(
   # `ai/models` stays out (arlen-ui's live work) and the `[id]` routes need a
   # parameter only a running backend can supply.
   "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/_topbartest|/about|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/apps|/display|/extensions|/extensions/module/wp.tally|/extensions/app/dev.arlen.notes|/extensions/bridge/md.obsidian|/language|/mouse|/notifications|/topbar|/touchpad|/apps/dev.arlen.notes@@settings-uninstall-refused|/apps/dev.arlen.notes@@settings-uninstall-unavailable|/apps/dev.arlen.notes@@settings-uninstall-failed|/apps/dev.arlen.notes@@settings-uninstall-unknown|/privacy@@settings-revoke-refused|/privacy::.seg-pill:nth-of-type(2)|/apps/com.example.editor|/windows-apps/b1|/workspaces::.footer button|/display@@settings-display-revert|/keyboard/shortcuts@@settings-key-capture"
-  "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick"
+  "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick|/@@system-monitor-refuses-stop"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect"
-  "text-editor /|/::.trigger"
-  "viewers /|/?demo=image|/?demo=video"
+  "text-editor /|/::.trigger|/@@text-editor-refuses-save|/@@text-editor-lens-part-sample"
+  "viewers /|/?demo=image|/?demo=video|/@@viewers-refuses-decode"
 )
 
 # An app name that matches nothing sweeps nothing and would otherwise print a
