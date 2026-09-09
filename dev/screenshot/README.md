@@ -201,6 +201,41 @@ PNG after the numbers said something alarming:
 - **`text-overflow: ellipsis` does nothing on a flex or grid box**, so a
   declaration that reads like a design decision can be a hard cut mid-glyph.
 
+## Reading a window in German
+
+Six apps have had a defect that only the German render showed - a column sized to
+an English word, a heading that never adopted the catalogue, a sample whose rows
+stayed English inside a translated panel. So a drive that reads only English is
+reading half its app.
+
+A RELEASE binary takes its language from `locale.toml`, not from a URL: the
+`?locale=` hook is compiled out of a production build. Write one beside the app
+and point `XDG_CONFIG_HOME` at it:
+
+```sh
+cfg="$work/config-de"
+mkdir -p "$cfg/arlen"
+printf '[locale]\nui = "de"\n' > "$cfg/arlen/locale.toml"
+XDG_CONFIG_HOME="$cfg" SHOOT_INJECT=... dev/screenshot/shoot-app.sh "$app" out/x-de.png
+```
+
+**Assert both halves**: the German string present AND the English one absent. The
+first alone passes on a half-adopted catalogue that shows both, which is exactly
+the state these cases exist to catch.
+
+**And do not grep for the obvious translation.** Two of the first three cases
+written this way failed against perfectly translated windows, because the pattern
+was wrong rather than the app:
+
+- German splits the verb. "The service is not running" becomes "Der Dienst läuft
+  auf diesem Rechner **nicht**", so a grep for `läuft nicht` finds nothing. Match
+  a noun the sentence must contain instead.
+- The catalogue's word is often not the dictionary's. "not verified" is "nicht
+  **geprüft**", not "nicht bestätigt".
+
+Read the failing detail line before believing the app is broken: it prints the
+window's whole text, and the answer is usually in it.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the
