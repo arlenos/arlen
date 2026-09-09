@@ -204,7 +204,7 @@
     align-items: center;
     gap: 8px;
     width: 100%;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 8px;
     border: none;
     border-radius: var(--radius-input);

@@ -55,7 +55,7 @@
   }
   .sf-input {
     width: 100%;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding-block: 0.25rem;
     padding-inline: 1.65rem 0.625rem;
     border: 1px solid var(--border);
@@ -69,7 +69,7 @@
       border-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
   .sf-prominent .sf-input {
-    height: var(--height-control-prominent, 36px);
+    height: var(--height-control-prominent, 38px);
     padding-inline-start: 1.85rem;
   }
   .sf-prominent :global(.sf-icon) {

@@ -72,12 +72,12 @@
       color var(--duration-fast) var(--ease-out);
   }
   .ia[data-size="compact"] {
-    width: var(--height-control-compact, 24px);
-    height: var(--height-control-compact, 24px);
+    width: var(--height-control-compact, 26px);
+    height: var(--height-control-compact, 26px);
   }
   .ia[data-size="control"] {
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
   }
   .ia:hover:not(:disabled) {
     background: color-mix(in srgb, var(--foreground) 8%, transparent);

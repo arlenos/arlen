@@ -74,8 +74,8 @@
      not: German gives "Mo", English "Mon", and a fixed width would clip one of
      them whichever it was cut to fit. */
   .day {
-    min-width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    min-width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     padding: 0 5px;
     display: inline-flex;
     align-items: center;

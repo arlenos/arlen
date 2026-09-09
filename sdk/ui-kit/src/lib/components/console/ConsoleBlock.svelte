@@ -151,7 +151,7 @@
     align-items: center;
     gap: 8px;
     padding: 0 16px;
-    min-height: var(--height-control-compact, 24px);
+    min-height: var(--height-control-compact, 26px);
   }
 
   .cb-marker {

@@ -311,8 +311,8 @@
   }
 
   .cp-swatch {
-    width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     border-radius: var(--radius-button);
     border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
     flex-shrink: 0;
@@ -320,7 +320,7 @@
 
   .cp-hex {
     flex: 1;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     background: var(--control-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-button);
