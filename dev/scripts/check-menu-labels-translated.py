@@ -22,7 +22,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 # The build caches hold git checkouts of older copies of this tree; a gate
 # that walks the whole repo has to skip them or it reports a defect that was
 # fixed months ago in a file nobody edits.

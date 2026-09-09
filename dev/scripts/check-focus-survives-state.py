@@ -53,7 +53,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 SKIP = ("node_modules", "/.svelte-kit/", "/harness/", "/store/")
 
 RULE = re.compile(r"([^{}]+)\{([^{}]*)\}", re.S)
@@ -129,6 +129,9 @@ def sources() -> list[Path]:
 
 def main() -> int:
     files = sources()
+    if not files:
+        print("check-focus-survives-state: no frontend sources found, so the scan is pointed wrong")
+        return 1
     bad: list[str] = []
     carried = 0
     for p in files:
