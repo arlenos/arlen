@@ -5,7 +5,7 @@
 /// a TAG - the conflict dialog is raised off it, so it is behaviour rather than a
 /// message, and it used to hang on `String(e).match(/already exists/)`.
 import { describe, expect, it } from "vitest";
-import { opProblemKey, problemBag } from "./ops";
+import { offersConflictChoice, opProblemKey, problemBag } from "./ops";
 
 describe("opProblemKey", () => {
   it("names every problem the host can return", () => {
@@ -41,5 +41,22 @@ describe("problemBag", () => {
       problemBag('invoke error: {"problem":"already-exists","name":"a"}')?.name,
     ).toBe("a");
     expect(problemBag("not json at all")).toBeNull();
+  });
+});
+
+describe("offersConflictChoice", () => {
+  /// The two kinds whose host arm actually reads the policy. Asking anybody else
+  /// produces a dialog whose every answer re-runs the same refusal.
+  it("asks only where the answer is read", () => {
+    expect(offersConflictChoice("copy")).toBe(true);
+    expect(offersConflictChoice("move")).toBe(true);
+  });
+
+  /// The create-exactly-this ops. `new_folder` is the one a person meets, by
+  /// pressing New folder twice.
+  it("does not ask where nothing can honour the answer", () => {
+    for (const kind of ["new_folder", "rename", "duplicate"] as const) {
+      expect(offersConflictChoice(kind)).toBe(false);
+    }
   });
 });
