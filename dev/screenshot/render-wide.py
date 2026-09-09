@@ -602,8 +602,15 @@ class Render:
     #: notifications applet refused once in a 108-surface sweep and passed by hand a
     #: minute later, which is exactly the flake that teaches somebody to re-run a
     #: red sweep instead of reading it. A selector that really matches nothing still
-    #: refuses - three seconds later.
-    OPEN_WAIT = 3.0
+    #: refuses - five seconds later.
+    #:
+    #: FIVE, matching `shoot.py`'s `OPEN_TIMEOUT`, because the two runners answer
+    #: the same question and a sweep should not depend on which one carried the
+    #: row. This was three, tuned on the shell's notifications applet; `shoot.py`
+    #: had no wait at all until 10 September and got five. The larger number wins:
+    #: it only ever costs two extra seconds on a selector that is genuinely absent,
+    #: which is a failing run either way.
+    OPEN_WAIT = 5.0
 
     def try_click(self):
         sel = json.dumps(self.current)
