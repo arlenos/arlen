@@ -84,6 +84,25 @@ INVOKE = re.compile(
 INVOKE_VAR = re.compile(
     r"invoke(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,)]"
 )
+
+# `invoke(cond ? "a" : "b", ...)` - the ternary written INSIDE the call rather
+# than assigned to a variable first. `INVOKE` wants a quote right after the
+# paren and `INVOKE_VAR` wants an identifier followed by `,` or `)`, so this
+# shape fell between them and was invisible in BOTH directions: the two commands
+# read as called by nothing, and a typo in either branch would have thrown for
+# every user with the gate green.
+#
+# One site in the tree today (`system-monitor`'s process list picks
+# `list_processes` or `list_app_rows` off its flat/grouped toggle), and it is
+# correct - which is why this is worth adding now rather than after somebody
+# breaks it. Both literals are the ARGUMENT, syntactically, so unlike a wrapper
+# call there is no doubt they reach `invoke`: they go in `calls` and are held to
+# the strict rule.
+INVOKE_TERNARY = re.compile(
+    r'invoke(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\('
+    r'\s*[^,()"\'`]{1,80}\?\s*["\'`]([A-Za-z_][A-Za-z0-9_]*)["\'`]'
+    r'\s*:\s*["\'`]([A-Za-z_][A-Za-z0-9_]*)["\'`]'
+)
 STRINGS = re.compile(r"""["'`]([A-Za-z_][A-Za-z0-9_]*)["'`]""")
 
 
@@ -600,6 +619,9 @@ def main() -> int:
                 )
                 calls |= set(INVOKE.findall(text))
                 calls |= set(IMPORTED_INVOKE.findall(text))
+                for a, b in INVOKE_TERNARY.findall(text):
+                    calls.add(a)
+                    calls.add(b)
                 assigned, wrapped = indirect_calls(text)
                 indirect |= assigned
                 # A wrapper call is a real call, so it is held to the real rule.
@@ -656,8 +678,9 @@ def main() -> int:
 
     print(
         f"{len(apps)} app(s) checked that every invoked command exists. "
-        f"{inventory} known-missing command(s) carried as inventory; string "
-        f"literals only, so a computed command name is invisible here."
+        f"{inventory} known-missing command(s) carried as inventory; a literal "
+        f"name, a variable assigned one, or an inline `cond ? \"a\" : \"b\"` - a "
+        f"name built any other way is still invisible here."
     )
     if findings:
         print("\ninvokes with no command behind them:\n")
