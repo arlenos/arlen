@@ -119,6 +119,19 @@ publish = [
     # cutover the terminal's top-bar actions would stop appearing, with nothing
     # here to say why.
     "app.toolbar.quick_actions",
+
+    # The desktop pulse while a command is still going, and the take-down when it
+    # finishes. `shell.ambient` is the peripheral-awareness surface; this app is
+    # its first producer anywhere in the tree, and the effect renders whether or
+    # not this window is focused, so a build left running on another workspace is
+    # the case it serves.
+    #
+    # It carries no command line - `reason` names the activity ("a command is
+    # running") for the same reason the presence above carries a directory and
+    # not a command. Landed 9 September with its Tauri capability and without
+    # this line; the sweep that found it is now `check-publish-grants`.
+    "app.ambient.set",
+    "app.ambient.cleared",
 ]
 subscribe = [
     "accessibility.state",
