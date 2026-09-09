@@ -57,6 +57,33 @@ publish = [
     # The pair the same helper emits on teardown. Nothing calls it yet; when
     # something does, the grant is already here rather than one boot behind.
     "app.menu.unregistered",
+
+    # WHAT THIS WINDOW TELLS THE KNOWLEDGE GRAPH ABOUT ITSELF, in the same change
+    # as the code that publishes it - never after. It writes into the graph, and
+    # a graph input a person cannot see or switch off is the thing this system
+    # exists not to build. Revoking these two lines is how somebody turns it off.
+    #
+    #   presence.set   - `meeting`, the meeting this capture will become (the
+    #                    app's own word `live` until the graph files it), and
+    #                    whether TRANSCRIPTION was running, while a microphone is
+    #                    on and the window has focus
+    #   presence.clear - when the capture ends or the surface goes away
+    #
+    # THE ONE A SENSOR COMES LEAST CLOSE TO. Editing and reading at least sit on
+    # top of an `openat` the kernel probe also saw; being in a meeting touches no
+    # file at all, so without this an hour of somebody's day is missing from their
+    # own history.
+    #
+    # NO `app.timeline.record`: the meeting itself is already filed into the graph
+    # when the capture produces its note, and recording "a meeting happened" here
+    # would be the same fact twice, once well and once thinly. What was missing is
+    # the interval, which is what presence is.
+    #
+    # No transcript, no notes and no participant leave through this. Recording and
+    # transcribing are different consents in this app, and the metadata says which
+    # of the two was running rather than folding them together.
+    "app.presence.set",
+    "app.presence.clear",
 ]
 subscribe = [
     "app.toolbar.action_invoked",

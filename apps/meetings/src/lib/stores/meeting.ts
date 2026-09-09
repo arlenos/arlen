@@ -128,6 +128,20 @@ export const captureUnavailable = writable(false);
 /// Live capture state: the transcript as it streams in, the notes you type as the
 /// anchor, whether transcription is on (a separate, opt-outable step - recording
 /// and transcribing are different consents), and the elapsed time in ms.
+/// Is a capture actually RUNNING?
+///
+/// Positive evidence, not the absence of a refusal. The surface decides what to
+/// draw from `captureUnavailable` / `stopFailed`, which are both false in the
+/// moment between pressing Start and the host answering - fine for a pixel that
+/// is about to be replaced, and wrong for anything durable. The graph presence
+/// published off that shape claimed a meeting was happening for the fraction of
+/// a second before the refusal landed, and a false interval in somebody's own
+/// history is not a transient.
+///
+/// Set only after `meeting_start_capture` has answered, cleared on a refusal and
+/// on stop.
+export const capturing = writable(false);
+
 export const liveTranscript = writable<Transcript>({ language: "en", segments: [] });
 export const liveNotes = writable("");
 export const transcribe = writable(true);
@@ -415,6 +429,7 @@ export async function startCapture(): Promise<void> {
   transcribe.set(true);
   elapsed.set(0);
   captureUnavailable.set(false);
+  capturing.set(false);
   // AWAITED, and nothing starts until it answers. The clock and the red dot used
   // to start regardless: a refused capture showed a running recording of a
   // meeting nothing was listening to, which is the worst thing this surface can
@@ -435,6 +450,10 @@ export async function startCapture(): Promise<void> {
       return;
     }
   }
+  // AFTER the host answered, not before. Everything below this line is what
+  // running looks like, and the flag says so for anyone who needs the fact
+  // rather than the picture.
+  capturing.set(true);
   ticker = setInterval(() => elapsed.update((e) => e + 1000), 1000);
   // DEV only, like every other fixture in this file - and unlike this one, which
   // was not gated. On metal it streamed invented sentences about a KG lens into
@@ -474,9 +493,15 @@ export async function stopCapture(): Promise<boolean> {
     // so rather than navigate to a note.
     if (tauriAvailable) {
       stopFailed.set(true);
+      // NOT cleared here, and the difference matters: a refused stop may leave
+      // the microphone live, so the honest state is still "capturing" and the
+      // graph keeps saying so until somebody actually stops it. Clearing it
+      // would make the app's record agree with what the person hoped rather
+      // than with what happened.
       return false;
     }
   }
+  capturing.set(false);
   const notes = get(liveNotes);
   currentId.set("live");
   speakerNames.set({});
