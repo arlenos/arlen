@@ -113,6 +113,46 @@ check(
   (code) => code === 0,
 );
 
+// The kit's `Notice` computes its role from the tone: `alert` when it is a
+// refusal, `status` when it is a fact. A pattern that only knew the literal
+// called every page using it silent, the extensions detail included, and the
+// fix it asked for was already there.
+check(
+  "a component whose role is computed to alert counts as announcing",
+  {
+    "apps/shell/src/lib/Notice.svelte":
+      '<script lang="ts">\n  let { tone = "neutral", text } = $props();\n</script>\n' +
+      '<p class="notice" role={tone === "error" ? "alert" : "status"}>{text}</p>\n',
+    "apps/shell/src/lib/AudioPopover.svelte":
+      '<script lang="ts">\n' +
+      '  import { Notice } from "./Notice.svelte";\n' +
+      "  let error = $state<string | null>(null);\n" +
+      '  function press() { error = "no"; }\n' +
+      "</script>\n\n" +
+      '{#if error}\n  <Notice tone="error" text={$t(error)} />\n{/if}\n',
+  },
+  (code) => code === 0,
+);
+
+// And the widening must not swallow the finding it was drawn around: a role
+// expression with no `alert` in it announces nothing.
+check(
+  "a computed role that can never be alert is still a finding",
+  {
+    "apps/shell/src/lib/Quiet.svelte":
+      '<script lang="ts">\n  let { tone = "neutral", text } = $props();\n</script>\n' +
+      '<p role={tone === "error" ? "status" : "note"}>{text}</p>\n',
+    "apps/shell/src/lib/AudioPopover.svelte":
+      '<script lang="ts">\n' +
+      '  import { Quiet } from "./Quiet.svelte";\n' +
+      "  let error = $state<string | null>(null);\n" +
+      '  function press() { error = "no"; }\n' +
+      "</script>\n\n" +
+      '{#if error}\n  <Quiet tone="error" text={$t(error)} />\n{/if}\n',
+  },
+  (code, out) => code === 1 && out.includes("`error`"),
+);
+
 check(
   "a child that does not announce is still a finding",
   {
