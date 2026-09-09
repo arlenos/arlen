@@ -291,6 +291,14 @@ got=$(XDG_DATA_HOME="$fix" SHOOT_APP_ARGS="$fix/second.ics" SHOOT_INJECT="$fix/p
 say "opened on a file, it shows that file and not the whole directory" \
   "$(printf '%s' "$got" | grep -q "The only event in this file" \
      && ! printf '%s' "$got" | grep -q "Morning standup" && echo 1 || echo 0)" "$got"
+# AND THE SIDEBAR AGREES WITH IT. The agenda excluded the directory's calendars
+# while the list beside it still offered all five, each ticked - two surfaces
+# disagreeing about what the window is showing. The ticks filter by calendar
+# name, so they did nothing here unless the opened file shared a name with one,
+# and then they hid the only event in view. `monthly` and `cancelled` are two of
+# the directory's calendar names and appear in no event title.
+say "and the sidebar is not still offering the directory's calendars" \
+  "$(printf '%s' "$got" | grep -qE "monthly|cancelled" && echo 0 || echo 1)" "$got"
 
 # KEEPING IT. Opening a file reads it where it lies, deliberately - so until
 # there was a way to say "keep this one", the calendar directory was empty on

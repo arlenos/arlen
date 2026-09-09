@@ -120,9 +120,21 @@
         <MiniMonth {focus} {marked} {onpick} />
       </SidebarGroup>
 
-      <SidebarGroup class="pt-0">
-        <CalendarList />
-      </SidebarGroup>
+      <!-- NOT WHEN THE WINDOW IS ABOUT ONE FILE. Opened on an .ics, the agenda
+           deliberately shows that file and nothing else - the host says why, in
+           as many words: they double-clicked one calendar and mixing it with
+           everything else would bury it. The list kept showing the directory's
+           calendars anyway, each ticked, beside an agenda that excludes every
+           one of them; and the ticks filter by calendar NAME, so unticking one
+           did nothing at all unless the opened file happened to share its name,
+           in which case it hid the only event in view. Two surfaces disagreeing
+           about what the window is showing, which the picture makes obvious and
+           no check was asking about. -->
+      {#if !launched}
+        <SidebarGroup class="pt-0">
+          <CalendarList />
+        </SidebarGroup>
+      {/if}
     {/if}
 
     <SidebarGroup class="pt-0">
