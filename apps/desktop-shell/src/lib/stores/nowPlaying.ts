@@ -61,6 +61,32 @@ export async function loadNowPlaying(): Promise<void> {
   }
 }
 
+/// Follow the shell's own MPRIS monitor, which has been shouting into an empty
+/// room.
+///
+/// `mpris.rs::start_monitor` polls the session bus once a second and emits
+/// `mpris://now-playing` with the FULL payload - its comment says "so the applet
+/// tracks the live state" - and nothing anywhere listened for it. The applet
+/// polled instead, every three seconds, through `mpris_now_playing`, which opens
+/// a FRESH session-bus connection each time and asks all the same questions the
+/// monitor's long-lived connection had already answered a second earlier.
+///
+/// So the machine did the work twice and the applet showed the older of the two
+/// answers. Listening costs nothing and closes both halves: a track change
+/// reaches the top bar within a second, and the three-second connection churn
+/// goes away.
+///
+/// The poll stays as a fallback, and slower. `start_monitor` returns silently
+/// when the session bus is unavailable at startup, and an applet whose only
+/// source is an event that will never come would sit empty for the life of the
+/// session with no way to notice.
+export async function initNowPlaying(): Promise<() => void> {
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<NowPlaying | null>("mpris://now-playing", ({ payload }) => {
+    nowPlaying.set(payload ?? null);
+  });
+}
+
 /// The other players (for the switcher), excluding the active one.
 export const otherPlayers = derived(nowPlaying, ($n) =>
   $n ? $n.players.filter((p) => p.id !== $n.activeId) : [],

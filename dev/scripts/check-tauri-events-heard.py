@@ -35,6 +35,22 @@ counts. What it cannot do is appear nowhere, which is the whole finding.
 The reverse direction (an event emitted that nobody hears) is NOT checked here:
 a shell emitting for a surface not yet built is ordinary, and gating it would
 make the queue an argument rather than a list.
+
+**It is worth SWEEPING though, and one sweep found a real one.** On 9 September a
+scan of emitted-versus-heard across the tree turned up two names nothing
+subscribed. One was ordinary and said so in place - `arlen://clipboard-added`,
+whose emit site reads "omitted from the MVP frontend but cheap to emit
+regardless". The other was `mpris://now-playing`: the shell's MPRIS monitor
+emitted the full state every second, its comment claimed the applet tracked it,
+and the applet was polling `mpris_now_playing` on its own three-second timer -
+which opens a fresh session-bus connection to ask what the long-lived one had
+just answered. Two pollers, and the surface showed the older answer.
+
+So the reverse direction is a sweep rather than a gate, and the sweep is four
+lines: collect `.emit("name")` from every app's Rust, collect `listen("name")`
+from every frontend in the TREE (not just that app's - `arlen://menu-action` is
+emitted by the shell and heard in the apps), and diff. Run it when something
+feels like it is not updating.
 """
 
 import re
