@@ -345,6 +345,16 @@ pub fn run_login<S: Read + Write>(
     secret: &str,
     cmd: Vec<String>,
     env: Vec<String>,
+    // THE GATE, and it has to sit exactly here. greetd's protocol separates
+    // proving the credential from starting the session, so this is the one
+    // instant where the factor is known and nothing has happened yet: after
+    // `Authenticated`, before `start_session`. A decision taken before the
+    // credential is proven would be about a factor nobody verified, and one taken
+    // after the session starts would not be a gate.
+    //
+    // Returning `Err` cancels the greetd session and the token goes to the panel,
+    // which is what a refusal has to do: nothing is started.
+    on_authenticated: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
     let mut client = GreetdClient::new(stream);
     let mut step = client
@@ -354,6 +364,10 @@ pub fn run_login<S: Read + Write>(
     for _ in 0..MAX_AUTH_STEPS {
         match step {
             AuthStep::Authenticated => {
+                if let Err(refusal) = on_authenticated() {
+                    let _ = client.cancel();
+                    return Err(refusal);
+                }
                 return client
                     .start_session(cmd, env)
                     .map_err(|e| format!("greetd start_session failed: {e}"));
@@ -511,7 +525,14 @@ mod tests {
                 Response::Success.write_to(&mut s).unwrap();
                 match Request::read_from(&mut s).unwrap() {
                     Request::StartSession { cmd, .. } => got_cmd = Some(cmd),
-                    other => panic!("expected StartSession, got {other:?}"),
+                    // A CANCEL after a good credential is what a REFUSAL at the
+                    // tier gate looks like on the wire, and it is a real greetd
+                    // exchange rather than a broken client - so the mock accepts
+                    // it and reports no command, which is exactly the fact the
+                    // gate test asserts. It used to panic here, which made a
+                    // correct refusal look like a protocol bug.
+                    Request::CancelSession => {}
+                    other => panic!("expected StartSession or CancelSession, got {other:?}"),
                 }
                 Response::Success.write_to(&mut s).unwrap();
             } else {
@@ -538,6 +559,7 @@ mod tests {
             "hunter2",
             vec!["arlen-session".to_string()],
             vec!["XDG_SESSION_TYPE=wayland".to_string()],
+            || Ok(()),
         );
         let (secret, cmd) = greetd.join().unwrap();
         assert!(out.is_ok(), "{out:?}");
@@ -545,11 +567,36 @@ mod tests {
         assert_eq!(cmd, Some(vec!["arlen-session".to_string()]));
     }
 
+    /// A refusal at the gate cancels the session, and nothing starts.
+    ///
+    /// The credential is GOOD here - greetd says `Authenticated` - and the login
+    /// still does not happen, which is the whole point of the tier boundary: a
+    /// factor can be genuine and still not be allowed to open this. The
+    /// assertion that matters is the second one: greetd received the secret and
+    /// never received a start.
+    #[test]
+    fn a_refusal_after_authentication_starts_no_session() {
+        let (client, server) = UnixStream::pair().unwrap();
+        let greetd = mock_greetd(server, true);
+        let out = run_login(
+            client,
+            "alice",
+            "hunter2",
+            vec!["arlen-session".to_string()],
+            vec![],
+            || Err("strong-auth-required".to_string()),
+        );
+        let (secret, cmd) = greetd.join().unwrap();
+        assert_eq!(out.unwrap_err(), "strong-auth-required");
+        assert_eq!(secret.as_deref(), Some("hunter2"));
+        assert_eq!(cmd, None, "a refused attempt must start nothing");
+    }
+
     #[test]
     fn run_login_surfaces_a_wrong_credential_as_an_error() {
         let (client, server) = UnixStream::pair().unwrap();
         let greetd = mock_greetd(server, false);
-        let out = run_login(client, "alice", "bad", vec!["arlen-session".to_string()], vec![]);
+        let out = run_login(client, "alice", "bad", vec!["arlen-session".to_string()], vec![], || Ok(()));
         let (secret, cmd) = greetd.join().unwrap();
         assert!(out.is_err());
         // Generic message (no PAM-text enumeration oracle).

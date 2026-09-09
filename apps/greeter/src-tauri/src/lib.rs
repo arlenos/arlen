@@ -10,7 +10,9 @@ mod wallpaper;
 
 use arlen_greeter_core as core;
 use arlen_greeter_core::{Profile, Session};
+use arlen_lock_auth::tier::{evaluate, DenyReason, Factor, SessionState, TierPolicy, UnlockOutcome};
 use arlen_lock_auth::GREETD_SOCK_ENV;
+use std::sync::Mutex;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
@@ -101,8 +103,38 @@ fn greeter_a11y_set(screen_reader: bool) -> Result<(), String> {
 /// reported the CALLER as sending a key the command does not declare - a false
 /// accusation pointing at the wrong file. That parser is fixed, but a signature
 /// no tool can misread is worth more than a parser that gets it right.
+/// What this login screen remembers across attempts.
+///
+/// THE MISSING PIECE, in the crate's own words. `lock-auth` enforces the factor
+/// tier - convenience factors unlock a warm session and never release the
+/// systemd-homed / LUKS2 key, only a strong one does - and its header says the
+/// decision is "enforced HERE, in code, not in any UI" while noting that nothing
+/// production calls it. What was missing was not a line in the crate: it was a
+/// surface holding a `SessionState` across attempts and handing it back. This is
+/// that surface.
+///
+/// Cold at startup, and correctly so: the greeter runs before any session, so no
+/// home key is loaded and the strong-auth window is maximally elapsed. The state
+/// that actually moves here is the FAILURE COUNT, which nothing tracked before -
+/// each refused attempt advances it, and past the policy's limit a convenience
+/// factor is refused outright rather than being allowed to keep trying.
+struct AuthState {
+    session: Mutex<SessionState>,
+    policy: TierPolicy,
+}
+
+impl Default for AuthState {
+    fn default() -> Self {
+        Self {
+            session: Mutex::new(SessionState::cold()),
+            policy: TierPolicy::default(),
+        }
+    }
+}
+
 #[tauri::command]
 fn greeter_authenticate(
+    auth: tauri::State<'_, AuthState>,
     profile_id: String,
     secret: String,
     session_id: String,
@@ -133,7 +165,48 @@ fn greeter_authenticate(
         log::warn!("greeter: greetd socket refused: {e}");
         "no-greetd".to_string()
     })?;
-    core::run_login(stream, &profile_id, &secret, cmd, core::session_env(&session_id, screen_reader))?;
+    // THE TIER DECISION, at the one instant it can be one: greetd has proven the
+    // credential and no session has started. A password is a strong factor, so on
+    // this cold surface the outcome is `KeyRelease` - but the decision is taken
+    // rather than assumed, which is what makes a future convenience factor here
+    // (the `greeter_factor_begin` stub below) refusable by construction instead
+    // of by remembering to check.
+    let outcome = std::cell::Cell::new(None);
+    let gate = || {
+        let state = auth.session.lock().unwrap_or_else(|e| e.into_inner());
+        let decided = evaluate(&Factor::Password, &state, &auth.policy);
+        outcome.set(Some(decided.clone()));
+        match decided {
+            UnlockOutcome::KeyRelease | UnlockOutcome::WarmUnlock => Ok(()),
+            // A TOKEN, like every other refusal that leaves here.
+            UnlockOutcome::Denied(DenyReason::StrongAuthRequired) => {
+                Err("strong-auth-required".to_string())
+            }
+        }
+    };
+    let login = core::run_login(
+        stream,
+        &profile_id,
+        &secret,
+        cmd,
+        core::session_env(&session_id, screen_reader),
+        gate,
+    );
+
+    {
+        let mut state = auth.session.lock().unwrap_or_else(|e| e.into_inner());
+        *state = match (&login, outcome.take()) {
+            // Reached the gate and was allowed: the attempt happened, so the
+            // state follows the outcome the tier decided.
+            (Ok(()), Some(decided)) => state.after_attempt(&Factor::Password, &decided),
+            // Never reached the gate (a wrong credential, or greetd itself), or
+            // was refused at it. Either way this attempt did not unlock
+            // anything, and the count is what makes a run of them mean
+            // something.
+            _ => state.record_failure(),
+        };
+    }
+    login?;
     Ok(serde_json::json!({ "ok": true }))
 }
 
@@ -222,6 +295,7 @@ pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,arlen_greeter_lib=info")).init();
 
     tauri::Builder::default()
+        .manage(AuthState::default())
         .invoke_handler(tauri::generate_handler![
             locale_get,
             wallpaper::greeter_wallpaper,
