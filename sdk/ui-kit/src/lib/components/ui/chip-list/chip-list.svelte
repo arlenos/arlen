@@ -127,7 +127,34 @@
     padding: 4px 2px;
     outline: none;
   }
+  /* Keyboard focus has to land somewhere a person can see. The input suppresses
+     the browser's outline like every hand-styled control in the kit, and unlike
+     the number input and the slider it had nothing in its place - so tabbing
+     into a chip list put the caret in a borderless transparent box on a
+     borderless transparent row, with no signal at all. Found by the render
+     sweep on 9 September, on the Knowledge and AI pages (three inputs and one),
+     which are the same component seen twice.
+
+     An underline rather than the wrapper ring those two use: their wrapper IS
+     the visible control, a field box, and this one is a bare row of chips whose
+     input is a small part of it. Ringing the whole row would point at the chips
+     rather than at the place the next keystroke goes. */
+  .chip-input:focus-visible {
+    box-shadow: inset 0 -2px 0 0 var(--color-accent, var(--primary));
+  }
+
   .chip-input::placeholder {
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  }
+
+  /* The remove button had hover styling and no focus styling, so it was
+     reachable by keyboard and invisible while reached. Same accent, and the
+     hover background too, because the button is a small glyph and a ring alone
+     on it reads as a rendering artefact. */
+  .chip-x:focus-visible {
+    outline: 2px solid var(--color-accent, var(--primary));
+    outline-offset: 1px;
+    color: var(--foreground);
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
   }
 </style>
