@@ -526,24 +526,39 @@
   const specialMode = writable<SpecialMode>(null);
   const specialArg = writable<string>("");
 
-  function runShellCommand(cmd: string, inTerminal: boolean) {
-    executeShellCommand(cmd, inTerminal);
+  /// The four special-mode actions, and every one of them CLOSES ONLY IF IT WORKED.
+  ///
+  /// They used to fire the call and close on the same tick, so a command that
+  /// could not start, a man page with no `man`, a URL that would not open or a
+  /// search that never left said nothing at all - the launcher was already gone,
+  /// and a toast renders in this window, which is the one being hidden. The
+  /// module-result branch below has awaited its own three since it was written
+  /// and says exactly that in its comment; these four had not been brought over.
+  async function actOrSay(run: () => Promise<unknown>, message: string) {
+    try {
+      await run();
+    } catch {
+      actionError.set(message);
+      return;
+    }
+    actionError.set(null);
     close();
+  }
+
+  function runShellCommand(cmd: string, inTerminal: boolean) {
+    void actOrSay(() => executeShellCommand(cmd, inTerminal), "sh.wp.errRun");
   }
 
   function openManPage(topic: string) {
-    executeShellCommand(`man ${topic}`, true);
-    close();
+    void actOrSay(() => executeShellCommand(`man ${topic}`, true), "sh.wp.errRun");
   }
 
   function openUrlAction(url: string) {
-    openUrl(url);
-    close();
+    void actOrSay(() => openUrl(url), "sh.wp.errOpenUrl");
   }
 
   function webSearchAction(query: string) {
-    webSearch(query);
-    close();
+    void actOrSay(() => webSearch(query), "sh.wp.errOpenUrl");
   }
 
   /// Map `PowerActionResult.id` to its lucide icon. The backend sets
