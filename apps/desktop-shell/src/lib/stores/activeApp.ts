@@ -53,6 +53,31 @@ let seq = 0;
 /// Resolve on focus. Subscribed at module scope, for the lifetime of the shell:
 /// the stores derived from this are read by the top bar from first paint, and a
 /// caller that forgot to start the tracking would see the same empty surfaces
+/// The permission id a window's own id belongs to, for a caller that is not the
+/// focus path.
+///
+/// Shares the cache above, so an app is resolved once for the life of the shell
+/// however many callers ask. The fallback is the window's own id for the same
+/// reason the focus path uses it: an app with no `.desktop` entry resolves to
+/// that anyway, so state goes missing rather than being attributed to the wrong
+/// app.
+///
+/// The lifetime watcher is the second caller. It needs the same crossing and
+/// must not do it by hand - `menus`, the toolbar, shortcuts, badges and ambient
+/// all got that wrong once each, which is why this module exists.
+export async function resolvePermissionId(windowAppId: string): Promise<string | null> {
+  if (!windowAppId) return null;
+  const known = resolved.get(windowAppId);
+  if (known !== undefined) return known;
+  try {
+    const id = await invoke<string>("resolve_app_id", { windowAppId });
+    resolved.set(windowAppId, id);
+    return id;
+  } catch {
+    return windowAppId;
+  }
+}
+
 /// this module exists to fix.
 activeWindow.subscribe(($w) => {
   const windowId = $w?.app_id ?? null;

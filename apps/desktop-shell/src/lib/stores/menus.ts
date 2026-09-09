@@ -1,6 +1,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 
 import { activeAppId } from "./activeApp.js";
 import { makeDisposer } from "./_disposer.js";
@@ -32,6 +32,29 @@ const appMenus = writable<Map<string, MenuGroup[]>>(new Map());
 /// Keyed on the permission id, which is what a menu is registered under, not on
 /// the focused window's own app_id: see `activeApp.ts` for why those differ and
 /// why looking one up by the other found nothing for every app.
+/// Forget the menu of an app that has no windows any more.
+///
+/// The map only ever lost an entry when the app said so, and nothing says so
+/// after a crash. It is invisible today because `activeMenu` renders only the
+/// FOCUSED app's tree - but the entry keeps its whole menu alive for the life of
+/// the shell, and an app id that comes back (a relaunch before its own register
+/// lands) would draw the dead one for a beat.
+///
+/// Idempotent, so the lifetime watcher may say it as often as it likes.
+export function forgetMenu(appId: string): void {
+  appMenus.update(($m) => {
+    if (!$m.has(appId)) return $m;
+    const next = new Map($m);
+    next.delete(appId);
+    return next;
+  });
+}
+
+/// What this store holds a menu for. Read by the lifetime watcher only.
+export function appsWithMenus(): string[] {
+  return [...get(appMenus).keys()];
+}
+
 export const activeMenu = derived([appMenus, activeAppId], ([$menus, $id]) =>
     $id ? ($menus.get($id) ?? null) : null,
 );
