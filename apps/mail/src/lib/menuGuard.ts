@@ -20,19 +20,45 @@ export interface MailState {
   reading: boolean;
 }
 
-/// The catalogue key to show, or null when the pick applies and should run.
-export function menuNoteFor(action: string, state: MailState): string | null {
-  if (action === "message.reply" || action === "message.forward") {
-    if (state.selectedCount === 0) return "ml.menu.needsMessage";
-    if (!state.reading) return "ml.menu.needsOne";
+/// What the note says, and the label of the action it is about.
+///
+/// THE ACTION HAS TO BE IN IT, and the first version of this file left it out.
+/// Read in a picture, the note said "Select a message first." directly above the
+/// reading pane's own empty state, which already says "Select a message to read
+/// it." - two sentences telling somebody the same thing eight lines apart. The
+/// fact the pane does NOT carry is which menu entry was just picked and why it
+/// did nothing, so that is what the note is for.
+export interface MenuNote {
+  /// The sentence, as a catalogue key taking an `action` parameter.
+  key: string;
+  /// The action's own label, as a catalogue key.
+  label: string;
+}
+
+/// The label each guarded action goes by, in the reader's language. The same
+/// keys the menu itself uses, so the note and the menu entry cannot drift apart.
+const LABELS: Record<string, string> = {
+  "message.reply": "ml.reply",
+  "message.forward": "ml.forward",
+  "message.archive": "ml.archive",
+  "message.delete": "ml.delete",
+};
+
+/// The note to show, or null when the pick applies and should run.
+export function menuNoteFor(action: string, state: MailState): MenuNote | null {
+  const label = LABELS[action];
+  if (!label) {
+    // Compose, the folder moves, and anything this window does not know are not
+    // about a message in front of you. `message.new` carries its own guard (a
+    // mailbox with nowhere to send offers no Compose at all).
     return null;
   }
-  if (action === "message.archive" || action === "message.delete") {
-    // These act on every selected row, so several is fine and none is not.
-    return state.selectedCount === 0 ? "ml.menu.needsMessage" : null;
+  if (action === "message.reply" || action === "message.forward") {
+    if (state.selectedCount === 0) return { key: "ml.menu.needsMessage", label };
+    if (!state.reading) return { key: "ml.menu.needsOne", label };
+    return null;
   }
-  // Compose, the folder moves, and anything this window does not know are not
-  // about a message in front of you. `message.new` carries its own guard (a
-  // mailbox with nowhere to send offers no Compose at all).
-  return null;
+  // Archive and delete act on every selected row, so several is fine and none
+  // is not.
+  return state.selectedCount === 0 ? { key: "ml.menu.needsMessage", label } : null;
 }
