@@ -1,279 +1,137 @@
 <script lang="ts">
-  import { t } from "$lib/i18n/messages";
-  /// Toolkits: the honest cross-toolkit surface. One Arlen theme drives GTK / Qt /
-  /// Terminal / Wine; this states per toolkit how far it reaches (the fidelity
-  /// ceiling), whether it is on, and a per-toolkit override. A flat list, never an
-  /// N x M matrix; ragged coverage stated per row (Wine = best-effort). Not the
-  /// split editor - a status + control list.
+  /// Toolkits: where the one theme reaches. Six rows, one per output, each
+  /// saying its ceiling (the badge), what it reaches (the description) and
+  /// whether it is in place on this machine (the readout at the end). The
+  /// settings-panel archetype like every other Appearance page: kit Section
+  /// and Rows, no card of its own.
   ///
-  /// Mock-vs-live: the coverage tiers + notes are real; the per-toolkit on/off, the
-  /// override map, and the prerequisite detection need coder backend. Fixture.
+  /// The sentences come from having put every toolkit on screen beside an Arlen
+  /// window (`dev/screenshot/shoot-toolkits.sh`, 7 and 8 September), which is
+  /// the only way to know what a colour floor reaches and what it cannot.
+  ///
+  /// No switch and no override: the per-toolkit on/off and the accent override
+  /// have no command behind them yet (the resolver reads `[override.<toolkit>]`,
+  /// nothing writes it), and a control that changes nothing is a lie with a
+  /// thumb. They return with their commands.
+  import { t } from "$lib/i18n/messages";
   import { onMount } from "svelte";
-  import { ChevronRight, RotateCcw } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
+  import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
-  import { Switch } from "@arlen/ui-kit/components/ui/switch";
-  import {
-    Collapsible,
-    CollapsibleTrigger,
-    CollapsibleContent,
-  } from "@arlen/ui-kit/components/ui/collapsible";
-  import { effective as colorsEffective } from "$lib/stores/themeColors";
   import {
     TOOLKITS,
     coverageBadge,
-    disabled,
-    accentOverrides,
-    isEnabled,
-    setEnabled,
-    hasAccentOverride,
-    setAccentOverride,
-    resetAccentOverride,
     reach,
     loadReach,
     prereqs,
     loadPrereqs,
     showPrereq,
+    type ToolkitReach,
   } from "$lib/stores/themeToolkits";
 
-  // Read-only, so asking on mount costs nothing and the row is never a claim
+  // Read-only, so asking on mount costs nothing and a row is never a claim
   // about a check that did not run.
   onMount(() => {
     void loadReach();
     void loadPrereqs();
   });
 
-  const hubAccent = $derived(String($colorsEffective.accent));
+  /// The readout for one row: a posture for the dot and the sentence beside it.
+  /// Nothing until the host has answered, because "in place" over an unasked
+  /// question is the claim this page exists to stop.
+  function readout(id: string, native: boolean | undefined, r: ToolkitReach | undefined) {
+    if (native) return { posture: "ours", text: $t("s.toolkit.reach.always") };
+    if (!r) return null;
+    if (r.state === "ours") return { posture: "ours", text: $t("s.toolkit.reach.ours") };
+    if (r.state === "blocked") return { posture: "away", text: $t("s.toolkit.blocked", { file: r.blockedBy ?? "" }) };
+    if (r.state === "unselected") return { posture: "away", text: $t("s.toolkit.unselected", { name: r.blockedBy ?? "" }) };
+    return { posture: "unknown", text: $t("s.toolkit.absent") };
+  }
 </script>
 
-<Page
-  title={$t("s.tk.title")}
-  description={$t("s.tk.desc")}
->
+<Page title={$t("s.tk.title")} description={$t("s.tk.desc")}>
   <SectionGrid>
-    <div class="tk-list span-full">
-    {#each TOOLKITS as tk (tk.id)}
-      {@const badge = coverageBadge(tk.coverage)}
-      {@const on = isEnabled($disabled, tk.id)}
-      <div class="tk-card" class:off={!tk.native && !on}>
-        <div class="tk-head">
-          <div class="tk-title">
-            <span class="tk-name">{$t(tk.nameKey)}</span>
-            <Badge variant={badge.tone}>{$t(badge.labelKey)}</Badge>
-          </div>
-          {#if tk.native}
-            <span class="tk-always">{$t("s.tk.alwaysOn")}</span>
-          {:else}
-            <Switch value={on} ariaLabel={$t("s.tk.applyTo", { name: $t(tk.nameKey) })} onchange={(v) => setEnabled(tk.id, v)} />
+    <Section label={$t("s.tk.reaches")} class="span-full">
+      {#each TOOLKITS as tk (tk.id)}
+        {@const badge = coverageBadge(tk.coverage)}
+        {@const state = readout(tk.id, tk.native, $reach[tk.id])}
+        {@const unmet = tk.prereqKey && showPrereq($prereqs, tk.id)}
+        {#snippet ceiling()}
+          <Badge variant={badge.tone}>{$t(badge.labelKey)}</Badge>
+        {/snippet}
+        {#snippet where()}
+          {#if state}
+            <span class="readout" class:away={state.posture === "away"}>
+              <span class="found" data-posture={state.posture} aria-hidden="true"></span>
+              {state.text}
+            </span>
           {/if}
-        </div>
-
-        <p class="tk-note">{$t(tk.noteKey)}</p>
-        <!-- THE BADGE IS THE CEILING, THIS IS THE FLOOR. A toolkit can be
-             "full" and reached by nothing, because the apply refuses to
-             overwrite a config the person wrote - correctly - and then their
-             file wins. Saying "full" over that is the claim this line exists to
-             stop, and it names the file so nobody has to go looking. -->
-        {#if $reach[tk.id]?.state === "unselected"}
-          <p class="tk-blocked">
-            {$t("s.toolkit.unselected", { name: $reach[tk.id].blockedBy ?? "" })}
-          </p>
-        {:else if $reach[tk.id]?.state === "blocked"}
-          <p class="tk-blocked">
-            {$t("s.toolkit.blocked", { file: $reach[tk.id].blockedBy ?? "" })}
-          </p>
-        {:else if $reach[tk.id]?.state === "absent"}
-          <p class="tk-prereq">{$t("s.toolkit.absent")}</p>
+        {/snippet}
+        <!-- Two rows rather than a conditional `below` prop: the kit's Snippet
+             type and this app's are two copies of one name, and a snippet
+             passed as a value does not typecheck across them. -->
+        {#if unmet}
+          <Row label={$t(tk.nameKey)} description={$t(tk.noteKey)} id={`toolkit-${tk.id}`}>
+            {#snippet leading()}{@render ceiling()}{/snippet}
+            {#snippet control()}{@render where()}{/snippet}
+            {#snippet below()}
+              <p class="prereq">{$t(tk.prereqKey ?? "")}</p>
+            {/snippet}
+          </Row>
+        {:else}
+          <Row label={$t(tk.nameKey)} description={$t(tk.noteKey)} id={`toolkit-${tk.id}`}>
+            {#snippet leading()}{@render ceiling()}{/snippet}
+            {#snippet control()}{@render where()}{/snippet}
+          </Row>
         {/if}
-        <!-- Only when it is not met. A line telling somebody to install a thing
-             they already have reads as a warning about nothing, and a page of
-             those is how a reader learns to skip the small print. A toolkit the
-             backend cannot detect keeps its line always, because there it is a
-             standing status rather than a thing to go and do. -->
-        {#if tk.prereqKey && showPrereq($prereqs, tk.id)}
-          <p class="tk-prereq">{$t(tk.prereqKey)}</p>
-        {/if}
-
-        {#if !tk.native}
-          <Collapsible class="tk-override">
-            <CollapsibleTrigger class="ovr-trigger">
-              <ChevronRight size={14} strokeWidth={2} />
-              {$t("s.tk.override")}
-              {#if hasAccentOverride($accentOverrides, tk.id)}<span class="ovr-dot"></span>{/if}
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div class="ovr-body">
-                <div class="ovr-row">
-                  <span class="ovr-label">{$t("s.tk.accentFor", { name: $t(tk.nameKey) })}</span>
-                  <span class="ovr-accent">
-                    {#if hasAccentOverride($accentOverrides, tk.id)}
-                      <button class="ovr-reset" type="button" aria-label={$t("s.tk.resetAccent")} title={$t("s.tk.backToTheme")} onclick={() => resetAccentOverride(tk.id)}>
-                        <RotateCcw size={12} strokeWidth={2} />
-                      </button>
-                    {/if}
-                    <label
-                      class="ovr-swatch"
-                      style={`background:${$accentOverrides[tk.id] ?? hubAccent}`}
-                      title={$t("s.tk.pickAccent")}
-                    >
-                      <input
-                        type="color"
-                        value={$accentOverrides[tk.id] ?? hubAccent}
-                        oninput={(e) => setAccentOverride(tk.id, e.currentTarget.value)}
-                        aria-label={$t("s.tk.accentFor", { name: $t(tk.nameKey) })}
-                      />
-                    </label>
-                  </span>
-                </div>
-                <p class="ovr-note">{$t("s.tk.note", { name: $t(tk.nameKey) })}</p>
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        {/if}
-      </div>
-    {/each}
-    </div>
+      {/each}
+    </Section>
   </SectionGrid>
 </Page>
 
 <style>
-  .tk-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    max-width: 44rem;
-  }
-  .tk-card {
-    padding: 0.875rem 1rem;
-    border-radius: var(--radius-card, 12px);
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
-    border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
-    transition: opacity var(--duration-fast, 150ms) var(--ease-out, ease);
-  }
-  .tk-card.off {
-    opacity: 0.55;
-  }
-  .tk-head {
-    display: flex;
+  /* The readout: a dot of the house family (6px on the chip radius, as the
+     privacy readout draws its findings) and one clause. Success is quiet,
+     a file or a theme in the way is the warning tone, an unwritten output the
+     ring. */
+  .readout {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-  .tk-title {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-  }
-  .tk-name {
-    font-size: var(--text-base);
-    font-weight: 500;
-    color: var(--foreground);
-  }
-  .tk-always {
+    gap: 0.45rem;
+    /* Bounded by the window, not by its own text: the kit's control slot does
+       not shrink, so a sentence-wide readout took the label's room at 720px and
+       set "GTK3" one word per line. This wraps instead. */
+    max-width: clamp(7rem, 22vw, 20rem);
     font-size: var(--text-xs);
-    color: var(--color-fg-secondary, #a1a1aa);
-  }
-  .tk-note {
-    margin: 0.375rem 0 0;
-    font-size: var(--text-xs);
+    line-height: 1.35;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
+    text-align: end;
   }
-  .tk-blocked {
-    margin: 0;
-    font-size: var(--font-size-sm);
+  .readout.away {
     color: var(--color-warning);
   }
-
-  .tk-prereq {
-    margin: 0.25rem 0 0;
+  .found {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-chip, 4px);
+  }
+  .found[data-posture="ours"] {
+    background: var(--color-success);
+  }
+  .found[data-posture="away"] {
+    background: var(--color-warning);
+  }
+  .found[data-posture="unknown"] {
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--foreground) 40%, transparent);
+  }
+  /* A prerequisite this machine does not meet: one caution line under the row,
+     only while it is true. */
+  .prereq {
+    margin: 0;
     font-size: var(--text-2xs);
-    color: var(--color-fg-secondary, #a1a1aa);
-  }
-
-  /* The per-toolkit override disclosure. */
-  :global(.ovr-trigger) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-top: 0.625rem;
-    padding: 0.25rem 0;
-    border: none;
-    background: transparent;
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  :global(.ovr-trigger:hover) {
-    color: var(--foreground);
-  }
-  :global(.ovr-trigger svg) {
-    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  :global(.ovr-trigger[data-state="open"] svg:first-child) {
-    transform: rotate(90deg);
-  }
-  .ovr-dot {
-    width: 0.375rem;
-    height: 0.375rem;
-    border-radius: var(--radius-full, 9999px);
-    background: var(--color-accent, var(--foreground));
-  }
-  .ovr-body {
-    padding: 0.5rem 0 0.25rem;
-  }
-  .ovr-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-  .ovr-label {
-    font-size: var(--text-sm);
-    color: var(--foreground);
-  }
-  .ovr-accent {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-  }
-  .ovr-reset {
-    display: inline-flex;
-    border: none;
-    background: transparent;
-    padding: 0.25rem;
-    border-radius: var(--radius-button, 6px);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .ovr-reset:hover {
-    color: var(--foreground);
-  }
-  .ovr-swatch {
-    position: relative;
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: var(--radius-button, 6px);
-    border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
-    overflow: hidden;
-  }
-  .ovr-swatch input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-  }
-
-  /* The swatch IS the control and the input inside it is invisible, so focus
-     lands on something with nothing to show. A keyboard reaching this picker saw
-     no sign of it at all; `:focus-within` puts the ring on the thing a person
-     can see. Same treatment, same reason, wherever this pattern is written. */
-  .ovr-swatch:focus-within {
-    outline: 2px solid var(--color-accent, var(--foreground));
-    outline-offset: 2px;
-  }
-  .ovr-note {
-    margin: 0.5rem 0 0;
-    font-size: var(--text-2xs);
-    color: var(--color-fg-secondary, #a1a1aa);
+    color: var(--color-warning);
   }
 </style>
