@@ -48,6 +48,37 @@ pub fn reg_windows_path() -> String {
     format!("C:\\{REG_FILE}")
 }
 
+/// Whether the person wants bottles themed at all.
+///
+/// `appearance.toml [toolkits] wine = false` is the Toolkits page's switch for
+/// this row, and it is read HERE rather than passed in because the same rule has
+/// to hold for every path that themes a bottle - the create, the launch, and the
+/// explicit re-apply all go through the same decision instead of three callers
+/// remembering it.
+///
+/// Absent means on. The file records only decisions somebody made, so a machine
+/// where nobody has touched the switch themes its bottles, and a read that fails
+/// does the same: a preference we could not read is not a preference to stop.
+pub fn wanted(appearance: Option<&str>) -> bool {
+    let Some(text) = appearance else { return true };
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return true;
+    };
+    doc.get("toolkits")
+        .and_then(|t| t.get("wine"))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(true)
+}
+
+/// [`wanted`] against the person's own `appearance.toml`.
+pub fn wanted_here() -> bool {
+    wanted(
+        std::fs::read_to_string(arlen_theme::ArlenTheme::user_appearance_path())
+            .ok()
+            .as_deref(),
+    )
+}
+
 /// Write the document into the bottle.
 ///
 /// The prefix must have been booted first: `drive_c` is Wine's, not ours, and
@@ -363,4 +394,32 @@ mod tests {
         assert!(!font_available(dir.path(), ""));
     }
 
+}
+
+#[cfg(test)]
+mod wanted_tests {
+    use super::wanted;
+
+    /// The file records only decisions somebody made, so an untouched machine
+    /// themes its bottles.
+    #[test]
+    fn absent_means_on() {
+        assert!(wanted(None));
+        assert!(wanted(Some("[theme]\nactive = \"dark\"\n")));
+        assert!(wanted(Some("[toolkits]\ngtk3 = false\n")));
+    }
+
+    #[test]
+    fn the_switch_turns_it_off() {
+        assert!(!wanted(Some("[toolkits]\nwine = false\n")));
+        assert!(wanted(Some("[toolkits]\nwine = true\n")));
+    }
+
+    /// A preference we could not read is not a preference to stop. An
+    /// unparseable appearance file is somebody's broken config, and refusing to
+    /// theme over it would take a second thing away from them.
+    #[test]
+    fn an_unreadable_file_does_not_stop_the_theme() {
+        assert!(wanted(Some("[toolkits\nwine = ")));
+    }
 }

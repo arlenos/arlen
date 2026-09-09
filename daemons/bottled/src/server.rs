@@ -503,6 +503,12 @@ fn run_to_completion(argv: &[String]) -> Result<(), String> {
 /// per-prefix `LogPixels` should follow the display a bottle opens on, and
 /// nothing in this daemon knows which that is.
 fn wine_document() -> Option<crate::theme::Document> {
+    // The Toolkits page's switch for this row. Checked before the resolve rather
+    // than after, so an off switch costs a file read instead of a theme
+    // resolution and a document nobody imports.
+    if !crate::theme::wanted_here() {
+        return None;
+    }
     match arlen_theme::ArlenTheme::resolve_active(Some(arlen_theme::Toolkit::Wine)) {
         Ok(t) => Some(crate::theme::Document {
             text: arlen_theme::wine::generate_wine_reg(&t, 1.0),

@@ -1722,14 +1722,20 @@ pub fn theme_toolkit_enabled() -> Result<std::collections::BTreeMap<String, bool
     Ok(out)
 }
 
-/// The toolkits this switch governs: the ones the shell's apply writes files
-/// for.
+/// The toolkits this switch governs.
 ///
-/// Not every row on the page. `arlen` is the theme itself rather than a target,
-/// and `wine` is written per bottle by `bottled` rather than by the apply - a
-/// bottle wears the theme or it does not, one prefix at a time, so a single
-/// on/off here would be a switch for something this command cannot reach.
-const THEMED_SPOKES: &[&str] = &["gtk3", "gtk4", "qt", "terminal"];
+/// Not every row on the page: `arlen` is the theme itself rather than a target,
+/// so it has no switch and the page draws none.
+///
+/// **`wine` is here and it works differently**, which is worth knowing before
+/// reading the write below. The other four are files the shell's apply writes;
+/// wine is a registry document `bottled` imports into each prefix before a
+/// launch. So this switch does not remove anything - it stops the next import,
+/// and `theme::wanted` on the daemon side reads the same key before it resolves
+/// a document. A bottle already wearing the palette keeps it until something
+/// rewrites the prefix, which is the honest behaviour for a per-bottle import
+/// and worth a line on the row.
+const THEMED_SPOKES: &[&str] = &["gtk3", "gtk4", "qt", "terminal", "wine"];
 
 /// Switch a toolkit's theming on or off.
 ///
@@ -1738,7 +1744,8 @@ const THEMED_SPOKES: &[&str] = &["gtk3", "gtk4", "qt", "terminal"];
 /// row that was never touched reads the same as one turned back on - which it
 /// is.
 ///
-/// Off is not only "stop writing". The next apply also takes back the files that
+/// Off is not only "stop writing" - for the four file-based spokes. The next
+/// apply also takes back the files that
 /// STEER the toolkit at us (the GTK sheet and settings file, the `qt*ct.conf`
 /// that selects our scheme, the terminal configs that include our palette), each
 /// removed only when it carries our own marker. The Arlen-named palette files
