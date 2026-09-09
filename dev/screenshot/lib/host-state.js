@@ -11,4 +11,9 @@
 // `textContent` would have found the sentence and passed a fixture whose state
 // nobody could see. `probe-host.sh` reads the page the same way for the same
 // reason; this file exists so the sweep can do it without shelling out to that.
-return document.body.innerText.replace(/\s+/g, " ");
+// AS AN ARRAY, like every probe, so a reader can pick the answer out of the
+// run's output by shape. Returning a bare string meant the only way to find it
+// was "the last line", and one run in ten puts a MESA driver warning there -
+// which then reads as a page that says nothing about itself. `probe-host.sh`
+// carries a comment about that exact warning from an earlier round.
+return [document.body.innerText.replace(/\s+/g, " ")];

@@ -50,8 +50,7 @@ want="$(sed -n 's|^// EXPECT: *||p' "$script" | head -1)"
 }
 
 shot="$(mktemp /tmp/probe-host-XXXXXX.png)"
-state="$(mktemp /tmp/probe-host-XXXXXX.js)"
-trap 'rm -f "$shot" "$state"' EXIT
+trap 'rm -f "$shot"' EXIT
 
 # The page's own words, not a selector: a refusal renders in a different element
 # in nearly every app (a `[role=alert]`, an `.outcome`, a toast), and a selector
@@ -65,9 +64,11 @@ trap 'rm -f "$shot" "$state"' EXIT
 # nobody could see. It is also why the eight other fixtures need no
 # visible-only guard of their own - a fixture that drives hidden UI produces a
 # hidden refusal, and this check goes red on it.
-cat > "$state" <<'JS'
-return document.body.innerText.replace(/\s+/g, " ");
-JS
+# THE SHARED READER, not a copy. `dev/screenshot/lib/host-state.js` is the same
+# file the sweep uses for its own EXPECT check, and it answers as a one-element
+# ARRAY so the line can be found by shape rather than by position - the MESA
+# warning below is exactly why "the last line" is not a way to find an answer.
+state="$here/lib/host-state.js"
 
 # STDOUT ONLY. Merging stderr put a MESA driver warning on the last line one run
 # in ten, so the state check compared the page against "MESA-EGL: warning: Ensure
@@ -84,7 +85,7 @@ JS
 # referenced by nothing - the tool for running them said no every time.
 seen="$("$here/headless.sh" --url "$base/?locale=$locale" --out "$shot" --width "$width" \
   --settle "$settle" --host-script "$script" --probe-file "$state" 2>/dev/null \
-  | grep -v '^wrote ' | tail -1)"
+  | grep -E '^\[' | tail -1)"
 case "$seen" in
   *"$want"*) ;;
   *)
