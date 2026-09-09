@@ -15,7 +15,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use arlen_desktop_shell_core::theme::css::{to_css_variables, CssVariables};
-use arlen_desktop_shell_core::theme::loader::{resolve_theme, ThemeError, ThemeLoader};
+use arlen_desktop_shell_core::theme::loader::{resolve_theme, resolve_theme_for, ThemeError, ThemeLoader};
 use arlen_desktop_shell_core::theme::schema::AppearanceConfig;
 
 // ---------------------------------------------------------------------------
@@ -111,17 +111,52 @@ impl ThemeState {
         Ok(css)
     }
 
-    /// Write the foreign-toolkit (GTK/Qt/terminal) config files for a resolved
-    /// theme, so a theme reaches non-Svelte apps too.
+    /// Write the foreign-toolkit (GTK/Qt/terminal) config files, each generated
+    /// from the theme AS THAT TOOLKIT SEES IT, so a theme reaches non-Svelte apps
+    /// and a per-toolkit override reaches the one target it names.
+    ///
+    /// It resolves three more times rather than reusing the shared theme, and
+    /// that is the whole point: `[override.gtk]` was read by the resolver and
+    /// written by Settings and reached no file on this machine, because the apply
+    /// called the entry point that gives every target the same theme. Resolving
+    /// per toolkit is also what a theme with no override does - the resolve is
+    /// identical then - so there is no branch on whether an override exists.
+    ///
+    /// A toolkit whose resolve fails falls back to the shared theme rather than
+    /// going unwritten: a malformed override block should cost that toolkit its
+    /// divergence, not its theme.
     ///
     /// Best-effort by design: a write failure is logged and never blocks the
     /// in-app update, and a file the user wrote themselves is kept rather than
-    /// clobbered - `write_foreign_toolkit_configs` reports both.
+    /// clobbered - the apply reports both.
     fn write_toolkit_files(&self, theme: &ArlenTheme) {
         let Some(config_dir) = self.xdg_config_dir() else {
             return;
         };
-        let report = arlen_theme::apply::write_foreign_toolkit_configs(theme, &config_dir);
+        let for_toolkit = |tk: arlen_theme::Toolkit| {
+            let config = self.config.lock().unwrap();
+            resolve_theme_for(&self.loader, &config, Some(tk)).unwrap_or_else(|why| {
+                log::warn!("theme apply: {tk:?} override did not resolve ({why}); using the shared theme");
+                theme.clone()
+            })
+        };
+        let gtk = for_toolkit(arlen_theme::Toolkit::Gtk);
+        let qt = for_toolkit(arlen_theme::Toolkit::Qt);
+        let term = for_toolkit(arlen_theme::Toolkit::Terminal);
+        // The spokes somebody switched off. Read every apply rather than only on
+        // the change, so a machine that was off when the switch was flipped
+        // still gives the files back on the next theme resolve.
+        let off: Vec<arlen_theme::apply::Spoke> = {
+            let config = self.config.lock().unwrap();
+            config
+                .toolkits
+                .iter()
+                .filter(|(_, on)| !**on)
+                .filter_map(|(id, _)| arlen_theme::apply::Spoke::from_id(id))
+                .collect()
+        };
+        let report =
+            arlen_theme::apply::write_toolkit_configs(theme, &gtk, &qt, &term, &off, &config_dir);
         for (path, err) in &report.errors {
             log::warn!("theme apply: failed to write {}: {err}", path.display());
         }

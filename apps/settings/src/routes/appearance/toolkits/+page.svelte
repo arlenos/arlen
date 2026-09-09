@@ -27,15 +27,23 @@
     loadReach,
     prereqs,
     loadPrereqs,
+    loadEnabled,
+    loadOverrides,
     showPrereq,
     type ToolkitReach,
   } from "$lib/stores/themeToolkits";
 
   // Read-only, so asking on mount costs nothing and a row is never a claim
-  // about a check that did not run.
+  // about a check that did not run. The switch and the accent are read here
+  // too, although the controls that write them are not back yet: the page
+  // holding the machine's answer is what lets a control open on it rather than
+  // on a default, which is the shape that put a knob in front of a value
+  // nobody had read.
   onMount(() => {
     void loadReach();
     void loadPrereqs();
+    void loadEnabled();
+    void loadOverrides();
   });
 
   /// The readout for one row: a posture for the dot and the sentence beside it.

@@ -3,10 +3,11 @@
 /// (the honest fidelity ceiling), whether it is on, and a per-toolkit override.
 /// A flat list, never an N x M matrix; ragged coverage is stated per row.
 ///
-/// Mock-vs-live: the coverage tiers, the notes, the prerequisite detection and
-/// the reach (whether the theme is actually in place, or whose file is in the
-/// way) are all real. The per-toolkit on/off and the override map still need
-/// coder backend and are fixture until they have one.
+/// Mock-vs-live: everything here is real. The coverage tiers and the notes are
+/// the plan's; the prerequisite detection, the reach, the on/off switch and the
+/// per-toolkit accent all read and write the machine. The two writers persist
+/// BEFORE the store moves, so a refused write leaves the row showing what the
+/// machine actually holds rather than what was asked for.
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
@@ -129,13 +130,37 @@ export const disabled = writable<Record<string, boolean>>({});
 /// Per-toolkit accent overrides (a toolkit uses a different accent than the hub).
 export const accentOverrides = writable<Record<string, string>>({});
 
+/// Read which toolkits are switched off. `appearance.toml [toolkits]` records
+/// only decisions somebody made, so a row with no entry is on.
+export async function loadEnabled(): Promise<void> {
+  if (!tauriAvailable) return;
+  const state = await invoke<Record<string, boolean>>("theme_toolkit_enabled");
+  const off: Record<string, boolean> = {};
+  for (const [id, on] of Object.entries(state)) if (!on) off[id] = true;
+  disabled.set(off);
+}
+
+/// Read the per-toolkit accents the theme file holds. Both GTK rows report the
+/// one GTK value, because the theme file has one `[override.gtk]` block and both
+/// stylesheets are generated from it.
+export async function loadOverrides(): Promise<void> {
+  if (!tauriAvailable) return;
+  accentOverrides.set(await invoke<Record<string, string>>("theme_toolkit_overrides"));
+}
+
 /// Whether the theme is applied to a toolkit.
 export function isEnabled(d: Record<string, boolean>, id: string): boolean {
   return !d[id];
 }
 
 /// Switch a toolkit's theming on/off.
-export function setEnabled(id: string, on: boolean): void {
+///
+/// The write comes first and the store moves only after it lands, so a refusal
+/// leaves the switch showing the machine rather than the request. Off also takes
+/// back the files that steer the toolkit at us; a palette file an include
+/// somebody wrote themselves names is left alone.
+export async function setEnabled(id: string, on: boolean): Promise<void> {
+  await invoke("theme_toolkit_set_enabled", { id, on });
   disabled.update((d) => {
     const next = { ...d };
     if (on) delete next[id];
@@ -149,16 +174,30 @@ export function hasAccentOverride(a: Record<string, string>, id: string): boolea
   return id in a;
 }
 
-/// Set a toolkit's accent override.
-export function setAccentOverride(id: string, hex: string): void {
+/// Give a toolkit its own accent. Persisted first, like the switch.
+///
+/// The backend also derives the hover and pressed states from it: they are
+/// separate tokens the generators use, so an accent on its own would leave the
+/// toolkit with a new colour and the old theme's states beside it.
+export async function setAccentOverride(id: string, hex: string): Promise<void> {
+  await invoke("theme_toolkit_override_set", { id, accent: hex });
   accentOverrides.update((a) => ({ ...a, [id]: hex }));
+  // Both GTK rows read one table, so showing the new colour on only the row that
+  // was edited would be the page disagreeing with the file it just wrote.
+  if (id === "gtk3" || id === "gtk4") {
+    const sibling = id === "gtk3" ? "gtk4" : "gtk3";
+    accentOverrides.update((a) => ({ ...a, [sibling]: hex }));
+  }
 }
 
 /// Clear a toolkit's accent override (back to the hub accent).
-export function resetAccentOverride(id: string): void {
+export async function resetAccentOverride(id: string): Promise<void> {
+  await invoke("theme_toolkit_override_set", { id, accent: null });
   accentOverrides.update((a) => {
     const next = { ...a };
     delete next[id];
+    if (id === "gtk3") delete next.gtk4;
+    if (id === "gtk4") delete next.gtk3;
     return next;
   });
 }

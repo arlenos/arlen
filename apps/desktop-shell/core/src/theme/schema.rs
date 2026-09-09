@@ -49,6 +49,18 @@ pub struct AppearanceConfig {
     /// in the theme, intensity is in `[overrides]`).
     #[serde(default)]
     pub window: WindowSection,
+    /// `[toolkits]`: whether the theme is applied to each foreign toolkit,
+    /// keyed by the Toolkits page's own row ids (`gtk3`, `gtk4`, `qt`,
+    /// `terminal`). A row with no entry is ON, so the file only ever records a
+    /// decision somebody made and a fresh machine themes everything.
+    ///
+    /// Here rather than in the theme file, and the difference is not filing:
+    /// `theme.toml` describes a THEME, and a downloaded theme that could say
+    /// "do not apply me to Qt" would be deciding where somebody's desktop is
+    /// themed. Which toolkits are themed is the person's standing preference,
+    /// which is what `appearance.toml` holds.
+    #[serde(default)]
+    pub toolkits: std::collections::BTreeMap<String, bool>,
 }
 
 /// `[theme]` section.
