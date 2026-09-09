@@ -98,9 +98,7 @@
      column aside (Tim, 9 September). Success is quiet, a file or a theme in
      the way is the warning tone, an unwritten output the ring. */
   .readout {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
+    display: inline-block;
     /* Bounded by the window, not by its own text: the kit's control slot does
        not shrink, so a sentence-wide readout took the label's room at 720px and
        set "GTK3" one word per line. This wraps instead. */
@@ -113,8 +111,13 @@
   .readout.away {
     color: var(--color-warning);
   }
+  /* The dot is part of the text run, not a flex column beside it: when the
+     value wraps to two lines, a column put the dot between the lines and away
+     from a shorter first line. Inline, it stays glued to the first word. */
   .found {
-    flex-shrink: 0;
+    display: inline-block;
+    vertical-align: middle;
+    margin-inline-end: 0.45rem;
     width: 6px;
     height: 6px;
     border-radius: var(--radius-chip, 4px);
