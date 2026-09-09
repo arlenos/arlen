@@ -84,6 +84,24 @@ say() {
   if [ "$ok" = 1 ]; then echo "  ok   $name"; else echo "  FAIL $name"; echo "       $got"; fail=1; fi
 }
 
+# AND IT SAYS SO WHEN A DECODER IS ABSENT. The guard above already claims the
+# drive "skips a format whose decoder is not built, which is a different and
+# honest answer" - and it did not skip: it ran every case against an app that
+# could not decode anything and reported six failures, which read exactly like a
+# picture viewer that is broken. On 9 September that cost a wrong first
+# impression. The only case that said what was really wrong was the audio one,
+# and only because bwrap's own message came through it.
+#
+# Not indented inside the `if` below, deliberately: these blocks carry heredocs,
+# and a heredoc terminator has to sit at the start of its line.
+have() {  # have <decoder-name>
+  [ -x "$root/target/release/arlen-$1" ]
+}
+skip() {  # skip <decoder-name> <what went untested>
+  echo "  --   $2: arlen-$1 is not built, so nothing here was tested"
+  echo "       build it: (cd apps/viewers/$1 && cargo build --release)"
+}
+
 drive_bare() {  # drive_bare <probe-js> <out-png> - launched with NO file
   # What the launcher gives a person. Every drive in this directory hands its app
   # a file, so the empty state was never opened here - and that is how the viewer,
@@ -117,6 +135,7 @@ for (let i = 0; i < 40; i++) {
 return JSON.stringify({ dock: (document.querySelector(".level")||{}).textContent,
   body: (document.body.innerText||"").replace(/\s+/g," ").trim().slice(0,40) });
 JS
+if have decode-image; then
 got=$(drive "$fix/p-open.js" a-one.png viewer-open.png)
 say "opens the file it was given, and says where it is in the folder" \
   "$(printf '%s' "$got" | grep -q "a-one.png 1 / 3" && echo 1 || echo 0)" "$got"
@@ -162,6 +181,9 @@ got=$(drive "$fix/p-rotate.js" c-portrait.png viewer-rotate.png)
 say "rotate turns the picture, not just the frame around it" \
   "$(printf '%s' "$got" | grep -q '\[400,900\]' \
      && printf '%s' "$got" | grep -q '\[900,400\]' && echo 1 || echo 0)" "$got"
+else
+skip decode-image "opening a picture, stepping, zooming and rotating"
+fi
 
 # The half worth driving is the second one: a delete that cannot be taken back
 # is a different feature from the one the plan names.
@@ -215,6 +237,7 @@ return JSON.stringify({ waveform: cv ? [cv.width, cv.height] : null,
   transportBefore: before, transportAfter: label(),
   details: (document.body.innerText||"").replace(/\s+/g," ").trim().slice(0,160) });
 JS
+if have decode-audio; then
 got=$(drive "$fix/p-audio.js" tone.wav viewer-audio.png)
 say "an audio file opens with a waveform and stream details read off the file itself" \
   "$(printf '%s' "$got" | grep -q '"waveform":\[' \
@@ -231,6 +254,9 @@ except Exception:
     print(0); raise SystemExit
 b, a = d.get('transportBefore'), d.get('transportAfter')
 print(1 if b and a and b != a else 0)")" "$got"
+else
+skip decode-audio "opening an audio file, its stream details and its transport"
+fi
 
 # Printing. The button is the FIRST caller the print portal has ever had: the
 # backend could hand a document to CUPS since it was written and nothing in the
@@ -245,12 +271,16 @@ await new Promise(r => setTimeout(r, 900));
 return JSON.stringify({ status: (document.querySelector('[role="status"]')||{}).innerText,
   body: (document.body.innerText||"").replace(/\s+/g," ").trim().slice(0,120) });
 JS
+if have decode-image; then
 got=$(drive "$fix/p-print.js" a-one.png viewer-print.png)
 # Pending, not printed: the portal answers when a person does, and claiming a
 # document reached a printer before that is exactly the kind of statement this
 # app is not allowed to make.
 say "the print control hands the file to the portal and says the request is pending" \
   "$(printf '%s' "$got" | grep -qiE "print service|Druckdienst" && echo 1 || echo 0)" "$got"
+else
+skip decode-image "handing a document to the print portal"
+fi
 
 cat > "$fix/p-bare.js" <<'JS'
 await new Promise(r => setTimeout(r, 2000));
@@ -276,6 +306,24 @@ say "launched with no file, it says where a file comes from" \
 
 say "and shows no invented track" \
   "$(case "$bare" in ""|REFUSED:*) echo 0;; *) printf '%s' "$bare" | grep -q "Nightswim" && echo 0 || echo 1;; esac)" "$bare"
+
+# GERMAN. Six apps have had a defect only the German render showed, and the empty
+# window here is a sentence telling somebody where a file comes from - exactly the
+# prose that gets written once in English. `dev/screenshot/README.md` has the
+# recipe and the two traps; a release binary takes its language from
+# `locale.toml`, since the `?locale=` hook is compiled out.
+cfg="$fix/config-de"
+mkdir -p "$cfg/arlen"
+printf '[locale]\nui = "de"\n' > "$cfg/arlen/locale.toml"
+de=$(XDG_CONFIG_HOME="$cfg" SHOOT_INJECT="$fix/p-bare.js" \
+  "$here/shoot-app.sh" "$app" "$here/out/viewer-no-file-de.png" 2>&1 \
+  | sed -n 's/^inject result: //p')
+
+# Both halves: the German sentence present AND the English one gone. The first
+# alone passes on a catalogue that is only half adopted.
+say "the empty window says where a file comes from, in German" \
+  "$(printf '%s' "$de" | grep -qE "Datei|Dateien" \
+     && ! printf '%s' "$de" | grep -q "No file is open" && echo 1 || echo 0)" "$de"
 
 [ "$fail" = 0 ] && echo "every behaviour the plan names answered when it was pressed, and an empty window that says what to do"
 exit "$fail"
