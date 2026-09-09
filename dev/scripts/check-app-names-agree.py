@@ -26,7 +26,7 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[2]
 
 # A name that two places genuinely disagree about, where deciding is somebody
 # else's call rather than a typo to fix.
@@ -79,9 +79,11 @@ def conf_title(app: pathlib.Path):
 def main() -> int:
     findings = []
     checked = 0
+    seen = 0
     for app in sorted((ROOT / "apps").iterdir()):
         if not app.is_dir():
             continue
+        seen += 1
         titles = catalog_title(app)
         if titles is None:
             continue
@@ -119,6 +121,14 @@ def main() -> int:
             "config are read by different people at different moments, and a\n"
             "disagreement between them is a machine that answers to two names."
         )
+        return 1
+    # An `apps/` with nothing in it is a walk that reached nothing, and it
+    # printed the same "0 app(s)" line a clean pass does. Keyed on directories
+    # seen rather than apps judged: an app present but carrying no catalog is a
+    # real tree this deliberately does not judge, and refusing there would call
+    # two of its own control cases broken.
+    if seen == 0:
+        print("check-app-names-agree: no apps found, so the scan is pointed wrong")
         return 1
     print(
         f"check-app-names-agree: {checked} app(s) name themselves in a catalog, "

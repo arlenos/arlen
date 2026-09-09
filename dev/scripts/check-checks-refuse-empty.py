@@ -37,7 +37,6 @@ from pathlib import Path
 #: defect of the same shape - a scan that found nothing and said nothing about
 #: it - and the list comes down as they are fixed. A NEW name here fails.
 CARRIED: set[str] = {
-    "check-app-names-agree.py",
     "check-behaviour-tools.py",
     "check-child-props-order.py",
     "check-command-shapes-agree.py",
@@ -46,22 +45,18 @@ CARRIED: set[str] = {
     "check-dbus-call-arity.py",
     "check-default-handlers.py",
     "check-dialog-named.py",
-    "check-erased-refusal.py",
     "check-fabricated-verdict.py",
     "check-fixture-answers-whole.py",
-    "check-focus-survives-state.py",
     "check-headless-render.py",
     "check-id-references.py",
     "check-inert-ellipsis.py",
     "check-invoke-exists.py",
     "check-master-switch-defaults.py",
-    "check-menu-labels-translated.py",
     "check-message-placeholders.py",
     "check-profile-principals.py",
     "check-rail-landmark.py",
     "check-socket-tiers.py",
     "check-text-is-text.py",
-    "check-toast-is-named.py",
     "check-unit-identity.py",
 }
 

@@ -21,7 +21,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 # `mkosi.builddir` and its siblings hold a cargo cache with git CHECKOUTS of
 # older copies of this very tree, so scanning them reports defects that were
 # fixed months ago in files nobody edits. Skipped by every gate that walks the

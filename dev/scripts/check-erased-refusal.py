@@ -61,7 +61,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 SKIP = ("/harness/", "/store/", "node_modules", "/.svelte-kit/")
 
 CATCH = re.compile(r"catch\s*(?:\([^)]*\))?\s*\{")
@@ -137,6 +137,9 @@ def sources() -> list[Path]:
 
 def main() -> int:
     files = sources()
+    if not files:
+        print("check-erased-refusal: no frontend sources found, so the scan is pointed wrong")
+        return 1
     bad: list[str] = []
     carried = 0
     for p in files:
