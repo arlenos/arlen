@@ -13,12 +13,17 @@
 # the wire. A gate that says the topic is subscribed is a different fact from a
 # menu that works.
 #
-# WHAT IT ACTUALLY DRIVES. A real event bus, a real release build of the text
-# editor with the plugin inside it, and a real event on the wire - everything the
-# live path has except the shell's own click, which needs a compositor. The
-# editor's File > Save is the item, because its effect is on the DISK: this reads
-# the file back rather than trusting a status line, the same reason
-# `drive-text-editor.sh` does.
+# WHAT IT ACTUALLY DRIVES. A real event bus, a real release build of the app with
+# the plugin inside it, and a real event on the wire - everything the live path
+# has except the shell's own click, which needs a compositor.
+#
+# TWO APPS, and the second is the point. The text editor's File > Save is the
+# first because its effect is on the DISK: this reads the file back rather than
+# trusting a status line, the same reason `drive-text-editor.sh` does. The file
+# manager is the second because it is the one that had a bespoke consumer of its
+# own, deleted when the relay landed, so it is the app with something to lose;
+# its File > New folder also lands on the disk, as a directory that either is
+# there or is not.
 #
 # AND THE FILTER, which is half the feature. Every app on the bus sees every other
 # app's menu clicks, so the second case sends the same action addressed to a
@@ -27,9 +32,9 @@
 # The two only mean something together: on its own the second case also passes
 # when the relay is dead, since a dead relay saves nothing for anybody either.
 #
-# Run: dev/screenshot/drive-menu-relay.sh [path-to-arlen-text-editor]
+# Run: dev/screenshot/drive-menu-relay.sh [path-to-arlen-text-editor] [path-to-arlen-files]
 #
-# Build the editor with `tauri build --no-bundle`; a plain `cargo build --release`
+# Build both with `tauri build --no-bundle`; a plain `cargo build --release`
 # leaves the binary pointing at devUrl and every probe reads a refused connection.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,6 +43,7 @@ root="$(cd "$here/../.." && pwd)"
 . "$root/dev/screenshot/lib/fresh.sh"
 
 app="${1:-$root/target/release/arlen-text-editor}"
+files_app="${2:-$root/target/release/arlen-files}"
 bus="$root/target/debug/event-bus"
 emit="$root/target/debug/arlen-event-emit"
 # Short prefix on purpose: a Unix socket path has to fit in `sun_path`, about 108
@@ -46,16 +52,24 @@ emit="$root/target/debug/arlen-event-emit"
 work=/tmp/arlen-drive-menu
 fail=0
 
-[ -x "$app" ] || { echo "no text-editor binary at $app - build it with tauri build --no-bundle"; exit 2; }
+for b in "$app" "$files_app"; do
+  [ -x "$b" ] || { echo "no binary at $b - build it with tauri build --no-bundle"; exit 2; }
+done
 for b in "$bus" "$emit"; do
   [ -x "$b" ] || { echo "missing $b - build it first" >&2; exit 2; }
 done
 require_fresh "$bus" "$root/daemons/event-bus/src" || exit 2
 require_fresh "$emit" "$root/dev/event-emit/src" || exit 2
 
-rm -rf "$work"
-mkdir -p "$work/run/arlen" "$here/out"
+# Directly under $HOME and without a leading dot: the file manager opens at Home
+# and hides dotfiles, so a fixture it cannot reach by clicking is a fixture it
+# cannot open. The editor's own scratch stays under /tmp with the sockets.
+fwork="$HOME/arlen-drive-menu-files"
+
+rm -rf "$work" "$fwork"
+mkdir -p "$work/run/arlen" "$fwork" "$here/out"
 printf 'fn main() {\n    println!("before");\n}\n' > "$work/sample.rs"
+printf 'anything\n' > "$fwork/a-file.txt"
 
 export ARLEN_RUNTIME_DIR="$work/run" XDG_RUNTIME_DIR="$work/run"
 producer="$work/run/arlen/event-bus-producer.sock"
@@ -94,33 +108,57 @@ JS
 # the probe stops waiting. `watch` empty means keep going to the end, which is
 # what the other-app case wants: it has to click as often as the first one did
 # before it can claim the app ignored every one of them.
-click_loop() {  # click_loop <app-id> <watch|""> <log>
-  local app_id="$1" watch="$2" log="$3"
+click_loop() {  # click_loop <app-id> <action> <landed-predicate|""> <log>
+  local app_id="$1" action="$2" landed="$3" log="$4"
   for _ in $(seq 1 12); do
     sleep 3
-    ARLEN_SESSION_ID=drive "$emit" --menu "$app_id" file.save >> "$log" 2>&1
-    if [ -n "$watch" ] && head -1 "$work/sample.rs" | grep -q "// via the menu"; then break; fi
+    ARLEN_SESSION_ID=drive "$emit" --menu "$app_id" "$action" >> "$log" 2>&1
+    if [ -n "$landed" ] && eval "$landed"; then break; fi
   done
 }
 
-drive() {  # drive <out-png>
-  SHOOT_APP_ARGS="$work/sample.rs" SHOOT_INJECT="$work/p-menu.js" \
-  SHOOT_APP_ENV="ARLEN_PRODUCER_SOCKET=$producer;ARLEN_CONSUMER_SOCKET=$work/run/arlen/event-bus-consumer.sock" \
-    "$here/shoot-app.sh" "$app" "$here/out/$1" 2>&1 | sed -n 's/^inject result: //p'
+saved() { head -1 "$work/sample.rs" | grep -q "// via the menu"; }
+# A directory that is not a dotfile. Pointing HOME at the fixture makes the app
+# create `.cache`, `.config` and `.local` there itself, so a bare "any directory"
+# test passes without a single menu click ever landing - it was written that way
+# first and would have called a dead relay a working one. Not the localised name
+# either: `New folder` in English is `Neuer Ordner` in German, and the check
+# should not need to know which language the run is in.
+foldered() { [ -n "$(find "$fwork" -mindepth 1 -maxdepth 1 -type d -not -name '.*' 2>/dev/null)" ]; }
+
+# The whole of `shoot-app.sh`'s output is kept, not only the `inject result:`
+# line. That harness says plainly when it could not reach a frontend or could not
+# take a picture, and a drive that greps for one line throws the sentence away -
+# which is how three working features once got reported as broken. The log is
+# what `shot_written` points at when a picture is missing.
+drive() {  # drive <binary> <app-args> <probe-js> <out-png> [extra-env]
+  rm -f "$here/out/$4"
+  SHOOT_APP_ARGS="$2" SHOOT_INJECT="$3" \
+  SHOOT_APP_ENV="ARLEN_PRODUCER_SOCKET=$producer;ARLEN_CONSUMER_SOCKET=$work/run/arlen/event-bus-consumer.sock${5:+;$5}" \
+    "$here/shoot-app.sh" "$1" "$here/out/$4" > "$work/shoot-$4.log" 2>&1
+  sed -n 's/^inject result: //p' "$work/shoot-$4.log"
+}
+
+# A drive whose picture is missing has not been looked at, whatever its checks
+# say, so the missing picture is itself a failure rather than a footnote.
+shot_written() {  # shot_written <out-png>
+  say "and it left a picture of $1" "$([ -s "$here/out/$1" ] && echo 1 || echo 0)" \
+    "$(tail -3 "$work/shoot-$1.log" 2>/dev/null)"
 }
 
 echo "menu relay:"
 
 : > "$work/emit-mine.log"
-click_loop dev.arlen.text-editor watch "$work/emit-mine.log" &
+click_loop dev.arlen.text-editor file.save saved "$work/emit-mine.log" &
 clicker=$!
-got=$(drive menu-relay-save.png)
+got=$(drive "$app" "$work/sample.rs" "$work/p-menu.js" menu-relay-save.png)
 # By pid, not a bare `wait`: the bus is a child of this script too and never
 # exits, so waiting on everything waits forever.
 wait "$clicker"
 say "the bus delivered the menu click" \
   "$(grep -q "^delivered app.menu.action_invoked" "$work/emit-mine.log" && echo 1 || echo 0)" \
   "$(cat "$work/emit-mine.log")"
+shot_written menu-relay-save.png
 say "picking File > Save writes the buffer to disk" \
   "$(head -1 "$work/sample.rs" | grep -q "// via the menu" && echo 1 || echo 0)" \
   "$got (first line: $(head -1 "$work/sample.rs"))"
@@ -129,9 +167,9 @@ say "picking File > Save writes the buffer to disk" \
 # one it names may act on it.
 printf 'fn main() {\n    println!("before");\n}\n' > "$work/sample.rs"
 : > "$work/emit-other.log"
-click_loop dev.arlen.files "" "$work/emit-other.log" &
+click_loop dev.arlen.files file.save "" "$work/emit-other.log" &
 clicker=$!
-got=$(drive menu-relay-other-app.png)
+got=$(drive "$app" "$work/sample.rs" "$work/p-menu.js" menu-relay-other-app.png)
 wait "$clicker"
 say "and the same click addressed to another app is delivered" \
   "$(grep -q "^delivered app.menu.action_invoked" "$work/emit-other.log" && echo 1 || echo 0)" \
@@ -142,5 +180,32 @@ say "but this app does not act on it" \
   "$([ "$(cat "$work/sample.rs")" = "$(printf 'fn main() {\n    println!("before");\n}')" ] && echo 1 || echo 0)" \
   "$(head -2 "$work/sample.rs" | tr '\n' ' ')"
 
-[ "$fail" = 0 ] && echo "a menu click crosses the bus into the app and only into the app it names"
+# THE FILE MANAGER. It takes no path argument and opens at whatever the backend
+# calls Home, so the fixture IS its home for this run: pointing `HOME` at it puts
+# the window where the click has to land, instead of walking the probe through a
+# double-click and hoping. That also keeps a mis-navigated `New folder` out of the
+# real home directory, which is not this script's to write in.
+#
+# The filter is not re-run here: it is a property of the one relay in the plugin,
+# and proving it twice would double the run for a second reading of the same code.
+cat > "$work/p-files.js" <<'JS'
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await wait(3000);
+await wait(40000);
+return JSON.stringify({ listing: [...document.querySelectorAll(".fm-browse *")]
+  .filter(e => e.children.length === 0 && (e.textContent||"").trim())
+  .map(e => e.textContent.trim()).slice(0, 12) });
+JS
+
+: > "$work/emit-files.log"
+click_loop dev.arlen.files file.new_folder foldered "$work/emit-files.log" &
+clicker=$!
+got=$(drive "$files_app" "" "$work/p-files.js" menu-relay-new-folder.png "HOME=$fwork")
+wait "$clicker"
+shot_written menu-relay-new-folder.png
+say "picking File > New folder in the file manager makes the directory" \
+  "$(foldered && echo 1 || echo 0)" \
+  "$got (in $fwork: $(ls -A "$fwork" | tr '\n' ' '))"
+
+[ "$fail" = 0 ] && echo "a menu click crosses the bus into two different apps, and only into the app it names"
 exit "$fail"
