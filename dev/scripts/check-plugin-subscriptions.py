@@ -25,14 +25,29 @@ The knowledge app's profile records that failure from an enforce boot on 14 Augu
 `dev.arlen.pdf` was still in it on 8 September, with no `[event_bus]` section at
 all, which is what this check was written for.
 
-WHAT IS CHECKED, and it is deliberately the airtight half: an app that DEPENDS on
-`tauri-plugin-arlen-shell` in its `src-tauri/Cargo.toml` must have a shipped
-profile whose `[event_bus].subscribe` contains both patterns. The plugin's other
-side-effect - `app.menu.registered`, emitted through the `Menu` helper the plugin
-manages - is NOT checked, because an app only emits it if it drives that helper,
-and telling which does is more than a grep can say. A rule that guessed there
-would produce false demands for a grant an app does not use, and the fastest way
-to get a check ignored is to have it ask for grants nobody needs.
+WHAT IS CHECKED. Two halves, and each has its own airtight signal.
+
+SUBSCRIBE: an app that DEPENDS on `tauri-plugin-arlen-shell` in its
+`src-tauri/Cargo.toml` must have a shipped profile whose `[event_bus].subscribe`
+contains all three patterns. Linking is subscribing, so the dependency is the
+signal.
+
+PUBLISH: an app whose FRONTEND calls `plugin:arlen-shell|menu_register` must be
+granted `app.menu.registered`. This paragraph used to say the publish side could
+not be checked - "an app only emits it if it drives that helper, and telling which
+does is more than a grep can say" - and that was wrong twice over. The invoke IS
+the app driving the helper, and it is as greppable as the dependency; and while
+nobody checked, TWELVE of the thirteen profiles for apps that register a menu
+granted no publish at all. Under enforcement every one of them registers no menu,
+so the top-bar menu is absent for the whole desktop - the same defect the
+subscribe list was widened to prevent on 9 September, one field over, found the
+same evening in a bus log: `publish would be denied (shadow mode)
+event_type=app.menu.registered`.
+
+The reason it was missed is worth keeping, because it is the reading that keeps
+producing this bug: every one of those profiles says some version of "nothing is
+published: there is no emitter in this app", and every one of them is correct
+about the app and wrong about the process. The emitter is in the plugin.
 
 ONE PLUGIN, AND THAT IS THE WHOLE CLASS TODAY. Checked on 8 September: of the four
 plugins in `sdk/`, only this one subscribes at all - `tauri-plugin-clipboard`,
@@ -64,6 +79,15 @@ REQUIRED = (
 )
 PROFILE_DIR = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
 
+# The frontend call that makes the plugin publish on the app's behalf, and what
+# the app must then be granted. `app.menu.unregistered` is deliberately NOT
+# demanded: nothing calls teardown today, so requiring it would be this check
+# asking for a grant nobody uses.
+MENU_REGISTER_INVOKE = "arlen-shell|menu_register"
+MENU_PUBLISH = "app.menu.registered"
+
+FRONTEND_SUFFIXES = (".ts", ".svelte")
+
 
 def linking_apps(root: Path) -> list[tuple[str, Path]]:
     """Every app whose Tauri crate depends on the plugin, with its manifest."""
@@ -72,6 +96,22 @@ def linking_apps(root: Path) -> list[tuple[str, Path]]:
         if PLUGIN in manifest.read_text(errors="replace"):
             out.append((manifest.relative_to(root / "apps").parts[0], manifest))
     return out
+
+
+def registers_a_menu(root: Path, app: str) -> bool:
+    """Whether the app's frontend asks the plugin to publish its menu."""
+    src = root / "apps" / app / "src"
+    if not src.is_dir():
+        return False
+    for path in src.rglob("*"):
+        if path.suffix not in FRONTEND_SUFFIXES:
+            continue
+        try:
+            if MENU_REGISTER_INVOKE in path.read_text(errors="replace"):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def profile_for(root: Path, app: str) -> Path | None:
@@ -131,19 +171,30 @@ def main() -> int:
         if missing:
             problems.append(f"  - {app}: {profile.name} does not grant {', '.join(missing)}")
 
+        if registers_a_menu(root, app):
+            published = doc.get("event_bus", {}).get("publish") or []
+            if not covered(MENU_PUBLISH, published):
+                problems.append(
+                    f"  - {app}: {profile.name} registers a menu through the plugin and "
+                    f"does not grant publishing {MENU_PUBLISH}"
+                )
+
     if problems:
         print("Apps whose plugin subscribes for them without a grant:")
         print()
         print("\n".join(problems))
         print()
-        print("  Linking the plugin IS subscribing to these. Without the grant the bus filters")
-        print("  them out, the subscribe still succeeds, and the toolbar and shortcuts go dead")
-        print("  silently. Add them to `[event_bus].subscribe` in the app's profile.")
+        print("  Linking the plugin IS subscribing to these, and calling menu_register IS")
+        print("  publishing. Without the grants the bus filters them out while both calls")
+        print("  still succeed: the toolbar and shortcuts go dead, and the menu never")
+        print("  appears. Add them to `[event_bus]` in the app's profile.")
         return 1
 
+    menus = sum(1 for app, _ in apps if registers_a_menu(root, app))
     print(
         f"check-plugin-subscriptions: {len(apps)} app(s) link the plugin, "
-        "each granted every pattern it subscribes on their behalf"
+        f"each granted every pattern it subscribes on their behalf; "
+        f"{menus} of them register a menu and may publish it"
     )
     return 0
 

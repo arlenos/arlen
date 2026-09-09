@@ -56,7 +56,8 @@ pictures = true
 # Reads nothing from the knowledge graph, so there is no [graph] section rather than
 # an empty one - the two say different things.
 
-# Publishes nothing: grepped, no emitter. A capture does not reach the event bus, so
+# The app's own code publishes nothing: grepped, no emitter; the grant below is
+# the plugin's. A capture does not reach the event bus, so
 # the graph does not learn that a screenshot was taken; whether it should is the same
 # open question the viewer and the editor raise.
 #
@@ -65,7 +66,18 @@ pictures = true
 # the system-tier exemption, so leaving them out switches the topbar menu, the toolbar
 # and the shortcuts off silently.
 [event_bus]
-publish = []
+publish = [
+    # THE PLUGIN'S, NOT THIS APP'S. The frontend calls
+    # `plugin:arlen-shell|menu_register`, and `sdk/tauri-plugin-shell` emits the
+    # registration from inside this process - so grepping this app for an emitter
+    # finds nothing, which is exactly the reading that left this empty while the
+    # subscribe list below got the same fact right. Under enforcement an app
+    # without it registers no menu, and its top-bar menu is simply absent.
+    "app.menu.registered",
+    # The pair the same helper emits on teardown. Nothing calls it yet; when
+    # something does, the grant is already here rather than one boot behind.
+    "app.menu.unregistered",
+]
 subscribe = [
     "app.menu.*",
     "app.toolbar.action_invoked",

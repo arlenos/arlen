@@ -24,14 +24,26 @@ tier = "first-party"
 # subscribed to anything on the bus - another app's activity, the graph's own
 # traffic - which is reach it has no claim to.
 #
-# NOTHING IS PUBLISHED: there is no emitter in this app (checked, not assumed).
+# THE APP'S OWN CODE PUBLISHES NOTHING: there is no emitter in this app
+# (checked, not assumed). What it does publish is the plugin's, below.
 #
 # The subscribe list is not this app's own code either. `sdk/tauri-plugin-shell`
 # subscribes these two from inside every Tauri process for the toolbar and the
 # shortcut dispatch, so omitting them would silently switch both off while the
 # subscribe still returns Ok.
 [event_bus]
-publish = []
+publish = [
+    # THE PLUGIN'S, NOT THIS APP'S. The frontend calls
+    # `plugin:arlen-shell|menu_register`, and `sdk/tauri-plugin-shell` emits the
+    # registration from inside this process - so grepping this app for an emitter
+    # finds nothing, which is exactly the reading that left this empty while the
+    # subscribe list below got the same fact right. Under enforcement an app
+    # without it registers no menu, and its top-bar menu is simply absent.
+    "app.menu.registered",
+    # The pair the same helper emits on teardown. Nothing calls it yet; when
+    # something does, the grant is already here rather than one boot behind.
+    "app.menu.unregistered",
+]
 subscribe = [
     "app.toolbar.action_invoked",
     "app.shortcut.action_invoked",

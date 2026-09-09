@@ -48,7 +48,8 @@ custom = [
 # Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
 # off by default).
 #
-# NOTHING IS PUBLISHED, because the viewer publishes nothing. My first draft of
+# THE APP'S OWN CODE PUBLISHES NOTHING - the grant below is the plugin's. My
+# first draft of
 # this file granted `file.opened` and said in a comment that the viewer is one of
 # the producers the graph is built from - which sounded right and is false: there
 # is no emitter anywhere in `apps/viewers` (grepped, 15 Aug). Opening a picture
@@ -63,7 +64,18 @@ custom = [
 # shortcuts while the subscribe still returns Ok. Found on the knowledge app under
 # an enforce boot on 14 August; this app has the same shape.
 [event_bus]
-publish = []
+publish = [
+    # THE PLUGIN'S, NOT THIS APP'S. The frontend calls
+    # `plugin:arlen-shell|menu_register`, and `sdk/tauri-plugin-shell` emits the
+    # registration from inside this process - so grepping this app for an emitter
+    # finds nothing, which is exactly the reading that left this empty while the
+    # subscribe list below got the same fact right. Under enforcement an app
+    # without it registers no menu, and its top-bar menu is simply absent.
+    "app.menu.registered",
+    # The pair the same helper emits on teardown. Nothing calls it yet; when
+    # something does, the grant is already here rather than one boot behind.
+    "app.menu.unregistered",
+]
 subscribe = [
     "app.menu.*",
     "app.toolbar.action_invoked",

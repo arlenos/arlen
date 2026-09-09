@@ -29,14 +29,26 @@ tier = "first-party"
 # Event-bus scopes for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
 # off by default).
 #
-# NOTHING IS PUBLISHED: there is no emitter in this app.
+# THE APP'S OWN CODE PUBLISHES NOTHING: there is no emitter in this app.
+# What it does publish is the plugin's, below.
 #
 # The subscribe list is `sdk/tauri-plugin-shell`'s, not this app's: it subscribes
 # these three from inside every Tauri process, and declaring any subscribe list
 # drops the system-tier exemption - so leaving them out switches the topbar menu,
 # the toolbar and the shortcuts off silently.
 [event_bus]
-publish = []
+publish = [
+    # THE PLUGIN'S, NOT THIS APP'S. The frontend calls
+    # `plugin:arlen-shell|menu_register`, and `sdk/tauri-plugin-shell` emits the
+    # registration from inside this process - so grepping this app for an emitter
+    # finds nothing, which is exactly the reading that left this empty while the
+    # subscribe list below got the same fact right. Under enforcement an app
+    # without it registers no menu, and its top-bar menu is simply absent.
+    "app.menu.registered",
+    # The pair the same helper emits on teardown. Nothing calls it yet; when
+    # something does, the grant is already here rather than one boot behind.
+    "app.menu.unregistered",
+]
 subscribe = [
     "app.menu.*",
     "app.toolbar.action_invoked",
