@@ -124,6 +124,38 @@ def press_enter(base, sid):
             {"type": "keyUp", "value": ENTER}]}]})
 
 
+# WebDriver's private-use codepoints for the modifiers, from the spec's key table.
+MODIFIERS = {"ctrl": "\ue009", "control": "\ue009", "shift": "\ue008",
+             "alt": "\ue00a", "meta": "\ue03d", "cmd": "\ue03d", "super": "\ue03d"}
+
+
+def press_chord(base, sid, chord):
+    """Hold the modifiers, tap the key, let go - as one action sequence.
+
+    `chord` is written the way a menu writes it: `Ctrl+S`, `Ctrl+Shift+R`. The
+    accelerator beside a menu label is a promise about the keyboard, and the only
+    way to check it is to press the key with the driver rather than to dispatch a
+    KeyboardEvent from a script - a dispatched event reaches the app's handler and
+    proves nothing about whether a real keystroke ever gets there.
+
+    The final `+` is the key, so a chord ending ON a plus (the pdf reader's zoom)
+    keeps it. A short pause between down and up for the same reason `press_enter`
+    has one: batched key-ups race the frameworks' handlers.
+    """
+    parts = chord.split("+")
+    if parts[-1] == "" and len(parts) > 1:
+        parts = parts[:-2] + ["+"]
+    mods = [MODIFIERS[m.lower()] for m in parts[:-1] if m.lower() in MODIFIERS]
+    key = parts[-1].lower()
+    actions = [{"type": "keyDown", "value": m} for m in mods]
+    actions += [{"type": "keyDown", "value": key},
+                {"type": "pause", "duration": 60},
+                {"type": "keyUp", "value": key}]
+    actions += [{"type": "keyUp", "value": m} for m in reversed(mods)]
+    rq(base, "POST", f"/session/{sid}/actions",
+       {"actions": [{"type": "key", "id": "kbd", "actions": actions}]})
+
+
 def console_text(base, sid):
     """The visible console as plain text: dump the page source, take the console
     subtree, strip tags and whitespace. The terminal grid paints one char per
@@ -375,6 +407,14 @@ def main():
                          "measured against English text, a crumb that never went "
                          "through a catalog, and a greeter that shipped a German "
                          "catalog it never loaded")
+    ap.add_argument("--chord", action="append", default=None,
+                    help="a keystroke to press, written as a menu writes it "
+                         "(`Ctrl+S`). Pressed with the driver just BEFORE the "
+                         "last --inject runs, so the probe can ask what the "
+                         "keystroke did. An accelerator on a menu item is a "
+                         "promise about the keyboard and a dispatched "
+                         "KeyboardEvent cannot check it: it reaches the handler "
+                         "without ever crossing the keyboard. Repeatable.")
     ap.add_argument("--app-arg", action="append",
                     help="argument passed to the app binary (repeatable), e.g. a "
                          "file path for an app launched on a file")
@@ -536,6 +576,13 @@ def main():
             # screen and the last one can read what hovering it did.
             if args.hover and n == len(injects) - 1:
                 hover(base, sid, args.hover)
+            # Same placement and the same reason: an earlier inject puts the app
+            # in the state the keystroke is about (a dirty buffer, an open list),
+            # the chord is pressed, and the last inject reads what it did.
+            if args.chord and n == len(injects) - 1:
+                for chord in args.chord:
+                    press_chord(base, sid, chord)
+                    time.sleep(0.4)
             with open(path) as f:
                 script = f.read()
             # Same endpoint and the same `inject result:` line as `shoot.py`, so

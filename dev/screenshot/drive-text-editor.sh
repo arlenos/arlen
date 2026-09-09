@@ -46,7 +46,7 @@ drive_bare() {  # drive_bare <probe-js> <out-png> - launched with NO file
     | sed -n 's/^inject result: //p'
 }
 
-drive() {  # drive <probe-js> <out-png>
+drive() {  # drive <probe-js[:probe-js...]> <out-png>   (SHOOT_CHORD is honoured)
   local out
   out="$(SHOOT_APP_ARGS="$work/sample.rs" SHOOT_INJECT="$1" \
     "$here/shoot-app.sh" "$app" "$here/out/$2" 2>&1)"
@@ -105,20 +105,27 @@ got=$(drive "$work/p-find.js" editor-find.png)
 say "find opens its panel on the editor's own keymap" \
   "$(printf '%s' "$got" | grep -q '"panel":true' && echo 1 || echo 0)" "$got"
 
-cat > "$work/p-save.js" <<'JS'
+# TWO PROBES AND A REAL KEYSTROKE BETWEEN THEM. This used to type and then
+# DISPATCH a synthetic `keydown` at the buffer, which reaches CodeMirror's keymap
+# and proves the handler - and says nothing at all about whether a keystroke gets
+# there. The File menu advertises `Ctrl+S` beside Save, and that text is a promise
+# about the keyboard; the only instrument that can check it is the driver's own
+# key actions. So the first probe types and leaves the buffer focused, the driver
+# presses the chord, and the second probe reads what it did.
+cat > "$work/p-type.js" <<'JS'
 await new Promise(r => setTimeout(r, 2500));
 const cm = document.querySelector(".cm-content");
 if (!cm) return "no buffer";
 cm.focus();
 document.execCommand("insertText", false, "// driven\n");
-await new Promise(r => setTimeout(r, 600));
-cm.dispatchEvent(new KeyboardEvent("keydown",
-  { key: "s", ctrlKey: true, bubbles: true, cancelable: true }));
+return "typed";
+JS
+cat > "$work/p-save.js" <<'JS'
 await new Promise(r => setTimeout(r, 1500));
 const state = document.querySelector(".savestate");
 return JSON.stringify({ state: state && state.textContent.trim() });
 JS
-got=$(drive "$work/p-save.js" editor-save.png)
+got=$(SHOOT_CHORD="Ctrl+s" drive "$work/p-type.js:$work/p-save.js" editor-save.png)
 changed=$(cmp -s "$work/sample.rs.before" "$work/sample.rs" && echo no || echo yes)
 say "typing and saving reaches the file on disk, not just the status line" \
   "$([ "$changed" = yes ] && head -1 "$work/sample.rs" | grep -q "// driven" && echo 1 || echo 0)" \

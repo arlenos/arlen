@@ -58,6 +58,9 @@ export SHOOT_APP_ENV="${SHOOT_APP_ENV:-}"
 # A file to launch the app on, colon-separated for more than one argument.
 export SHOOT_APP_ARGS="${SHOOT_APP_ARGS:-}"
 export SHOOT_HOVER="${SHOOT_HOVER:-}"
+# A keystroke to press, written the way a menu writes it (`Ctrl+S`);
+# semicolon-separated for more than one.
+export SHOOT_CHORD="${SHOOT_CHORD:-}"
 # The binary is an argument here, so building it is the caller's job - but its age
 # is not their memory. On 6 August the compositor harness screenshotted a binary
 # six weeks old and reported a pass, so any harness that runs a prebuilt artifact
@@ -283,6 +286,12 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   # this whole block is the payload of a single-quoted bash -c and one would
   # close it.
   [ -n "${SHOOT_HOVER:-}" ] && args+=(--hover "$SHOOT_HOVER")
+  # The accelerator a menu advertises, pressed by the driver. Semicolons split
+  # more than one; each is passed through as written.
+  if [ -n "${SHOOT_CHORD:-}" ]; then
+    IFS=";" read -r -a chords <<< "$SHOOT_CHORD"
+    for chord in "${chords[@]}"; do args+=(--chord "$chord"); done
+  fi
   python3 "$SHOOT_HERE/shoot_app.py" "${args[@]}"
 '
 

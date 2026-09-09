@@ -456,7 +456,25 @@
       /* no window in standalone */
     }
   }
+
+  /// Ctrl+N, because the Message menu says Ctrl+N beside Compose. Nothing bound
+  /// it, so the menu named a keystroke the window had never learned - and this
+  /// is the only app-wide one here, the rest (E, Del, j/k, Enter) act on the
+  /// focused row and live with the list. `newMessage` keeps its own
+  /// `mailboxComposes` guard, so a machine with nowhere to send stays quiet;
+  /// the `composing` test is so a second press does not throw away a draft
+  /// already open. `preventDefault` because the webview would else answer with
+  /// a new browser window.
+  function onWindowKeydown(e: KeyboardEvent): void {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+    if (e.key.toLowerCase() !== "n") return;
+    e.preventDefault();
+    if (composing || fileOpen) return;
+    newMessage();
+  }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <!-- The rail exists when it has a row to hold: folders, or Compose while the
      sample keeps a draft. A machine with no maildir gets no empty column. -->
