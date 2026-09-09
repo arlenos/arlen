@@ -58,12 +58,19 @@ read_only = [
 # failure from a 14 August enforce boot; this is the same one, unfixed, in the app
 # that had no `[event_bus]` at all.
 #
-# `publish = []` is the honest statement rather than an omission. The reader
-# registers no menu - it holds no `Menu` helper and its `lib.rs` names none - so it
-# emits nothing, and saying so is what stops a later reader assuming the section is
-# incomplete.
+# THE READER DOES REGISTER A MENU, and this said it did not. The claim was read
+# off `lib.rs`, which holds no `Menu` helper and names none - true, and the wrong
+# half: `src/lib/menu.ts` calls `plugin:arlen-shell|menu_register`, and
+# `sdk/tauri-plugin-shell` emits the registration from inside this process. The
+# app has no emitter to grep for because the emitter is the plugin's.
 [event_bus]
-publish = []
+publish = [
+    # Without this, enforcement drops the registration and the reader's top-bar
+    # menu is absent - the same shape as the subscribe list below, one field over.
+    "app.menu.registered",
+    # The pair the same helper emits on teardown. Nothing calls it yet.
+    "app.menu.unregistered",
+]
 subscribe = [
     "app.toolbar.action_invoked",
     "app.shortcut.action_invoked",

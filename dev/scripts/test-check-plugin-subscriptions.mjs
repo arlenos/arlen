@@ -25,11 +25,23 @@ function check(name, ok) {
   if (!ok) failures++;
 }
 
-/** One app that links the plugin, with whatever profile body the caller wants. */
-function tree({ links = true, profile = null } = {}) {
+/** One app that links the plugin, with whatever profile body the caller wants.
+ *
+ * `menu` writes the frontend call that makes the plugin publish on the app's
+ * behalf, which is the signal the publish half of the check reads.
+ */
+function tree({ links = true, profile = null, menu = false } = {}) {
   const root = mint("plugin-subs-");
   const app = join(root, "apps/reader/src-tauri");
   mkdirSync(app, { recursive: true });
+  if (menu) {
+    const src = join(root, "apps/reader/src/lib");
+    mkdirSync(src, { recursive: true });
+    writeFileSync(
+      join(src, "menu.ts"),
+      'void invoke("plugin:arlen-shell|menu_register", { groups: [] });\n',
+    );
+  }
   writeFileSync(
     join(app, "Cargo.toml"),
     links
@@ -114,6 +126,56 @@ subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked", "app.m
 `,
   });
   check("a family grant covers the member it contains", run(root).code === 0);
+  cleanup(root);
+}
+
+// THE PUBLISH HALF, which is the shape that shipped: twelve profiles for apps
+// that register a menu granted no publish at all, so under enforcement none of
+// them would have registered a menu and the top bar would have been empty.
+{
+  const root = tree({ menu: true, profile: GRANTED });
+  const r = run(root);
+  check(
+    "an app that registers a menu without the publish grant fails",
+    r.code === 1 && r.out.includes("app.menu.registered"),
+  );
+  cleanup(root);
+}
+
+{
+  const root = tree({
+    menu: true,
+    profile: `[info]
+app_id = "dev.arlen.reader"
+[event_bus]
+publish = ["app.menu.registered"]
+subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked", "app.menu.action_invoked"]
+`,
+  });
+  check("granting it passes", run(root).code === 0);
+  cleanup(root);
+}
+
+// An app that never registers a menu is not asked to publish one. A check that
+// demanded a grant nobody uses is how a check gets ignored.
+{
+  const root = tree({ menu: false, profile: GRANTED });
+  check("an app with no menu is not asked to publish one", run(root).code === 0);
+  cleanup(root);
+}
+
+// The family grant covers the publish side too.
+{
+  const root = tree({
+    menu: true,
+    profile: `[info]
+app_id = "dev.arlen.reader"
+[event_bus]
+publish = ["app.menu.*"]
+subscribe = ["app.toolbar.action_invoked", "app.shortcut.action_invoked", "app.menu.action_invoked"]
+`,
+  });
+  check("a family grant covers the publish it contains", run(root).code === 0);
   cleanup(root);
 }
 

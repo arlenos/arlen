@@ -70,10 +70,17 @@ read = [
 # the terminal has the identical defect and only escaped the log because the app
 # was not launched on that boot.
 #
-# `publish` is empty by fact, not omission: there is no emitter anywhere in
-# apps/terminal/src-tauri (checked, not assumed). It is a pure consumer.
+# `publish` holds no emitter of this app's own: there is none anywhere in
+# apps/terminal/src-tauri (checked, not assumed). Every entry below is the shell
+# plugin emitting on the app's behalf, from inside this process.
 [event_bus]
 publish = [
+    # `topbar.ts` calls `plugin:arlen-shell|menu_register`, and the plugin emits
+    # the registration. Missed here for the same reason it was missed in eleven
+    # other profiles: the app has no emitter to grep for. Under enforcement, no
+    # grant means no registration, and the terminal's menu is absent.
+    "app.menu.registered",
+    "app.menu.unregistered",
     # The quick actions this app pushes into the shell's top bar. `topbar.ts`
     # calls `toolbar.setQuickActions`, and `os-sdk/src/toolbar.rs` carries that as
     # `app.toolbar.quick_actions` from THIS process - the emit is the terminal's
