@@ -152,7 +152,7 @@
     font-size: var(--text-sm);
     font-weight: 500;
     padding: 4px 12px;
-    min-height: calc(var(--height-control, 28px) - 6px);
+    min-height: calc(var(--height-control, 30px) - 6px);
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
     transition:
       background-color var(--duration-fast) var(--ease-out),
@@ -165,7 +165,7 @@
     align-items: center;
     justify-content: center;
     padding: 0;
-    width: calc(var(--height-control, 28px) + 2px);
+    width: calc(var(--height-control, 30px) + 2px);
   }
 
   .seg-pill:hover:not(:disabled):not(.active) {

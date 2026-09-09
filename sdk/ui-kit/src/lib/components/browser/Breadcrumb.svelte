@@ -180,7 +180,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     padding: 0 6px;
     border: none;
     border-radius: var(--radius-chip);
@@ -215,7 +215,7 @@
 
   .bc-input {
     width: 100%;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 8px;
     border: 1px solid var(--control-border);
     border-radius: var(--radius-input);

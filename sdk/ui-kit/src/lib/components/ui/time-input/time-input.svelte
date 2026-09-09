@@ -27,7 +27,7 @@
 
 <style>
   .time {
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     width: 96px;
     padding: 0 0.5rem;
     border-radius: var(--radius-input);

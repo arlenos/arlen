@@ -86,10 +86,10 @@
      docs/architecture/sizing-system.md §3-§5 for the visual-mass
      rationale. */
   .ln-fill-slider.default {
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
   }
   .ln-fill-slider.sm {
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
   }
   .ln-fill-slider.disabled {
     opacity: var(--control-disabled-opacity, 0.5);

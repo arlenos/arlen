@@ -74,7 +74,7 @@
 
 <style>
   .chiplist {
-    min-height: var(--height-control, 28px);
+    min-height: var(--height-control, 30px);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -85,7 +85,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     padding: 0 4px 0 8px;
     font-size: var(--text-xs);
     color: var(--foreground);

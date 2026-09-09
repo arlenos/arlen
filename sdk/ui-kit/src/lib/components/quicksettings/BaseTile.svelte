@@ -229,7 +229,7 @@
     align-items: flex-start;
     gap: 10px;
     padding: 12px;
-    min-height: var(--height-control-prominent, 36px);
+    min-height: var(--height-control-prominent, 38px);
   }
   .qs-tile.has-strip .qs-tile-head {
     /* Tighter when followed by a strip — the head no longer carries
@@ -300,7 +300,7 @@
        step-down, plus the smaller status-text font, plus the
        hover-bg differentiation. Token-bound so a future scale
        revision moves both head and strip together. */
-    min-height: var(--height-control, 28px);
+    min-height: var(--height-control, 30px);
     margin-top: auto;
     transition: background-color var(--duration-micro, 100ms) ease;
   }

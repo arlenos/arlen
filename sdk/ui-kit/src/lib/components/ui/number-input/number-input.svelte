@@ -168,9 +168,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--height-control, 28px);
-    min-width: var(--height-control, 28px);
-    height: var(--height-control, 28px);
+    width: var(--height-control, 30px);
+    min-width: var(--height-control, 30px);
+    height: var(--height-control, 30px);
     background: transparent;
     border: none;
     color: var(--foreground);
@@ -211,7 +211,7 @@
     justify-content: center;
     gap: 6px;
     padding: 0 10px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     min-width: 72px;
     flex: 1;
   }
@@ -225,13 +225,13 @@
     appearance: textfield;
     width: 100%;
     min-width: 40px;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     background: transparent;
     border: none;
     outline: none;
     font: inherit;
     font-size: 14px;
-    line-height: var(--height-control, 28px);
+    line-height: var(--height-control, 30px);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
     text-align: center;

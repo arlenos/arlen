@@ -245,7 +245,7 @@
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    height: var(--height-control, 28px);
+    height: var(--height-control, 30px);
     padding: 0 0.625rem 0 0.75rem;
     border-radius: var(--radius-input);
     background: var(--control-bg);
@@ -342,7 +342,7 @@
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    min-height: var(--height-control, 28px);
+    min-height: var(--height-control, 30px);
     padding: 0 0.625rem 0 0.75rem;
     border: none;
     background: transparent;

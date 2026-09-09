@@ -266,7 +266,7 @@
   .fr-rename {
     flex: 1;
     min-width: 0;
-    height: var(--height-control-compact, 24px);
+    height: var(--height-control-compact, 26px);
     padding: 0 6px;
     border: 1px solid var(--control-border-hover, var(--control-border));
     border-radius: var(--radius-chip);
