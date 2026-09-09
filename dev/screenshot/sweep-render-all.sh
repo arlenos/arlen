@@ -55,6 +55,15 @@ PORT=$(( 6100 + ($$ % 60) * 40 ))
 # a shared sweep that goes red on another lane's work is a sweep somebody turns
 # off. `desktop-shell` is here because its three windows are the surfaces a person
 # sees most.
+#
+# AND THE TWO INSIDE settings, for the same reason and easier to miss because the
+# app IS here: `/ai/models` and `/ai/models/get` are arlen-ui's live work in
+# somebody else's app. Written down because a route absent from this table is
+# invisible rather than clean, which is the whole claim this file makes - and
+# comparing the table against the routes on disk on 10 September, those two were
+# the only ones in the tree it does not name. Everything else resolved, dynamic
+# segments included (`/apps/dev.arlen.notes`, `/meeting/abc`, `/windows-apps/b1`
+# and the three `/extensions/<kind>/<id>` rows are the `[id]` routes).
 SURFACES=(
   "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event"
   "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
