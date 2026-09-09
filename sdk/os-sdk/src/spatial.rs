@@ -33,28 +33,40 @@ use crate::event::{EmitError, EventEmitter};
 /// names (e.g. `DP-1`, `eDP-1`) when set.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputHint {
+    #[serde(default)]
     pub connector: Option<String>,
 }
 
 /// Optional position and size hints in logical pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeometryHint {
+    #[serde(default)]
     pub x: Option<i32>,
+    #[serde(default)]
     pub y: Option<i32>,
+    #[serde(default)]
     pub width: Option<u32>,
+    #[serde(default)]
     pub height: Option<u32>,
 }
 
 /// A spatial hint for a window's placement.
 ///
 /// All fields are optional — apps set only the hints they care about.
+///
+/// `#[serde(default)]` says so to serde as well as to a reader. It did not until
+/// 9 September, so "all fields are optional" was true of the type and false of
+/// the wire, the same way it was for presence and timeline. Latent here rather
+/// than live, because this surface deliberately does not emit yet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpatialHint {
     /// The window the hint applies to. Identifier scheme TBD by the
     /// compositor extension; for now the field is round-tripped but
     /// not validated.
     pub window_id: String,
+    #[serde(default)]
     pub output: Option<OutputHint>,
+    #[serde(default)]
     pub geometry: Option<GeometryHint>,
 }
 

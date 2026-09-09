@@ -41,10 +41,22 @@ pub struct TimelineParams {
     /// `"save"`. Becomes the `action` field on the resulting UserAction.
     pub r#type: String,
     /// Microseconds since Unix epoch. `None` for a point-in-time event.
+    ///
+    /// `#[serde(default)]` on all three below, and it was missing until
+    /// 9 September. Serde requires every field it is not told to default -
+    /// `Option` included - so a caller sending only the three required fields,
+    /// which is what the TS wrapper declares and what a point-in-time record IS,
+    /// got a deserialize error out of `timeline_record`. Every app discards that,
+    /// so the record simply never arrived. Presence had the same hole and it did
+    /// bite; this one had not yet, only because every app that records anything
+    /// happens to attach metadata.
+    #[serde(default)]
     pub started_at: Option<i64>,
     /// Microseconds since Unix epoch. `None` for a point-in-time event.
+    #[serde(default)]
     pub ended_at: Option<i64>,
     /// Free-form structured metadata. Stays in the SQLite event log.
+    #[serde(default)]
     pub metadata: HashMap<String, String>,
 }
 
@@ -101,6 +113,28 @@ mod tests {
         TimelineRecordPayload::decode(bytes).expect("valid TimelineRecordPayload")
     }
 
+
+    /// THE JSON A WEBVIEW SENDS, which is the shape nothing tested: every other
+    /// test here builds the struct in Rust and so never crosses the deserialize
+    /// boundary the plugin command sits on.
+    #[test]
+    fn a_point_in_time_record_deserialises_from_the_documented_minimum() {
+        let minimum = r#"{"label":"saved","subject":"/a.rs","type":"save"}"#;
+        let p: TimelineParams = serde_json::from_str(minimum).expect("the documented minimum");
+        assert_eq!(p.r#type, "save");
+        assert_eq!(p.started_at, None);
+        assert_eq!(p.ended_at, None);
+        assert!(p.metadata.is_empty());
+    }
+
+    /// And a duration record with context still carries all of it.
+    #[test]
+    fn a_duration_record_with_metadata_still_deserialises() {
+        let full = r#"{"label":"built","subject":"/p","type":"build","started_at":1,"ended_at":2,"metadata":{"k":"v"}}"#;
+        let p: TimelineParams = serde_json::from_str(full).expect("a full payload");
+        assert_eq!((p.started_at, p.ended_at), (Some(1), Some(2)));
+        assert_eq!(p.metadata.get("k").map(String::as_str), Some("v"));
+    }
     #[tokio::test]
     async fn record_duration_event() {
         let emitter = MockEventEmitter::new();
