@@ -718,7 +718,19 @@ fn launch_env(
     if let Some(wl) = wayland_display {
         env.insert("WAYLAND_DISPLAY".to_string(), wl.to_string());
     }
-    for key in ["LANG", "LC_ALL", "LC_CTYPE"] {
+    // ARLEN_SESSION_ID travels with the locale, and it is not cosmetic.
+    //
+    // `arlen-session` mints it once per login and exports it into the session
+    // environment; every event an app emits carries it as the event's ORIGIN, and
+    // the bus refuses an event with an empty origin outright - `missing required
+    // field: origin`, dropped, logged on the bus and nowhere the app can see.
+    // `bwrap --clearenv` wipes it like everything else, so a confined app would
+    // have had every one of its events refused: its menu registration first, which
+    // is what makes the menu appear at all.
+    //
+    // It names the session an app's events belong to and nothing more; an app that
+    // may reach the bus at all is already trusted with that much.
+    for key in ["LANG", "LC_ALL", "LC_CTYPE", "ARLEN_SESSION_ID"] {
         if let Ok(v) = std::env::var(key) {
             env.insert(key.to_string(), v);
         }
@@ -1004,6 +1016,24 @@ mod tests {
             env.get("XDG_CACHE_HOME").map(String::as_str),
             Some("/home/u/.cache/arlen/apps/dev.arlen.files"),
             "fontconfig appends its own name, so this must already be the grant"
+        );
+    }
+
+    /// An event with an empty origin is refused by the bus, so an app that cannot
+    /// name its session cannot emit anything at all - starting with the menu
+    /// registration that makes its menu appear.
+    ///
+    /// `--clearenv` wipes this like everything else, so the forwarding is the only
+    /// thing between a confined app and a bus that drops all of its events.
+    #[test]
+    fn a_confined_app_can_still_name_its_session() {
+        // SAFETY: single-threaded test, and the value is read back immediately.
+        std::env::set_var("ARLEN_SESSION_ID", "s-confined");
+        let env = launch_env(std::path::Path::new("/home/u"), "dev.arlen.files", None, None);
+        std::env::remove_var("ARLEN_SESSION_ID");
+        assert_eq!(
+            env.get("ARLEN_SESSION_ID").map(String::as_str),
+            Some("s-confined")
         );
     }
 }
