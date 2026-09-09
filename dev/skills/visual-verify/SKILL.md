@@ -133,6 +133,24 @@ sweep for days.
 - **Two runs fight over one port.** `sweep-render-all.sh` derives its base port from its pid in blocks of 40 for
   exactly this. When you start a dev server by hand, pick an unusual port and take it down afterwards with
   `fuser -k -n tcp <port>`.
+- **And two runs fought over one DISPLAY, which is the half that hurts.** `xvfb-run -a` looks for a free
+  display and then creates its lock, and those two steps are not atomic - so two renders starting together can
+  take the same `:N`, the loser's server goes away under openbox and WebKit, and BOTH hang with no output and
+  no exit. `headless.sh` now derives its display number from the pid the way the ports are derived, walking
+  upward past any `/tmp/.X<n>-lock` that exists.
+
+  **A stuck display reads exactly like a broken probe**, and that is the most expensive false signal this
+  harness can produce. On 10 September a full sweep abandoned six apps in a row at their positive control -
+  "clipped-text.js does not answer in the [...] shape", "overlapping-text.js cannot see its own control" -
+  which reads as a probe that has stopped working, and the first instinct is to go and fix the probe. `ps` was
+  what settled it:
+
+      654593 xvfb-run -a ... --url file://.../clipped-by-parent-control.html
+      701600 xvfb-run -a ... --url http://localhost:1438/ --out .../walk4/w4-home.png
+
+  Two lanes, both started at 22:36, both still there at 23:10. The controls were right, the probes were fine,
+  and the display was gone. **If a control that has always passed suddenly cannot see its own fixture, look for
+  another render before you look at the probe.**
 
 **`pkill -f` will kill the shell you typed it in.** `-f` matches the whole command line, and your own wrapper's
 command line contains the pattern you just typed - so `pkill -f sweep.sh` from a shell running `sweep.sh` kills
