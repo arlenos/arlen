@@ -81,7 +81,7 @@ SURFACES=(
   "desktop-shell /|/consent|/waypointer|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest|/?menumock|/@@shell-workspace-overlay"
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest"
   "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest"
-  "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
+  "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]|/@@knowledge-refuses-pause|/@@knowledge-refuses-search-save"
   # THE THREE REFUSALS, added 10 September once `probe-host.sh` could run them at
   # all. Each was built, gated and referenced by nothing: an archive that failed,
   # a draft that would not save, an attachment that would not be written. All
@@ -111,7 +111,7 @@ SURFACES=(
   # parameter only a running backend can supply.
   "settings /|/accessibility|/appearance/quicksettings|/appearance/wallpaper|/focus|/keyboard|/knowledge|/printers|/privacy|/privacy/physical|/system-actions|/windows-apps|/workspaces|/keyboard/shortcuts|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/_topbartest|/about|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/apps|/display|/extensions|/extensions/module/wp.tally|/extensions/app/dev.arlen.notes|/extensions/bridge/md.obsidian|/language|/mouse|/notifications|/topbar|/touchpad|/apps/dev.arlen.notes@@settings-uninstall-refused|/apps/dev.arlen.notes@@settings-uninstall-unavailable|/apps/dev.arlen.notes@@settings-uninstall-failed|/apps/dev.arlen.notes@@settings-uninstall-unknown|/privacy@@settings-revoke-refused|/privacy::.seg-pill:nth-of-type(2)|/apps/com.example.editor|/windows-apps/b1|/workspaces::.footer button|/display@@settings-display-revert|/keyboard/shortcuts@@settings-key-capture"
   "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick|/@@system-monitor-refuses-stop"
-  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect|/::#terminal-history-open@@terminal-history-refused"
   "text-editor /|/::.trigger|/@@text-editor-refuses-save|/@@text-editor-lens-part-sample"
   "viewers /|/?demo=image|/?demo=video|/@@viewers-refuses-decode"
 )
