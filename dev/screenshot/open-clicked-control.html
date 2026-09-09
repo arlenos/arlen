@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>open control</title>
+<!--
+  THE CONTROL FOR `--open`, and it is the same argument the probe controls make.
+
+  Forty-odd rows in `sweep-render-all.sh` carry a `::selector` - the thing to
+  click before the probes run - and a click that does not land reports on the
+  landing page while the row reads as covered. The runner refuses a selector
+  that matches nothing, so the failure is loud; what it could not do until 10
+  September was WAIT. It clicked once, the moment the settle ended, and a control
+  the app renders a tick later was a coin toss: the mail sweep refused
+  `#folder-trash` at 1280px and `#folder-archive` at the same width an hour
+  earlier, on rows that pass at 720px.
+
+  So this page renders its button LATE, after the settle has passed. Clicking it
+  writes the word this control is checked on into `#out`. Run with
+  `ARLEN_OPEN_TIMEOUT=0` the click cannot land and the word is absent, which is
+  how the sweep proves the wait is doing something rather than sitting there.
+-->
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 2rem; }
+</style>
+<p id="out">the button has not been pressed</p>
+<script>
+  // 2500ms, and the number was MEASURED rather than reasoned. 500ms was the
+  // first guess, on the theory that Xvfb's several-times-slower page timers
+  // would carry it past `--settle` (1.5s); with the wait disabled the click
+  // landed anyway, so the control proved nothing. This page is a few lines of
+  // static HTML with no framework behind it, and its timers run at about real
+  // speed - the slowdown that hits a hydrating SvelteKit app is not a property
+  // of the clock. 2500ms is past the settle on the wall clock and inside the
+  // five-second wait, and it fails with `ARLEN_OPEN_TIMEOUT=0` as a control
+  // must.
+  setTimeout(() => {
+    const b = document.createElement("button");
+    b.id = "open-control-late";
+    b.textContent = "press me";
+    b.addEventListener("click", () => {
+      document.getElementById("out").textContent = "the late button was pressed";
+    });
+    document.body.appendChild(b);
+  }, 2500);
+</script>

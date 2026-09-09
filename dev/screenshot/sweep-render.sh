@@ -210,6 +210,29 @@ for probe in $probes $host_probes; do
   fi
 done
 
+# AND THE CONTROL FOR THE CLICK ITSELF, once rather than per probe. Forty-odd
+# rows in the table carry a `::selector`, and until 10 September the runner asked
+# for it exactly once, the moment `--settle` ended. A control the app renders a
+# tick later was a coin toss: the mail sweep refused `#folder-trash` at 1280px
+# and `#folder-archive` at the same width an hour before, on rows that pass at
+# 720px. It now polls for five seconds.
+#
+# Only run when this run actually clicks something. A route-only sweep does not
+# depend on the open path, and the fixture costs a driver start.
+if printf '%s\n' "$@" | grep -q '::'; then
+  proof="$(SHOOT_OPEN="#open-control-late" "$here/shoot.sh" \
+    "file://$here/open-clicked-control.html" "$shot" "$here/open-clicked.js" 2>&1 \
+    | sed -n 's/^inject result: //p')"
+  case "$proof" in
+    *"the late button was pressed"*) ;;
+    *)
+      echo "sweep-render.sh: --open cannot reach a control that appears after the settle;" >&2
+      echo "  every ::selector row would report on the page behind it. it said: $proof" >&2
+      exit 2
+      ;;
+  esac
+fi
+
 # WHAT IT LOOKED AT, said out loud at the end. On its second run this reported
 # "ok /" for the clock and the file manager and that reads like "the app is
 # clean" - it means "the landing page is". Both are single-route apps whose real
