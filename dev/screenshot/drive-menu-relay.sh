@@ -74,6 +74,18 @@ printf 'anything\n' > "$fwork/a-file.txt"
 export ARLEN_RUNTIME_DIR="$work/run" XDG_RUNTIME_DIR="$work/run"
 producer="$work/run/arlen/event-bus-producer.sock"
 
+# THE APP IS GIVEN NO SOCKET PIN, ON PURPOSE. It gets `XDG_RUNTIME_DIR` and
+# nothing else, which is what a booted session gives it: `arlen-session` pins none
+# of the `ARLEN_*_SOCKET` variables, and a test in `daemons/session` asserts it
+# does not, because a pin there would override the per-user resolution for every
+# process in the session. So the app has to find the bus the way it will have to
+# find it in real life, through `$XDG_RUNTIME_DIR/arlen/`.
+#
+# This drive DID pin both variables, and that hid a second defect for a while: the
+# plugin resolved env-or-`/run/arlen` with no tier in between, so on an image every
+# app was subscribed to the system bus while the shell published clicks to the
+# session one. Menus registered and their clicks never came back. Pinning here
+# would have gone on hiding it.
 cleanup() { [ -n "${bus_pid:-}" ] && kill "$bus_pid" 2>/dev/null; return 0; }
 trap cleanup EXIT
 
@@ -134,7 +146,7 @@ foldered() { [ -n "$(find "$fwork" -mindepth 1 -maxdepth 1 -type d -not -name '.
 drive() {  # drive <binary> <app-args> <probe-js> <out-png> [extra-env]
   rm -f "$here/out/$4"
   SHOOT_APP_ARGS="$2" SHOOT_INJECT="$3" \
-  SHOOT_APP_ENV="ARLEN_PRODUCER_SOCKET=$producer;ARLEN_CONSUMER_SOCKET=$work/run/arlen/event-bus-consumer.sock${5:+;$5}" \
+  SHOOT_APP_ENV="XDG_RUNTIME_DIR=$work/run${5:+;$5}" \
     "$here/shoot-app.sh" "$1" "$here/out/$4" > "$work/shoot-$4.log" 2>&1
   sed -n 's/^inject result: //p' "$work/shoot-$4.log"
 }
