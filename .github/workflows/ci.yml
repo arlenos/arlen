@@ -462,6 +462,8 @@ jobs:
           node dev/scripts/test-check-grants-exercised.mjs
           python3 dev/scripts/check-size-fallbacks.py
           node dev/scripts/test-check-size-fallbacks.mjs
+          python3 dev/scripts/check-checks-refuse-empty.py
+          node dev/scripts/test-check-checks-refuse-empty.mjs
           python3 dev/scripts/check-plugin-command-grants.py
           node dev/scripts/test-check-plugin-command-grants.mjs
           python3 dev/scripts/check-daemon-stop.py
