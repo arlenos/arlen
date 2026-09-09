@@ -285,6 +285,14 @@ badge on the wire until it was given one.
 Subscribe BEFORE starting the app. The bus fans out to whoever is registered when
 an event arrives, and an app publishes its first badge as soon as its data lands.
 
+**Assert on the absence too, where the rule is a threshold.** `--watch` counts
+what arrives, which makes it the right instrument for a surface whose defect is
+publishing too MUCH. `drive-terminal-ambient.sh` runs a fast command and a slow
+one in the same window and asserts exactly one effect on the wire: the slow one
+tints and the fast one does not. Asserting only the slow case would pass on a
+terminal that washes the whole screen every time somebody types `ls`, which is
+the failure that surface is one step away from at all times.
+
 ## What this does NOT cover
 
 - The **desktop-shell** is a Wayland layer-shell surface coupled to the

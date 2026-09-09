@@ -42,8 +42,8 @@
 
 use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
 use os_sdk::proto::{
-    BadgeSetPayload, FileOpenedPayload, PresenceSetPayload, ShortcutActionInvokedPayload,
-    TimelineRecordPayload,
+    AmbientClearedPayload, AmbientSetPayload, BadgeSetPayload, FileOpenedPayload,
+    PresenceSetPayload, ShortcutActionInvokedPayload, TimelineRecordPayload,
 };
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use prost::Message;
@@ -319,6 +319,23 @@ async fn watch(pattern: String, window: Duration) {
                         p.app_id, p.r#type, p.label, p.subject, p.metadata
                     ),
                     Err(e) => format!("undecodable TimelineRecordPayload: {e}"),
+                },
+                // An ambient effect is the one surface a person sees without
+                // looking at any window, so what it says matters more than that
+                // it was said: the whole point of the intensity cap and the
+                // colour enum is that a wash cannot be arbitrary, and a watcher
+                // that printed a byte count could not tell a slow accent pulse
+                // from a screen-filling red.
+                "app.ambient.set" => match AmbientSetPayload::decode(&event.payload[..]) {
+                    Ok(p) => format!(
+                        "app_id={} effect={} color={} intensity={} speed={} auto_clear_ms={} reason={}",
+                        p.app_id, p.effect, p.color, p.intensity, p.speed, p.auto_clear_ms, p.reason
+                    ),
+                    Err(e) => format!("undecodable AmbientSetPayload: {e}"),
+                },
+                "app.ambient.cleared" => match AmbientClearedPayload::decode(&event.payload[..]) {
+                    Ok(p) => format!("app_id={}", p.app_id),
+                    Err(e) => format!("undecodable AmbientClearedPayload: {e}"),
                 },
                 _ => format!("{} bytes", event.payload.len()),
             };
