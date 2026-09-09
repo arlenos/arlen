@@ -86,7 +86,7 @@ daemon that is not there. Under vite those paths are unreachable, so `dev/screen
 `window.__TAURI_INTERNALS__` that answers the page's reads and refuses the one call under test, then drives the
 gesture.
 
-Four things that cost a round each:
+Four things that cost a round each, and three checks that hold the rest:
 
 - **Declare `// EXPECT: <the sentence on screen>`** near the top. `probe-host.sh` refuses to report anything
   unless that text is actually present, so a fixture that never reached its state is loud instead of clean.
@@ -98,8 +98,25 @@ Four things that cost a round each:
   treats a thrown error - some treat it as success on purpose.
 - **Answer the page's OTHER reads honestly.** Two refusals in one picture is evidence about neither.
 
-Selectors: a page usually has several buttons carrying the same word. Take the one by its class *and* its exact
-text, and remember `--open` clicks before the probe runs.
+**Selectors: press by structure, never by a word the catalogue owns.** This section used to say "take the one
+by its class *and* its exact text", and that advice is what broke five fixtures on 10 September: they pressed a
+confirm labelled `Entfernen`, the copy improved to `Widerrufen`, and every one of them clicked the opener and
+then waited for a button that could never appear - silently, for as long as nobody ran them. A class, a
+container, a position in a dialog (the kit renders cancel then confirm inside
+`[aria-labelledby=confirm-dialog-title]`, so the confirm is the last button in it) all survive a rewording. The
+one text you may match is text your own fixture typed. And remember `--open` clicks before the probe runs.
+
+Three checks hold what a reading cannot:
+
+- `check-fixtures-are-swept.py` - every fixture is named by a row in `sweep-render-all.sh`. Twenty were named
+  by nothing until 10 September, and a fixture nobody runs looks exactly like a fixture that passes.
+- `check-fixture-owns-its-text.py` - no fixture presses a sentence the catalogue owns.
+- `check-fixture-expect-still-said.py` - every `// EXPECT:` is words the catalogue still carries, or words the
+  fixture supplies itself.
+
+None of them can tell whether a fixture REACHES its state. That is `probe-host.sh` and the German sweep, and
+it is why both exist: the static three were written because the driven one had been refusing every fixture in
+the tree for months and nothing said so.
 
 ## Sweeps are the coverage, so what is missing from them is invisible
 
