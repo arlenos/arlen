@@ -274,6 +274,54 @@ mod tests {
         crate::test_env::with_config_home(|_| f())
     }
 
+    /// THE FILE SETTINGS WRITES, read by the shell that has to render it.
+    ///
+    /// Every other test here writes through this module's own setters and reads
+    /// it back, which proves this file agrees with itself. It is not the live
+    /// path: the Quick Settings editor is a Settings page, and it saves the whole
+    /// list through the generic `config_set(file: "quicksettings", key: "tile")`
+    /// rather than through any of the six writers next door - which is why they
+    /// have no caller. So the seam that actually carries somebody's rearrangement
+    /// is Settings' TOML writer against this struct, and nothing was checking it.
+    ///
+    /// Both spellings, because the generic writer picks one and this must not
+    /// depend on which: TOML treats an inline array of inline tables and an
+    /// array-of-tables as the same value, and a reader that only accepted one
+    /// would lose a layout the day the writer changed its mind.
+    #[test]
+    fn the_layout_settings_writes_is_the_layout_the_shell_reads() {
+        let inline = r#"
+tile = [
+    { id = "system.network", visible = true, size = "one_by_one" },
+    { id = "system.brightness", visible = false, size = "two_by_one" },
+]
+"#;
+        let tables = r#"
+[[tile]]
+id = "system.network"
+visible = true
+size = "one_by_one"
+
+[[tile]]
+id = "system.brightness"
+visible = false
+size = "two_by_one"
+"#;
+        for (name, text) in [("inline array", inline), ("array of tables", tables)] {
+            let parsed: LayoutFile = toml::from_str(text).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(parsed.tiles.len(), 2, "{name}");
+            assert_eq!(parsed.tiles[0].id, "system.network", "{name}");
+            assert!(parsed.tiles[0].visible, "{name}");
+            assert_eq!(parsed.tiles[0].size, TileSize::OneByOne, "{name}");
+            // The hidden one matters most: a tile kept in the layout and out of
+            // the grid is the state a person set on purpose, and reading it as
+            // visible would put it back.
+            assert_eq!(parsed.tiles[1].id, "system.brightness", "{name}");
+            assert!(!parsed.tiles[1].visible, "{name}");
+            assert_eq!(parsed.tiles[1].size, TileSize::TwoByOne, "{name}");
+        }
+    }
+
     #[test]
     fn round_trip_empty_layout() {
         with_isolated_config(|| {
