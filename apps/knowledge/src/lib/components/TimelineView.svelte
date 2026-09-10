@@ -19,6 +19,7 @@
     ArrowDownToLine,
   } from "lucide-svelte";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import {
     days,
     timelineMocked,
@@ -266,10 +267,10 @@
 
 <div class="tl">
   <header class="tl-head">
+    {#if $timelineMocked}
+      <div class="note"><Notice tone="neutral" text={$t("k.sample")} /></div>
+    {/if}
     <div class="tl-head-line">
-      {#if $timelineMocked}
-        <span class="tl-sample">{$t("k.sample")}</span>
-      {/if}
       <span class="tl-spacer"></span>
       <!-- Only when the state was read. The button carries the answer in its
            own label - Pause means "running", Resume means "paused" - so drawing
@@ -410,9 +411,8 @@
     align-items: center;
     gap: 0.5rem;
   }
-  .tl-sample {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  .note {
+    margin: 0 0 0.6rem;
   }
   .tl-spacer {
     flex: 1;
