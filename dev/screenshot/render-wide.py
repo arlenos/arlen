@@ -661,10 +661,26 @@ class Render:
     OPEN_WAIT = 5.0
 
     def try_click(self):
+        """Focus the target, then press it, because that is what a press does.
+
+        `el.click()` alone leaves the trigger UNFOCUSED - a real mouse press
+        focuses what it lands on first. The difference is invisible in a
+        screenshot and decides the answer to any question about the keyboard: on
+        11 September a focus reading over a dialog opened this way said focus
+        went to `body` on close, and the dialog was in fact restoring focus
+        correctly to an opener that had never been focused. I wrote that up as a
+        defect before checking it.
+
+        `focus()` is wrapped because not everything clickable takes focus - a
+        `div` with a handler has no `focus` in older shapes and a `<g>` in an SVG
+        throws - and a trigger that cannot be focused is still a trigger.
+        """
         sel = json.dumps(self.current)
         self.view.evaluate_javascript(
             f"(() => {{ const el = document.querySelector({sel});"
-            f" if (!el) return 'missing'; el.click(); return 'clicked'; }})()",
+            f" if (!el) return 'missing';"
+            f" try {{ el.focus({{ preventScroll: true }}); }} catch (e) {{}}"
+            f" el.click(); return 'clicked'; }})()",
             -1, None, None, None, self.on_opened)
 
     def on_opened(self, view, result):
