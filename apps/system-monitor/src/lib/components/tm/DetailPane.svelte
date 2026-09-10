@@ -42,7 +42,7 @@
   /// plus the Arlen-native ACCESS tab: what the process holds + the KG capability
   /// scopes it holds, revocable right here. The sovereign angle as per-process
   /// detail, not a landing.
-  import { detailFor, heldFor, statsFor, type HeldResources, type ProcDetail, type ProcStats } from "$lib/stores/detail";
+  import { detailFor, heldFor, statsFor, stateKey, type HeldResources, type ProcDetail, type ProcStats } from "$lib/stores/detail";
   import type { Process } from "$lib/stores/processes";
   import { ScopeChip } from "@arlen/ui-kit/components/ui/scope-chip";
   import { X, Camera, Mic, Cog, Cpu } from "lucide-svelte";
@@ -86,12 +86,12 @@
     return v == null ? UNMEASURED : String(v);
   }
   const STATE_ROWS = $derived([
-    ["Process ID", String(process.id)],
-    ["Parent process", id(stats?.ppid)],
-    ["Threads", num(stats?.threads)],
-    ["State", stats?.state ?? UNMEASURED],
-    ["Priority", num(stats?.nice)],
-    ["Context switches", num(stats?.ctxSwitches)],
+    [$t("tm.dp.row.pid"), String(process.id)],
+    [$t("tm.dp.row.parent"), id(stats?.ppid)],
+    [$t("tm.dp.row.threads"), num(stats?.threads)],
+    [$t("tm.dp.row.state"), stats?.state ? $t(stateKey(stats.state)) : UNMEASURED],
+    [$t("tm.dp.row.priority"), num(stats?.nice)],
+    [$t("tm.dp.row.ctx"), num(stats?.ctxSwitches)],
   ]);
   function mem(mb: number): string {
     return mb >= 1024
@@ -175,6 +175,7 @@
           <div class="stat"><dt>{k}</dt><dd>{v}</dd></div>
         {/each}
       </dl>
+      {#if stats?.unreadable}<p class="empty">{$t(`tm.dp.unread.${stats.unreadable}`)}</p>{/if}
     {:else if tab === "Memory"}
       <!-- `smaps_rollup` is owner-readable only, so another user's process has no
            PSS to show. It stays blank rather than borrowing RSS: the two answer
@@ -185,7 +186,7 @@
         <div class="stat"><dt>{$t("tm.dp.pss")}</dt><dd>{stats?.pssMB == null ? UNMEASURED : mem(stats.pssMB)}</dd></div>
         <div class="stat"><dt>{$t("tm.dp.shared")}</dt><dd>{stats?.sharedMB == null ? UNMEASURED : mem(stats.sharedMB)}</dd></div>
       </dl>
-      {#if stats?.unreadable}<p class="empty">{stats.unreadable}</p>{/if}
+      {#if stats?.unreadable}<p class="empty">{$t(`tm.dp.unread.${stats.unreadable}`)}</p>{/if}
     {:else}
       <div class="files">
         <!-- Real, or said to be unread. The invented version built three paths
@@ -197,7 +198,7 @@
         {#if held === undefined}
           <p class="empty">{$t("tm.dp.readingFiles")}</p>
         {:else if held.openFiles == null}
-          <p class="empty">{held.unreadable ?? $t("tm.dp.filesUnknown")}</p>
+          <p class="empty">{held.unreadable ? $t(`tm.dp.unread.${held.unreadable}`) : $t("tm.dp.filesUnknown")}</p>
         {:else}
           {#each held.openFiles as f (f)}<div class="fline">{f}</div>{/each}
           {#each held.connections ?? [] as c (c.proto + c.local + c.peer)}

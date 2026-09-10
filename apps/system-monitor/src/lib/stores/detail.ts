@@ -33,7 +33,45 @@ export interface HeldResources {
   connections?: Connection[] | null;
   camera?: boolean | null;
   mic?: boolean | null;
-  unreadable?: string | null;
+  unreadable?: Unread | null;
+}
+
+/// Why a read came back with nothing, as a word the catalogue can say. The
+/// host answers `unreadable` with a sentence of its own ("not measured: the
+/// process has exited"); `readUnread` turns the finite set it sends into one of
+/// these, and anything else into `other`, so the pane never prints the host.
+export type Unread = "noHost" | "exited" | "otherUser" | "status" | "files" | "other";
+
+const UNREAD_MARKERS: [RegExp, Unread][] = [
+  [/has exited/, "exited"],
+  [/another user/, "otherUser"],
+  [/status could not/, "status"],
+  [/file table/, "files"],
+];
+
+/// The reason word for a host's `unreadable` sentence.
+export function readUnread(text: string | null | undefined): Unread | null {
+  if (text == null) return null;
+  for (const [marker, word] of UNREAD_MARKERS) if (marker.test(text)) return word;
+  console.warn("system-monitor: unrecognised unreadable sentence", text);
+  return "other";
+}
+
+/// The host names a process state with a word of its own ("Waiting for disk");
+/// the pane says it in the reader's language.
+const STATE_KEYS: Record<string, string> = {
+  Running: "tm.dp.state.running",
+  Sleeping: "tm.dp.state.sleeping",
+  "Waiting for disk": "tm.dp.state.disk",
+  Stopped: "tm.dp.state.stopped",
+  "Stopped by a debugger": "tm.dp.state.debugger",
+  "Not responding": "tm.dp.state.notResponding",
+  Idle: "tm.dp.state.idle",
+};
+
+/// The message key for a host's state word.
+export function stateKey(state: string): string {
+  return STATE_KEYS[state] ?? "tm.dp.state.unknown";
 }
 
 /// The Statistics and Memory figures. Same `| null` discipline as above: a
@@ -49,16 +87,18 @@ export interface ProcStats {
   rssMB?: number | null;
   pssMB?: number | null;
   sharedMB?: number | null;
-  unreadable?: string | null;
+  unreadable?: Unread | null;
 }
 
 /// Ask the backend for `pid`'s statistics.
 export async function statsFor(pid: number): Promise<ProcStats> {
-  if (!tauriAvailable) return { unreadable: "not measured: no backend in this window" };
+  if (!tauriAvailable) return { unreadable: "noHost" };
   try {
-    return await invoke<ProcStats>("process_stats", { pid });
+    const s = await invoke<Omit<ProcStats, "unreadable"> & { unreadable?: string | null }>("process_stats", { pid });
+    return { ...s, unreadable: readUnread(s.unreadable) };
   } catch (e) {
-    return { unreadable: `not measured: ${e}` };
+    console.warn("system-monitor: process_stats did not answer", e);
+    return { unreadable: "other" };
   }
 }
 
@@ -70,11 +110,13 @@ export async function statsFor(pid: number): Promise<ProcStats> {
 /// ESTABLISHED` for anything with traffic) put a real GitHub address on screen
 /// for a process nobody had inspected.
 export async function heldFor(pid: number): Promise<HeldResources> {
-  if (!tauriAvailable) return { unreadable: "not measured: no backend in this window" };
+  if (!tauriAvailable) return { unreadable: "noHost" };
   try {
-    return await invoke<HeldResources>("process_held_resources", { pid });
+    const h = await invoke<Omit<HeldResources, "unreadable"> & { unreadable?: string | null }>("process_held_resources", { pid });
+    return { ...h, unreadable: readUnread(h.unreadable) };
   } catch (e) {
-    return { unreadable: `not measured: ${e}` };
+    console.warn("system-monitor: process_held_resources did not answer", e);
+    return { unreadable: "other" };
   }
 }
 

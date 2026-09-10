@@ -4,7 +4,7 @@
   /// Escape dismisses it.
   import { trapFocus } from "@arlen/ui-kit/keyboard/trap_focus";
   import { t } from "$lib/i18n/messages";
-  import { niceLevels, niceOf, renice, type NiceLevel, type Process } from "$lib/stores/processes";
+  import { niceLevels, niceOf, niceUnavailable, renice, type NiceLevel, type Process } from "$lib/stores/processes";
 
   /// Armed by the first click on Stop when the row is a critical daemon; the
   /// menu deliberately stays open so the warning is READ, not dismissed by the
@@ -169,10 +169,10 @@
               onClose();
             }}
           >
-            {l.label}
+            {$t(l.key)}
           </button>
         {/each}
-        {#if levels.length === 0}
+        {#if $niceUnavailable}
           <span class="mi-cap">{$t("tm.menu.priorityUnavailable")}</span>
         {/if}
       </div>

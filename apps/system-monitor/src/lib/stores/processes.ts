@@ -469,19 +469,41 @@ export async function unlimit(id: number): Promise<void> {
   );
 }
 
-/// One offered priority: the plain-words label and its nice value.
+/// One offered priority: its nice value and the catalogue key that names it.
+/// The host sends an English label beside the value; the value is what the
+/// menu keys its word on, so the word follows the locale.
 export interface NiceLevel {
-  label: string;
+  key: string;
   nice: number;
 }
 
-/// The priority levels, from the backend so the list and the validator agree.
+/// The words for the five levels the backend offers, by nice value.
+const NICE_KEYS: Record<number, string> = {
+  [-5]: "tm.nice.highest",
+  [-2]: "tm.nice.high",
+  0: "tm.nice.normal",
+  5: "tm.nice.low",
+  10: "tm.nice.lowest",
+};
+const NICE_VALUES = [-5, -2, 0, 5, 10];
+
+/// True when a host was asked for the levels and did not answer, which is a
+/// different fact from a list that is empty or a window with no host.
+export const niceUnavailable = writable(false);
+
+/// The priority levels: from the backend so the list and the validator agree;
+/// without a host the same five, so the menu is reviewable and `renice` stays
+/// the no-op it is there.
 export async function niceLevels(): Promise<NiceLevel[]> {
-  if (!tauriAvailable) return [];
+  const local = NICE_VALUES.map((nice) => ({ nice, key: NICE_KEYS[nice] }));
+  if (!tauriAvailable) return local;
   try {
     const raw = await invoke<[string, number][]>("nice_levels");
-    return raw.map(([label, nice]) => ({ label, nice }));
-  } catch {
+    niceUnavailable.set(false);
+    return raw.map(([, nice]) => ({ nice, key: NICE_KEYS[nice] ?? "tm.nice.normal" }));
+  } catch (e) {
+    console.warn("system-monitor: nice_levels did not answer", e);
+    niceUnavailable.set(true);
     return [];
   }
 }
