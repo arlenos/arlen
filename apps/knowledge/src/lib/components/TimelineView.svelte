@@ -7,6 +7,7 @@
   /// verb, emphasized object - recall of the user's data, not an app log.
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
+  import { sourceName } from "$lib/sources";
   import {
     ChevronRight,
     Pause,
@@ -270,6 +271,15 @@
     {#if $timelineMocked}
       <div class="note"><Notice tone="neutral" text={$t("k.sample")} /></div>
     {/if}
+    <!-- A delete or an export that did not land says so at the top of the
+         surface, whether or not the disclosure below is open: both can be
+         asked for from the app menu, with the disclosure shut. -->
+    {#if deleteFailed}
+      <p class="tl-fail" role="alert">{$t("k.tl.deleteFail")}</p>
+    {/if}
+    {#if exportFailed}
+      <p class="tl-fail" role="alert">{$t("k.tl.exportFail")}</p>
+    {/if}
     <div class="tl-head-line">
       <span class="tl-spacer"></span>
       <!-- Only when the state was read. The button carries the answer in its
@@ -302,12 +312,7 @@
       <div class="tl-disclosure">
         <p class="tl-statement">{$t("k.tl.statement")}</p>
         <p class="tl-statement-menu">{$t("k.tl.menuHint")}</p>
-        {#if deleteFailed}
-          <p class="tl-fail" role="alert">{$t("k.tl.deleteFail")}</p>
-        {/if}
-        {#if exportFailed}
-          <p class="tl-fail" role="alert">{$t("k.tl.exportFail")}</p>
-        {:else if exportedTo}
+        {#if exportedTo && !exportFailed}
           <!-- The path, not just "done": the file is the point of the export. -->
           <p class="tl-statement">{$t("k.tl.exportedTo", { path: exportedTo })}</p>
         {/if}
@@ -341,7 +346,7 @@
                   <span class="tl-object-text">{item.event.object}</span>
                   {#if item.event.project}<span class="tl-chip">{item.event.project}</span>{/if}
                 </span>
-                <span class="tl-source">{item.event.source}</span>
+                <span class="tl-source">{sourceName(item.event.source)}</span>
                 <span class="tl-time">{clock(item.event.at, $locale)}</span>
               </button>
             {:else}
@@ -367,7 +372,7 @@
                         <span class="tl-icon"><Icon size={14} strokeWidth={1.75} /></span>
                         <span class="tl-verb">{$t(e.verb)}</span>
                         <span class="tl-object"><span class="tl-object-text">{e.object}</span></span>
-                        <span class="tl-source">{e.source}</span>
+                        <span class="tl-source">{sourceName(e.source)}</span>
                         <span class="tl-time">{clock(e.at, $locale)}</span>
                       </button>
                     {/each}

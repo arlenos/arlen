@@ -16,15 +16,19 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { t } from "$lib/i18n/messages";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
 
   let {
     activeLocation,
     onnavigate,
     onsettings,
+    failure = null,
   }: {
     activeLocation: string;
     onnavigate: (location: string) => void;
     onsettings: () => void;
+    /// Why the last press on a Settings door did not open it; the sentence sits by the door.
+    failure?: "notInstalled" | "other" | null;
   } = $props();
 
   // The explore places with their icons, in sidebar order (§2). The label/empty
@@ -96,6 +100,14 @@
           </SidebarMenuItem>
         {/each}
       </SidebarMenu>
+      {#if failure}
+        <!-- The capability browser lives in Settings; if it would not start, say
+             so here, by the door, rather than leaving the click looking like
+             there is no such page. -->
+        <div class="px-2 pt-1 group-data-[collapsible=icon]:hidden">
+          <Notice tone="error" text={$t(failure === "notInstalled" ? "k.settingsNotInstalled" : "k.settingsOpenFailed")} />
+        </div>
+      {/if}
       <span class="px-2 pt-0.5 text-[length:var(--text-2xs)] text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden">
         {$t("k.caps.opens")}
       </span>

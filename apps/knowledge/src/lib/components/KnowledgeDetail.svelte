@@ -8,6 +8,7 @@
   import { clock, type TimelineEvent } from "$lib/stores/timeline";
   import type { ProjectInfo } from "$lib/stores/projects";
   import { provenanceFor, type ProvenanceHop } from "$lib/stores/provenance";
+  import { sourceName } from "$lib/sources";
   import { t, locale } from "$lib/i18n/messages";
 
   let {
@@ -34,20 +35,30 @@
     const name = event ? event.object : entry ? entry.name : null;
     hopsOpen = false;
     hops = [];
+    provenanceUnavailable = false;
     if (name) {
-      // A failed read leaves the list empty, so the section does not render at
-      // all. That is the honest state for a lineage nobody could fetch, and it
-      // beats both an invented chain and an unhandled rejection.
+      // A failed read is not an empty lineage: the pane says it could not be
+      // read, so a file whose origin the graph refused to give does not look
+      // like a file the graph never saw.
       void provenanceFor(name)
         .then((h) => (hops = h))
-        .catch(() => (hops = []));
+        .catch(() => {
+          hops = [];
+          provenanceUnavailable = true;
+        });
     }
   });
+  let provenanceUnavailable = $state(false);
   const shownHops = $derived(hopsOpen ? hops : hops.slice(0, DOI));
 </script>
 
 {#snippet lineage()}
-  {#if hops.length > 0}
+  {#if provenanceUnavailable}
+    <div class="kn-kv">
+      <span class="kn-k">{$t("k.detail.provenance")}</span>
+      <span class="kn-v">{$t("k.detail.provenanceUnavailable")}</span>
+    </div>
+  {:else if hops.length > 0}
     <div class="kn-kv">
       <span class="kn-k">{$t("k.detail.provenance")}</span>
       <div class="kn-recent">
@@ -108,7 +119,7 @@
     </div>
     <div class="kn-kv">
       <span class="kn-k">{$t("k.detail.source")}</span>
-      <span class="kn-v">{event.source}</span>
+      <span class="kn-v">{sourceName(event.source)}</span>
     </div>
     {#if event.project}
       <div class="kn-kv">
