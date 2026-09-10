@@ -153,8 +153,15 @@ sweep for days.
 - **And two runs fought over one DISPLAY, which is the half that hurts.** `xvfb-run -a` looks for a free
   display and then creates its lock, and those two steps are not atomic - so two renders starting together can
   take the same `:N`, the loser's server goes away under openbox and WebKit, and BOTH hang with no output and
-  no exit. `headless.sh` now derives its display number from the pid the way the ports are derived, walking
-  upward past any `/tmp/.X<n>-lock` that exists.
+  no exit. Both runners now derive the display number from the pid the way the ports are derived, walking
+  upward past any `/tmp/.X<n>-lock` that exists, out of one shared `lib/own-display.sh`.
+
+  **It was one runner for a day, and that is the part worth remembering.** The fix landed in `headless.sh`,
+  which READS the page, and not in `shoot.sh`, which takes the PICTURE - and a sweep runs both on every row, so
+  half of each row went on racing while the harness read as fixed. It surfaced on 11 September as a knowledge
+  sweep aborting at its control the moment a second render started. **A fix to a duplicated mechanism is not
+  done until you have grepped for the other copies**, which in this tree means `grep -n xvfb-run
+  dev/screenshot/*.sh`.
 
   **A stuck display reads exactly like a broken probe**, and that is the most expensive false signal this
   harness can produce. On 10 September a full sweep abandoned six apps in a row at their positive control -
