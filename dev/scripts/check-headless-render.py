@@ -96,8 +96,13 @@ def offenders(root: Path) -> tuple[list[tuple[str, int]], int, int]:
             continue
         if path.name == OWNER:
             continue
-        # `xvfb-run` anywhere in the file's code is the recipe being set up here.
-        if any("xvfb-run" in ln for ln in lines):
+        # `xvfb-run` anywhere in the file's code is the recipe being set up here -
+        # and so is `own_display`, which IS that recipe since the display-number
+        # loop moved into `lib/own-display.sh`. Both spellings, because the
+        # scripts that build their own Xvfb went through the helper on
+        # 11 September and this check reported every one of them as rendering
+        # bare: a gate matches the shape its author last happened to write.
+        if any("xvfb-run" in ln or "own_display" in ln for ln in lines):
             continue
         for i, line in enumerate(text.splitlines(), 1):
             if RENDERER in line and line.strip() and not line.strip().startswith("#"):

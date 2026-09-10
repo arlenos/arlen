@@ -48,6 +48,17 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" bash -c '
   python3 dev/screenshot/render-wide.py --url "$1" --out shot.png
 '
 `;
+//: The same recipe through the shared display helper, which is how every script
+//: in this tree builds its own Xvfb since the loop moved into `own-display.sh`.
+//: Without this case the check reads as covered while recognising only the older
+//: spelling - which is exactly what happened on 11 September.
+const OWNED = `#!/usr/bin/env bash
+. "$(dirname "\${BASH_SOURCE[0]}")/lib/own-display.sh"
+own_display "-screen 0 1600x1200x24" bash -c '
+  openbox &
+  python3 dev/screenshot/render-wide.py --url "$1" --out shot.png
+'
+`;
 const THROUGH_OWNER = `#!/usr/bin/env bash
 timeout 300 dev/screenshot/headless.sh --url "$1" --out shot.png
 `;
@@ -67,6 +78,12 @@ const cases = [
   [
     "a script that builds its own Xvfb passes",
     () => tree({ "shoot-own-recipe.sh": WRAPPED }),
+    (code) => code === 0,
+    true,
+  ],
+  [
+    "a script that owns its display through the helper passes",
+    () => tree({ "shoot-owned.sh": OWNED }),
     (code) => code === 0,
     true,
   ],
