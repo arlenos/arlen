@@ -80,11 +80,12 @@
 
   // The per-line remove, same confirm as the privacy browser; the full
   // management surface (undo, remove-all, by-data) stays over there.
-  let pending = $state<{ title: string; message: string; run: () => Promise<unknown> } | null>(null);
+  let pending = $state<{ title: string; message: string; confirmLabel: string; run: () => Promise<unknown> } | null>(null);
   function askScope(appLabel: string, line: ScopeLine) {
     pending = {
       title: $t("s.priv.askScope.title"),
       message: $t("s.priv.askScope.msg", { what: line.text, app: appLabel }),
+      confirmLabel: $t("s.priv.remove"),
       run: () => revokeScope(line, appLabel),
     };
   }
@@ -101,6 +102,9 @@
     pending = {
       title: $t("s.apps.uninstall.title"),
       message: $t("s.apps.uninstall.msg", { app: appLabel }),
+      // The removing word, not the privacy page's "Revoke": §6.10 keeps one word
+      // per act, and this dialog serves two acts.
+      confirmLabel: $t("s.apps.uninstall.confirm"),
       run: async () => {
         try {
           await invoke("settings_app_uninstall", { appId });
@@ -294,7 +298,7 @@
   open={pending !== null}
   title={pending?.title ?? ""}
   message={pending?.message ?? ""}
-  confirmLabel={$t("s.priv.remove")}
+  confirmLabel={pending?.confirmLabel ?? ""}
   variant="destructive"
   {onConfirm}
   onCancel={() => (pending = null)}
