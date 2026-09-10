@@ -185,6 +185,28 @@ describe("attachFocusGrid", () => {
     api.destroy();
   });
 
+  // THE CALLER THAT PASSES NO `onActivate` IS THE REAL ONE. The quick-settings
+  // panel wires cells, Escape and help and nothing else, so with the grid
+  // swallowing Enter and Space unconditionally a person could walk the tiles and
+  // never switch one on. The grid only gets to eat the key when somebody is
+  // listening for it; otherwise the button underneath does what a button does.
+  it("leaves Enter and Space to the button when nobody listens", () => {
+    const { container, cells } = grid([1, 1]);
+    let clicks = 0;
+    (cells[1].el as HTMLButtonElement).addEventListener("click", () => (clicks += 1));
+    const api = attachFocusGrid(container, { cells: () => cells });
+    api.focus(1);
+
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    container.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(false);
+
+    const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    container.dispatchEvent(space);
+    expect(space.defaultPrevented).toBe(false);
+    api.destroy();
+  });
+
   it("asks for help on ? and answers nothing once detached", () => {
     const { container, cells } = grid([1, 1]);
     let helped = 0;
