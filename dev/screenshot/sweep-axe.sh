@@ -181,7 +181,13 @@ for entry in "${SURFACES[@]}"; do
   IFS='|' read -r -a spec_list <<<"$specs"
   # The server comes up once per app; the readiness and title probes below are
   # about the SERVER, so they use the first route and the rest ride on it.
+  # The `@@host` suffix comes off as well as the `::selector`: a first row that
+  # names a fixture would otherwise be dialled as a URL ending in `@@name`, and
+  # the readiness probe would wait out its whole timeout on a page that cannot
+  # exist. No row is shaped that way today - the fixture rows are appended - and
+  # the day one is, this is the difference between a sweep and a silence.
   route="${spec_list[0]%%::*}"
+  route="${route%%@@*}"
 
   # `setsid` so the whole tree gets its own process group: killing the `npm run
   # dev` wrapper leaves the vite child listening, and the next app then shoots
