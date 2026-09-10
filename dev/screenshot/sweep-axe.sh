@@ -25,6 +25,11 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
+# A sweep IS the render that is running, so its own renders must not refuse each
+# other - `own_display` reads this. A hand render started beside a sweep has no
+# such flag and is refused, which is the point.
+export ARLEN_SWEEP=1
+
 WIDTH="${1:-1280}"
 ONLY="${2:-}"
 PORT=5310

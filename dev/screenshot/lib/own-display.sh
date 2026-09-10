@@ -72,9 +72,32 @@ _reap_display() {
   kill $pids 2>/dev/null || true
 }
 
+# AND REFUSE, when this is a hand render started beside a sweep. The note below
+# was not enough: I read it, ran two probes anyway while a sweep was in flight,
+# and its next control came back empty - the third run corrupted that way in one
+# day. A sweep's OWN renders are exempt (`ARLEN_SWEEP=1`, exported by every sweep
+# script), so this only ever catches the case it is for: a person - or me - firing
+# a render into a machine that is already rendering.
+#
+# `ARLEN_ALLOW_PARALLEL_RENDER=1` overrides it, for the case where you know the
+# other display belongs to someone else's lane and you accept the flakiness.
+_refuse_if_busy() {
+  [ "${ARLEN_SWEEP:-}" = "1" ] && return 0
+  [ "${ARLEN_ALLOW_PARALLEL_RENDER:-}" = "1" ] && return 0
+  local others
+  others="$(pgrep -a Xvfb 2>/dev/null || true)"
+  [ -n "$others" ] || return 0
+  echo "refusing: another Xvfb is already running, and a render beside one fails" >&2
+  echo "  intermittently - a flat frame, a control that answers nothing, a probe" >&2
+  echo "  that reads as broken. Wait for it, or set ARLEN_ALLOW_PARALLEL_RENDER=1." >&2
+  printf '  %s\n' "$others" >&2
+  exit 3
+}
+
 own_display() {
   local server_args="$1"
   shift
+  _refuse_if_busy
   _note_other_displays
   local base=$(( 90 + ($$ % 60) ))
   local try n rc
