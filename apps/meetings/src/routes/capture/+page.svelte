@@ -21,7 +21,7 @@
     fmtTime,
     startCapture,
     stopCapture,
-    captureUnavailable,
+    captureFailure,
     stopFailed,
     currentId,
     capturing,
@@ -95,7 +95,12 @@
           <Button variant="outline" size="sm" onclick={() => void stop()}>
             {$t("mt.captureRetry")}
           </Button>
-        {:else if $captureUnavailable}
+        {:else if $captureFailure === "noEngine"}
+          <!-- No retry: without a speech engine on the machine another press
+               cannot succeed, and a button that fails the same way twice is a
+               lie about what the person can do. -->
+          <span class="rec-failed" role="alert">{$t("mt.captureNoEngine")}</span>
+        {:else if $captureFailure}
           <span class="rec-failed" role="alert">{$t("mt.captureUnavailable")}</span>
           <Button variant="outline" size="sm" onclick={() => void startCapture()}>
             {$t("mt.captureRetry")}
@@ -142,7 +147,7 @@
           bind:ref={notesEl}
           bind:value={$liveNotes}
           rows={8}
-          placeholder={$captureUnavailable || $stopFailed
+          placeholder={$captureFailure || $stopFailed
             ? $t("mt.notes.placeholder.noCapture")
             : $t("mt.notes.placeholder")}
           aria-label={$t("mt.yourNotes")}

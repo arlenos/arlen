@@ -117,13 +117,35 @@ type MeetingsOutcome =
   | { state: "denied"; reason: string }
   | { state: "rows"; rows: MeetingSummary[] };
 
-/// True when a real session could not read the open meeting's note.
-export const noteUnavailable = writable(false);
+/// Why a real session could not read the open meeting's note, or null. Two
+/// causes a person tells apart: there is no note for this id, and there is one
+/// that could not be read. The host answers with a sentence; `noteFailureOf`
+/// reads the one marker that matters and never keeps the text.
+export type NoteFailure = "missing" | "unreadable";
+export const noteFailure = writable<NoteFailure | null>(null);
 
-/// True when capture could not be started, so the surface must not claim to be
-/// recording. Its sibling one route over: a note that could not be read is not
-/// an empty note, and a capture that did not start is not a silent room.
-export const captureUnavailable = writable(false);
+/// The cause word for a refused note read.
+export function noteFailureOf(e: unknown): NoteFailure {
+  return /no meeting note for id/.test(String(e)) ? "missing" : "unreadable";
+}
+
+/// Why capture could not be started, or null, so the surface must not claim to
+/// be recording. Its sibling one route over: a note that could not be read is
+/// not an empty note, and a capture that did not start is not a silent room.
+/// `noEngine` is the one permanent cause: no speech engine on this machine,
+/// which no retry changes.
+export type CaptureFailure = "noEngine" | "other";
+export const captureFailure = writable<CaptureFailure | null>(null);
+
+/// The cause word for a refused capture start.
+export function captureFailureOf(e: unknown): CaptureFailure {
+  return /ASR engine|not yet provisioned|speech engine/.test(String(e)) ? "noEngine" : "other";
+}
+
+/// Why the note could not be handed to the editor, or null. Never `editFailed`:
+/// nothing was edited and nothing was lost.
+export type OpenFailure = "noHandler" | "other";
+export const openFailure = writable<OpenFailure | null>(null);
 
 /// Live capture state: the transcript as it streams in, the notes you type as the
 /// anchor, whether transcription is on (a separate, opt-outable step - recording
@@ -131,7 +153,7 @@ export const captureUnavailable = writable(false);
 /// Is a capture actually RUNNING?
 ///
 /// Positive evidence, not the absence of a refusal. The surface decides what to
-/// draw from `captureUnavailable` / `stopFailed`, which are both false in the
+/// draw from `captureFailure` / `stopFailed`, which are both false in the
 /// moment between pressing Start and the host answering - fine for a pixel that
 /// is about to be replaced, and wrong for anything durable. The graph presence
 /// published off that shape claimed a meeting was happening for the fraction of
@@ -265,18 +287,18 @@ export async function openMeeting(id: string): Promise<void> {
       // The note still renders; every claim falls into the unanchored bucket.
     }
     meeting.set({ humanNotes, note, mocked: false });
-    noteUnavailable.set(false);
-  } catch {
+    noteFailure.set(null);
+  } catch (e) {
     if (!tauriAvailable) {
       meeting.set({ humanNotes: FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
-      noteUnavailable.set(false);
+      noteFailure.set(null);
       return;
     }
     // The note page is participants, claims and a transcript. Serving the fixture
     // one here put invented quotes under a real meeting's id, and the page's own
     // edit controls then wrote against that id.
     meeting.set(null);
-    noteUnavailable.set(true);
+    noteFailure.set(noteFailureOf(e));
   }
 }
 
@@ -400,13 +422,17 @@ export function speakerNum(label: string | undefined): number | null {
 /// there is no produced markdown file and no path to give.
 ///
 /// The button stays, because deleting a planned affordance is a product decision;
-/// the silence does not. A press now reaches `editFailed`, the same line the other
-/// three write paths on this page already use, so it says something instead of
-/// looking broken. When the export lands, this passes its path and the line stops
-/// appearing on its own.
+/// the silence does not. A press says that the note cannot be opened from here,
+/// in its own line: `editFailed` was the line it used to reach, and that one
+/// claims an edit was lost, which is not what happened. Without a host there is
+/// nobody to have refused, same gate as the three write paths. When the export
+/// lands, this passes its path and the line stops appearing on its own.
 export function openInEditor(): void {
-  editFailed.set(false);
-  invoke("open_file", { file: "meeting-note.md" }).catch(() => editFailed.set(true));
+  openFailure.set(null);
+  if (!tauriAvailable) return;
+  invoke("open_file", { file: "meeting-note.md" }).catch((e: unknown) => {
+    openFailure.set(/NoHandler/.test(String(e)) ? "noHandler" : "other");
+  });
 }
 
 let ticker: ReturnType<typeof setInterval> | null = null;
@@ -428,7 +454,7 @@ export async function startCapture(): Promise<void> {
   liveNotes.set("");
   transcribe.set(true);
   elapsed.set(0);
-  captureUnavailable.set(false);
+  captureFailure.set(null);
   capturing.set(false);
   // AWAITED, and nothing starts until it answers. The clock and the red dot used
   // to start regardless: a refused capture showed a running recording of a
@@ -436,17 +462,21 @@ export async function startCapture(): Promise<void> {
   // say. Same defect the note route already fixed one door down.
   try {
     await invoke("meeting_start_capture");
-  } catch {
+  } catch (e) {
     // Under vite there is no host at all, so a refusal here says nothing about
     // capture - it says there is no Tauri, which is true of every command in
     // this file and is why the others carry the same gate. The dev stream still
     // runs so the streaming experience can be looked at; `?capture=refused`
-    // reaches THIS state deliberately, which is how it gets photographed.
-    const forced =
-      typeof location !== "undefined" &&
-      new URLSearchParams(location.search).get("capture") === "refused";
-    if (tauriAvailable || forced) {
-      captureUnavailable.set(true);
+    // and `?capture=no-engine` reach the two refusals deliberately, which is
+    // how they get photographed.
+    const pin =
+      typeof location !== "undefined" ? new URLSearchParams(location.search).get("capture") : null;
+    if (tauriAvailable) {
+      captureFailure.set(captureFailureOf(e));
+      return;
+    }
+    if (pin === "refused" || pin === "no-engine") {
+      captureFailure.set(pin === "no-engine" ? "noEngine" : "other");
       return;
     }
   }
@@ -511,12 +541,12 @@ export async function stopCapture(): Promise<boolean> {
       humanNotes: notes,
     });
     meeting.set({ humanNotes: notes, note, mocked: false });
-    noteUnavailable.set(false);
+    noteFailure.set(null);
     return true;
   } catch {
     if (!tauriAvailable) {
       meeting.set({ humanNotes: notes.trim() || FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
-      noteUnavailable.set(false);
+      noteFailure.set(null);
       return true;
     }
     // The sharpest of the three fixture paths, because of when it fires: the
@@ -526,7 +556,7 @@ export async function stopCapture(): Promise<boolean> {
     // they typed is theirs and still on the capture surface - and the false
     // return tells the caller not to navigate to a note that does not exist.
     meeting.set(null);
-    noteUnavailable.set(true);
+    noteFailure.set("unreadable");
     return false;
   }
 }

@@ -16,7 +16,8 @@
   import { t, dir } from "$lib/i18n/messages";
   import {
     meeting,
-    noteUnavailable,
+    noteFailure,
+    openFailure,
     currentId,
     openMeeting,
     saveNotes,
@@ -62,6 +63,9 @@
         {#if $editFailed}
           <p class="sample" role="alert">{$t("mt.editFailed")}</p>
         {/if}
+        {#if $openFailure}
+          <p class="sample" role="alert">{$t($openFailure === "noHandler" ? "mt.openNoHandler" : "mt.openUnavailable")}</p>
+        {/if}
       {/snippet}
       {#snippet content()}
         <div class="note-body">
@@ -89,12 +93,13 @@
         />
       {/snippet}
     </MeetingShell>
-  {:else if $noteUnavailable}
+  {:else if $noteFailure}
     <!-- A note that could not be read is not an empty note. Before this
          branch the page rendered the fixture note here - invented
          participants and quotes under a real meeting's id, with the edit
-         controls writing against that id. -->
-    <p class="unavailable">{$t("mt.noteUnavailable")}</p>
+         controls writing against that id. And a note that does not exist is
+         not one that could not be read: two sentences. -->
+    <p class="unavailable">{$t($noteFailure === "missing" ? "mt.noteMissing" : "mt.noteUnavailable")}</p>
   {/if}
 </div>
 
