@@ -7,6 +7,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { SquareArrowOutUpRight } from "lucide-svelte";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import MeetingShell from "$lib/components/MeetingShell.svelte";
   import NotesMerged from "$lib/components/NotesMerged.svelte";
@@ -44,6 +45,9 @@
     {@const m = $meeting}
     <MeetingShell>
       {#snippet head()}
+        {#if m.mocked}
+          <div class="note-sample"><Notice tone="neutral" text={$t("mt.sample")} /></div>
+        {/if}
         <!-- The inset header names the note; this head carries only the meta
              and the actions, so the title is said once. -->
         <div class="note-head">
@@ -53,13 +57,10 @@
             {$t("mt.open")}
           </Button>
         </div>
-        {#if m.mocked}
-          <p class="sample">{$t("mt.sample")}</p>
-          <!-- The notes and items are the user's own words; if an edit did not
-               persist the text on screen goes back rather than reading as saved. -->
-          {#if $editFailed}
-            <p class="sample" role="alert">{$t("mt.editFailed")}</p>
-          {/if}
+        <!-- The notes and items are the user's own words; if an edit did not
+             persist the text on screen goes back rather than reading as saved. -->
+        {#if $editFailed}
+          <p class="sample" role="alert">{$t("mt.editFailed")}</p>
         {/if}
       {/snippet}
       {#snippet content()}
@@ -119,6 +120,9 @@
     min-width: 0;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .note-sample {
+    margin: 0 0 0.6rem;
   }
   .sample {
     margin: 0.5rem 0 0;

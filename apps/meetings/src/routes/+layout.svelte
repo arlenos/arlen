@@ -16,6 +16,7 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
@@ -175,7 +176,7 @@
                  window: the rows are here, they are named and dated and
                  clickable, and a reader scanning them has no reason to look at
                  the pane that says "pick one". -->
-            <p class="mt-sample">{$t("mt.sample.list")}</p>
+            <div class="mt-note"><Notice tone="neutral" text={$t("mt.sample.list")} /></div>
           {:else if $meetingsUnavailable}
             <!-- Same place, for the same reason, and it is a different sentence:
                  "these are examples" and "I could not read yours" are different
@@ -251,6 +252,9 @@
 </div>
 
 <style>
+  .mt-note {
+    margin: 0 8px 6px;
+  }
   .mt-sample {
     margin: 0 8px 4px;
     font-size: 11px;
