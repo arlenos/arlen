@@ -1,0 +1,53 @@
+<!-- SPDX-FileCopyrightText: 2026 Tim Kicker -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!--
+  The control for `tab-order.js`. Two planted faults and two near-misses that
+  must NOT be reported, because a probe that flags an ordinary two-column form is
+  one nobody runs twice.
+
+  PLANTED: a `tabindex` that sends the cursor back up the page, and a pair on one
+  line whose DOM order is right-to-left.
+
+  NOT A FAULT: a normal top-to-bottom stack, and a two-column row whose second
+  column starts left of the first column's right edge (which is every form label
+  beside its field).
+-->
+<title>tab order control</title>
+<style>
+  body { font: 14px system-ui; margin: 0; padding: 16px; }
+  .row { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
+  button, input { padding: 6px 10px; }
+  .back { position: absolute; bottom: 8px; left: 8px; }
+</style>
+
+<!-- FAULT 1 is the button at the BOTTOM of this file and the bottom of the page,
+     carrying `tabindex="1"`: it is therefore the FIRST thing Tab reaches, and the
+     second is this stack at the top - so the cursor starts at the bottom of the
+     page and jumps up. A positive tabindex on a control that is not first is the
+     ordinary way a page ends up like this. -->
+<div class="row" id="stack">
+  <button>first, top of the page</button>
+</div>
+<div class="row">
+  <button>second, below it</button>
+</div>
+<div class="row">
+  <button>third, below that</button>
+</div>
+
+<!-- NOT A FAULT: label beside its field, the second element starting left of
+     where the first one ends is impossible here, but the vertical overlap is the
+     case that matters - both sit on one line and go rightwards. -->
+<div class="row">
+  <label for="f">Name</label>
+  <input id="f" />
+  <button>Save</button>
+</div>
+
+<!-- FAULT 2: two controls on one line, in the DOM right-to-left. -->
+<div class="row" style="position: relative; height: 40px;">
+  <button style="position: absolute; left: 200px;">right, but first in the DOM</button>
+  <button style="position: absolute; left: 0;">left, but second</button>
+</div>
+
+<button class="back" tabindex="1">first in tab order, last on the page</button>
