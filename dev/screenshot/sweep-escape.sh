@@ -196,6 +196,7 @@ for spec in "$@"; do
   # that page's job is to prove the probe answers, not to model a correct one.
   modal="$(printf '%s' "$got" | sed -n "s/.*modal=\([a-z]*\).*/\1/p")"
   focus_before="$(printf '%s' "$got" | sed -n "s/.*focusBefore=\([^\"]*\).*/\1/p")"
+  restored="$(printf '%s' "$got" | sed -n "s/.*restored=\([a-z-]*\).*/\1/p")"
   if [ -z "$before" ]; then
     echo "  opened none  $spec"
     echo "       the click landed and no overlay was on screen, so this row proves nothing"
@@ -203,6 +204,18 @@ for spec in "$@"; do
   elif [ -n "$after" ]; then
     echo "  still open   $spec"
     echo "       after Escape: $after"
+    fail=1
+  elif [ "$restored" = "false" ]; then
+    # THE KEYBOARD DID NOT COME BACK. `--open` focuses the trigger the way a
+    # press does and leaves it on `window.__arlenOpened`, so this is an identity
+    # check rather than a comparison of labels - a dialog's Cancel button and the
+    # button that opened it render the same class, and the first version of this
+    # reading could not tell them apart. Focus left on `body` means the next Tab
+    # starts at the top of the page, which for a person on a keyboard is losing
+    # their place. The terminal's history palette answered `false` here on
+    # 11 September while every other overlay answered `true`.
+    echo "  no return    $spec"
+    echo "       Escape closed it and the keyboard did not go back to what opened it"
     fail=1
   elif [ "$modal" = "true" ] && [ "$focus_before" = "body" ]; then
     echo "  no keyboard  $spec"
