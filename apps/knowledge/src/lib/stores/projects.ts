@@ -13,7 +13,7 @@ import { writable } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { BrowserAdapter, FileEntry } from "@arlen/ui-kit/components/browser";
-import { type TimelineEvent } from "$lib/stores/timeline";
+import { type TimelineDay, type TimelineEvent } from "$lib/stores/timeline";
 
 /// True while the columns are the FIXTURE rather than the real graph.
 export const projectsMocked = writable(false);
@@ -155,23 +155,53 @@ export interface ProjectInfo {
   events: TimelineEvent[];
 }
 
-/// Info for a selected project, or null when the name is unknown. Takes the
-/// timeline's flat events so the two fixtures stay in step.
-export function projectInfo(name: string, events: TimelineEvent[], at: number | null): ProjectInfo | null {
-  const p = PROJECTS.find((x) => x.name === name);
-  if (!p) return null;
-  const members = at !== null && p.pastMembers ? p.pastMembers : p.members;
-  return {
-    name,
-    memberCount: Object.keys(members).length,
-    detected: p.detected,
-    events: events.filter((e) => e.project === name && (at === null || e.at <= at)).slice(0, 5),
-  };
+/// Info for a selected project, or null when there is none to give. Takes the
+/// timeline's flat events so the panel's activity is the same rows the
+/// timeline shows.
+///
+/// With a host the facts come from the host: the detection moment is the
+/// listing row's own, the member count is one more scoped read of the
+/// project's level, and a read the host refuses yields no panel rather than a
+/// guessed one. The fixture answers only where there is no host to ask; a real
+/// project that happens to share a sample's name must never inherit the
+/// sample's numbers.
+export async function projectInfo(entry: FileEntry, events: TimelineEvent[], at: number | null): Promise<ProjectInfo | null> {
+  const name = entry.name;
+  const recent = events.filter((e) => e.project === name && (at === null || e.at <= at)).slice(0, 5);
+  if (!tauriAvailable) {
+    const p = PROJECTS.find((x) => x.name === name);
+    if (!p) return null;
+    const members = at !== null && p.pastMembers ? p.pastMembers : p.members;
+    return { name, memberCount: Object.keys(members).length, detected: p.detected, events: recent };
+  }
+  try {
+    const members = await invoke<FileEntry[]>("knowledge_projects_list", { path: `/projects/${name}`, asOf: at });
+    return { name, memberCount: members.length, detected: entry.modified_unix ?? 0, events: recent };
+  } catch {
+    return null;
+  }
 }
 
-/// The candidate as-of days the picker offers (the fixture's horizon); live
-/// this comes from the graph's recorded range.
-export function asOfCandidates(): number[] {
+/// The candidate as-of days the picker offers: with a host, the recorded days
+/// the timeline knows (today excluded, six at most), so the picker never
+/// offers a moment the graph has nothing to say about; without a host, the
+/// fixture's horizon.
+export function asOfCandidates(days: TimelineDay[] | null): number[] {
+  if (tauriAvailable) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const today = Math.floor(todayStart.getTime() / 1000);
+    return (days ?? [])
+      .map((d) => d.date)
+      .filter((d) => d < today)
+      .sort((a, b) => b - a)
+      .slice(0, 6)
+      .map((d) => {
+        const dd = new Date(d * 1000);
+        dd.setHours(18, 0, 0, 0);
+        return Math.floor(dd.getTime() / 1000);
+      });
+  }
   return [1, 2, 3, 5, 7, 14].map((d) => {
     const dd = new Date((now - d * 86400) * 1000);
     dd.setHours(18, 0, 0, 0);

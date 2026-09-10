@@ -5,6 +5,7 @@
   /// match is by name (decision 2); the by-meaning group arrives only with a
   /// verified retrieval backend. Without a query the saved searches stand
   /// here - the query-as-folder bet - and Save keeps the current state as one.
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { X, ChevronDown, Bookmark } from "lucide-svelte";
   import {
     query,
@@ -12,6 +13,8 @@
     results,
     searchMocked,
     searchUnavailable,
+    searching,
+    savedMocked,
     savedSearches,
     savedUnavailable,
     saveSearch,
@@ -84,10 +87,11 @@
 </script>
 
 <div class="se">
+  {#if (hasState && $searchMocked) || (!hasState && $savedMocked)}
+    <div class="note"><Notice tone="neutral" text={$t("k.sample")} /></div>
+  {/if}
   <div class="se-head">
-    {#if $searchMocked && hasState}
-      <span class="se-sample">{$t("k.sample")}</span>
-    {:else if $searchUnavailable && hasState}
+    {#if $searchUnavailable && hasState}
       <!-- Announced: this replaces results the person asked for, and there is
            nothing else on screen to say the search did not run. -->
       <span class="se-sample" role="alert">{$t("k.se.unavailable")}</span>
@@ -206,7 +210,9 @@
         {/if}
       </div>
 
-      {#if $results.length === 0 && !$searchUnavailable}
+      {#if $searching}
+        <!-- Nothing yet: the query is out and the graph has not answered. -->
+      {:else if $results.length === 0 && !$searchUnavailable}
         <!-- Only when the search RAN. "Nothing matches, try fewer filters" is a
              statement about the graph and an instruction to change the query, and
              a failed read produces the same empty list - so without this the page
@@ -270,6 +276,9 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.6rem 1.1rem 0.45rem;
+  }
+  .note {
+    margin: 0 0 0.6rem;
   }
   .se-sample {
     font-size: var(--text-2xs);

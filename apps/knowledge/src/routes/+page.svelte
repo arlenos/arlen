@@ -41,6 +41,8 @@
   let selected = $state<FileEntry | null>(null);
   let selectedEvent = $state<TimelineEvent | null>(null);
   let selectedProject = $state<ProjectInfo | null>(null);
+  // The project whose panel is wanted, so a late answer can be told from a current one.
+  let wantedProject: string | null = null;
 
   function navigate(location: string): void {
     selected = null;
@@ -85,9 +87,19 @@
     selectedEvent = null;
     const atProjectLevel = path.replace(/\/+$/, "") === "/projects";
     if (entry && atProjectLevel) {
-      selectedProject = projectInfo(entry.name, $days ? flatEvents($days) : [], $asOf);
-      selected = selectedProject ? null : entry;
+      // Compared by name, not by object: `selected` is reactive state and a
+      // proxy never equals the raw entry it was made from.
+      const want = (wantedProject = entry.name);
+      selected = entry;
+      void projectInfo(entry, $days ? flatEvents($days) : [], $asOf).then((info) => {
+        // A late answer for a project the reader has already left must not
+        // overwrite the current panel.
+        if (wantedProject !== want) return;
+        selectedProject = info;
+        if (info) selected = null;
+      });
     } else {
+      wantedProject = null;
       selectedProject = null;
       selected = entry;
     }

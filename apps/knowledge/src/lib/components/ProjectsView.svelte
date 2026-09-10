@@ -13,6 +13,9 @@
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
   import { projectsAdapter, projectsMocked, projectsUnavailable, asOf, asOfCandidates } from "$lib/stores/projects";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { days } from "$lib/stores/timeline";
+
   import { dayLabel } from "$lib/stores/timeline";
   import { t, locale } from "$lib/i18n/messages";
 
@@ -95,10 +98,12 @@
 </script>
 
 <div class="pr" class:timeTravel={$asOf !== null}>
-  <div class="pr-head">
-    {#if $projectsMocked}
-      <span class="pr-sample">{$t("k.sample")}</span>
-    {/if}
+  {#if $projectsMocked}
+    <div class="note"><Notice tone="neutral" text={$t("k.sample")} /></div>
+  {/if}
+  <!-- A refused read leaves the refusal alone on the surface: no time travel
+       over a list that could not be read. -->
+  <div class="pr-head" class:hidden={$projectsUnavailable}>
     <span class="pr-spacer"></span>
     {#if $asOf === null}
       <div class="pr-asof-wrap">
@@ -108,7 +113,7 @@
         </button>
         {#if pickerOpen}
           <div class="pr-picker" role="listbox" aria-label={$t("k.pr.asofAria")}>
-            {#each asOfCandidates() as cand (cand)}
+            {#each asOfCandidates($days) as cand (cand)}
               <button type="button" class="pr-pick" role="option" aria-selected="false" onclick={() => pick(cand)}>
                 {dayLabel(localDay(cand), $locale)}
               </button>
@@ -162,9 +167,11 @@
     gap: 0.5rem;
     padding: 0.6rem 1.1rem 0.45rem;
   }
-  .pr-sample {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  .note {
+    margin: 0 0 0.6rem;
+  }
+  .pr-head.hidden {
+    display: none;
   }
   .pr-spacer {
     flex: 1;

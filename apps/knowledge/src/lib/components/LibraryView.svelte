@@ -10,6 +10,7 @@
   /// that laying media out differently later is a change here rather than a
   /// guess about a type nobody has seen; until that exists, one layout for all
   /// five is the honest state and the class only fixes the section order.
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { onMount } from "svelte";
   import {
     sources,
@@ -60,7 +61,7 @@
          16 August - this view lives behind a sidebar click, and the no-backend
          sweep could not click until then. -->
     {#if $libraryMocked}
-      <span class="li-sample">{$t("k.sample")}</span>
+      <div class="note"><Notice tone="neutral" text={$t("k.sample")} /></div>
     {/if}
   </div>
 
@@ -130,9 +131,9 @@
     align-items: center;
     padding: 0.6rem 1.1rem 0;
   }
-  .li-sample {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  .note {
+    flex: 1 1 100%;
+    margin: 0 0 0.6rem;
   }
   .li-scroll {
     flex: 1;

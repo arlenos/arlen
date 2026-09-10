@@ -57,6 +57,10 @@ export const searchMocked = writable(false);
 /// The library store one file over already reasons this out: no fixture on a real
 /// host, and say which of the two things happened. This is that, applied here.
 export const searchUnavailable = writable(false);
+/// True while a query is out and unanswered. The results area says nothing in
+/// that moment: "nothing matches" is a statement about the graph, and it is
+/// not one to make before the graph has answered.
+export const searching = writable(false);
 
 const now = Math.floor(Date.now() / 1000);
 const daysAgo = (d: number, h = 12): number => {
@@ -110,9 +114,12 @@ export const results = derived(
   [query, facets],
   ([$q, $f], set: (v: SearchResult[]) => void) => {
     if ($q.trim().length === 0 && !$f.type && !$f.project && $f.withinDays === null) {
+      searching.set(false);
+      searchUnavailable.set(false);
       set([]);
       return;
     }
+    searching.set(true);
     invoke<SearchResult[]>("knowledge_search", { query: $q, facets: $f })
       .then((live) => {
         searchMocked.set(false);
@@ -132,7 +139,8 @@ export const results = derived(
         searchMocked.set(false);
         searchUnavailable.set(true);
         set([]);
-      });
+      })
+      .finally(() => searching.set(false));
   },
   [] as SearchResult[]
 );
@@ -194,15 +202,19 @@ const DEV_PRESETS: SavedSearch[] = [
 /// True when the saved list could not be read, so an empty place can say which
 /// kind of empty it is.
 export const savedUnavailable = writable(false);
+/// True while the saved list is the fixture, so the surface says so.
+export const savedMocked = writable(false);
 
 /// Load the saved searches. Call on mount.
 export async function loadSavedSearches(): Promise<void> {
   try {
     savedSearches.set(await invoke<SavedSearch[]>("knowledge_searches"));
     savedUnavailable.set(false);
+    savedMocked.set(false);
   } catch {
     if (!tauriAvailable) {
       savedSearches.set(DEV_PRESETS);
+      savedMocked.set(true);
       return;
     }
     savedSearches.set([]);

@@ -23,7 +23,7 @@ const messages: Catalogs = {
     "k.menu.deleteToday": "Delete today's activity…",
     "k.menu.deleteAll": "Delete everything recorded…",
     "k.title": "Knowledge",
-    "k.sample": "Example data - not your real graph yet.",
+    "k.sample": "Example data, not this machine's graph.",
     // Distinct from the sample line above: one says the graph is not there yet,
     // the other says this search did not run. A failed read used to show the
     // first, with invented rows under it.
@@ -152,7 +152,7 @@ const messages: Catalogs = {
     "k.menu.deleteToday": "Heutige Aktivität löschen…",
     "k.menu.deleteAll": "Alles Aufgezeichnete löschen…",
     "k.title": "Wissen",
-    "k.sample": "Beispieldaten - noch nicht dein echter Graph.",
+    "k.sample": "Beispieldaten, nicht der Graph dieses Rechners.",
     "k.se.unavailable": "Diese Suche ist nicht gelaufen.",
     "k.browse.unavailable": "Dein Graph kann nicht gelesen werden.",
     "k.fb.errorTitle": "Kann nicht angezeigt werden",
