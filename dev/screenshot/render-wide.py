@@ -270,7 +270,59 @@ class Render:
             print(f"nothing was painted within {self.args.paint_timeout}s;"
                   " measuring anyway, and every reading below is about a page"
                   " that had drawn nothing", file=sys.stderr)
-        GLib.timeout_add(int(self.args.settle * 1000), self.set_width)
+        GLib.timeout_add(int(self.args.settle * 1000), self.check_styles)
+
+    # A COMPONENT STYLESHEET THAT IS ACTUALLY THE COMPONENT'S SOURCE.
+    #
+    # Vite serves each `<style>` block as its own module. When the browser asks
+    # for one before the plugin has transformed the component, there is no
+    # compiled CSS to hand back and the raw `.svelte` file is injected as the
+    # stylesheet: the browser recovers at the first thing that parses as a rule,
+    # so the sheet arrives UNSCOPED and missing whatever sat before that point.
+    #
+    # Measured on 11 September: 42 of the shell's 63 component stylesheets, on a
+    # cold server and a warm one, while `files` and `settings` were clean. It
+    # only shows on a page that pulls in enough components at once for the
+    # requests to outrun the transforms. So every screenshot and every axe run of
+    # that surface had been reading a page whose CSS was two thirds wrong, and
+    # nothing said so - the pictures still looked broadly right, because most of
+    # this tree's class names are prefixed and the rules that survived still
+    # applied, globally.
+    #
+    # The apps' vite configs now warm their components at server start, which
+    # empties this. It stays because that fix depends on the warmup finishing
+    # before the first render, and a fix that has to win a race needs somebody
+    # watching it. A refusal rather than a note: a page whose CSS is not the
+    # app's is not the app, and reporting layout or contrast from it is worse
+    # than reporting nothing.
+    RAW_STYLE_MODULES = (
+        "JSON.stringify([...document.querySelectorAll('style[data-vite-dev-id]')]"
+        ".filter(e => /<script|<\\/style>|\\{#if |\\{@render /.test(e.textContent || ''))"
+        ".map(e => (e.getAttribute('data-vite-dev-id') || '').split('/').pop().split('?')[0]))"
+    )
+
+    def check_styles(self):
+        self.view.evaluate_javascript(
+            self.RAW_STYLE_MODULES, -1, None, None, None, self.on_styles_checked)
+        return False
+
+    def on_styles_checked(self, view, result):
+        try:
+            raw = json.loads(
+                view.evaluate_javascript_finish(result).to_string())
+        except Exception:  # noqa: BLE001 - not a dev server, or no such elements
+            raw = []
+        if raw:
+            names = ", ".join(raw[:6]) + ("..." if len(raw) > 6 else "")
+            self.fail(
+                f"{len(raw)} component stylesheet(s) on this page are the"
+                f" component's own SOURCE rather than its CSS ({names}). The"
+                " page is unscoped and missing rules, so nothing measured here"
+                " would be about the app. The dev server did not transform them"
+                " before the browser asked; `server.warmup.clientFiles` in the"
+                " app's vite config is what prevents it.", 9)
+            return
+        self.set_width()
 
     def set_width(self):
         surface = self.view.get_width()
