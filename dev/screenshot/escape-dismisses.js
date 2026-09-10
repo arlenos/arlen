@@ -49,8 +49,21 @@ const shown = () =>
     .filter(vis)
     .map((e) => (e.getAttribute("aria-label") || String(e.className).split(/\s+/)[0] || e.tagName).slice(0, 24));
 
+// WHERE THE KEYBOARD IS, before and after. Dismissing an overlay is half the
+// property: if focus is left on `body` afterwards, the next Tab starts from the
+// top of the document and a keyboard reader has lost their place. Recorded
+// rather than judged for now - the sweep reads `before`/`after` and says nothing
+// about these two, so this is the measurement that has to come before a rule.
+const where = (e) => {
+  if (!e || e === document.body) return "body";
+  const cls = String(e.className || "").trim().split(/\s+/)[0];
+  const id = e.id ? "#" + e.id : "";
+  return e.tagName.toLowerCase() + id + (cls ? "." + cls : "");
+};
+
 const before = shown();
 const focused = document.activeElement ? document.activeElement.tagName : "none";
+const focusedWhere = where(document.activeElement);
 const key = () => new KeyboardEvent("keydown", { key: "Escape", bubbles: true });
 window.dispatchEvent(key());
 document.dispatchEvent(key());
@@ -58,7 +71,14 @@ document.dispatchEvent(key());
 
 return new Promise((resolve) =>
   setTimeout(
-    () => resolve([`focus=${focused}`, `before=[${before.join("|")}]`, `after=[${shown().join("|")}]`]),
+    () =>
+      resolve([
+        `focus=${focused}`,
+        `focusBefore=${focusedWhere}`,
+        `focusAfter=${where(document.activeElement)}`,
+        `before=[${before.join("|")}]`,
+        `after=[${shown().join("|")}]`,
+      ]),
     450,
   ),
 );
