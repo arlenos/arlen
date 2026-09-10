@@ -61,6 +61,13 @@ const where = (e) => {
   return e.tagName.toLowerCase() + id + (cls ? "." + cls : "");
 };
 
+// WAS WHAT OPENED A MODAL, which decides whether the focus reading below is a
+// rule or a curiosity. A popover that leaves focus where it was is ordinary - it
+// does not claim the rest of the page is gone. A `role="dialog"` with
+// `aria-modal="true"` does claim exactly that, and then focus being outside it
+// is the defect found in the kit's shell on 11 September.
+const modal = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"]')].some(vis);
+
 const before = shown();
 const focused = document.activeElement ? document.activeElement.tagName : "none";
 const focusedWhere = where(document.activeElement);
@@ -74,6 +81,7 @@ return new Promise((resolve) =>
     () =>
       resolve([
         `focus=${focused}`,
+        `modal=${modal}`,
         `focusBefore=${focusedWhere}`,
         `focusAfter=${where(document.activeElement)}`,
         `before=[${before.join("|")}]`,
