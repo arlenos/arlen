@@ -31,12 +31,15 @@
 # physical margin grew past it.
 
 set -euo pipefail
+
+# A display of our own, so running this beside a sweep does not hang both.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/own-display.sh"
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 # A page where the only difference between before and after is the click.
 PAGE='data:text/html,<button id=b onclick="document.title=String(42)">go</button>'
 
-out=$(xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+out=$(own_display "-screen 0 1600x1200x24" \
   env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
     openbox >/dev/null 2>&1 &
     ob=$!
@@ -66,7 +69,7 @@ esac
 # sweep - it would just fill the sweep with the wrong picture again.
 
 probe() {  # $1 = flags, $2 = expression
-  xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+  own_display "-screen 0 1600x1200x24" \
     env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
       openbox >/dev/null 2>&1 &
       ob=$!
@@ -101,7 +104,7 @@ esac
 # Silent, that teaches something false about every app a sweep touches.
 
 shoot() {  # $1 = page, $2 = out
-  xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+  own_display "-screen 0 1600x1200x24" \
     env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
       openbox >/dev/null 2>&1 &
       ob=$!
@@ -139,7 +142,7 @@ rm -f /tmp/render-wide-flat.png /tmp/render-wide-full.png
 # refuses everything is as useless as one that refuses nothing.
 
 want() {  # $1 = page, $2 = required text
-  xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+  own_display "-screen 0 1600x1200x24" \
     env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
       openbox >/dev/null 2>&1 &
       ob=$!

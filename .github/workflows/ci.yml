@@ -452,6 +452,8 @@ jobs:
           node dev/scripts/test-check-fixture-expect-still-said.mjs
           python3 dev/scripts/check-fixtures-are-swept.py
           node dev/scripts/test-check-fixtures-are-swept.mjs
+          python3 dev/scripts/check-owned-display.py
+          node dev/scripts/test-check-owned-display.mjs
           python3 dev/scripts/check-listener-started.py
           node dev/scripts/test-check-listener-started.mjs
           python3 dev/scripts/check-default-handlers.py

@@ -39,7 +39,10 @@ trap 'rm -rf "$cfg"' EXIT
 mkdir -p "$cfg/arlen"
 printf '[locale]\nui = "%s"\n' "$loc" > "$cfg/arlen/locale.toml"
 
-title=$(xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
+# The display number is ours rather than whatever `-a` picks - see
+# `lib/own-display.sh` for what a collision does to two renders.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/own-display.sh"
+title=$(own_display "-screen 0 1280x900x24" bash -c '
   set -uo pipefail
   export XDG_CONFIG_HOME="'"$cfg"'"
   # A Wayland socket in the environment would send the app to the real session

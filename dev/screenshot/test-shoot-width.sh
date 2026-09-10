@@ -19,6 +19,9 @@
 # Run: dev/screenshot/test-shoot-width.sh
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# A display of our own, so running this beside a sweep does not hang both.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/own-display.sh"
 fail=0
 
 check() {
@@ -57,7 +60,7 @@ $out"
 #    PNG left behind for the next reader to mistake for a result.
 rm -f /tmp/shoot-width-c.png
 out=$(SHOOT_SCREEN_W=640 SHOOT_SCREEN_H=480 \
-      xvfb-run -a --server-args="-screen 0 640x480x24" bash -c '
+      own_display "-screen 0 640x480x24" bash -c '
   unset WAYLAND_DISPLAY; export GDK_BACKEND=x11
   WebKitWebDriver --port=4479 >/dev/null 2>&1 & wd=$!
   trap "kill $wd 2>/dev/null || true" EXIT

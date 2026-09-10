@@ -179,7 +179,10 @@ rm -f "$OUT"
 # in June ("the X11 WM was the missing piece") and starts openbox; this one was
 # never given it. Measured both ways on 16 August: no WM, 200px surface and no
 # file; with openbox, `viewport: 1280x960 css px` and a PNG.
-xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+# The display number is ours rather than whatever `-a` picks - see
+# `lib/own-display.sh` for what a collision does to two renders.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/own-display.sh"
+own_display "-screen 0 1600x1200x24" \
   env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
     ob=""
     if command -v openbox >/dev/null 2>&1; then
