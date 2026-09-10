@@ -119,23 +119,33 @@
   <div class="fl-header" class:cols-location={columns.middle === "location"} role="row">
     {#each cols as col (col.label)}
       {#if col.sortable && col.key}
-        <button
-          class="fl-col"
+        <!-- THE ROLE BELONGS TO THE CELL, NOT THE BUTTON. ARIA does not allow
+             `columnheader` on a `<button>` - axe reports `aria-allowed-role`, and
+             a grid whose headers are not headers is a grid a screen reader reads
+             as a list of buttons. The system monitor's process table hit this
+             first and was fixed the same way: the cell carries the role and the
+             sort state, the button inside it carries the press. -->
+        <div
+          class="fl-col fl-col-sortable"
           class:right={col.align === "right"}
           role="columnheader"
-          aria-label={col.label}
-          onclick={() => col.key && onsort?.(col.key)}
           aria-sort={sortKey === col.key ? (ascending ? "ascending" : "descending") : undefined}
         >
-          {col.label}
-          {#if sortKey === col.key}
-            {#if ascending}
-              <ChevronUp size={12} strokeWidth={2} />
-            {:else}
-              <ChevronDown size={12} strokeWidth={2} />
+          <button
+            class="fl-col-button"
+            aria-label={col.label}
+            onclick={() => col.key && onsort?.(col.key)}
+          >
+            {col.label}
+            {#if sortKey === col.key}
+              {#if ascending}
+                <ChevronUp size={12} strokeWidth={2} />
+              {:else}
+                <ChevronDown size={12} strokeWidth={2} />
+              {/if}
             {/if}
-          {/if}
-        </button>
+          </button>
+        </div>
       {:else}
         <span class="fl-col static" class:right={col.align === "right"} role="columnheader" aria-label={col.label}>
           {col.label}
@@ -199,6 +209,25 @@
     top: 0;
     background: var(--background);
     z-index: 1;
+  }
+  /* The sortable header's button fills its cell and keeps the cell's own type
+     and alignment, so wrapping it in the cell that carries the ARIA role costs
+     the row nothing visually. */
+  .fl-col-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+  }
+  .fl-col.right .fl-col-button {
+    justify-content: flex-end;
   }
   .fl-col {
     display: inline-flex;
