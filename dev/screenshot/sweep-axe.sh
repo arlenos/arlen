@@ -255,11 +255,26 @@ for entry in "${SURFACES[@]}"; do
   # an app whose title is slow or absent that is minutes of nothing, and it took
   # the pdf surface six of them before the run was killed. `--settle` waits
   # INSIDE the one session, which is what was wanted all along.
+  # NOT THE LAST LINE. Mesa writes `DRI3 error: Could not get DRI3 device` to
+  # STDOUT on this machine, and after the answer as often as before it - so
+  # `tail -1` reads a driver warning as the page's title, and the surface is then
+  # refused as somebody else's server. `probe-host.sh` had exactly this bug and
+  # every fixture failed for months; `sweep-render.sh` carries the same note over
+  # its own reader. The answer here is a bare string rather than the probes'
+  # `[...]`, so it cannot be found by shape - the renderer's own lines (`wrote`,
+  # `viewport:`) and the driver's are dropped instead, and the last thing left
+  # standing is the title.
+  #
+  # MEASURED, and it was worse than a risk: `wrote /dev/null` is printed AFTER
+  # the answer on every run, so `tail -1` never returned a title at all. Every app
+  # with an `*.app.title` key was refused as "another server holds it" and the
+  # sweep moved on, printing a tally the whole time.
   served=""
   for _ in $(seq 1 3); do
     served=$(timeout 240 dev/screenshot/headless.sh \
       --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
-      --timeout 180 --settle 4 --probe "document.title" 2>/dev/null | tail -1)
+      --timeout 180 --settle 4 --probe "document.title" 2>/dev/null \
+      | grep -vE '^(MESA|Note:|libEGL|Gdk-|note:|wrote |viewport:)|DRI3|^$' | tail -1)
     [ -n "$served" ] && break
   done
   if [ -n "$want" ] && [ "$served" != "$want" ]; then
