@@ -10,6 +10,27 @@ export default defineConfig(async () => ({
   plugins: [sveltekit(), withoutSvelteStyles(tailwindcss())],
   clearScreen: false,
   server: {
+    // WARM EVERY COMPONENT BEFORE THE BROWSER ASKS FOR ITS STYLES. Vite serves
+    // each `<style>` block as its own module (`Foo.svelte?svelte&type=style`),
+    // and when the browser requests one before the plugin has transformed
+    // `Foo.svelte` itself, there is no compiled CSS to hand over and the RAW
+    // `.svelte` SOURCE is injected as that component's stylesheet instead. The
+    // browser then recovers at the first thing that parses as a rule, so the
+    // sheet arrives unscoped and missing whatever came before that point.
+    //
+    // Measured on 11 September on the shell's main surface: 42 of its 63
+    // component stylesheets were the raw source, deterministically, on a cold
+    // server and a warm one. `files` and `settings` were clean, which is why it
+    // went unseen - it only shows on a page that pulls in enough components at
+    // once for the requests to outrun the transforms. Everything the harness
+    // renders is a dev server, so this is what every screenshot and every axe
+    // run of that surface had been measuring. `vite build` is unaffected.
+    //
+    // Warmup pre-transforms them at server start, so the cache is populated
+    // before the first request. `render-wide.py` refuses a page that still has
+    // one, because a fix that depends on winning a race needs somebody watching
+    // it.
+    warmup: { clientFiles: ["./src/**/*.svelte"] },
     // Distinct port from the other apps (shell 1420, settings 1421,
     // harness 1423) so they can all run in dev.
     port: 1443,
