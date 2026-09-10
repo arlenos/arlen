@@ -26,9 +26,16 @@
 # it somewhere", and for every other principal here that difference never arises.
 #
 # The other half of the same point: the relation below is what the executor writes
-# with, and it writes at all only under `[agent] executor_live`, which is off. So
-# this file describes a capability held and not exercised - the right state for
-# it, and not one a reader could infer from the grant.
+# with, and it writes at all only under `[agent] executor_live` - which on THIS
+# image is ON (`~/.config/arlen/ai.toml` and the config-broker seed both set it).
+# So the grant below is exercised, not dormant, and a reader auditing this file
+# should read it as a live write capability.
+#
+# The sentence above used to say the switch was off, and it stayed there after the
+# image turned it on: a comment that asserts a STATE rots the moment the state
+# changes, while one that states a RULE does not. Anything written here about a
+# runtime switch has to name where the switch lives so a reader can go and look,
+# which is what the line above now does.
 
 [info]
 app_id = "ai-agent"
