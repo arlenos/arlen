@@ -454,6 +454,8 @@ jobs:
           node dev/scripts/test-check-fixtures-are-swept.mjs
           python3 dev/scripts/check-owned-display.py
           node dev/scripts/test-check-owned-display.mjs
+          python3 dev/scripts/check-sweep-tables-agree.py
+          node dev/scripts/test-check-sweep-tables-agree.mjs
           python3 dev/scripts/check-listener-started.py
           node dev/scripts/test-check-listener-started.mjs
           python3 dev/scripts/check-default-handlers.py

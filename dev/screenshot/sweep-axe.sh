@@ -70,8 +70,8 @@ PORT=5310
 # "Zulassen?". The check was right and the spec was wrong, which is the good way
 # round.
 SURFACES=(
-  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest"
-  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect"
+  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/?locale=de@@files-refuses-op"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect|/::#terminal-history-open@@terminal-history-refused"
   # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
   # this header keeps naming: the list IS the coverage. Settings has 38 route
   # pages and this row held 14, so more of that app was unmeasured than
@@ -83,17 +83,17 @@ SURFACES=(
   # and a shared sweep that goes red on another lane's surface is one somebody
   # turns off. The `[id]` routes need a parameter that only a running backend
   # can supply, so they are not reachable from a route walk at all.
-  "settings /|/about|/accessibility|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/quicksettings|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/appearance/wallpaper|/apps|/display|/extensions|/extensions/module/wp.tally|/extensions/app/dev.arlen.notes|/extensions/bridge/md.obsidian|/focus|/keyboard|/knowledge|/language|/mouse|/notifications|/printers|/privacy|/privacy/physical|/system-actions|/topbar|/touchpad|/windows-apps|/workspaces|/keyboard/shortcuts|/_topbartest|/apps/dev.arlen.notes@@settings-uninstall-refused|/apps/dev.arlen.notes@@settings-uninstall-unavailable|/apps/dev.arlen.notes@@settings-uninstall-failed|/apps/dev.arlen.notes@@settings-uninstall-unknown|/privacy@@settings-revoke-refused|/privacy::.seg-pill:nth-of-type(2)|/apps/com.example.editor|/windows-apps/b1|/workspaces::.footer button|/display@@settings-display-revert|/keyboard/shortcuts@@settings-key-capture"
-  "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes"
-  "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world"
-  "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]"
-  "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick"
-  "text-editor /|/::.trigger"
-  "viewers /|/?demo=image|/?demo=video"
-  "screenshot /"
-  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest"
-  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash"
-  "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event"
+  "settings /|/about|/accessibility|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/quicksettings|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/appearance/wallpaper|/apps|/display|/extensions|/extensions/module/wp.tally|/extensions/app/dev.arlen.notes|/extensions/bridge/md.obsidian|/focus|/keyboard|/knowledge|/language|/mouse|/notifications|/printers|/privacy|/privacy/physical|/system-actions|/topbar|/touchpad|/windows-apps|/workspaces|/keyboard/shortcuts|/_topbartest|/apps/dev.arlen.notes@@settings-uninstall-refused|/apps/dev.arlen.notes@@settings-uninstall-unavailable|/apps/dev.arlen.notes@@settings-uninstall-failed|/apps/dev.arlen.notes@@settings-uninstall-unknown|/privacy@@settings-revoke-refused|/privacy::.seg-pill:nth-of-type(2)|/apps/com.example.editor|/windows-apps/b1|/workspaces::.footer button|/display@@settings-display-revert|/keyboard/shortcuts@@settings-key-capture|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/workspaces?locale=de@@settings-refuses-write|/accessibility?locale=de@@settings-a11y-refuses-filter|/topbar?locale=de@@settings-topbar-refuses-save"
+  "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes|/capture?locale=de@@meetings-refuses-stop"
+  "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world|/?locale=de@@clock-refuses-alarm"
+  "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]|/?locale=de@@knowledge-refuses-pause|/?locale=de@@knowledge-refuses-search-save"
+  "system-monitor /|/::#tab-performance|/?locale=de::#tab-performance@@monitor-live-tick|/?locale=de@@system-monitor-refuses-stop"
+  "text-editor /|/::.trigger|/?locale=de@@text-editor-refuses-save|/?locale=de@@text-editor-lens-part-sample"
+  "viewers /|/?demo=image|/?demo=video|/?locale=de@@viewers-refuses-decode"
+  "screenshot /|/::.thumb-btn|/?locale=de@@screenshot-refuses-save"
+  "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest|/?locale=de@@greeter-refuses-login"
+  "mail /|/::.row|/::#folder-sent|/::#folder-drafts|/::#folder-archive|/::#folder-trash|/?locale=de@@mail-refuses-archive|/?locale=de@@mail-refuses-draft|/?locale=de@@mail-refuses-attachment-save"
+  "calendar /|/::.seg-pill:nth-of-type(2)|/::.seg-pill:nth-of-type(3)|/::.seg-pill:nth-of-type(4)|/::.seg-pill:nth-of-type(5)|/::#cal-new-event|/?locale=de@@calendar-refuses-recolour"
   "pdf /"
   # The three request shapes worth their own reading: a standard grant, the
   # permanent delete with its hold-to-confirm, and the external send with a
@@ -138,7 +138,7 @@ SURFACES=(
   # spec is what found the reason that panel had never been seen: the art button
   # spread the tooltip trigger's props AFTER its own `onclick`, so bits-ui's
   # close handler replaced the toggle and the click did nothing at all.
-  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/?locale=de::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest|/?menumock|/@@shell-workspace-overlay"
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/?locale=de::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest|/?menumock|/@@shell-workspace-overlay|/_jobstest?locale=de@@shell-jobs-refuse-cancel|/_jobstest?locale=de@@shell-jobs-failed-install|/waypointer?locale=de@@waypointer-refuses-copy|/waypointer?locale=de@@waypointer-refuses-run|/waypointer?locale=de@@waypointer-refuses-openurl"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
