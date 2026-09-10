@@ -36,11 +36,19 @@ from pathlib import Path
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 HOSTS = ROOT / "dev/screenshot/hosts"
 
-#: Fixture to (its EXPECT, why it is in neither place). Only formatting: the
-#: fixture supplies `15.8` and the page renders `15,8` in German, and no static
-#: check can resolve a locale's number format back to its source.
+#: Fixture to (its EXPECT, why it is in neither place). One entry, and the reason
+#: it first carried here was wrong in a way worth writing down: it said the
+#: fixture supplies `15.8` and the page formats it German, which would be a
+#: separator swap and could have been a RULE rather than an exception. The
+#: fixture supplies no such number. It supplies `12.5` and `3.25`; the surface
+#: adds them, rounds the 15.75 to one decimal, and then writes the mark in the
+#: reader's locale. Three transformations, and a static reader can do none of
+#: them - which is what makes this an exception and not a rule missing.
 CARRIED: dict[str, tuple[str, str]] = {
-    "monitor-live-tick.js": ("15,8", "the fixture supplies 15.8; the surface formats it German"),
+    "monitor-live-tick.js": (
+        "15,8",
+        "12.5 + 3.25, rounded to one decimal, then written with a German mark",
+    ),
 }
 
 EXPECT = re.compile(r"^// EXPECT: *(.+)$", re.M)
