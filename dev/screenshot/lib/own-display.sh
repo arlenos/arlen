@@ -33,9 +33,31 @@
 # would not start" - on a taken display that is what a collision looks like, and
 # it is the one code worth retrying on. A failing render must never be retried
 # into a pass.
+# ANOTHER X SERVER IS WORTH SAYING OUT LOUD. A display number of our own stops
+# two renders taking the SAME `:N`, and it does not stop them competing for the
+# one GPU underneath: with a second Xvfb alive on this machine, renders here fail
+# intermittently - a flat frame, a viewport that never took the zoom, or a run
+# that exits without printing anything at all, which reads as a probe that
+# answered nothing.
+#
+# Measured on 11 September and it cost an hour: a sweep killed with `pkill` left
+# an orphaned Xvfb behind, and after that a STATIC control page rendered one time
+# in three. I diagnosed an app change from those numbers and was wrong - the same
+# row passed eleven times running once the orphan was gone. So the note names the
+# other server rather than guessing about the page.
+_note_other_displays() {
+  local others
+  others="$(pgrep -a Xvfb 2>/dev/null | grep -v "^$$ " || true)"
+  [ -n "$others" ] || return 0
+  echo "note: another Xvfb is running on this machine, so a render here can fail" >&2
+  echo "  intermittently - a flat frame or no answer at all. It is:" >&2
+  printf '  %s\n' "$others" >&2
+}
+
 own_display() {
   local server_args="$1"
   shift
+  _note_other_displays
   local base=$(( 90 + ($$ % 60) ))
   local try n rc
   # THE CALLER'S `set -e` IS THE CALLER'S. Turning errexit off to read the exit

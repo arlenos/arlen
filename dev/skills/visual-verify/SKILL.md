@@ -196,7 +196,14 @@ command line contains the pattern you just typed - so `pkill -f sweep.sh` from a
 that shell, and the tool reports the death as a bare exit code 144 with no explanation. Use `fuser -k -n tcp
 <port>` for a server, `pkill <name>` (no `-f`) for a process by name, or `kill <pid>` from a `ps` you just read.
 This bit three times in one day, twice after the rule had been written down - and three times again on 10
-September, every one of them `pkill -f <port>` to stop a vite server. That shape is the trap: a port number
+September, every one of them `pkill -f <port>` to stop a vite server. On 11 September it did something worse than
+kill the shell: `pkill -f sweep-render.sh` took the sweep and left its **Xvfb orphaned**, and every render after
+that failed about two times in three - a flat frame, a viewport that never took the zoom, or a run that printed
+nothing at all. I read those numbers as a defect in a component I had just changed, spent an hour on it, wrote a
+fix, and was wrong: the same row passed eleven times running once the orphan was killed. **An orphaned display
+does not announce itself; it poisons every measurement afterwards.** `own_display` now says out loud when
+another Xvfb is alive, and the way to stop a sweep is `kill <pid>` from a `ps` you just read - then check
+`pgrep -a Xvfb` is empty. That shape is the trap: a port number
 looks like it could not possibly match anything else, and it matches the shell you are typing in, because the
 number is in the command line. `fuser -k -n tcp <port>` is one character longer.
 
