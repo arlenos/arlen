@@ -111,19 +111,22 @@
     selected = entry;
   }
 
-  /// True when the last attempt to open Settings did not start it.
-  let settingsOpenFailed = $state(false);
+  /// Why the last attempt to open Settings did not start it, or null. The
+  /// host answers with a sentence; the one cause worth telling apart is that
+  /// Settings is not on this machine at all, which is a different thing to do
+  /// something about than a start that failed.
+  let settingsFailure = $state<"notInstalled" | "other" | null>(null);
 
   function openPrivacySettings(): void {
     // The capability browser and the capsule list both live in Settings/Privacy
     // (decision 6); this links out rather than re-hosting either, by spawning
     // `arlen-settings --panel`.
-    settingsOpenFailed = false;
-    void invoke("open_settings_route", { route: "/privacy" }).catch(() => {
+    settingsFailure = null;
+    void invoke("open_settings_route", { route: "/privacy" }).catch((e: unknown) => {
       // A link to a privacy control that silently does nothing is the worst
       // shape for this affordance: the person clicking it concludes there is no
       // such control.
-      settingsOpenFailed = true;
+      settingsFailure = /not installed/.test(String(e)) ? "notInstalled" : "other";
     });
   }
 
@@ -143,7 +146,7 @@
 </script>
 
 <SidebarProvider class="h-screen min-h-0 overflow-hidden">
-  <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} onsettings={openPrivacySettings} />
+  <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} onsettings={openPrivacySettings} failure={settingsFailure} />
   <SidebarInset class="h-svh min-h-0">
     <!-- The page's one level-one heading. Every app in this tree had none, so a
          screen reader's first question - what IS this window - was answered only
@@ -162,11 +165,6 @@
          reader offers two "main" destinations of which one is the whole window.
          One document, one main. -->
     <div class="kn-main">
-    {#if settingsOpenFailed}
-      <!-- The capability browser lives in Settings; if it would not start, say
-           so rather than leaving the click looking like there is no such page. -->
-      <p class="kn-open-failed" role="alert">{$t("k.settingsOpenFailed")}</p>
-    {/if}
     {#if searchOwnsContent}
       <!-- The titlebar query owns the content area wherever you are; the
            Searches place shows the same surface at rest (the saved list). -->
@@ -219,12 +217,6 @@
    * meetings capture screen already paints its equivalent `var(--color-error)`;
    * one convention across the apps, and the thing the person has to notice is
    * not the quietest text on screen. */
-  .kn-open-failed {
-    margin: 0;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--color-error, #f87171);
-  }
 
   .kn-body {
     flex: 1;
