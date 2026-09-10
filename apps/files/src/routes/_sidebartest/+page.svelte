@@ -11,9 +11,14 @@
   /// what a person sees after defining one on a machine whose config directory is
   /// not writable: the folder is on screen and will not survive a restart.
   /// `?locale=de` renders it in German. Not in any nav; a dev route.
+  ///
+  /// THE SIDEBAR ON SCREEN IS THE LAYOUT'S, not one this page mounts. A page in
+  /// this app is a child of the root layout and cannot escape it, so a second
+  /// `FmSidebar` here put two of them on the page - two `Orte` landmarks a reader
+  /// cannot tell apart, which is what axe reported as `landmark-unique`, and a
+  /// picture of a rail that does not exist in the running app. This route seeds
+  /// the stores and lets the real one render them.
   import { onMount } from "svelte";
-  import FmSidebar from "$lib/components/FmSidebar.svelte";
-  import { SidebarProvider } from "@arlen/ui-kit/components/ui/sidebar";
   import { savedFolders, foldersUnsaved } from "$lib/stores/facets";
   import { locale } from "@arlen/ui-kit/i18n";
 
@@ -21,8 +26,6 @@
     typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   if (params?.get("locale")) locale.set(params.get("locale") as string);
   const unsaved = params?.get("state") === "unsaved";
-
-  let ready = $state(false);
 
   onMount(() => {
     if (unsaved) {
@@ -34,21 +37,5 @@
       // the sentence, not the path that reaches it.
       foldersUnsaved.set(true);
     }
-    ready = true;
   });
 </script>
-
-<div class="harness">
-  {#if ready}
-    <SidebarProvider>
-      <FmSidebar />
-    </SidebarProvider>
-  {/if}
-</div>
-
-<style>
-  .harness {
-    min-height: 100vh;
-    background: var(--color-bg-app, #0a0a0a);
-  }
-</style>
