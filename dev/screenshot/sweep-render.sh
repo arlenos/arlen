@@ -89,6 +89,11 @@ shift 2
 [ "$#" -gt 0 ] || { echo "give at least one path" >&2; exit 2; }
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# A sweep IS the render that is running, so its own renders must not refuse each
+# other - `own_display` reads this. A hand render started beside a sweep has no
+# such flag and is refused, which is the point.
+export ARLEN_SWEEP=1
 shot="$(mktemp /tmp/sweep-render-XXXXXX.png)"
 trap 'rm -f "$shot"' EXIT
 
