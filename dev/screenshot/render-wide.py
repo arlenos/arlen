@@ -220,9 +220,57 @@ class Render:
                   f" the page never finished loading", 5)
         return False
 
+    # A PAGE THAT HAS FINISHED LOADING HAS NOT NECESSARILY DRAWN ANYTHING.
+    # `LoadEvent.FINISHED` fires when the document and its initial assets are in;
+    # a SvelteKit app then hydrates, and on a COLD dev server the module graph
+    # for that route is compiled on demand while we are already counting down.
+    # `--settle` is a fixed number of seconds, which is a measurement of this
+    # machine on a good day.
+    #
+    # It showed up twice on 11 September, both times at the FIRST width of a
+    # sweep, which is exactly when the server is coldest: the launcher's refusal
+    # state was reported as having no focusable control, and the file manager's
+    # landing route the same - two findings against markup that was fine, from
+    # probes reading a page with nothing on it yet.
+    #
+    # So wait for INK before spending the settle. Text a person could read, or a
+    # drawn element, means the app got as far as painting; the settle then does
+    # what it was always for, which is letting a painted page come to rest.
+    PAINTED = (
+        "JSON.stringify(!!document.body && ("
+        "document.body.innerText.trim().length > 0 ||"
+        " !!document.body.querySelector('img,svg,canvas')))"
+    )
+
     def on_load(self, view, event):
         if event == WebKit.LoadEvent.FINISHED:
-            GLib.timeout_add(int(self.args.settle * 1000), self.set_width)
+            self.paint_deadline = time.monotonic() + self.args.paint_timeout
+            self.await_paint()
+
+    def await_paint(self):
+        self.view.evaluate_javascript(
+            self.PAINTED, -1, None, None, None, self.on_painted)
+        return False
+
+    def on_painted(self, view, result):
+        try:
+            painted = json.loads(
+                view.evaluate_javascript_finish(result).to_string())
+        except Exception:  # noqa: BLE001 - a page that cannot answer has not painted
+            painted = False
+        if not painted and time.monotonic() < self.paint_deadline:
+            GLib.timeout_add(120, self.await_paint)
+            return
+        if not painted:
+            # SAID OUT LOUD RATHER THAN WAITED AWAY. A route that genuinely draws
+            # nothing still gets its shot and its probes - refusing here would
+            # hide a blank page, which is a defect worth photographing - but the
+            # reader is told, because every probe below this line is then about a
+            # page with nothing on it.
+            print(f"nothing was painted within {self.args.paint_timeout}s;"
+                  " measuring anyway, and every reading below is about a page"
+                  " that had drawn nothing", file=sys.stderr)
+        GLib.timeout_add(int(self.args.settle * 1000), self.set_width)
 
     def set_width(self):
         surface = self.view.get_width()
@@ -701,7 +749,9 @@ def main():
     ap.add_argument("--width", type=int, default=1280,
                     help="CSS viewport width to lay the page out at")
     ap.add_argument("--settle", type=float, default=1.5,
-                    help="seconds after load before sizing")
+                    help="seconds after the page has painted, before sizing")
+    ap.add_argument("--paint-timeout", type=float, default=12.0,
+                    help="seconds to wait for the page to draw anything at all")
     ap.add_argument("--reflow", type=float, default=1.0,
                     help="seconds after the zoom change, before measuring")
     ap.add_argument("--timeout", type=int, default=60,
