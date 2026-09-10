@@ -305,15 +305,27 @@ for width in $widths; do
     # check then reported the graphics driver as the page's own words. Two of
     # calendar's rows failed that way on 10 September before the reader was fixed
     # on both sides.
-    seen="$("$here/headless.sh" --url "$url" --out "$shot" --width "$width" \
+    # STDERR IS KEPT, and it is the whole difference between a finding and an
+    # afternoon. This threw it away, so a row whose `--open` selector never
+    # appeared - the renderer says so, in one clear line - reported only "the
+    # page read: " with nothing after it, and the reason was invisible. On
+    # 11 September four rows failed that way and I spent an hour on the wrong
+    # cause. The renderer's own refusals now come out with the finding.
+    why="$("$here/headless.sh" --url "$url" --out "$shot" --width "$width" \
       --host-script "$here/hosts/$host.js" --probe-file "$here/lib/host-state.js" \
-      ${open:+--open "$open"} 2>/dev/null | grep -E '^\[' | tail -1)"
+      ${open:+--open "$open"} 2>&1)"
+    seen="$(printf '%s' "$why" | grep -E '^\[' | tail -1)"
     case "$seen" in
       *"$want"*) ;;
       *)
         echo "  FAIL $spec@@$host never reached its state; it says it should show:"
         echo "       $want"
         echo "       the page read: $(printf '%s' "$seen" | head -c 200)"
+        # Everything the renderer said that is not the answer and not a driver
+        # warning: its refusals, its viewport line, its notes about other
+        # displays.
+        printf '%s\n' "$why" | grep -vE '^\[|MESA|DRI3|Gdk-WARNING|^$' \
+          | tail -3 | sed 's/^/       /'
         fail=1
         continue
         ;;

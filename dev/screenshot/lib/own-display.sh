@@ -54,6 +54,24 @@ _note_other_displays() {
   printf '  %s\n' "$others" >&2
 }
 
+# TAKE THE SERVER WITH US. `xvfb-run` kills its own Xvfb when the command exits
+# normally, and does not when the command was killed or died oddly - so a run
+# that refused, crashed or was interrupted can leave a live X server behind. They
+# ACCUMULATE, and each one makes the next render flakier, which is how an
+# afternoon goes: two of them were still up after a sweep on 11 September, and
+# with one alive a static control page rendered one time in three.
+#
+# Only the display this call asked for, matched at the start of the command line
+# so nothing else can be caught by it, and by pid rather than by pattern-kill.
+_reap_display() {
+  local n="$1" pids
+  pids="$(pgrep -f "^Xvfb :$n " 2>/dev/null || true)"
+  [ -n "$pids" ] || return 0
+  echo "note: display :$n outlived its render; taking it down" >&2
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+}
+
 own_display() {
   local server_args="$1"
   shift
@@ -75,6 +93,7 @@ own_display() {
     set +e
     xvfb-run -n "$n" --server-args="$server_args" "$@"
     rc=$?
+    _reap_display "$n"
     if [ "$had_e" -eq 1 ]; then
       set -e
     fi
@@ -83,6 +102,7 @@ own_display() {
     fi
   done
   # Every derived number was taken. Let xvfb-run choose, which is where this
-  # started: better a small race than no render at all.
+  # started: better a small race than no render at all. Nothing to reap here: we
+  # did not choose the number, so we cannot know which server was ours.
   xvfb-run -a --server-args="$server_args" "$@"
 }
