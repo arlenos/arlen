@@ -61,7 +61,9 @@ PORT=$(( 6100 + ($$ % 60) * 40 ))
 # somebody else's app. Written down because a route absent from this table is
 # invisible rather than clean, which is the whole claim this file makes - and
 # comparing the table against the routes on disk on 10 September, those two were
-# the only ones in the tree it does not name. Everything else resolved, dynamic
+# the only ones it does not name IN AN APP IT SWEEPS. Not in the tree: harness's
+# eight routes and store's four are unnamed too, for the reason the paragraph
+# above gives, and a sentence saying "the only ones in the tree" reads over that. Everything else resolved, dynamic
 # segments included (`/apps/dev.arlen.notes`, `/meeting/abc`, `/windows-apps/b1`
 # and the three `/extensions/<kind>/<id>` rows are the `[id]` routes).
 SURFACES=(

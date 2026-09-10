@@ -77,6 +77,16 @@ case "$base" in
   # `sweep-render-all.sh`, not guessed.
   */appearance/quicksettings|*/appearance/quicksettings?*)
     [ "$#" -eq 0 ] && set -- 'button[data-slot=button]' ;;
+  # THE PROVIDER FORM, and the reason it is the only one of the six remaining
+  # Settings dialogs named here. System actions, physical privacy, the app page
+  # and the windows-app page all open the KIT's `ConfirmDialog` - one component,
+  # already driven twice above (`reset-all`, and the quick-settings reset). Five
+  # more rows would re-prove one implementation and would read as coverage the
+  # sweep does not have. `AddProviderDialog` is the app's own form dialog and
+  # nothing has ever pressed the key at it. `.add-row button` is a class and a
+  # container rather than a label, per the fixture rule.
+  */ai/providers|*/ai/providers?*)
+    [ "$#" -eq 0 ] && set -- '.add-row button' ;;
 esac
 
 if [ "$#" -eq 0 ]; then
