@@ -15,6 +15,13 @@ import { derived, writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
 import { t } from "$lib/i18n/messages";
+import { ioWhyKey } from "$lib/io-why";
+
+/// The host's errno text as a sentence of the reader's, or nothing.
+function why(text: string): string {
+  const key = ioWhyKey(text);
+  return key ? get(t)(key) : "";
+}
 
 /// When a reminder goes off, exactly as the core's `Trigger` says it: a signed
 /// number of seconds from one end of the event (negative is before, which is
@@ -400,11 +407,11 @@ function refusal(e: unknown): string {
     case "no-home":
       return write("cal.create.noHome");
     case "cannot-make-dir":
-      return write("cal.create.cannotMakeDir", { why: p.why });
+      return write("cal.create.cannotMakeDir", { why: why(p.why) });
     case "bad-date":
       return write("cal.create.badDate");
     case "not-written":
-      return write("cal.create.notWritten", { why: p.why });
+      return write("cal.create.notWritten", { why: why(p.why) });
     default:
       // A tag this does not know: the sentence says what happened and nothing
       // more, because the alternative is `[object Object]` on the surface. The
@@ -435,11 +442,11 @@ function colorRefusal(e: unknown): string {
     case "no-such-calendar":
       return write("cal.color.noSuchCalendar");
     case "unreadable":
-      return write("cal.color.unreadable", { why: p.why });
+      return write("cal.color.unreadable", { why: why(p.why) });
     case "bad-color":
       return write("cal.color.badColor");
     case "not-written":
-      return write("cal.color.notWritten", { why: p.why });
+      return write("cal.color.notWritten", { why: why(p.why) });
     default:
       console.warn("calendar: unrecognised colour refusal", e);
       return write("cal.color.failed");
@@ -464,13 +471,13 @@ function editRefusal(e: unknown): string {
     case "no-such-calendar":
       return write("cal.edit.noSuchCalendar");
     case "unreadable":
-      return write("cal.edit.unreadable", { why: p.why });
+      return write("cal.edit.unreadable", { why: why(p.why) });
     case "bad-scope":
       return write("cal.edit.badScope");
     case "not-aimed":
       return write("cal.edit.notAimed");
     case "not-written":
-      return write("cal.edit.notWritten", { why: p.why });
+      return write("cal.edit.notWritten", { why: why(p.why) });
     default:
       console.warn("calendar: unrecognised edit refusal", e);
       return write("cal.edit.failed");

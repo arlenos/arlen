@@ -11,6 +11,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { ioWhyKey } from "$lib/io-why";
   import {
     SidebarProvider,
     SidebarInset,
@@ -300,6 +301,12 @@
       /* no window in standalone */
     }
   }
+
+  /// The host's errno text as a sentence of the reader's, or nothing.
+  const whyText = (text: string): string => {
+    const key = ioWhyKey(text);
+    return key ? $t(key) : "";
+  };
 </script>
 
 <svelte:window onkeydown={globalKeys} />
@@ -413,7 +420,7 @@
         <p class="note bad" role="alert">
           {#if failure.problem === "launch"}{$t("cal.failed.launch")}
           {:else if failure.problem === "no-home"}{$t("cal.failed.noHome")}
-          {:else if failure.problem === "unreadable"}{$t("cal.failed.unreadable", { why: failure.why })}
+          {:else if failure.problem === "unreadable"}{$t("cal.failed.unreadable", { why: whyText(failure.why) })}
           {:else}{$t("cal.failed.other")}{/if}
         </p>
       {:else if $agenda}
@@ -429,9 +436,9 @@
           <p class="note bad" role="alert">
             {#if kept.problem.problem === "not-a-file"}{$t("cal.keep.notAFile")}
             {:else if kept.problem.problem === "no-home"}{$t("cal.keep.noHome")}
-            {:else if kept.problem.problem === "cannot-make-dir"}{$t("cal.keep.cannotMakeDir", { why: kept.problem.why })}
+            {:else if kept.problem.problem === "cannot-make-dir"}{$t("cal.keep.cannotMakeDir", { why: whyText(kept.problem.why) })}
             {:else if kept.problem.problem === "already-kept"}{$t("cal.keep.alreadyKept", { name: kept.problem.name })}
-            {:else if kept.problem.problem === "copy-failed"}{$t("cal.keep.copyFailed", { why: kept.problem.why })}
+            {:else if kept.problem.problem === "copy-failed"}{$t("cal.keep.copyFailed", { why: whyText(kept.problem.why) })}
             <!-- The else used to BE the copy-failed sentence, which was right for
                  exactly as long as copy-failed stayed the only unhandled reason:
                  the next variant added to the host would have been reported as a
