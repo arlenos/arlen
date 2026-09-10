@@ -151,6 +151,21 @@ for spec in "$@"; do
   esac
   before="$(printf '%s' "$got" | sed -n "s/.*before=\[\([^]]*\)\].*/\1/p")"
   after="$(printf '%s' "$got" | sed -n "s/.*after=\[\([^]]*\)\].*/\1/p")"
+  # A MODAL THAT DOES NOT HOLD THE KEYBOARD, which is the second failure this
+  # sweep can name and the one that was found by adding a reading rather than by
+  # pressing a key. `aria-modal="true"` tells a screen reader the rest of the
+  # page is not there; focus sitting on `body` while that is on screen leaves the
+  # reader's cursor in the region it was just told to ignore, and the next Tab
+  # starts at the top of the document behind the dialog. Two of the three
+  # Settings dialogs answered exactly that on 11 September.
+  #
+  # ONLY FOR A MODAL. A popover claims nothing about the rest of the page, and
+  # leaving focus where it was is the ordinary behaviour for one, so the rule
+  # would be wrong for the ten shell rows. NOT evaluated over the control page:
+  # its planted dialogs are static markup with no focus management at all, and
+  # that page's job is to prove the probe answers, not to model a correct one.
+  modal="$(printf '%s' "$got" | sed -n "s/.*modal=\([a-z]*\).*/\1/p")"
+  focus_before="$(printf '%s' "$got" | sed -n "s/.*focusBefore=\([^\"]*\).*/\1/p")"
   if [ -z "$before" ]; then
     echo "  opened none  $spec"
     echo "       the click landed and no overlay was on screen, so this row proves nothing"
@@ -158,6 +173,11 @@ for spec in "$@"; do
   elif [ -n "$after" ]; then
     echo "  still open   $spec"
     echo "       after Escape: $after"
+    fail=1
+  elif [ "$modal" = "true" ] && [ "$focus_before" = "body" ]; then
+    echo "  no keyboard  $spec"
+    echo "       a modal was open and focus was still on body, so a reader tabbing"
+    echo "       from there starts at the top of the page behind it"
     fail=1
   else
     echo "  ok   $spec"
