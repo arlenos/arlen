@@ -38,6 +38,13 @@ own_display() {
   shift
   local base=$(( 90 + ($$ % 60) ))
   local try n rc
+  # THE CALLER'S `set -e` IS THE CALLER'S. Turning errexit off to read the exit
+  # code and then switching it back ON unconditionally would hand it to every
+  # script that did not ask for it - `window-title.sh` and `test-shoot-width.sh`
+  # both run under `set -uo pipefail` on purpose, and everything after their
+  # render would suddenly start exiting on a non-zero. Saved and restored instead.
+  local had_e=0
+  case "$-" in *e*) had_e=1 ;; esac
   for try in 0 1 2 3 4 5 6 7; do
     n=$(( base + try ))
     if [ -e "/tmp/.X${n}-lock" ]; then
@@ -46,7 +53,9 @@ own_display() {
     set +e
     xvfb-run -n "$n" --server-args="$server_args" "$@"
     rc=$?
-    set -e
+    if [ "$had_e" -eq 1 ]; then
+      set -e
+    fi
     if [ "$rc" -ne 2 ]; then
       return "$rc"
     fi
