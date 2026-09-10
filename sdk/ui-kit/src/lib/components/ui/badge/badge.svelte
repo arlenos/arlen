@@ -22,7 +22,15 @@
 				default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
 				secondary: "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
 				destructive: "bg-destructive/10 [a]:hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 text-destructive dark:bg-destructive/20",
-				success: "bg-[color-mix(in_srgb,var(--color-success)_14%,transparent)] text-[var(--color-success)]",
+				// THE TEXT IS PULLED TOWARD THE PAGE FOREGROUND, not left at the raw
+				// token: `--color-success` on its own 14% tint measured 4.25:1
+				// (#16a34a on #193029) where WCAG AA wants 4.5:1 at this size, so a
+				// "Connected" or "Granted" badge was the least readable thing in its
+				// own row. Mixing toward `--foreground` keeps the hue and gains
+				// luminance in BOTH themes, since the foreground is by definition
+				// what contrasts with the surface.
+				success:
+					"bg-[color-mix(in_srgb,var(--color-success)_14%,transparent)] text-[color-mix(in_srgb,var(--color-success)_76%,var(--foreground))]",
 				warn: "bg-[color-mix(in_srgb,var(--color-warning)_16%,transparent)] text-[var(--color-warning)]",
 				outline: "bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] text-[color-mix(in_srgb,var(--foreground)_75%,transparent)] [a]:hover:bg-[color-mix(in_srgb,var(--foreground)_13%,transparent)]",
 				ghost: "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",

@@ -75,6 +75,9 @@
 
   .unit {
     font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    /* 45% measured 4.35:1 on a card (#7d7d7d on #171717), just under the 4.5:1
+       WCAG AA wants at this size - and this is the label that says whether the
+       number beside it is pixels, percent or seconds. */
+    color: color-mix(in srgb, var(--foreground) 62%, transparent);
   }
 </style>

@@ -111,6 +111,10 @@
   .wp-inline-hint {
     margin-inline-start: auto;
     font-size: var(--text-2xs);
-    opacity: 0.35;
+    /* 0.35 measured 3.11:1 against the launcher's card (#6a6a6a on #1d1d1d) and
+       WCAG AA wants 4.5:1 for text this size. The hint says which key copies the
+       result - the one instruction on the surface - so it is the last thing that
+       should be the faintest. Raised until axe measured it clear. */
+    opacity: 0.62;
   }
 </style>
