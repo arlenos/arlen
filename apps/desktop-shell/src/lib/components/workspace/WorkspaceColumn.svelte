@@ -74,8 +74,25 @@
     activateWorkspace(ws.id);
     closeOverlayAndCollapse();
   }
+
+  /// The header control's own press. It stops the click reaching the container,
+  /// which would run `handleColumnClick` for the same action a second time.
+  function handleHeadClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (performance.now() - drag.lastDropTime < 300) return;
+    activateWorkspace(ws.id);
+    closeOverlayAndCollapse();
+  }
 </script>
 
+<!-- A CONTAINER, not a control (design-system.md 6.13). This was a
+     `role="button" tabindex="0"` div with the window cards - real buttons -
+     inside it, which is a control inside a control, and a keyboard landing on
+     the outer one had no way to tell what it had reached. The switch action now
+     has a control of its own: the header button below. The container keeps its
+     click handler because the whole card is a mouse target for the same action,
+     which is the ordinary clickable-card shape - the button is what the action
+     IS, the card area is a bigger place to hit it. -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
@@ -83,25 +100,31 @@
   class:ws-column-active={ws.active}
   class:ws-column-drop-target={isDropTarget}
   class:ws-column-drop-hover={isDropTarget && drag.dragOverWs === ws.id}
-  role="button"
-  tabindex="0"
-  aria-label={fullLabel(ws, index)}
   data-ws-id={ws.id}
   onclick={handleColumnClick}
 >
-  <div class="ws-number">{index + 1}</div>
-  <!-- Project label: populated by `projectPerWorkspace` when
-       a majority of this workspace's windows map to the
-       same project in the knowledge graph. Empty placeholder
-       keeps the column's vertical rhythm stable when the
-       label is absent (no project majority / graph daemon
-       offline / empty workspace). Guard with `?.` in case
-       the derived store is transiently undefined during
-       component mount — would only happen in pathological
-       HMR states but costs nothing to be explicit. -->
-  <div class="ws-project">
-    {$projectPerWorkspace?.get(ws.id)?.name ?? ""}
-  </div>
+  <!-- The switch-to-this-workspace control. It carries the whole card's name,
+       because that is what pressing it does. -->
+  <button
+    type="button"
+    class="ws-head"
+    aria-label={fullLabel(ws, index)}
+    onclick={handleHeadClick}
+  >
+    <span class="ws-number">{index + 1}</span>
+    <!-- Project label: populated by `projectPerWorkspace` when
+         a majority of this workspace's windows map to the
+         same project in the knowledge graph. Empty placeholder
+         keeps the column's vertical rhythm stable when the
+         label is absent (no project majority / graph daemon
+         offline / empty workspace). Guard with `?.` in case
+         the derived store is transiently undefined during
+         component mount — would only happen in pathological
+         HMR states but costs nothing to be explicit. -->
+    <span class="ws-project">
+      {$projectPerWorkspace?.get(ws.id)?.name ?? ""}
+    </span>
+  </button>
 
   <!--
     Active-windows section: top ~75% of each workspace card. Drop
@@ -254,6 +277,25 @@
   .ws-column-drop-hover {
     border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+
+  /* The header control, painted by the card around it. */
+  .ws-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .ws-head:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--color-accent);
+    border-radius: 6px;
   }
 
   .ws-number {
