@@ -16,6 +16,8 @@
   import { publishPresence, recordSave } from "$lib/graphInput";
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
   import { t, dir } from "$lib/i18n/messages";
+  import { kt } from "@arlen/ui-kit/i18n/messages.kit";
+  import { ioWhyKey } from "@arlen/ui-kit/io-why";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
@@ -206,9 +208,13 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
           ? $t("te.print.noPortal")
           : p.key === "te.print.noBus"
             ? $t("te.print.noBus")
+            : p.key === "te.print.refused"
+              ? $t("te.print.refused")
             : p.key === "te.print.fileUnreadable"
-              ? $t("te.print.fileUnreadable", { message: p.detail })
-              : $t("te.print.failed", { reason: p.detail });
+              ? $t("te.print.fileUnreadable")
+              : $t("te.print.failed");
+      // The plugin's own text is for whoever reads the console, never the page.
+      if (p.key === "te.print.failed") console.warn("text-editor: the print did not start", p.detail);
     }
   }
   // A launch file names the window even when it failed to open: the alternative
@@ -295,6 +301,12 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
       // Same guard as above.
     }
   }
+
+  /// The host's errno text as a sentence of the reader's, or nothing.
+  const whyText = (text: string): string => {
+    const key = ioWhyKey(text);
+    return key ? $kt(key) : "";
+  };
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -405,7 +417,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
           <p class="of-detail">
             {#if $openError.problem === "not-absolute"}{$t("te.open.notAbsolute")}
             {:else if $openError.problem === "not-text"}{$t("te.open.notText")}
-            {:else if $openError.problem === "unreadable"}{$t("te.open.unreadable", { why: $openError.why })}
+            {:else if $openError.problem === "unreadable"}{$t("te.open.unreadable", { why: whyText($openError.why) })}
             {:else}{$t("te.open.otherReason")}{/if}
           </p>
         </div>
