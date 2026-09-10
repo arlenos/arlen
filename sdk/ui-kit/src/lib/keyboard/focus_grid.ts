@@ -19,10 +19,12 @@
 ///   Escape          → close (caller subscribes)
 ///
 /// Vim aliases are aliases, not modal: hjkl always navigate when the
-/// grid has focus. Slider cells that want to consume h/j/k/l for value
-/// adjustment opt in via `setSliderMode(true)` while focused; the hook
-/// then treats arrow/vim keys as range-input adjustments instead of
-/// grid traversals.
+/// grid has focus. Slider cells opt in via `setSliderMode(true)` while
+/// focused, and then the HORIZONTAL keys - h, l, Left, Right - flow
+/// through to the range input instead of moving the cursor. The vertical
+/// ones keep moving between rows, because the sliders here are
+/// horizontal and a person on j still means "the tile below". (This
+/// paragraph said "h/j/k/l" until a test asked what Down does.)
 
 import type { Action } from "svelte/action";
 
