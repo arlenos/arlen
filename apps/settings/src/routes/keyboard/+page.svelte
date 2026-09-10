@@ -265,18 +265,24 @@
     {#if loadError}
       <Notice tone="error" class="span-full" text={$t("s.kbd.loadFailed")} />
     {/if}
-    <fieldset class="unreadable-gate" disabled={loadError !== null}>
-  <!-- Navigation card pointing at the shortcut editor. Hash anchors
-       the Keyboard category so users landing here from a `Configure
-       switch shortcut` link see the relevant bindings. -->
-  <LinkCard
-    href="/keyboard/shortcuts#cat-keyboard"
-    title={$t("s.kbd.shortcuts")}
-    description={$t("s.kbd.shortcutsDesc")}
-  >
-    {#snippet icon()}<KeyboardIcon size={20} strokeWidth={1.75} />{/snippet}
-  </LinkCard>
+    <!-- Navigation card pointing at the shortcut editor. Hash anchors
+         the Keyboard category so users landing here from a `Configure
+         switch shortcut` link see the relevant bindings.
 
+         OUTSIDE the gate below, because a link is not a form control: a
+         disabled fieldset never disabled it, so sitting inside one said
+         something the markup did not do. It also leaves the page with
+         something to focus when the read failed, which is what lets a
+         keyboard reach the rest of a refused page at all. -->
+    <LinkCard
+      href="/keyboard/shortcuts#cat-keyboard"
+      title={$t("s.kbd.shortcuts")}
+      description={$t("s.kbd.shortcutsDesc")}
+    >
+      {#snippet icon()}<KeyboardIcon size={20} strokeWidth={1.75} />{/snippet}
+    </LinkCard>
+
+    <fieldset class="unreadable-gate" disabled={loadError !== null}>
   {#if lastError}
     <Notice tone="error" class="span-full" text={$t("s.kbd.saveFailed")} />
   {/if}
