@@ -19,12 +19,12 @@
 ///   Escape          → close (caller subscribes)
 ///
 /// Vim aliases are aliases, not modal: hjkl always navigate when the
-/// grid has focus. Slider cells opt in via `setSliderMode(true)` while
-/// focused, and then the HORIZONTAL keys - h, l, Left, Right - flow
-/// through to the range input instead of moving the cursor. The vertical
-/// ones keep moving between rows, because the sliders here are
+/// grid has focus. When a SLIDER has focus the HORIZONTAL keys - h, l,
+/// Left, Right - flow through to it instead of moving the cursor. The
+/// vertical ones keep moving between rows, because the sliders here are
 /// horizontal and a person on j still means "the tile below". (This
-/// paragraph said "h/j/k/l" until a test asked what Down does.)
+/// paragraph said "h/j/k/l" until a test asked what Down does, and said
+/// the cell opts in until it turned out nothing ever did.)
 
 import type { Action } from "svelte/action";
 
@@ -33,6 +33,13 @@ export interface GridCell {
   el: HTMLElement;
   /// Column span: 1 (default) or 2 (full row).
   spanCols?: 1 | 2;
+  /// The subtree that counts as being "in" this cell, when that is wider than
+  /// the element the arrows focus. A quick-settings tile is a container holding
+  /// two controls (design-system.md 6.13): the arrows land on the primary one,
+  /// and focus sitting on the detail control beside it is still this cell, so
+  /// the next arrow moves to the neighbouring tile rather than doing nothing.
+  /// Defaults to `el`.
+  group?: HTMLElement;
 }
 
 export interface FocusGridOptions {
@@ -56,11 +63,25 @@ export interface FocusGridOptions {
 export interface FocusGridApi {
   /// Move keyboard focus to cell `i`. No-op for out-of-range indices.
   focus: (i: number) => void;
-  /// Tell the grid that the focused cell wants h/j/k/l to flow through
-  /// to its own range input. Slider tiles call this on focusin.
-  setSliderMode: (active: boolean) => void;
   /// Detach handlers; called on component unmount.
   destroy: () => void;
+}
+
+/// Whether the horizontal keys belong to what has focus rather than to the grid.
+///
+/// This was an out-of-band flag a slider tile was supposed to set on focus, and
+/// nothing in the tree ever called it - so a person who tabbed onto the volume
+/// slider pressed Right and moved to the next tile instead of turning the volume
+/// up, because the grid absorbed the key on the way past. Reading the focused
+/// element answers the same question and cannot be forgotten by a caller.
+function focusOwnsHorizontal(): boolean {
+  const active = document.activeElement as HTMLElement | null;
+  if (!active) return false;
+  if (active.getAttribute("role") === "slider") return true;
+  return (
+    active.tagName === "INPUT" &&
+    (active as HTMLInputElement).type === "range"
+  );
 }
 
 /// Compute (row, col) for a cell index given the cell list. Two-column
@@ -123,7 +144,10 @@ function lastIndex(cells: GridCell[]): number {
 function activeIndex(cells: GridCell[]): number {
   const active = document.activeElement;
   if (!active) return -1;
-  return cells.findIndex((c) => c.el === active || c.el.contains(active));
+  return cells.findIndex((c) => {
+    const region = c.group ?? c.el;
+    return region === active || region.contains(active);
+  });
 }
 
 /// Attach grid keyboard handling to a container. Returns an API that
@@ -132,7 +156,6 @@ export function attachFocusGrid(
   container: HTMLElement,
   options: FocusGridOptions,
 ): FocusGridApi {
-  let sliderMode = false;
   let lastG = 0;
 
   const focus = (i: number) => {
@@ -152,14 +175,18 @@ export function attachFocusGrid(
       return;
     }
 
-    // Escape: caller-controlled; never absorbed when in slider-mode.
+    const sliderMode = focusOwnsHorizontal();
+
+    // Escape: caller-controlled; never absorbed while a slider has focus.
     if (e.key === "Escape" && !sliderMode) {
       options.onEscape?.();
       return;
     }
 
-    // While slider-mode is active, h/j/k/l + arrows flow to the slider
-    // input, not the grid. Tab still moves focus.
+    // While a slider has focus, h/l and the horizontal arrows flow to it rather
+    // than moving the cursor. The vertical ones keep moving between rows,
+    // because these sliders are horizontal and a person on j still means "the
+    // tile below". Tab still moves focus.
     if (sliderMode && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "h" || e.key === "l")) {
       return;
     }
@@ -246,9 +273,6 @@ export function attachFocusGrid(
 
   return {
     focus,
-    setSliderMode: (active) => {
-      sliderMode = active;
-    },
     destroy: () => {
       container.removeEventListener("keydown", onKey);
     },
