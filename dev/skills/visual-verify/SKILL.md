@@ -88,6 +88,35 @@ you just edited.
 They ask genuinely different questions and a layout change can pass any two. They are also all blind to
 legibility: `overflow-wrap: anywhere` clears every one of them and renders a name one letter per line.
 
+## A probe of your own can be wrong, and the thing it contradicts can be right
+
+axe said the Settings content scroller had no keyboard access. A probe I wrote counted **13 tabbable controls
+inside it** - visible, `tabIndex` 0, each with a client rect - so I called axe wrong and nearly shipped a
+`tabindex="0"` on the container to silence it.
+
+Between the controls and the scroller sat a `<fieldset disabled>`. A disabled fieldset disables every form
+control under it, and **`button.disabled` still reads `false` in that state** (the IDL property reflects the
+element's own attribute, not the fieldset's) and `tabIndex` still reads 0. The browser will not focus any of
+them. axe was right and my count was measuring the wrong thing.
+
+Two lessons, and the second is the one that generalises:
+
+- Ask `element.matches(":disabled")`, not `element.disabled`, when you want to know whether a control can be
+  operated. The same goes for `[inert]` ancestors.
+- When a probe you wrote disagrees with a tool the whole industry uses, the probe is the more likely to be
+  wrong. Build the minimal page that should reproduce it before you believe yourself: mine passed, which is
+  what said the engine was not simply blind to the shape and sent me looking at the page instead.
+
+## A dev fixture cannot escape the app's layout
+
+`_sidebartest` mounted its own `FmSidebar` to photograph it. A SvelteKit page is a child of the root layout
+and there is no way out of the root, so the layout's sidebar was already on the page and the route rendered
+**two of them** - two identical landmarks a reader cannot tell apart, and a picture of a rail that does not
+exist in the running app. Every shot that route ever produced was of something nobody ships.
+
+A fixture route that wants to photograph a thing the layout already mounts should seed the STORES and let the
+real one render. It is also the truer test: what ships is what gets measured.
+
 ## Host fixtures: seeing the state no route reaches
 
 Most of what a surface says only appears when something goes wrong - a refused write, an expired grant, a
@@ -167,6 +196,12 @@ sweep for days.
   answer should be. The morning's run of the same table had none of that. **While an app is being swept, work
   in a different app or in `docs/`** - and if you did write into it, the run is void, like a render that lost
   its display.
+
+  **A one-word string change is enough**, which is how the rule caught me a second time on 11 September: a
+  settings sweep was reading a German clip out of a message catalogue, so I shortened the string in
+  `messages.b.ts` while the sweep was still walking the table. That is a module every page imports. The run
+  after that edit was reporting on a mixture of two catalogues, and the only honest thing to do with it was
+  kill it and start again. **Collect the findings, finish the sweep, then edit.**
 
 - **And two runs fought over one DISPLAY, which is the half that hurts.** `xvfb-run -a` looks for a free
   display and then creates its lock, and those two steps are not atomic - so two renders starting together can
