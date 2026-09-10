@@ -48,7 +48,9 @@
     tooltip,
     tooltipInstant = false,
     popoverOpen = false,
-    state,
+    // Renamed locally: a binding called `state` in scope makes `$state(...)`
+    // ambiguous with a store read, and this component needs the rune.
+    state: appletState,
     dimmed = false,
     disabled = false,
     appletId,
@@ -127,7 +129,20 @@
   });
 
   const accessibleName = $derived(ariaLabel ?? tooltip ?? label ?? "");
-  const showTooltip = $derived(!!tooltip && !popoverOpen);
+
+  // THE BUTTON MUST NOT BE REBUILT WHEN THE PANEL OPENS, and it used to be. This
+  // branched on `!!tooltip && !popoverOpen`, so opening the panel moved the
+  // button out of `Tooltip.Trigger` and into the bare branch - a different DOM
+  // node. The focused element was therefore removed from the document and focus
+  // fell to `body`: press an applet with the keyboard and the cursor is nowhere,
+  // both on the way in and on the way out. Measured on 11 September, six of the
+  // ten top-bar panels answering `restored=false` where every dialog in the tree
+  // answers `true`.
+  //
+  // So the structure now branches on whether there IS a tooltip - a fact about
+  // the applet that does not change while it is on screen - and the panel being
+  // open closes the tooltip through its state instead of through the DOM.
+  const hasTooltip = $derived(!!tooltip);
 </script>
 
 {#snippet body()}
@@ -137,11 +152,11 @@
     class:has-label={!!label || !!labelSnippet}
     class:popover-open={popoverOpen}
     class:dimmed
-    class:state-on={state === "on"}
-    class:state-off={state === "off"}
-    class:state-connecting={state === "connecting"}
-    class:state-warn={state === "warn"}
-    class:state-error={state === "error"}
+    class:state-on={appletState === "on"}
+    class:state-off={appletState === "off"}
+    class:state-connecting={appletState === "connecting"}
+    class:state-warn={appletState === "warn"}
+    class:state-error={appletState === "error"}
     aria-label={accessibleName}
     aria-pressed={popoverOpen}
     data-applet-id={appletId}
@@ -172,8 +187,8 @@
   </button>
 {/snippet}
 
-{#if showTooltip}
-  <Tooltip.Root instant={tooltipInstant}>
+{#if hasTooltip}
+  <Tooltip.Root instant={tooltipInstant} suppressed={popoverOpen}>
     <Tooltip.Trigger>
       {@render body()}
     </Tooltip.Trigger>
