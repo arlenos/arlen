@@ -844,11 +844,29 @@ fn detect_toolkit_prereqs(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolkitReachView {
-    /// `"ours"`, `"blocked"` or `"absent"`.
+    /// `"ours"`, `"blocked"`, `"absent"`, `"unselected"`, and for wine alone
+    /// `"count"`, `"none"` or `"unknown"`.
     pub state: String,
     /// The file in the way, when one is. Named because a reader who is told
     /// "blocked" and not by what has to go looking.
     pub blocked_by: Option<String>,
+    /// **Wine only, and the reason this struct carries a number at all.** The
+    /// other five toolkits answer one machine-wide question, because there is
+    /// one GTK and one Qt on a machine. Wine has as many answers as there are
+    /// bottles, and flattening that to in-place-or-not would be a worse lie than
+    /// the blank the row used to show. `wearing` of `bottles`; both `None`
+    /// everywhere else.
+    pub wearing: Option<usize>,
+    /// How many bottles exist. Zero is the `"none"` state - a person with no
+    /// Windows apps has nothing wrong with their machine.
+    pub bottles: Option<usize>,
+}
+
+impl ToolkitReachView {
+    /// A state that answers for the whole machine, which is every toolkit but wine.
+    fn plain(state: &str, blocked_by: Option<String>) -> Self {
+        Self { state: state.into(), blocked_by, wearing: None, bottles: None }
+    }
 }
 
 /// Which widget theme GTK3 apps will actually be in, if anything says.
@@ -886,6 +904,88 @@ fn selected_gtk_theme() -> Option<String> {
 /// did not write - correctly - and then the theme reaches nothing there while
 /// the badge still reads "full". Read-only: it opens the handful of files the
 /// apply targets and looks at the first line.
+/// How many bottles are wearing the current theme, out of how many exist.
+///
+/// **Wine is the one row of six that could show nothing**, because the other
+/// five are files on this machine and wine is a registry document imported into
+/// a prefix, one bottle at a time. `bottled` already owns the exact test: the
+/// document left in a prefix records what was last imported, so comparing it
+/// with the one the active theme resolves to answers "is this bottle wearing
+/// this theme" byte for byte - not a timestamp or a version, both of which go
+/// wrong in the direction that matters (a theme edited back to what it was bumps
+/// a stamp; a restored backup keeps an old file with a new one).
+///
+/// Read-only and cheap: a directory listing, one theme resolve, and a file read
+/// per bottle.
+///
+/// THREE ANSWERS, and the middle one is the point. No bottles at all is `none` -
+/// an empty state, not a failure, because a person with no Windows apps has
+/// nothing wrong with their machine. Bottles give `count`. A theme that will not
+/// resolve, or a bottles directory that will not list, is `unknown` rather than
+/// a zero that would read as "none of them".
+fn wine_reach() -> ToolkitReachView {
+    let Some(data_home) = dirs::data_dir() else {
+        return wine_reach_over(None, None);
+    };
+    let bottles_dir = arlen_wine_core::registry::bottles_dir(&data_home);
+    let Ok(listing) = arlen_wine_core::registry::list_bottles(&bottles_dir) else {
+        return wine_reach_over(None, None);
+    };
+    // The bottle's OWN recorded prefix, not one rebuilt from its id: a bottle
+    // that lives somewhere else is still the bottle whose theme is being asked
+    // about.
+    let prefixes: Vec<std::path::PathBuf> =
+        listing.bottles.iter().map(|b| b.prefix_root.clone()).collect();
+    let document = arlen_theme::ArlenTheme::resolve_active(Some(arlen_theme::Toolkit::Wine))
+        .ok()
+        // The same document `bottled` would import, generated the same way, or
+        // the comparison would be against text nobody writes.
+        .map(|t| arlen_theme::wine::generate_wine_reg(&t, 1.0));
+    wine_reach_over(Some(&prefixes), document.as_deref())
+}
+
+/// The pure half: how many of these prefixes already hold this document.
+///
+/// `None` for either argument is the unknown case - the bottles could not be
+/// listed, or the active theme did not resolve - and it is reported rather than
+/// counted as zero, which would read as "none of them are wearing it".
+fn wine_reach_over(prefixes: Option<&[std::path::PathBuf]>, document: Option<&str>) -> ToolkitReachView {
+    let Some(prefixes) = prefixes else {
+        return ToolkitReachView {
+            state: "unknown".into(),
+            blocked_by: None,
+            wearing: None,
+            bottles: None,
+        };
+    };
+    if prefixes.is_empty() {
+        return ToolkitReachView {
+            state: "none".into(),
+            blocked_by: None,
+            wearing: Some(0),
+            bottles: Some(0),
+        };
+    }
+    let Some(document) = document else {
+        return ToolkitReachView {
+            state: "unknown".into(),
+            blocked_by: None,
+            wearing: None,
+            bottles: Some(prefixes.len()),
+        };
+    };
+    let wearing = prefixes
+        .iter()
+        .filter(|pfx| !arlen_wine_core::theme::needs_import(pfx, document))
+        .count();
+    ToolkitReachView {
+        state: "count".into(),
+        blocked_by: None,
+        wearing: Some(wearing),
+        bottles: Some(prefixes.len()),
+    }
+}
+
 #[tauri::command]
 pub fn theme_toolkit_reach() -> std::collections::BTreeMap<String, ToolkitReachView> {
     let Some(config) = dirs::config_dir() else {
@@ -907,40 +1007,29 @@ pub fn theme_toolkit_reach() -> std::collections::BTreeMap<String, ToolkitReachV
             // widget theme and only GTK3 has one of ours to name. A GTK4 or Qt
             // app is not steered by it.
             if k == "gtk3" && !selection_is_ours {
-                return (
-                    k,
-                    ToolkitReachView {
-                        // Its own state, not "blocked": the file case is a file
-                        // the person wrote and the sentence says so, while this
-                        // one is a theme NAME and the same sentence would read
-                        // "your own Adwaita is in the way".
-                        state: "unselected".into(),
-                        blocked_by: selected.clone(),
-                    },
-                );
+                // Its own state, not "blocked": the file case is a file the
+                // person wrote and the sentence says so, while this one is a
+                // theme NAME and the same sentence would read "your own Adwaita
+                // is in the way".
+                return (k, ToolkitReachView::plain("unselected", selected.clone()));
             }
             let view = match v {
-                arlen_theme::apply::ToolkitReach::Ours => ToolkitReachView {
-                    state: "ours".into(),
-                    blocked_by: None,
-                },
-                arlen_theme::apply::ToolkitReach::Blocked(path) => ToolkitReachView {
-                    state: "blocked".into(),
+                arlen_theme::apply::ToolkitReach::Ours => ToolkitReachView::plain("ours", None),
+                arlen_theme::apply::ToolkitReach::Blocked(path) => ToolkitReachView::plain(
+                    "blocked",
                     // The name alone, not the whole path: the reader knows where
                     // their own config lives and the row has one line.
-                    blocked_by: Some(
+                    Some(
                         path.file_name()
                             .map(|n| n.to_string_lossy().into_owned())
                             .unwrap_or_else(|| path.display().to_string()),
                     ),
-                },
-                arlen_theme::apply::ToolkitReach::Absent => ToolkitReachView {
-                    state: "absent".into(),
-                    blocked_by: None,
-                },
+                ),
+                arlen_theme::apply::ToolkitReach::Absent => ToolkitReachView::plain("absent", None),
             };
             (k, view)
         })
+        .chain(std::iter::once(("wine".to_string(), wine_reach())))
         .collect()
 }
 
@@ -1437,6 +1526,58 @@ mod tests {
         assert!(qt6ct_configured(None, true), "a present qt6ct.conf");
         assert!(!qt6ct_configured(Some("gtk3"), false), "neither");
         assert!(!qt6ct_configured(None, false), "neither");
+    }
+
+    /// A prefix that holds a given document, the way `bottled` leaves one behind
+    /// after an import.
+    fn prefix_wearing(root: &std::path::Path, document: &str) -> std::path::PathBuf {
+        let pfx = root.join("pfx");
+        std::fs::create_dir_all(pfx.join("drive_c")).unwrap();
+        std::fs::write(pfx.join("drive_c").join("arlen-theme.reg"), document).unwrap();
+        pfx
+    }
+
+    #[test]
+    fn no_bottles_is_an_empty_state_and_not_a_failure() {
+        let got = wine_reach_over(Some(&[]), Some("anything"));
+        assert_eq!(got.state, "none");
+        assert_eq!(got.bottles, Some(0));
+        assert_eq!(got.wearing, Some(0));
+    }
+
+    #[test]
+    fn a_bottle_holding_this_document_is_wearing_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let doc = "REGEDIT4\r\n\r\n[HKEY_CURRENT_USER\\Control Panel\\Colors]\r\n";
+        let worn = prefix_wearing(&tmp.path().join("a"), doc);
+        // Same shape, different theme: the comparison is the document itself.
+        let stale = prefix_wearing(&tmp.path().join("b"), "REGEDIT4\r\n");
+        // Never imported at all.
+        let bare = tmp.path().join("c").join("pfx");
+        std::fs::create_dir_all(&bare).unwrap();
+
+        let got = wine_reach_over(Some(&[worn, stale, bare]), Some(doc));
+        assert_eq!(got.state, "count");
+        assert_eq!(got.wearing, Some(1));
+        assert_eq!(got.bottles, Some(3));
+    }
+
+    #[test]
+    fn a_theme_that_will_not_resolve_is_unknown_rather_than_none_of_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pfx = prefix_wearing(tmp.path(), "whatever");
+        let got = wine_reach_over(Some(&[pfx]), None);
+        assert_eq!(got.state, "unknown");
+        // The count it DOES know is still reported: one bottle exists.
+        assert_eq!(got.bottles, Some(1));
+        assert_eq!(got.wearing, None);
+    }
+
+    #[test]
+    fn bottles_that_cannot_be_listed_are_unknown() {
+        let got = wine_reach_over(None, Some("doc"));
+        assert_eq!(got.state, "unknown");
+        assert_eq!(got.bottles, None);
     }
 
     #[test]
