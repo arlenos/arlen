@@ -1,12 +1,13 @@
 <script lang="ts">
   import { t, locale } from "$lib/i18n/messages";
   import { formatDecimal } from "@arlen/ui-kit/i18n";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   /// The Performance tab (Windows-Performance shape): a device list on the left
   /// (name + current value + a mini live sparkline), the selected device's big live
   /// graph + its current figures on the right.
   import Graph from "./Graph.svelte";
   import CoreGrid from "./CoreGrid.svelte";
-  import { series, tick, perfError, axisMax, DEVICES, type Device } from "$lib/stores/perf";
+  import { series, tick, perfError, perfMocked, axisMax, DEVICES, type Device } from "$lib/stores/perf";
 
   let selected = $state<Device>("cpu");
   const sel = $derived(DEVICES.find((d) => d.key === selected) ?? DEVICES[0]);
@@ -152,7 +153,9 @@
      commit that made them real - an exception outlives its reason otherwise. The
      one thing still unmeasured is the AI device, which says so where it renders
      rather than drawing a line. -->
-{#if $perfError}
+{#if $perfMocked}
+  <div class="note-wrap"><Notice tone="neutral" text={$t("tm.perf.sample")} /></div>
+{:else if $perfError}
   <p class="perf-sample" role="alert">{$t("tm.perf.unavailable")}</p>
 {/if}
 
@@ -204,6 +207,9 @@
     margin: 8px 0 0;
   }
 
+  .note-wrap {
+    padding: 8px 12px 0;
+  }
   .perf-sample {
     margin: 0;
     padding: 8px 12px 0;

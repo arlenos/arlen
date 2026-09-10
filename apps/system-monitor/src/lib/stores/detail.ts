@@ -4,9 +4,9 @@
 /// capability scopes it holds with a Revoke right there. The sovereign angle as
 /// per-process detail, not a landing.
 ///
-/// Mock-vs-live: fixture-backed. The real detail (/proc, ss, open files) + the Access
-/// data (rides sdk/system-monitor + the LCG Grant nodes + the audit ledger) + the
-/// revoke are coder seams; under vite this derives a plausible fixture.
+/// Mock-vs-live: statistics, memory and open files are the host's or unmeasured;
+/// the Access data (the LCG Grant nodes + the audit ledger) and the revoke are
+/// coder seams, and only without a host does the hand-keyed table below stand in.
 
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
@@ -90,19 +90,14 @@ export interface ProcAccess {
   reach: string;
   scopes: AccessScope[];
 }
-/// The full per-process detail.
+/// The per-process detail this store still derives itself: the pid, and the
+/// hand-keyed access stand-in below. Statistics, memory and open files come
+/// from the host (`statsFor`, `heldFor`) or are said to be unmeasured; the
+/// invented versions of those (threads as memory divided by forty, context
+/// switches as `1000 + pid * 137`, a GitHub address for anything with traffic)
+/// are gone rather than carried unread.
 export interface ProcDetail {
   pid: number;
-  ppid: number;
-  threads: number;
-  state: string;
-  priority: number;
-  ctxSwitches: number;
-  rssMB: number;
-  pssMB: number;
-  sharedMB: number;
-  openFiles: string[];
-  connections: string[];
   access: ProcAccess;
 }
 
@@ -163,10 +158,17 @@ const DEFAULT_ACCESS: ProcAccess = {
   scopes: [],
 };
 
+/// Nothing measured: what the table and the pane say about a process on a host
+/// until a real reader exists. Never the hand-keyed table, whose rows are
+/// matched on a NAME, so a real process called `knowledge` would inherit the
+/// sample's scopes as its own.
+const UNMEASURED_ACCESS: ProcAccess = { camera: false, mic: false, reach: "", scopes: [] };
+
 /// The sensitive access a process holds, for the process-list Access column:
 /// the physical sensors (camera/mic) + whether it holds knowledge-graph access.
+/// With a host: nothing, because nothing measures it yet and the column says so.
 export function sensorsFor(name: string): { camera: boolean; mic: boolean; knowledge: boolean } {
-  const a = ACCESS[name];
+  const a = tauriAvailable ? undefined : ACCESS[name];
   return {
     camera: a?.camera ?? false,
     mic: a?.mic ?? false,
@@ -174,26 +176,11 @@ export function sensorsFor(name: string): { camera: boolean; mic: boolean; knowl
   };
 }
 
-/// Derive the detail for a process (a fixture; the real data is the sidecar seam).
+/// The detail for a process. Without a host the access is the labelled
+/// stand-in; with one it is unmeasured until the profile reader exists.
 export function detailFor(p: Process): ProcDetail {
-  const lower = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return {
     pid: p.id,
-    ppid: p.group === "system" ? 1 : 1200 + (p.id % 40),
-    threads: Math.max(1, Math.round(p.memMB / 40)),
-    state:
-      p.status === "not-responding" ? "Uninterruptible sleep" : p.status === "suspended" ? "Stopped" : "Running",
-    priority: p.group === "system" ? 0 : 20,
-    ctxSwitches: 1000 + p.id * 137,
-    rssMB: p.memMB,
-    pssMB: Math.round(p.memMB * 0.82),
-    sharedMB: Math.round(p.memMB * 0.18),
-    openFiles: [
-      `/home/tim/.config/arlen/${lower}.toml`,
-      `/proc/${p.id}/status`,
-      `/run/user/1000/arlen/${lower}.sock`,
-    ],
-    connections: p.netKBs > 0 ? ["tcp 140.82.121.4:443 ESTABLISHED", "udp 224.0.0.251:5353 mdns"] : [],
-    access: ACCESS[p.name] ?? DEFAULT_ACCESS,
+    access: tauriAvailable ? UNMEASURED_ACCESS : (ACCESS[p.name] ?? DEFAULT_ACCESS),
   };
 }

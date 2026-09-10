@@ -12,8 +12,11 @@
 /// nothing to subtract from and reports them as zero with `ratesReady` false. The
 /// surface says it is waiting rather than drawing that zero as a measurement.
 ///
-/// There is no fixture on the failure path. If the host cannot be reached the tab
-/// says so; inventing a series here is the exact thing this replaced.
+/// There is no fixture on the failure path: a host that does not answer leaves
+/// the tab saying so, and inventing a series there is the exact thing this
+/// replaced. Without a host at all there is nobody to have refused, and that is
+/// development: the tab draws a labelled sample, deterministic so two renders
+/// agree, under a line that says it is one.
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
@@ -108,6 +111,66 @@ export const tick = writable<SystemTick | null>(null);
 /// Why there are no measurements, when there are none. Null while it is working.
 export const perfError = writable<string | null>(null);
 
+/// True while the series are the SAMPLE, which only happens with no host.
+export const perfMocked = writable(false);
+
+/// The sample's `i`th tick: smooth waves with a phase per device, no randomness.
+/// Sixteen gigabytes, eight cores, one disk, one wireless link.
+export function sampleTick(i: number): SystemTick {
+  const wave = (period: number, phase: number) => (Math.sin((i / period) * Math.PI * 2 + phase) + 1) / 2;
+  const cpuPct = 15 + 50 * wave(23, 0.4);
+  const memPct = 52 + 6 * wave(90, 2.1);
+  const burst = wave(31, 1.3) > 0.85 ? 32 : 0;
+  const diskRead = 1.5 + 4 * wave(17, 0.9) + burst;
+  const diskWrite = 0.5 + 2 * wave(13, 2.6);
+  const netRx = 0.2 + 4 * wave(19, 1.7);
+  const netTx = 0.1 + 0.8 * wave(11, 0.2);
+  const cores = Array.from({ length: 8 }, (_, c) => {
+    const share = cpuPct * (0.6 + 0.8 * wave(7 + c, c));
+    return { user: Math.min(95, share * 0.75), system: Math.min(30, share * 0.2), iowait: burst ? 4 : 0.5 };
+  });
+  return {
+    cpuPct,
+    cpuCount: 8,
+    memPct,
+    memUsedGb: (16 * memPct) / 100,
+    memTotalGb: 16,
+    diskReadMbs: diskRead,
+    diskWriteMbs: diskWrite,
+    netRxMbs: netRx,
+    netTxMbs: netTx,
+    ratesReady: true,
+    memPressure: null,
+    cores,
+    load: { one: 1.2 + wave(40, 0) * 1.5, five: 1.4, fifteen: 1.1, perCore: 0.17 },
+    devices: [{ name: "nvme0n1", readMbs: diskRead, writeMbs: diskWrite }],
+    links: [{ name: "wlan0", rxMbs: netRx, txMbs: netTx }],
+    cpuTempC: { celsius: 46 + 8 * wave(29, 0.8), label: "Package" },
+    coreFreqs: cores.map((c) => 1200 + Math.round(c.user * 28)),
+  };
+}
+
+let sampleIndex = 0;
+
+/// Feed one sample tick through the same path a host tick takes.
+function applyTick(t: SystemTick): void {
+  tick.set(t);
+  perfError.set(null);
+  series.update((s) => ({
+    ...s,
+    cpu: t.ratesReady ? push(s, "cpu", t.cpuPct) : s.cpu,
+    memory: push(s, "memory", t.memPct),
+    disk:
+      t.ratesReady && t.diskReadMbs !== null && t.diskWriteMbs !== null
+        ? push(s, "disk", t.diskReadMbs + t.diskWriteMbs)
+        : s.disk,
+    network:
+      t.ratesReady && t.netRxMbs !== null && t.netTxMbs !== null
+        ? push(s, "network", t.netRxMbs + t.netTxMbs)
+        : s.network,
+  }));
+}
+
 /// The axis ceiling for a device: its floor, or the largest value seen, so a
 /// machine that briefly does 400 MB/s is not drawn flat against a 50 MB/s ceiling
 /// and an idle one is not a flat line at the bottom of a huge scale.
@@ -127,27 +190,10 @@ let rateUnsub: (() => void) | null = null;
 
 async function sample(): Promise<void> {
   try {
-    const t = await invoke<SystemTick>("system_tick");
-    tick.set(t);
-    perfError.set(null);
-    series.update((s) => ({
-      ...s,
-      // Same rule as disk and network: a rate the host could not compute is not a
-      // point on a graph.
-      cpu: t.ratesReady ? push(s, "cpu", t.cpuPct) : s.cpu,
-      memory: push(s, "memory", t.memPct),
-      // A rate the host could not compute yet is not a zero worth drawing.
-      // An unmeasured source contributes no point rather than a zero one: a flat
-      // line at the bottom of the sparkline reads as a quiet disk.
-      disk:
-        t.ratesReady && t.diskReadMbs !== null && t.diskWriteMbs !== null
-          ? push(s, "disk", t.diskReadMbs + t.diskWriteMbs)
-          : s.disk,
-      network:
-        t.ratesReady && t.netRxMbs !== null && t.netTxMbs !== null
-          ? push(s, "network", t.netRxMbs + t.netTxMbs)
-          : s.network,
-    }));
+    // A rate the host could not compute is not a point on a graph, and an
+    // unmeasured source contributes no point rather than a zero one: a flat
+    // line at the bottom of the sparkline reads as a quiet disk (see applyTick).
+    applyTick(await invoke<SystemTick>("system_tick"));
   } catch (e) {
     perfError.set(String(e));
   }
@@ -163,7 +209,13 @@ async function sample(): Promise<void> {
 export function startPerf(): void {
   if (timer) return;
   if (!tauriAvailable) {
-    perfError.set("no host");
+    perfMocked.set(true);
+    // A little history at once, so the graphs are drawn and not just started.
+    for (let k = 0; k < 24; k += 1) applyTick(sampleTick(sampleIndex++));
+    rateUnsub = refreshMs.subscribe((ms) => {
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => applyTick(sampleTick(sampleIndex++)), ms);
+    });
     return;
   }
   void sample();
