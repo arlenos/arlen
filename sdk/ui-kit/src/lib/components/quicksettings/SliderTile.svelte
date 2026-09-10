@@ -64,7 +64,6 @@
   {oncontextmenu}
   {onDetail}
   {detailLabel}
-  tabindex={-1}
 >
   {#snippet headTrailing()}
     <!-- A percentage is a reading. A tile whose backend never answered has a

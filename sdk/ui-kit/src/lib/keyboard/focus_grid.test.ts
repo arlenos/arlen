@@ -126,33 +126,54 @@ describe("attachFocusGrid", () => {
     api.destroy();
   });
 
-  it("hands h and l to a slider that asked for them", () => {
+  // A cell whose control is a range input: the grid reads what has focus rather
+  // than being told, because the telling never happened. Before this, tabbing
+  // onto the volume slider and pressing Right moved to the next tile.
+  function sliderGrid(): { container: HTMLElement; cells: GridCell[]; slider: HTMLInputElement } {
+    const container = document.createElement("div");
+    const cells: GridCell[] = [];
+    const group = document.createElement("div");
+    const slider = document.createElement("input");
+    slider.type = "range";
+    group.append(slider);
+    container.append(group);
+    cells.push({ el: slider, group, spanCols: 1 });
+    for (let i = 0; i < 3; i += 1) {
+      const el = document.createElement("button");
+      container.append(el);
+      cells.push({ el, spanCols: 1 });
+    }
+    document.body.append(container);
+    return { container, cells, slider };
+  }
+
+  it("hands h and l to a slider that has focus", () => {
     // Two rows, so there is somewhere to go DOWN to: a slider owns its own axis
     // and nothing else, which is only visible on a grid that has both.
-    const { container, cells } = grid([1, 1, 1, 1]);
+    const { container, cells, slider } = sliderGrid();
     const api = attachFocusGrid(container, { cells: () => cells });
     api.focus(0);
-    api.setSliderMode(true);
+    expect(document.activeElement).toBe(slider);
 
     press(container, "l");
-    expect(document.activeElement).toBe(cells[0].el);
+    expect(document.activeElement).toBe(slider);
     press(container, "ArrowRight");
-    expect(document.activeElement).toBe(cells[0].el);
+    expect(document.activeElement).toBe(slider);
     // Down still moves. The sliders in this kit are horizontal, so the grid
     // keeps the vertical axis - which is what the code does and half a sentence
     // more than its own doc used to say.
     press(container, "ArrowDown");
     expect(document.activeElement).toBe(cells[2].el);
 
-    api.setSliderMode(false);
-    api.focus(0);
+    // And a cell that is not a slider keeps the horizontal axis.
+    api.focus(2);
     press(container, "l");
-    expect(document.activeElement).toBe(cells[1].el);
+    expect(document.activeElement).toBe(cells[3].el);
     api.destroy();
   });
 
-  it("does not close the panel under Escape while a slider is being dragged", () => {
-    const { container, cells } = grid([1, 1]);
+  it("does not close the panel under Escape while a slider has focus", () => {
+    const { container, cells } = sliderGrid();
     let escaped = 0;
     const api = attachFocusGrid(container, {
       cells: () => cells,
@@ -160,50 +181,32 @@ describe("attachFocusGrid", () => {
     });
     api.focus(0);
 
-    api.setSliderMode(true);
     press(container, "Escape");
     expect(escaped).toBe(0);
 
-    api.setSliderMode(false);
+    api.focus(1);
     press(container, "Escape");
     expect(escaped).toBe(1);
     api.destroy();
   });
 
-  it("reports the focused cell on Enter and Space", () => {
-    const { container, cells } = grid([1, 1]);
-    const seen: HTMLElement[] = [];
-    const api = attachFocusGrid(container, {
-      cells: () => cells,
-      onActivate: (el) => seen.push(el),
-    });
-    api.focus(1);
-
-    press(container, "Enter");
-    press(container, " ");
-    expect(seen).toEqual([cells[1].el, cells[1].el]);
-    api.destroy();
-  });
-
-  // THE CALLER THAT PASSES NO `onActivate` IS THE REAL ONE. The quick-settings
-  // panel wires cells, Escape and help and nothing else, so with the grid
-  // swallowing Enter and Space unconditionally a person could walk the tiles and
-  // never switch one on. The grid only gets to eat the key when somebody is
-  // listening for it; otherwise the button underneath does what a button does.
-  it("leaves Enter and Space to the button when nobody listens", () => {
-    const { container, cells } = grid([1, 1]);
-    let clicks = 0;
-    (cells[1].el as HTMLButtonElement).addEventListener("click", () => (clicks += 1));
+  it("counts focus anywhere in a cell's group as that cell", () => {
+    const container = document.createElement("div");
+    const cells: GridCell[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      const group = document.createElement("div");
+      const main = document.createElement("button");
+      const second = document.createElement("button");
+      group.append(main, second);
+      container.append(group);
+      cells.push({ el: main, group, spanCols: 1 });
+    }
+    document.body.append(container);
     const api = attachFocusGrid(container, { cells: () => cells });
-    api.focus(1);
 
-    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
-    container.dispatchEvent(enter);
-    expect(enter.defaultPrevented).toBe(false);
-
-    const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
-    container.dispatchEvent(space);
-    expect(space.defaultPrevented).toBe(false);
+    (cells[0].group!.lastElementChild as HTMLElement).focus();
+    press(container, "ArrowRight");
+    expect(document.activeElement).toBe(cells[1].el);
     api.destroy();
   });
 

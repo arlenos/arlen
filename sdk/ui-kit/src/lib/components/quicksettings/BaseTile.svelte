@@ -41,7 +41,6 @@
     detailLabel = "",
     headTrailing,
     children,
-    tabindex,
   }: {
     /// Primary tile label, shown above the status subtitle.
     label: string;
@@ -84,40 +83,23 @@
     /// Optional inline content rendered between the head and the
     /// strip. SliderTile embeds its slider here.
     children?: Snippet;
-    /// Focus override for the outer button. SliderTile passes -1:
-    /// its inner slider is the keyboard stop, not the tile body.
-    tabindex?: number;
   } = $props();
 
   const stripAriaLabel = $derived(
     detailLabel || `Open details for ${label}`,
   );
-</script>
 
-<!-- The outer is the focusable primary toggle. The inner detail
-     strip is a div with role="button" + tabindex=-1 so mouse users
-     get the affordance without making focus-grid traversal land on
-     two stops per tile. Keyboard users reach the detail surface via
-     the ContextMenu key (Shift+F10), which fires the same
-     `oncontextmenu` handler. -->
-<button
-  type="button"
-  class="qs-tile"
-  class:active
-  class:size-2x1={size === "2x1"}
-  class:size-2x2={size === "2x2"}
-  class:has-strip={!!statusText}
-  {disabled}
-  {tabindex}
-  onclick={() => onclick?.()}
-  oncontextmenu={(e) => {
+  /// Right-click on either control reaches the same detail surface. Shared so
+  /// the two halves of one tile do not answer the same gesture differently.
+  function onContextMenu(e: MouseEvent): void {
     if (oncontextmenu || onDetail) {
       e.preventDefault();
       (oncontextmenu ?? onDetail)?.();
     }
-  }}
-  aria-pressed={active}
->
+  }
+</script>
+
+{#snippet head()}
   <div class="qs-tile-head">
     {#if icon}
       <span class="qs-tile-icon">{@render icon()}</span>
@@ -129,49 +111,99 @@
       <span class="qs-tile-head-trailing">{@render headTrailing()}</span>
     {/if}
   </div>
+{/snippet}
 
+{#snippet inner()}
   {#if children}
     <div class="qs-tile-body">
       {@render children()}
     </div>
   {/if}
+{/snippet}
 
-  {#if statusText}
-    {#if onDetail}
-      <!-- Interactive strip: chevron + hover-bg + own click target.
-           role=button + aria-label give screen readers an
-           announcement; tabindex=-1 keeps focus-grid traversal
-           single-stop per tile. Mouse click stops propagation so the
-           outer toggle doesn't also fire. -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div
-        class="qs-tile-strip is-interactive"
-        role="button"
-        tabindex="-1"
-        aria-label={stripAriaLabel}
-        onclick={(e) => {
-          e.stopPropagation();
-          onDetail();
-        }}
-      >
-        <span class="qs-tile-status">{statusText}</span>
-        <ChevronRight size={14} strokeWidth={1.75} class="qs-tile-chevron" />
-      </div>
-    {:else}
-      <!-- Passive strip: same vertical position as the interactive
-           variant so the status line lives in a consistent place
-           across all tiles. No chevron, no hover, no cursor change —
-           the lack of those signals "info, not action". -->
-      <div class="qs-tile-strip">
-        <span class="qs-tile-status">{statusText}</span>
-      </div>
-    {/if}
+<!-- Passive strip: same vertical position as the interactive variant so the
+     status line lives in a consistent place across all tiles. No chevron, no
+     hover, no cursor change - the lack of those signals "info, not action". It
+     sits INSIDE the primary region rather than beside it: it is a line about the
+     thing above it, and loose text next to a control is content in no landmark. -->
+{#snippet passiveStrip()}
+  <div class="qs-tile-strip">
+    <span class="qs-tile-status">{statusText}</span>
+  </div>
+{/snippet}
+
+<!-- TWO CONTROLS IN A CONTAINER (design-system.md 6.13). The tile toggles a
+     thing and opens that thing's detail: two actions, and presenting them as one
+     control is what made the detail unreachable by keyboard. The outer div
+     groups and paints; it takes no focus and carries no role. The old shape put
+     a `role="button"` strip with `tabindex="-1"` inside the toggle button, which
+     is a control inside a control - what axe calls `nested-interactive` - and a
+     detail surface a keyboard could not open at all.
+
+     The resting boundary between the two, the line that shows a person they have
+     two stops rather than one that moved, is arlen-ui's to draw. What is here is
+     the structure and a focus indicator per control, because a control nobody
+     can see the focus on is not usable. -->
+<div
+  class="qs-tile"
+  class:active
+  class:is-disabled={disabled}
+  class:size-2x1={size === "2x1"}
+  class:size-2x2={size === "2x2"}
+  class:has-strip={!!statusText}
+>
+  <!-- The primary is a CONTROL only when there is something to press. A slider
+       tile has no toggle: its control is the slider inside, and wrapping that in
+       a button made a control inside a control and forced a `tabindex="-1"` on
+       the wrapper - the signal design-system.md 6.13 names for a structure that
+       is wrong. With no `onclick` this is a plain region and the thing inside is
+       the control. -->
+  {#if onclick}
+    <button
+      type="button"
+      class="qs-tile-main"
+      {disabled}
+      onclick={() => onclick?.()}
+      oncontextmenu={onContextMenu}
+      aria-pressed={active}
+    >
+      {@render head()}
+      {@render inner()}
+      {#if statusText && !onDetail}{@render passiveStrip()}{/if}
+    </button>
+  {:else}
+    <!-- No press of its own, so no keyboard handler is missing here; the control
+         inside carries them. -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="qs-tile-main" oncontextmenu={onContextMenu}>
+      {@render head()}
+      {@render inner()}
+      {#if statusText && !onDetail}{@render passiveStrip()}{/if}
+    </div>
   {/if}
 
-</button>
+  {#if statusText && onDetail}
+    <!-- The second control. A real button, so it is a tab stop, answers Enter
+         and Space, and announces itself; the label defaults to naming the tile
+         it belongs to, because "open details" alone says nothing in a grid of
+         eight. -->
+    <button
+      type="button"
+      class="qs-tile-strip is-interactive"
+      {disabled}
+      aria-label={stripAriaLabel}
+      onclick={() => onDetail?.()}
+      oncontextmenu={onContextMenu}
+    >
+      <span class="qs-tile-status">{statusText}</span>
+      <ChevronRight size={14} strokeWidth={1.75} class="qs-tile-chevron" />
+    </button>
+  {/if}
+</div>
 
 <style>
+  /* The CONTAINER. It paints the tile and takes no focus; the two controls
+     inside are transparent and carry their own focus indicator. */
   .qs-tile {
     /* Base 1x1 cell. */
     grid-column: span 1;
@@ -190,6 +222,34 @@
     overflow: hidden;
     transition: background-color var(--duration-micro, 100ms) ease, border-color var(--duration-micro, 100ms) ease;
   }
+
+  /* The primary control, painted by the container above it. `font: inherit` and
+     the rest undo the button defaults that would otherwise show through. */
+  .qs-tile-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+  }
+  .qs-tile-main:disabled,
+  .qs-tile-strip.is-interactive:disabled {
+    cursor: default;
+  }
+
+  /* One indicator per control, inset because the container owns the border and
+     an outer ring on half a tile would sit outside the card. */
+  .qs-tile-main:focus-visible,
+  .qs-tile-strip.is-interactive:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--color-accent);
+  }
   .qs-tile.size-2x1 {
     grid-column: span 2;
   }
@@ -198,15 +258,9 @@
     grid-row: span 2;
   }
 
-  .qs-tile:hover:not(:disabled) {
+  .qs-tile:hover:not(.is-disabled) {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
     border-color: color-mix(in srgb, var(--foreground) 20%, transparent);
-  }
-
-  .qs-tile:focus-visible {
-    outline: none;
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
   }
 
   /* Active state: the system-wide "connected/active item" pattern
@@ -216,11 +270,11 @@
     background: color-mix(in srgb, var(--color-accent) 15%, transparent);
     border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
-  .qs-tile.active:hover:not(:disabled) {
+  .qs-tile.active:hover:not(.is-disabled) {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
   }
 
-  .qs-tile:disabled {
+  .qs-tile.is-disabled {
     opacity: 0.4;
   }
 
@@ -303,6 +357,19 @@
     min-height: var(--height-control, 30px);
     margin-top: auto;
     transition: background-color var(--duration-micro, 100ms) ease;
+    /* The interactive variant is a button now, so it has to unlearn the button
+       defaults the way the primary control above does. */
+    width: 100%;
+    padding-inline: 12px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+  }
+  .qs-tile-strip:not(.is-interactive) {
+    cursor: default;
   }
   .qs-tile-strip.is-interactive:hover {
     background: color-mix(in srgb, var(--foreground) 14%, transparent);
