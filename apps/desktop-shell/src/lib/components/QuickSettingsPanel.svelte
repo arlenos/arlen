@@ -130,7 +130,24 @@
       const fullRow = el.classList.contains("size-2x1") ||
                       el.classList.contains("size-2x2") ||
                       el.closest(".audio-tile-wrap, .user-row-tile") !== null;
-      return { el, spanCols: (fullRow ? 2 : 1) as 1 | 2 };
+      // A tile is a container holding two controls (design-system.md 6.13), so
+      // the arrows have to land on the primary one; the container itself takes
+      // no focus. `group` keeps the whole tile counting as this cell, so an
+      // arrow pressed while the detail control has focus still moves to the
+      // neighbour.
+      // A tile whose primary IS a control (a toggle) hands its button over; one
+      // whose control lives inside it - a slider tile - hands over the control,
+      // because the region around it is a div and `.focus()` on that goes
+      // nowhere. First match in document order, so the button wins when there
+      // is one.
+      const target = el.querySelector<HTMLElement>(
+        "button.qs-tile-main, .qs-tile-main input, .qs-tile-main button",
+      );
+      return {
+        el: target ?? el,
+        group: el,
+        spanCols: (fullRow ? 2 : 1) as 1 | 2,
+      };
     });
   }
 </script>
@@ -158,6 +175,8 @@
     bind:this={panelEl}
     class="qs-panel shell-popover"
     class:visible={$activePopover === "quick-settings"}
+    role="region"
+    aria-label={$t("sh.qs.aria")}
     use:focusGrid={{
       cells: gridCells,
       onEscape: closePopover,

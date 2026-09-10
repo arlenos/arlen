@@ -99,6 +99,7 @@ const messages: Catalogs = {
     "sh.net.vpnActive": ".input {$count :number}\n.match $count\none {{{$count} active}}\n*   {{{$count} active}}",
 
     // Quick Settings panel
+    "sh.qs.aria": "Quick settings",
     "sh.qs.keyboard": "Keyboard",
     "sh.qs.navigateTiles": "Navigate tiles",
     "sh.qs.activate": "Activate",
@@ -864,6 +865,7 @@ const messages: Catalogs = {
     "sh.net.vpn": "VPN",
     "sh.net.vpnActive": ".input {$count :number}\n.match $count\none {{{$count} aktiv}}\n*   {{{$count} aktiv}}",
 
+    "sh.qs.aria": "Schnelleinstellungen",
     "sh.qs.keyboard": "Tastatur",
     "sh.qs.navigateTiles": "Kacheln durchgehen",
     "sh.qs.activate": "Ausl\u00f6sen",
