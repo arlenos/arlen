@@ -18,12 +18,22 @@
 
 import { createTranslator, type Catalogs } from "./index";
 
-const kitMessages: Catalogs = {
+export const kitMessages: Catalogs = {
   en: {
     "k.window.minimize": "Minimize",
     "k.window.maximize": "Maximize",
     "k.window.restore": "Restore",
     "k.window.close": "Close",
+    "k.companion.resting": "Ready.",
+    "k.companion.attentive": "Ready for your message.",
+    "k.companion.listening": "Reading what you type.",
+    "k.companion.thinking": "Working on it.",
+    "k.companion.answering": "Answering.",
+    "k.companion.unsure": "Not sure about this answer.",
+    "k.companion.refused": "Declined.",
+    "k.companion.failed": "Something went wrong.",
+    "k.companion.greeting": "Hello.",
+    "k.companion.done": "Done.",
     "k.sidebar.toggle": "Toggle Sidebar",
     "k.page.back": "Back to {$name}",
     "k.row.reset": "Reset {$name}",
@@ -65,6 +75,16 @@ const kitMessages: Catalogs = {
     "k.window.maximize": "Maximieren",
     "k.window.restore": "Wiederherstellen",
     "k.window.close": "Schließen",
+    "k.companion.resting": "Bereit.",
+    "k.companion.attentive": "Bereit für deine Nachricht.",
+    "k.companion.listening": "Liest mit, während du tippst.",
+    "k.companion.thinking": "Arbeitet daran.",
+    "k.companion.answering": "Antwortet.",
+    "k.companion.unsure": "Bei dieser Antwort nicht sicher.",
+    "k.companion.refused": "Abgelehnt.",
+    "k.companion.failed": "Etwas ist schiefgegangen.",
+    "k.companion.greeting": "Hallo.",
+    "k.companion.done": "Erledigt.",
     "k.sidebar.toggle": "Seitenleiste umschalten",
     "k.page.back": "Zurück zu {$name}",
     "k.row.reset": "{$name} zurücksetzen",

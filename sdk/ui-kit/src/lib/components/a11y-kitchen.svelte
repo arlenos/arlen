@@ -14,6 +14,7 @@
   import { ChoiceList } from "./ui/choice-list";
   import { ChipList } from "./ui/chip-list";
   import { Toolbar } from "./ui/toolbar";
+  import { Companion } from "./ui/companion";
   import { ColorPicker } from "./ui/color-picker";
   import { Switch } from "./ui/switch";
   import { Toggle } from "./ui/toggle";
@@ -91,6 +92,10 @@
       <Button variant="ghost" aria-label="Undo">U</Button>
       <Button variant="ghost" aria-label="Redo">R</Button>
     </Toolbar>
+  </section>
+
+  <section aria-label="Companion">
+    <Companion state="thinking" size={40} idle={false} />
   </section>
 
   <p>toggled: {toggled}</p>
