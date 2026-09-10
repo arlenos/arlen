@@ -84,6 +84,27 @@ def assigned_later(source: str, flag: str) -> bool:
 BRANCH = re.compile(r"\{#if\s+([^}]*)\}|\{:else\s+if\s+([^}]*)\}")
 
 
+def only_negated(condition: str, flag: str) -> bool:
+    """True when the flag appears in this condition ONLY as `!flag`.
+
+    Such a branch runs when the failure did NOT happen, so it is the success
+    sentence, not the refusal, and it has nothing to announce. The knowledge
+    timeline says exactly this: `{#if exportFailed}` carries the alert, and
+    `{#if exportedTo && !exportFailed}` prints the path the export wrote. The
+    second mentions the flag, so a plain word match read it as a second, silent
+    rendering of the refusal, and the gate reported a file that was already
+    correct.
+
+    Any un-negated mention keeps the branch: `{#if failed && !dismissed}` is
+    still the refusal.
+    """
+    for m in re.finditer(rf"\b{re.escape(flag)}\b", condition):
+        before = condition[: m.start()].rstrip()
+        if not before.endswith("!"):
+            return False
+    return True
+
+
 def if_blocks(markup: str, flag: str) -> list[str]:
     """The TRUTHY branch of every `{#if ...<flag>...}` or `{:else if ...}`.
 
@@ -95,6 +116,8 @@ def if_blocks(markup: str, flag: str) -> list[str]:
     for m in BRANCH.finditer(markup):
         condition = m.group(1) if m.group(1) is not None else m.group(2)
         if not re.search(rf"\b{re.escape(flag)}\b", condition):
+            continue
+        if only_negated(condition, flag):
             continue
         depth = 1
         i = m.end()

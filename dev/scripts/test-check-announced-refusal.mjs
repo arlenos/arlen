@@ -254,6 +254,36 @@ check(
   (code) => code === 0,
 );
 
+// THE OTHER BOUNDARY, and the knowledge timeline is where it showed: the
+// SUCCESS sentence often names the failure flag to stay out of its way, and a
+// plain word match read `{#if exportedTo && !exportFailed}` as a second, silent
+// rendering of the refusal. A branch that runs only when the failure did not
+// happen has nothing to announce.
+check(
+  "a branch that renders only when the flag is false is not the refusal",
+  {
+    "apps/demo/src/lib/Timeline.svelte":
+      "<script>\n  let exportFailed = $state(false);\n  let exportedTo = $state(null);\n" +
+      "  async function go() { const p = await run(); exportFailed = p === null; exportedTo = p; }\n</script>\n" +
+      "{#if exportFailed}\n  <p role=\"alert\">{$t('d.exportFail')}</p>\n{/if}\n" +
+      "{#if exportedTo && !exportFailed}\n  <p>{$t('d.exportedTo')}</p>\n{/if}\n",
+  },
+  (code) => code === 0,
+);
+
+// And the narrowing must not swallow a real one: an un-negated mention beside a
+// negated one is still the refusal branch.
+check(
+  "a branch naming the flag un-negated stays a finding",
+  {
+    "apps/demo/src/lib/Timeline.svelte":
+      "<script>\n  let exportFailed = $state(false);\n  let dismissed = $state(false);\n" +
+      "  async function go() { exportFailed = true; }\n</script>\n" +
+      "{#if exportFailed && !dismissed}\n  <p>{$t('d.exportFail')}</p>\n{/if}\n",
+  },
+  (code, out) => code === 1 && out.includes("exportFailed"),
+);
+
 check(
   "an empty tree refuses rather than passing",
   { "README.md": "no apps here\n" },
