@@ -106,7 +106,10 @@
                better still and belongs in the kit's `Progress`, which is
                documented as determinate-only. -->
           {#if j.determinate}
-            <Progress value={j.fraction * 100} />
+            <!-- Named by the job's own title, which is already on screen right
+                 above it: a bar that announces "62 percent" and nothing else
+                 leaves a reader with four numbers and no subjects. -->
+            <Progress value={j.fraction * 100} label={j.title} />
           {/if}
           <div class="job-meta">
             <span class="job-metrics">
