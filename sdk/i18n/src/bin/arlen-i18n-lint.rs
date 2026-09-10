@@ -758,7 +758,7 @@ fn scan_script(src: &str) -> Vec<Finding> {
                 i += 1;
             }
             i += 1;
-            if in_return || position_is_user_facing(&prefix) {
+            if !is_value_position(&prefix) && (in_return || position_is_user_facing(&prefix)) {
                 if let Some(t) = user_facing_text(&lit) {
                     out.push(Finding { line: start_line, text: t });
                 }
@@ -799,6 +799,36 @@ fn scan_script(src: &str) -> Vec<Finding> {
         i += 1;
     }
     out
+}
+
+/// Calls whose argument is a value the machine reads, never a sentence a person
+/// does. One entry, and it stays one: the moment this becomes "anything that
+/// looks technical" it starts excusing real copy, which is how a lint gets
+/// switched off.
+const VALUE_ONLY_CALLS: &[&str] = &["matchMedia"];
+
+/// Whether the literal about to be read is a VALUE rather than copy.
+///
+/// Checked before the displayed-position rules, because `return` puts everything
+/// after it in scope and a returned expression is full of values: a tag name
+/// under `===`, a media query handed to `matchMedia`. Both were reported as
+/// untranslated user-facing strings, and translating either would break the code
+/// that compares them.
+///
+/// Two shapes only, each one exact:
+///
+///   * an operand of an equality comparison - `el.tagName === "INPUT"` - which is
+///     the same reasoning the `=` branch below already applies, applied where a
+///     `return` had been overriding it;
+///   * an argument to a call in [`VALUE_ONLY_CALLS`].
+fn is_value_position(prefix: &str) -> bool {
+    if prefix.ends_with("==") || prefix.ends_with("!=") {
+        return true;
+    }
+    if let Some(head) = prefix.strip_suffix('(') {
+        return VALUE_ONLY_CALLS.iter().any(|c| head.ends_with(c));
+    }
+    false
 }
 
 /// Whether the characters immediately before a literal put it in a displayed
@@ -1412,6 +1442,24 @@ mod tests {
     fn a_literal_outside_a_displayed_position_is_not_a_finding() {
         assert!(script_texts(r#"const cls = "flex items-center";"#).is_empty());
         assert!(script_texts(r#"await invoke("open_file", { path });"#).is_empty());
+    }
+
+    #[test]
+    fn a_compared_literal_after_a_return_is_a_value() {
+        // `return` puts everything after it in scope, and a returned expression is
+        // full of values. Both of these were reported: translating either would
+        // break the comparison, and a person never reads them.
+        assert!(script_texts(r#"return el.tagName === "INPUT";"#).is_empty());
+        assert!(script_texts(r#"return kind !== "builtin";"#).is_empty());
+        assert!(script_texts(r#"return matchMedia("(prefers-reduced-motion: reduce)").matches;"#).is_empty());
+    }
+
+    #[test]
+    fn the_value_rule_does_not_excuse_a_returned_sentence() {
+        // The narrowing must not swallow what the `return` position was added for:
+        // a helper picking a phrase per case is still copy, comparison or not.
+        let hits = script_texts(r#"if (x === "a") { return "That did not work."; }"#);
+        assert_eq!(hits, vec!["That did not work."]);
     }
 
     #[test]
