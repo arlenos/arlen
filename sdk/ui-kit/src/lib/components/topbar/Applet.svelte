@@ -145,8 +145,9 @@
   const hasTooltip = $derived(!!tooltip);
 </script>
 
-{#snippet body()}
+{#snippet body(triggerProps: Record<string, unknown> = {})}
   <button
+    {...triggerProps}
     type="button"
     class="applet"
     class:has-label={!!label || !!labelSnippet}
@@ -189,8 +190,17 @@
 
 {#if hasTooltip}
   <Tooltip.Root instant={tooltipInstant} suppressed={popoverOpen}>
+    <!-- THROUGH THE `child` SNIPPET, so the trigger's props land on OUR button.
+         Without it bits-ui renders a button of its own AROUND this one, and axe
+         reports `nested-interactive` (serious) - measured on 11 September on
+         seven surfaces at once, seven and eight nodes each, because every applet
+         in the top bar is one of these. A control inside a control is also a
+         second tab stop that does nothing, which is what a keyboard reader meets
+         before the button they wanted. -->
     <Tooltip.Trigger>
-      {@render body()}
+      {#snippet child({ props })}
+        {@render body(props)}
+      {/snippet}
     </Tooltip.Trigger>
     <Tooltip.Portal>
       <Tooltip.Content

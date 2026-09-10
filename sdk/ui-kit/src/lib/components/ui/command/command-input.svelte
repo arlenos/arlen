@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { Command as CommandPrimitive } from "bits-ui";
+	import { getContext } from "svelte";
 	import { cn } from "../../../utils.js";
+	import { COMMAND_LIST_ID } from "./context.js";
 	import { Search } from "@lucide/svelte";
 
 	let {
@@ -9,6 +11,11 @@
 		class: className,
 		...restProps
 	}: CommandPrimitive.InputProps = $props();
+
+	// What this input controls. bits-ui gives it `role="combobox"` and leaves
+	// `aria-controls` unset; see `context.ts`.
+	const listId = getContext<string>(COMMAND_LIST_ID);
+
 </script>
 
 <div
@@ -32,6 +39,7 @@
 	<CommandPrimitive.Input
 		bind:ref
 		bind:value
+		aria-controls={listId}
 		data-slot="command-input"
 		class={cn(
 			"flex h-10 w-full rounded-input bg-transparent py-3 text-sm outline-hidden disabled:opacity-50",

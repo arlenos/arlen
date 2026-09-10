@@ -30,7 +30,10 @@ describe("paletteItems", () => {
         items: [
           { label: "New", action: "file.new", type: "item" },
           {
+            // `action` is required even on a submenu - the dbusmenu shape gives
+            // every node one and a heading's is empty.
             label: "Export",
+            action: "",
             type: "submenu",
             children: [{ label: "As PDF", action: "file.export.pdf", type: "item" }],
           },
@@ -64,7 +67,7 @@ describe("paletteItems", () => {
       {
         label: "View",
         items: [
-          { label: "Zoom", type: "submenu", children: [] },
+          { label: "Zoom", action: "", type: "submenu", children: [] },
           { label: "Reload", action: "view.reload", type: "item" },
         ],
       },
