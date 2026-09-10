@@ -676,9 +676,16 @@ class Render:
         throws - and a trigger that cannot be focused is still a trigger.
         """
         sel = json.dumps(self.current)
+        # `window.__arlenOpened` is the element this click landed on, left where a
+        # probe can find it. A probe otherwise has no way to ask "did focus come
+        # BACK to the thing that opened this" - it can see where focus is and not
+        # what opened anything, and comparing by tag and class does not work: a
+        # dialog's Cancel button and the button that opened it render the same
+        # class, which is exactly what made the first reading of this ambiguous.
         self.view.evaluate_javascript(
             f"(() => {{ const el = document.querySelector({sel});"
             f" if (!el) return 'missing';"
+            f" window.__arlenOpened = el;"
             f" try {{ el.focus({{ preventScroll: true }}); }} catch (e) {{}}"
             f" el.click(); return 'clicked'; }})()",
             -1, None, None, None, self.on_opened)

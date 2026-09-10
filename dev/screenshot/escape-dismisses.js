@@ -84,6 +84,14 @@ return new Promise((resolve) =>
         `modal=${modal}`,
         `focusBefore=${focusedWhere}`,
         `focusAfter=${where(document.activeElement)}`,
+        // Identity, not a label: `--open` leaves the element it pressed on
+        // `window.__arlenOpened`, so this is the one question a label cannot
+        // answer - did the keyboard come back to the thing that opened this.
+        `restored=${
+          window.__arlenOpened
+            ? document.activeElement === window.__arlenOpened
+            : "no-opener"
+        }`,
         `before=[${before.join("|")}]`,
         `after=[${shown().join("|")}]`,
       ]),
