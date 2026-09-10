@@ -76,6 +76,12 @@ And one asks a question a still picture cannot, so it has its own sweep rather t
 `open-clicked.js` is in the same directory and is not one of these: it reads whether a `--open` click landed,
 for the sweep's own control, and judges nothing about a route.
 
+**The RENDERERS have controls of their own, and nothing runs them for you.** `dev/screenshot/test-render-wide.sh`
+drives `render-wide.py` (width, probe shape, the refusals) and `test-shoot-width.sh` drives `shoot.sh`. Neither
+is in CI, because both need a display. So: **changed `render-wide.py`, `shoot.sh` or `headless.sh`? run its
+control before you trust a sweep taken with it** - every finding after that change is read through the thing
+you just edited.
+
 They ask genuinely different questions and a layout change can pass any two. They are also all blind to
 legibility: `overflow-wrap: anywhere` clears every one of them and renders a name one letter per line.
 
