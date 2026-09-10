@@ -14,6 +14,7 @@
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { t } from "$lib/i18n/messages";
   import { reachRows } from "$lib/caps";
+  import { whyKey } from "$lib/refusals";
   import IconTile from "$lib/components/IconTile.svelte";
   import {
     apps,
@@ -200,7 +201,7 @@
         <!-- The daemon's own refusal, in place: a desktop app it will not
              remove, or a layer this build cannot remove. It is built to be
              offered Remove and to say no; the page shows the no. -->
-        <p class="refused" role="alert">{$t("st.app.uninstallRefused", { reason: removal.reason })}</p>
+        <p class="refused" role="alert">{$t("st.app.uninstallRefused", { reason: $t(whyKey(removal.cause)) })}</p>
       {/if}
 
       {#if !app.installable && !app.installed}

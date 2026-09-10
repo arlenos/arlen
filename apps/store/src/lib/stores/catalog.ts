@@ -12,6 +12,7 @@
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { tauriAvailable } from "$lib/tauri";
+import { causeOf, type Cause } from "$lib/refusals";
 
 /// The mechanism that installs a variant. Visible ONLY in the install picker
 /// (where the source is the choice); browse shows apps, never formats (§3).
@@ -488,12 +489,12 @@ export async function observedFor(id: string): Promise<ObservedStatus> {
 /// What an uninstall is doing, per app id. `started` is the honest success:
 /// installd queues the removal and finishes it later, so the app leaves the
 /// installed list when the job is done, not when the button was pressed.
-/// `refused` carries the daemon's own sentence (a desktop app it will not
-/// remove, a layer this build cannot remove).
+/// `refused` carries the cause read out of the daemon's sentence (a desktop app
+/// it will not remove, a layer this build cannot remove), never the sentence.
 export type UninstallStatus =
   | { kind: "removing" }
   | { kind: "started" }
-  | { kind: "refused"; reason: string };
+  | { kind: "refused"; cause: Cause };
 
 export const uninstallStatus = writable<Record<string, UninstallStatus>>({});
 
@@ -519,7 +520,7 @@ export async function uninstallApp(id: string): Promise<boolean> {
       setUninstall(id, null);
       return true;
     }
-    setUninstall(id, { kind: "refused", reason: String(e) });
+    setUninstall(id, { kind: "refused", cause: causeOf(e) });
     return false;
   }
   setUninstall(id, { kind: "started" });
