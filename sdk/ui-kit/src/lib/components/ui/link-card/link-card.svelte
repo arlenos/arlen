@@ -82,9 +82,12 @@
   .lc-desc {
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    /* WRAPS. This was one nowrap line with an ellipsis, which is a
+       measurement of English: the same sentence in German runs a third
+       longer and lost its end in a narrow column - "Fensterverwaltung,
+       Arbeitsflaechen, Apps" at 720px. A card description is prose and the
+       card is free to be a line taller; the grid row stretches. */
+    overflow-wrap: anywhere;
   }
   :global(.lc-chev) {
     flex-shrink: 0;
