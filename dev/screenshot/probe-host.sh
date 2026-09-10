@@ -96,6 +96,20 @@ case "$seen" in
     ;;
 esac
 
-"$here/headless.sh" --url "$base/?locale=$locale" --out "$shot" --width "$width" \
+# BY SHAPE, like the reader above it. This dropped `wrote <path>` and took the
+# last line, which is right until the driver speaks: Mesa writes `DRI3 error` to
+# stdout on this machine, after the answer as often as before it, and the caller
+# then gets a graphics warning where the probe's answer should be. Every probe in
+# this tree answers as a JSON array, so that is what is picked out - and a probe
+# that answered nothing says so instead of handing back the last thing anyone
+# printed.
+answer="$("$here/headless.sh" --url "$base/?locale=$locale" --out "$shot" --width "$width" \
   --settle "$settle" --host-script "$script" --probe-file "$probe" 2>/dev/null \
-  | grep -v '^wrote ' | tail -1
+  | grep -E '^\[' | tail -1)"
+if [ -z "$answer" ]; then
+  echo "probe-host.sh: $probe answered nothing over $host." >&2
+  echo "  Every probe here returns a JSON array; a run with none is a render that" >&2
+  echo "  failed, not a page with nothing to report." >&2
+  exit 2
+fi
+printf '%s\n' "$answer"
