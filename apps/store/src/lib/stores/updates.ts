@@ -18,6 +18,7 @@ import { derived, get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { apps, type SourceLayer } from "./catalog";
 import { tauriAvailable } from "$lib/tauri";
+import { causeOf, type Cause } from "$lib/refusals";
 
 export type { SourceLayer } from "./catalog";
 
@@ -45,14 +46,14 @@ export function deltaOf(u: PendingUpdate): Delta {
   return u.new_capabilities.length > 0 ? "widened" : "none";
 }
 
-/// What one row is doing. `refused` carries the backend's own sentence (free
-/// prose today - a tagged refusal vocabulary is a named seam); `unconfirmed`
+/// What one row is doing. `refused` carries the cause read out of the host's
+/// sentence (`$lib/refusals`), never the sentence itself; `unconfirmed`
 /// is a started update whose row survived the reload; `notStarted` is a
 /// routine-batch member the daemon never reached.
 export type RowStatus =
   | { kind: "applying" }
   | { kind: "unconfirmed" }
-  | { kind: "refused"; reason: string }
+  | { kind: "refused"; cause: Cause; act: "update" | "skip" }
   | { kind: "notStarted" };
 
 const FIXTURE: PendingUpdate[] = [
@@ -87,13 +88,10 @@ const FIXTURE: PendingUpdate[] = [
 ];
 
 /// A refusal the fixture shows, so the state is designable without a daemon
-/// that refuses on demand. The sentence is the shape installd really returns
-/// for a Debian-layer app.
+/// that refuses on demand: the cause installd really answers for a
+/// Debian-layer app.
 const FIXTURE_STATUS: Record<string, RowStatus> = {
-  "org.example.timer": {
-    kind: "refused",
-    reason: "org.example.timer is recorded as installed from apt, which this build has no way to update",
-  },
+  "org.example.timer": { kind: "refused", cause: "layerUpdate", act: "update" },
 };
 
 /// The pending updates in the wire shape; the page derives its view per row.
@@ -181,7 +179,7 @@ export async function applyUpdate(id: string): Promise<void> {
       setStatus(id, null);
       return;
     }
-    setStatus(id, { kind: "refused", reason: String(e) });
+    setStatus(id, { kind: "refused", cause: causeOf(e), act: "update" });
     return;
   }
   await settle([id]);
@@ -206,7 +204,7 @@ export async function applyAllRoutine(): Promise<void> {
       return;
     }
     // The first one refused: nothing started.
-    for (const id of ids) setStatus(id, { kind: "refused", reason: String(e) });
+    for (const id of ids) setStatus(id, { kind: "refused", cause: causeOf(e), act: "update" });
     return;
   }
   const started = ids.slice(0, jobs.length);
@@ -229,7 +227,7 @@ export async function skipUpdate(id: string): Promise<void> {
     // The skip did not record: the row comes back, with the reason.
     skippedUpdates.update((s) => s.filter((p) => p.id !== id));
     pendingUpdates.update((u) => [...u, row]);
-    setStatus(id, { kind: "refused", reason: String(e) });
+    setStatus(id, { kind: "refused", cause: causeOf(e), act: "skip" });
   }
 }
 

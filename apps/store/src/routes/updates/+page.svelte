@@ -13,6 +13,7 @@
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import { capText } from "$lib/caps";
+  import { whyKey, type Cause } from "$lib/refusals";
   import IconTile from "$lib/components/IconTile.svelte";
   import { loadCatalog, uninstallApp, uninstallStatus } from "$lib/stores/catalog";
   import {
@@ -171,13 +172,13 @@
      the row it is about. -->
 {#snippet state(
   id: string,
-  status: { kind: string; reason?: string } | undefined,
-  removal: { kind: string; reason?: string } | undefined,
+  status: { kind: string; cause?: Cause; act?: "update" | "skip" } | undefined,
+  removal: { kind: string; cause?: Cause } | undefined,
 )}
   {#if removal?.kind === "removing"}
     <p class="quiet-line">{$t("st.app.removing")}</p>
   {:else if removal?.kind === "refused"}
-    <p class="refused" role="alert">{$t("st.app.uninstallRefused", { reason: removal.reason ?? "" })}</p>
+    <p class="refused" role="alert">{$t("st.app.uninstallRefused", { reason: $t(whyKey(removal.cause ?? "other")) })}</p>
   {:else if status?.kind === "applying"}
     <p class="quiet-line">{$t("st.upd.applying")}</p>
   {:else if status?.kind === "unconfirmed"}
@@ -185,7 +186,7 @@
   {:else if status?.kind === "notStarted"}
     <p class="quiet-line">{$t("st.upd.notStarted")}</p>
   {:else if status?.kind === "refused"}
-    <p class="refused" role="alert">{$t("st.upd.refused", { reason: status.reason ?? "" })}</p>
+    <p class="refused" role="alert">{$t(status.act === "skip" ? "st.upd.skipRefused" : "st.upd.refused", { reason: $t(whyKey(status.cause ?? "other")) })}</p>
   {/if}
 {/snippet}
 
