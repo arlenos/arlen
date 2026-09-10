@@ -14,6 +14,8 @@
   /// focus mode); this is the surface you type into. Which one a file gets is the
   /// caller's decision, not this component's.
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
+  import { t } from "$lib/i18n/messages";
   import { EditorState, type Extension } from "@codemirror/state";
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -141,6 +143,13 @@
             }),
             theme,
             EditorView.lineWrapping,
+            // THE EDITOR IS AN ARIA TEXTBOX WITH NO NAME WITHOUT THIS.
+            // CodeMirror puts `role="textbox"` on its content element and leaves
+            // naming to the host; axe reports `aria-input-field-name` (serious),
+            // and a screen reader announces "edit text" over the one thing this
+            // window exists for. Measured on 11 September on two of the text
+            // editor's surfaces.
+            EditorView.contentAttributes.of({ "aria-label": get(t)("te.editor.aria") }),
           ],
         }),
       });
