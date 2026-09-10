@@ -42,8 +42,20 @@
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# `--app <name>` names an app whose modals live in the table below. An app's
+# ROOT url carries no path to match on the way a Settings route does, and the
+# dev port is derived from a pid so it is not one either - so without this the
+# selectors for every app but the shell and Settings would live in whoever's
+# shell history last ran them, which is the thing this file exists not to do.
+app=""
+if [ "${1:-}" = "--app" ]; then
+  app="${2:-}"
+  [ -n "$app" ] || { echo "usage: sweep-escape.sh --app <name> <base-url>" >&2; exit 2; }
+  shift 2
+fi
+
 base="${1:-}"
-[ -n "$base" ] || { echo "usage: sweep-escape.sh <base-url> [selector...]" >&2; exit 2; }
+[ -n "$base" ] || { echo "usage: sweep-escape.sh [--app <name>] <base-url> [selector...]" >&2; exit 2; }
 shift
 
 # The shell's bar panels, which is the set a person opens from the top bar. Read
@@ -88,6 +100,24 @@ case "$base" in
   */ai/providers|*/ai/providers?*)
     [ "$#" -eq 0 ] && set -- '.add-row button' ;;
 esac
+
+# THE OTHER APPS' MODALS. Every selector here is one `sweep-render-all.sh`
+# already drives, read off a rendered DOM when those rows were written rather
+# than guessed at now, and every one of them opens a DIALOG - a tab or a pane
+# does not belong in this sweep. They cover the kit's shared modal shell in three
+# more apps than Settings, which is what makes the "no keyboard" rule worth more
+# than one surface.
+if [ -n "$app" ] && [ "$#" -eq 0 ]; then
+  case "$app" in
+    clock)       set -- '#chrome-add' ;;
+    calendar)    set -- '#cal-new-event' ;;
+    terminal)    set -- '#terminal-history-open' ;;
+    *)
+      echo "sweep-escape.sh: --app $app names no modal set here. Add one or pass a selector." >&2
+      exit 2
+      ;;
+  esac
+fi
 
 if [ "$#" -eq 0 ]; then
   set -- \
