@@ -60,6 +60,20 @@
   // so connect-once never needs a saved entry.
   const freeText = $derived(q.length > 0 && (/[.@]/.test($query.trim())) ? $query.trim() : null);
 
+  // The keyboard goes back where it came from, the same as the history palette
+  // beside it: this one moves focus IN with `autofocus` on its input, and
+  // without this it moved it nowhere on the way out, leaving the caret on `body`
+  // so the next Tab starts at the top of the terminal.
+  $effect(() => {
+    if (!$paletteOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    return () => {
+      if (opener && opener.isConnected && typeof opener.focus === "function") {
+        opener.focus({ preventScroll: true });
+      }
+    };
+  });
+
   function onWindowKeydown(e: KeyboardEvent) {
     if ($paletteOpen && e.key === "Escape") {
       e.preventDefault();
