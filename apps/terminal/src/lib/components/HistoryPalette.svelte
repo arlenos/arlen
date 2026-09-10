@@ -13,6 +13,7 @@
     CommandItem,
   } from "@arlen/ui-kit/components/ui/command";
   import { Toggle } from "@arlen/ui-kit/components/ui/toggle";
+  import { trapFocus } from "@arlen/ui-kit/keyboard";
   import { t } from "$lib/i18n/messages";
   import { terminalProjects, type Block, type Project } from "$lib/contract";
   import { shortPath } from "$lib/paths";
@@ -55,24 +56,6 @@
     if ($historyPaletteOpen) runHistorySearch();
   });
 
-  // AND THE KEYBOARD GOES BACK WHERE IT CAME FROM. The palette moves focus in
-  // with `autofocus` on its input, and until now it moved it nowhere on the way
-  // out: Escape closed the palette and left the caret on `body`, so the next Tab
-  // started at the top of the terminal instead of at the button that opened it.
-  // Measured on 11 September - `restored=false` where the clock's alarm sheet and
-  // the calendar's event form both answer `true` - by the probe that presses the
-  // key, which is the only thing that can see this.
-  $effect(() => {
-    if (!$historyPaletteOpen) return;
-    const opener = document.activeElement as HTMLElement | null;
-    return () => {
-      // Only if it is still on the page: a palette can outlive the row that
-      // opened it, and focusing a detached node lands on `body` anyway.
-      if (opener && opener.isConnected && typeof opener.focus === "function") {
-        opener.focus({ preventScroll: true });
-      }
-    };
-  });
 
   function toggleProject(id: string) {
     historyProjectId.update((cur) => (cur === id ? null : id));
@@ -112,6 +95,7 @@
   >
     <div
       class="hp-card"
+      use:trapFocus
       role="dialog"
       aria-modal="true"
       aria-label={$t("term.hist.aria")}

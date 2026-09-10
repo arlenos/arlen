@@ -11,6 +11,7 @@
     CommandItem,
   } from "@arlen/ui-kit/components/ui/command";
   import { Star } from "lucide-svelte";
+  import { trapFocus } from "@arlen/ui-kit/keyboard";
   import { t } from "$lib/i18n/messages";
   import {
     savedHosts,
@@ -60,19 +61,6 @@
   // so connect-once never needs a saved entry.
   const freeText = $derived(q.length > 0 && (/[.@]/.test($query.trim())) ? $query.trim() : null);
 
-  // The keyboard goes back where it came from, the same as the history palette
-  // beside it: this one moves focus IN with `autofocus` on its input, and
-  // without this it moved it nowhere on the way out, leaving the caret on `body`
-  // so the next Tab starts at the top of the terminal.
-  $effect(() => {
-    if (!$paletteOpen) return;
-    const opener = document.activeElement as HTMLElement | null;
-    return () => {
-      if (opener && opener.isConnected && typeof opener.focus === "function") {
-        opener.focus({ preventScroll: true });
-      }
-    };
-  });
 
   function onWindowKeydown(e: KeyboardEvent) {
     if ($paletteOpen && e.key === "Escape") {
@@ -97,7 +85,14 @@
       if (e.target === e.currentTarget) closeQuickConnect();
     }}
   >
-    <div class="qc-card" role="dialog" aria-modal="true" aria-label={$t("term.qc.aria")} tabindex="-1">
+    <div
+      class="qc-card"
+      use:trapFocus
+      role="dialog"
+      aria-modal="true"
+      aria-label={$t("term.qc.aria")}
+      tabindex="-1"
+    >
       <Command shouldFilter={false}>
         <CommandInput placeholder={$t("term.qc.placeholder")} autofocus bind:value={$query} />
         {#if $remotesMocked}
