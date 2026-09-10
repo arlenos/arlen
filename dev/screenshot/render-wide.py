@@ -773,7 +773,19 @@ def main():
                     help="CSS viewport width to lay the page out at")
     ap.add_argument("--settle", type=float, default=1.5,
                     help="seconds after the page has painted, before sizing")
-    ap.add_argument("--paint-timeout", type=float, default=12.0,
+    # THIRTY, and the first number was twelve. A sweep runs three widths back to
+    # back against a dev server that compiles each route on demand, and the
+    # shell's `_jobstest` - a route that pulls the whole store tree in behind one
+    # component - took longer than twelve seconds to hydrate under that load. The
+    # reading was then "nothing on this page matches the focusable selector",
+    # which is the false finding this wait exists to remove.
+    #
+    # A higher bound costs nothing on a page that paints: the poll returns the
+    # moment there is ink. It is only ever spent in full by a page that genuinely
+    # draws nothing, which is rare and worth photographing anyway. It stays under
+    # the 60s load timeout so a page that never finishes loading is still the
+    # other failure.
+    ap.add_argument("--paint-timeout", type=float, default=30.0,
                     help="seconds to wait for the page to draw anything at all")
     ap.add_argument("--reflow", type=float, default=1.0,
                     help="seconds after the zoom change, before measuring")

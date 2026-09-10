@@ -156,6 +156,15 @@ sweep for days.
 - **Two runs fight over one port.** `sweep-render-all.sh` derives its base port from its pid in blocks of 40 for
   exactly this. When you start a dev server by hand, pick an unusual port and take it down afterwards with
   `fuser -k -n tcp <port>`.
+- **Writing ANY file into the app being swept restarts its dev server, and the render in flight gets a blank
+  page.** Not just a shell script mid-execution - a `.test.ts` next to a store is enough: SvelteKit regenerates
+  `.svelte-kit/generated/*` and every open page reloads. Measured on 11 September: three test files added under
+  `apps/desktop-shell/src/lib/` during a shell sweep, and the log shows `page reload .svelte-kit/generated/...`
+  at 07:31 followed by rows answering `the page read: [""]` and probes reporting a MESA warning where their
+  answer should be. The morning's run of the same table had none of that. **While an app is being swept, work
+  in a different app or in `docs/`** - and if you did write into it, the run is void, like a render that lost
+  its display.
+
 - **And two runs fought over one DISPLAY, which is the half that hurts.** `xvfb-run -a` looks for a free
   display and then creates its lock, and those two steps are not atomic - so two renders starting together can
   take the same `:N`, the loser's server goes away under openbox and WebKit, and BOTH hang with no output and
