@@ -30,27 +30,14 @@ command -v xvfb-run >/dev/null 2>&1 || {
   exit 2
 }
 
-# THE DISPLAY NUMBER IS OURS, and `-a` is not enough. `xvfb-run -a` looks for a
-# free display and then creates its lock, and those two steps are not atomic - so
-# two renders starting at the same moment can choose the same `:N`, and what
-# happens then is not an error: the second Xvfb loses, openbox and WebKit attach
-# to a server that is going away, and BOTH runs hang with no output. Measured on
-# 10 September, when a full sweep and another lane's walk deadlocked against each
-# other for half an hour and every app after the first reported "the probe cannot
-# see its own control" - which reads as a broken probe and is a stuck display.
-#
-# Derived from the pid the same way `shoot.sh` derives its driver port and
-# `sweep-render-all.sh` its app ports, then walked upward on collision, because a
-# derived number is only unlikely to clash rather than certain not to. The `-a`
-# fallback stays for the case where every number tried is taken.
-_display_base=$(( 90 + ($$ % 60) ))
-_xvfb_rc=0
-for _try in 0 1 2 3 4 5 6 7; do
-  _n=$(( _display_base + _try ))
-  [ -e "/tmp/.X${_n}-lock" ] && continue
-  set +e
-  xvfb-run -n "$_n" --server-args="-screen 0 ${SHOOT_SCREEN_W:-1600}x${SHOOT_SCREEN_H:-1200}x24" \
-    env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
+# THE DISPLAY NUMBER IS OURS, and `-a` is not enough. The loop that makes it ours
+# lives in `lib/own-display.sh`, because `shoot.sh` renders the same sweep rows
+# and needs the same thing - it had its own copy of the race for a day.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/own-display.sh"
+
+set +e
+own_display "-screen 0 ${SHOOT_SCREEN_W:-1600}x${SHOOT_SCREEN_H:-1200}x24" \
+  env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
     ob=""
     if command -v openbox >/dev/null 2>&1; then
       openbox >/tmp/arlen-headless-openbox.log 2>&1 &
@@ -66,32 +53,6 @@ for _try in 0 1 2 3 4 5 6 7; do
     if [ -n "$ob" ]; then kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null; fi
     exit $rc
   ' _ "$ROOT" "$@" 2>&1 | grep -v "Gdk-WARNING"
-  _xvfb_rc=${PIPESTATUS[0]}
-  set -e
-  # 2 is xvfb-run's "the server would not start", which on a taken display is
-  # what a collision looks like. Anything else is the render's own answer and is
-  # passed straight out - a failing probe must not be retried into a pass.
-  # An `if`, not `[ ] && exit`: under `set -e` a trailing `&&` list that comes out
-  # false is a failing command in its own right, and the retry would have exited
-  # the script on the one path it exists to survive.
-  if [ "$_xvfb_rc" -ne 2 ]; then
-    exit "$_xvfb_rc"
-  fi
-done
-
-# Every derived number was taken. Fall back to letting xvfb-run choose, which is
-# where this started: better a small race than no render at all.
-xvfb-run -a --server-args="-screen 0 ${SHOOT_SCREEN_W:-1600}x${SHOOT_SCREEN_H:-1200}x24" \
-  env -u WAYLAND_DISPLAY GDK_BACKEND=x11 bash -c '
-    ob=""
-    if command -v openbox >/dev/null 2>&1; then
-      openbox >/tmp/arlen-headless-openbox.log 2>&1 &
-      ob=$!
-      sleep 1.5
-    fi
-    root="$1"; shift
-    rc=0
-    python3 "$root/dev/screenshot/render-wide.py" "$@" || rc=$?
-    if [ -n "$ob" ]; then kill "$ob" 2>/dev/null; wait "$ob" 2>/dev/null; fi
-    exit $rc
-  ' _ "$ROOT" "$@" 2>&1 | grep -v "Gdk-WARNING" || true
+_rc=${PIPESTATUS[0]}
+set -e
+exit "$_rc"

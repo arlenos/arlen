@@ -108,7 +108,11 @@ require_xvfb xvfb-run
 # developer's real session instead of this Xvfb. On 15 August that let an app driven
 # through the sibling app-harness capture the real desktop; nothing here captures, but
 # a shot that silently came from the wrong display is not a shot of anything.
-xvfb-run -a --server-args="-screen 0 ${SHOOT_SCREEN_W}x${SHOOT_SCREEN_H}x24" bash -c '
+# THE DISPLAY NUMBER IS OURS, not whatever `-a` picks - see `lib/own-display.sh`
+# for what a collision does. This runner takes the picture and `headless.sh` reads
+# the page, so a sweep races here too; the fix used to live in only one of them.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/own-display.sh"
+own_display "-screen 0 ${SHOOT_SCREEN_W}x${SHOOT_SCREEN_H}x24" bash -c '
   unset WAYLAND_DISPLAY
   export GDK_BACKEND=x11
   set -euo pipefail
