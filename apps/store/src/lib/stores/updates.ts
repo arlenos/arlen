@@ -17,6 +17,7 @@
 import { derived, get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { apps, type SourceLayer } from "./catalog";
+import { tauriAvailable } from "$lib/tauri";
 
 export type { SourceLayer } from "./catalog";
 
@@ -97,8 +98,10 @@ const FIXTURE_STATUS: Record<string, RowStatus> = {
 
 /// The pending updates in the wire shape; the page derives its view per row.
 export const pendingUpdates = writable<PendingUpdate[]>([]);
-/// True while the list is the FIXTURE.
-export const updatesMocked = writable(false);
+/// What the list on screen is: the fixture (no host to ask), the host's answer,
+/// or a host that did not answer, which the page shows and nothing else.
+export type UpdatesState = "loading" | "live" | "sample" | "unreadable";
+export const updatesState = writable<UpdatesState>("loading");
 /// Each row's state, keyed by app id; absent means idle.
 export const rowStatus = writable<Record<string, RowStatus>>({});
 /// Updates skipped this session. A skipped widening leaves the decision group
@@ -129,13 +132,18 @@ function setStatus(id: string, status: RowStatus | null): void {
 /// Load the pending updates. Live: `store_outdated` (a local computation over
 /// the lock record + the cached catalog, never a per-open network call).
 export async function loadUpdates(): Promise<void> {
+  if (!tauriAvailable) {
+    pendingUpdates.set(structuredClone(FIXTURE));
+    if (get(updatesState) !== "sample") rowStatus.set({ ...FIXTURE_STATUS });
+    updatesState.set("sample");
+    return;
+  }
   try {
     pendingUpdates.set(await invoke<PendingUpdate[]>("store_outdated"));
-    updatesMocked.set(false);
+    updatesState.set("live");
   } catch {
-    pendingUpdates.set(structuredClone(FIXTURE));
-    if (!get(updatesMocked)) rowStatus.set({ ...FIXTURE_STATUS });
-    updatesMocked.set(true);
+    pendingUpdates.set([]);
+    updatesState.set("unreadable");
   }
 }
 
@@ -147,7 +155,7 @@ function drop(id: string): void {
 /// to be unconfirmed rather than done. Under vite the local apply IS the
 /// behaviour, so the row simply leaves.
 async function settle(started: string[]): Promise<void> {
-  if (get(updatesMocked)) {
+  if (get(updatesState) === "sample") {
     for (const id of started) {
       drop(id);
       setStatus(id, null);
@@ -168,7 +176,7 @@ export async function applyUpdate(id: string): Promise<void> {
   try {
     await invoke("store_update", { id });
   } catch (e) {
-    if (get(updatesMocked)) {
+    if (get(updatesState) === "sample") {
       drop(id);
       setStatus(id, null);
       return;
@@ -193,7 +201,7 @@ export async function applyAllRoutine(): Promise<void> {
   try {
     jobs = await invoke<string[]>("store_update_all_routine", { ids });
   } catch (e) {
-    if (get(updatesMocked)) {
+    if (get(updatesState) === "sample") {
       await settle(ids);
       return;
     }
@@ -217,7 +225,7 @@ export async function skipUpdate(id: string): Promise<void> {
   try {
     await invoke("store_skip_update", { id });
   } catch (e) {
-    if (get(updatesMocked)) return;
+    if (get(updatesState) === "sample") return;
     // The skip did not record: the row comes back, with the reason.
     skippedUpdates.update((s) => s.filter((p) => p.id !== id));
     pendingUpdates.update((u) => [...u, row]);

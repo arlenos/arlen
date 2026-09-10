@@ -10,6 +10,7 @@
   /// sentence, not started, unconfirmed); a skipped row moves down, never away.
   import { onMount } from "svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
   import { capText } from "$lib/caps";
   import IconTile from "$lib/components/IconTile.svelte";
@@ -17,7 +18,7 @@
   import {
     pendingUpdates,
     skippedUpdates,
-    updatesMocked,
+    updatesState,
     rowStatus,
     loadUpdates,
     applyUpdate,
@@ -61,99 +62,106 @@
 
 <main class="st-main">
   <div class="st-content">
-    {#if $updatesMocked}
-      <p class="sample">{$t("st.sample")}</p>
-    {/if}
-
-    {#if $pendingUpdates.length === 0 && $skippedUpdates.length === 0}
-      <p class="quiet">{$t("st.upd.empty")}</p>
+    {#if $updatesState === "unreadable"}
+      <div class="note refusal">
+        <Notice tone="error" text={$t("st.upd.unreadable")} />
+        <Button variant="ghost" size="sm" id="retry" onclick={() => loadUpdates()}>{$t("st.retry")}</Button>
+      </div>
     {:else}
-      {#if decision.length > 0}
-        <div class="group-label">{$t("st.upd.decision")}</div>
-        {#each decision as u (u.id)}
-          {@const app = updateApp(u.id)}
-          {@const status = $rowStatus[u.id]}
-          {@const removal = $uninstallStatus[u.id]}
-          <div class="upd" id={`upd-${u.id}`}>
-            <IconTile icon={app.icon} name={app.name} size="2.5rem" />
-            <div class="upd-body">
-              <div class="upd-head">
-                <span class="upd-name">{app.name}</span>
-                <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
-              </div>
-              {#if u.new_capabilities === null}
-                <p class="delta">{$t("st.upd.unknownDelta")}</p>
-              {:else}
-                {#each u.new_capabilities as cap (cap)}
-                  <p class="delta">{$t("st.upd.wants", { what: capText($t, cap) })}</p>
-                {/each}
-                <!-- The system's own sentence about the one answer it cannot give
-                     yet. A widened update has no Update button: the gate would
-                     refuse it, and a button that fails in silence is worse than a
-                     line that says so. -->
-                <p class="cannot">{$t("st.upd.cannotAllow")}</p>
-              {/if}
-              {@render state(u.id, status, removal)}
-              <div class="actions">
+      {#if $updatesState === "sample"}
+        <div class="note"><Notice tone="neutral" text={$t("st.sample")} /></div>
+      {/if}
+
+      {#if $pendingUpdates.length === 0 && $skippedUpdates.length === 0}
+        <p class="quiet">{$t("st.upd.empty")}</p>
+      {:else}
+        {#if decision.length > 0}
+          <div class="group-label">{$t("st.upd.decision")}</div>
+          {#each decision as u (u.id)}
+            {@const app = updateApp(u.id)}
+            {@const status = $rowStatus[u.id]}
+            {@const removal = $uninstallStatus[u.id]}
+            <div class="upd" id={`upd-${u.id}`}>
+              <IconTile icon={app.icon} name={app.name} size="2.5rem" />
+              <div class="upd-body">
+                <div class="upd-head">
+                  <span class="upd-name">{app.name}</span>
+                  <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
+                </div>
                 {#if u.new_capabilities === null}
-                  <Button size="sm" disabled={busy(u.id)} onclick={() => applyUpdate(u.id)}>{$t("st.upd.update")}</Button>
+                  <p class="delta">{$t("st.upd.unknownDelta")}</p>
+                {:else}
+                  {#each u.new_capabilities as cap (cap)}
+                    <p class="delta">{$t("st.upd.wants", { what: capText($t, cap) })}</p>
+                  {/each}
+                  <!-- The system's own sentence about the one answer it cannot give
+                       yet. A widened update has no Update button: the gate would
+                       refuse it, and a button that fails in silence is worse than a
+                       line that says so. -->
+                  <p class="cannot">{$t("st.upd.cannotAllow")}</p>
                 {/if}
-                <Button variant="ghost" size="sm" disabled={busy(u.id)} onclick={() => skipUpdate(u.id)}>{$t("st.upd.skip")}</Button>
-                <Button variant="ghost" size="sm" class="text-muted-foreground" disabled={busy(u.id)} onclick={() => remove(u)}>
-                  {$t("st.upd.uninstall")}
-                </Button>
+                {@render state(u.id, status, removal)}
+                <div class="actions">
+                  {#if u.new_capabilities === null}
+                    <Button size="sm" disabled={busy(u.id)} onclick={() => applyUpdate(u.id)}>{$t("st.upd.update")}</Button>
+                  {/if}
+                  <Button variant="ghost" size="sm" disabled={busy(u.id)} onclick={() => skipUpdate(u.id)}>{$t("st.upd.skip")}</Button>
+                  <Button variant="ghost" size="sm" class="text-muted-foreground" disabled={busy(u.id)} onclick={() => remove(u)}>
+                    {$t("st.upd.uninstall")}
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        {/each}
-      {/if}
+          {/each}
+        {/if}
 
-      {#if routine.length > 0}
-        <div class="group-row">
-          <div class="group-label routine-label">{$t("st.upd.routine")}</div>
-          <Button variant="outline" size="sm" id="update-all-routine" onclick={() => applyAllRoutine()}>
-            {$t("st.upd.updateAll")}
-          </Button>
-        </div>
-        {#each routine as u (u.id)}
-          {@const app = updateApp(u.id)}
-          {@const status = $rowStatus[u.id]}
-          <div class="upd" id={`upd-${u.id}`}>
-            <IconTile icon={app.icon} name={app.name} size="2.5rem" />
-            <div class="upd-body">
-              <div class="upd-head">
-                <span class="upd-name">{app.name}</span>
-                <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
-              </div>
-              {@render state(u.id, status, undefined)}
-              <div class="actions">
-                <Button variant="outline" size="sm" disabled={busy(u.id)} onclick={() => applyUpdate(u.id)}>
-                  {status?.kind === "refused" ? $t("st.upd.retry") : $t("st.upd.update")}
-                </Button>
+        {#if routine.length > 0}
+          <div class="group-row">
+            <div class="group-label routine-label">{$t("st.upd.routine")}</div>
+            <Button variant="outline" size="sm" id="update-all-routine" onclick={() => applyAllRoutine()}>
+              {$t("st.upd.updateAll")}
+            </Button>
+          </div>
+          {#each routine as u (u.id)}
+            {@const app = updateApp(u.id)}
+            {@const status = $rowStatus[u.id]}
+            <div class="upd" id={`upd-${u.id}`}>
+              <IconTile icon={app.icon} name={app.name} size="2.5rem" />
+              <div class="upd-body">
+                <div class="upd-head">
+                  <span class="upd-name">{app.name}</span>
+                  <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
+                </div>
+                {@render state(u.id, status, undefined)}
+                <div class="actions">
+                  <Button variant="outline" size="sm" disabled={busy(u.id)} onclick={() => applyUpdate(u.id)}>
+                    {status?.kind === "refused" ? $t("st.retry") : $t("st.upd.update")}
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-        {/each}
-      {/if}
+          {/each}
+        {/if}
 
-      {#if $skippedUpdates.length > 0}
-        <!-- Skipped stays on the page, quiet: the user decided, and a capability
-             widening that vanished is the one thing they must be able to
-             revisit (U-4). -->
-        <div class="group-label">{$t("st.upd.skipped")}</div>
-        {#each $skippedUpdates as u (u.id)}
-          {@const app = updateApp(u.id)}
-          <div class="upd skipped" id={`upd-${u.id}`}>
-            <IconTile icon={app.icon} name={app.name} size="2.5rem" />
-            <div class="upd-body">
-              <div class="upd-head">
-                <span class="upd-name">{app.name}</span>
-                <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
+        {#if $skippedUpdates.length > 0}
+          <!-- Skipped stays on the page, quiet: the user decided, and a capability
+               widening that vanished is the one thing they must be able to
+               revisit (U-4). -->
+          <div class="group-label">{$t("st.upd.skipped")}</div>
+          {#each $skippedUpdates as u (u.id)}
+            {@const app = updateApp(u.id)}
+            <div class="upd skipped" id={`upd-${u.id}`}>
+              <IconTile icon={app.icon} name={app.name} size="2.5rem" />
+              <div class="upd-body">
+                <div class="upd-head">
+                  <span class="upd-name">{app.name}</span>
+                  <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
+                </div>
+                <p class="quiet-line">{$t("st.upd.skippedHint")}</p>
               </div>
-              <p class="quiet-line">{$t("st.upd.skippedHint")}</p>
             </div>
-          </div>
-        {/each}
+          {/each}
+        {/if}
       {/if}
     {/if}
   </div>
@@ -193,10 +201,16 @@
     margin: 0 auto;
     padding: 1.25rem 1.5rem 2rem;
   }
-  .sample {
+  .note {
     margin: 0 0 0.75rem;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .refusal {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  .refusal :global(.notice) {
+    flex: 1;
   }
   .quiet {
     margin: 0;

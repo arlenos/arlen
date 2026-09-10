@@ -233,7 +233,6 @@ DEV_GUARD = re.compile(r"import\.meta\.env\.DEV|isTauri\(|tauriAvailable")
 # arlen-ui's live work. Not ours to edit, so not ours to fail on.
 SKIP = (
     "/harness/",
-    "/store/",
     "routes/ai/models",
     # The store BEHIND that route, and reached from nowhere else - both its
     # importers are `routes/ai/models/**`. Skipping the route while checking its
