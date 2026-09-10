@@ -48,6 +48,8 @@ const {
   meetingsFailure,
   meetingsFailureKey,
   meetingsUnavailable,
+  noteFailureOf,
+  captureFailureOf,
 } = await import("./meeting");
 
 /// Back to the state a live capture would be in, without touching the mock.
@@ -173,5 +175,17 @@ describe("meetingsFailureKey", () => {
       typeof meetingsFailureKey
     >[0];
     expect(meetingsFailureKey(fromAFutureDaemon)).toBe("mt.unavailable");
+  });
+});
+
+describe("the cause readers", () => {
+  it("tell a missing note from an unreadable one", () => {
+    expect(noteFailureOf("no meeting note for id m-7")).toBe("missing");
+    expect(noteFailureOf("parse note m-7: expected value at line 1")).toBe("unreadable");
+  });
+
+  it("know the one permanent capture cause", () => {
+    expect(captureFailureOf("on-device capture requires the ASR engine (not yet provisioned)")).toBe("noEngine");
+    expect(captureFailureOf("microphone busy")).toBe("other");
   });
 });

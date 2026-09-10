@@ -40,7 +40,7 @@
   import { appMenuGroups, registerAppMenu, initMenuActions, menuAction } from "$lib/menu";
   import { setWindowTitle } from "$lib/window-title";
   import {
-    captureUnavailable,
+    captureFailure,
     transcribe,
     stopCapture,
     openInEditor,
@@ -97,7 +97,7 @@
   // red dot and the word "Recording", which is a claim about a microphone, and
   // the URL knows nothing about one - so a refused capture showed the page's own
   // "Recording did not start" beside a sidebar still saying Recording.
-  const capturing = $derived(path === "/capture" && !$captureUnavailable);
+  const capturing = $derived(path === "/capture" && !$captureFailure);
   // The surface title, said once: the recording surface, the open note or the app.
   const title = $derived(
     capturing ? $t("mt.newMeeting") : activeId && $meeting ? $meeting.note.title : $t("mt.title")
