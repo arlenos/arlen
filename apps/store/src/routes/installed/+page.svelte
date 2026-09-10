@@ -5,8 +5,10 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { t } from "$lib/i18n/messages";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import IconTile from "$lib/components/IconTile.svelte";
-  import { apps, catalogMocked, loadCatalog, type Tier } from "$lib/stores/catalog";
+  import { apps, catalogState, loadCatalog, type Tier } from "$lib/stores/catalog";
 
   onMount(loadCatalog);
 
@@ -25,22 +27,29 @@
 
 <main class="st-main">
   <div class="st-content">
-    {#if $catalogMocked}
-      <p class="sample">{$t("st.sample")}</p>
-    {/if}
-
-    {#if installed.length === 0}
-      <p class="quiet">{$t("st.inst.empty")}</p>
+    {#if $catalogState === "unreadable"}
+      <div class="note refusal">
+        <Notice tone="error" text={$t("st.inst.unreadable")} />
+        <Button variant="ghost" size="sm" id="retry" onclick={() => loadCatalog()}>{$t("st.retry")}</Button>
+      </div>
     {:else}
-      {#each installed as app (app.id)}
-        <button type="button" class="row" id={`inst-${app.id}`} onclick={() => goto(`/app/${app.id}`)}>
-          <IconTile icon={app.icon} name={app.name} size="2.5rem" />
-          <span class="row-body">
-            <span class="row-name">{app.name}</span>
-            <span class="row-meta">{sourceLabel(app.tier)}</span>
-          </span>
-        </button>
-      {/each}
+      {#if $catalogState === "sample"}
+        <div class="note"><Notice tone="neutral" text={$t("st.sample")} /></div>
+      {/if}
+
+      {#if installed.length === 0}
+        <p class="quiet">{$t("st.inst.empty")}</p>
+      {:else}
+        {#each installed as app (app.id)}
+          <button type="button" class="row" id={`inst-${app.id}`} onclick={() => goto(`/app/${app.id}`)}>
+            <IconTile icon={app.icon} name={app.name} size="2.5rem" />
+            <span class="row-body">
+              <span class="row-name">{app.name}</span>
+              <span class="row-meta">{sourceLabel(app.tier)}</span>
+            </span>
+          </button>
+        {/each}
+      {/if}
     {/if}
   </div>
 </main>
@@ -57,10 +66,16 @@
     margin: 0 auto;
     padding: 1.25rem 1.5rem 2rem;
   }
-  .sample {
+  .note {
     margin: 0 0 0.75rem;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .refusal {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  .refusal :global(.notice) {
+    flex: 1;
   }
   .quiet {
     margin: 0;

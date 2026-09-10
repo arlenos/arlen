@@ -11,6 +11,7 @@
 /// is how the last mismatch happened, so there is none.
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// The mechanism that installs a variant. Visible ONLY in the install picker
 /// (where the source is the choice); browse shows apps, never formats (§3).
@@ -396,25 +397,38 @@ const FIXTURE_OBSERVED: Record<string, ObservedStatus> = {
 export const apps = writable<StoreCard[]>([]);
 /// The editorial collections (fixture or live).
 export const collections = writable<Collection[]>([]);
-/// True while the catalogue is the FIXTURE - the surface says so, since install
-/// decisions ride on it.
-export const catalogMocked = writable(false);
+/// What the catalogue on screen is. `sample` is the fixture, shown only where
+/// there is no host to ask; `unreadable` is a host that did not answer, and
+/// the surface then shows that and nothing else, because a store that draws
+/// invented apps over a dead daemon is lying about what can be installed.
+export type CatalogState = "loading" | "live" | "sample" | "unreadable";
+export const catalogState = writable<CatalogState>("loading");
 
 /// Load the catalogue and the collections. Live: the composed catalog via
-/// `store_search`, the curator's file via `store_collections`.
+/// `store_search`, the curator's file via `store_collections`. Asked before
+/// the try, because "nobody to ask" is not a failure to catch.
 export async function loadCatalog(): Promise<void> {
+  if (!tauriAvailable) {
+    apps.set(FIXTURE);
+    collections.set(FIXTURE_COLLECTIONS);
+    catalogState.set("sample");
+    return;
+  }
   try {
     const list = await invoke<StoreCard[]>("store_search", { query: "", facets: [] });
     apps.set(list);
-    catalogMocked.set(false);
+    catalogState.set("live");
   } catch {
-    apps.set(FIXTURE);
-    catalogMocked.set(true);
+    apps.set([]);
+    collections.set([]);
+    catalogState.set("unreadable");
+    return;
   }
   try {
     collections.set(await invoke<Collection[]>("store_collections"));
   } catch {
-    collections.set(FIXTURE_COLLECTIONS);
+    // A curator's file that would not read is no collections, never invented ones.
+    collections.set([]);
   }
 }
 
@@ -428,36 +442,46 @@ export async function loadCatalog(): Promise<void> {
 /// reason a detail command was written in the first place.
 ///
 /// `null` means the catalogue has no such component, which the page must render
-/// as its own state - distinct from a read that failed, which falls to the
-/// fixture and raises `catalogMocked` the way `loadCatalog` does, so the sample
-/// banner is on screen wherever sample data is.
+/// as its own state - distinct from a read that failed, which sets the catalogue
+/// `unreadable` the way `loadCatalog` does, so the page says that instead of
+/// "not in the catalogue". Without a host the fixture answers and the page says
+/// it is a sample.
 export async function appDetail(id: string): Promise<StoreCard | null> {
+  if (!tauriAvailable) {
+    catalogState.set("sample");
+    return FIXTURE.find((a) => a.id === id) ?? null;
+  }
   try {
     const card = await invoke<StoreCard | null>("store_app_detail", { id });
-    catalogMocked.set(false);
+    catalogState.set("live");
     return card;
   } catch {
-    catalogMocked.set(true);
-    return FIXTURE.find((a) => a.id === id) ?? null;
+    catalogState.set("unreadable");
+    return null;
   }
 }
 
-/// The per-layer trust signals for one app. Live: `store_trust_signals`.
+/// The per-layer trust signals for one app. Live: `store_trust_signals`. A
+/// host that would not answer yields no rows, and the panel hides them; a
+/// fixture signal on a real app would be a verified publisher nobody verified.
 export async function trustFor(id: string): Promise<LayerSignals> {
+  if (!tauriAvailable) return FIXTURE_TRUST[id] ?? [];
   try {
     return await invoke<LayerSignals>("store_trust_signals", { id });
   } catch {
-    return FIXTURE_TRUST[id] ?? [];
+    return [];
   }
 }
 
 /// The local observed-vs-declared status for an app (§8.2). "Unavailable" is a
-/// state of its own, never an empty panel.
+/// state of its own, never an empty panel, and it is also the honest answer
+/// when the host did not say.
 export async function observedFor(id: string): Promise<ObservedStatus> {
+  if (!tauriAvailable) return FIXTURE_OBSERVED[id] ?? { state: "unavailable" };
   try {
     return await invoke<ObservedStatus>("store_observed_vs_declared", { id });
   } catch {
-    return FIXTURE_OBSERVED[id] ?? { state: "unavailable" };
+    return { state: "unavailable" };
   }
 }
 
@@ -490,7 +514,7 @@ export async function uninstallApp(id: string): Promise<boolean> {
   try {
     await invoke("store_uninstall", { id });
   } catch (e) {
-    if (get(catalogMocked)) {
+    if (get(catalogState) === "sample") {
       apps.update((list) => list.map((a) => (a.id === id ? { ...a, installed: false } : a)));
       setUninstall(id, null);
       return true;

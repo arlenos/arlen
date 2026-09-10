@@ -9,6 +9,7 @@
   import { goto } from "$app/navigation";
   import { ArrowLeft, Check, Minus } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { t } from "$lib/i18n/messages";
@@ -16,7 +17,7 @@
   import IconTile from "$lib/components/IconTile.svelte";
   import {
     apps,
-    catalogMocked,
+    catalogState,
     appDetail,
     trustFor,
     observedFor,
@@ -69,7 +70,7 @@
 
   // Re-read whenever the route id changes, so navigating between two app pages
   // does not leave the first one's card on screen.
-  $effect(() => {
+  function read(): void {
     const want = id;
     if (!want) return;
     detailRead = false;
@@ -80,6 +81,10 @@
       detail = card;
       detailRead = true;
     });
+  }
+  $effect(() => {
+    void id;
+    read();
   });
 
   // Load the per-app reads once the catalogue entry is there.
@@ -138,8 +143,13 @@
 
 <main class="st-main">
   <div class="st-content">
-    {#if $catalogMocked}
-      <p class="sample">{$t("st.sample")}</p>
+    {#if $catalogState === "unreadable"}
+      <div class="note refusal">
+        <Notice tone="error" text={$t("st.unreadable")} />
+        <Button variant="ghost" size="sm" id="retry" onclick={read}>{$t("st.retry")}</Button>
+      </div>
+    {:else if $catalogState === "sample"}
+      <div class="note"><Notice tone="neutral" text={$t("st.sample")} /></div>
     {/if}
 
     <button type="button" class="back" id="back" onclick={() => goto("/")}>
@@ -147,7 +157,10 @@
       {$t("st.back")}
     </button>
 
-    {#if app && variant}
+    {#if $catalogState === "unreadable"}
+      <!-- The refusal above is the whole page: an app card that could not be
+           read is not "not in the catalogue". -->
+    {:else if app && variant}
       <header class="head">
         <IconTile icon={app.icon} name={app.name} size="4rem" />
         <div class="head-text">
@@ -356,10 +369,16 @@
     margin: 0 auto;
     padding: 1.25rem 1.5rem 2rem;
   }
-  .sample {
+  .note {
     margin: 0 0 0.75rem;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .refusal {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  .refusal :global(.notice) {
+    flex: 1;
   }
   .back {
     display: inline-flex;

@@ -11,12 +11,13 @@
   import { goto } from "$app/navigation";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import AppCard from "$lib/components/AppCard.svelte";
   import { t, locale } from "$lib/i18n/messages";
   import {
     apps,
     collections,
-    catalogMocked,
+    catalogState,
     loadCatalog,
     collectionTitle,
     trustOf,
@@ -92,91 +93,98 @@
 
 <main class="st-main">
   <div class="st-content">
-    {#if $catalogMocked}
-      <p class="sample">{$t("st.sample")}</p>
-    {/if}
+    {#if $catalogState === "unreadable"}
+      <div class="note refusal">
+        <Notice tone="error" text={$t("st.unreadable")} />
+        <Button variant="ghost" size="sm" id="retry" onclick={() => loadCatalog()}>{$t("st.retry")}</Button>
+      </div>
+    {:else}
+      {#if $catalogState === "sample"}
+        <div class="note"><Notice tone="neutral" text={$t("st.sample")} /></div>
+      {/if}
 
-    <div class="search">
-      <SearchField
-        bind:value={query}
-        size="prominent"
-        placeholder={$t("st.search")}
-        aria-label={$t("st.search")}
-        id="store-search"
-      />
-    </div>
+      <div class="search">
+        <SearchField
+          bind:value={query}
+          size="prominent"
+          placeholder={$t("st.search")}
+          aria-label={$t("st.search")}
+          id="store-search"
+        />
+      </div>
 
-    <div class="facets" role="group" aria-label={$t("st.search")}>
-      {#each FACETS as f (f.key)}
+      <div class="facets" role="group" aria-label={$t("st.search")}>
+        {#each FACETS as f (f.key)}
+          <button
+            type="button"
+            class="chip"
+            class:on={active.has(f.key)}
+            aria-pressed={active.has(f.key)}
+            id={`facet-${f.key}`}
+            onclick={() => toggleFacet(f.key)}
+          >
+            {$t(f.labelKey)}
+          </button>
+        {/each}
         <button
           type="button"
           class="chip"
-          class:on={active.has(f.key)}
-          aria-pressed={active.has(f.key)}
-          id={`facet-${f.key}`}
-          onclick={() => toggleFacet(f.key)}
+          class:on={leastPrivilege}
+          aria-pressed={leastPrivilege}
+          id="facet-least-privilege"
+          onclick={() => (leastPrivilege = !leastPrivilege)}
         >
-          {$t(f.labelKey)}
+          {$t("st.sort.leastPrivilege")}
         </button>
-      {/each}
-      <button
-        type="button"
-        class="chip"
-        class:on={leastPrivilege}
-        aria-pressed={leastPrivilege}
-        id="facet-least-privilege"
-        onclick={() => (leastPrivilege = !leastPrivilege)}
-      >
-        {$t("st.sort.leastPrivilege")}
-      </button>
-      <button
-        type="button"
-        class="chip"
-        class:on={showCommunity}
-        aria-pressed={showCommunity}
-        id="facet-community"
-        onclick={() => (showCommunity = !showCommunity)}
-      >
-        {$t("st.facet.community")}
-      </button>
-    </div>
-
-    {#if filtering}
-      <div class="group-label">{$t("st.results")}</div>
-      <div class="grid">
-        {#each results as app (app.id)}
-          <AppCard {app} onopen={open} />
-        {:else}
-          <p class="quiet">{$t("st.noMatch")}</p>
-        {/each}
+        <button
+          type="button"
+          class="chip"
+          class:on={showCommunity}
+          aria-pressed={showCommunity}
+          id="facet-community"
+          onclick={() => (showCommunity = !showCommunity)}
+        >
+          {$t("st.facet.community")}
+        </button>
       </div>
-    {:else}
-      {#each liveCollections as { coll, members } (coll.id)}
-        <div class="group-label">{collectionTitle(coll, $locale)}</div>
-        <div class="grid">
-          {#each members as app (app.id)}
-            <AppCard {app} onopen={open} />
-          {/each}
-        </div>
-      {/each}
-      {#if liveCollections.length === 0 && everything.length > 0}
-        <p class="quiet">{$t("st.coll.none")}</p>
-      {/if}
 
-      {#if everything.length > 0}
-        <div class="group-label">{$t("st.all")}</div>
+      {#if filtering}
+        <div class="group-label">{$t("st.results")}</div>
         <div class="grid">
-          {#each everything.slice(0, shown) as app (app.id)}
+          {#each results as app (app.id)}
             <AppCard {app} onopen={open} />
+          {:else}
+            <p class="quiet">{$t("st.noMatch")}</p>
           {/each}
         </div>
-        {#if everything.length > shown}
-          <div class="more">
-            <span class="count">{$t("st.shown", { n: shown, total: everything.length })}</span>
-            <Button variant="outline" size="sm" id="store-show-more" onclick={() => (shown += SLICE * 2)}>
-              {$t("st.showMore")}
-            </Button>
+      {:else}
+        {#each liveCollections as { coll, members } (coll.id)}
+          <div class="group-label">{collectionTitle(coll, $locale)}</div>
+          <div class="grid">
+            {#each members as app (app.id)}
+              <AppCard {app} onopen={open} />
+            {/each}
           </div>
+        {/each}
+        {#if liveCollections.length === 0 && everything.length > 0}
+          <p class="quiet">{$t("st.coll.none")}</p>
+        {/if}
+
+        {#if everything.length > 0}
+          <div class="group-label">{$t("st.all")}</div>
+          <div class="grid">
+            {#each everything.slice(0, shown) as app (app.id)}
+              <AppCard {app} onopen={open} />
+            {/each}
+          </div>
+          {#if everything.length > shown}
+            <div class="more">
+              <span class="count">{$t("st.shown", { n: shown, total: everything.length })}</span>
+              <Button variant="outline" size="sm" id="store-show-more" onclick={() => (shown += SLICE * 2)}>
+                {$t("st.showMore")}
+              </Button>
+            </div>
+          {/if}
         {/if}
       {/if}
     {/if}
@@ -195,10 +203,16 @@
     margin: 0 auto;
     padding: 1.25rem 1.5rem 2rem;
   }
-  .sample {
+  .note {
     margin: 0 0 0.75rem;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .refusal {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  .refusal :global(.notice) {
+    flex: 1;
   }
   .search {
     margin-bottom: 0.75rem;
