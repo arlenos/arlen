@@ -35,6 +35,8 @@ Everything is in `~/Repositories/arlen/dev/`.
 | …across every app? | `dev/screenshot/sweep-render-all.sh [locale] [app]` |
 | Does axe pass, with real colour-contrast numbers? | `dev/screenshot/sweep-axe.sh [width] [app]` (add `--axe` to `headless.sh` for one page) |
 | Does Escape close what a click opened? | `dev/screenshot/sweep-escape.sh <base-url> [selector…]` - with no selectors it runs the set for the route the URL names |
+| …and does the keyboard come back to what opened it? | the same sweep: it fails a row that leaves focus on `body` while a modal is open, and one that closes without giving focus back |
+| Does Tab walk a surface the way the eye reads it? | `dev/screenshot/sweep-tab-order.sh <app> <base-url> [width]` - a census, not a gate: it REPORTS pairs that go backwards, with pixels, and a sidebar after the content can be right |
 | What does this app do when every backend call fails? | `dev/screenshot/shoot-no-backend.sh <app> [route] [out.png]` |
 | …across every app? | `dev/screenshot/sweep-no-backend.sh [width] [app]` |
 | What does a REFUSAL look like - a state no route reaches? | a host fixture plus `dev/screenshot/probe-host.sh <host> <base> <probe.js> [width] [locale]` |
@@ -60,6 +62,7 @@ Four run on every route the render sweep walks:
 - `clipped-by-parent.js` - an ancestor that clips cut a child sideways.
 - `overlapping-text.js` - two elements painted in the same place.
 - `no-focus-ring.js` - a control takes keyboard focus and looks no different.
+- `tab-order.js` - Tab goes backwards in reading order. Its own sweep rather than a column in the render table: a finding is a question a person answers, and asking it at three widths would buy nothing.
 
 A fifth runs only on host rows, where something is focused for it to read:
 
