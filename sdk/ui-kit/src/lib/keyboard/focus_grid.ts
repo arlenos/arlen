@@ -225,10 +225,17 @@ export function attachFocusGrid(
       }
       case "Enter":
       case " ": {
+        // ONLY when somebody is listening. The grid used to swallow both keys
+        // whether or not `onActivate` was wired, and the quick-settings panel -
+        // the caller this whole file exists for - wires cells, Escape and help
+        // and nothing else. So a person could walk every tile with the arrows
+        // and never switch one on: the preventDefault stopped the button
+        // underneath from turning the key into a click. With no listener the
+        // key belongs to the control that has focus.
         const focused = cells[cur]?.el;
-        if (focused) {
+        if (focused && options.onActivate) {
           e.preventDefault();
-          options.onActivate?.(focused);
+          options.onActivate(focused);
         }
         break;
       }
