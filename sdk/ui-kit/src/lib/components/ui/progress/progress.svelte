@@ -4,10 +4,22 @@
   let {
     value,
     id,
+    label,
+    labelledby,
   }: {
     /// Progress from 0 to 100. Clamped.
     value: number;
     id?: string;
+    /// What this bar is the progress OF, for a reader who cannot see what it
+    /// sits under. A `role="progressbar"` with no accessible name announces a
+    /// percentage and nothing else - four of them in one jobs list are four
+    /// numbers with no subjects. Axe reports it as `aria-progressbar-name`
+    /// (serious); measured on 11 September on the shell's jobs zone.
+    label?: string;
+    /// The id of a visible element that already names it - preferred over
+    /// `label`, since a name the reader can also SEE is one fewer string to
+    /// keep in step.
+    labelledby?: string;
   } = $props();
 
   const pct = $derived(Math.max(0, Math.min(100, value)));
@@ -17,6 +29,8 @@
   class="progress"
   {id}
   role="progressbar"
+  aria-label={labelledby ? undefined : label}
+  aria-labelledby={labelledby}
   aria-valuenow={Math.round(pct)}
   aria-valuemin={0}
   aria-valuemax={100}
