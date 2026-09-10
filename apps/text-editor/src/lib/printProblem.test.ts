@@ -19,10 +19,10 @@ describe("printProblem", () => {
     });
   });
 
-  it("keeps the detail when the machine can print and this attempt did not", () => {
+  it("names a portal that refused, without quoting it", () => {
     expect(printProblem(wrapped('{"problem":"portal-refused","message":"queue full"}'))).toEqual({
-      key: "te.print.failed",
-      detail: "queue full",
+      key: "te.print.refused",
+      detail: "",
     });
   });
 

@@ -12,8 +12,8 @@
 /// is better than reaching into somebody else's work, and better than each
 /// window inventing its own mapping quietly.
 ///
-/// An answer this does not model is shown as it came, because the string is then
-/// the only thing anybody has.
+/// An answer this does not model keeps its text in `detail` for the console;
+/// the page says the general sentence, never the text.
 
 /// A message id and the one value worth putting in it.
 export type PrintProblem = { key: string; detail: string };
@@ -38,6 +38,8 @@ export function printProblem(raw: string): PrintProblem {
       return { key: "te.print.noBus", detail: "" };
     case "file-unreadable":
       return { key: "te.print.fileUnreadable", detail };
+    case "portal-refused":
+      return { key: "te.print.refused", detail: "" };
     default:
       return { key: "te.print.failed", detail };
   }
