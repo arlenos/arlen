@@ -55,6 +55,18 @@
     if (r.state === "ours") return { posture: "ours", text: $t("s.toolkit.reach.ours") };
     if (r.state === "blocked") return { posture: "away", text: $t("s.toolkit.blocked", { file: r.blockedBy ?? "" }) };
     if (r.state === "unselected") return { posture: "away", text: $t("s.toolkit.unselected", { name: r.blockedBy ?? "" }) };
+    // Wine: a count. Every bottle wearing the theme is quiet; one without it is
+    // in the way, the same tone as a file in the way. No bottles is an empty
+    // state, not a fault, so no warning; a count nobody could take is the ring.
+    if (r.state === "count") {
+      const all = r.wearing !== null && r.wearing === r.bottles;
+      return {
+        posture: all ? "ours" : "away",
+        text: $t("s.toolkit.wine.count", { wearing: r.wearing ?? 0, bottles: r.bottles ?? 0 }),
+      };
+    }
+    if (r.state === "none") return { posture: "empty", text: $t("s.toolkit.wine.none") };
+    if (r.state === "unknown") return { posture: "unknown", text: $t("s.toolkit.wine.unknown") };
     return { posture: "unknown", text: $t("s.toolkit.absent") };
   }
 </script>
@@ -138,6 +150,10 @@
   }
   .found[data-posture="unknown"] {
     box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--foreground) 40%, transparent);
+  }
+  /* Nothing to reach: the ring, fainter, because there is nothing wrong. */
+  .found[data-posture="empty"] {
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--foreground) 22%, transparent);
   }
   /* A prerequisite this machine does not meet: one caution line under the row,
      only while it is true. */
