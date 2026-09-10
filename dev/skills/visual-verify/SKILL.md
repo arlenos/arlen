@@ -178,6 +178,13 @@ September, every one of them `pkill -f <port>` to stop a vite server. That shape
 looks like it could not possibly match anything else, and it matches the shell you are typing in, because the
 number is in the command line. `fuser -k -n tcp <port>` is one character longer.
 
+**And `pgrep -f` has the same blind spot pointed the other way: a wait that never ends.** `until ! pgrep -f
+"sweep-render-all.sh de clock"; do sleep 20; done` looks like it waits for that sweep. It waits for ever: the
+shell running the loop has that string in its own command line, so `pgrep` always finds at least itself and
+the negation is never true. Two of those were left spinning on 11 September, one of them long after the sweep
+it was watching had finished. Match something the waiting shell does not contain - a pid from a `ps` you just
+read, or the log's last line - or poll the log rather than the process table.
+
 ## Reading the picture
 
 Ask what the surface CLAIMS, not whether it drew. The defects worth finding are claims nothing backs: a label
