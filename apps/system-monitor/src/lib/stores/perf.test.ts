@@ -12,7 +12,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: async () => ({}) }));
 
-import { axisMax } from "./perf.js";
+import { axisMax, sampleTick } from "./perf.js";
 
 describe("axisMax", () => {
   it("keeps the floor for an idle machine", () => {
@@ -43,5 +43,21 @@ describe("axisMax", () => {
       const max = axisMax(values, 50);
       for (const v of values) expect(v).toBeLessThanOrEqual(max);
     }
+  });
+});
+
+describe("sampleTick", () => {
+  it("is deterministic, so two renders of the sample agree", () => {
+    expect(sampleTick(7)).toEqual(sampleTick(7));
+    expect(sampleTick(7).cpuPct).not.toBe(sampleTick(8).cpuPct);
+  });
+
+  it("carries measured rates, never a first-tick zero", () => {
+    const t = sampleTick(0);
+    expect(t.ratesReady).toBe(true);
+    expect(t.cores).toHaveLength(8);
+    expect(t.diskReadMbs).not.toBeNull();
+    expect(t.memPct).toBeGreaterThan(50);
+    expect(t.memPct).toBeLessThan(60);
   });
 });

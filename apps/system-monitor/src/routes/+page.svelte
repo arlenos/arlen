@@ -13,6 +13,7 @@
   import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers } from "lucide-svelte";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
@@ -150,7 +151,7 @@
     {#if $mocked}
       <!-- Every row here offers a Stop; unlabelled, the fixture reads as this
            machine's real processes. -->
-      <p class="note">{$t("tm.sample")}</p>
+      <div class="note-wrap"><Notice tone="neutral" text={$t("tm.sample")} /></div>
     {:else if $unavailable}
       <!-- No rows at all rather than a labelled fixture: the ids in that fixture
            are the argument Stop passes to the backend. -->
@@ -332,6 +333,10 @@
     background: var(--color-fg-primary);
   }
   /* Calm caveat above the table - it qualifies every row below it. */
+  .note-wrap {
+    padding: 0.6rem 1rem 0;
+    flex-shrink: 0;
+  }
   .note {
     margin: 0;
     padding: 0.6rem 1rem 0;
