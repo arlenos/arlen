@@ -11,6 +11,7 @@
   import { Bell, CalendarDays, Clock, MapPin, Repeat } from "@lucide/svelte";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Dialog } from "@arlen/ui-kit/components/ui/dialog";
+  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
@@ -222,9 +223,25 @@
     onclose();
   }
 
-  async function remove(): Promise<void> {
+  /// A delete rewrites the calendar file; there is no trash and no undo. So it
+  /// asks once, naming what goes (the one event, this and the following, the
+  /// whole series), never whether the person is sure.
+  let confirmDelete = $state(false);
+  function remove(): void {
+    if (!editing) return;
+    confirmDelete = true;
+  }
+  const deleteBodyKey = $derived(
+    editing?.repeats && editScope === "all"
+      ? "cal.delete.body.all"
+      : editing?.repeats && editScope === "following"
+        ? "cal.delete.body.following"
+        : "cal.delete.body",
+  );
+  async function reallyRemove(): Promise<void> {
     if (!editing) return;
     const refusal = await deleteEvent(editing.uid, editing.calendar ?? calendarId, editScope, editing.date);
+    confirmDelete = false;
     if (refusal) {
       failed = refusal;
       return;
@@ -404,6 +421,16 @@
     </div>
   </div>
 </Dialog>
+
+<ConfirmDialog
+  open={confirmDelete}
+  title={$t("cal.delete.title", { title: editing?.summary ?? "" })}
+  message={$t(deleteBodyKey)}
+  confirmLabel={$t("cal.delete.confirm")}
+  variant="destructive"
+  onConfirm={reallyRemove}
+  onCancel={() => (confirmDelete = false)}
+/>
 
 <style>
   /* The clock dialog's inset, the house register for a modal's inside. */

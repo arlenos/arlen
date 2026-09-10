@@ -484,6 +484,31 @@ function editRefusal(e: unknown): string {
   }
 }
 
+/// Why a deletion was refused, in the reader's language: the delete's own
+/// sentences, not the edit's. A deletion that "was not written" is a change
+/// only to the code; to a person it is an event that is still there.
+function deleteRefusal(e: unknown): string {
+  const write = get(t);
+  const p = e as UpdateProblem | null;
+  switch (p?.problem) {
+    case "no-home":
+      return write("cal.delete.noHome");
+    case "no-such-calendar":
+      return write("cal.delete.noSuchCalendar");
+    case "unreadable":
+      return write("cal.delete.unreadable", { why: why(p.why) });
+    case "bad-scope":
+      return write("cal.delete.badScope");
+    case "not-aimed":
+      return write("cal.delete.notAimed");
+    case "not-written":
+      return write("cal.delete.notWritten", { why: why(p.why) });
+    default:
+      console.warn("calendar: unrecognised delete refusal", e);
+      return write("cal.delete.failed");
+  }
+}
+
 /// Create one event. Live: the intended `calendar_create_event(draft)` writing
 /// a VEVENT into the store directory (the watcher re-reads, the daemon arms
 /// the reminder). Fixture: applied locally so the flow drives. Returns the
@@ -621,7 +646,7 @@ export async function deleteEvent(
   } catch (e) {
     let mocked = false;
     calendarMocked.update((m) => ((mocked = m), m));
-    if (!mocked) return editRefusal(e);
+    if (!mocked) return deleteRefusal(e);
     agenda.update((a) => {
       if (!a) return a;
       const keep = (ev: AgendaEvent): boolean => {
