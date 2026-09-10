@@ -59,9 +59,18 @@ export const TOOLKITS: Toolkit[] = [
 /// Whether the theme is actually in place for a toolkit, as opposed to what the
 /// toolkit could take. The badge says the ceiling; this says the floor.
 export interface ToolkitReach {
-  state: "ours" | "blocked" | "unselected" | "absent";
+  /// The first four answer for the whole machine. The last three are wine's
+  /// alone: there is one GTK on a machine and as many wine answers as there are
+  /// bottles, so wine's reach is a count, not a state.
+  state: "ours" | "blocked" | "unselected" | "absent" | "count" | "none" | "unknown";
   /// The file in the way, when one is.
   blockedBy: string | null;
+  /// Wine only: how many bottles hold the active theme's document. Null when
+  /// the bottles could not be listed or the theme did not resolve, which is
+  /// the absence of a claim rather than a zero.
+  wearing: number | null;
+  /// Wine only: how many bottles exist. Zero is the `none` state.
+  bottles: number | null;
 }
 
 /// Per toolkit id. Empty until read, which reads as "not checked" rather than
@@ -82,10 +91,12 @@ export async function loadReach(): Promise<void> {
         // Two different unhappy states, because each renders a different
         // sentence and the fixture is the only place either is looked at
         // without a machine in that condition.
-        gtk3: { state: "unselected", blockedBy: "Adwaita" },
-        gtk4: { state: "ours", blockedBy: null },
-        qt: { state: "blocked", blockedBy: "qt6ct.conf" },
-        terminal: { state: "ours", blockedBy: null },
+        gtk3: { state: "unselected", blockedBy: "Adwaita", wearing: null, bottles: null },
+        gtk4: { state: "ours", blockedBy: null, wearing: null, bottles: null },
+        qt: { state: "blocked", blockedBy: "qt6ct.conf", wearing: null, bottles: null },
+        terminal: { state: "ours", blockedBy: null, wearing: null, bottles: null },
+        // A bottle short of all of them, so the count renders with its dot.
+        wine: { state: "count", blockedBy: null, wearing: 3, bottles: 4 },
       });
     }
   }
