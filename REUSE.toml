@@ -93,3 +93,44 @@ path = "themes/adw-gtk3/**"
 precedence = "closest"
 SPDX-FileCopyrightText = ["The adw-gtk3 authors", "2026 Tim Kicker"]
 SPDX-License-Identifier = "LGPL-2.1-only"
+
+# The stock Tauri application icons. `tauri init` writes this set into every
+# `src-tauri/icons/`, and no app has replaced it: all seventeen directories are
+# byte-identical artwork (the shell keeps the full sixteen-file set including the
+# `Square*Logo` tiles, the other apps the five-file subset). It is the Tauri
+# Programme's logo, not ours, and the `**` rule above was declaring copyright we
+# do not hold - which on artwork is the one place a bulk rule is not a harmless
+# approximation. Tauri is dual-licensed Apache-2.0 OR MIT; MIT is named here as
+# the narrower of the two we rely on.
+#
+# This is a truthful declaration, NOT a decision to keep the mark. Replacing the
+# artwork is a separate step and is Tim's; a sidecar is not a substitute for it
+# and is also not something to postpone until we do, because a lint passing on a
+# false answer is worse than one that fails.
+#
+# Listed directory by directory rather than as `apps/*/src-tauri/icons/**`: a
+# glob that silently matched nothing would be exactly the false answer this block
+# exists to remove, and a new app's icons are meant to need a line here.
+[[annotations]]
+path = [
+    "apps/calendar/src-tauri/icons/**",
+    "apps/clock/src-tauri/icons/**",
+    "apps/desktop-shell/src-tauri/icons/**",
+    "apps/files/src-tauri/icons/**",
+    "apps/greeter/src-tauri/icons/**",
+    "apps/harness/src-tauri/icons/**",
+    "apps/knowledge/src-tauri/icons/**",
+    "apps/mail/src-tauri/icons/**",
+    "apps/meetings/src-tauri/icons/**",
+    "apps/pdf/src-tauri/icons/**",
+    "apps/screenshot/src-tauri/icons/**",
+    "apps/settings/src-tauri/icons/**",
+    "apps/store/src-tauri/icons/**",
+    "apps/system-monitor/src-tauri/icons/**",
+    "apps/terminal/src-tauri/icons/**",
+    "apps/text-editor/src-tauri/icons/**",
+    "apps/viewers/src-tauri/icons/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Tauri Programme within The Commons Conservancy"
+SPDX-License-Identifier = "MIT"
