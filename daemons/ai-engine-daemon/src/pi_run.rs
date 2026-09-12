@@ -26,12 +26,51 @@ pub async fn run_ephemeral_explain<S, B>(
     project_anchor: Option<String>,
     engine: &S,
     binder: &B,
+    audit: &dyn audit_proto::sink::AuditSink,
 ) -> Result<String, String>
 where
     S: SpawnEngine,
     B: SessionBinder + ?Sized,
 {
-    run_ephemeral_answer(behaviour, project_anchor, EXPLAIN_PROMPT, engine, binder).await
+    run_ephemeral_answer(behaviour, project_anchor, EXPLAIN_PROMPT, engine, binder, audit, RunKind::Explain)
+        .await
+}
+
+/// A fresh id linking one run's two ledger entries. Random rather than a
+/// counter: the ledger is shared, and a predictable id invites a second writer to
+/// land on one that is already in use.
+fn new_run_id() -> String {
+    let mut bytes = [0u8; 16];
+    // A correlation id, not a secret. If the CSPRNG is unavailable the run is
+    // still worth recording, so fall back to the clock rather than refuse.
+    if getrandom::getrandom(&mut bytes).is_err() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        bytes[..16].copy_from_slice(&now.to_be_bytes());
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Which of the two user-facing questions a run is answering, so the ledger
+/// names the right subject (`ai.explain` or `ai.query`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunKind {
+    /// System Explanation Mode.
+    Explain,
+    /// A question the person typed.
+    Ask,
+}
+
+impl RunKind {
+    /// The audit entry for one point in this run's lifecycle.
+    fn event(self, outcome: &str, duration_ms: Option<u64>, id: &str) -> audit_proto::IngestRequest {
+        match self {
+            RunKind::Explain => arlen_ai_core::audit::explain_event(outcome, duration_ms, id),
+            RunKind::Ask => arlen_ai_core::audit::query_event(outcome, duration_ms, id),
+        }
+    }
 }
 
 /// The minimal turn that kicks a fire-and-forget behaviour run. It carries NO
@@ -235,11 +274,24 @@ pub async fn run_ephemeral_answer<S, B>(
     turn: &str,
     engine: &S,
     binder: &B,
+    audit: &dyn audit_proto::sink::AuditSink,
+    kind: RunKind,
 ) -> Result<String, String>
 where
     S: SpawnEngine,
     B: SessionBinder + ?Sized,
 {
+    // The before-act entry, fail-closed, exactly as S13 asks: a run the ledger
+    // cannot record does not happen. The pair is linked by one `call_chain_id`,
+    // and this entry carries no duration because it is written before there is
+    // one - which is also what makes the run view able to show a run that is
+    // still going, something a single entry written afterwards never could.
+    let run_id = new_run_id();
+    if audit.submit(kind.event("dispatched", None, &run_id)).await.is_err() {
+        return Err("the assistant could not record this run, so it did not start".to_string());
+    }
+    let started = std::time::Instant::now();
+
     // A manual/driven turn has no triggering event: the person is the origin.
     let init = build_ephemeral_session_init(behaviour, project_anchor, None);
     let token = SessionToken::mint().map_err(|_| "could not mint a session".to_string())?;
@@ -295,6 +347,19 @@ where
             reason = %reason,
             "ephemeral run produced no answer"
         ),
+    }
+
+    // The completion entry, under the same id, carrying the duration. Appended,
+    // never an edit of the entry above: that ledger is append-only and anchored,
+    // and a row editable after the fact is a row whose earlier state nobody can
+    // prove. Best-effort, unlike the dispatch entry - the run has already
+    // happened, and refusing it afterwards would help nobody; a missing
+    // completion reads as a run that did not finish, which is the truthful
+    // reading of a ledger that lost the end of it.
+    let outcome = if answer.is_ok() { "completed" } else { "failed" };
+    let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if audit.submit(kind.event(outcome, Some(elapsed), &run_id)).await.is_err() {
+        tracing::warn!(run = %run_id, "the run completed but its completion was not recorded");
     }
     answer
 }
@@ -472,6 +537,59 @@ mod tests {
         assert_eq!(out, EphemeralOutcome::TimedOut);
         // The session is ended even on timeout (its authority must not outlive it).
         assert!(*binder.ended.lock().unwrap());
+    }
+
+    /// One run, two entries, one id, and the duration only on the second.
+    ///
+    /// The shape the ruling asked for: the before-act entry stays exactly as S13
+    /// requires and the completion is APPENDED beside it, never an edit of it,
+    /// because the ledger is append-only and a row editable afterwards is a row
+    /// whose earlier state nobody can prove.
+    #[tokio::test]
+    async fn a_run_records_a_dispatch_and_a_completion_under_one_id() {
+        let b = agent_behaviour("ask");
+        // No engine to drive, so the run fails - which is the point: the pair is
+        // recorded either way, and the outcome says which.
+        let engine = ScriptedEngine { exit: EngineExit::Clean, sleep_ms: 0 };
+        let binder = MockBinder::default();
+        let audit = audit_proto::sink::MockAuditSink::accepting();
+        let _ = run_ephemeral_answer(&b, None, "what is it doing", &engine, &binder, &audit, RunKind::Ask)
+            .await;
+
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded.len(), 2, "a dispatch and a completion");
+        assert_eq!(recorded[0].structural.subject, "ai.query");
+        assert_eq!(recorded[0].structural.outcome, "dispatched");
+        assert_eq!(recorded[0].structural.duration_ms, None, "nothing has taken any time yet");
+        assert!(recorded[1].structural.duration_ms.is_some(), "the completion carries the number");
+        assert_eq!(
+            recorded[0].call_chain_id, recorded[1].call_chain_id,
+            "the two entries of one run have to link"
+        );
+    }
+
+    /// A run the ledger cannot record does not happen.
+    #[tokio::test]
+    async fn a_run_the_ledger_refuses_never_starts() {
+        let b = agent_behaviour("ask");
+        let engine = ScriptedEngine { exit: EngineExit::Clean, sleep_ms: 0 };
+        let binder = MockBinder::default();
+        let audit = audit_proto::sink::MockAuditSink::failing();
+        let out = run_ephemeral_answer(&b, None, "q", &engine, &binder, &audit, RunKind::Ask).await;
+        assert!(out.is_err(), "no record, no run");
+        assert!(binder.bound_pid.lock().unwrap().is_none(), "nothing was spawned");
+    }
+
+    /// The explain surface names itself, so the ledger can tell the two apart.
+    #[tokio::test]
+    async fn an_explain_run_is_recorded_under_its_own_subject() {
+        let b = agent_behaviour("explain");
+        let engine = ScriptedEngine { exit: EngineExit::Clean, sleep_ms: 0 };
+        let binder = MockBinder::default();
+        let audit = audit_proto::sink::MockAuditSink::accepting();
+        let _ = run_ephemeral_explain(&b, None, &engine, &binder, &audit).await;
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded[0].structural.subject, "ai.explain");
     }
 
     #[test]

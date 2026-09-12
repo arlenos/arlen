@@ -723,6 +723,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ai1_iface::load_builtin_behaviour("ask").map(Arc::new),
                 engine,
                 Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
+                audit.clone(),
             );
             match conn.object_server().at(ai1_iface::AI1_OBJECT_PATH, iface).await {
                 Ok(true) => {
