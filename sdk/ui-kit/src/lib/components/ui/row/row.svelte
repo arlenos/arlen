@@ -177,15 +177,17 @@
      keeps `flex-shrink: 0`: it is an operable thing with a hit target, not a
      description.
 
-     NO `overflow: hidden` HERE, and it was there for one run. Clipping the box is
-     what turns a squeeze into a CUT: the sweep came back with "Inoffiziell cut
-     76px sideways by .preview", a badge sliced mid-word, which is the trade the
-     label was just rescued from. A preview that cannot fit should wrap or spill
-     where its own content decides, and the content is the caller's - a chip row
-     that can wrap says so itself. */
+     `min-content` rather than `0`, and the sweep taught both halves of that in two
+     runs. At `min-width: 0` with `overflow: hidden` the box clipped and a badge
+     came back "cut 76px sideways"; at `min-width: 0` without it the box shrank
+     past its content and the badge SPILLED over the control - "Dein Abo over
+     Testen". `min-content` is the floor that makes shrinking safe: the box can
+     narrow to the widest single item, which is what lets a wrapping chip row wrap,
+     and no further, which is what stops it cutting or spilling. Same floor the
+     control keeps, for the same reason. */
   .preview {
     flex-shrink: 1;
-    min-width: 0;
+    min-width: min-content;
   }
 
   /* The reset sits before the control and only shows itself when the row is
