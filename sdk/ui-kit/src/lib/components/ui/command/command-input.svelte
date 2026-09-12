@@ -31,11 +31,17 @@
 	     focusable until the arrow keys move a cursor into the list - the ring
 	     would be a permanent frame round the only place the keyboard can be.
 
-	     `no-focus-ring.js` reports it, on the terminal's history and quick-connect
-	     palettes at every width. The probe is not wrong: it cannot know that this
-	     input is the whole widget. Left as it is rather than silenced, and this
-	     comment is the answer to the finding. If the house rule turns out to be
-	     that every input rings, this is the single place to change. -->
+	     `no-focus-ring.js` reports it at every width, on every surface that opens
+	     a palette - which is more than the two this comment used to name. A 720
+	     German sweep on 13 September found it on the terminal's history and
+	     quick-connect palettes, the shell's waypointer and the shell's menu
+	     palette, and the clipboard popover uses the same input. Naming surfaces
+	     here was the mistake: a kit component should not have to track its own
+	     consumers, and the list was already stale. The probe is not wrong either:
+	     it cannot know that this input is the whole widget. Left as it is rather
+	     than silenced, and this comment is the answer to the finding. If the house
+	     rule turns out to be that every input rings, this is the single place to
+	     change. -->
 	<CommandPrimitive.Input
 		bind:ref
 		bind:value
