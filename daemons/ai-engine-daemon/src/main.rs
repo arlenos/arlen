@@ -27,6 +27,7 @@ use arlen_ai_engine_daemon::file_executor::FileSystemExecutor;
 use arlen_run_consent_token::RUN_COMMAND_TOOL;
 use arlen_ai_engine_daemon::settings_executor::SettingsExecutor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
+use arlen_ai_engine_daemon::find_executor::{GraphFindExecutor, SocketFinder};
 use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
 use arlen_ai_core::provider::AIProvider;
@@ -563,6 +564,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let read_executor: Arc<dyn Executor> =
         Arc::new(GraphReadExecutor::new(build_read_runner(ai_connection.as_ref()).await));
+    // The deterministic half of the read verb. It needs no provider, so it works
+    // whether or not the ask verb's pipeline is wired.
+    let find_executor: Arc<dyn Executor> = Arc::new(GraphFindExecutor::new(Arc::new(
+        SocketFinder::new(resolve_knowledge_socket()),
+    )));
     let write_executor: Arc<dyn Executor> = Arc::new(
         GraphWriteExecutor::new(build_write_runner())
             .with_audit(audit.clone())
@@ -619,6 +625,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // writes are wired below.
     let executor = ProxyExecutor::new()
         .register("graph.read", read_executor)
+        .register("graph.find", find_executor)
         // D2 (pi-gate-class-registry.md): the fine-grained reversible graph-write
         // tools route to the same write executor as the coarse graph.write, so each
         // NAME carries one fixed gate class (ReversibleAction) - the coarse

@@ -489,8 +489,11 @@ pub fn is_egress_tool(tool: &str) -> bool {
 /// resolve to one fixed class so no `tool_input` parsing is needed in the gate.
 pub fn gate_class_for_tool(tool: &str) -> GateClass {
     match tool {
-        // Reads: Allow, scope-bounded (D3).
-        "graph.read" => GateClass::Read,
+        // Reads: Allow, scope-bounded (D3). `graph.find` is the deterministic
+        // half of the read verb - keyword to ranked ids, no provider call and no
+        // generated Cypher - and is bounded by the same caller scope, enforced in
+        // the knowledge daemon where the search runs.
+        "graph.read" | "graph.find" => GateClass::Read,
         // Reversible graph + fs + settings actions: Allow autonomous. A settings
         // write captures the prior value (RestoreValue), so undo restores it.
         "graph.assert_edge" | "graph.retract_edge" | "fs.move" | "fs.trash"

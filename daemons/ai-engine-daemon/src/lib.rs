@@ -40,6 +40,7 @@ pub mod consent_root;
 /// The Phase-2-A drive-channel relay: a faithful JSONL bridge shell <-> pi RPC.
 pub mod rpc_proxy;
 
+pub mod find_executor;
 pub mod read_executor;
 
 /// Deterministic curation (§E): the zero-token, no-pi graph curation the daemon
