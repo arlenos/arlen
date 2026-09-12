@@ -45,7 +45,7 @@ use arlen_ai_engine_daemon::write_executor::{
     DeniedWriter, GraphWriteExecutor, RelationWriter, UnixRelationWriter,
 };
 use arlen_ai_engine_daemon::wire::serve_connection;
-use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
+use ai_engine_contract::{CapabilityContext, SessionInit};
 use arlen_permissions::connection_auth::peer_credentials;
 use audit_proto::sink::{AuditSink, LedgerAuditSink};
 use std::os::unix::fs::PermissionsExt;
@@ -203,19 +203,32 @@ fn default_engine_session() -> SessionInit {
         behaviour: None,
         capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
         project_anchor: None,
-        // The generous default read scope (settled generous-AI-defaults principle,
-        // Tim-approved): the shell-driven assistant reads the user's own observation
-        // graph so it answers "what was I working on / list my files and projects"
-        // out of the box. Full maps to the whole `knowledge_graph()` schema, which is
-        // observation-only (File/App/Session/Event/Project/Directory/activity edges) -
-        // it carries NO authority or secret labels (LCG Grant/CapabilityUse live only
-        // in the knowledge daemon, not this shared schema), so Full here is the user's
-        // own files+activity, not a privileged view. A narrower tier (Extended) omits
-        // Project/FILE_PART_OF, so "files AND projects" fails query generation.
-        // Restriction is opt-out; the audit + revoke path is the net. NOTE this is
-        // the user's OWN interactive session (externally_triggered stays false); an
-        // event-triggered run must still derive its origin bit before executor_live.
-        read_tier: ReadTier::Full,
+        // The read scope the USER picked, which until 12 September this line
+        // hardcoded to Full - so Settings showed a control that governed nothing,
+        // and in a security surface a control that displays a value it does not
+        // enforce is a false statement (ruled, `ai-agent-design.md`, "The read
+        // level is a control that does not govern").
+        //
+        // The generous default is not what was wrong and does not change: an
+        // absent setting still resolves to the widest (`WIDEST_READ_LEVEL`), so
+        // the shell-driven assistant answers "what was I working on / list my
+        // files and projects" out of the box. Full maps to the whole
+        // `knowledge_graph()` schema, which is observation-only
+        // (File/App/Session/Event/Project/Directory/activity edges) and carries NO
+        // authority or secret labels - LCG Grant/CapabilityUse live only in the
+        // knowledge daemon, not this shared schema - so Full here is the user's
+        // own files+activity, not a privileged view. What changes is that a
+        // narrower choice now lands: level 3 maps to Extended, which omits
+        // Project/FILE_PART_OF, so "files AND projects" stops answering. That is
+        // the setting doing what it says, and the place to argue with it is the
+        // setting.
+        //
+        // NOTE this is the user's OWN interactive session (externally_triggered
+        // stays false); an event-triggered run must still derive its origin bit
+        // before executor_live.
+        read_tier: arlen_ai_engine_daemon::capability_map::read_tier_for_level(
+            engine_config::read_level(),
+        ),
         // The trustworthy session-origin bit. It is false here because the daemon
         // spawns ONE inert supervisor session with no external trigger, so false is
         // correct today. HARD PRE-FLIP GATE (review HIGH-1): before ANY external-
