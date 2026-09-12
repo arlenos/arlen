@@ -107,6 +107,30 @@ Two lessons, and the second is the one that generalises:
   wrong. Build the minimal page that should reproduce it before you believe yourself: mine passed, which is
   what said the engine was not simply blind to the shape and sent me looking at the page instead.
 
+## The dev server can serve a component's SOURCE as its CSS
+
+Vite gives each `<style>` block its own module. Ask for one before the plugin has transformed the component
+and there is no compiled CSS to hand back, so the raw `.svelte` file goes out instead: the browser recovers at
+the first thing that parses as a rule, and the sheet arrives **unscoped and missing whatever came before that
+point**.
+
+Measured on 11 September: **42 of the shell's 63 component stylesheets**, deterministically, cold server and
+warm, while `files` and `settings` were clean. It only shows on a page that pulls in enough components at once
+for the style requests to outrun the transforms - so the app that most needed looking at was the one being
+looked at wrong. `vite build` is unaffected; nothing ships this.
+
+It cost a probe finding that was pure invention (a focus ring the source has switched off for four days) and
+hid a real one (a clipped title) at the same time. **Both directions, from one cause.**
+
+- Every app's vite config now carries `server.warmup.clientFiles: ["./src/**/*.svelte"]`, which pre-transforms
+  the components at server start.
+- `render-wide.py` REFUSES a page that still has one, naming the count and the first six. So this can be back
+  tomorrow and you will hear about it rather than read a confident sentence about a page that was not the app.
+
+**And the general rule, which is the third time it has been written here.** When the harness says something
+surprising about a surface you believe is correct, check the harness before the surface. A tool reports on
+what it can see, and what it can see is not always what ships.
+
 ## A dev fixture cannot escape the app's layout
 
 `_sidebartest` mounted its own `FmSidebar` to photograph it. A SvelteKit page is a child of the root layout
