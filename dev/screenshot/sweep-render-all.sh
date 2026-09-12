@@ -94,7 +94,7 @@ SURFACES=(
   # on 13 September only because knowledge pins that mode unconditionally. This
   # route already had the switch (`?view=grid`, its own line); it just was not
   # asked for.
-  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/_thumbtest?view=grid|/@@files-refuses-op"
+  "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/_thumbtest?view=grid|/_thumbtest?view=miller|/@@files-refuses-op"
   "greeter /|/::.bar-side.left .trigger|/::.bar-side.right .trigger|/_a11ytest|/@@greeter-refuses-login"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]|/@@knowledge-refuses-pause|/@@knowledge-refuses-search-save"
   # THE THREE REFUSALS, added 10 September once `probe-host.sh` could run them at

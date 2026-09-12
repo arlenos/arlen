@@ -54,8 +54,15 @@
   let controller = $state<ReturnType<typeof createBrowserState> | null>(null);
   onMount(() => {
     const c = createBrowserState(adapter, { initial: "/demo", allowVirtual: false });
-    if (new URLSearchParams(window.location.search).get("view") === "grid") {
-      c.viewMode.set("grid");
+    // ANY OF THE THREE, not just the grid. `FileBrowser` renders list, grid or
+    // miller, and a view MODE is a surface no sweep row could otherwise name: a
+    // row drives one click, which reaches a place and never a mode behind the
+    // view menu. Both unnamed modes turned out to be carrying critical ARIA
+    // findings that no run had ever seen, so the flag takes the mode rather than
+    // the one it was first written for.
+    const view = new URLSearchParams(window.location.search).get("view");
+    if (view === "grid" || view === "miller") {
+      c.viewMode.set(view);
     }
     controller = c;
   });
