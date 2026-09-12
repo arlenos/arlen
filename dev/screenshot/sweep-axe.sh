@@ -400,3 +400,18 @@ echo
 # no surfaces and "0 violations" over fifteen are the same sentence and opposite
 # facts.
 echo "$total violation(s) across $swept surface(s) at ${WIDTH}px"
+
+# AND IT HAS TO REFUSE, not only say so. Printing the surface count made the
+# difference legible and left the exit code saying the same thing either way, so
+# a run that measured NOTHING still came back green - which is the shape this
+# tree has spent September removing from its gates ("0 app(s) checked", exit 0).
+# Found by running this with the sweep-render argument order (`de greeter`),
+# where `de` lands on `--width`, every server refuses to start, and the last line
+# read "0 violation(s) across 0 surface(s) at depx" over a completely failed run.
+# Exit 2 is what `dev/scripts/check-*` use for the same fact.
+if [ "$swept" -eq 0 ]; then
+  echo "NOTHING WAS READ: no surface was measured, so this says nothing about" \
+       "accessibility. Check the arguments (width first, then an optional app)" \
+       "and whether the dev servers came up." >&2
+  exit 2
+fi
