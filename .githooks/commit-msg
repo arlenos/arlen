@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Hold the commit subject to what a subject is: a label, not a sentence.
+#
+# Tim set the rule on 10 September after measuring a median of 61 characters and
+# ten words: subject only, at most 50 characters including the area, three to six
+# words after the colon. Measured again on 12 September over the last forty
+# commits: median 60, and 32 of 40 over the limit. Writing it down twice did not
+# land it, so it is a check.
+#
+# HERE AND NOT IN CI, deliberately. A subject is fixable in four seconds at the
+# moment of writing and unfixable after a push without a rewrite, so a CI failure
+# punishes the wrong moment - and on the day this was measured it would have
+# blocked thirty-two commits for something nobody could act on any more.
+#
+# `git commit --no-verify` skips it, like the pre-commit hook and for the same
+# reason: a hook with no escape gets uninstalled the first time it is wrong.
+set -euo pipefail
+
+msg_file="$1"
+
+# The message as git will store it: comments and trailing blanks dropped.
+mapfile -t lines < <(grep -v '^#' "$msg_file" | sed -e 's/[[:space:]]*$//')
+subject="${lines[0]:-}"
+
+# A message with nothing in it is git's own business (it aborts anyway).
+[ -z "$subject" ] && exit 0
+
+# Merges and reverts are git's wording, not ours.
+case "$subject" in
+  Merge\ *|Revert\ *|fixup!\ *|squash!\ *) exit 0 ;;
+esac
+
+fail() {
+  echo "commit-msg: $1" >&2
+  echo >&2
+  echo "  $subject" >&2
+  echo >&2
+  echo "  A subject is <area>: <what changed>, at most 50 characters including" >&2
+  echo "  the area, three to six words after the colon. The sentence belongs in" >&2
+  echo "  the report, where it has room to be right." >&2
+  exit 1
+}
+
+length=${#subject}
+if [ "$length" -gt 50 ]; then
+  fail "the subject is $length characters, and the limit is 50"
+fi
+
+case "$subject" in
+  *": "*) ;;
+  *) fail "the subject has no '<area>: ' prefix" ;;
+esac
+
+rest="${subject#*: }"
+words=$(printf '%s\n' "$rest" | wc -w)
+if [ "$words" -lt 3 ]; then
+  fail "there are $words word(s) after the colon, and a subject needs at least three"
+fi
+if [ "$words" -gt 6 ]; then
+  fail "there are $words words after the colon, and a subject holds at most six"
+fi
+
+# One line. The body is the report's job, and a body here is how a subject grows
+# into a changelog nobody reads.
+for line in "${lines[@]:1}"; do
+  if [ -n "$line" ]; then
+    fail "a commit message is one subject line, and this one has a body"
+  fi
+done
+
+exit 0

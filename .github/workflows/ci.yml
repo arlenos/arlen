@@ -364,6 +364,7 @@ jobs:
           node dev/scripts/test-check-opener-args.mjs
           node dev/scripts/test-check-bus-names-covered.mjs
           node dev/scripts/test-pre-commit-hook.mjs
+          node dev/scripts/test-commit-msg-hook.mjs
           node dev/scripts/test-ci-system-deps.mjs
           python3 dev/scripts/check-sound-theme.py
           node dev/scripts/test-check-sound-theme.mjs
