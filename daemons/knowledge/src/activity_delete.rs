@@ -88,7 +88,7 @@ impl DeletedActivity {
 /// orphan sweep runs before the clear for the same reason.
 ///
 /// Kept separate from execution so the shape is readable and unit-testable
-/// without a graph; `delete_activity_since` is what actually runs it, inside one
+/// without a graph; `run_deletion` is what actually runs them, inside one
 /// transaction, so a failure part-way cannot leave half a range deleted.
 ///
 /// Takes MICROSECONDS. Callers hold seconds and convert through `cutoff_micros`.
@@ -205,22 +205,16 @@ pub async fn count_activity_since(graph: &GraphHandle, from_secs: i64) -> Result
     })
 }
 
-/// Destroy every recorded activity at or after `from`, and report what went.
+/// Destroy every recorded activity at or after `from`.
 ///
 /// Atomic: one transaction, so a failure leaves the range intact rather than
 /// half-deleted. A caller that gets an error must tell the user their history is
 /// still there, which is what the app's Delete already does.
-pub async fn delete_activity_since(graph: &GraphHandle, from: i64) -> Result<DeletedActivity> {
-    let counted = count_activity_since(graph, from).await?;
-    run_deletion(graph, from).await?;
-    Ok(counted)
-}
-
-/// The deletion on its own, for a caller that has already counted.
 ///
-/// The socket op audits the act BEFORE carrying it out and needs the size in that
-/// record, so it counts first; re-counting inside would either repeat the work or
-/// report a different number than the one audited.
+/// Counting is the caller's own step, before this one: the socket op audits the
+/// act BEFORE carrying it out and needs the size in that record, so re-counting
+/// here would either repeat the work or report a different number than the one
+/// audited.
 pub async fn run_deletion(graph: &GraphHandle, from_secs: i64) -> Result<()> {
     graph.transaction(deletion_statements(cutoff_micros(from_secs))).await
 }
@@ -272,7 +266,7 @@ mod tests {
             .await
             .expect("fixture");
 
-        delete_activity_since(&graph, today_secs).await.expect("delete");
+        run_deletion(&graph, today_secs).await.expect("delete");
 
         let left = graph
             .query_rows(
@@ -368,7 +362,8 @@ mod tests {
             .await
             .expect("edges");
 
-        let removed = delete_activity_since(&graph, 400).await.expect("delete");
+        let removed = count_activity_since(&graph, 400).await.expect("count");
+        run_deletion(&graph, 400).await.expect("delete");
         assert_eq!(removed.events, 1, "only the in-range event");
         assert_eq!(removed.file_accesses, 2);
         assert_eq!(removed.orphan_files, 1);
