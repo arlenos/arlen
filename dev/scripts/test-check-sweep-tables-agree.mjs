@@ -65,6 +65,18 @@ console.log("sweep-tables-agree:");
 }
 
 {
+  // The rule this file's own refusal states, now enforced: an axe fixture row
+  // renders in whatever locale the app defaults to, because `sweep-axe.sh` has
+  // no locale argument - so a row without `?locale=de` refuses on every run
+  // against a fixture that declares a German sentence. Nine rows were doing
+  // exactly that until 13 September, silently, and one of them held a serious
+  // defect.
+  const r = gateOver(["demo /@@refuses"], ["demo /@@refuses"]);
+  check("an axe fixture row with no locale is caught", r.code === 1);
+  check("and it says to pin it", r.out.includes("locale"));
+}
+
+{
   const r = gateOver(["demo /|/one"], ["demo /one|/"]);
   check("row order does not matter", r.code === 0, r.out.trim().split("\n")[0]);
 }
