@@ -524,15 +524,38 @@ async fn run_compensate(
                 }
                 Err(_) => return "error: undo log unavailable".to_string(),
             }
-            return match crate::undo_signer::lookup_entry(&socket, correlation_id).await {
-                Ok(Some(entry)) => {
-                    dispatch_nongraph_inverse(caller, correlation_id, entry.inverse, audit, &socket)
+            match crate::undo_signer::lookup_entry(&socket, correlation_id).await {
+                // A GRAPH inverse from the durable log. Startup already re-arms
+                // the cache from the signer (`main.rs`), so this is not the
+                // restart case - it is the two ways the cache can be missing an
+                // entry the log still holds: the store is BOUNDED and ages the
+                // oldest out, and the startup restore is best-effort, so a
+                // signer that was down at boot and up later leaves the cache
+                // short. Both used to answer `no-such-receipt`, which is the
+                // same word the daemon uses for a write nobody recorded - the
+                // worst available answer, because the receipt is right there in
+                // the signed log. Rebuilt here and taken through the normal
+                // retract below, so the durable path and the cached one end at
+                // the same op-id-keyed retract.
+                Ok(Some(entry)) => match crate::compensation::receipt_from_entry(&entry) {
+                    Some(receipt) => receipt,
+                    // Not a graph inverse: a filesystem or setting one, enacted
+                    // by its own path.
+                    None => {
+                        return dispatch_nongraph_inverse(
+                            caller,
+                            correlation_id,
+                            entry.inverse,
+                            audit,
+                            &socket,
+                        )
                         .await
-                }
+                    }
+                },
                 // Raced to terminal/removed between the two reads: nothing to undo.
-                Ok(None) => "no-such-receipt".to_string(),
-                Err(_) => "error: undo log unavailable".to_string(),
-            };
+                Ok(None) => return "no-such-receipt".to_string(),
+                Err(_) => return "error: undo log unavailable".to_string(),
+            }
         }
     };
     // Audit-before-act, fail-closed: an undo that cannot be recorded does not run.
