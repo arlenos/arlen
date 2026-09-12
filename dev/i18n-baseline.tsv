@@ -170,8 +170,6 @@ apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
 apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
 apps/settings/src/lib/components/AddProviderDialog.svelte	https://api.example.com/v1
 apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Large
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Standard
@@ -247,7 +245,6 @@ apps/settings/src/routes/appearance/system/+page.svelte	src
 apps/settings/src/routes/appearance/system/+page.svelte	warning:
 apps/settings/src/routes/appearance/system/+page.svelte	~/src
 apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
-apps/settings/src/routes/extensions/+page.svelte	forage install
 apps/settings/src/routes/knowledge/+page.svelte	{} GB
 apps/settings/src/routes/knowledge/+page.svelte	{} KB
 apps/settings/src/routes/knowledge/+page.svelte	{} MB
@@ -303,6 +300,7 @@ apps/system-monitor/src/lib/stores/detail.ts	read the knowledge graph
 apps/system-monitor/src/lib/stores/detail.ts	read your notes
 apps/system-monitor/src/lib/stores/detail.ts	the query tier you set
 apps/system-monitor/src/lib/stores/detail.ts	the whole graph
+apps/system-monitor/src/lib/stores/perf.ts	Package
 apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
 apps/viewers/src/lib/mock.ts	Nightswim
 apps/viewers/src/routes/+page.svelte	TypeError: undefined is not an object (evaluating 'window.__TAURI_INTERNALS__.invoke')
