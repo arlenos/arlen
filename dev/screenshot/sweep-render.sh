@@ -366,6 +366,47 @@ for width in $widths; do
       raw="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/$probe.js" "$width" 2>&1)"
       got="$(printf '%s\n' "$raw" | sed -n 's/^inject result: //p')"
     fi
+    # ONE RETRY, for the one answer that is about TIMING rather than about the
+    # page. `shoot.py` waits a FIXED `--settle` after load and then injects, so a
+    # route whose first paint slips past it is measured before it exists; the
+    # focus probe says so in those words rather than reporting a defect, and it
+    # is the only probe outcome in the set that does. Everything else here is a
+    # statement about what was rendered and must not be re-rolled - retrying a
+    # real finding until it goes away is how a sweep stops meaning anything.
+    #
+    # Found on 13 September: settings' typography page came back keyboard-less at
+    # 1280 in a three-width run and `ok` at 720 and 1920 in the same two runs -
+    # a page with no focusable control fails all three. Its controls are rendered
+    # unconditionally, with no load guard in front of them, so it had not painted.
+    # Six standalone runs of that route pass 6/6, which is what makes CONTENTION
+    # the reading: the miss happened inside a fifty-seven-route sweep, not alone.
+    # The `--open` path already learned this lesson and polls; the plain probe
+    # path never got it.
+    #
+    # WHAT IT DOES NOT FIX, since the retry re-navigates: the second attempt gets
+    # the same fixed settle as the first, so a page that is RELIABLY slower than
+    # that fails twice and is reported. That is the right way round - this can
+    # convert a transient miss into a measurement and cannot convert a real one
+    # into silence - but it is not a fix for a slow page, and nobody should read
+    # it as one.
+    case "$got" in
+      *"has not painted yet"*)
+        # SAID OUT LOUD, never silent. A measurement tool that re-rolls a reading
+        # without telling you has stopped being one; this line is what makes the
+        # retry auditable instead of something a reader has to take on trust, and
+        # it is why the retry needs no separate control - every firing declares
+        # itself in the table it affects.
+        echo "  --   $spec re-read at ${width}px: $probe measured before the page painted"
+        sleep 2
+        if [ -n "$host" ]; then
+          raw="$("$here/headless.sh" "${hostargs[@]}" 2>&1)"
+          got="$(printf '%s\n' "$raw" | answer)"
+        else
+          raw="$(SHOOT_OPEN="$open" "$here/shoot.sh" "$url" "$shot" "$here/$probe.js" "$width" 2>&1)"
+          got="$(printf '%s\n' "$raw" | sed -n 's/^inject result: //p')"
+        fi
+        ;;
+    esac
     case "$got" in
       "["*"]")
         checked=$((checked + 1))
