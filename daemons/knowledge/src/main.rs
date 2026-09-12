@@ -10,6 +10,7 @@ mod proto {
 
 mod consumer;
 mod activity_delete;
+mod list;
 mod audit;
 mod auth;
 mod backup;
