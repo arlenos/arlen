@@ -361,12 +361,12 @@
   const forevertitle = $derived.by(() => {
     if (!forever) return "";
     if (forever.ids.length === 1) {
-      return $t("ml.deleteForever.title", { subject: forever.subject || $t("ml.noSubject") });
+      return $t("ml.deletePermanently.title", { subject: forever.subject || $t("ml.noSubject") });
     }
-    return $t("ml.deleteForever.titleN", { n: forever.ids.length });
+    return $t("ml.deletePermanently.titleN", { n: forever.ids.length });
   });
 
-  async function deleteForever(): Promise<void> {
+  async function deletePermanently(): Promise<void> {
     const ask = forever;
     forever = null;
     if (!ask) return;
@@ -672,10 +672,10 @@
 <ConfirmDialog
   open={forever !== null}
   title={forevertitle}
-  message={$t("ml.deleteForever.body")}
-  confirmLabel={$t("ml.deleteForever.confirm")}
+  message={$t("ml.deletePermanently.body")}
+  confirmLabel={$t("ml.deletePermanently.confirm")}
   variant="destructive"
-  onConfirm={deleteForever}
+  onConfirm={deletePermanently}
   onCancel={() => (forever = null)}
 />
 
