@@ -86,7 +86,7 @@ SPDX-License-Identifier: AGPL-3.0-only
   }
   label {
     font-size: 0.8rem;
-    margin-left: 0.5rem;
+    margin-inline-start: 0.5rem;
   }
   .row {
     display: flex;
