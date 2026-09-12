@@ -156,6 +156,20 @@ pub struct FieldDefinition {
     #[serde(default)]
     pub unique: bool,
     /// Whether the field is immutable after creation.
+    ///
+    /// ENFORCED ON A PATH NOTHING REACHES. `FieldValidator::validate_update`
+    /// refuses a write that names an immutable field, and its only caller is
+    /// `write::update::update_entity`, which no socket op dispatches to. The one
+    /// reachable entity write is `UpsertEntity`, and the update half of an upsert
+    /// runs `validate_create`, which does not consider this flag - a create sets
+    /// every field for the first time, so it rightly does not, and an upsert is
+    /// not always a create.
+    ///
+    /// Doubly latent today: no registered schema sets it (only two test fixtures
+    /// do) and no shipped profile grants a graph write at all, so nothing can hit
+    /// it. Written down because the trap is silent - the next person to mark a
+    /// field immutable will reasonably assume the flag is honoured, and it would
+    /// be on the path that is not there rather than the path that is.
     #[serde(default)]
     pub immutable: bool,
     /// Whether the field contains sensitive data.
