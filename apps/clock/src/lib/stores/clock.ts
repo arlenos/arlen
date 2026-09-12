@@ -213,8 +213,16 @@ function patch(fn: (s: ClockState) => ClockState): void {
   });
 }
 
+/// The alarm the last Remove took off the list, kept while the way back is open.
+/// Removing asks nothing because it is reversible (design-system.md 6.11), and
+/// this is what makes it so: the daemon's set is create-or-update by id, so the
+/// same alarm goes back with one call. Any other act closes the way (`send`
+/// clears it), because after that the removal is no longer the last thing done.
+export const removedAlarm = writable<Alarm | null>(null);
+
 async function send(cmd: string, args?: Record<string, unknown>): Promise<void> {
   clockActionFailed.set(false);
+  removedAlarm.set(null);
   try {
     await invoke(cmd, args);
     await loadClock();
@@ -261,10 +269,22 @@ export async function toggleAlarm(id: string, enabled: boolean): Promise<void> {
   await send("clock_toggle_alarm", { id, enabled });
 }
 
-/// Delete one alarm.
+/// Remove one alarm, keeping it for `undoRemove`. A refused removal puts the
+/// list back through `send` and leaves nothing to undo.
 export async function deleteAlarm(id: string): Promise<void> {
+  const removed = get(clock)?.alarms.find((a) => a.id === id) ?? null;
   patch((s) => ({ ...s, alarms: s.alarms.filter((a) => a.id !== id) }));
   await send("clock_delete_alarm", { id });
+  if (removed && !get(clockActionFailed)) removedAlarm.set(removed);
+}
+
+/// Put the last removed alarm back, as it was: same id, label, days and
+/// setting, armed if it was armed. The daemon recomputes its next ring.
+export async function undoRemove(): Promise<void> {
+  const alarm = get(removedAlarm);
+  if (!alarm) return;
+  const { next_fire_at: _, ...fields } = alarm;
+  await setAlarm(fields);
 }
 
 /// Start a countdown timer.
