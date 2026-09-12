@@ -4605,15 +4605,52 @@ async fn handle_list(
     // The caller's own scope, on top of the label being enumerable at all. Being
     // listable is a property of the label; being allowed to list it is this
     // caller's grant, and the two are different questions.
-    let readable = caller_readable_labels(peer, app_id, auth).await;
-    if !readable.iter().any(|l| l == label) {
+    let scopes = caller_read_scopes(peer, app_id, auth).await;
+    if !readable_system_labels(&scopes).iter().any(|l| l == label) {
         return PROVENANCE_OUT_OF_SCOPE.to_string();
     }
+    // AND THE DISPLAY FIELD IS ITS OWN GRANT. The label check is label-granular,
+    // the profile is FIELD-granular, and a handle carries two things - so a
+    // caller granted `system.Project.id` and `.root_path` would have been handed
+    // `name`, a field nobody gave them. It is not much of a secret next to the
+    // root path, which is exactly why it would never have been noticed. Without
+    // the grant the handle comes back with its id and an empty name rather than
+    // being refused: the caller may enumerate, they may just not read that field.
+    let named = field_is_granted(&scopes, &format!("system.{label}"), field);
     let limit = crate::list::clamp_limit(req.limit);
     match crate::list::list_identities(graph, label, field, limit).await {
-        Ok(rows) => serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()),
+        Ok(rows) => {
+            let rows = if named {
+                rows
+            } else {
+                rows.into_iter()
+                    .map(|i| crate::list::Identity { name: String::new(), ..i })
+                    .collect()
+            };
+            serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
+        }
         Err(_) => PROVENANCE_OUT_OF_SCOPE.to_string(),
     }
+}
+
+/// Does this caller's read scope include one FIELD of one type?
+///
+/// A scope entry with no field list is the whole type; a list is exactly those
+/// fields. Used where a read hands back a NAMED field rather than a whole row -
+/// the label gate alone would let a field-scoped grant read a field it never
+/// asked for.
+fn field_is_granted(
+    scopes: &[crate::token::EntityScope],
+    entity_type: &str,
+    field: &str,
+) -> bool {
+    scopes.iter().any(|s| {
+        s.entity_type == entity_type
+            && match &s.fields {
+                None => true,
+                Some(fields) => fields.iter().any(|f| f == field),
+            }
+    })
 }
 
 async fn caller_readable_labels(
@@ -4641,6 +4678,28 @@ async fn caller_readable_labels(
                 // pid here is the same one either way.
                 match auth.lock().await.issue_token_for_app(p.uid, app_id, p.pid) {
                     Ok(token) => readable_system_labels(&token.read_scopes),
+                    Err(_) => Vec::new(),
+                }
+            }
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    }
+}
+
+/// The caller's read SCOPES, for a read that needs field granularity rather than
+/// only the label set. Same attestation and same PID-reuse guard as
+/// [`caller_readable_labels`]; that one is this one's labels.
+async fn caller_read_scopes(
+    peer: Option<&WritePeer>,
+    app_id: &str,
+    auth: &Arc<Mutex<Authenticator>>,
+) -> Vec<crate::token::EntityScope> {
+    match peer {
+        Some(p) => match (p.start_time, pid_start_time(p.pid).ok()) {
+            (Some(captured), Some(now)) if now == captured => {
+                match auth.lock().await.issue_token_for_app(p.uid, app_id, p.pid) {
+                    Ok(token) => token.read_scopes,
                     Err(_) => Vec::new(),
                 }
             }
@@ -4757,6 +4816,33 @@ mod tests {
     /// Scanning the source is deliberate: the dispatch is an if-chain, not a
     /// table, so there is no runtime value to assert over. This catches the
     /// duplicate at the only place it is expressible.
+    /// A handle carries two things and the second one is its own grant.
+    ///
+    /// The engine's shipped profile grants `system.Project` only `id` and
+    /// `root_path`; without this check `graph.list` would hand it `name` as well.
+    #[test]
+    fn a_display_field_outside_the_grant_is_not_handed_back() {
+        use crate::token::EntityScope;
+        let field_scoped = vec![EntityScope {
+            entity_type: "system.Project".to_string(),
+            fields: Some(vec!["id".to_string(), "root_path".to_string()]),
+            exclude_fields: Vec::new(),
+        }];
+        assert!(field_is_granted(&field_scoped, "system.Project", "id"));
+        assert!(!field_is_granted(&field_scoped, "system.Project", "name"));
+
+        // No field list is the whole type, so every field is granted.
+        let whole_type = vec![EntityScope {
+            entity_type: "system.Project".to_string(),
+            fields: None,
+            exclude_fields: Vec::new(),
+        }];
+        assert!(field_is_granted(&whole_type, "system.Project", "name"));
+
+        // Another type's grant says nothing about this one.
+        assert!(!field_is_granted(&field_scoped, "system.File", "path"));
+    }
+
     #[test]
     fn mode_bytes_are_uniquely_assigned() {
         use std::collections::BTreeMap;
