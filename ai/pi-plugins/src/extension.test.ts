@@ -27,5 +27,6 @@ test("the Arlen extension installs the gate, audit, and proxy-tool hooks", () =>
   // for is a verb nothing can reach, which is the shape this project keeps
   // finding by accident - so the registration is pinned here.
   assert.ok(tools.includes("graph.find"), "graph.find proxy tool registered");
+  assert.ok(tools.includes("graph.list"), "graph.list proxy tool registered");
   assert.ok(tools.includes("graph.write"), "graph.write proxy tool registered");
 });

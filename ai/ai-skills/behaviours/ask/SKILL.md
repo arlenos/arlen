@@ -9,6 +9,7 @@ trigger:
 tools:
   graph.ask: []
   graph.find: []
+  graph.list: []
 budget:
   max_steps: 8
   max_tokens: 12000

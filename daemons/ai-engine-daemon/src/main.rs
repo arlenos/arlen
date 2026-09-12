@@ -625,7 +625,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // writes are wired below.
     let executor = ProxyExecutor::new()
         .register("graph.ask", ask_executor)
-        .register("graph.find", find_executor)
+        .register("graph.find", find_executor.clone())
+        .register("graph.list", find_executor)
         // D2 (pi-gate-class-registry.md): the fine-grained reversible graph-write
         // tools route to the same write executor as the coarse graph.write, so each
         // NAME carries one fixed gate class (ReversibleAction) - the coarse

@@ -12,6 +12,7 @@ trigger:
 tools:
   graph.ask: []
   graph.find: []
+  graph.list: []
   graph.write: [Project, FILE_PART_OF]
 terminal:
   file_tagged: store
