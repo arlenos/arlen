@@ -558,6 +558,8 @@ jobs:
           node dev/scripts/test-check-master-switch-defaults.mjs
           python3 dev/scripts/check-license-headers-agree.py
           node dev/scripts/test-check-license-headers-agree.mjs
+          python3 dev/scripts/check-image-licensing.py
+          node dev/scripts/test-check-image-licensing.mjs
           python3 dev/scripts/check-gates-registered.py
           node dev/scripts/test-check-gates-registered.mjs
           python3 dev/scripts/check-dependency-direction.py
