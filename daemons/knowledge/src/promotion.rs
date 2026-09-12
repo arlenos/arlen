@@ -257,6 +257,12 @@ async fn run_pass(
         warn!(error = %e, "could not close presences whose windows are gone");
     }
 
+    // ALSO BEFORE THE EARLY RETURN, and for the same reason: a machine with no
+    // new events still has projects, and until now none of them was searchable.
+    if let Err(e) = index_project_fact_text(pool, graph).await {
+        warn!(error = %e, "could not index project keyword text");
+    }
+
     let hwm = read_hwm(pool).await?;
 
     // Fetch unprocessed events ordered by timestamp, including the payload.
@@ -472,6 +478,49 @@ async fn index_file_fact_text(pool: &SqlitePool, path: &str) -> Result<()> {
     let text = crate::retrieval::fact_text("File", &fields);
     crate::fts::upsert_fact_text(pool, path, &text).await
 }
+
+/// Synthesise and index every live `Project`'s keyword text for retrieval (§7.1).
+///
+/// `fact_text` has had a `Project` arm since the retrieval work landed - name,
+/// description and root path - and nothing ever called it: `index_file_fact_text`
+/// was the only production indexer, so the index held files and nothing else.
+/// The consequence is visible in the Knowledge app's search, which filters its
+/// project results to the ids the ranker returned (`search.rs`): a project could
+/// only appear when one of its FILES matched the words, so searching for a
+/// project by its own name found nothing.
+///
+/// A whole re-index per pass rather than an incremental one: projects are tens,
+/// not thousands, `upsert_fact_text` is delete-then-insert so it is idempotent,
+/// and a rename or a description edit converges on the next pass without anybody
+/// having to notice it happened. Bounded so a pathological graph cannot make the
+/// pass unbounded.
+async fn index_project_fact_text(pool: &SqlitePool, graph: &GraphHandle) -> Result<()> {
+    let rs = graph
+        .query_rows(format!(
+            "MATCH (p:Project) WHERE p.expired_at IS NULL \
+             RETURN p.id AS id, p.name AS name, p.description AS description, \
+                    p.root_path AS root_path LIMIT {MAX_INDEXED_PROJECTS}"
+        ))
+        .await?;
+    for row in &rs.rows {
+        let cell = |i: usize| row.get(i).map(|c| c.as_str().to_string()).unwrap_or_default();
+        let id = cell(0);
+        if id.is_empty() {
+            continue;
+        }
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("name".to_string(), cell(1));
+        fields.insert("description".to_string(), cell(2));
+        fields.insert("root_path".to_string(), cell(3));
+        let text = crate::retrieval::fact_text("Project", &fields);
+        crate::fts::upsert_fact_text(pool, &id, &text).await?;
+    }
+    Ok(())
+}
+
+/// How many projects one pass will index. Far past what a person has and finite,
+/// so the pass stays bounded whatever the graph holds.
+const MAX_INDEXED_PROJECTS: i64 = 500;
 
 async fn promote_file_opened(
     graph: &GraphHandle,
@@ -2288,6 +2337,41 @@ mod shell_event_tests {
             .await
             .unwrap();
         assert_eq!(rs3.rows[0][0].as_i64(), 0, "a connection with no app id is not promoted");
+    }
+
+    /// The gap this closes: a project was only findable through one of its files.
+    #[tokio::test]
+    async fn index_project_fact_text_makes_a_project_searchable_by_its_name() {
+        use sqlx::sqlite::SqlitePoolOptions;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::fts::create_fact_text_index(&pool).await.unwrap();
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        graph
+            .write(
+                "CREATE (:Project {id: 'p1', name: 'Thesis', description: 'the write-up', \
+                 root_path: '/home/tim/thesis'})"
+                    .into(),
+            )
+            .await
+            .unwrap();
+
+        index_project_fact_text(&pool, &graph).await.unwrap();
+        let hits = crate::fts::search_fact_text(&pool, "Thesis", 10).await.unwrap();
+        assert_eq!(hits, vec!["p1".to_string()], "the project is findable by its name");
+        // Its description and root are in the same entry, so either finds it too.
+        let by_root = crate::fts::search_fact_text(&pool, "write-up", 10).await.unwrap();
+        assert_eq!(by_root, vec!["p1".to_string()]);
+        // Idempotent: a second pass re-upserts rather than duplicating.
+        index_project_fact_text(&pool, &graph).await.unwrap();
+        let again = crate::fts::search_fact_text(&pool, "Thesis", 10).await.unwrap();
+        assert_eq!(again, vec!["p1".to_string()]);
     }
 
     #[tokio::test]
