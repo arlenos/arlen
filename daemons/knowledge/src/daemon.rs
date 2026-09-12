@@ -3542,6 +3542,16 @@ async fn handle_client(
                         // No system-anchored exemption here: nothing that calls
                         // this op is FirstParty, and the raw path's exemption is
                         // the incoherence, not the pattern to copy.
+                        //
+                        // EVERY FAILURE READS AS AN EMPTY SCOPE, so an unverifiable
+                        // caller gets an empty slice rather than an error. That is
+                        // the honest answer and not a swallowed one: the common way
+                        // to hold no scope is to have no profile, which is exactly
+                        // the app that should see nothing, and the rare way (a
+                        // profile that will not parse) must not be distinguishable
+                        // either - "your permission file is broken" is a fact about
+                        // the machine that an unverified caller has not earned.
+                        // What the person sees is an empty capsule, which is true.
                         let readable = readable_system_labels(
                             &caller_read_scopes(peer.as_ref(), &app_id, &auth).await,
                         );
