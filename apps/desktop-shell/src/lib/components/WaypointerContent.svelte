@@ -1512,7 +1512,11 @@
     padding: 1.5rem 1rem;
     text-align: center;
     font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
+    /* 50%, not 45%. At 45 this composites to #767676 on the launcher's #0a0a0a,
+       which is 4.35:1 where AA wants 4.5 - and the sentence it carries is the
+       only thing on the surface when a search finds nothing or an action is
+       refused. Muted is the intent; unreadable is not. */
+    color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
   }
 
   .wp-footer {
