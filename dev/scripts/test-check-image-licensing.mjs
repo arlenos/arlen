@@ -12,6 +12,19 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mint, cleanup } from "./lib/fixture.mjs";
 
+// REUSE-IgnoreStart
+//
+// Everything below is FIXTURE text: `REUSE.toml` fragments and an SVG header that
+// exist to be fed to the gate, not to declare anything about this file. `reuse
+// lint` reads every file in the tree and cannot tell a sample expression from a
+// real one, so without these markers the samples are parsed as this repository's
+// own declaration and the `license` job goes red - which is exactly what happened
+// on the commit that added this test.
+//
+// THE NEXT FIXTURE INHERITS THIS: any test planting a licence header, a copyright
+// line or a `REUSE.toml` fragment needs the same pair, and
+// `check-license-headers-agree.py` now fails a file that carries one without them.
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GATE = join(ROOT, "dev/scripts/check-image-licensing.py");
 
@@ -119,3 +132,5 @@ SPDX-License-Identifier = "MIT"
 
 console.log(failures === 0 ? "all image-licensing cases passed" : `${failures} case(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
+
+// REUSE-IgnoreEnd
