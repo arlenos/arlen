@@ -8,6 +8,7 @@
     SidebarGroup,
     SidebarGroupLabel,
     SidebarMenu,
+    SidebarMenuAction,
     SidebarMenuButton,
     SidebarMenuItem,
   } from "../ui/sidebar";
@@ -51,7 +52,16 @@
         {#each group.places as place (place.path)}
           {@const Icon = placeIcon(place.icon)}
           <SidebarMenuItem>
+            <!-- Unpinning is the row's SECOND action, so it is its own control
+                 beside the row rather than a `role="button"` span inside it.
+                 It was the second: announced to a screen reader as a button and
+                 held at `tabindex="-1"`, so no keyboard could ever unpin a place
+                 (design-system.md 6.13, the same shape as the quick-settings
+                 tile). `SidebarMenuAction` is the kit's own sibling-action
+                 control and sits at the row's end; the button takes `pe-7` so a
+                 long place name truncates under it rather than behind it. -->
             <SidebarMenuButton
+              class={place.removable ? "pe-7" : undefined}
               isActive={activePath === place.path}
               tooltip={place.offline ? $kt("k.browser.offline", { place: place.label }) : place.path}
               onclick={() => onnavigate?.(place)}
@@ -63,27 +73,19 @@
               {#if place.offline}
                 <span class="ps-dot ms-auto group-data-[collapsible=icon]:hidden"></span>
               {/if}
-              {#if place.removable}
-                <span
-                  class="ps-remove ms-auto group-data-[collapsible=icon]:hidden"
-                  role="button"
-                  tabindex="-1"
-                  aria-label={place.removeLabel ?? $kt("k.browser.unpin", { place: place.label })}
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    onremove?.(place);
-                  }}
-                  onkeydown={(e) => {
-                    if (e.key === "Enter") {
-                      e.stopPropagation();
-                      onremove?.(place);
-                    }
-                  }}
-                >
-                  <X size={12} strokeWidth={2} />
-                </span>
-              {/if}
             </SidebarMenuButton>
+            {#if place.removable}
+              <SidebarMenuAction
+                showOnHover
+                aria-label={place.removeLabel ?? $kt("k.browser.unpin", { place: place.label })}
+                onclick={(e: MouseEvent) => {
+                  e.stopPropagation();
+                  onremove?.(place);
+                }}
+              >
+                <X size={12} strokeWidth={2} />
+              </SidebarMenuAction>
+            {/if}
           </SidebarMenuItem>
         {/each}
       </SidebarMenu>
@@ -101,25 +103,6 @@
   }
   .ps-label.offline {
     color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
-  }
-  .ps-remove {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.25rem;
-    height: 1.25rem;
-    flex-shrink: 0;
-    border-radius: var(--radius-chip);
-    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
-    opacity: 0;
-    transition: opacity var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  :global([data-sidebar="menu-button"]:hover) .ps-remove {
-    opacity: 1;
-  }
-  .ps-remove:hover {
-    background: color-mix(in srgb, var(--sidebar-foreground) 10%, transparent);
-    color: var(--sidebar-foreground);
   }
 
   /* The one dot language: gray = not connected. */
