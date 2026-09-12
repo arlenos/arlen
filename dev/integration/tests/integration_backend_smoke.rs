@@ -1363,6 +1363,88 @@ async fn a_handle_comes_back_nameless_when_the_field_is_not_granted() {
     }
 }
 
+/// The capsule boundary, asserted against a promoted node rather than an empty
+/// graph. Until 12 September `0x07` had no caller scope at all: name a path and
+/// the slice came back with the file, its app and its access time, then one hop
+/// out to its project and back to every sibling file in it. Every other read
+/// verb refuses a caller with no grant for those labels; this one answered.
+///
+/// The trap in testing it is that an empty slice also looks like "promotion has
+/// not run yet", so this seeds a grant for a label that is NOT a capsule label
+/// (`system.App`, which the same `file.opened` promotion creates) and uses it as
+/// the positive control: once the App node is readable, promotion has run for
+/// this event, and the capsule for the file must still be empty.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
+async fn a_capsule_is_empty_for_a_caller_granted_neither_of_its_labels() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack.as_unprivileged();
+    stack
+        .seed_read_profile(&["system.App.id"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_ready("event-bus-producer.sock")
+        .expect("producer socket");
+    stack
+        .wait_ready("event-bus-consumer.sock")
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let path = "/work/it/ungranted-capsule.rs";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let scope = arlen_capsule::scope::CapsuleScope {
+        roots: vec![path.to_string()],
+        expand_hops: 1,
+    };
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: path.to_string(),
+            app_id: "capsule-control".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        // The control: an App node readable under the seeded grant proves the
+        // promotion pass has run for this event.
+        let promoted = client
+            .query_rows("MATCH (a:App {id: 'capsule-control'}) RETURN a.id")
+            .await
+            .map(|rows| !rows.is_empty())
+            .unwrap_or(false);
+        if promoted {
+            let slice = client
+                .materialize_capsule(&scope)
+                .await
+                .expect("the op answers, it just answers with nothing");
+            assert!(
+                slice.nodes.is_empty(),
+                "a caller granted neither File nor Project gets no capsule nodes, got {:?}",
+                slice.nodes.iter().map(|n| n.label.clone()).collect::<Vec<_>>()
+            );
+            assert!(slice.relations.is_empty(), "and no edges to read them off");
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the control App node never promoted within 60s, so the empty slice proves nothing"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
 /// IT-1 project detection: a directory bearing a project signal (a `.git` entry)
 /// is detected by the knowledge daemon's project watcher and promoted to a graph
 /// `Project` node. Exercises the detection pipeline end-to-end (watcher scan ->
