@@ -11,6 +11,13 @@
 // the thousands of files that carry no header at all would be turned off in a
 // day.
 //
+// REUSE-IgnoreStart
+//
+// The REUSE.toml fragments below are FIXTURE text fed to the gate, not this
+// file's own declaration. Without these markers `reuse lint` reads them as such;
+// these three happen to be valid expressions so it stayed quiet about it, which
+// is the half nobody notices. The gate itself now refuses an unmarked one.
+//
 // OVER A FIXTURE, never this tree. The hook says at its own top that the gates
 // run concurrently, so a control that edits a tracked file is visible to every
 // neighbour while it runs. The gate takes its root as `argv[1]` for this.
@@ -153,5 +160,35 @@ console.log("licence headers agree with the map:");
   check("a recorded carve-out is not reported", r.code === 0, r.out.trim().split("\n")[0]);
 }
 
+{
+  // The second rule. A test that plants sample headers to feed a gate has them
+  // read as its own declaration by `reuse lint` - the trap that turned the
+  // `license` job red on 12 September.
+  const r = gateOver({
+    "dev/scripts/test-thing.mjs":
+      header("AGPL-3.0-only") + `const SAMPLE = "// ${TAG} MIT";\n`,
+  });
+  check("an unmarked fixture licence is caught",
+        r.code === 1 && /unmarked/.test(r.out), r.out.trim().split("\n")[0]);
+}
+{
+  const START = "REUSE-Ignore" + "Start";
+  const END = "REUSE-Ignore" + "End";
+  const r = gateOver({
+    "dev/scripts/test-thing.mjs":
+      header("AGPL-3.0-only") + `// ${START}\nconst SAMPLE = "// ${TAG} MIT";\n// ${END}\n`,
+  });
+  check("the marked pair is how a fixture licence is allowed", r.code === 0,
+        r.out.trim().split("\n")[0]);
+}
+{
+  // The declaration file is all expressions and is not a fixture.
+  const r = gateOver({ "sdk/one/plain.rs": header("Apache-2.0") });
+  check("REUSE.toml itself is never reported", r.code === 0,
+        r.out.trim().split("\n")[0]);
+}
+
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
-console.log("the gate catches a self-relicensing file, respects block order and stays quiet on lifted code");
+console.log("the gate catches a self-relicensing file and an unmarked fixture licence, respects block order and stays quiet on lifted code");
+
+// REUSE-IgnoreEnd

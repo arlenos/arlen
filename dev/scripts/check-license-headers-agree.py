@@ -32,6 +32,21 @@ disagreement nobody has explained is what is left over.
 WHAT IT DOES NOT DO. It does not judge whether the map itself is right, and it
 does not ask for a header: this tree licenses in bulk and most files carry none.
 It only compares the two statements when both exist.
+
+THE SECOND RULE: A FIXTURE LICENCE MUST BE MARKED AS ONE. `reuse lint` reads
+every file in the tree and cannot tell a test's SAMPLE expression from a real
+declaration, so a test that plants a sample identifier line to feed a gate has
+that sample read as the test file's own licence. On 12 September that turned the
+`license` job red: a fixture SVG header inside a JS string was extracted as
+`CC0-1.0 -->`, trailing markup and all, which is not a valid expression. The
+documented answer is `REUSE-IgnoreStart` / `REUSE-IgnoreEnd` around the samples.
+
+So an expression BEYOND a file's own header needs those markers. It catches the
+silent half too: a fixture whose sample happens to be a valid id does not fail
+`reuse`, it is simply read as that file's licence and nobody notices. This rule is
+here rather than in a gate of its own because it is the same subject - what a file
+says about its own licence - and because the next test that plants a header should
+inherit the check without anybody remembering to wire one up.
 """
 
 import pathlib
@@ -132,6 +147,42 @@ def tracked(root: pathlib.Path) -> list[str]:
         )
 
 
+#: An SPDX identifier expression as `reuse` would extract one: the tag, a colon or
+#: an equals, then a licence-shaped token. Deliberately NOT a bare mention - the
+#: gates that talk ABOUT the tag (`check-image-licensing.py`, this file's own
+#: `HEADER` pattern) name it without a value and are not declarations.
+EXPRESSION = re.compile(r'SPDX-License-Identifier\s*[:=]\s*"?([A-Za-z0-9][A-Za-z0-9.\-+]*)')
+
+#: Files whose every expression IS a declaration, so the rule does not apply.
+DECLARATION_FILES = {"REUSE.toml"}
+
+#: The markers `reuse` honours around text that is not a declaration.
+IGNORE_START = "REUSE-Ignore" + "Start"
+
+
+def unmarked_fixture_licences(path: pathlib.Path, rel: str) -> int:
+    """How many licence expressions a file carries beyond its own header, unmarked.
+
+    Zero for almost every file. A test that plants sample headers gets a count,
+    and the fix is the ignore-marker pair around the samples - not deleting them.
+    """
+    if rel in DECLARATION_FILES:
+        return 0
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return 0
+    found = list(EXPRESSION.finditer(text))
+    if not found:
+        return 0
+    if IGNORE_START in text:
+        return 0
+    # The first match inside the header window is the file's own declaration; the
+    # same window `own_licence` reads, so the two rules agree about what a header is.
+    own = 1 if found[0].start() < 4096 else 0
+    return len(found) - own
+
+
 def own_licence(path: pathlib.Path) -> str | None:
     """The identifier a file states about itself, read from its opening bytes."""
     try:
@@ -150,8 +201,15 @@ def main() -> int:
         return 1
     blocks = annotations(toml)
 
-    checked, bad = 0, []
+    checked, bad, unmarked = 0, [], []
     for rel in tracked(ROOT):
+        extra = unmarked_fixture_licences(ROOT / rel, rel)
+        if extra:
+            unmarked.append(
+                f"{rel}: carries {extra} licence expression(s) beyond its own header, "
+                f"unmarked.\n    `reuse lint` reads them as this file's declaration. "
+                f"Wrap the samples in REUSE-Ignore" + "Start / REUSE-Ignore" + "End."
+            )
         own = own_licence(ROOT / rel)
         if own is None:
             continue
@@ -166,12 +224,18 @@ def main() -> int:
             f"    Correct the header, or record it in KNOWN with the reason it is lifted."
         )
 
-    for b in bad:
+    for b in bad + unmarked:
         print(b)
-    if bad:
-        print(f"\n{len(bad)} file(s) disagreeing with the licence map")
+    if bad or unmarked:
+        print(
+            f"\n{len(bad)} file(s) disagreeing with the licence map, "
+            f"{len(unmarked)} carrying an unmarked fixture licence"
+        )
         return 1
-    print(f"check-license-headers-agree: {checked} headers agree with the map, {len(KNOWN)} recorded carve-outs")
+    print(
+        f"check-license-headers-agree: {checked} headers agree with the map, "
+        f"{len(KNOWN)} recorded carve-outs, no unmarked fixture licence"
+    )
     return 0
 
 
