@@ -54,22 +54,8 @@
   }: { process: Process; onClose: () => void; onForceQuit: (id: number) => void } = $props();
 
   const detail = $derived<ProcDetail>(detailFor(process));
-  let confirmQuit = $state(false);
   const TABS = ["Access", "Statistics", "Memory", "Open files"] as const;
   let tab = $state<(typeof TABS)[number]>("Access");
-
-  // Reset the quit confirm when the selected process changes.
-  $effect(() => {
-    process;
-    confirmQuit = false;
-  });
-  function forceQuit() {
-    if (!confirmQuit) {
-      confirmQuit = true;
-      return;
-    }
-    onForceQuit(process.id);
-  }
 
   /// An em-dash-free placeholder for a figure that was not measured. Printing a
   /// zero, or a number derived from the row, is what this pane did before: the
@@ -111,14 +97,9 @@
       <span class="dp-name">{process.name}</span>
       <span class="dp-pid">{$t("tm.dp.pid", { pid: detail.pid })}</span>
     </div>
-    <button
-      type="button"
-      class="dp-quit"
-      class:confirm={confirmQuit}
-      onclick={forceQuit}
-      onblur={() => (confirmQuit = false)}
-    >
-      {confirmQuit ? $t("tm.dp.forceQuitConfirm") : $t("tm.dp.forceQuit")}
+    <!-- The page asks once and names the loss before it ends the process. -->
+    <button type="button" class="dp-quit" onclick={() => onForceQuit(process.id)}>
+      {$t("tm.dp.forceQuit")}
     </button>
     <button type="button" class="dp-close" aria-label={$t("tm.dp.close")} onclick={onClose}><X size={15} strokeWidth={2} /></button>
   </header>
@@ -267,9 +248,6 @@
     background: transparent;
     font-size: var(--text-xs);
     color: var(--color-error, #c96a6a);
-  }
-  .dp-quit.confirm {
-    background: color-mix(in srgb, var(--color-error, #c96a6a) 16%, transparent);
   }
   .dp-close {
     flex-shrink: 0;
