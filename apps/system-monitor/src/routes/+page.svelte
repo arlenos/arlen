@@ -189,16 +189,16 @@
     {:else if $unavailable}
       <!-- No rows at all rather than a labelled fixture: the ids in that fixture
            are the argument Stop passes to the backend. -->
-      <p class="note">{$t("tm.unavailable")}</p>
+      <div class="note-wrap"><Notice tone="error" text={$t("tm.unavailable")} /></div>
     {/if}
     {#if $lastError}
       <!-- A refused action must be visible: the row already reverted, and this
            says why, so a failed Stop never passes as a killed process. Both
            halves are translated - the clause naming the action, and the reason,
            which used to arrive as the kernel's own English. -->
-      <p class="note error" role="alert">
-        {$t($lastError.key, { ...$lastError.values, reason: $t($lastError.reason) })}
-      </p>
+      <div class="note-wrap">
+        <Notice tone="error" text={$t($lastError.key, { ...$lastError.values, reason: $t($lastError.reason) })} />
+      </div>
     {/if}
     <div class="toolbar">
       <span class="filter">
@@ -369,18 +369,6 @@
   .note-wrap {
     padding: 0.6rem 1rem 0;
     flex-shrink: 0;
-  }
-  .note {
-    margin: 0;
-    padding: 0.6rem 1rem 0;
-    font-size: var(--text-2xs);
-    line-height: 1.4;
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-    flex-shrink: 0;
-  }
-  /* A refused action is the one thing here worth a colour. */
-  .note.error {
-    color: var(--color-fg-danger, #f87171);
   }
   .rate {
     display: inline-flex;
