@@ -137,7 +137,10 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
       "interpretation. This is the verb for \"what projects do I have\", which " +
       "neither of the others answers - graph.find matches a word you already " +
       "know, and graph.ask costs a round trip to work out the same list. Take an " +
-      "id from here and ask about that id when you need more than a name. Only " +
+      "id from here and ask about that id when you need more than a name. The " +
+      "NAME comes back empty when this session's grant does not cover that field: " +
+      "the id is the payload and the name is the nicety, so an empty name means " +
+      "you may not read it, never that the thing is unnamed. Only " +
       "some labels can be listed at all (system.Project is one); the rest answer " +
       "empty by design, and an empty answer is never evidence that the user has " +
       "none of something.",
