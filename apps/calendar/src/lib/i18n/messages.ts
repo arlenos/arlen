@@ -14,6 +14,7 @@ const messages: Catalogs = {
     "cal.app.title": "Calendar",
     "cal.nav.aria": "Calendars",
     "cal.agenda": "Agenda",
+    "cal.weekGrid": "Week view",
     // Why a new event was not written, one line per cause. The command answers
     // with a tagged word and the store writes the sentence.
     "cal.create.noHome": "There is no home directory to keep calendars in.",
@@ -165,6 +166,7 @@ const messages: Catalogs = {
     "cal.app.title": "Kalender",
     "cal.nav.aria": "Kalender",
     "cal.agenda": "Termine",
+    "cal.weekGrid": "Wochenansicht",
     "cal.create.noHome": "Es gibt kein Home-Verzeichnis für Kalender.",
     "cal.create.cannotMakeDir": "Der Kalenderordner ließ sich nicht anlegen. {$why}",
     "cal.create.badDate": "Dieses Datum oder diese Uhrzeit ließ sich nicht lesen.",

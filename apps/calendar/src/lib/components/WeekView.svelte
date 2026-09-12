@@ -271,7 +271,23 @@
     {/each}
   </div>
 
-  <div class="scroll" bind:this={scroller}>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- A TAB STOP ON THE SCROLL BOX, which the agenda list in `+page.svelte`
+       already has and this one did not. A keyboard user has to be able to scroll
+       the day out to a different hour, and tabbing through the event buttons is
+       not scrolling - it is only reaching the events that happen to exist. axe
+       reports the gap as `scrollable-region-focusable`, and it reports it on the
+       surface where the grid is EMPTY, which is exactly the case where there is
+       no other way in. Same shape the text editor and the pdf reader use, and
+       the same lint exemption: svelte's rule does not model the
+       scrollable-region case, so it fires on the correct code. -->
+  <div
+    class="scroll"
+    bind:this={scroller}
+    tabindex="0"
+    role="region"
+    aria-label={$t("cal.weekGrid")}
+  >
     <div class="grid" style="height: {24 * HOUR}px" bind:this={gridEl}>
       <div class="gutter hours">
         {#each Array.from({ length: 24 }, (_, h) => h) as h (h)}
