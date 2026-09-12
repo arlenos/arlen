@@ -210,12 +210,15 @@ pub async fn infer_clusters(
 /// inferred project the user (or a later signal) can confirm.
 const COOCCURRENCE_CONFIDENCE: u8 = 50;
 
-/// The fewest path components a cluster's common root must have before it mints
-/// a project. Co-occurrence across two unrelated repositories shares only a
-/// shallow root (e.g. `/home/tim`), which is not a project; a real project's
-/// files share a deep root. Conservative on purpose: better to miss a project
-/// than to mint a junk one over the home directory.
-const MIN_ROOT_COMPONENTS: usize = 3;
+/// The fewest projects inside a directory that make it a CONTAINER of projects
+/// rather than a project.
+///
+/// Two, and the rule is not a tuning knob (`project-system.md`, "A container of
+/// projects is not a project"). The floor this replaced was a path-depth number,
+/// three components, which minted `~/Repositories` as a project because the
+/// number happened to be one too small on this machine - and raising it to four
+/// is a guess the next machine disproves.
+const CONTAINER_PROJECT_COUNT: usize = 2;
 
 /// What [`materialize_clusters`] did, for the caller to log.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -236,32 +239,58 @@ fn project_name_from_root(root: &str) -> String {
         .to_string()
 }
 
-/// The number of non-empty path components (depth) of an absolute path.
-fn path_depth(path: &str) -> usize {
-    path.split('/').filter(|s| !s.is_empty()).count()
+/// Is `root` strictly inside the user's home?
+///
+/// The other half of the floor. A cluster whose files share only `/home/tim`,
+/// `/home` or `/` has found the user, not a project, and the home directory is
+/// the one boundary that does not move between machines the way a component
+/// count does. `home` itself is refused, not only its ancestors: a project AT
+/// your home directory is every file you own.
+fn is_under_home(root: &str, home: &str) -> bool {
+    let home = home.trim_end_matches('/');
+    if home.is_empty() {
+        return false;
+    }
+    root.strip_prefix(home).is_some_and(|rest| rest.starts_with('/') && rest.len() > 1)
 }
 
 /// Materialise inferred clusters as inferred `Project` nodes (foundation §4.2).
 ///
-/// For each cluster the root is the files' longest common directory. A cluster
-/// whose common root is empty, the filesystem root, or shallower than
-/// [`MIN_ROOT_COMPONENTS`] is skipped (co-occurrence across unrelated trees is
-/// not a project). If a project already exists at that root - a signal-detected
-/// one the watcher minted, or one a prior pass created - the cluster is skipped,
-/// so this never clobbers an existing project and a re-run is idempotent.
-/// Otherwise it mints a low-confidence inferred project and links each cluster
-/// file via FILE_PART_OF (an idempotent MERGE, so a file already in the project
-/// is not re-linked). A file may co-belong to other projects; the dedup is on
-/// the project root, never the file.
+/// For each cluster the root is the files' longest common directory, and it must
+/// clear two floors before anything is minted (`project-system.md`, ruled 12
+/// September). It must be strictly INSIDE `home` - a cluster rooted at the home
+/// directory or above has found the user, not a project - and it must not
+/// already CONTAIN [`CONTAINER_PROJECT_COUNT`] known projects, because a
+/// directory holding two projects is a container of projects and a container is
+/// not a project. That pair is what refuses `~/Repositories`, and it stays true
+/// whatever the clustering underneath becomes; the path-depth number it replaced
+/// was a measurement of one machine.
+///
+/// If a project already exists at that root - a signal-detected one the watcher
+/// minted, or one a prior pass created - the cluster is skipped, so this never
+/// clobbers an existing project and a re-run is idempotent. Otherwise it mints a
+/// low-confidence inferred project and links each cluster file via FILE_PART_OF
+/// (an idempotent MERGE, so a file already in the project is not re-linked). A
+/// file may co-belong to other projects; the dedup is on the project root, never
+/// the file.
+///
+/// `home` is the user's home directory. An empty one mints NOTHING: without
+/// knowing where home is, the first floor cannot be applied, and the honest
+/// answer is to infer no projects rather than to infer them unbounded.
 pub async fn materialize_clusters(
     store: &ProjectStore,
     clusters: &[CandidateCluster],
+    home: &str,
 ) -> anyhow::Result<MaterializeStats> {
     let mut stats = MaterializeStats::default();
     for cluster in clusters {
         let refs: Vec<&str> = cluster.files.iter().map(|s| s.as_str()).collect();
         let root = longest_common_dir(&refs);
-        if root.is_empty() || root == "/" || path_depth(&root) < MIN_ROOT_COMPONENTS {
+        if root.is_empty() || root == "/" || !is_under_home(&root, home) {
+            stats.skipped += 1;
+            continue;
+        }
+        if store.count_projects_under(&root).await? >= CONTAINER_PROJECT_COUNT {
             stats.skipped += 1;
             continue;
         }
@@ -294,6 +323,11 @@ const INFERENCE_INTERVAL_SECS: u64 = 3600;
 /// projects), so this task never brings the daemon down.
 pub async fn run(graph: GraphHandle) -> anyhow::Result<()> {
     let store = ProjectStore::new(graph.clone());
+    // Read once, not per pass: the home directory does not move under a running
+    // daemon, and a pass that had to ask the environment every hour would be one
+    // more thing that can change behind the floor. Empty when `HOME` is unset,
+    // which mints nothing - see `materialize_clusters`.
+    let home = std::env::var("HOME").unwrap_or_default();
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(INFERENCE_INTERVAL_SECS));
     // The first tick fires immediately; consume it so the first real scan waits a
     // full interval, giving promotion time to lay down ACCESSED_IN edges first.
@@ -301,7 +335,7 @@ pub async fn run(graph: GraphHandle) -> anyhow::Result<()> {
     loop {
         tick.tick().await;
         match infer_clusters(&graph, ClusterParams::default()).await {
-            Ok(clusters) => match materialize_clusters(&store, &clusters).await {
+            Ok(clusters) => match materialize_clusters(&store, &clusters, &home).await {
                 Ok(stats) => info!(
                     created = stats.created,
                     linked = stats.linked,
@@ -460,11 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn path_depth_counts_components() {
-        assert_eq!(path_depth("/home/tim/proj"), 3);
-        assert_eq!(path_depth("/home"), 1);
-        assert_eq!(path_depth("/"), 0);
-        assert_eq!(path_depth(""), 0);
+    fn a_root_names_its_project_after_its_last_component() {
         assert_eq!(project_name_from_root("/home/tim/proj"), "proj");
         assert_eq!(project_name_from_root("/home/tim/proj/"), "proj");
     }
@@ -501,7 +531,7 @@ mod tests {
         let clusters = infer_clusters(&graph, ClusterParams::default()).await.unwrap();
         assert_eq!(clusters.len(), 2, "both trios cluster");
 
-        let stats = materialize_clusters(&store, &clusters).await.unwrap();
+        let stats = materialize_clusters(&store, &clusters, "/home/tim").await.unwrap();
         assert_eq!(stats.created, 1, "only the deep-root cluster mints a project");
         assert_eq!(stats.skipped, 1, "the shallow-root cluster is skipped");
         assert_eq!(stats.linked, 3, "the three deep-root files are linked");
@@ -515,8 +545,54 @@ mod tests {
         assert!(store.get_by_root_path("/home").await.unwrap().is_none());
 
         // Re-running is idempotent: the project already exists, so nothing new.
-        let again = materialize_clusters(&store, &clusters).await.unwrap();
+        let again = materialize_clusters(&store, &clusters, "/home/tim").await.unwrap();
         assert_eq!(again.created, 0, "a re-run mints no duplicate project");
         assert_eq!(again.skipped, 2, "both clusters skip on the second run");
+    }
+
+    /// The umbrella, and the rule that refuses it.
+    ///
+    /// `~/Repositories` holds two projects on this machine and was minted as a
+    /// third one over the top of them, because the floor it had to clear was a
+    /// path-depth number and three components was one too few here. The rule is
+    /// structural now: a directory containing two known projects is a container.
+    #[tokio::test]
+    async fn a_directory_holding_two_projects_is_not_minted_as_a_third() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let store = ProjectStore::new(graph.clone());
+
+        for (name, root) in [("arlen", "/home/tim/Repositories/arlen"), ("other", "/home/tim/Repositories/other")] {
+            let p = Project::new_inferred(name.to_string(), root.to_string(), 90);
+            store.create(&p).await.unwrap();
+        }
+
+        let cluster = CandidateCluster {
+            files: vec![
+                "/home/tim/Repositories/arlen/a.rs".into(),
+                "/home/tim/Repositories/other/b.rs".into(),
+                "/home/tim/Repositories/other/c.rs".into(),
+            ],
+        };
+        let stats = materialize_clusters(&store, &[cluster], "/home/tim").await.unwrap();
+        assert_eq!(stats.created, 0, "the container must not become a project");
+        assert_eq!(stats.skipped, 1);
+        assert!(store.get_by_root_path("/home/tim/Repositories").await.unwrap().is_none());
+    }
+
+    /// The other floor, which the depth number used to approximate: a cluster
+    /// rooted at the home directory itself has found the user, not a project.
+    #[test]
+    fn only_a_root_strictly_inside_home_can_mint() {
+        assert!(is_under_home("/home/tim/proj", "/home/tim"));
+        assert!(is_under_home("/home/tim/a/b/c", "/home/tim/"));
+        assert!(!is_under_home("/home/tim", "/home/tim"), "home itself is every file you own");
+        assert!(!is_under_home("/home", "/home/tim"));
+        assert!(!is_under_home("/", "/home/tim"));
+        // A sibling that merely shares the prefix as TEXT is not inside it.
+        assert!(!is_under_home("/home/tim2/proj", "/home/tim"));
+        // No home, nothing mints.
+        assert!(!is_under_home("/home/tim/proj", ""));
     }
 }
