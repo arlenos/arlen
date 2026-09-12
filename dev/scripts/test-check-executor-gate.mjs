@@ -38,6 +38,7 @@ const failures = [];
 const ACKNOWLEDGED = [
   "proxy_executor.rs",
   "read_executor.rs",
+  "find_executor.rs",
   "file_executor.rs",
   "placeholder.rs",
 ];

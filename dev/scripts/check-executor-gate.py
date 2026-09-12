@@ -55,6 +55,12 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
         "system, and refusing reads under it would disable the assistant "
         "entirely rather than make it safe",
     ),
+    "find_executor.rs": (
+        {"execute"},
+        "a keyword search over the caller's own readable labels, which the "
+        "knowledge daemon bounds; the same reason as the read executor beside it "
+        "- the flag gates ACTING on the system, and a search changes nothing",
+    ),
     "file_executor.rs": (
         {"execute"},
         "the dispatcher for this executor's three operations (move, trash, "
