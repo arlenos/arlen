@@ -68,7 +68,17 @@ fn provider_and_model(doc: &toml::Table) -> (Option<String>, Option<String>) {
 
 /// Map the `ai.access_level` integer (0..=4, Foundation §8.4) to its
 /// tier label. Out-of-range or absent floors to the most restrictive
-/// (`Minimal`), matching the daemon's fail-closed `access_tier_from_level`.
+/// (`Minimal`), which is the same floor `access_tier_from_level` applies.
+///
+/// WHAT THIS SHOWS IS THE SETTING, NOT THE TIER IN FORCE, and the comment used to
+/// say it matched the daemon. Measured on 12 September:
+/// `arlen_ai_core::capability::access_tier_from_level` has no production caller
+/// anywhere in the tree - the engine daemon's session grant hardcodes
+/// `ReadTier::Full` (`ai-engine-daemon/src/main.rs`) and a behaviour run derives
+/// its tier from the behaviour manifest. So this reads `ai.toml` and reports what
+/// the person chose, which is worth showing and is not the same statement as
+/// "this is what the assistant may read". Written up in `coder-reports.md`; the
+/// wiring is a decision, not a fix to make here.
 fn tier_label(level: i64) -> &'static str {
     match level {
         1 => "Session",
