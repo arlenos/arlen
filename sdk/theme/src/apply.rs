@@ -113,6 +113,11 @@ pub struct ApplyReport {
     pub skipped_foreign: Vec<PathBuf>,
     /// Per-file write errors (path + message).
     pub errors: Vec<(PathBuf, String)>,
+    /// Declarations that were refused, by the declaration's own path and the
+    /// reason. Kept apart from [`Self::errors`] because nothing was attempted:
+    /// the file that is wrong is the declaration, not a destination, and calling
+    /// it a failed write would name the wrong file to whoever has to fix it.
+    pub refused_declarations: Vec<(PathBuf, String)>,
     /// What this run decided the interface should be, once the machine had been
     /// looked at.
     ///
@@ -130,6 +135,19 @@ impl ApplyReport {
     /// errors: a skipped foreign `gtk.css` is a deliberate safety outcome.
     pub fn is_clean(&self) -> bool {
         self.errors.is_empty()
+    }
+
+    /// Fold another run's outcome into this one, so a caller that applies in two
+    /// passes still has one thing to log. `selection` is kept from whichever run
+    /// made one - the declared targets never do.
+    pub fn absorb(&mut self, other: ApplyReport) {
+        self.written.extend(other.written);
+        self.skipped_foreign.extend(other.skipped_foreign);
+        self.errors.extend(other.errors);
+        self.refused_declarations.extend(other.refused_declarations);
+        if self.selection.is_none() {
+            self.selection = other.selection;
+        }
     }
 }
 
@@ -568,6 +586,72 @@ pub fn write_toolkit_configs(
 /// Write a fixed-name `gtk.css`, but never over a foreign file: write only
 /// when the path is absent or already an Arlen-generated file (marker
 /// header). A foreign file is recorded in `skipped_foreign`.
+/// The text a generated declared-target file carries on its first line, after
+/// that declaration's own comment prefix.
+const DECLARED_MARKER: &str = "arlen-generated";
+
+/// How many characters into an existing file the marker is looked for. A header
+/// is the first line; reading more than this to decide is reading somebody's file
+/// for no reason.
+const DECLARED_MARKER_WINDOW: usize = 4096;
+
+/// Write the files a person declared for themselves, beside the four we ship.
+///
+/// The shipped emitters land only when their mapping is unambiguous, which is the
+/// right rule for what we ship and the wrong one for what somebody may do to their
+/// own machine (`theme-system.md` §9c). A declaration is the other door: it names
+/// a destination inside the config directory and a template of tokens the resolver
+/// already produces, and everything refusable about it was refused at parse.
+///
+/// Guarded like the fixed-name files: a destination already holding a file that is
+/// not ours is reported skipped, never overwritten. What makes it recognisable is
+/// the header this function writes, in the comment syntax the declaration named.
+///
+/// A refused declaration is reported separately from a failed write, keyed to the
+/// declaration's own path rather than the destination it never reached: somebody
+/// has a file that produces nothing, and they cannot be told that by a run which
+/// says nothing.
+pub fn write_declared_targets(
+    theme: &ArlenTheme,
+    targets_dir: &Path,
+    config_dir: &Path,
+) -> ApplyReport {
+    let mut report = ApplyReport::default();
+    let (targets, refused) = crate::declared::load_targets(targets_dir);
+    for (path, why) in refused {
+        report.refused_declarations.push((path, why.to_string()));
+    }
+    for target in targets {
+        let body = crate::declared::render_target(&target, theme);
+        let content = format!(
+            "{} {DECLARED_MARKER} theme target \"{}\" (managed by Arlen; edits are overwritten on a theme change)\n{body}",
+            target.comment_prefix, target.name
+        );
+        let dest = config_dir.join(&target.destination);
+        write_declared_guarded(&dest, &content, &mut report);
+    }
+    report
+}
+
+/// Overwrite only a declared-target file we generated, or none.
+///
+/// Reads for the marker in the first [`DECLARED_MARKER_WINDOW`] bytes rather than
+/// requiring it at offset zero: the header goes on the first line, and a format
+/// that needs a line of its own before a comment (an XML declaration, say) would
+/// otherwise be unable to be a target at all.
+fn write_declared_guarded(path: &Path, content: &str, report: &mut ApplyReport) {
+    if let Ok(existing) = std::fs::read_to_string(path) {
+        // By character, not by byte: slicing a string at a byte offset that lands
+        // mid-character panics, and somebody's config may well be full of them.
+        let head: String = existing.chars().take(DECLARED_MARKER_WINDOW).collect();
+        if !head.contains(DECLARED_MARKER) {
+            report.skipped_foreign.push(path.to_path_buf());
+            return;
+        }
+    }
+    write_file(path, content, report);
+}
+
 fn write_guarded(path: &Path, content: &str, marker: &str, report: &mut ApplyReport) {
     match std::fs::read_to_string(path) {
         Ok(existing) if !existing.starts_with(marker) => {
@@ -605,6 +689,87 @@ mod tests {
 
     fn theme() -> ArlenTheme {
         ArlenTheme::from_bundled(DARK_TOML).expect("bundled dark resolves")
+    }
+
+    /// A declaration in the targets directory produces its file, with the header
+    /// that makes the next run recognise it.
+    #[test]
+    fn a_declared_target_is_written_from_the_shared_theme() {
+        let targets = tempfile::tempdir().unwrap();
+        let config = tempfile::tempdir().unwrap();
+        std::fs::write(
+            targets.path().join("mpv.toml"),
+            "name = \"mpv\"\ndestination = \"mpv/arlen-colors.conf\"\ntemplate = \"background={color-bg-app}\"\n",
+        )
+        .unwrap();
+
+        let report = write_declared_targets(&theme(), targets.path(), config.path());
+
+        let written = config.path().join("mpv/arlen-colors.conf");
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(report.refused_declarations.is_empty());
+        assert!(report.written.contains(&written));
+        let text = std::fs::read_to_string(&written).unwrap();
+        assert!(text.starts_with("# arlen-generated theme target \"mpv\""), "{text}");
+        assert!(text.contains("background=#"), "{text}");
+    }
+
+    /// Ours to overwrite, theirs to keep. The same rule the fixed-name files
+    /// follow, on a path the person chose themselves.
+    #[test]
+    fn a_declared_target_overwrites_its_own_file_and_keeps_a_foreign_one() {
+        let targets = tempfile::tempdir().unwrap();
+        let config = tempfile::tempdir().unwrap();
+        std::fs::write(
+            targets.path().join("mpv.toml"),
+            "name = \"mpv\"\ndestination = \"mpv/c.conf\"\ntemplate = \"a={color-accent}\"\n",
+        )
+        .unwrap();
+        let dest = config.path().join("mpv/c.conf");
+
+        write_declared_targets(&theme(), targets.path(), config.path());
+        let second = write_declared_targets(&theme(), targets.path(), config.path());
+        assert!(second.written.contains(&dest), "a file of ours is rewritten");
+
+        std::fs::write(&dest, "hand written, nothing of ours\n").unwrap();
+        let third = write_declared_targets(&theme(), targets.path(), config.path());
+        assert!(third.skipped_foreign.contains(&dest), "{third:?}");
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "hand written, nothing of ours\n");
+    }
+
+    /// One bad declaration costs itself and nothing else, and it is named.
+    #[test]
+    fn a_refused_declaration_is_reported_and_does_not_stop_the_others() {
+        let targets = tempfile::tempdir().unwrap();
+        let config = tempfile::tempdir().unwrap();
+        let bad = targets.path().join("a-bad.toml");
+        std::fs::write(
+            &bad,
+            "name = \"bad\"\ndestination = \"x/y.conf\"\ntemplate = \"a={color-acent}\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            targets.path().join("b-good.toml"),
+            "name = \"good\"\ndestination = \"x/good.conf\"\ntemplate = \"a={color-accent}\"\n",
+        )
+        .unwrap();
+
+        let report = write_declared_targets(&theme(), targets.path(), config.path());
+
+        assert_eq!(report.refused_declarations.len(), 1);
+        assert_eq!(report.refused_declarations[0].0, bad);
+        assert!(config.path().join("x/good.conf").exists(), "the good one still ran");
+        assert!(!config.path().join("x/y.conf").exists());
+    }
+
+    /// The ordinary machine declares nothing, and that is silent.
+    #[test]
+    fn no_targets_directory_is_not_an_error() {
+        let config = tempfile::tempdir().unwrap();
+        let report =
+            write_declared_targets(&theme(), Path::new("/nonexistent/arlen-targets"), config.path());
+        assert!(report.is_clean() && report.written.is_empty());
+        assert!(report.refused_declarations.is_empty());
     }
 
     #[test]

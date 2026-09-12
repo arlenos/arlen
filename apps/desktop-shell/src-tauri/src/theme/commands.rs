@@ -161,10 +161,24 @@ impl ThemeState {
                 .filter_map(|(id, _)| arlen_theme::apply::Spoke::from_id(id))
                 .collect()
         };
-        let report =
+        let mut report =
             arlen_theme::apply::write_toolkit_configs(theme, &gtk, &qt, &term, &off, &config_dir);
+        // The targets somebody declared for themselves, which the four shipped
+        // spokes above know nothing about. Written from the shared theme: a
+        // declared target has no `[override.<name>]` block to diverge from it.
+        // The directory is passed in rather than looked up inside the apply so
+        // this stays the only place that decides where a person's declarations
+        // live.
+        report.absorb(arlen_theme::apply::write_declared_targets(
+            theme,
+            &arlen_theme::declared::user_targets_dir(),
+            &config_dir,
+        ));
         for (path, err) in &report.errors {
             log::warn!("theme apply: failed to write {}: {err}", path.display());
+        }
+        for (path, why) in &report.refused_declarations {
+            log::warn!("theme apply: {} is not a theme target: {why}", path.display());
         }
         for path in &report.skipped_foreign {
             log::info!(

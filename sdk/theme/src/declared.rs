@@ -29,6 +29,20 @@
 //!   than emitted verbatim, so a typo cannot silently write `{color-acent}` into
 //!   somebody's config and leave them hunting for why one colour is wrong.
 //!
+//! ## How a generated file is recognised as ours
+//!
+//! The write is guarded the way every other outbound file is: Arlen overwrites a
+//! file it generated or none, never one somebody wrote. The four shipped emitters
+//! know their format's comment syntax because it was compiled in; a declaration
+//! has to say it, which is what `comment_prefix` is - the write puts
+//! `<prefix> arlen-generated` on the first line and reads that line back before it
+//! overwrites. The default is `#`, which is the comment character of nearly every
+//! config format a person would want themed.
+//!
+//! **A format with no comment syntax at all cannot be a declared target**, and that
+//! is a limit rather than an omission: without a line that says whose file it is,
+//! the first write would have to either clobber something unread or refuse forever.
+//!
 //! ## What a placeholder may name
 //!
 //! Exactly the variables [`crate::css::to_css_variables`] produces, which is the
@@ -72,8 +86,18 @@ pub struct DeclaredTarget {
     /// How colours are written.
     #[serde(default)]
     pub color_format: ColorFormat,
+    /// The comment syntax of the destination's format, so the write can put a
+    /// line on top saying the file is Arlen's and read it back before it
+    /// overwrites. `#` unless the declaration says otherwise.
+    #[serde(default = "default_comment_prefix")]
+    pub comment_prefix: String,
     /// The file to generate, with `{token}` placeholders.
     pub template: String,
+}
+
+/// `#`, the comment character of nearly every config format.
+fn default_comment_prefix() -> String {
+    "#".to_string()
 }
 
 /// Why a declaration was refused. Every one of these is a parse-time answer.
@@ -95,6 +119,9 @@ pub enum TargetError {
     /// A placeholder names no token.
     #[error("the template asks for a token that does not exist: {0}")]
     UnknownToken(String),
+    /// The comment prefix is not one.
+    #[error("a comment prefix is one to eight printable characters: {0}")]
+    BadCommentPrefix(String),
 }
 
 /// The characters a target name may hold.
@@ -103,6 +130,18 @@ fn name_is_plain(name: &str) -> bool {
         && name.len() <= 64
         && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
         && !name.starts_with('.')
+}
+
+/// Is `prefix` something that can start a comment line?
+///
+/// Short, printable, and not starting with whitespace - a prefix the format does
+/// not recognise writes a syntax error into the first line of somebody's config,
+/// so the shape is checked even though the meaning cannot be.
+fn comment_prefix_is_plain(prefix: &str) -> bool {
+    !prefix.is_empty()
+        && prefix.len() <= 8
+        && !prefix.starts_with(char::is_whitespace)
+        && prefix.chars().all(|c| !c.is_control())
 }
 
 /// Is `dest` a relative path that stays inside the config directory?
@@ -153,6 +192,9 @@ pub fn validate_target(target: &DeclaredTarget) -> Result<(), TargetError> {
     // first line of what runs.
     if target.template.contains("#!") {
         return Err(TargetError::ExecutableTemplate);
+    }
+    if !comment_prefix_is_plain(&target.comment_prefix) {
+        return Err(TargetError::BadCommentPrefix(target.comment_prefix.clone()));
     }
     let known = token_names();
     for token in placeholders(&target.template) {
@@ -267,6 +309,55 @@ fn color_for(theme: &ArlenTheme, name: &str) -> Option<Rgba> {
     })
 }
 
+/// The directory a person's own theme targets live in
+/// (`~/.local/share/arlen/theme-targets/`).
+///
+/// Beside `themes/` rather than under it: a target is not a theme, it is a
+/// standing instruction about where one more copy of the theme goes, and it
+/// outlives whichever theme is active.
+pub fn user_targets_dir() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join("arlen")
+        .join("theme-targets")
+}
+
+/// Every declaration in `dir`, and every one that was refused.
+///
+/// Both halves are returned because a refusal has to be sayable. A declaration
+/// that does not parse is somebody's file that will never produce anything, and a
+/// loader that skips it silently leaves them watching a target that never appears
+/// with nothing to read. The caller puts the refusals where it puts its other
+/// errors.
+///
+/// One bad declaration never costs the others: each file is judged alone, and the
+/// list is sorted by path so two runs on one machine do the same thing in the same
+/// order.
+pub fn load_targets(dir: &std::path::Path) -> (Vec<DeclaredTarget>, Vec<(std::path::PathBuf, TargetError)>) {
+    let mut ok = Vec::new();
+    let mut refused = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        // No directory is the ordinary case: most machines declare no targets.
+        return (ok, refused);
+    };
+    let mut paths: Vec<std::path::PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "toml"))
+        .collect();
+    paths.sort();
+    for path in paths {
+        match std::fs::read_to_string(&path) {
+            Ok(text) => match parse_target(&text) {
+                Ok(target) => ok.push(target),
+                Err(why) => refused.push((path, why)),
+            },
+            Err(e) => refused.push((path, TargetError::Malformed(e.to_string()))),
+        }
+    }
+    (ok, refused)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,6 +388,52 @@ corner={radius-card}
         assert!(!out.contains('{'), "every placeholder was substituted: {out}");
         // A non-colour token keeps its CSS form, units and all.
         assert!(out.contains("corner=") && out.contains("px"), "{out}");
+    }
+
+    /// The prefix has to be able to start a comment line, and `#` is assumed.
+    #[test]
+    fn a_comment_prefix_is_checked_and_defaults_to_hash() {
+        assert_eq!(parse_target(MPV).unwrap().comment_prefix, "#");
+        for prefix in ["//", ";", "--", "%"] {
+            let src = format!("{MPV}\ncomment_prefix = \"{prefix}\"\n");
+            assert_eq!(parse_target(&src).unwrap().comment_prefix, prefix);
+        }
+        for bad in ["", " #", "############"] {
+            let src = format!("{MPV}\ncomment_prefix = \"{bad}\"\n");
+            assert!(
+                matches!(parse_target(&src), Err(TargetError::BadCommentPrefix(_))),
+                "{bad:?} should be refused"
+            );
+        }
+    }
+
+    /// Every declaration is judged alone, in a fixed order, and a refusal is
+    /// handed back rather than swallowed.
+    #[test]
+    fn the_loader_keeps_the_good_and_names_the_bad() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("b.toml"), MPV).unwrap();
+        std::fs::write(
+            dir.path().join("a.toml"),
+            MPV.replace("mpv", "second").replace("{color-accent}", "{color-acent}"),
+        )
+        .unwrap();
+        // Not a declaration and not read as one.
+        std::fs::write(dir.path().join("notes.txt"), "nothing here").unwrap();
+
+        let (ok, refused) = load_targets(dir.path());
+
+        assert_eq!(ok.len(), 1);
+        assert_eq!(ok[0].name, "mpv");
+        assert_eq!(refused.len(), 1);
+        assert_eq!(refused[0].0, dir.path().join("a.toml"));
+        assert!(matches!(refused[0].1, TargetError::UnknownToken(_)));
+    }
+
+    #[test]
+    fn an_absent_targets_directory_loads_nothing_and_says_nothing() {
+        let (ok, refused) = load_targets(std::path::Path::new("/nonexistent/arlen-targets"));
+        assert!(ok.is_empty() && refused.is_empty());
     }
 
     /// The load-bearing refusal: there is no key to carry an instruction in.
