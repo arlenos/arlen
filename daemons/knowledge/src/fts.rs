@@ -62,16 +62,32 @@ pub async fn delete_fact_text(pool: &SqlitePool, node_id: &str) -> Result<()> {
 
 /// Keyword-search the index, returning matching node ids ranked best-first by
 /// BM25 (SQLite's `bm25()` is more negative for a better match, so ascending
-/// order is best-first). The query is bound as an FTS5 **phrase** (double-quoted,
-/// embedded quotes doubled), so special characters in a filename or path (`.`,
-/// `-`, `/`) are literal tokens, never FTS5 operators that would error. The
-/// ranked ids are one of RRF's input lists.
+/// order is best-first). The ranked ids are one of RRF's input lists.
+///
+/// EACH TERM is bound as its own FTS5 phrase (double-quoted, embedded quotes
+/// doubled), joined by the implicit AND. Quoting is what makes a `.`, `-` or `/`
+/// in a filename a literal token rather than an FTS5 operator that errors the
+/// query - the reason it was introduced - and quoting the query WHOLE kept that
+/// safety while quietly turning every multi-word search into an exact-phrase
+/// search. "main.rs notes" then matched only a document with those two words
+/// adjacent and in that order, which is not what a person types and not what the
+/// assistant sends. Per term, both properties hold: every term is still literal,
+/// and a document matches when it contains all of them anywhere.
+///
+/// A query of nothing but whitespace has no terms, and an empty `MATCH` is an
+/// error rather than an empty result, so it returns nothing without asking.
 pub async fn search_fact_text(pool: &SqlitePool, query: &str, limit: i64) -> Result<Vec<String>> {
-    let phrase = format!("\"{}\"", query.replace('"', "\"\""));
+    let terms: Vec<String> = query
+        .split_whitespace()
+        .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
+        .collect();
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
     let ids = sqlx::query_scalar::<_, String>(
         "SELECT node_id FROM fact_text WHERE fact_text MATCH ?1 ORDER BY bm25(fact_text) LIMIT ?2",
     )
-    .bind(phrase)
+    .bind(terms.join(" "))
     .bind(limit)
     .fetch_all(pool)
     .await?;
@@ -110,6 +126,35 @@ mod tests {
 
         let both = search_fact_text(&pool, "proj", 10).await.unwrap();
         assert_eq!(both.len(), 2, "a shared term matches both nodes");
+    }
+
+    /// The shape the whole-query quoting broke: two words a person types, sitting
+    /// in one document but not next to each other.
+    #[tokio::test]
+    async fn several_terms_match_a_document_that_holds_them_all_apart() {
+        let pool = mem_pool().await;
+        create_fact_text_index(&pool).await.unwrap();
+        upsert_fact_text(&pool, "/a/main.rs", "/a/main.rs main.rs a rust source with notes")
+            .await
+            .unwrap();
+        upsert_fact_text(&pool, "/b/other.rs", "/b/other.rs other.rs a rust source")
+            .await
+            .unwrap();
+
+        let hits = search_fact_text(&pool, "main.rs notes", 10).await.unwrap();
+        assert_eq!(hits, vec!["/a/main.rs".to_string()], "both terms, not adjacent");
+
+        // Every term still has to be there: the second document has neither.
+        let none = search_fact_text(&pool, "other.rs notes", 10).await.unwrap();
+        assert!(none.is_empty(), "a term the document lacks excludes it: {none:?}");
+
+        // And a term full of FTS5 punctuation is still a literal token, which is
+        // what the quoting was for.
+        let dotted = search_fact_text(&pool, "main.rs", 10).await.unwrap();
+        assert_eq!(dotted, vec!["/a/main.rs".to_string()]);
+
+        // A query of nothing but spaces has no terms and asks nothing.
+        assert!(search_fact_text(&pool, "   ", 10).await.unwrap().is_empty());
     }
 
     #[tokio::test]
