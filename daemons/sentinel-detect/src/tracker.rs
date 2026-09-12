@@ -6,9 +6,10 @@
 //! stalking signal). This module is the front of that detector: it turns one BLE
 //! advertisement's manufacturer-data or service-data into a brand match plus the
 //! separation state the advert reveals. It is PURE (bytes in, verdict out) so the
-//! per-vendor formats are tested against fixtures without a Bluetooth radio; the
+//! per-vendor formats are tested against fixtures without a Bluetooth radio. The
 //! scanning, the movement/persistence model, the home-anchor and the notify decision
-//! all live in the daemon on top of this.
+//! belong in the daemon on top of this and are not built - see the crate doc for
+//! which detectors have a driver and what the rest are waiting on.
 //!
 //! The formats follow the de-facto per-vendor advertisement layouts (research-
 //! grounded against AirGuard). Near-owner adverts are dropped before they ever reach

@@ -7,6 +7,12 @@
 //! touches the SSRF-safe egress layer: a real download plugs its pinned, redirect-
 //! validated response body in as the `reader`, and the consent/egress gate is
 //! enforced ABOVE this copy (this only moves already-authorised bytes).
+//!
+//! **No download uses it yet, measured 13 September 2026.** The live path is still
+//! the blocking [`crate::fetch::download_model`], so a model download reports
+//! nothing while it runs and cannot be stopped. The consumer is the models surface
+//! in Settings, which is another lane's; this stays the mechanism it was written as
+//! rather than being wired from here.
 
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
