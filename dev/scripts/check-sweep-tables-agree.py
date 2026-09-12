@@ -57,6 +57,40 @@ def surface(spec: str) -> tuple[str, str, str]:
     return (route, sel, host)
 
 
+def unpinned_fixture_rows(path: Path) -> list[str]:
+    """Axe rows that name a `@@fixture` and do not pin a locale.
+
+    THE RULE WAS STATED HERE AND ENFORCED NOWHERE. This file's own refusal tells
+    an author to add a missing row "pinning the locale the way its neighbours
+    do", and `surface()` drops the query on purpose, so the check could see that
+    a row EXISTS and never that it carried the locale. `sweep-axe.sh` takes a
+    width and has no locale argument at all, so a fixture row without one renders
+    the app in English while the fixture declares a German sentence - and every
+    such row REFUSES on every run, prints its refusal, and leaves the tally
+    looking like a smaller audit rather than a failed one.
+
+    Measured on 13 September: ten rows, nine of them with a German expectation.
+    They were the uninstall outcomes, a refused revoke, a display revert, a key
+    capture and the terminal's two palettes - the states where a person is being
+    told something went wrong, which is where this audit matters most. One of
+    them held a serious defect nobody had seen.
+    """
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if "SURFACES=(" not in text:
+        return []
+    block = text.split("SURFACES=(", 1)[1].split("\n)", 1)[0]
+    out: list[str] = []
+    for line in block.splitlines():
+        line = line.strip()
+        if not line.startswith('"') or not line.endswith('"'):
+            continue
+        app, _, routes = line.strip('"').partition(" ")
+        for spec in routes.split("|"):
+            if "@@" in spec and "locale=" not in spec:
+                out.append(f"{app} {spec}")
+    return out
+
+
 def table(path: Path) -> dict[str, set[tuple[str, str, str]]]:
     text = path.read_text(encoding="utf-8", errors="replace")
     if "SURFACES=(" not in text:
@@ -83,6 +117,13 @@ def main() -> int:
         return 1
 
     bad: list[str] = []
+    for row in unpinned_fixture_rows(AXE):
+        bad.append(
+            f"  - {row}: an axe fixture row with no locale. `sweep-axe.sh` has no\n"
+            f"    locale argument, so this renders in English, the fixture's own\n"
+            f"    sentence never appears and the row refuses on every run. Add\n"
+            f"    `?locale=de` the way its neighbours do."
+        )
     carried = 0
     for app in sorted(render):
         if app not in axe:
