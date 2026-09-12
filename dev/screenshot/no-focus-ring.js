@@ -122,7 +122,7 @@ document.head.appendChild(still);
 const SEL = "a[href], area[href], button, input, select, textarea, summary, [tabindex], [contenteditable='true']";
 const out = [];
 let examined = 0;
-let unmeasured = 0;
+const unmeasured = [];
 let matched = 0;
 const restore = document.activeElement;
 
@@ -208,7 +208,7 @@ for (const el of document.querySelectorAll(SEL)) {
   // sweep's `--open` click, which a no-click fixture disproved: the time field
   // fails on its own and the four others pass right beside it.)
   if (!el.matches(":focus-visible")) {
-    unmeasured++;
+    unmeasured.push(label(el));
     el.blur();
     continue;
   }
@@ -234,15 +234,23 @@ for (const el of document.querySelectorAll(SEL)) {
 // about the timing. So say which one it is: nothing matched the selector at all
 // is a page that is not there yet, and everything matched being skipped is a
 // page whose controls are each off-tab, hidden or inside a composite widget.
-if (examined === 0 && unmeasured === 0) {
+if (examined === 0 && unmeasured.length === 0) {
   out.push(matched === 0
     ? "nothing on this page matches the focusable selector - a page that has not painted yet looks like this"
     : matched + " element(s) can take focus and every one was skipped: disabled, off-tab, hidden, or a composite widget that rings its active descendant");
 }
-if (unmeasured > 0) {
+// NAME THEM, do not just count them. A bare "1 control not measured" sends the
+// reader back through the page to work out which one, and the answer decides
+// whether there is anything to fix: on the clock's alarm editor it was the kit's
+// time field, whose ring is correct and whose exemption is the documented WebKit
+// case above, and establishing that from the count alone took a morning's
+// detour. The label is the same one a real finding carries, so an unmeasured
+// control and a ringless one read side by side.
+if (unmeasured.length > 0) {
   out.push(
-    unmeasured + " control(s) not measured: a scripted focus does not match " +
-    ":focus-visible on them, which is where their ring would be"
+    unmeasured.length + " control(s) not measured, a scripted focus does not match " +
+    ":focus-visible on them and that is where their ring would be: " +
+    unmeasured.join(", ")
   );
 }
 
