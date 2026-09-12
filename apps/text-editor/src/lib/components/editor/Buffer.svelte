@@ -14,9 +14,8 @@
   /// focus mode); this is the surface you type into. Which one a file gets is the
   /// caller's decision, not this component's.
   import { onMount } from "svelte";
-  import { get } from "svelte/store";
   import { t } from "$lib/i18n/messages";
-  import { EditorState, type Extension } from "@codemirror/state";
+  import { Compartment, EditorState, type Extension } from "@codemirror/state";
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
   import { search, searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -44,6 +43,8 @@
 
   let host: HTMLDivElement;
   let view: EditorView | undefined;
+  /// The editor's accessible name, held apart so a locale switch can replace it.
+  const ariaName = new Compartment();
 
   /// Grammar extensions, loaded on demand so a plain text file pays for nothing.
   async function grammar(lang: string): Promise<Extension[]> {
@@ -149,11 +150,33 @@
             // and a screen reader announces "edit text" over the one thing this
             // window exists for. Measured on 11 September on two of the text
             // editor's surfaces.
-            EditorView.contentAttributes.of({ "aria-label": get(t)("te.editor.aria") }),
+            // IN A COMPARTMENT, so it follows a language switch. Read once with
+            // `get(t)` it kept whichever locale the editor mounted under, which
+            // is the same defect the i18n-reactivity gate names for markup - the
+            // gate caught this one. CodeMirror's facets are static, so the
+            // reactive form is a compartment reconfigured when the catalogue
+            // changes, which the subscription below does.
+            // Empty at construction on purpose: the subscription below fills it
+            // synchronously on subscribe, so the name is there before the first
+            // paint, and there is no second place spelling the key.
+            ariaName.of([]),
           ],
         }),
       });
-      cleanup = () => view?.destroy();
+      // Re-name the editor when the catalogue changes. `t` is derived from the
+      // locale store, so this fires on a switch; the first call is the mount
+      // value and reconfigures to what is already there, which is harmless.
+      const stopName = t.subscribe((tr) => {
+        view?.dispatch({
+          effects: ariaName.reconfigure(
+            EditorView.contentAttributes.of({ "aria-label": tr("te.editor.aria") }),
+          ),
+        });
+      });
+      cleanup = () => {
+        stopName();
+        view?.destroy();
+      };
     })();
     return () => {
       alive = false;
