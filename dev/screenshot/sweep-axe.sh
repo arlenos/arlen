@@ -75,6 +75,9 @@ PORT=5310
 # "Zulassen?". The check was right and the spec was wrong, which is the good way
 # round.
 SURFACES=(
+  # The kit's own keyboard/a11y fixture, rendered for real. Its jsdom gate cannot
+  # measure contrast and cannot see a component in a box; this can.
+  "ui-kit /_a11y"
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/?locale=de@@files-refuses-op"
   "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/?locale=de@@terminal-quick-connect|/?locale=de::#terminal-history-open@@terminal-history-refused"
   # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
@@ -193,7 +196,16 @@ for entry in "${SURFACES[@]}"; do
   # dev` wrapper leaves the vite child listening, and the next app then shoots
   # whatever the previous one is still serving. Found by finding three of them
   # alive after a sweep.
-  setsid bash -c "cd 'apps/$app' && exec npm run dev -- --port $PORT --strictPort" \
+  # WHERE THE APP LIVES. Everything in the table is under `apps/` except the kit,
+  # which is a component library at `sdk/ui-kit` and has a route of its own worth
+  # auditing: `_a11y` mounts the SAME fixture the kit's jsdom axe gate renders, so
+  # running it here measures the primitives with a box - colour contrast is on in
+  # a real render and off under jsdom, and contrast is where every finding of the
+  # 13 September pass turned out to live. The kit has no `*.app.title` catalogue,
+  # which the title probe below already tolerates (an empty `want` skips it).
+  dir="apps/$app"
+  [ "$app" = "ui-kit" ] && dir="sdk/ui-kit"
+  setsid bash -c "cd '$dir' && exec npm run dev -- --port $PORT --strictPort" \
     >"$out/$app.log" 2>&1 &
   server=$!
 
@@ -250,7 +262,7 @@ for entry in "${SURFACES[@]}"; do
   # app is swept - and a guard that passes when there is nothing to compare is
   # the kind that reads as protection and is not.
   want=$(grep -hoE '"[a-z]+\.app\.title": "[^"]+"' \
-           "apps/$app/src/lib/i18n/"messages*.ts 2>/dev/null \
+           "$dir/src/lib/i18n/"messages*.ts 2>/dev/null \
          | head -1 | sed 's/.*: "\(.*\)"/\1/')
   # THE TITLE IS SET BY THE APP, so it arrives after hydration and not when the
   # server first answers. `curl -sf /` succeeds as soon as vite serves the shell,
