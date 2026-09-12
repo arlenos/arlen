@@ -202,10 +202,15 @@
                        name in a navigation list, but an ellipsed name with no way
                        to read the rest is a dead end: the sidebar is a fixed
                        column, so a title long enough to clip clips at every
-                       window width. `title` puts the whole thing one hover away
-                       and hands it to assistive tech, which is what the ellipsis
-                       owes the reader. The sweep still reports the clip, because
-                       the probe measures geometry and cannot see intent. -->
+                       window width. `title` puts the whole thing one hover away,
+                       which is the least the ellipsis owes a reader who cannot
+                       widen the column. It is a weak remedy on a non-interactive
+                       span - whether a screen reader announces it is
+                       implementation dependent - so it is the floor rather than
+                       the answer; the answer, if this ever matters more, is a
+                       surface that shows the full title on selection. The sweep
+                       still reports the clip, because the probe measures geometry
+                       and cannot see intent. -->
                   <span class="truncate" title={m.title}>{m.title}</span>
                   <span class="ms-auto shrink-0 text-xs text-sidebar-foreground/50">{fmtDate(m.date_ms, $locale)}</span>
                 </SidebarMenuButton>
