@@ -16,6 +16,7 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { page } from "$app/stores";
@@ -198,20 +199,14 @@
                   isActive={activeId === m.id}
                   onclick={() => goto(`/meeting/${m.id}`)}
                 >
-                  <!-- The title ELLIPSES here and that is the right call for a
+                  <!-- The title ellipses here and that is the right call for a
                        name in a navigation list, but an ellipsed name with no way
                        to read the rest is a dead end: the sidebar is a fixed
-                       column, so a title long enough to clip clips at every
-                       window width. `title` puts the whole thing one hover away,
-                       which is the least the ellipsis owes a reader who cannot
-                       widen the column. It is a weak remedy on a non-interactive
-                       span - whether a screen reader announces it is
-                       implementation dependent - so it is the floor rather than
-                       the answer; the answer, if this ever matters more, is a
-                       surface that shows the full title on selection. The sweep
-                       still reports the clip, because the probe measures geometry
-                       and cannot see intent. -->
-                  <span class="truncate" title={m.title}>{m.title}</span>
+                       column, so a title long enough to clip clips at every window
+                       width. `OverflowLabel` is the kit's answer (design-system.md
+                       6.4) - it measures itself and offers the tooltip ONLY when
+                       the text is actually cut, so a short title gets none. -->
+                  <span class="truncate"><OverflowLabel text={m.title} /></span>
                   <span class="ms-auto shrink-0 text-xs text-sidebar-foreground/50">{fmtDate(m.date_ms, $locale)}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
