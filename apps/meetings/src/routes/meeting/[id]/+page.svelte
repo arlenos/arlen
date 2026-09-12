@@ -49,6 +49,15 @@
         {#if m.mocked}
           <div class="note-sample"><Notice tone="neutral" text={$t("mt.sample")} /></div>
         {/if}
+        <!-- The notes and items are the user's own words; if an edit did not
+             persist the text on screen goes back rather than reading as saved.
+             Both refusals sit at the top of the pane they are about. -->
+        {#if $editFailed}
+          <div class="note-sample"><Notice tone="error" text={$t("mt.editFailed")} /></div>
+        {/if}
+        {#if $openFailure}
+          <div class="note-sample"><Notice tone="error" text={$t($openFailure === "noHandler" ? "mt.openNoHandler" : "mt.openUnavailable")} /></div>
+        {/if}
         <!-- The inset header names the note; this head carries only the meta
              and the actions, so the title is said once. -->
         <div class="note-head">
@@ -58,14 +67,6 @@
             {$t("mt.open")}
           </Button>
         </div>
-        <!-- The notes and items are the user's own words; if an edit did not
-             persist the text on screen goes back rather than reading as saved. -->
-        {#if $editFailed}
-          <p class="sample" role="alert">{$t("mt.editFailed")}</p>
-        {/if}
-        {#if $openFailure}
-          <p class="sample" role="alert">{$t($openFailure === "noHandler" ? "mt.openNoHandler" : "mt.openUnavailable")}</p>
-        {/if}
       {/snippet}
       {#snippet content()}
         <div class="note-body">
@@ -99,16 +100,19 @@
          participants and quotes under a real meeting's id, with the edit
          controls writing against that id. And a note that does not exist is
          not one that could not be read: two sentences. -->
-    <p class="unavailable">{$t($noteFailure === "missing" ? "mt.noteMissing" : "mt.noteUnavailable")}</p>
+    <div class="unavailable">
+      {#if $noteFailure === "missing"}
+        <Notice tone="neutral" text={$t("mt.noteMissing")} />
+      {:else}
+        <Notice tone="error" text={$t("mt.noteUnavailable")} />
+      {/if}
+    </div>
   {/if}
 </div>
 
 <style>
   .unavailable {
-    margin: 0;
-    padding: 2rem 1.5rem;
-    font-size: var(--text-sm);
-    color: var(--color-fg-secondary);
+    padding: 1rem 1.5rem 0;
   }
   .page {
     height: 100%;
@@ -128,11 +132,6 @@
   }
   .note-sample {
     margin: 0 0 0.6rem;
-  }
-  .sample {
-    margin: 0.5rem 0 0;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .note-body {
     display: flex;

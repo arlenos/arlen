@@ -8,6 +8,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import MeetingShell from "$lib/components/MeetingShell.svelte";
@@ -91,7 +92,7 @@
                STOP may leave the microphone live, so the one thing this surface
                owes them is another way to turn it off. Without it the honest
                sentence was a dead end. -->
-          <span class="rec-failed" role="alert">{$t("mt.stopFailed")}</span>
+          <div class="rec-failed"><Notice tone="error" text={$t("mt.stopFailed")} /></div>
           <Button variant="outline" size="sm" onclick={() => void stop()}>
             {$t("mt.captureRetry")}
           </Button>
@@ -99,9 +100,9 @@
           <!-- No retry: without a speech engine on the machine another press
                cannot succeed, and a button that fails the same way twice is a
                lie about what the person can do. -->
-          <span class="rec-failed" role="alert">{$t("mt.captureNoEngine")}</span>
+          <div class="rec-failed"><Notice tone="error" text={$t("mt.captureNoEngine")} /></div>
         {:else if $captureFailure}
-          <span class="rec-failed" role="alert">{$t("mt.captureUnavailable")}</span>
+          <div class="rec-failed"><Notice tone="error" text={$t("mt.captureUnavailable")} /></div>
           <Button variant="outline" size="sm" onclick={() => void startCapture()}>
             {$t("mt.captureRetry")}
           </Button>
@@ -185,12 +186,9 @@
     font-weight: 500;
     color: var(--color-fg-primary);
   }
+  /* The refusal takes the whole head line; the retry sits on the next. */
   .rec-failed {
-    display: inline-flex;
-    align-items: center;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--color-error, #f87171);
+    flex-basis: 100%;
   }
   .dot {
     width: 0.55rem;
