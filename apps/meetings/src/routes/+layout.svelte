@@ -198,7 +198,15 @@
                   isActive={activeId === m.id}
                   onclick={() => goto(`/meeting/${m.id}`)}
                 >
-                  <span class="truncate">{m.title}</span>
+                  <!-- The title ELLIPSES here and that is the right call for a
+                       name in a navigation list, but an ellipsed name with no way
+                       to read the rest is a dead end: the sidebar is a fixed
+                       column, so a title long enough to clip clips at every
+                       window width. `title` puts the whole thing one hover away
+                       and hands it to assistive tech, which is what the ellipsis
+                       owes the reader. The sweep still reports the clip, because
+                       the probe measures geometry and cannot see intent. -->
+                  <span class="truncate" title={m.title}>{m.title}</span>
                   <span class="ms-auto shrink-0 text-xs text-sidebar-foreground/50">{fmtDate(m.date_ms, $locale)}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
