@@ -112,10 +112,12 @@ FOREIGN = re.compile(r"^\s*(?:/{2,}|\*|<!--)\s*i18n-foreign\b", re.M)
 LETTER = re.compile(r"[A-Za-zÀ-ɏ]")
 
 KNOWN: dict[str, tuple[int, str]] = {
-    # arlen-ui's app. The second is a confirm body - "This removes the chat and
-    # its messages. You cannot undo this." - which is a real one on their side.
+    # arlen-ui's app. The sidebar's confirm body - "This removes the chat and its
+    # messages. You cannot undo this." - was carried here and is GONE: they moved
+    # it into the catalogue on 13 September, so the allowance came down with it
+    # (the ratchet said so itself, which is the whole point of counting rather
+    # than listing). The dev route's demo label is still theirs to move.
     "apps/harness/src/routes/_difftest/+page.svelte": (1, "arlen-ui's, a dev route's demo label"),
-    "apps/harness/src/lib/components/HarnessSidebar.svelte": (1, "arlen-ui's; a confirm body at :279"),
     # A deliberate dev-only pin: the viewer assigns a TypeError string to exercise
     # its own internal-error guard, so the guard can be SEEN working rather than
     # read. Suppressed on the way to the screen, never shown.
