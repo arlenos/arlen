@@ -175,11 +175,17 @@
      queue. A proportion is what actually bounds it, and a proportion rather than
      a pixel floor because it holds at every width the sweep renders. The control
      keeps `flex-shrink: 0`: it is an operable thing with a hit target, not a
-     description. */
+     description.
+
+     NO `overflow: hidden` HERE, and it was there for one run. Clipping the box is
+     what turns a squeeze into a CUT: the sweep came back with "Inoffiziell cut
+     76px sideways by .preview", a badge sliced mid-word, which is the trade the
+     label was just rescued from. A preview that cannot fit should wrap or spill
+     where its own content decides, and the content is the caller's - a chip row
+     that can wrap says so itself. */
   .preview {
     flex-shrink: 1;
     min-width: 0;
-    overflow: hidden;
   }
 
   /* The reset sits before the control and only shows itself when the row is
