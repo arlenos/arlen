@@ -3537,7 +3537,16 @@ async fn handle_client(
                 match serde_json::from_slice::<arlen_capsule::scope::CapsuleScope>(&buf[1..]) {
                     Ok(mut scope) => {
                         scope.expand_hops = scope.expand_hops.min(MAX_CAPSULE_HOPS);
-                        let materialize = crate::capsule::materialize_slice(&graph, &scope);
+                        // The caller's own read scope decides which labels are in
+                        // its capsule, the same question the other read verbs ask.
+                        // No system-anchored exemption here: nothing that calls
+                        // this op is FirstParty, and the raw path's exemption is
+                        // the incoherence, not the pattern to copy.
+                        let readable = readable_system_labels(
+                            &caller_read_scopes(peer.as_ref(), &app_id, &auth).await,
+                        );
+                        let materialize =
+                            crate::capsule::materialize_slice(&graph, &scope, &readable);
                         match tokio::time::timeout(CAPSULE_MATERIALIZE_TIMEOUT, materialize).await {
                             Ok(Ok(slice)) => String::from_utf8(slice.canonical_bytes())
                                 .unwrap_or_else(|_| "ERROR: non-utf8 slice".to_string()),
