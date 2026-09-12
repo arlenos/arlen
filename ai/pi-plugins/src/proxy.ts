@@ -170,7 +170,11 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
       "looking for - a filename, a project name, a word from a path - reach for " +
       "this, and keep graph.ask for questions that need reading rather than " +
       "matching (\"what did I work on yesterday\", \"what changed since " +
-      "Monday\"). It answers ids only; a File's id is its path. It cannot " +
+      "Monday\"). It answers ids only, and an id is not always readable: a " +
+      "File's id IS its path, but a Project's is an opaque uuid, so a project " +
+      "you matched by name comes back as an identifier that tells you nothing " +
+      "about which one it was. Pair it with graph.list when you need to know " +
+      "what you found. It cannot " +
       "enumerate a kind: for \"all my projects\" use graph.list, which answers " +
       "handles. The search is bounded by this session\u2019s read scope, so it " +
       "never returns something the session may not see.",
