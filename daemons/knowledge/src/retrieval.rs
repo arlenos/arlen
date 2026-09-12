@@ -48,14 +48,36 @@ pub async fn retrieve(
     confirm_present(graph, &fused).await
 }
 
-/// The one-hop neighbours of `seeds`, the `φ_bfs` graph primitive's ranked
-/// id-list (in traversal order). Distinct, label-agnostic, bounded to one hop so
-/// the expansion cannot explode. The seed ids are escaped into the id-list
+/// The one-hop neighbours of `seeds`, ranked by how many of the seeds each one
+/// touches, best first.
+///
+/// RANKED, and it was not. This returned `DISTINCT n.id` with no `ORDER BY`, so
+/// the order was whatever the engine happened to produce - and `rrf_fuse` then
+/// read that arbitrary order AS A RANKING, scoring the first row as if it were
+/// the most relevant thing the graph knew. Reciprocal Rank Fusion's whole premise
+/// is that each input list is ordered by its own primitive's notion of relevance;
+/// one list carrying no signal does not fuse to nothing, it fuses to noise
+/// weighted like evidence.
+///
+/// Shared-seed count is the one-hop form of the intuition personalised PageRank
+/// generalises: a node adjacent to three of the query's hits is more likely to be
+/// what was meant than one adjacent to a single hit. It is not PPR and does not
+/// pretend to be - that is a separate replacement - but it is a real ordering
+/// where there was none, from the same single query.
+///
+/// BOUNDED, which it also was not: a high-degree seed returned everything
+/// adjacent to it. The cap is generous relative to the caller's own limit (the
+/// fusion wants more candidates than it will keep) and finite, which is the
+/// property that matters.
+///
+/// Distinct, label-agnostic, one hop. The seed ids are escaped into the id-list
 /// literal.
 async fn neighbours(graph: &GraphHandle, seeds: &[String]) -> Result<Vec<String>> {
     let list = crate::cypher::id_list(seeds.iter());
-    let cypher =
-        format!("MATCH (s) WHERE s.id IN [{list}] MATCH (s)-[]-(n) RETURN DISTINCT n.id AS id");
+    let cypher = format!(
+        "MATCH (s) WHERE s.id IN [{list}] MATCH (s)-[]-(n) \
+         RETURN n.id AS id, count(*) AS shared ORDER BY shared DESC LIMIT {MAX_NEIGHBOURS}"
+    );
     let rs = graph.query_rows(cypher).await?;
     Ok(rs
         .rows
@@ -63,6 +85,14 @@ async fn neighbours(graph: &GraphHandle, seeds: &[String]) -> Result<Vec<String>
         .filter_map(|row| row.first().map(|cell| cell.as_str().to_string()))
         .collect())
 }
+
+/// How many one-hop neighbours the graph primitive may contribute to the fusion.
+///
+/// Generous against `MAX_RETRIEVE_LIMIT` on purpose - fusion wants more
+/// candidates than it returns, so a good id the keyword pass missed can still be
+/// lifted by the graph - and finite, so one hub node cannot hand the fusion its
+/// whole neighbourhood.
+const MAX_NEIGHBOURS: i64 = 200;
 
 /// The standard RRF damping constant (§7.3): a larger `k` flattens the
 /// contribution of rank, so top ranks dominate less.
@@ -297,6 +327,50 @@ mod tests {
         assert_eq!(fact_text("File", &f), fact_text("File", &f), "same fields -> same text");
         // A Project with only a name (no description/root) omits the empty parts.
         assert_eq!(fact_text("Project", &fields(&[("name", "Solo")])), "Solo");
+    }
+
+    /// The graph primitive has to RANK, not just list. Two keyword hits share one
+    /// project and each has a project of its own; the shared one is what the query
+    /// is most likely about, and it must come back ahead of the other two.
+    #[tokio::test]
+    async fn a_neighbour_shared_by_more_seeds_ranks_ahead_of_one_that_is_not() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        for id in ["/a/one.rs", "/a/two.rs"] {
+            graph
+                .write(format!("CREATE (:File {{id: '{id}', path: '{id}'}})"))
+                .await
+                .unwrap();
+        }
+        for id in ["shared", "lonely-a", "lonely-b"] {
+            graph.write(format!("CREATE (:Project {{id: '{id}'}})")).await.unwrap();
+        }
+        for (file, project) in [
+            ("/a/one.rs", "shared"),
+            ("/a/two.rs", "shared"),
+            ("/a/one.rs", "lonely-a"),
+            ("/a/two.rs", "lonely-b"),
+        ] {
+            graph
+                .write(format!(
+                    "MATCH (f:File {{id: '{file}'}}), (p:Project {{id: '{project}'}}) \
+                     CREATE (f)-[:FILE_PART_OF]->(p)"
+                ))
+                .await
+                .unwrap();
+        }
+
+        let seeds = vec!["/a/one.rs".to_string(), "/a/two.rs".to_string()];
+        let ranked = neighbours(&graph, &seeds).await.unwrap();
+        let shared = ranked.iter().position(|id| id == "shared").expect("shared is a neighbour");
+        for lonely in ["lonely-a", "lonely-b"] {
+            let at = ranked.iter().position(|id| id == lonely).expect("lonely is a neighbour");
+            assert!(
+                shared < at,
+                "the neighbour two seeds touch must rank ahead of {lonely}: {ranked:?}"
+            );
+        }
     }
 
     #[tokio::test]
