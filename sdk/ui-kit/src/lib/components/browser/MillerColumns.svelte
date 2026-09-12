@@ -96,10 +96,20 @@
 {#if scrolledLeft}
   <div class="mc-fade" aria-hidden="true"></div>
 {/if}
+<!-- A GROUP, NOT A GRID, AND THIS IS A HOLDING POSITION. It said `role="grid"`
+     and contained no `row` and no `gridcell` - just columns of buttons - so axe
+     reports `aria-required-children` (critical) and a screen reader entering it
+     is told "grid" and then finds nothing a grid navigates. A role that promises
+     a structure and delivers none is worse than a modest one, so it is `group`
+     until the real pattern is chosen: a set of listboxes, a tree, or the
+     `role="application"` with `aria-activedescendant` that the sibling
+     `FileBrowser` already uses. `group` requires no children, keeps the label
+     meaningful, and forecloses none of the three. Reachable from knowledge's
+     Projects place (always this view) and from the file manager's column view. -->
 <div
   class="miller"
   bind:this={scroller}
-  role="grid"
+  role="group"
   aria-label={$kt("k.browser.columns")}
   onscroll={() => (scrolledLeft = (scroller?.scrollLeft ?? 0) > 4)}
 >
