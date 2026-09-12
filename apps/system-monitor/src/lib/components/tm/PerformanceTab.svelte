@@ -156,7 +156,7 @@
 {#if $perfMocked}
   <div class="note-wrap"><Notice tone="neutral" text={$t("tm.perf.sample")} /></div>
 {:else if $perfError}
-  <p class="perf-sample" role="alert">{$t("tm.perf.unavailable")}</p>
+  <div class="note-wrap"><Notice tone="error" text={$t("tm.perf.unavailable")} /></div>
 {/if}
 
 <div class="perf">
@@ -209,12 +209,6 @@
 
   .note-wrap {
     padding: 8px 12px 0;
-  }
-  .perf-sample {
-    margin: 0;
-    padding: 8px 12px 0;
-    font-size: 12px;
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
 
   .perf {

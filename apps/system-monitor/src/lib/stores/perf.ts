@@ -145,7 +145,10 @@ export function sampleTick(i: number): SystemTick {
     load: { one: 1.2 + wave(40, 0) * 1.5, five: 1.4, fifteen: 1.1, perCore: 0.17 },
     devices: [{ name: "nvme0n1", readMbs: diskRead, writeMbs: diskWrite }],
     links: [{ name: "wlan0", rxMbs: netRx, txMbs: netTx }],
-    cpuTempC: { celsius: 46 + 8 * wave(29, 0.8), label: "Package" },
+    // i18n-foreign: the sensor's own name as coretemp reports it (`Package id
+    // 0`, `Tdie`, `Tctl`), a name the host hands over rather than copy, so it
+    // stays literal the way a real tick would carry it.
+    cpuTempC: { celsius: 46 + 8 * wave(29, 0.8), label: "Package id 0" },
     coreFreqs: cores.map((c) => 1200 + Math.round(c.user * 28)),
   };
 }
