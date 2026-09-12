@@ -18,10 +18,16 @@
 //! and would not expect. What the row records is the ACCESS, so the access is
 //! what is destroyed: the timestamp and the access edges, hard, not hidden.
 //!
-//! A `File` left holding nothing but the observation - no project membership - is
-//! an artifact of the recording rather than anything the user owns, so it goes
-//! whole too. The rule reads: destroy the activity everywhere, and destroy the
-//! node when the activity was all it was.
+//! The membership itself is a record of the range too, which took a ruling
+//! (`bitemporal-knowledge-graph.md` §10c) because two readings were defensible.
+//! A membership that ENDED is not an absence: a closed interval is a recorded
+//! fact about a period, so a delete that skips it silently disagrees with the
+//! model the rest of the store uses. What goes is the membership recorded WITHIN
+//! the range, closed intervals included; what stays is the file node itself and
+//! every membership belonging to another period. The feature deletes activity,
+//! not entities, and an entity left holding no interval anywhere is not swept up
+//! here - that is a separate decision with a separate name, and taking it quietly
+//! is how an irreversible feature grows a scope nobody agreed to.
 //!
 //! Nothing here reads or writes the audit ledger. The act is audited by the
 //! caller (the daemon op), which knows the caller identity; recording the act and
@@ -62,21 +68,21 @@ pub struct DeletedActivity {
     pub events: u64,
     /// File access records destroyed (timestamp plus access edges).
     pub file_accesses: u64,
-    /// `File` nodes removed because the access was all they held.
-    pub orphan_files: u64,
+    /// Project memberships recorded inside the range, closed ones included.
+    pub memberships: u64,
 }
 
 impl DeletedActivity {
     /// Did this delete anything at all? A delete over an empty range is a
     /// success, not an error, but the caller may want to say "nothing to remove".
     pub fn is_empty(&self) -> bool {
-        self.events == 0 && self.file_accesses == 0 && self.orphan_files == 0
+        self.events == 0 && self.file_accesses == 0 && self.memberships == 0
     }
 
     /// One number for the audit record: how much went. The split matters to the
     /// caller, not to the ledger, which only needs the size of the act.
     pub fn total(&self) -> u64 {
-        self.events + self.file_accesses + self.orphan_files
+        self.events + self.file_accesses + self.memberships
     }
 }
 
@@ -104,13 +110,15 @@ fn deletion_statements(from: i64) -> Vec<String> {
         format!("MATCH (f:File)-[r:ACCESSED_IN]->() WHERE f.last_accessed >= {from} DELETE r"),
         format!("MATCH (f:File)-[r:CO_ACCESSED]->() WHERE f.last_accessed >= {from} DELETE r"),
         format!("MATCH ()-[r:CO_ACCESSED]->(f:File) WHERE f.last_accessed >= {from} DELETE r"),
-        // A file that held nothing but the observation goes whole. Membership is
-        // the test: a file in a project is something the user organised, and
-        // deleting it here would take a fact they never asked to delete.
-        format!(
-            "MATCH (f:File) WHERE f.last_accessed >= {from} \
-             AND NOT EXISTS {{ MATCH (f)-[:FILE_PART_OF]->() }} DETACH DELETE f"
-        ),
+        // The memberships recorded inside the range. `valid_at` is when the
+        // membership became true, so this selects the ones the range is about and
+        // leaves an older interval standing even if it was CLOSED in here - that
+        // close is a fact about an earlier period, and the file may belong to
+        // somebody else's project now. No `invalid_at IS NULL`, deliberately: an
+        // ended interval is a record, not an absence (§10c). A legacy edge with
+        // no `valid_at` compares false and stays, which is the safe direction in
+        // a delete that cannot be undone.
+        format!("MATCH ()-[r:FILE_PART_OF]->() WHERE r.valid_at >= {from} DELETE r"),
         // Last, for the reason in the doc comment above.
         format!("MATCH (f:File) WHERE f.last_accessed >= {from} SET f.last_accessed = NULL"),
     ]
@@ -189,11 +197,10 @@ pub async fn count_activity_since(graph: &GraphHandle, from_secs: i64) -> Result
             ))
             .await?,
     );
-    let orphan_files = one(
+    let memberships = one(
         graph
             .query_rows(format!(
-                "MATCH (f:File) WHERE f.last_accessed >= {from} \
-                 AND NOT EXISTS {{ MATCH (f)-[:FILE_PART_OF]->() }} RETURN count(f) AS n"
+                "MATCH ()-[r:FILE_PART_OF]->() WHERE r.valid_at >= {from} RETURN count(r) AS n"
             ))
             .await?,
     );
@@ -201,7 +208,7 @@ pub async fn count_activity_since(graph: &GraphHandle, from_secs: i64) -> Result
     Ok(DeletedActivity {
         events,
         file_accesses,
-        orphan_files,
+        memberships,
     })
 }
 
@@ -325,22 +332,31 @@ mod tests {
     }
 
     /// Against a real graph, because the dialect is the thing I cannot reason my
-    /// way to: whether the engine takes an `EXISTS` subquery at all, and whether
-    /// a delete over one label leaves the neighbours standing.
+    /// way to: whether a delete over one label leaves the neighbours standing,
+    /// and whether a relationship predicate over a nullable stamp behaves.
+    ///
+    /// This is the §10c shape end to end: the membership recorded in the range
+    /// goes, the one recorded before it stays even though it was CLOSED inside
+    /// the range, and no `File` node is removed by either.
     #[tokio::test]
-    async fn the_range_goes_and_what_the_user_organised_stays() {
+    async fn the_range_goes_and_what_belongs_to_another_period_stays() {
         let tmp = tempfile::tempdir().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
 
         graph
             .transaction(vec![
                 "CREATE (:Project {id:'p1', name:'Work'})".into(),
-                // In a project, accessed inside the range: the access goes, the
-                // file and its membership stay.
+                // In a project, accessed inside the range: the access and the
+                // membership recorded in here go, the file node stays.
                 "CREATE (:File {id:'/w/kept.rs', path:'/w/kept.rs', last_accessed: 500000000})".into(),
-                // No project, accessed inside the range: nothing but the
-                // observation, so it goes whole.
+                // No project, accessed inside the range: the access goes, and the
+                // node stays - an entity holding nothing is a separate decision.
                 "CREATE (:File {id:'/tmp/seen.rs', path:'/tmp/seen.rs', last_accessed: 600000000})"
+                    .into(),
+                // Belongs to another project since before the range, and that
+                // membership ENDED inside it. The close is a fact about the
+                // earlier period, so the edge stands.
+                "CREATE (:File {id:'/w/moved.rs', path:'/w/moved.rs', last_accessed: 550000000})"
                     .into(),
                 // Before the range: untouched, the proof the cut-off is real.
                 "CREATE (:File {id:'/w/old.rs', path:'/w/old.rs', last_accessed: 100000000})".into(),
@@ -353,7 +369,11 @@ mod tests {
         graph
             .transaction(vec![
                 "MATCH (f:File {id:'/w/kept.rs'}), (p:Project {id:'p1'}) \
-                 CREATE (f)-[:FILE_PART_OF]->(p)"
+                 CREATE (f)-[:FILE_PART_OF {valid_at: 500000000, created_at: 500000000}]->(p)"
+                    .into(),
+                "MATCH (f:File {id:'/w/moved.rs'}), (p:Project {id:'p1'}) \
+                 CREATE (f)-[:FILE_PART_OF {valid_at: 100000000, created_at: 100000000, \
+                 invalid_at: 500000000}]->(p)"
                     .into(),
                 "MATCH (f:File {id:'/w/kept.rs'}), (a:App {id:'editor'}) \
                  CREATE (f)-[:ACCESSED_BY]->(a)"
@@ -365,8 +385,8 @@ mod tests {
         let removed = count_activity_since(&graph, 400).await.expect("count");
         run_deletion(&graph, 400).await.expect("delete");
         assert_eq!(removed.events, 1, "only the in-range event");
-        assert_eq!(removed.file_accesses, 2);
-        assert_eq!(removed.orphan_files, 1);
+        assert_eq!(removed.file_accesses, 3);
+        assert_eq!(removed.memberships, 1, "only the membership recorded in the range");
 
         let count = |cypher: &str| {
             let g = graph.clone();
@@ -376,7 +396,12 @@ mod tests {
 
         // The range is gone.
         assert_eq!(count("MATCH (e:Event) WHERE e.timestamp >= 400000000 RETURN count(e)").await, 0);
-        assert_eq!(count("MATCH (f:File {id:'/tmp/seen.rs'}) RETURN count(f)").await, 0);
+        assert_eq!(
+            count("MATCH (f:File {id:'/tmp/seen.rs'}) RETURN count(f)").await,
+            1,
+            "the feature deletes activity, not entities: the node stays even with \
+             nothing left on it"
+        );
         assert_eq!(
             count("MATCH (:File {id:'/w/kept.rs'})-[r:ACCESSED_BY]->() RETURN count(r)").await,
             0,
@@ -389,11 +414,18 @@ mod tests {
             "the timestamp is destroyed, so the row cannot come back"
         );
 
-        // What the user organised, and what predates the range, both stand.
+        // The membership recorded in the range went with the rest of it.
         assert_eq!(
             count("MATCH (:File {id:'/w/kept.rs'})-[r:FILE_PART_OF]->() RETURN count(r)").await,
+            0,
+            "a membership recorded inside the range is part of the range"
+        );
+        // The one from before it stands, closed interval and all.
+        assert_eq!(
+            count("MATCH (:File {id:'/w/moved.rs'})-[r:FILE_PART_OF]->() RETURN count(r)").await,
             1,
-            "deleting an access must not take the project membership with it"
+            "an interval that ended in the range is a fact about an earlier \
+             period, and the file may belong elsewhere now"
         );
         assert_eq!(count("MATCH (f:File {id:'/w/old.rs'}) RETURN count(f)").await, 1);
         assert_eq!(count("MATCH (e:Event {id:'e-old'}) RETURN count(e)").await, 1);
@@ -421,14 +453,38 @@ mod tests {
         }
     }
 
+    /// A membership delete is always scoped to the range.
+    ///
+    /// §10c widened this statement from "never" to "the ones recorded in here",
+    /// and the whole of the ruling's second half rests on the predicate: drop it
+    /// and "delete today" takes every membership the user ever had, in a feature
+    /// that cannot be undone.
     #[test]
-    fn nothing_touches_a_project_membership_edge() {
-        // FILE_PART_OF is the one edge that must survive: it is what the user
-        // organised, not what the system observed. It may only be READ, as the
-        // orphan test.
+    fn a_membership_delete_carries_the_range_predicate() {
         for s in deletion_statements(1) {
-            let deletes_membership = s.contains("FILE_PART_OF") && s.contains("DELETE r");
-            assert!(!deletes_membership, "membership must survive: {s}");
+            if s.contains("FILE_PART_OF") && s.contains("DELETE") {
+                assert!(
+                    s.contains("r.valid_at >= 1"),
+                    "an unscoped membership delete takes every project the user \
+                     ever organised: {s}"
+                );
+            }
+        }
+    }
+
+    /// No `File` node is removed here, whatever the range holds.
+    ///
+    /// The other half of §10c. A file whose membership ended may belong to a
+    /// different project now, so reaching for the node is reaching into that
+    /// project; and a node left holding nothing is a separate decision with a
+    /// separate name.
+    #[test]
+    fn no_file_node_is_ever_deleted_here() {
+        for s in deletion_statements(1) {
+            assert!(
+                !(s.contains("DETACH DELETE") && s.contains(":File")),
+                "the feature deletes activity, not entities: {s}"
+            );
         }
     }
 }
