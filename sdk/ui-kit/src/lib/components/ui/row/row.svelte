@@ -132,14 +132,26 @@
      can't fit on one. This keeps the row height stable per
      row-rhythm spec while still allowing prose-style hints
      below the title. */
+  /* A row label WRAPS. It used to be one nowrap line with an ellipsis, and the
+     German sweep at 720px showed what that costs where it matters most: the
+     extensions pages put whole capability sentences in this slot, so a person was
+     told an app "Liest und schreibt Dateien außerhalb des" and the rest of what it
+     may reach was simply not there. `design-system.md` §6 asks for ellipsis on
+     TRUNCATABLE labels, and a sentence stating what an app may do is not one.
+     Where the label really is a short title, wrapping costs nothing: it only ever
+     takes a second line at a width where the single line did not fit either.
+
+     `overflow-wrap: anywhere` is the floor under both lines. The label column
+     carries `min-width: 0` so it can shrink past its content, and without a break
+     opportunity inside a long word the text spills out of the row instead - which
+     the same sweep caught on the sound page, where a 272px control left the
+     description 86px and "Wechseldatenträger" walked over the control. */
   .label-title {
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     line-height: 1.3;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .label-desc {
@@ -147,6 +159,7 @@
     line-height: 1.3;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     margin-top: 0.0625rem;
+    overflow-wrap: anywhere;
   }
 
   /* The control may give ground, but never below its own minimum. `flex-shrink: 0`
