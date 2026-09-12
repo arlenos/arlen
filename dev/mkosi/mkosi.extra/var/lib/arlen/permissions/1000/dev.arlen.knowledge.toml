@@ -14,11 +14,12 @@
 #
 # This used to say `e.type` was left out because a filter is not a returned field
 # and "the scope covers what is read back". Filters are listed now, and the
-# reasoning changed on 11 Aug after reading how the scope is consumed:
-# `readable_system_labels` (daemon.rs:793) strips the field off every pattern and
-# keeps the LABEL, so the field half of `system.Event.type` is not enforced
-# anywhere on the read path today. It is documentation - and documentation of
-# what a query touches is more useful than documentation of what it returns,
+# reasoning changed on 11 Aug after reading how the scope is consumed: the label
+# half is what the read path enforced, so the field half of `system.Event.type`
+# was documentation. Since 12 September it is enforced on the structured read and
+# the handle list, and still documentation on the raw path, the capsule and the
+# prep aggregations - so the entry earns its place either way, and documentation
+# of what a query touches is more useful than documentation of what it returns,
 # because a filter is exactly the field a later field-level gate would deny while
 # the query still looks like it should work. The terminal's profile had been
 # granting its own filter-only `expired_at` all along.

@@ -62,11 +62,14 @@ daemon still owns the graph outright and has no profile to check.
 **Filter fields count, and the knowledge profile used to say the opposite.** Its
 header held that a filter is not a returned field so the scope covers what is read
 back, which is a coherent rule and not the one this check applies. What decided it
-was reading how the scope is consumed: `readable_system_labels` (daemon.rs:793)
-strips the field off every pattern and keeps the LABEL, so the field half is not
-enforced on the read path at all - these lists are documentation today, and a
-filter is the most useful thing in them, because it is exactly what a later
-field-level gate would deny while the query still looks like it should work.
+was reading how the scope is consumed. The label half has always been enforced;
+the FIELD half reached the read path only on 12 September, and only on two verbs
+- the structured read (`0x08`) refuses a select or a filter naming an ungranted
+field, and the handle list (`0x12`) blanks an ungranted display name. On the raw
+path, the capsule and the two prep aggregations these lists are still
+documentation. So a filter is the most useful thing in them either way: where the
+gate has arrived it is exactly what gets denied, and where it has not it is
+exactly what a query will need the day it does.
 """
 
 import re
