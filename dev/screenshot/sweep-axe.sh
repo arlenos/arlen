@@ -76,7 +76,7 @@ PORT=5310
 # round.
 SURFACES=(
   "files /|/::[data-place=recent]|/::[data-place=trash]|/_asktest|/_duptest|/_facettest|/_rendertest|/_sidebartest|/_thumbtest|/?locale=de@@files-refuses-op"
-  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/@@terminal-quick-connect|/::#terminal-history-open@@terminal-history-refused"
+  "terminal /|/::#terminal-history-open|/::#terminal-new-session|/_chrometest|/_rendertest|/?locale=de@@terminal-quick-connect|/?locale=de::#terminal-history-open@@terminal-history-refused"
   # THE OTHER NINETEEN SETTINGS PAGES, and they were missing for the reason
   # this header keeps naming: the list IS the coverage. Settings has 38 route
   # pages and this row held 14, so more of that app was unmeasured than
@@ -88,7 +88,7 @@ SURFACES=(
   # and a shared sweep that goes red on another lane's surface is one somebody
   # turns off. The `[id]` routes need a parameter that only a running backend
   # can supply, so they are not reachable from a route walk at all.
-  "settings /|/about|/accessibility|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/quicksettings|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/appearance/wallpaper|/apps|/display|/extensions|/extensions/module/wp.tally|/extensions/app/dev.arlen.notes|/extensions/bridge/md.obsidian|/focus|/keyboard|/knowledge|/language|/mouse|/notifications|/printers|/privacy|/privacy/physical|/system-actions|/topbar|/touchpad|/windows-apps|/workspaces|/keyboard/shortcuts|/_topbartest|/apps/dev.arlen.notes@@settings-uninstall-refused|/apps/dev.arlen.notes@@settings-uninstall-unavailable|/apps/dev.arlen.notes@@settings-uninstall-failed|/apps/dev.arlen.notes@@settings-uninstall-unknown|/privacy@@settings-revoke-refused|/privacy::.seg-pill:nth-of-type(2)|/apps/com.example.editor|/windows-apps/b1|/workspaces::.footer button|/display@@settings-display-revert|/keyboard/shortcuts@@settings-key-capture|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/workspaces?locale=de@@settings-refuses-write|/accessibility?locale=de@@settings-a11y-refuses-filter|/topbar?locale=de@@settings-topbar-refuses-save"
+  "settings /|/about|/accessibility|/ai|/ai/providers|/appearance|/appearance/colors|/appearance/geometry|/appearance/motion-depth|/appearance/quicksettings|/appearance/sound|/appearance/system|/appearance/toolkits|/appearance/typography|/appearance/wallpaper|/apps|/display|/extensions|/extensions/module/wp.tally|/extensions/app/dev.arlen.notes|/extensions/bridge/md.obsidian|/focus|/keyboard|/knowledge|/language|/mouse|/notifications|/printers|/privacy|/privacy/physical|/system-actions|/topbar|/touchpad|/windows-apps|/workspaces|/keyboard/shortcuts|/_topbartest|/apps/dev.arlen.notes?locale=de@@settings-uninstall-refused|/apps/dev.arlen.notes?locale=de@@settings-uninstall-unavailable|/apps/dev.arlen.notes?locale=de@@settings-uninstall-failed|/apps/dev.arlen.notes?locale=de@@settings-uninstall-unknown|/privacy?locale=de@@settings-revoke-refused|/privacy::.seg-pill:nth-of-type(2)|/apps/com.example.editor|/windows-apps/b1|/workspaces::.footer button|/display?locale=de@@settings-display-revert|/keyboard/shortcuts?locale=de@@settings-key-capture|/keyboard/shortcuts::[data-action=add-custom]|/keyboard/shortcuts::[data-action=reset-all]|/workspaces?locale=de@@settings-refuses-write|/accessibility?locale=de@@settings-a11y-refuses-filter|/topbar?locale=de@@settings-topbar-refuses-save"
   "meetings /|/capture|/meeting/abc|/meeting/abc::#edit-notes|/capture?locale=de@@meetings-refuses-stop"
   "clock /|/::#chrome-add|/::#tab-timers|/::#tab-focus|/::#tab-stopwatch|/::#tab-world|/?locale=de@@clock-refuses-alarm"
   "knowledge /|/::button[data-place=projects]|/::button[data-place=library]|/::button[data-place=searches]|/?locale=de@@knowledge-refuses-pause|/?locale=de@@knowledge-refuses-search-save"
@@ -143,7 +143,7 @@ SURFACES=(
   # spec is what found the reason that panel had never been seen: the art button
   # spread the tooltip trigger's props AFTER its own `onclick`, so bits-ui's
   # close handler replaced the toggle and the click did nothing at all.
-  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/?locale=de::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest|/?menumock|/@@shell-workspace-overlay|/_jobstest?locale=de@@shell-jobs-refuse-cancel|/_jobstest?locale=de@@shell-jobs-failed-install|/waypointer?locale=de@@waypointer-refuses-copy|/waypointer?locale=de@@waypointer-refuses-run|/waypointer?locale=de@@waypointer-refuses-openurl"
+  "desktop-shell /waypointer|/|/consent|/consent?consent=1&locale=de@@shell-consent-request|/consent?consent=3&locale=de@@shell-consent-request|/consent?consent=4&locale=de@@shell-consent-request|/::[data-applet-id=quick-settings]|/::[data-applet-id=notifications]|/::[data-applet-id=network]|/::[data-applet-id=bluetooth]|/::[data-applet-id=layout]|/::[data-applet-id=undo]|/?locale=de::[data-applet-id=battery]@@shell-battery-panel|/?locale=de::[data-applet-id=audio]@@shell-audio-panel|/?locale=de::[data-applet-id=tray]@@shell-tray-panel|/?locale=de::.mpris-art@@shell-mpris-panel|/_jobstest|/_mpristest|/_nettest|/_printtest|/_qstest|/_toasttest|/_undotest|/?menumock|/?locale=de@@shell-workspace-overlay|/_jobstest?locale=de@@shell-jobs-refuse-cancel|/_jobstest?locale=de@@shell-jobs-failed-install|/waypointer?locale=de@@waypointer-refuses-copy|/waypointer?locale=de@@waypointer-refuses-run|/waypointer?locale=de@@waypointer-refuses-openurl"
 )
 
 # An app name that matches nothing sweeps nothing and, before this, still printed
@@ -276,6 +276,14 @@ for entry in "${SURFACES[@]}"; do
   # `viewport:`) and the driver's are dropped instead, and the last thing left
   # standing is the title.
   #
+  # `Xvfb` JOINS THE DROPPED LINES for the same reason, found the same way. When a
+  # render fires into a machine that is already rendering, `own-display.sh`
+  # refuses and LISTS the processes holding the displays - and a `ps` line is not
+  # filtered by any of the patterns above, so it survived as "the title" and the
+  # run refused the app with `not "Terminal" - another server holds it`, naming an
+  # Xvfb. The refusal was right and its reason was unreadable; the message should
+  # say no title came back, which is what happened.
+  #
   # MEASURED, and it was worse than a risk: `wrote /dev/null` is printed AFTER
   # the answer on every run, so `tail -1` never returned a title at all. Every app
   # with an `*.app.title` key was refused as "another server holds it" and the
@@ -285,7 +293,7 @@ for entry in "${SURFACES[@]}"; do
     served=$(timeout 240 dev/screenshot/headless.sh \
       --url "http://localhost:$PORT$route" --out /dev/null --width "$WIDTH" \
       --timeout 180 --settle 4 --probe "document.title" 2>/dev/null \
-      | grep -vE '^(MESA|Note:|libEGL|Gdk-|note:|wrote |viewport:)|DRI3|^$' | tail -1)
+      | grep -vE '^(MESA|Note:|libEGL|Gdk-|note:|wrote |viewport:)|DRI3|Xvfb|^$' | tail -1)
     [ -n "$served" ] && break
   done
   if [ -n "$want" ] && [ "$served" != "$want" ]; then
