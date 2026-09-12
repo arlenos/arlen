@@ -4653,6 +4653,19 @@ async fn handle_list(
 /// Used where a read hands back a NAMED field rather than a whole row - the
 /// label gate alone would let a field-scoped grant read a field it never asked
 /// for. Labels are label-granular; profiles are field-granular.
+///
+/// THE TYPE MATCH IS EXACT, unlike `can_read`/`can_write`, which go through
+/// `token::type_matches` and honour a `com.example.*` pattern. Nothing reaches
+/// here with a wildcard today: the only entity types asked about are
+/// `system.<Label>` for a label that cleared `readable_system_labels`, and that
+/// function drops a `system.*` scope because `*` is not a safe identifier. A
+/// caller holding BOTH `system.*` and a named system scope would be refused a
+/// field the wildcard grants, which is over-restrictive and fail-closed. It is
+/// left exact deliberately: widening a live authorisation predicate to match a
+/// pattern no shipped profile uses would move a boundary without anyone
+/// deciding to. If an enumerable label is ever added outside `system.`, this is
+/// the line to revisit, and `token::readable_fields` is the wildcard-aware
+/// sibling to reconcile with (test callers only, today).
 pub(crate) fn field_is_granted(
     scopes: &[crate::token::EntityScope],
     entity_type: &str,
