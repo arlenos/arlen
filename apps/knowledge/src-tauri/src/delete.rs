@@ -44,6 +44,29 @@ pub async fn knowledge_timeline_delete(from: i64) -> Result<u64, String> {
     client.delete_activity(from).await.map_err(|e| crate::report::graph_call_failed("knowledge_timeline_delete", e))
 }
 
+/// How many records the same delete would remove, removing none of them.
+///
+/// The confirmation for an irreversible act owes the user the number rather than
+/// a description of the act (`bitemporal-knowledge-graph.md` §10c), and the
+/// dialog cannot name a number it has no way to ask for.
+///
+/// A preview, so a failure is NOT surfaced as a failed delete: the caller falls
+/// back to the sentence without a number and the Delete stays available. Refusing
+/// to let somebody clear their history because a count did not answer would be
+/// the wrong way round.
+#[tauri::command]
+pub async fn knowledge_timeline_delete_preview(from: i64) -> Result<u64, String> {
+    if !is_usable_boundary(from) {
+        return Err("a delete needs a range boundary at or after the epoch".to_string());
+    }
+    let socket = crate::service::socket_or_absent()?;
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    client
+        .count_activity(from)
+        .await
+        .map_err(|e| crate::report::graph_call_failed("knowledge_timeline_delete_preview", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

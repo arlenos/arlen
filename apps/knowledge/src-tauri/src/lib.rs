@@ -60,6 +60,7 @@ pub fn run() {
             timeline::knowledge_timeline,
             export::knowledge_timeline_export,
             delete::knowledge_timeline_delete,
+            delete::knowledge_timeline_delete_preview,
             pause::knowledge_timeline_pause,
             pause::knowledge_refresh_interval_ms,
             pause::knowledge_timeline_paused,

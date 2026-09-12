@@ -33,6 +33,7 @@
     loadTimeline,
     setPaused,
     exportTimeline,
+    countRange,
     deleteRange,
     dayLabel,
     clock,
@@ -236,6 +237,21 @@
   let exportedTo = $state<string | null>(null);
 
   let pendingDelete = $state<{ from: number; label: string } | null>(null);
+  /// How many records the pending delete would remove. `null` while the count is
+  /// in flight or if it did not answer, and the dialog then falls back to the
+  /// sentence without a number - §10c asks the confirmation to name what it is
+  /// about to destroy, and it must not withhold the Delete when it cannot.
+  let pendingCount = $state<number | null>(null);
+  /// Ask for the count of the range we just put in front of the user, and drop
+  /// the answer if they have moved on to a different range or closed the dialog.
+  function askCount(from: number): void {
+    pendingCount = null;
+    void countRange(from).then((n) => {
+      if (pendingDelete?.from === from) {
+        pendingCount = n;
+      }
+    });
+  }
   function midnightToday(): number {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -245,6 +261,7 @@
     if (pendingDelete === null) return;
     deleteFailed = !(await deleteRange(pendingDelete.from));
     pendingDelete = null;
+    pendingCount = null;
   }
 
   $effect(() => {
@@ -258,8 +275,10 @@
       });
     } else if (action === "deleteToday") {
       pendingDelete = { from: midnightToday(), label: $t("k.tl.rangeToday") };
+      askCount(pendingDelete.from);
     } else {
       pendingDelete = { from: 0, label: $t("k.tl.rangeAll") };
+      askCount(pendingDelete.from);
     }
   });
 
@@ -390,11 +409,16 @@
 <ConfirmDialog
   open={pendingDelete !== null}
   title={$t("k.tl.deleteTitle")}
-  message={$t("k.tl.deleteMsg", { range: pendingDelete?.label ?? "" })}
+  message={pendingCount === null
+    ? $t("k.tl.deleteMsg", { range: pendingDelete?.label ?? "" })
+    : $t("k.tl.deleteMsgCounted", { n: pendingCount, range: pendingDelete?.label ?? "" })}
   confirmLabel={$t("k.tl.deleteConfirm")}
   variant="destructive"
   onConfirm={confirmDelete}
-  onCancel={() => (pendingDelete = null)}
+  onCancel={() => {
+    pendingDelete = null;
+    pendingCount = null;
+  }}
 />
 
 <style>

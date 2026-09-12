@@ -944,6 +944,42 @@ impl UnixGraphClient {
             })
     }
 
+    /// How many records [`delete_activity`](Self::delete_activity) would destroy
+    /// at or after `from` (Unix seconds), destroying none of them.
+    ///
+    /// For the confirmation, which owes the user the number rather than a
+    /// description of the act (`bitemporal-knowledge-graph.md` §10c). Same caller
+    /// gate as the delete, so any other principal gets
+    /// [`QueryError::PermissionDenied`].
+    ///
+    /// A preview, not a promise: the daemon takes this without holding the
+    /// promotion pass, so a pass landing between the count and the delete moves
+    /// the number by the records it wrote. The count the ledger records is the
+    /// one the delete takes for itself.
+    pub async fn count_activity(&self, from: i64) -> Result<u64, QueryError> {
+        let req = serde_json::json!({ "op": "count_activity", "from": from });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        response
+            .trim()
+            .strip_prefix("OK: counted ")
+            .and_then(|n| n.parse::<u64>().ok())
+            .ok_or_else(|| {
+                QueryError::InvalidQuery(format!(
+                    "unexpected daemon write response: {}",
+                    response.trim()
+                ))
+            })
+    }
+
     /// Merge a duplicate entity instance into a canonical one via the write
     /// socket (SHARED-ENTITIES.md §Merge Flow): the daemon re-points every edge of
     /// the duplicate onto the canonical and deletes the duplicate, atomically.

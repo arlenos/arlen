@@ -337,6 +337,34 @@ export async function exportTimeline(): Promise<string | null> {
   }
 }
 
+/// How many records a delete of this range would remove, removing none of them.
+///
+/// For the confirmation, which names the number rather than describing the act
+/// (`bitemporal-knowledge-graph.md` §10c). `null` on any failure, and the dialog
+/// then says the sentence without a number: a count that did not answer must not
+/// stand between somebody and their own history.
+export async function countRange(fromUnix: number): Promise<number | null> {
+  try {
+    return (await invoke("knowledge_timeline_delete_preview", { from: fromUnix })) as number;
+  } catch {
+    if (tauriAvailable) {
+      return null;
+    }
+    // Under vite the whole store is a fixture behind the mocked banner, so the
+    // count comes from the same rows the screen is showing. Without this the
+    // sweep photographs the fallback sentence and the ruled shape is never seen.
+    const shown = get(days);
+    if (!shown) {
+      return null;
+    }
+    return shown.reduce(
+      (n, day) =>
+        n + day.items.filter((it) => (it.kind === "event" ? it.event.at : it.session.to) >= fromUnix).length,
+      0
+    );
+  }
+}
+
 /// Delete a recorded range for good. Live: `knowledge_timeline_delete` (seam);
 /// under vite the fixture drops the range locally, behind the mocked banner.
 ///
