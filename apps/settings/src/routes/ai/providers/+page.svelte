@@ -345,6 +345,13 @@
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
+    /* WRAPS, so a narrow row stacks the badges instead of squeezing the provider's
+       name out of existence. At 720px in German this row is the one that measured
+       "GitHub Copilot" into 20px while these kept 155; the kit now shares the
+       shortfall, and wrapping is how this side gives its share without any badge
+       being cut in half. */
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .chip-trigger {
     display: inline-flex;
