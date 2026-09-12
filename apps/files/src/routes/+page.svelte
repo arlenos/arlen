@@ -508,11 +508,14 @@
     }
   }
 
-  const deleteMessage = $derived(
+  // The question names what goes, the body names the loss (design-system.md
+  // 6.11): from a folder it skips the trash, from the trash it leaves it.
+  const deleteTitle = $derived(
     selected.length === 1
-      ? $t("f.delete.oneForever", { name: selected[0]?.name ?? "" })
-      : $t("f.delete.manyForever", { count: selected.length }),
+      ? $t("f.delete.one", { name: selected[0]?.name ?? "" })
+      : $t("f.delete.many", { count: selected.length }),
   );
+  const deleteBody = $derived($t(isTrash ? "f.delete.bodyTrash" : "f.delete.body"));
 
   onMount(async () => {
     await loadPlaces();
@@ -655,7 +658,7 @@
         {#if isVirtual}
           {#if selected.length > 0}
             {#if isTrash}
-              <ContextMenu.Item onclick={restoreSelection}>{$t("f.menu.restore")}</ContextMenu.Item>
+              <ContextMenu.Item onclick={restoreSelection}>{$t("f.menu.putBack")}</ContextMenu.Item>
               <ContextMenu.Item variant="destructive" onclick={() => (confirmDelete = true)}>
                 {$t("f.menu.deletePermanently")}
               </ContextMenu.Item>
@@ -787,7 +790,7 @@
             <ContextMenu.Shortcut>Del</ContextMenu.Shortcut>
           </ContextMenu.Item>
           <ContextMenu.Item variant="destructive" onclick={() => (confirmDelete = true)}>
-            {$t("f.menu.deleteForever")}
+            {$t("f.menu.deletePermanently")}
           </ContextMenu.Item>
         {/if}
         {/if}
@@ -809,9 +812,9 @@
 
 <ConfirmDialog
   open={confirmDelete}
-  title={$t("f.menu.deleteForever")}
-  message={deleteMessage}
-  confirmLabel={$t("f.menu.deleteForever")}
+  title={deleteTitle}
+  message={deleteBody}
+  confirmLabel={$t("f.menu.deletePermanently")}
   variant="destructive"
   onConfirm={async () => {
     if (isTrash) await deleteSelectionPermanently();
@@ -823,7 +826,7 @@
 
 <ConfirmDialog
   open={confirmEmpty}
-  title={$t("f.menu.emptyTrash")}
+  title={$t("f.emptyTrash.title")}
   message={$t("f.emptyTrash.body")}
   confirmLabel={$t("f.menu.emptyTrash")}
   variant="destructive"

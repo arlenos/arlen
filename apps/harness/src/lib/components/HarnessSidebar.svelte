@@ -64,7 +64,7 @@
   let editingId = $state<string | null>(null);
   let draft = $state("");
   // The conversation awaiting delete confirmation; `null` when none.
-  let confirmDeleteId = $state<string | null>(null);
+  let confirmDelete = $state<{ id: string; title: string } | null>(null);
 
   function beginRename(id: string, current: string): void {
     editingId = id;
@@ -263,7 +263,7 @@
             {$t("h.sidebar.exportChat")}
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
-          <DropdownMenu.Item variant="destructive" onclick={() => (confirmDeleteId = s.id)}>
+          <DropdownMenu.Item variant="destructive" onclick={() => (confirmDelete = { id: s.id, title: s.title })}>
             <Trash2 />
             {$t("h.sidebar.delete")}
           </DropdownMenu.Item>
@@ -274,16 +274,16 @@
 {/snippet}
 
 <ConfirmDialog
-  open={confirmDeleteId !== null}
-  title={$t("h.sidebar.deleteTitle")}
-  message="This removes the chat and its messages. You cannot undo this."
+  open={confirmDelete !== null}
+  title={$t("h.sidebar.deleteTitle", { name: confirmDelete?.title ?? "" })}
+  message={$t("h.sidebar.deleteBody")}
   confirmLabel={$t("h.sidebar.delete")}
   variant="destructive"
   onConfirm={() => {
-    if (confirmDeleteId !== null) deleteSession(confirmDeleteId);
-    confirmDeleteId = null;
+    if (confirmDelete !== null) deleteSession(confirmDelete.id);
+    confirmDelete = null;
   }}
-  onCancel={() => (confirmDeleteId = null)}
+  onCancel={() => (confirmDelete = null)}
 />
 
 <style>

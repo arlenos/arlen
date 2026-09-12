@@ -36,7 +36,7 @@ const messages: Catalogs = {
     "f.done.trash":
       ".input {$count :number}\n.match $count\none {{Moved to Trash. Ctrl+Z puts it back.}}\n* {{Moved {$count} items to Trash. Ctrl+Z puts them back.}}",
     "f.done.delete":
-      ".input {$count :number}\n.match $count\none {{Deleted for good. This one cannot be taken back.}}\n* {{Deleted {$count} items for good. These cannot be taken back.}}",
+      ".input {$count :number}\n.match $count\none {{Deleted permanently. It cannot be put back.}}\n* {{Deleted {$count} items permanently. They cannot be put back.}}",
     "f.prov.partOf": "Part of {$actor}, {$when}. Recorded from what Arlen observed.",
     "f.prov.lastOpenedBy": "Last opened by {$actor}, {$when}. Recorded from what Arlen observed.",
     "f.prov.alsoOpenedBy": "Also opened by {$actor}, {$when}. Recorded from what Arlen observed.",
@@ -130,7 +130,7 @@ const messages: Catalogs = {
     "f.nav.asOfAria": "View this project as of a past time",
 
     // Context menu
-    "f.menu.restore": "Restore",
+    "f.menu.putBack": "Put back",
     "f.menu.deletePermanently": "Delete permanently",
     "f.menu.open": "Open",
     "f.menu.goToFolder": "Go to folder",
@@ -150,7 +150,6 @@ const messages: Catalogs = {
     "f.menu.extractHere": "Extract here",
     "f.menu.compress": "Compress to archive",
     "f.menu.moveToTrash": "Move to trash",
-    "f.menu.deleteForever": "Delete forever",
     // The global menu the topbar renders for this app. Item labels the context
     // menu already names are reused verbatim (`f.menu.*`, `f.col.*`, `f.place.*`):
     // one act, one word, one entry to translate.
@@ -177,9 +176,12 @@ const messages: Catalogs = {
     "f.link.to": "Link to {$name}",
 
     // Delete / empty-trash dialogs
-    "f.delete.oneForever": "Delete {$name} forever? This cannot be undone.",
-    "f.delete.manyForever": P("count", "Delete {$count} item forever? This cannot be undone.", "Delete {$count} items forever? This cannot be undone."),
-    "f.emptyTrash.body": "Permanently delete everything in the trash? This cannot be undone.",
+    "f.delete.one": "Delete {$name} permanently?",
+    "f.delete.many": P("count", "Delete {$count} item permanently?", "Delete {$count} items permanently?"),
+    "f.delete.body": "It skips the trash and is gone from this disk. You cannot undo this.",
+    "f.delete.bodyTrash": "It leaves the trash and is gone from this disk. You cannot undo this.",
+    "f.emptyTrash.title": "Empty the trash?",
+    "f.emptyTrash.body": "Everything in it is gone from this disk. You cannot undo this.",
 
     // Ask banner
     "f.ask.draftedFrom": "Drafted from",
@@ -429,7 +431,7 @@ const messages: Catalogs = {
     "f.done.trash":
       ".input {$count :number}\n.match $count\none {{In den Papierkorb verschoben. Strg+Z legt es zurück.}}\n* {{{$count} Einträge in den Papierkorb verschoben. Strg+Z legt sie zurück.}}",
     "f.done.delete":
-      ".input {$count :number}\n.match $count\none {{Endgültig gelöscht. Das lässt sich nicht zurückholen.}}\n* {{{$count} Einträge endgültig gelöscht. Das lässt sich nicht zurückholen.}}",
+      ".input {$count :number}\n.match $count\none {{Endgültig gelöscht. Es lässt sich nicht zurücklegen.}}\n* {{{$count} Einträge endgültig gelöscht. Sie lassen sich nicht zurücklegen.}}",
     "f.prov.partOf": "Teil von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
     "f.prov.lastOpenedBy": "Zuletzt ge\u00f6ffnet von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
     "f.prov.alsoOpenedBy": "Auch ge\u00f6ffnet von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
@@ -510,7 +512,7 @@ const messages: Catalogs = {
     "f.nav.forward": "Vor",
     "f.nav.asOfAria": "Dieses Projekt zu einem früheren Zeitpunkt ansehen",
 
-    "f.menu.restore": "Wiederherstellen",
+    "f.menu.putBack": "Zurücklegen",
     "f.menu.deletePermanently": "Endgültig löschen",
     "f.menu.open": "Öffnen",
     "f.menu.goToFolder": "Zum Ordner",
@@ -530,7 +532,6 @@ const messages: Catalogs = {
     "f.menu.extractHere": "Hier entpacken",
     "f.menu.compress": "Zu Archiv komprimieren",
     "f.menu.moveToTrash": "In den Papierkorb",
-    "f.menu.deleteForever": "Endgültig löschen",
     "f.gm.file": "Datei",
     "f.gm.edit": "Bearbeiten",
     "f.gm.view": "Ansicht",
@@ -551,9 +552,12 @@ const messages: Catalogs = {
     "f.newFolder.default": "Neuer Ordner",
     "f.link.to": "Verknüpfung zu {$name}",
 
-    "f.delete.oneForever": "{$name} endgültig löschen? Das kann nicht rückgängig gemacht werden.",
-    "f.delete.manyForever": P("count", "{$count} Element endgültig löschen? Das kann nicht rückgängig gemacht werden.", "{$count} Elemente endgültig löschen? Das kann nicht rückgängig gemacht werden."),
-    "f.emptyTrash.body": "Alles im Papierkorb endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+    "f.delete.one": "{$name} endgültig löschen?",
+    "f.delete.many": P("count", "{$count} Element endgültig löschen?", "{$count} Elemente endgültig löschen?"),
+    "f.delete.body": "Es geht am Papierkorb vorbei und ist von dieser Platte weg. Das lässt sich nicht rückgängig machen.",
+    "f.delete.bodyTrash": "Es verlässt den Papierkorb und ist von dieser Platte weg. Das lässt sich nicht rückgängig machen.",
+    "f.emptyTrash.title": "Papierkorb leeren?",
+    "f.emptyTrash.body": "Alles darin ist von dieser Platte weg. Das lässt sich nicht rückgängig machen.",
 
     "f.ask.draftedFrom": "Entworfen aus",
     "f.ask.aiOff": "Fragen zu deinen Dateien ist aus. Schalte den Assistenten in den Einstellungen ein.",

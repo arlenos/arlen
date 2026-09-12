@@ -90,7 +90,7 @@ const messages: Catalogs = {
     "k.tl.deleteMsg": "Removes {$range} from the timeline. This cannot be undone.",
     "k.tl.deleteMsgCounted":
       ".input {$n :number}\n.match $n\none {{Removes 1 record of {$range} from the timeline. This cannot be undone.}}\n*   {{Removes {$n} records of {$range} from the timeline. This cannot be undone.}}",
-    "k.tl.deleteConfirm": "Delete",
+    "k.tl.deleteConfirm": "Delete permanently",
     "k.tl.rangeToday": "today's activity",
     "k.tl.rangeAll": "everything recorded",
     "k.tl.session": "Session",
@@ -211,7 +211,7 @@ const messages: Catalogs = {
     "k.tl.deleteMsg": "Entfernt {$range} aus dem Verlauf. Das lässt sich nicht rückgängig machen.",
     "k.tl.deleteMsgCounted":
       ".input {$n :number}\n.match $n\none {{Entfernt 1 Eintrag aus {$range} im Verlauf. Das lässt sich nicht rückgängig machen.}}\n*   {{Entfernt {$n} Einträge aus {$range} im Verlauf. Das lässt sich nicht rückgängig machen.}}",
-    "k.tl.deleteConfirm": "Löschen",
+    "k.tl.deleteConfirm": "Endgültig löschen",
     "k.tl.rangeToday": "die heutige Aktivität",
     "k.tl.rangeAll": "alles Aufgezeichnete",
     "k.tl.session": "Sitzung",
