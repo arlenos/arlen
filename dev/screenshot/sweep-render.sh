@@ -389,6 +389,12 @@ for width in $widths; do
     # convert a transient miss into a measurement and cannot convert a real one
     # into silence - but it is not a fix for a slow page, and nobody should read
     # it as one.
+    #
+    # BOTH HALVES WERE OBSERVED, not reasoned about: forcing `shoot.py`'s settle
+    # to zero makes the condition fire every time, and the run then printed the
+    # re-read line AND still reported the finding on the second attempt. So the
+    # branch announces itself and a persistent miss survives it, which are the
+    # two things it had to be true of.
     case "$got" in
       *"has not painted yet"*)
         # SAID OUT LOUD, never silent. A measurement tool that re-rolls a reading
