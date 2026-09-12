@@ -15,6 +15,7 @@
     SidebarMenuItem,
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
+  import { OverflowLabel } from "@arlen/ui-kit/components/ui/overflow-label";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t } from "$lib/i18n/messages";
@@ -138,10 +139,12 @@
                   style="padding-inline-start: {8 + entry.depth * 14}px"
                   onclick={() => entry.page && onjump(entry.page)}
                 >
-                  <!-- Ellipsed on purpose, and reachable anyway: a heading long
+                  <!-- Ellipsed on purpose and reachable anyway: a heading long
                        enough to clip clips at every window width, because the
-                       sidebar is a fixed column and indents with its depth. -->
-                  <span class="truncate" title={entry.title}>{entry.title}</span>
+                       sidebar is a fixed column and indents with its depth. The
+                       kit's OverflowLabel offers the tooltip only when the text
+                       is actually cut (design-system.md 6.4). -->
+                  <span class="truncate"><OverflowLabel text={entry.title} /></span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             {/each}
