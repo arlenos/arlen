@@ -10,6 +10,7 @@ trigger:
 tools:
   graph.ask: []
   graph.find: []
+  graph.list: []
   fs.list: [~/Downloads]
   fs.move: [~/Downloads, ~/Documents/Projects]
 budget:

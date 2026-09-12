@@ -132,6 +132,16 @@ impl std::error::Error for QueryError {}
 /// The caller-scoped provenance of one graph object: which apps accessed it,
 /// filtered to the caller's own identity (a co-tenant is never named, only
 /// summarised by [`accessed_by_others`](ProvenanceView::accessed_by_others)).
+/// One handle from [`UnixGraphClient::list_identities`]: what a thing is called
+/// and the id the anchored reads take.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Identity {
+    /// The node id.
+    pub id: String,
+    /// The display name, empty when the node has none.
+    pub name: String,
+}
+
 /// Returned by [`UnixGraphClient::read_provenance`] when the object is within the
 /// caller's read scope.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -942,6 +952,37 @@ impl UnixGraphClient {
                     response.trim()
                 ))
             })
+    }
+
+    /// The HANDLES of one enumerable label: an id and a display name per row,
+    /// nothing else.
+    ///
+    /// The enumeration half of the read verb. `0x08` needs an anchoring filter
+    /// because an unanchored read of a sensitive label is the harvest shape; that
+    /// reason is about CONTENT, so this op has none and can stand beside it
+    /// (`pi-gate-class-registry.md`). Only labels on the daemon's own enumerable
+    /// list answer - a project is there because knowing you have one called
+    /// "Thesis" is not knowing what is in it; messages, documents and contacts
+    /// are not and do not become so.
+    ///
+    /// Every refusal is the same empty answer, so this cannot be used to ask
+    /// whether something exists.
+    pub async fn list_identities(
+        &self,
+        label: &str,
+        limit: i64,
+    ) -> Result<Vec<Identity>, QueryError> {
+        let req = serde_json::json!({ "label": label, "limit": limit });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x12);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        serde_json::from_str(response.trim())
+            .map_err(|e| QueryError::InvalidQuery(format!("unexpected list answer: {e}")))
     }
 
     /// How many records [`delete_activity`](Self::delete_activity) would destroy

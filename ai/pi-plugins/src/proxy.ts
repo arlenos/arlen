@@ -98,8 +98,11 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
     name: "graph.ask",
     label: "Knowledge graph read",
     description:
-      "Read the user's knowledge graph to answer ANY question about THEIR OWN " +
-      "files, projects, or activity. ALWAYS prefer this tool over shelling out " +
+      "Ask a QUESTION about the user's own files, projects or activity, in plain " +
+      "words. This is the expensive one of the three graph verbs: it costs a " +
+      "round trip and it INTERPRETS what you asked, so reach for graph.list or " +
+      "graph.find first when a handle or a word would answer. ALWAYS prefer this " +
+      "tool over shelling out " +
       "(do NOT run `bash ls`/`find`/`stat` for these): the knowledge graph is the " +
       "authoritative, permission-scoped, cross-session record of the user's " +
       "activity, whereas a raw `ls` only sees one directory's mtimes and misses " +
@@ -126,19 +129,48 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
     },
   },
   {
+    name: "graph.list",
+    label: "Knowledge graph handles",
+    description:
+      "List what the user HAS of one kind - their projects, say - as handles: an " +
+      "id and a display name each, nothing more. Free: no model call, no " +
+      "interpretation. This is the verb for \"what projects do I have\", which " +
+      "neither of the others answers - graph.find matches a word you already " +
+      "know, and graph.ask costs a round trip to work out the same list. Take an " +
+      "id from here and ask about that id when you need more than a name. Only " +
+      "some labels can be listed at all (system.Project is one); the rest answer " +
+      "empty by design, and an empty answer is never evidence that the user has " +
+      "none of something.",
+    parameters: {
+      type: "object",
+      properties: {
+        label: {
+          type: "string",
+          description: "The kind to list, e.g. \"system.Project\".",
+        },
+        limit: {
+          type: "number",
+          description: "How many handles. Defaults to 50, capped at 200.",
+        },
+      },
+      required: ["label"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "graph.find",
     label: "Knowledge graph search",
     description:
       "Find the user's own files and projects BY NAME or by a word in them, and " +
-      "get back their ids, best match first. This is a keyword search, not a " +
-      "question: it costs no model call and interprets nothing, so when you know " +
-      "the word you are looking for - a filename, a project name, a word from a " +
-      "path - reach for this FIRST and keep graph.ask for questions that need " +
-      "reading rather than matching (\"what did I work on yesterday\", \"what " +
-      "changed since Monday\"). It answers ids only; a File's id is its path. It " +
-      "cannot enumerate a category: \"my projects\" is a question, not a word, " +
-      "and belongs to graph.ask. The search is bounded by this session\u2019s read " +
-      "scope, so it never returns something the session may not see.",
+      "get back their ids, best match first. Free, like graph.list: a keyword " +
+      "search, no model call, no interpretation. When you know the word you are " +
+      "looking for - a filename, a project name, a word from a path - reach for " +
+      "this, and keep graph.ask for questions that need reading rather than " +
+      "matching (\"what did I work on yesterday\", \"what changed since " +
+      "Monday\"). It answers ids only; a File's id is its path. It cannot " +
+      "enumerate a kind: for \"all my projects\" use graph.list, which answers " +
+      "handles. The search is bounded by this session\u2019s read scope, so it " +
+      "never returns something the session may not see.",
     parameters: {
       type: "object",
       properties: {

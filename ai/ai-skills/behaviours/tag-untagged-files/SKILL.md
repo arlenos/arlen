@@ -10,6 +10,7 @@ trigger:
 tools:
   graph.ask: []
   graph.find: []
+  graph.list: []
   graph.write: [Project, FILE_PART_OF]
 terminal:
   no_untagged_file: silent
