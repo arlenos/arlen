@@ -54,10 +54,30 @@ def code_lines(text: str) -> list[str]:
     commented mention is skipped, so the check never fires on a sentence about
     the renderer - `shoot-no-backend.sh` has one telling you to use `headless.sh`
     and it must not be a finding.
+
+    A PYTHON DOCSTRING IS A COMMENT TOO, and it was not read as one. A gate
+    whose own header explains why it exists will name the renderer in prose;
+    on 12 September a new check did exactly that and this reported it as a
+    bare render. The `#` rule was the shape its author happened to be writing
+    in. Tracked by the triple-quote fences rather than parsed, which is the
+    same crudeness in the same safe direction: an unmatched fence hides code
+    from the scan, and a file that does that has worse problems than this.
     """
     out = []
+    in_doc = None
     for line in text.splitlines():
         stripped = line.strip()
+        if in_doc is not None:
+            if in_doc in stripped:
+                in_doc = None
+            continue
+        for fence in ('"""', "'''"):
+            if stripped.startswith(fence) or stripped.startswith(f"r{fence}"):
+                body = stripped.split(fence, 1)[1]
+                if fence not in body:
+                    in_doc = fence
+                stripped = ""
+                break
         if not stripped or stripped.startswith("#"):
             continue
         out.append(line)
