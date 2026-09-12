@@ -16,6 +16,7 @@
   } from "$lib/stores/aiEdit";
   import { t } from "$lib/i18n/messages";
   import { ScopeChip } from "@arlen/ui-kit/components/ui/scope-chip";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Check, Undo2, AlertTriangle, X } from "lucide-svelte";
 
   function badge(h: EditHunk): { text: string; tone: "applied" | "held" | "muted" } {
@@ -44,12 +45,12 @@
            unlabelled this reads as a real pending edit to accept. -->
       <p class="sample">{$t("te.review.sample")}</p>
     {:else if $unavailable}
-      <p class="sample">{$t("te.review.unavailable")}</p>
+      <div class="note"><Notice tone="error" text={$t("te.review.unavailable")} /></div>
     {/if}
     {#if $lastError}
       <!-- A refused action already restored the hunk's status; this says why, so
            a failed undo never passes as a reverted edit. -->
-      <p class="sample error" role="alert">{$t($lastError)}</p>
+      <div class="note"><Notice tone="error" text={$t($lastError)} /></div>
     {/if}
 
     <p class="prompt">{$t("te.review.youAsked", { prompt: p.prompt })}</p>
@@ -141,8 +142,8 @@
     line-height: 1.4;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
-  .sample.error {
-    color: var(--color-fg-danger, #f87171);
+  .note {
+    margin: 0 0 0.5rem;
   }
   .prompt {
     margin: 0 0 1rem;
