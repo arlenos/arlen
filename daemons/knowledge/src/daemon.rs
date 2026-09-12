@@ -818,7 +818,7 @@ fn is_safe_graph_identifier(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-fn readable_system_labels(read_scopes: &[crate::token::EntityScope]) -> Vec<String> {
+pub(crate) fn readable_system_labels(read_scopes: &[crate::token::EntityScope]) -> Vec<String> {
     read_scopes
         .iter()
         .filter_map(|s| s.entity_type.strip_prefix("system."))
@@ -1049,8 +1049,7 @@ async fn handle_typed_read(
         Ok(t) => t,
         Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     };
-    let readable = readable_system_labels(&token.read_scopes);
-    let validated = match crate::typed_read::validate_typed_read(req, &readable) {
+    let validated = match crate::typed_read::validate_typed_read(req, &token.read_scopes) {
         Ok(v) => v,
         Err(reason) => {
             warn!(app_id = %token.app_id, reason, "typed read denied");
