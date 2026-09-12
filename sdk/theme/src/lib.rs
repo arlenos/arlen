@@ -51,6 +51,7 @@ pub mod catppuccin;
 pub mod cli;
 pub mod color;
 pub mod css;
+pub mod declared;
 mod file;
 pub mod gtk;
 pub mod qt;
