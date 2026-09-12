@@ -119,7 +119,12 @@
   }
 
   .label {
-    flex: 1;
+    /* `1 1 auto`, not `1`. `flex: 1` is basis ZERO, so the label never took part
+       in shrinking - it only grew into whatever the inflexible items left, and a
+       wide preview beside it left almost nothing. With an auto basis both sides
+       start from their content width and give up pixels in proportion, so the
+       bigger one loses more. */
+    flex: 1 1 auto;
     min-width: 0;
   }
 
@@ -144,9 +149,37 @@
     margin-top: 0.0625rem;
   }
 
-  .preview,
+  /* The control may give ground, but never below its own minimum. `flex-shrink: 0`
+     meant a wide control took its full width and the label absorbed every pixel of
+     the shortfall: on the sound page at 720px in German a 272px picker left the
+     label 86 where it needed 118, and "Gerät angeschlossen" ellipsed to "Gerät
+     ang...". `min-content` is the floor that makes this safe for the fixed-size
+     controls - a switch cannot be squashed below a switch - while a picker or a
+     button pair gives back the slack it was holding. */
   .control {
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: min-content;
+  }
+
+  /* THE PREVIEW IS CAPPED SO THE NAME SURVIVES. It used to sit at
+     `flex-shrink: 0` beside the control, and the label is `flex: 1` - basis 0,
+     so it does not shrink, it GROWS into whatever the inflexible items leave.
+     A wide preview therefore took its content width first and the label got the
+     remainder. Measured at 720px in German on the AI providers page: "GitHub
+     Copilot" was allotted 20px while the badges beside it kept 155 and the
+     control 132. The name of the thing a row is about is the last thing a person
+     can afford to lose.
+
+     `flex-shrink: 1` alone does NOT fix it - measured, same 155px - because the
+     line is not overflowing, so nothing shrinks; the label is simply last in the
+     queue. A proportion is what actually bounds it, and a proportion rather than
+     a pixel floor because it holds at every width the sweep renders. The control
+     keeps `flex-shrink: 0`: it is an operable thing with a hit target, not a
+     description. */
+  .preview {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
   }
 
   /* The reset sits before the control and only shows itself when the row is
