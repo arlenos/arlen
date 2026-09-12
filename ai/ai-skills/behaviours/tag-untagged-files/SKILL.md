@@ -8,7 +8,8 @@ handler: tag_untagged_files
 trigger:
   type: manual
 tools:
-  graph.query: []
+  graph.ask: []
+  graph.find: []
   graph.write: [Project, FILE_PART_OF]
 terminal:
   no_untagged_file: silent

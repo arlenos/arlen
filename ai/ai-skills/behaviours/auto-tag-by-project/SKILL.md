@@ -10,7 +10,8 @@ trigger:
   event: file.opened
   filter: "path not_startswith ~/.cache"
 tools:
-  graph.query: []
+  graph.ask: []
+  graph.find: []
   graph.write: [Project, FILE_PART_OF]
 terminal:
   file_tagged: store

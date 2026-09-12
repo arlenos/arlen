@@ -7,7 +7,8 @@ mode: suggest
 trigger:
   type: manual
 tools:
-  graph.query: []
+  graph.ask: []
+  graph.find: []
 budget:
   max_steps: 8
   max_tokens: 12000

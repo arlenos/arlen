@@ -8,7 +8,8 @@ trigger:
   type: event
   event: calendar.event.upcoming
 tools:
-  graph.query: []
+  graph.ask: []
+  graph.find: []
 budget:
   max_steps: 10
   max_tokens: 12000
