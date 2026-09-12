@@ -141,9 +141,12 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
       "NAME comes back empty when this session's grant does not cover that field: " +
       "the id is the payload and the name is the nicety, so an empty name means " +
       "you may not read it, never that the thing is unnamed. Only " +
-      "some labels can be listed at all (system.Project is one); the rest answer " +
-      "empty by design, and an empty answer is never evidence that the user has " +
-      "none of something.",
+      "some labels can be listed at all (system.Project is one), and a label that " +
+      "is not listable, or that this session may not read, is REFUSED rather " +
+      "than answered empty. So the two outcomes mean different things and you " +
+      "can rely on that: a failure says the label is closed to you and nothing " +
+      "about what the user has, while an empty list says there are none of that " +
+      "kind to show you.",
     parameters: {
       type: "object",
       properties: {
