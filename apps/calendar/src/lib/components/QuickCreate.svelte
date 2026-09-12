@@ -4,6 +4,7 @@
   /// options" hands the draft to the full dialog. Deliberately tiny - the
   /// dialog exists for everything else.
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { t, locale } from "$lib/i18n/messages";
   import { dayLabel } from "$lib/wording";
   import { calendars, colorOf, createEvent } from "$lib/stores/calendar";
@@ -90,6 +91,9 @@
     role="dialog"
     aria-label={$t("cal.form.title")}
   >
+    {#if failed}
+      <Notice tone="error" text={failed} />
+    {/if}
     <input
       bind:this={input}
       bind:value={title}
@@ -102,9 +106,6 @@
       {#if calColor}<span class="qc-dot" style="background: {calColor}" aria-hidden="true"></span>{/if}
       {dayLabel(date, $locale)}, {time}&#8211;{endTime}
     </p>
-    {#if failed}
-      <p class="qc-failed" role="alert">{failed}</p>
-    {/if}
     <div class="qc-actions">
       <Button variant="ghost" size="sm" id="quick-more" onclick={() => onmore(title)}>
         {$t("cal.quick.moreOptions")}
@@ -164,11 +165,6 @@
     width: 0.55rem;
     height: 0.55rem;
     border-radius: var(--radius-chip, 4px);
-  }
-  .qc-failed {
-    margin: 0;
-    font-size: var(--text-xs, 12px);
-    color: var(--color-warning, #eab308);
   }
   .qc-actions {
     display: flex;

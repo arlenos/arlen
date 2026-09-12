@@ -20,6 +20,7 @@
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { ChevronLeft, ChevronRight } from "@lucide/svelte";
   import { tauriAvailable } from "$lib/tauri";
@@ -303,6 +304,30 @@
   }
 
   /// The host's errno text as a sentence of the reader's, or nothing.
+  /// The three refusals this pane can show, each one finished sentence, so the
+  /// Notice at the top of the pane gets a text rather than a branch.
+  const failureText = $derived.by(() => {
+    if (!failure) return "";
+    if (failure.problem === "launch") return $t("cal.failed.launch");
+    if (failure.problem === "no-home") return $t("cal.failed.noHome");
+    if (failure.problem === "unreadable") return $t("cal.failed.unreadable", { why: whyText(failure.why) });
+    return $t("cal.failed.other");
+  });
+  const keepText = $derived.by(() => {
+    const p = kept?.problem;
+    if (!p) return "";
+    if (p.problem === "not-a-file") return $t("cal.keep.notAFile");
+    if (p.problem === "no-home") return $t("cal.keep.noHome");
+    if (p.problem === "cannot-make-dir") return $t("cal.keep.cannotMakeDir", { why: whyText(p.why) });
+    if (p.problem === "already-kept") return $t("cal.keep.alreadyKept", { name: p.name });
+    if (p.problem === "copy-failed") return $t("cal.keep.copyFailed", { why: whyText(p.why) });
+    // The else used to BE the copy-failed sentence, which was right for exactly
+    // as long as copy-failed stayed the only unhandled reason: the next variant
+    // added to the host would have been reported as a failed copy, confidently
+    // and wrongly. Naming it leaves the else free to say what it actually knows.
+    return $t("cal.keep.otherReason");
+  });
+
   const whyText = (text: string): string => {
     const key = ioWhyKey(text);
     return key ? $t(key) : "";
@@ -413,16 +438,17 @@
     </header>
 
     <div class="content">
+      <!-- Every refusal this pane has sits here, at its top, in the one shape
+           (design-system.md 6.11, thread two): the open that did not start, the
+           read that failed, the keep that did not land. -->
       {#if launchFailed && !failure}
-        <p class="note bad" role="alert">{$t("cal.failed.launch")}</p>
+        <div class="note"><Notice tone="error" text={$t("cal.failed.launch")} /></div>
+      {/if}
+      {#if kept?.problem}
+        <div class="note"><Notice tone="error" text={keepText} /></div>
       {/if}
       {#if failure}
-        <p class="note bad" role="alert">
-          {#if failure.problem === "launch"}{$t("cal.failed.launch")}
-          {:else if failure.problem === "no-home"}{$t("cal.failed.noHome")}
-          {:else if failure.problem === "unreadable"}{$t("cal.failed.unreadable", { why: whyText(failure.why) })}
-          {:else}{$t("cal.failed.other")}{/if}
-        </p>
+        <div class="note"><Notice tone="error" text={failureText} /></div>
       {:else if $agenda}
         {#if launched}
           <!-- The only way a calendar gets onto this machine today. Opening a
@@ -430,21 +456,6 @@
                an automatic copy, so the merge stays the person's. -->
           <p class="keep">
             <button type="button" onclick={keep}>{$t("cal.keep")}</button>
-          </p>
-        {/if}
-        {#if kept?.problem}
-          <p class="note bad" role="alert">
-            {#if kept.problem.problem === "not-a-file"}{$t("cal.keep.notAFile")}
-            {:else if kept.problem.problem === "no-home"}{$t("cal.keep.noHome")}
-            {:else if kept.problem.problem === "cannot-make-dir"}{$t("cal.keep.cannotMakeDir", { why: whyText(kept.problem.why) })}
-            {:else if kept.problem.problem === "already-kept"}{$t("cal.keep.alreadyKept", { name: kept.problem.name })}
-            {:else if kept.problem.problem === "copy-failed"}{$t("cal.keep.copyFailed", { why: whyText(kept.problem.why) })}
-            <!-- The else used to BE the copy-failed sentence, which was right for
-                 exactly as long as copy-failed stayed the only unhandled reason:
-                 the next variant added to the host would have been reported as a
-                 failed copy, confidently and wrongly. Naming it leaves the else
-                 free to say what it actually knows. -->
-            {:else}{$t("cal.keep.otherReason")}{/if}
           </p>
         {/if}
 
@@ -534,12 +545,7 @@
     overflow-y: auto;
   }
   .note {
-    margin: 16px 14px;
-    font-size: 13px;
-    color: var(--color-fg-secondary, #a3a3a3);
-  }
-  .note.bad {
-    color: var(--color-warning, #eab308);
+    margin: 16px 14px 0;
   }
   .keep {
     margin: 16px 14px 0;

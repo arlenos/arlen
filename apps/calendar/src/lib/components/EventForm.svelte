@@ -13,6 +13,7 @@
   import { Dialog } from "@arlen/ui-kit/components/ui/dialog";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Notice } from "@arlen/ui-kit/components/ui/notice";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Toggle } from "@arlen/ui-kit/components/ui/toggle";
@@ -253,6 +254,12 @@
 
 <Dialog {open} onClose={onclose} ariaLabel={editing ? $t("cal.edit.title") : $t("cal.form.title")}>
   <div class="form">
+    <!-- Already a whole sentence in the reader's language: the store's
+         refusal() writes it from the command's named problem. At the top of
+         the form, the surface that failed. -->
+    {#if failed}
+      <Notice tone="error" text={failed} />
+    {/if}
     <input
       bind:this={titleEl}
       bind:value={summary}
@@ -401,12 +408,6 @@
           {/if}
         </span>
       </div>
-    {/if}
-
-    <!-- Already a whole sentence in the reader's language: the store's
-         refusal() writes it from the command's named problem. -->
-    {#if failed}
-      <p class="failed" role="alert">{failed}</p>
     {/if}
 
     <div class="actions">
@@ -569,11 +570,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
-  }
-  .failed {
-    margin: 0;
-    font-size: var(--text-xs, 12px);
-    color: var(--color-warning, #eab308);
   }
   .row.gone {
     display: none;
