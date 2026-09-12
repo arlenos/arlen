@@ -601,6 +601,17 @@ enum WriteRequest {
         /// Unix seconds; everything recorded at or after this instant goes.
         from: i64,
     },
+    /// How much `DeleteActivity` would remove, without removing any of it.
+    ///
+    /// The confirmation for an irreversible act names the number it is about to
+    /// destroy rather than describing the act in the abstract
+    /// (`bitemporal-knowledge-graph.md` §10c), and the surface cannot name a
+    /// number it has no way to ask for. Same caller gate as the delete: a
+    /// principal that may not delete may not measure either.
+    CountActivity {
+        /// Unix seconds, read the same way `DeleteActivity` reads it.
+        from: i64,
+    },
     /// Persist a consent grant into the shared LCG Grant node (system-dialog-
     /// plan.md, Option A): the durable half of the consent lifecycle, surfaced by
     /// the `access_grants` read in the same see+revoke place. Only the consent
@@ -1885,6 +1896,23 @@ async fn handle_write_request(
                     info!(raw_events = raw, nodes = planned.total(), "activity deleted");
                     format!("OK: deleted {}", planned.total())
                 }
+                Err(e) => format!("ERROR: {e}"),
+            }
+        }
+        WriteRequest::CountActivity { from } => {
+            // The same gate as the delete, for the same reason it sits before the
+            // read there: a caller that may not delete may not learn how much is
+            // there either.
+            if !activity_delete_caller_admitted(&token.app_id) {
+                return "ERROR: permission denied for activity delete".to_string();
+            }
+            // No promotion gate, deliberately. This destroys nothing, so a pass
+            // landing beside it costs a preview that is a few records stale, and
+            // holding the gate would stall promotion for every confirmation the
+            // user opens and then cancels. The number the AUDIT records is still
+            // taken under the lock, in the delete itself.
+            match crate::activity_delete::count_activity_since(graph, from).await {
+                Ok(c) => format!("OK: counted {}", c.total()),
                 Err(e) => format!("ERROR: {e}"),
             }
         }

@@ -88,6 +88,8 @@ const messages: Catalogs = {
     "k.tl.menuHint": "Export and delete live in the app menu.",
     "k.tl.deleteTitle": "Delete recorded activity?",
     "k.tl.deleteMsg": "Removes {$range} from the timeline. This cannot be undone.",
+    "k.tl.deleteMsgCounted":
+      ".input {$n :number}\n.match $n\none {{Removes 1 record of {$range} from the timeline. This cannot be undone.}}\n*   {{Removes {$n} records of {$range} from the timeline. This cannot be undone.}}",
     "k.tl.deleteConfirm": "Delete",
     "k.tl.rangeToday": "today's activity",
     "k.tl.rangeAll": "everything recorded",
@@ -207,6 +209,8 @@ const messages: Catalogs = {
     "k.tl.menuHint": "Exportieren und Löschen liegen im App-Menü.",
     "k.tl.deleteTitle": "Aufgezeichnete Aktivität löschen?",
     "k.tl.deleteMsg": "Entfernt {$range} aus dem Verlauf. Das lässt sich nicht rückgängig machen.",
+    "k.tl.deleteMsgCounted":
+      ".input {$n :number}\n.match $n\none {{Entfernt 1 Eintrag aus {$range} im Verlauf. Das lässt sich nicht rückgängig machen.}}\n*   {{Entfernt {$n} Einträge aus {$range} im Verlauf. Das lässt sich nicht rückgängig machen.}}",
     "k.tl.deleteConfirm": "Löschen",
     "k.tl.rangeToday": "die heutige Aktivität",
     "k.tl.rangeAll": "alles Aufgezeichnete",
