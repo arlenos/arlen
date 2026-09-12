@@ -4636,16 +4636,23 @@ async fn handle_list(
 /// Does this caller's read scope include one FIELD of one type?
 ///
 /// A scope entry with no field list is the whole type; a list is exactly those
-/// fields. Used where a read hands back a NAMED field rather than a whole row -
-/// the label gate alone would let a field-scoped grant read a field it never
-/// asked for.
-fn field_is_granted(
+/// fields. Either way `exclude_fields` wins - it is the profile's way of saying
+/// "all of this type except", and a grant that reads as wider than the person
+/// wrote it is the failure this whole helper exists to prevent. The first cut
+/// read only `fields` and would have handed back an excluded one from a
+/// whole-type grant, which is the same shape as the hole it was written for.
+///
+/// Used where a read hands back a NAMED field rather than a whole row - the
+/// label gate alone would let a field-scoped grant read a field it never asked
+/// for. Labels are label-granular; profiles are field-granular.
+pub(crate) fn field_is_granted(
     scopes: &[crate::token::EntityScope],
     entity_type: &str,
     field: &str,
 ) -> bool {
     scopes.iter().any(|s| {
         s.entity_type == entity_type
+            && !s.exclude_fields.iter().any(|f| f == field)
             && match &s.fields {
                 None => true,
                 Some(fields) => fields.iter().any(|f| f == field),
@@ -4841,6 +4848,25 @@ mod tests {
 
         // Another type's grant says nothing about this one.
         assert!(!field_is_granted(&field_scoped, "system.File", "path"));
+
+        // An exclusion wins over both shapes of grant: it is how a profile says
+        // "all of this type EXCEPT", and reading it as anything less hands back
+        // the one field the person named as off limits.
+        let all_but_root = vec![EntityScope {
+            entity_type: "system.Project".to_string(),
+            fields: None,
+            exclude_fields: vec!["root_path".to_string()],
+        }];
+        assert!(field_is_granted(&all_but_root, "system.Project", "name"));
+        assert!(!field_is_granted(&all_but_root, "system.Project", "root_path"));
+
+        let listed_then_excluded = vec![EntityScope {
+            entity_type: "system.Project".to_string(),
+            fields: Some(vec!["id".to_string(), "root_path".to_string()]),
+            exclude_fields: vec!["root_path".to_string()],
+        }];
+        assert!(field_is_granted(&listed_then_excluded, "system.Project", "id"));
+        assert!(!field_is_granted(&listed_then_excluded, "system.Project", "root_path"));
     }
 
     #[test]
