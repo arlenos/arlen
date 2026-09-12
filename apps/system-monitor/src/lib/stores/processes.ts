@@ -278,13 +278,15 @@ export function stopProcessPolling(): void {
   }
 }
 
-/// Gracefully stop a process (SIGTERM ladder), then drop it. Live: `stop_process`.
+/// Stop a process (SIGTERM, or SIGKILL when `force` is set), then drop it. Live:
+/// `stop_process`. Force is the "Force quit" the window asked about first: it ends
+/// the process at once and whatever it had not saved is lost.
 ///
 /// Optimistic, but NEVER silently: with a real backend a refused stop is put
 /// BACK in the list. Dropping the row and swallowing the error would tell the
 /// user they killed a process that is still running - a false confirmation of a
 /// destructive action, the one thing this surface must not do.
-export async function stop(id: number): Promise<void> {
+export async function stop(id: number, force = false): Promise<void> {
   let previous: Process[] = [];
   processes.update((list) => {
     previous = list;
@@ -293,7 +295,7 @@ export async function stop(id: number): Promise<void> {
     );
   });
   try {
-    await invoke("stop_process", { id });
+    await invoke("stop_process", { id, force });
   } catch (e) {
     if (tauriAvailable) {
       processes.set(previous);
@@ -322,13 +324,13 @@ export function pidsOf(p: Process): number[] {
 /// child stays. Any refusal RELOADS rather than restoring the pre-click list -
 /// with a group, some are gone and some are not, and putting the old list back
 /// would claim the survivors are all still there.
-export async function stopRow(p: Process): Promise<void> {
+export async function stopRow(p: Process, force = false): Promise<void> {
   const ids = pidsOf(p);
-  if (ids.length === 1) return stop(ids[0]);
+  if (ids.length === 1) return stop(ids[0], force);
   const failures: unknown[] = [];
   for (const id of ids) {
     try {
-      await invoke("stop_process", { id });
+      await invoke("stop_process", { id, force });
     } catch (e) {
       failures.push(e);
     }

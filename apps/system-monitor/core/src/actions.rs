@@ -136,10 +136,18 @@ pub fn send_signal(pid: u32, sig: i32) -> Result<(), Refusal> {
     }
 }
 
-/// Gracefully stop a process with SIGTERM (the process gets to clean up; a
-/// force-kill escalation is a UI follow-up, not an automatic SIGKILL).
+/// Gracefully stop a process with SIGTERM: the process gets to clean up and save.
+/// A process that ignores it stays; the escalation is [`kill`], and it is the
+/// person's call, never an automatic follow-up.
 pub fn stop(pid: u32) -> Result<(), Refusal> {
     send_signal(pid, libc::SIGTERM)
+}
+
+/// End a process at once with SIGKILL. The process cannot catch it, so nothing
+/// is cleaned up and whatever it had open and not saved is lost; that is why the
+/// window asks once and names the loss before calling this.
+pub fn kill(pid: u32) -> Result<(), Refusal> {
+    send_signal(pid, libc::SIGKILL)
 }
 
 /// Freeze (`paused=true` -> SIGSTOP) or thaw (`paused=false` -> SIGCONT) a
@@ -199,6 +207,13 @@ mod tests {
     fn send_signal_refuses_an_unsafe_target_without_calling_kill() {
         assert_eq!(send_signal(0, libc::SIGTERM), Err(Refusal::UnsafePid(0)));
         assert_eq!(send_signal(u32::MAX, libc::SIGCONT), Err(Refusal::UnsafePid(u32::MAX)));
+    }
+
+    #[test]
+    fn stop_and_kill_refuse_the_same_unsafe_targets() {
+        assert_eq!(stop(0), Err(Refusal::UnsafePid(0)));
+        assert_eq!(kill(0), Err(Refusal::UnsafePid(0)));
+        assert_eq!(kill(u32::MAX), Err(Refusal::UnsafePid(u32::MAX)));
     }
 
     #[test]

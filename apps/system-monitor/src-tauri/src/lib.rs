@@ -105,11 +105,16 @@ fn refused(action: &str, id: u32, r: actions::Refusal) -> String {
     r.token().to_string()
 }
 
-/// Gracefully stop a process (SIGTERM). The kernel refuses a process the user does
-/// not own, so the error is surfaced to the row.
+/// Stop a process: SIGTERM, or SIGKILL when `force` is set (the "Force quit" the
+/// window asked about first). The kernel refuses a process the user does not
+/// own, so the error is surfaced to the row.
 #[tauri::command]
-fn stop_process(id: u32) -> Result<(), String> {
-    actions::stop(id).map_err(|r| refused("stop", id, r))
+fn stop_process(id: u32, force: bool) -> Result<(), String> {
+    if force {
+        actions::kill(id).map_err(|r| refused("force quit", id, r))
+    } else {
+        actions::stop(id).map_err(|r| refused("stop", id, r))
+    }
 }
 
 /// Freeze (`paused=true`) or thaw (`paused=false`) a process - the non-destructive

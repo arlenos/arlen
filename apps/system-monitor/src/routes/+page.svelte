@@ -14,6 +14,7 @@
   import { Rows3, Layers } from "lucide-svelte";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { Notice } from "@arlen/ui-kit/components/ui/notice";
+  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
@@ -28,6 +29,39 @@
   let filter = $state("");
   let selected = $state<Process | null>(null);
   let menu = $state<{ proc: Process; x: number; y: number } | null>(null);
+
+  /// The one question this window asks before ending a process, and only for
+  /// the two ends that cannot be undone by launching the thing again: a system
+  /// service (nothing here starts it again) and Force quit (the process does
+  /// not get to save). An ordinary Stop asks nothing. `name` is what the
+  /// dialog says; the row is looked up again at confirm time because an app
+  /// row stands for its whole group.
+  let ask = $state<{ kind: "critical" | "force"; id: number; name: string } | null>(null);
+
+  function rowOf(id: number): Process | undefined {
+    return $processes.find((p) => p.id === id);
+  }
+  function requestStop(id: number) {
+    const row = rowOf(id);
+    if (row?.critical) {
+      ask = { kind: "critical", id, name: row.name };
+      return;
+    }
+    void (row ? stopRow(row) : stop(id));
+  }
+  function requestForceQuit(id: number) {
+    const row = rowOf(id);
+    ask = { kind: "force", id, name: row?.name ?? selected?.name ?? String(id) };
+  }
+  async function confirmAsk() {
+    if (!ask) return;
+    const { kind, id } = ask;
+    ask = null;
+    const row = rowOf(id);
+    const force = kind === "force";
+    if (selected?.id === id) selected = null;
+    await (row ? stopRow(row, force) : stop(id, force));
+  }
 
   /// A lever pressed on a row applies to the whole row.
   ///
@@ -224,10 +258,7 @@
         <DetailPane
           process={selected}
           onClose={() => (selected = null)}
-          onForceQuit={(id) => {
-            stop(id);
-            selected = null;
-          }}
+          onForceQuit={requestForceQuit}
         />
       {/if}
     </div>
@@ -243,16 +274,8 @@
     process={menu.proc}
     x={menu.x}
     y={menu.y}
-    onStop={(id) => {
-      // The ROW, not the pid: an app row stands for its whole group and the
-      // plan says Stop takes the tree.
-      const row = $processes.find((p) => p.id === id);
-      return row ? stopRow(row) : stop(id);
-    }}
-    onForceQuit={(id) => {
-      stop(id);
-      if (selected?.id === id) selected = null;
-    }}
+    onStop={requestStop}
+    onForceQuit={requestForceQuit}
     onDetails={(p) => (selected = p)}
     onPause={(id) => byRow(id, pauseRow, pause)}
     onResume={(id) => byRow(id, resumeRow, resume)}
@@ -268,6 +291,16 @@
     }}
   />
 {/if}
+
+<ConfirmDialog
+  open={ask !== null}
+  title={$t(ask?.kind === "force" ? "tm.forceQuit.title" : "tm.stopCritical.title", { name: ask?.name ?? "" })}
+  message={$t(ask?.kind === "force" ? "tm.forceQuit.body" : "tm.stopCritical.body")}
+  confirmLabel={$t(ask?.kind === "force" ? "tm.menu.forceQuit" : "tm.menu.stop")}
+  variant="destructive"
+  onConfirm={confirmAsk}
+  onCancel={() => (ask = null)}
+/>
 
 <svelte:body oncontextmenu={(e) => e.preventDefault()} />
 

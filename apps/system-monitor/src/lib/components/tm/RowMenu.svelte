@@ -6,11 +6,6 @@
   import { t } from "$lib/i18n/messages";
   import { niceLevels, niceOf, niceUnavailable, renice, type NiceLevel, type Process } from "$lib/stores/processes";
 
-  /// Armed by the first click on Stop when the row is a critical daemon; the
-  /// menu deliberately stays open so the warning is READ, not dismissed by the
-  /// click that acknowledged it.
-  let confirmStop = $state(false);
-
   /// The Advanced affordance (system-monitor-plan.md (c)): priority behind a
   /// disclosure rather than beside Stop, because a nice value is expert
   /// vocabulary and the direction of it is famously backwards.
@@ -178,31 +173,13 @@
       </div>
     {/if}
     <div class="mi-sep" role="separator"></div>
-    <!-- The plan's guardrail (system-monitor-plan.md (d)1): a daemon is an
-         ordinary row you can stop, and stopping one asks first. The row carries
-         `critical` from the core's own name list, so this cannot drift from the
-         grouping. An app takes one click as before. -->
-    <button
-      type="button"
-      class="mi"
-      class:danger={confirmStop}
-      role="menuitem"
-      onclick={(e) => {
-        if (process.critical && !confirmStop) {
-          // The menu sits INSIDE the dismiss backdrop, so this click reaches
-          // `onClose` on its way up and tears the menu down. Returning early is
-          // not enough: it stops the process from being stopped and also stops
-          // the warning from ever being read, which is the worst of both. Found
-          // by driving it - the label was still "Stop" and the menu was gone.
-          e.stopPropagation();
-          confirmStop = true;
-          return;
-        }
-        onStop(process.id);
-        onClose();
-      }}
-    >
-      {confirmStop ? $t("tm.menu.stopCritical", { name: process.name }) : $t("tm.menu.stop")}
+    <!-- Stop asks nothing: the process gets to save, and launching it again
+         undoes it. The two exceptions ask ONCE in the page's dialog, which names
+         the loss: a system service (the row carries `critical` from the core's
+         own name list) because nothing here starts it again, and Force quit
+         because it ends the process without letting it save. -->
+    <button type="button" class="mi" role="menuitem" onclick={() => { onStop(process.id); onClose(); }}>
+      {$t("tm.menu.stop")}
     </button>
     <button type="button" class="mi danger" role="menuitem" onclick={() => { onForceQuit(process.id); onClose(); }}>
       {$t("tm.menu.forceQuit")}
