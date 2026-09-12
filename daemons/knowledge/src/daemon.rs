@@ -4660,6 +4660,13 @@ async fn handle_list(
 /// read only `fields` and would have handed back an excluded one from a
 /// whole-type grant, which is the same shape as the hole it was written for.
 ///
+/// NB the exclusion is unreachable from a profile TODAY: `permission.rs` builds
+/// every scope with `exclude_fields: vec![]` and the `[graph] read` syntax has
+/// no form that fills it, so the list is always empty on a real token. Honoured
+/// anyway, because the field is serialised into the declared ceiling and a
+/// predicate that ignores half its own input is a trap for whoever gives that
+/// syntax a spelling.
+///
 /// Used where a read hands back a NAMED field rather than a whole row - the
 /// label gate alone would let a field-scoped grant read a field it never asked
 /// for. Labels are label-granular; profiles are field-granular.
