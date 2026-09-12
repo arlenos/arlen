@@ -613,6 +613,36 @@ impl ProjectStore {
             .collect())
     }
 
+    /// Every distinct `origin` on the project's LIVE memberships.
+    ///
+    /// The question this answers is "did anybody but the observation pipeline
+    /// put a file in here". `link_file` stamps `graph` (the system watched it
+    /// happen), the agent write path stamps `agent`, and an assertion a person
+    /// made is `user`, so a project whose origins are exactly `["graph"]` holds
+    /// nothing anyone chose to put there. Closed memberships are excluded: a
+    /// file somebody once added and then removed is not a member now.
+    ///
+    /// A NULL origin is reported as the empty string rather than skipped.
+    /// Promotion left the column unset for as long as it existed, so a graph
+    /// with history in it has NULLs, and silently reading those as `graph`
+    /// would be inventing a provenance the row does not carry.
+    pub async fn member_origins(&self, project_id: Uuid) -> Result<Vec<String>> {
+        let pid = escape_cypher(&project_id.to_string());
+        let rs = self
+            .graph
+            .query_rows(format!(
+                "MATCH ()-[r:FILE_PART_OF]->(:Project {{id: '{pid}'}})
+                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL
+                 RETURN DISTINCT r.origin AS origin"
+            ))
+            .await?;
+        Ok(rs
+            .rows
+            .iter()
+            .filter_map(|r| r.first().map(|v| v.as_str().to_string()))
+            .collect())
+    }
+
     /// Remove all FILE_PART_OF edges pointing to a project.
     pub async fn unlink_all_files(&self, project_id: Uuid) -> Result<()> {
         let pid = escape_cypher(&project_id.to_string());
