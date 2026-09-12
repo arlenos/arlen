@@ -360,6 +360,20 @@ fn is_untouched_inference(p: &Project) -> bool {
 ///    the stamp the observation pipeline writes. One `user` or `agent` edge and
 ///    somebody has curated this; it is theirs now.
 ///
+/// **AND AN UNKNOWN ORIGIN COUNTS AS SOMEBODY.** Promotion left `origin` NULL
+/// for as long as the column existed and only started stamping it later, so a
+/// graph with history in it holds memberships that say nothing about who made
+/// them. `member_origins` reports those as the empty string rather than reading
+/// them as `graph`, and the empty string is not `graph`, so a project holding
+/// one is kept. That is the right way round for a delete - not knowing who put a
+/// file somewhere is a reason to leave it alone - but it has a consequence worth
+/// stating plainly: **on a machine whose umbrella predates the origin stamp,
+/// this sweep will never fire.** It withdraws the umbrellas a current daemon
+/// mints, not necessarily the one already sitting in somebody's project list.
+/// Closing that would mean either backfilling a provenance nobody recorded or
+/// treating "unknown" as "ours", and both are worse than the sweep being inert
+/// on an old graph.
+///
 /// Withdrawing means DELETING the node and its edges, which is the tree's
 /// existing answer for an inference that turned out wrong (`prune_or_archive`
 /// deletes an inferred project whose root is gone, and archives an explicit
@@ -805,6 +819,38 @@ mod tests {
 
         let stats = retract_refused_inferences(&store, &home).await.unwrap();
         assert_eq!(stats.retracted, 0, "a name somebody chose is a touch");
+        assert!(store.get_by_id(id).await.unwrap().is_some());
+    }
+
+    /// A membership whose origin nobody recorded is not one we may claim.
+    ///
+    /// Promotion left the column NULL for as long as it existed, so a graph with
+    /// history holds edges that say nothing about who made them. The sweep keeps
+    /// such a project - not knowing who put a file somewhere is a reason to leave
+    /// it alone - which also means it does not fire on an umbrella older than the
+    /// stamp. Pinned so that consequence is a decision rather than a surprise.
+    #[tokio::test]
+    async fn an_unstamped_membership_keeps_the_project() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (store, graph, home, root, id) = umbrella_fixture(&tmp).await;
+        let file = format!("{root}/legacy.rs");
+        graph
+            .write(format!(
+                "CREATE (f:File {{id: '{file}', path: '{file}', app_id: 't', last_accessed: 0}})"
+            ))
+            .await
+            .unwrap();
+        // The pre-stamp shape: a membership with no origin at all.
+        graph
+            .write(format!(
+                "MATCH (f:File {{id: '{file}'}}), (p:Project {{id: '{id}'}}) \
+                 CREATE (f)-[:FILE_PART_OF]->(p)"
+            ))
+            .await
+            .unwrap();
+
+        let stats = retract_refused_inferences(&store, &home).await.unwrap();
+        assert_eq!(stats.retracted, 0, "an unrecorded origin is not ours to claim");
         assert!(store.get_by_id(id).await.unwrap().is_some());
     }
 
