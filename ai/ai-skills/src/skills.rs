@@ -1,54 +1,30 @@
-//! User-invoke + agent-match over the loaded skills (PR-5 part 3).
+//! Agent-match over the loaded skills (PR-5 part 3).
 //!
 //! A behaviour (`SKILL.md`) has one format and three entry points
 //! (`ai-agent-design.md` §3): event-triggered (the dispatcher), user-invocable
 //! (the harness lists loaded skills and runs one), and agent-matched (the daemon
 //! checks a free-form task against each skill's `whenToUse` before falling back
-//! to a plain answer). This module is the backend for the latter two over the
-//! *same* loaded set: a serialisable [`SkillSummary`] list and a deterministic,
-//! model-free [`match_skill`]. The harness surface (the Tauri command that calls
-//! [`skill_summaries`]) and the run-through-the-loop wiring are the consumers.
+//! to a plain answer). This module is the deterministic, model-free prefilter for
+//! the third.
+//!
+//! ## The consumer is not built, and that is a decision rather than an omission
+//!
+//! Measured 13 September: nothing in the tree calls [`match_skill`]. The obvious
+//! call site is `ai-engine-daemon`'s `ask`, which today runs the `ask` skill for
+//! every question. Routing a question to a DIFFERENT skill because their words
+//! overlap would change what the run may read - the gate enforces the matched
+//! skill's declared scope, not `ask`'s - and a question can carry text somebody
+//! else wrote. So the match is built and the routing is a read-scope ruling,
+//! which is the planner's.
+//!
+//! **A list surface is not what is missing.** This module also carried a
+//! `SkillSummary` for "the harness lists loaded skills"; by the time anybody
+//! looked, that list had been built twice elsewhere and richer - the harness's
+//! own `BehaviourStatus` and Settings' AI page both carry provenance, enablement
+//! reason and declared reads, which the summary here did not. It was removed
+//! rather than left as a thinner third answer to a question already answered.
 
-use serde::Serialize;
-
-use crate::behaviour::BehaviourKind;
 use crate::loader::{LoadedBehaviour, Status};
-
-/// A loaded skill as the user-invoke list shows it: identity + the routing
-/// hints, never the body. Serialisable for the discovery command.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct SkillSummary {
-    /// Stable kebab-case name (the invoke key).
-    pub name: String,
-    /// One-line description.
-    pub description: String,
-    /// The agent-match hint, if the skill declares one.
-    pub when_to_use: Option<String>,
-    /// Workflow or agent.
-    pub kind: BehaviourKind,
-    /// Whether it is enabled (trusted Settings state); a disabled skill is
-    /// listed but cannot run.
-    pub enabled: bool,
-}
-
-/// Summarise every loaded skill for the user-invoke list (the deferred S-U3b
-/// discovery command). Order follows the loaded order, which the loader has
-/// already de-duplicated by name.
-pub fn skill_summaries(loaded: &[LoadedBehaviour]) -> Vec<SkillSummary> {
-    loaded
-        .iter()
-        .map(|lb| {
-            let m = &lb.behaviour.manifest;
-            SkillSummary {
-                name: m.name.clone(),
-                description: m.description.clone(),
-                when_to_use: m.when_to_use.clone(),
-                kind: m.kind,
-                enabled: lb.status == Status::Enabled,
-            }
-        })
-        .collect()
-}
 
 /// Significant word tokens of a free-form string: lowercased ASCII-alphanumeric
 /// runs of at least three characters, deduplicated. The length floor drops
@@ -138,17 +114,12 @@ mod tests {
     }
 
     #[test]
-    fn when_to_use_parses_and_summarises() {
+    fn when_to_use_parses_off_the_manifest() {
         let s = skill("tidy", Some("clean up the downloads folder"), Status::Enabled);
         assert_eq!(
             s.behaviour.manifest.when_to_use.as_deref(),
             Some("clean up the downloads folder")
         );
-        let sum = skill_summaries(std::slice::from_ref(&s));
-        assert_eq!(sum.len(), 1);
-        assert_eq!(sum[0].name, "tidy");
-        assert_eq!(sum[0].when_to_use.as_deref(), Some("clean up the downloads folder"));
-        assert!(sum[0].enabled);
     }
 
     #[test]
@@ -182,11 +153,10 @@ mod tests {
     }
 
     #[test]
-    fn disabled_skill_is_listed_but_never_matches() {
+    fn a_disabled_skill_never_matches() {
+        // It still loads - Settings lists it with its disabled reason - but a
+        // task never routes to something the person has switched off.
         let s = skill("tidy", Some("clean the downloads folder"), disabled());
-        // Listed (so the harness can show its disabled state)...
-        assert!(!skill_summaries(std::slice::from_ref(&s))[0].enabled);
-        // ...but never agent-matched.
         assert!(match_skill("clean my downloads", std::slice::from_ref(&s)).is_none());
     }
 

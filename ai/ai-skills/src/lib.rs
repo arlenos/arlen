@@ -1,13 +1,16 @@
 //! Shared skill model for the Arlen AI layer.
 //!
-//! The Agent-Skills (`SKILL.md`) parser, the event router, the
-//! discovery + enablement loader, and the `whenToUse` skill matcher live
-//! here so both `ai-agent` (the autonomous, event-triggered loop that also
-//! *executes* skills) and `ai-daemon` (the interactive query daemon that
-//! *matches* a free-form task to a skill before its plain-answer fallback)
-//! depend on one definition. Skill **execution** stays in `ai-agent`; this
-//! crate is the static model + discovery only, with no execution, graph, or
-//! provider coupling.
+//! The Agent-Skills (`SKILL.md`) parser, the event router, the discovery +
+//! enablement loader, and the `whenToUse` skill matcher live here so every
+//! reader of a skill works off one definition: `ai-engine-daemon` loads and runs
+//! them, the harness and Settings list them, and the router decides which event
+//! reaches which. Skill **execution** stays in the engine; this crate is the
+//! static model + discovery only, with no execution, graph, or provider
+//! coupling.
+//!
+//! The matcher in [`skills`] is the one part with no reader yet, and its own
+//! module says why: routing a question to a matched skill is a read-scope
+//! decision rather than a wiring job.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
