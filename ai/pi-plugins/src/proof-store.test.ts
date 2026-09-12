@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { stashProof, takeProof } from "./proof-store.js";
 
 test("a stashed proof is taken once, keyed by tool and args", () => {
-  stashProof("graph.read", { q: "MATCH (n)" }, "P1");
-  assert.equal(takeProof("graph.read", { q: "MATCH (n)" }), "P1");
+  stashProof("graph.ask", { q: "MATCH (n)" }, "P1");
+  assert.equal(takeProof("graph.ask", { q: "MATCH (n)" }), "P1");
   // Single use: a second take is undefined.
-  assert.equal(takeProof("graph.read", { q: "MATCH (n)" }), undefined);
+  assert.equal(takeProof("graph.ask", { q: "MATCH (n)" }), undefined);
 });
 
 test("the key is object-key-order independent", () => {
@@ -15,14 +15,14 @@ test("the key is object-key-order independent", () => {
 });
 
 test("a different tool or args does not match", () => {
-  stashProof("graph.read", { q: "x" }, "P3");
+  stashProof("graph.ask", { q: "x" }, "P3");
   assert.equal(takeProof("graph.write", { q: "x" }), undefined);
-  assert.equal(takeProof("graph.read", { q: "y" }), undefined);
+  assert.equal(takeProof("graph.ask", { q: "y" }), undefined);
   // The original is still available.
-  assert.equal(takeProof("graph.read", { q: "x" }), "P3");
+  assert.equal(takeProof("graph.ask", { q: "x" }), "P3");
 });
 
 test("no proof is stashed when the gate minted none", () => {
-  stashProof("graph.read", { q: "z" }, undefined);
-  assert.equal(takeProof("graph.read", { q: "z" }), undefined);
+  stashProof("graph.ask", { q: "z" }, undefined);
+  assert.equal(takeProof("graph.ask", { q: "z" }), undefined);
 });

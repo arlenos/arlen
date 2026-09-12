@@ -39,7 +39,7 @@ function mockClient(reply: Reply): { client: CallClient; calls: Call[] } {
 
 const content: ContentBlock[] = [{ type: "text", text: "rows: a, b, c" }];
 function event(): ToolResultEvent {
-  return { type: "tool_result", toolCallId: "c7", toolName: "graph.read", input: { query: "x" }, content, isError: false };
+  return { type: "tool_result", toolCallId: "c7", toolName: "graph.ask", input: { query: "x" }, content, isError: false };
 }
 
 function isWithheld(r: ToolResultEventResult): boolean {
@@ -56,7 +56,7 @@ test("a Clean verdict lets the content through and reports the result", async ()
   assert.equal(mock.calls.length, 1);
   assert.deepEqual(mock.calls[0], {
     call: "report",
-    tool_name: "graph.read",
+    tool_name: "graph.ask",
     tool_call_id: "c7",
     result: content,
     is_error: false,

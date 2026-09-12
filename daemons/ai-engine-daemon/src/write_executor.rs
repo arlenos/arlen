@@ -517,7 +517,7 @@ mod tests {
         let exec = live_exec(Arc::new(MockWriter {
             result: Ok(RelationWriteOutcome::Created),
         }));
-        let req = Execute { tool_name: "graph.read".into(), tool_input: valid_input(), proof: None };
+        let req = Execute { tool_name: "graph.ask".into(), tool_input: valid_input(), proof: None };
         assert!(matches!(
             exec.execute(&req, &grant()).await,
             ExecuteOutcome::Error { code: ContractError::UnknownTool, .. },

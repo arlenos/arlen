@@ -72,7 +72,7 @@ impl Reporter for ScreeningReporter {
         // A read tool's result is a GRAPH ACCESS, audited under that kind so the
         // transparency drawer's anti-Recall "what the AI read" view (which filters
         // the ledger to `GraphAccess`) actually sees it. Every other tool is a
-        // routine action (`Permission`). Without this split a `graph.read` was
+        // routine action (`Permission`). Without this split a `graph.ask` was
         // audited as `Permission` and the reads feed stayed empty despite the AI
         // reading - the read was in the ledger under a kind that view ignores.
         let event = if gate_class_for_tool(&req.tool_name) == GateClass::Read {
@@ -121,7 +121,7 @@ mod tests {
 
     fn report(result: serde_json::Value, is_error: bool) -> Report {
         Report {
-            tool_name: "graph.read".into(),
+            tool_name: "graph.ask".into(),
             tool_call_id: "call-1".into(),
             result,
             is_error,
@@ -147,13 +147,13 @@ mod tests {
 
     #[tokio::test]
     async fn a_read_is_audited_as_graph_access_for_the_anti_recall_feed() {
-        // The reads feed filters the ledger to GraphAccess; a graph.read must be
+        // The reads feed filters the ledger to GraphAccess; a graph.ask must be
         // recorded under that kind or "what the AI read" stays empty despite the
         // AI reading.
         use audit_proto::AuditKind;
         let audit = Arc::new(MockAuditSink::accepting());
         let reporter = ScreeningReporter::new(audit.clone(), Screener::off());
-        // `report()` uses tool_name "graph.read" (GateClass::Read).
+        // `report()` uses tool_name "graph.ask" (GateClass::Read).
         reporter.report(&report(serde_json::json!({"rows": []}), false), &grant()).await;
         let recorded = audit.recorded().await;
         assert_eq!(recorded.len(), 1);

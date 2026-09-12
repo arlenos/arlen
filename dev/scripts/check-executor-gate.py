@@ -49,7 +49,7 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
         "a router: it owns no side effect and dispatches to the sub-executor "
         "registered for the tool, each of which gates itself",
     ),
-    "read_executor.rs": (
+    "ask_executor.rs": (
         {"execute"},
         "a read, bounded by the grant's read scope; the flag gates ACTING on the "
         "system, and refusing reads under it would disable the assistant "

@@ -41,7 +41,7 @@ pub mod consent_root;
 pub mod rpc_proxy;
 
 pub mod find_executor;
-pub mod read_executor;
+pub mod ask_executor;
 
 /// Deterministic curation (§E): the zero-token, no-pi graph curation the daemon
 /// runs directly for a workflow behaviour (auto-tag-by-project).

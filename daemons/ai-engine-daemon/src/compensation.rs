@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn a_non_write_or_errored_or_partial_result_yields_nothing() {
-        assert!(RetractReceipt::from_report("graph.read", false, &write_result("op")).is_none());
+        assert!(RetractReceipt::from_report("graph.ask", false, &write_result("op")).is_none());
         assert!(RetractReceipt::from_report("graph.write", true, &write_result("op")).is_none());
         let mut partial = write_result("op");
         partial.as_object_mut().unwrap().remove("op_id");

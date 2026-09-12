@@ -85,7 +85,7 @@ async function driveExecute(toolName: string): Promise<unknown> {
   };
   makeProxyTools()(pi);
   if (!tool) throw new Error(`the proxy plugin registered no tool '${toolName}'`);
-  // graph.read expects a "query" field; the daemon runs it scoped server-side.
+  // graph.ask expects a "query" field; the daemon runs it scoped server-side.
   const result = await tool.execute("e2e-1", { query: "MATCH (n) RETURN n LIMIT 1" });
   return { result };
 }
@@ -98,9 +98,9 @@ async function main(): Promise<void> {
   if (mode === "gate") {
     out = await driveGate(process.argv[3] ?? "note.append", process.argv[4] === "external");
   } else if (mode === "audit") {
-    out = await driveAudit(process.argv[3] ?? "graph.read");
+    out = await driveAudit(process.argv[3] ?? "graph.ask");
   } else if (mode === "execute") {
-    out = await driveExecute(process.argv[3] ?? "graph.read");
+    out = await driveExecute(process.argv[3] ?? "graph.ask");
   } else {
     throw new Error(`unknown e2e mode: ${mode}`);
   }

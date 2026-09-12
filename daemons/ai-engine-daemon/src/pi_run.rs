@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn privileged_proxy_classification() {
-        assert!(is_privileged_proxy_tool("graph.read"));
+        assert!(is_privileged_proxy_tool("graph.ask"));
         assert!(is_privileged_proxy_tool("fs.move"));
         assert!(is_privileged_proxy_tool("os.notify"));
         assert!(!is_privileged_proxy_tool("web.search"));
