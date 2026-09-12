@@ -11,7 +11,7 @@
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
   import { DaysPicker } from "@arlen/ui-kit/components/ui/days-picker";
-  import { clock, tick, setAlarm, toggleAlarm, deleteAlarm, type Alarm } from "$lib/stores/clock";
+  import { clock, tick, setAlarm, toggleAlarm, deleteAlarm, removedAlarm, undoRemove, type Alarm } from "$lib/stores/clock";
   import { addSignal } from "$lib/stores/ui";
   import { fmtDays, fmtIn } from "$lib/format";
   import { t, locale } from "$lib/i18n/messages";
@@ -61,6 +61,14 @@
   {/if}
 
   {#if $clock}
+    <!-- What the last Remove did, with the way back beside it. Quiet, not a
+         warning: it is an answer. It stays until Undo or the next act. -->
+    {#if $removedAlarm}
+      <p class="al-did" role="status">
+        <span>{$t("c.al.removed", { time: $removedAlarm.time })}</span>
+        <Button variant="ghost" size="sm" onclick={undoRemove}>{$t("c.al.undo")}</Button>
+      </p>
+    {/if}
     {#if $clock.alarms.length === 0}
       <p class="al-empty">{$t("c.al.empty")}</p>
     {/if}
@@ -135,7 +143,7 @@
           onclick={() => editing && deleteAlarm(editing).then(() => (editing = null))}
         >
           <Trash2 size={14} strokeWidth={1.75} />
-          {$t("c.al.delete")}
+          {$t("c.al.remove")}
         </Button>
       {/if}
       <span class="al-spacer"></span>
@@ -163,6 +171,16 @@
   }
   .al-nowake.dialog {
     text-align: start;
+  }
+  .al-did {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0;
+    padding-inline-start: 0.25rem;
+    font-size: var(--text-sm);
+    opacity: 0.75;
   }
   .al-empty {
     margin: 0.75rem 0 0;

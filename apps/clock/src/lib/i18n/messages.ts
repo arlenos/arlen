@@ -21,7 +21,7 @@ const messages: Catalogs = {
     "c.sample": "Example state - no clock service is running.",
     "c.unavailable": "Your saved clock data cannot be read.",
     "c.notRunning": "The clock service is not running, so your alarms and timers are not being kept.",
-    "c.actionFailed": "That did not reach the clock service, so nothing was set.",
+    "c.actionFailed": "That did not reach the clock service, so nothing changed.",
 
     "c.al.add": "Add alarm",
     "c.addOff": "Nothing can be added while the clock service is out of reach.",
@@ -39,7 +39,9 @@ const messages: Catalogs = {
     "c.al.fireLate": "If missed, ring once when the machine is back",
     "c.al.save": "Save",
     "c.al.cancel": "Cancel",
-    "c.al.delete": "Delete",
+    "c.al.remove": "Remove",
+    "c.al.removed": "Removed the {$time} alarm.",
+    "c.al.undo": "Undo",
     "c.al.toggleAria": "Alarm {$time} on or off",
 
     "c.ti.minutes": "min",
@@ -101,7 +103,7 @@ const messages: Catalogs = {
     "c.sample": "Beispielzustand - es läuft kein Uhr-Dienst.",
     "c.unavailable": "Deine gespeicherten Uhr-Daten k\u00f6nnen nicht gelesen werden.",
     "c.notRunning": "Der Uhr-Dienst l\u00e4uft nicht, deine Wecker und Timer werden also nicht gef\u00fchrt.",
-    "c.actionFailed": "Das hat den Uhrendienst nicht erreicht, es wurde nichts gestellt.",
+    "c.actionFailed": "Das hat den Uhrendienst nicht erreicht, es hat sich nichts geändert.",
 
     "c.al.add": "Wecker hinzufügen",
     "c.addOff": "Solange der Uhr-Dienst nicht erreichbar ist, kann nichts hinzugefügt werden.",
@@ -119,7 +121,9 @@ const messages: Catalogs = {
     "c.al.fireLate": "Falls verpasst, einmal klingeln, sobald die Maschine zurück ist",
     "c.al.save": "Speichern",
     "c.al.cancel": "Abbrechen",
-    "c.al.delete": "Löschen",
+    "c.al.remove": "Entfernen",
+    "c.al.removed": "Wecker {$time} entfernt.",
+    "c.al.undo": "Rückgängig",
     "c.al.toggleAria": "Wecker {$time} ein oder aus",
 
     "c.ti.minutes": "Min",
